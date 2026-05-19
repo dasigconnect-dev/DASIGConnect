@@ -1,0 +1,194 @@
+package com.dasigconnect.backend.service;
+
+import com.dasigconnect.backend.model.dto.auth.LoginResponseDto;
+import com.dasigconnect.backend.model.dto.invitation.AcceptInvitationRequestDto;
+import com.dasigconnect.backend.model.dto.invitation.CreateInvitationRequestDto;
+import com.dasigconnect.backend.model.dto.invitation.InvitationResponseDto;
+import com.dasigconnect.backend.model.dto.invitation.InvitationValidateResponseDto;
+import com.dasigconnect.backend.model.entity.Institution;
+import com.dasigconnect.backend.model.entity.InvitationToken;
+import com.dasigconnect.backend.model.entity.User;
+import com.dasigconnect.backend.model.entity.UserRole;
+import com.dasigconnect.backend.repository.InvitationTokenRepository;
+import com.dasigconnect.backend.repository.UserRepository;
+import com.dasigconnect.backend.security.TokenHashUtils;
+import jakarta.persistence.EntityManager;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.time.Instant;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class InvitationServiceTest {
+
+    @Mock InvitationTokenRepository invitationTokenRepository;
+    @Mock UserRepository userRepository;
+    @Mock EntityManager entityManager;
+    @Mock PasswordEncoder passwordEncoder;
+    @Mock JWTService jwtService;
+    @Mock EmailService emailService;
+    @Mock AuditLogService auditLogService;
+    @InjectMocks InvitationService invitationService;
+
+    private Institution institution;
+    private UUID institutionId;
+
+    @BeforeEach
+    void setUp() {
+        institutionId = UUID.randomUUID();
+        institution = new Institution();
+        institution.setId(institutionId);
+        institution.setName("CIT-U");
+        institution.setCode("citu");
+    }
+
+    private InvitationToken buildToken(boolean used, boolean expired) {
+        InvitationToken token = new InvitationToken();
+        token.setId(UUID.randomUUID());
+        token.setRecipientEmail("invitee@example.com");
+        token.setAssignedRole(UserRole.contributor);
+        token.setInstitution(institution);
+        token.setTokenHash("anyhash");
+        token.setExpiresAt(expired ? Instant.now().minusSeconds(1) : Instant.now().plusSeconds(3600));
+        if (used) token.setUsedAt(Instant.now().minusSeconds(60));
+        return token;
+    }
+
+    // ── createInvitation ──────────────────────────────────────────────────
+
+    @Test
+    void createInvitation_withAdministratorRole_throws400() {
+        CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
+                "admin@example.com", institutionId, UserRole.administrator);
+        assertThatThrownBy(() -> invitationService.createInvitation(dto))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(400);
+    }
+
+    @Test
+    void createInvitation_withUnknownInstitution_throws404() {
+        when(entityManager.find(Institution.class, institutionId)).thenReturn(null);
+        CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
+                "user@example.com", institutionId, UserRole.contributor);
+        assertThatThrownBy(() -> invitationService.createInvitation(dto))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(404);
+    }
+
+    @Test
+    void createInvitation_validRequest_savesTokenAndSendsEmail() {
+        when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
+        when(invitationTokenRepository.save(any())).thenAnswer(inv -> {
+            InvitationToken t = inv.getArgument(0);
+            t.setId(UUID.randomUUID());
+            return t;
+        });
+
+        CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
+                "user@example.com", institutionId, UserRole.contributor);
+        InvitationResponseDto result = invitationService.createInvitation(dto);
+
+        assertThat(result.recipientEmail()).isEqualTo("user@example.com");
+        assertThat(result.assignedRole()).isEqualTo(UserRole.contributor);
+        assertThat(result.institutionId()).isEqualTo(institutionId);
+        verify(emailService).sendInvitationEmail(eq("user@example.com"), any());
+    }
+
+    // ── validateToken ─────────────────────────────────────────────────────
+
+    @Test
+    void validateToken_unknownToken_throws404() {
+        when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> invitationService.validateToken("badtoken"))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(404);
+    }
+
+    @Test
+    void validateToken_alreadyUsed_throws410() {
+        InvitationToken token = buildToken(true, false);
+        when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
+        assertThatThrownBy(() -> invitationService.validateToken("sometoken"))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(410);
+    }
+
+    @Test
+    void validateToken_expired_throws410() {
+        InvitationToken token = buildToken(false, true);
+        when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
+        assertThatThrownBy(() -> invitationService.validateToken("sometoken"))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(410);
+    }
+
+    @Test
+    void validateToken_valid_returnsDetails() {
+        InvitationToken token = buildToken(false, false);
+        when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
+
+        InvitationValidateResponseDto result = invitationService.validateToken("validtoken");
+
+        assertThat(result.recipientEmail()).isEqualTo("invitee@example.com");
+        assertThat(result.institutionName()).isEqualTo("CIT-U");
+        assertThat(result.assignedRole()).isEqualTo(UserRole.contributor);
+    }
+
+    // ── acceptInvitation ──────────────────────────────────────────────────
+
+    @Test
+    void acceptInvitation_alreadyUsedToken_throws409() {
+        InvitationToken token = buildToken(true, false);
+        when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
+
+        assertThatThrownBy(() -> invitationService.acceptInvitation(
+                new AcceptInvitationRequestDto("validrawtoken", "password1")))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(410);
+    }
+
+    @Test
+    void acceptInvitation_valid_createsUserAndReturnsJwt() {
+        InvitationToken token = buildToken(false, false);
+        when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
+        when(passwordEncoder.encode("password1")).thenReturn("$hashed");
+        when(userRepository.save(any())).thenAnswer(inv -> {
+            User u = inv.getArgument(0);
+            u.setId(UUID.randomUUID());
+            return u;
+        });
+        when(jwtService.generateAccessToken(any())).thenReturn("new.jwt.token");
+
+        LoginResponseDto result = invitationService.acceptInvitation(
+                new AcceptInvitationRequestDto("validrawtoken", "password1"));
+
+        assertThat(result.accessToken()).isEqualTo("new.jwt.token");
+        assertThat(result.role()).isEqualTo("contributor");
+        assertThat(result.institutionId()).isEqualTo(institutionId);
+
+        ArgumentCaptor<InvitationToken> tokenCaptor = ArgumentCaptor.forClass(InvitationToken.class);
+        verify(invitationTokenRepository).save(tokenCaptor.capture());
+        assertThat(tokenCaptor.getValue().getUsedAt()).isNotNull();
+    }
+}
