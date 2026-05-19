@@ -1,18 +1,18 @@
 package com.dasigconnect.backend.service;
 
-import jakarta.persistence.EntityManager;
 import java.util.UUID;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 
 @Service
 public class TenantScopeService {
 
-    private final EntityManager entityManager;
-
-    public TenantScopeService(EntityManager entityManager) {
-        this.entityManager = entityManager;
-    }
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Transactional
     public void bindTenantScope(UUID institutionId, String role) {
