@@ -1,0 +1,5 @@
+# Ignore local env files
+backend/.env
+
+# Maven / build
+target/
