@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class TenantScopeServiceTest {
@@ -34,7 +35,9 @@ class TenantScopeServiceTest {
         when(roleQuery.setParameter("key", "app.current_role")).thenReturn(roleQuery);
         when(roleQuery.setParameter("value", "contributor")).thenReturn(roleQuery);
 
-        new TenantScopeService(entityManager).bindTenantScope(institutionId, "contributor");
+        TenantScopeService service = tenantScopeService();
+
+        service.bindTenantScope(institutionId, "contributor");
 
         InOrder inOrder = inOrder(entityManager, institutionQuery, roleQuery);
         inOrder.verify(entityManager).createNativeQuery("SELECT set_config(:key, :value, true)");
@@ -56,7 +59,9 @@ class TenantScopeServiceTest {
         when(roleQuery.setParameter("key", "app.current_role")).thenReturn(roleQuery);
         when(roleQuery.setParameter("value", "")).thenReturn(roleQuery);
 
-        new TenantScopeService(entityManager).bindTenantScope(null, null);
+        TenantScopeService service = tenantScopeService();
+
+        service.bindTenantScope(null, null);
 
         InOrder inOrder = inOrder(entityManager, institutionQuery, roleQuery);
         inOrder.verify(entityManager).createNativeQuery("SELECT set_config(:key, :value, true)");
@@ -67,5 +72,11 @@ class TenantScopeServiceTest {
         inOrder.verify(roleQuery).setParameter("key", "app.current_role");
         inOrder.verify(roleQuery).setParameter("value", "");
         inOrder.verify(roleQuery).getSingleResult();
+    }
+
+    private TenantScopeService tenantScopeService() {
+        TenantScopeService service = new TenantScopeService();
+        ReflectionTestUtils.setField(service, "entityManager", entityManager);
+        return service;
     }
 }
