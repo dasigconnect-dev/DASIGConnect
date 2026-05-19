@@ -6,7 +6,6 @@ import io.jsonwebtoken.Claims;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,28 +42,36 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = auth.substring(7);
             try {
                 if (jwtService.validateToken(token)) {
-                    Map<String, Object> claims = jwtService.verify(token);
+                    Claims claims = jwtService.extractClaims(token);
                     String role = claims.getOrDefault("role", "").toString();
-                    String userId = claims.getOrDefault("user_id", "").toString();
-                    String inst = claims.getOrDefault("institution_id", null) == null ? null : claims.get("institution_id").toString();
+                    String userIdStr = claims.getOrDefault("user_id", "").toString();
+                    String email = claims.getOrDefault("email", "").toString();
+                    Object instClaim = claims.get("institution_id");
+                    String instStr = instClaim != null ? instClaim.toString() : null;
+
+                    UUID userId = null;
+                    UUID institutionId = null;
+                    try {
+                        if (!userIdStr.isBlank()) userId = UUID.fromString(userIdStr);
+                    } catch (IllegalArgumentException ex) {
+                        log.debug("Invalid user_id in token: {}", userIdStr);
+                    }
+                    try {
+                        if (instStr != null && !instStr.isBlank()) institutionId = UUID.fromString(instStr);
+                    } catch (IllegalArgumentException ex) {
+                        log.debug("Invalid institution_id in token: {}", instStr);
+                    }
 
                     List<SimpleGrantedAuthority> authorities = new ArrayList<>();
                     if (!role.isBlank()) {
                         authorities.add(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
                     }
 
+                    JwtUserDetails principal = new JwtUserDetails(userId, email, role, institutionId);
                     UsernamePasswordAuthenticationToken authentication =
-                            new UsernamePasswordAuthenticationToken(userId, null, authorities);
+                            new UsernamePasswordAuthenticationToken(principal, null, authorities);
                     SecurityContextHolder.getContext().setAuthentication(authentication);
 
-                    UUID institutionId = null;
-                    if (inst != null && !inst.isBlank()) {
-                        try {
-                            institutionId = UUID.fromString(inst);
-                        } catch (IllegalArgumentException ex) {
-                            log.debug("Invalid institution_id in token: {}", inst);
-                        }
-                    }
                     tenantScopeService.bindTenantScope(institutionId, role);
                 }
             } catch (Exception ex) {
