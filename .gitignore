@@ -1,0 +1,8 @@
+# Ignore local env files
+backend/.env
+
+# Maven / build
+target/
+
+# Project docs (PDFs) — share these separately with teammates
+docs/
