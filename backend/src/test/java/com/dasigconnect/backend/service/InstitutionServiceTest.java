@@ -104,7 +104,7 @@ class InstitutionServiceTest {
             institutionService.createInstitution(new CreateInstitutionRequest("Test Uni", "TU"));
 
             verify(auditLogService, times(1)).recordSystemAction(
-                    eq("INSTITUTION_CREATED"), any(UUID.class), any(Map.class));
+                    eq("INSTITUTION_CREATED"), any(UUID.class), org.mockito.ArgumentMatchers.<Map<String, ?>>any());
         }
 
         @Test
@@ -185,7 +185,7 @@ class InstitutionServiceTest {
             institutionService.transitionToActive(institutionId);
 
             verify(auditLogService).recordSystemAction(
-                    eq("INSTITUTION_ACTIVATED"), eq(institutionId), any(Map.class));
+                    eq("INSTITUTION_ACTIVATED"), eq(institutionId), org.mockito.ArgumentMatchers.<Map<String, ?>>any());
         }
 
         @Test
