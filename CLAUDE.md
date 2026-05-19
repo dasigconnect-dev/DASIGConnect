@@ -138,11 +138,18 @@ Render env vars (`DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`) must be s
 
 ## Development Modules
 
-| Module | Status | Use Cases |
+| Branch | Status | Deliverables |
 |---|---|---|
-| **Module 1** — Foundation, Auth, Submission | In progress | UC-1.1 Auth & User Provisioning · UC-1.2 Institution Onboarding · UC-1.3 Content Submission |
-| **Module 2** — Validation, Notifications, Analytics | Planned | UC-2.1 Content Validation · UC-2.2 Media Repository · UC-2.3 Notifications · UC-2.4 Analytics Dashboard |
-| **Module 3** — Scheduling, Publishing, AI | Planned | UC-3.1 Calendar & Auto-publish · UC-3.2 AI Caption · UC-3.3 AI Classification & Recommendation · UC-3.4 Manual Fallback · UC-3.5 Admin Exception Handling |
+| `feature/M1-model-foundation` (Lerah) | ✅ Merged to main | All JPA entities, base repositories, `JWTService`, `AuditLogService`, `EmailService`, `TenantScopeService`, `JwtAuthenticationFilter`, `SecurityConfig`, Flyway V1 migration |
+| `feature/M2-auth-backend` (Chris) | ✅ Merged to main | `AuthController`, `InvitationController`, `PasswordController`, `AuthService`, `AccountLockoutService`, `InvitationService`, `PasswordService`, `GlobalExceptionHandler`, `JwtUserDetails`, `TokenHashUtils` |
+| `feature/M2-auth-backend-test` (Chris) | ✅ Merged to main | 57 unit + controller tests across M1 & M2 (all passing) |
+| `feat/m4-institution-scheduling` | ✅ Merged to main | `InstitutionController`, `InstitutionService`, `GuardRailService`, `SlotReservationService`, `WorkspaceProvisionerService`, `StaleDraftSlotReleaseJob`, guard rail DTOs & exceptions |
+| UC-1.3 Content Submission | ⬜ Not started | `SubmissionController`, `SubmissionService` |
+| UC-2.x Validation, Notifications, Analytics | ⬜ Not started | Validator review flow, media repository, SSE notifications, analytics |
+| UC-3.x Scheduling, Publishing, AI | ⬜ Not started | Facebook auto-publish, Claude Vision captions, Voyage AI embeddings, manual fallback |
+| Frontend | ⬜ Not started | All React pages and components |
+
+> See `TASKS.md` in the project root for the full detailed task checklist.
 
 **Methodology:** Agile / Scrum — 2-week sprints. DB migrations use Flyway (`V1__`, `V2__`, ... naming).
 
