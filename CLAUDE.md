@@ -121,8 +121,11 @@ Render env vars (`DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`) must be s
 | `PasswordResetToken` | One-time token for password reset flow |
 | `AccountLockout` | Tracks failed login attempts; enforces lockout policy |
 | `AuditLog` | Immutable record of all state-changing actions |
-| `UserRole` | `CONTRIBUTOR` / `VALIDATOR` / `ADMINISTRATOR` |
-| `UserStatus` | `ACTIVE` / `INACTIVE` / `LOCKED` |
+| `MediaAsset` | Uploaded media file — stores Supabase Storage URL; `embedding VECTOR(1024)` not Hibernate-mapped (native queries only) |
+| `SubmissionMediaAsset` | Junction: submission ↔ media_asset with `display_order` |
+| `MediaFileType` | `jpeg / png / webp / gif / mp4 / mov / webm` |
+| `UserRole` | `contributor / validator / administrator` (lowercase — match DB CHECK constraints) |
+| `UserStatus` | `active / inactive / locked / pending / pending_email_undelivered` (lowercase) |
 
 ---
 
@@ -145,10 +148,10 @@ Render env vars (`DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`) must be s
 | `feature/M2-auth-backend-test` (Chris) | ✅ Merged to main | 57 unit + controller tests across M1 & M2 (all passing) |
 | `feat/m4-institution-scheduling` | ✅ Merged to main | `InstitutionController`, `InstitutionService`, `GuardRailService`, `SlotReservationService`, `WorkspaceProvisionerService`, `StaleDraftSlotReleaseJob`, guard rail DTOs & exceptions |
 | `dev` (active) | 🔄 In progress | UC-1.2 extension: `Institution.emailDomain` + `V2__add_institution_email_domain.sql`; `BackendApplication` `@ConditionalOnProperty` bean fix; 124 tests passing |
-| UC-1.3 Content Submission | ⬜ Not started | `SubmissionController`, `SubmissionService` |
+| `feature/uc13-submission-backend` (Chris) | ✅ Done — not yet merged | UC-1.3 full backend: `SubmissionController` (10 endpoints), `SubmissionService`, `UserController`, `UserService`, `UserDto`, `InvitationService.resend()`, `MediaAsset`/`SubmissionMediaAsset` entities, `V3__media_assets.sql`, all DTOs/exceptions; 124 tests passing. **Tests for new code still needed.** |
 | UC-2.x Validation, Notifications, Analytics | ⬜ Not started | Validator review flow, media repository, SSE notifications, analytics |
 | UC-3.x Scheduling, Publishing, AI | ⬜ Not started | Facebook auto-publish, Claude Vision captions, Voyage AI embeddings, manual fallback |
-| Frontend | ⬜ Not started | All React pages and components |
+| Frontend | ⬜ Not started | All React pages and components — see TASKS.md for per-endpoint wiring list |
 
 > See `TASKS.md` in the project root for the full detailed task checklist.
 
@@ -166,3 +169,5 @@ Render env vars (`DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`) must be s
 - **Flyway migrations** — `ddl-auto` should be `validate` in prod; migrations live in `src/main/resources/db/migration/`
 - **Facebook Dev mode** — API-published posts are invisible to the public until DASIG completes Meta Business Verification; this is expected behavior, not a bug
 - **`BackendApplication` custom beans** — the `flyway` and `dbDiagnostics` `@Bean` methods are gated with `@ConditionalOnProperty(name="spring.flyway.enabled", havingValue="true", matchIfMissing=true)`; setting `spring.flyway.enabled=false` in `src/test/resources/application.properties` skips both beans, which is required for `@WebMvcTest` and `@SpringBootTest` isolation
+- **Media upload pattern** — frontend uploads binary directly to Supabase Storage, then calls `POST /api/v1/submissions/{id}/media` with `{storageUrl, fileName, fileType, fileSizeBytes}`; the backend never handles file bytes in Module 1. This avoids Spring multipart and keeps the 5-connection pool free.
+- **`MediaAsset.embedding` is NOT Hibernate-mapped** — pgvector's `VECTOR(1024)` type is incompatible with standard Hibernate column mapping. The `embedding` field does not appear in the JPA entity. All embedding reads/writes go through native queries in `MediaAssetRepository` (`updateEmbedding`, `findTopSimilar`).
