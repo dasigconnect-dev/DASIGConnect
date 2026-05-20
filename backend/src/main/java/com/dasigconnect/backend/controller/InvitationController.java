@@ -5,8 +5,10 @@ import com.dasigconnect.backend.model.dto.invitation.AcceptInvitationRequestDto;
 import com.dasigconnect.backend.model.dto.invitation.CreateInvitationRequestDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationValidateResponseDto;
+import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.InvitationService;
 import jakarta.validation.Valid;
+import org.springframework.security.core.Authentication;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,11 +28,15 @@ public class InvitationController {
         this.invitationService = invitationService;
     }
 
-    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR','VALIDATOR')")
     @PostMapping
     public ResponseEntity<InvitationResponseDto> create(
-            @RequestBody @Valid CreateInvitationRequestDto dto) {
-        return ResponseEntity.status(201).body(invitationService.createInvitation(dto));
+            @RequestBody @Valid CreateInvitationRequestDto dto,
+            Authentication authentication) {
+        JwtUserDetails inviter = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails principal
+                ? principal
+                : null;
+        return ResponseEntity.status(201).body(invitationService.createInvitation(dto, inviter));
     }
 
     @GetMapping("/validate")

@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DASIGConnect — Submit Content</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:         #F0F4FB;
+  --surface:    #FFFFFF;
+  --surface-2:  #F7F9FD;
+  --border:     #DDE3EE;
+  --border-2:   #C8D3E8;
+  --text:       #0C1D3D;
+  --text-2:     #3A506B;
+  --muted:      #6A7F9A;
+  --muted-2:    #A0B0C8;
+  --blue:       #1877F2;
+  --blue-2:     #1565D8;
+  --blue-dim:   #EFF6FF;
+  --blue-bdr:   #BFDBFE;
+  --gold:       #D97706;
+  --gold-2:     #F59E0B;
+  --gold-dim:   #FFFBEB;
+  --gold-bdr:   #FDE68A;
+  --green:      #16A34A;
+  --green-dim:  #F0FDF4;
+  --green-bdr:  #BBF7D0;
+  --red:        #DC2626;
+  --red-dim:    #FEF2F2;
+  --red-bdr:    #FECACA;
+  --amber:      #D97706;
+  --amber-dim:  #FFFBEB;
+  --amber-bdr:  #FDE68A;
+  --purple:     #7C3AED;
+  --purple-dim: #F5F3FF;
+  --purple-bdr: #DDD6FE;
+  --ff-display: 'Fraunces', Georgia, serif;
+  --ff-body:    'Plus Jakarta Sans', system-ui, sans-serif;
+  --r:          10px;
+  --r-sm:       7px;
+  --r-lg:       14px;
+  --nav-h:      56px;
+  --sidebar-w:  280px;
+  --guard-w:    272px;
+  --shadow:     0 1px 4px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04);
+  --shadow-lg:  0 4px 24px rgba(0,0,0,0.1);
+}
+html,body{height:100%;font-family:var(--ff-body);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+
+/* ══════════════════════════════════════
+   TOPNAV
+══════════════════════════════════════ */
+.topnav{
+  position:sticky;top:0;z-index:200;
+  height:var(--nav-h);background:var(--surface);
+  border-bottom:1px solid var(--border);
+  padding:0 20px;display:flex;align-items:center;
+  justify-content:space-between;gap:12px;
+  box-shadow:0 1px 3px rgba(0,0,0,0.05);
+}
+.nav-brand{display:flex;align-items:center;gap:9px;text-decoration:none}
+.nav-brand-icon{
+  width:32px;height:32px;background:var(--blue);
+  border-radius:7px;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.nav-brand-icon svg{width:17px;height:17px;fill:white}
+.nav-brand-name{font-family:var(--ff-display);font-size:17px;font-weight:700;color:var(--text);letter-spacing:-0.01em}
+.nav-brand-name em{color:var(--blue);font-style:normal}
+.nav-breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.nav-breadcrumb i{font-size:13px}
+.nav-breadcrumb span{color:var(--text);font-weight:500}
+.nav-right{display:flex;align-items:center;gap:10px}
+.nav-chip{font-size:10.5px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;padding:4px 11px;border-radius:20px;background:var(--blue-dim);color:var(--blue);border:1px solid var(--blue-bdr)}
+.nav-avatar{width:34px;height:34px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:white;cursor:pointer;border:2px solid var(--blue-bdr)}
+.nav-save-status{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);padding:5px 11px;border-radius:20px;background:var(--surface-2);border:1px solid var(--border)}
+.nav-save-status i{font-size:14px}
+.nav-save-status.saved{color:var(--green)}
+
+/* ══════════════════════════════════════
+   WORKSPACE LAYOUT
+══════════════════════════════════════ */
+.workspace{
+  display:grid;
+  grid-template-columns:var(--sidebar-w) 1fr var(--guard-w);
+  min-height:calc(100vh - var(--nav-h));
+  gap:0;
+}
+
+/* ══════════════════════════════════════
+   LEFT SIDEBAR — SUBMISSION QUEUE
+══════════════════════════════════════ */
+.sidebar{
+  background:var(--surface);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  position:sticky;top:var(--nav-h);
+  height:calc(100vh - var(--nav-h));
+}
+.sidebar-header{
+  padding:16px 18px 12px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.sidebar-title{font-family:var(--ff-display);font-size:15px;font-weight:600;color:var(--text);margin-bottom:10px}
+.sidebar-tabs{display:flex;gap:2px;background:var(--bg);border-radius:8px;padding:3px}
+.stab{
+  flex:1;padding:6px 8px;border-radius:6px;
+  font-size:11.5px;font-weight:500;color:var(--muted);
+  cursor:pointer;text-align:center;border:none;
+  background:transparent;font-family:var(--ff-body);
+  transition:all 0.18s;
+}
+.stab.active{background:var(--surface);color:var(--blue);box-shadow:0 1px 3px rgba(0,0,0,0.08);font-weight:600}
+.sidebar-search{padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.search-input{
+  width:100%;background:var(--bg);border:1px solid var(--border);
+  border-radius:7px;padding:7px 10px 7px 32px;
+  font-family:var(--ff-body);font-size:12.5px;color:var(--text);outline:none;
+  position:relative;
+}
+.search-wrap{position:relative}
+.search-wrap i{position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--muted-2)}
+.sidebar-list{flex:1;overflow-y:auto;padding:8px}
+.sidebar-list::-webkit-scrollbar{width:4px}
+.sidebar-list::-webkit-scrollbar-track{background:transparent}
+.sidebar-list::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:4px}
+.queue-item{
+  border-radius:var(--r-sm);padding:11px 12px;
+  cursor:pointer;transition:background 0.15s;
+  border:1.5px solid transparent;margin-bottom:4px;
+}
+.queue-item:hover{background:var(--bg)}
+.queue-item.active{background:var(--blue-dim);border-color:var(--blue-bdr)}
+.queue-item.active .qi-title{color:var(--blue)}
+.qi-top{display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:4px}
+.qi-title{font-size:12.5px;font-weight:600;color:var(--text);line-height:1.3;flex:1}
+.qi-badge{font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;white-space:nowrap;flex-shrink:0}
+.badge-draft{background:#F1F5F9;color:#475569}
+.badge-submitted{background:var(--blue-dim);color:var(--blue)}
+.badge-review{background:var(--amber-dim);color:var(--amber)}
+.badge-approved{background:var(--green-dim);color:var(--green)}
+.badge-scheduled{background:var(--purple-dim);color:var(--purple)}
+.badge-published{background:#F0FDF4;color:#065F46}
+.qi-meta{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px}
+.qi-dot{width:4px;height:4px;border-radius:50%;background:var(--muted-2)}
+.qi-media{display:flex;gap:4px;margin-top:6px}
+.qi-thumb{width:30px;height:30px;border-radius:5px;object-fit:cover;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted);font-weight:500;font-family:var(--ff-display)}
+.sidebar-new{padding:12px;border-top:1px solid var(--border);flex-shrink:0}
+.btn-new{
+  width:100%;background:var(--blue);color:white;
+  border:none;border-radius:var(--r-sm);
+  padding:10px;font-family:var(--ff-body);
+  font-size:13px;font-weight:600;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  transition:background 0.18s;
+}
+.btn-new:hover{background:var(--blue-2)}
+
+/* ══════════════════════════════════════
+   CENTER — FORM CANVAS
+══════════════════════════════════════ */
+.form-canvas{
+  padding:28px 32px 80px;
+  overflow-y:auto;
+}
+.form-canvas::-webkit-scrollbar{width:5px}
+.form-canvas::-webkit-scrollbar-track{background:transparent}
+.form-canvas::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:4px}
+
+/* Form page header */
+.form-page-head{margin-bottom:24px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.form-page-title{font-family:var(--ff-display);font-size:24px;font-weight:600;color:var(--text);margin-bottom:4px;letter-spacing:-0.02em}
+.form-page-sub{font-size:13px;color:var(--muted)}
+.form-page-actions{display:flex;gap:8px;flex-shrink:0}
+.btn-ghost{
+  background:transparent;color:var(--muted);
+  border:1px solid var(--border-2);border-radius:var(--r-sm);
+  padding:8px 16px;font-family:var(--ff-body);font-size:13px;
+  font-weight:500;cursor:pointer;transition:all 0.18s;
+  display:flex;align-items:center;gap:6px;
+}
+.btn-ghost:hover{background:var(--bg);color:var(--text);border-color:var(--border)}
+.btn-primary{
+  background:var(--blue);color:white;
+  border:none;border-radius:var(--r-sm);
+  padding:8px 18px;font-family:var(--ff-body);
+  font-size:13px;font-weight:600;cursor:pointer;
+  display:flex;align-items:center;gap:7px;
+  transition:background 0.18s,opacity 0.18s;
+}
+.btn-primary:hover{background:var(--blue-2)}
+.btn-primary:disabled{opacity:0.4;cursor:not-allowed}
+
+/* Form sections */
+.form-section{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:22px 24px;
+  margin-bottom:16px;
+  box-shadow:var(--shadow);
+  animation:fadeSection 0.3s ease both;
+}
+.form-section:nth-child(2){animation-delay:0.05s}
+.form-section:nth-child(3){animation-delay:0.1s}
+.form-section:nth-child(4){animation-delay:0.15s}
+@keyframes fadeSection{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.section-label{display:flex;align-items:center;gap:8px}
+.section-icon{
+  width:32px;height:32px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;flex-shrink:0;
+}
+.si-blue{background:var(--blue-dim);color:var(--blue)}
+.si-gold{background:var(--gold-dim);color:var(--gold)}
+.si-green{background:var(--green-dim);color:var(--green)}
+.si-purple{background:var(--purple-dim);color:var(--purple)}
+.section-title{font-size:14px;font-weight:700;color:var(--text)}
+.section-subtitle{font-size:11.5px;color:var(--muted);margin-top:1px}
+.section-badge{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:20px}
+
+/* ══ MEDIA UPLOAD ZONE ══ */
+.upload-zone{
+  border:2px dashed var(--border-2);border-radius:var(--r);
+  padding:32px 20px;text-align:center;
+  cursor:pointer;transition:all 0.2s;
+  background:var(--surface-2);position:relative;
+  overflow:hidden;
+}
+.upload-zone:hover,.upload-zone.drag{
+  border-color:var(--blue);background:var(--blue-dim);
+}
+.upload-zone.drag::after{
+  content:'Drop to upload';
+  position:absolute;inset:0;background:rgba(24,119,242,0.08);
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:700;color:var(--blue);
+  border-radius:var(--r);
+}
+.upload-icon{
+  width:52px;height:52px;border-radius:14px;
+  background:var(--blue-dim);border:1.5px solid var(--blue-bdr);
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 12px;font-size:24px;color:var(--blue);
+}
+.upload-title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px}
+.upload-sub{font-size:12.5px;color:var(--muted);line-height:1.5;margin-bottom:12px}
+.upload-types{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap}
+.type-tag{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:5px;background:var(--bg);border:1px solid var(--border);color:var(--muted);letter-spacing:0.04em}
+.upload-btn{
+  display:inline-flex;align-items:center;gap:6px;
+  background:var(--blue);color:white;border:none;
+  border-radius:7px;padding:9px 20px;
+  font-family:var(--ff-body);font-size:13px;font-weight:600;
+  cursor:pointer;margin-top:12px;transition:background 0.18s;
+}
+.upload-btn:hover{background:var(--blue-2)}
+
+/* Filmstrip */
+.filmstrip{display:flex;gap:10px;margin-top:16px;overflow-x:auto;padding-bottom:4px}
+.filmstrip::-webkit-scrollbar{height:4px}
+.filmstrip::-webkit-scrollbar-track{background:transparent}
+.filmstrip::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:4px}
+.film-item{
+  position:relative;flex-shrink:0;
+  width:96px;height:96px;border-radius:var(--r-sm);
+  overflow:hidden;border:2px solid var(--border);
+  cursor:pointer;transition:border-color 0.18s;
+  background:var(--bg);
+}
+.film-item:hover{border-color:var(--blue)}
+.film-item.selected{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-dim)}
+.film-img{
+  width:100%;height:100%;object-fit:cover;
+  display:flex;align-items:center;justify-content:center;
+  font-size:28px;
+}
+.film-overlay{
+  position:absolute;inset:0;background:rgba(0,0,0,0);
+  display:flex;align-items:center;justify-content:center;
+  transition:background 0.18s;
+}
+.film-item:hover .film-overlay{background:rgba(0,0,0,0.35)}
+.film-actions{display:flex;gap:6px;opacity:0;transition:opacity 0.18s}
+.film-item:hover .film-actions{opacity:1}
+.film-act-btn{
+  width:26px;height:26px;border-radius:6px;
+  background:white;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;color:var(--text);transition:background 0.15s;
+}
+.film-act-btn:hover{background:var(--bg)}
+.film-badge{
+  position:absolute;bottom:4px;left:4px;
+  font-size:9.5px;font-weight:700;letter-spacing:0.04em;
+  padding:2px 6px;border-radius:4px;background:rgba(0,0,0,0.62);
+  color:white;backdrop-filter:blur(4px);
+}
+.film-num{
+  position:absolute;top:4px;left:4px;
+  width:18px;height:18px;border-radius:50%;
+  background:var(--blue);color:white;
+  font-size:10px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+}
+.film-del{
+  position:absolute;top:4px;right:4px;
+  width:20px;height:20px;border-radius:50%;
+  background:rgba(220,38,38,0.85);color:white;
+  font-size:12px;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:opacity 0.18s;
+}
+.film-item:hover .film-del{opacity:1}
+.film-add{
+  width:96px;height:96px;border-radius:var(--r-sm);
+  border:2px dashed var(--border-2);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:4px;cursor:pointer;flex-shrink:0;transition:all 0.18s;
+  background:transparent;color:var(--muted);
+  font-family:var(--ff-body);
+}
+.film-add:hover{border-color:var(--blue);background:var(--blue-dim);color:var(--blue)}
+.film-add i{font-size:22px}
+.film-add span{font-size:10.5px;font-weight:500}
+
+/* Upload progress */
+.upload-progress{
+  margin-top:12px;background:var(--bg);
+  border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:10px 12px;
+}
+.up-file{display:flex;align-items:center;gap:10px;font-size:12.5px}
+.up-file-icon{font-size:18px;color:var(--blue);flex-shrink:0}
+.up-file-name{flex:1;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.up-file-size{color:var(--muted);flex-shrink:0}
+.progress-bar{height:4px;background:var(--border);border-radius:4px;margin-top:7px;overflow:hidden}
+.progress-fill{height:100%;border-radius:4px;background:var(--blue);transition:width 0.4s ease;animation:progressAnim 2s ease forwards}
+@keyframes progressAnim{0%{width:10%}60%{width:78%}100%{width:100%}}
+
+/* ══ FORM FIELDS ══ */
+.fgroup{margin-bottom:16px}
+.flabel{
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:11px;font-weight:700;letter-spacing:0.09em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:7px;
+}
+.flabel-count{font-size:11px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--muted-2)}
+.flabel-count.warn{color:var(--amber)}
+.flabel-count.ok{color:var(--green)}
+.finput{
+  width:100%;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:10px 13px;font-family:var(--ff-body);font-size:13.5px;
+  color:var(--text);outline:none;transition:border-color 0.18s,box-shadow 0.18s;
+}
+.finput::placeholder{color:var(--muted-2)}
+.finput:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,119,242,0.1);background:var(--surface)}
+.finput.err{border-color:var(--red)!important;box-shadow:0 0 0 3px rgba(220,38,38,0.08)!important}
+.finput.ok{border-color:var(--green)!important}
+textarea.finput{resize:vertical;min-height:90px;line-height:1.6}
+.finput-hint{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.4}
+
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* Institution/event tags */
+.tag-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:6px}
+.tag{
+  display:inline-flex;align-items:center;gap:5px;
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:20px;padding:4px 12px;
+  font-size:12px;font-weight:500;color:var(--text-2);cursor:pointer;
+  transition:all 0.15s;
+}
+.tag:hover{border-color:var(--blue-bdr)}
+.tag.active{background:var(--blue-dim);border-color:var(--blue-bdr);color:var(--blue)}
+.tag i{font-size:13px}
+
+/* Select input */
+.fselect{
+  width:100%;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:10px 13px;font-family:var(--ff-body);font-size:13.5px;
+  color:var(--text);outline:none;cursor:pointer;
+  transition:border-color 0.18s;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236A7F9A' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 13px center;
+  padding-right:36px;
+}
+.fselect:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,119,242,0.1)}
+
+/* AI Caption assist */
+.ai-assist{
+  background:linear-gradient(135deg,#EFF6FF 0%,#F0FDF4 100%);
+  border:1px solid var(--blue-bdr);border-radius:var(--r-sm);
+  padding:12px 14px;display:flex;align-items:flex-start;gap:11px;
+  margin-top:10px;
+}
+.ai-icon{
+  width:30px;height:30px;border-radius:8px;
+  background:linear-gradient(135deg,#1877F2,#22C55E);
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;color:white;flex-shrink:0;
+}
+.ai-body{flex:1}
+.ai-label{font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--blue);margin-bottom:3px;display:flex;align-items:center;gap:5px}
+.ai-label i{font-size:13px;color:var(--green)}
+.ai-text{font-size:13px;color:var(--text-2);line-height:1.55;font-style:italic}
+.ai-actions{display:flex;gap:7px;margin-top:9px}
+.ai-btn{
+  font-family:var(--ff-body);font-size:12px;font-weight:600;
+  padding:5px 13px;border-radius:6px;cursor:pointer;transition:all 0.15s;border:none;
+}
+.ai-btn-use{background:var(--blue);color:white}
+.ai-btn-use:hover{background:var(--blue-2)}
+.ai-btn-regen{background:white;color:var(--blue);border:1px solid var(--blue-bdr)!important}
+.ai-btn-regen:hover{background:var(--blue-dim)}
+
+/* ══ SLOT PICKER ══ */
+.slot-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.slot-card{
+  border:1.5px solid var(--border);border-radius:var(--r-sm);
+  padding:12px 10px;cursor:pointer;transition:all 0.18s;
+  text-align:center;background:var(--surface-2);
+}
+.slot-card:hover{border-color:var(--blue-bdr);background:var(--blue-dim)}
+.slot-card.selected{border-color:var(--blue);background:var(--blue-dim);box-shadow:0 0 0 3px rgba(24,119,242,0.1)}
+.slot-card.unavailable{opacity:0.4;cursor:not-allowed;background:var(--bg)}
+.slot-card.unavailable:hover{border-color:var(--border);background:var(--bg)}
+.slot-day{font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.slot-date{font-family:var(--ff-display);font-size:20px;font-weight:600;color:var(--text);line-height:1}
+.slot-month{font-size:10.5px;color:var(--muted);margin-top:1px}
+.slot-card.selected .slot-day,.slot-card.selected .slot-month{color:var(--blue)}
+.slot-card.selected .slot-date{color:var(--blue)}
+.slot-avail{font-size:10px;margin-top:6px;padding:2px 6px;border-radius:10px;font-weight:600}
+.avail-open{background:var(--green-dim);color:var(--green)}
+.avail-few{background:var(--amber-dim);color:var(--amber)}
+.avail-full{background:var(--red-dim);color:var(--red)}
+
+.time-slots{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px}
+.time-pill{
+  padding:6px 13px;border-radius:20px;border:1.5px solid var(--border);
+  font-size:12px;font-weight:500;color:var(--text-2);cursor:pointer;
+  transition:all 0.15s;background:var(--surface-2);
+}
+.time-pill:hover{border-color:var(--blue-bdr);color:var(--blue);background:var(--blue-dim)}
+.time-pill.selected{border-color:var(--blue);color:var(--blue);background:var(--blue-dim);font-weight:600}
+.time-pill.taken{opacity:0.35;cursor:not-allowed;text-decoration:line-through}
+.slot-note{font-size:12px;color:var(--muted);margin-top:10px;display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--bg);border-radius:7px;border:1px solid var(--border)}
+.slot-note i{font-size:14px;color:var(--gold);flex-shrink:0}
+
+/* ══ GUARDRAIL PANEL (RIGHT) ══ */
+.guard-panel{
+  background:var(--surface);
+  border-left:1px solid var(--border);
+  position:sticky;top:var(--nav-h);
+  height:calc(100vh - var(--nav-h));
+  overflow-y:auto;
+  display:flex;flex-direction:column;
+}
+.guard-panel::-webkit-scrollbar{width:4px}
+.guard-panel::-webkit-scrollbar-track{background:transparent}
+.guard-panel::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:4px}
+
+.guard-header{padding:16px 18px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
+.guard-title{font-family:var(--ff-display);font-size:14.5px;font-weight:600;color:var(--text);display:flex;align-items:center;justify-content:space-between}
+.guard-score-wrap{padding:16px 18px;border-bottom:1px solid var(--border)}
+.score-ring-container{display:flex;align-items:center;gap:14px}
+.score-ring{position:relative;width:64px;height:64px;flex-shrink:0}
+.score-ring svg{width:64px;height:64px;transform:rotate(-90deg)}
+.score-ring-bg{fill:none;stroke:var(--border);stroke-width:5}
+.score-ring-fill{fill:none;stroke-width:5;stroke-linecap:round;transition:stroke-dashoffset 0.6s ease,stroke 0.4s}
+.score-center{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+}
+.score-num{font-family:var(--ff-display);font-size:18px;font-weight:700;line-height:1}
+.score-label{font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-top:1px}
+.score-info{}
+.score-grade{font-family:var(--ff-display);font-size:15px;font-weight:600;color:var(--text);margin-bottom:3px}
+.score-desc{font-size:12px;color:var(--muted);line-height:1.45}
+
+.guard-section{padding:14px 18px;border-bottom:1px solid var(--border)}
+.guard-section-title{font-size:10.5px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted-2);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.guard-section-title i{font-size:13px}
+
+/* Check items */
+.check-item{display:flex;align-items:flex-start;gap:9px;margin-bottom:9px}
+.check-item:last-child{margin-bottom:0}
+.check-icon{
+  width:20px;height:20px;border-radius:6px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:12px;
+  margin-top:1px;transition:all 0.3s;
+}
+.ci-pass{background:var(--green-dim);color:var(--green);border:1px solid var(--green-bdr)}
+.ci-warn{background:var(--amber-dim);color:var(--amber);border:1px solid var(--amber-bdr)}
+.ci-fail{background:var(--red-dim);color:var(--red);border:1px solid var(--red-bdr)}
+.ci-idle{background:var(--bg);color:var(--muted);border:1px solid var(--border)}
+.check-text{}
+.check-title{font-size:12.5px;font-weight:600;color:var(--text);line-height:1.2}
+.check-sub{font-size:11.5px;color:var(--muted);margin-top:1px;line-height:1.35}
+
+/* Platform preview */
+.fb-preview-wrap{padding:14px 18px;border-bottom:1px solid var(--border)}
+.fb-preview{
+  border:1px solid var(--border);border-radius:var(--r-sm);
+  overflow:hidden;font-size:13px;
+}
+.fb-preview-head{padding:10px 12px;display:flex;align-items:center;gap:8px}
+.fb-page-icon{width:34px;height:34px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.fb-page-icon i{font-size:18px;color:white}
+.fb-page-name{font-size:12.5px;font-weight:700;color:var(--text)}
+.fb-page-date{font-size:11px;color:var(--muted)}
+.fb-preview-img{
+  height:100px;background:linear-gradient(135deg,#E0EAFF,#C7D8FF);
+  display:flex;align-items:center;justify-content:center;font-size:32px;
+  color:#93BFFA;position:relative;overflow:hidden;
+}
+.fb-preview-img::after{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,transparent 60%,rgba(0,0,0,0.1))}
+.fb-preview-caption{padding:10px 12px;font-size:12px;color:var(--text-2);line-height:1.5;border-top:1px solid var(--border)}
+.fb-preview-caption em{font-style:normal;color:var(--blue);font-weight:500}
+.fb-reactions{padding:6px 12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--muted)}
+.fb-reactions i{font-size:15px}
+
+/* Guard actions */
+.guard-actions{padding:14px 18px;margin-top:auto;border-top:1px solid var(--border)}
+.guard-submit-btn{
+  width:100%;background:var(--blue);color:white;
+  border:none;border-radius:var(--r-sm);
+  padding:12px;font-family:var(--ff-body);
+  font-size:13.5px;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:background 0.18s;margin-bottom:8px;
+}
+.guard-submit-btn:hover{background:var(--blue-2)}
+.guard-submit-btn:disabled{opacity:0.4;cursor:not-allowed}
+.guard-save-btn{
+  width:100%;background:transparent;color:var(--muted);
+  border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:9px;font-family:var(--ff-body);font-size:13px;
+  font-weight:500;cursor:pointer;transition:all 0.18s;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+}
+.guard-save-btn:hover{background:var(--bg);color:var(--text)}
+
+/* ══════════════════════════════════════
+   MODALS
+══════════════════════════════════════ */
+.modal-overlay{
+  position:fixed;inset:0;z-index:500;
+  background:rgba(0,0,0,0.5);
+  display:flex;align-items:center;justify-content:center;padding:20px;
+  animation:fadeBg 0.2s ease;
+}
+@keyframes fadeBg{from{opacity:0}to{opacity:1}}
+.modal{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:28px;width:100%;max-width:420px;
+  box-shadow:var(--shadow-lg);
+  animation:popModal 0.25s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes popModal{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:scale(1)}}
+.modal-icon{width:50px;height:50px;border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:24px}
+.modal-title{font-family:var(--ff-display);font-size:20px;font-weight:600;color:var(--text);text-align:center;margin-bottom:6px}
+.modal-desc{font-size:13px;color:var(--muted);text-align:center;line-height:1.55;margin-bottom:20px}
+.modal-actions{display:flex;gap:8px}
+.modal-btn{flex:1;padding:10px;border-radius:var(--r-sm);font-family:var(--ff-body);font-size:13.5px;font-weight:600;cursor:pointer;border:none;transition:all 0.18s}
+.modal-btn-confirm{background:var(--blue);color:white}
+.modal-btn-confirm:hover{background:var(--blue-2)}
+.modal-btn-cancel{background:var(--bg);color:var(--muted);border:1px solid var(--border)!important}
+.modal-btn-cancel:hover{background:var(--border);color:var(--text)}
+.modal-btn-success{background:var(--green);color:white}
+.hidden{display:none!important}
+
+/* ══════════════════════════════════════
+   TOAST
+══════════════════════════════════════ */
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  background:var(--text);color:white;
+  padding:11px 20px;border-radius:30px;
+  font-size:13px;font-weight:500;
+  display:flex;align-items:center;gap:8px;
+  box-shadow:var(--shadow-lg);z-index:1000;
+  animation:toastIn 0.3s ease;
+  pointer-events:none;
+}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.toast i{font-size:16px}
+.toast.success{background:#16A34A}
+.toast.warn{background:var(--amber)}
+.toast.err{background:var(--red)}
+
+/* ══════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════ */
+@media(max-width:1100px){
+  :root{--guard-w:240px}
+}
+@media(max-width:900px){
+  .workspace{grid-template-columns:var(--sidebar-w) 1fr}
+  .guard-panel{display:none}
+}
+@media(max-width:640px){
+  .workspace{grid-template-columns:1fr}
+  .sidebar{display:none}
+  .form-canvas{padding:18px 16px 80px}
+  :root{--nav-h:52px}
+  .field-row{grid-template-columns:1fr}
+  .slot-grid{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════
+     TOPNAV
+══════════════════════════════════════════════ -->
+<nav class="topnav">
+  <div style="display:flex;align-items:center;gap:20px">
+    <a class="nav-brand" href="#">
+      <div class="nav-brand-icon"><svg viewBox="0 0 24 24"><path d="M12 2L22 7V17L12 22L2 17V7L12 2Z"/></svg></div>
+      <div class="nav-brand-name">DASIG<em>Connect</em></div>
+    </a>
+    <div class="nav-breadcrumb">
+      <i class="ti ti-layout-dashboard"></i>
+      <span style="color:var(--muted)">Dashboard</span>
+      <i class="ti ti-chevron-right"></i>
+      <span>Submit Content</span>
+    </div>
+  </div>
+  <div class="nav-right">
+    <div class="nav-save-status saved" id="save-status">
+      <i class="ti ti-cloud-check"></i> Draft saved
+    </div>
+    <div class="nav-chip">Contributor</div>
+    <div class="nav-avatar" title="Maria Santos · CIT-U">MS</div>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════════
+     WORKSPACE
+══════════════════════════════════════════════ -->
+<div class="workspace">
+
+  <!-- ══ LEFT: SUBMISSION QUEUE ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-title">Submission Queue</div>
+      <div class="sidebar-tabs">
+        <button class="stab active" onclick="switchTab(this,'drafts')">Drafts <span style="background:var(--amber-dim);color:var(--amber);border-radius:8px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:3px">2</span></button>
+        <button class="stab" onclick="switchTab(this,'submitted')">Submitted</button>
+        <button class="stab" onclick="switchTab(this,'all')">All</button>
+      </div>
+    </div>
+    <div class="sidebar-search">
+      <div class="search-wrap">
+        <i class="ti ti-search"></i>
+        <input class="search-input finput" type="text" placeholder="Search submissions…">
+      </div>
+    </div>
+    <div class="sidebar-list" id="queue-list">
+      <!-- Populated by JS -->
+    </div>
+    <div class="sidebar-new">
+      <button class="btn-new" onclick="newDraft()"><i class="ti ti-plus"></i> New Submission</button>
+    </div>
+  </aside>
+
+  <!-- ══ CENTER: FORM CANVAS ══ -->
+  <main class="form-canvas">
+    <div class="form-page-head">
+      <div>
+        <div class="form-page-title">CITE Research Expo 2025</div>
+        <div class="form-page-sub">CIT-U · Draft · Last edited just now</div>
+      </div>
+      <div class="form-page-actions">
+        <button class="btn-ghost" onclick="deleteDraft()"><i class="ti ti-trash"></i> Delete</button>
+        <button class="btn-ghost" onclick="showSaved()"><i class="ti ti-device-floppy"></i> Save Draft</button>
+        <button class="btn-primary" onclick="showSubmitModal()"><i class="ti ti-send"></i> Submit for Review</button>
+      </div>
+    </div>
+
+    <!-- ── SECTION 1: MEDIA UPLOAD ZONE ── -->
+    <div class="form-section">
+      <div class="section-head">
+        <div class="section-label">
+          <div class="section-icon si-blue"><i class="ti ti-photo-up"></i></div>
+          <div>
+            <div class="section-title">Media Upload</div>
+            <div class="section-subtitle">Photos and videos for this submission</div>
+          </div>
+        </div>
+        <span class="section-badge" style="background:var(--blue-dim);color:var(--blue);border:1px solid var(--blue-bdr)">
+          <i class="ti ti-check" style="font-size:11px;margin-right:3px"></i>4 files
+        </span>
+      </div>
+
+      <!-- Filmstrip (has files) -->
+      <div class="filmstrip" id="filmstrip">
+        <div class="film-item selected" onclick="selectFilm(this)">
+          <div class="film-img" style="background:linear-gradient(135deg,#DBEAFE,#93C5FD)">🎓</div>
+          <div class="film-num">1</div>
+          <div class="film-del" onclick="removeFilm(event,this)"><i class="ti ti-x"></i></div>
+          <div class="film-badge">JPG</div>
+        </div>
+        <div class="film-item" onclick="selectFilm(this)">
+          <div class="film-img" style="background:linear-gradient(135deg,#D1FAE5,#6EE7B7)">🔬</div>
+          <div class="film-num">2</div>
+          <div class="film-del" onclick="removeFilm(event,this)"><i class="ti ti-x"></i></div>
+          <div class="film-badge">JPG</div>
+        </div>
+        <div class="film-item" onclick="selectFilm(this)">
+          <div class="film-img" style="background:linear-gradient(135deg,#FEF3C7,#FCD34D)">🏆</div>
+          <div class="film-num">3</div>
+          <div class="film-del" onclick="removeFilm(event,this)"><i class="ti ti-x"></i></div>
+          <div class="film-badge">JPG</div>
+        </div>
+        <div class="film-item" onclick="selectFilm(this)">
+          <div class="film-img" style="background:linear-gradient(135deg,#EDE9FE,#C4B5FD)">🎤</div>
+          <div class="film-num">4</div>
+          <div class="film-del" onclick="removeFilm(event,this)"><i class="ti ti-x"></i></div>
+          <div class="film-badge" style="background:rgba(124,58,237,0.75)">MP4</div>
+        </div>
+        <button class="film-add" onclick="triggerUpload()">
+          <i class="ti ti-plus"></i>
+          <span>Add more</span>
+        </button>
+      </div>
+
+      <!-- Upload progress (demo) -->
+      <div class="upload-progress" id="upload-progress" style="display:none">
+        <div class="up-file">
+          <i class="ti ti-photo up-file-icon"></i>
+          <span class="up-file-name">event_photo_05.jpg</span>
+          <span class="up-file-size">2.4 MB</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+      </div>
+
+      <!-- Drop zone (compact when files present) -->
+      <div class="upload-zone" id="upload-zone" style="margin-top:12px;padding:16px 20px;display:flex;align-items:center;gap:14px;text-align:left"
+        ondragover="event.preventDefault();this.classList.add('drag')"
+        ondragleave="this.classList.remove('drag')"
+        ondrop="event.preventDefault();this.classList.remove('drag');handleDrop()"
+        onclick="triggerUpload()">
+        <div class="upload-icon" style="width:38px;height:38px;border-radius:9px;font-size:18px;margin:0;flex-shrink:0"><i class="ti ti-cloud-upload"></i></div>
+        <div>
+          <div class="upload-title" style="font-size:13px">Drag & drop more files, or <span style="color:var(--blue)">browse</span></div>
+          <div class="upload-sub" style="font-size:11.5px;margin-bottom:0">Max 10 files · 25 MB each</div>
+        </div>
+        <div class="upload-types" style="margin-left:auto">
+          <span class="type-tag">JPG</span><span class="type-tag">PNG</span><span class="type-tag">MP4</span><span class="type-tag">MOV</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SECTION 2: EVENT DETAILS ── -->
+    <div class="form-section">
+      <div class="section-head">
+        <div class="section-label">
+          <div class="section-icon si-gold"><i class="ti ti-file-description"></i></div>
+          <div>
+            <div class="section-title">Event Details</div>
+            <div class="section-subtitle">Describe the event for validators and the Facebook post</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="fgroup">
+          <label class="flabel">Event Title <span style="color:var(--red)">*</span></label>
+          <input class="finput ok" type="text" value="CITE Research Expo 2025" oninput="updateGuardrails()">
+        </div>
+        <div class="fgroup">
+          <label class="flabel">Event Date <span style="color:var(--red)">*</span></label>
+          <input class="finput" type="date" value="2025-05-18" oninput="updateGuardrails()">
+        </div>
+      </div>
+
+      <div class="fgroup">
+        <label class="flabel">
+          Facebook Caption <span style="color:var(--red)">*</span>
+          <span class="flabel-count ok" id="caption-count">287 / 500 chars</span>
+        </label>
+        <textarea class="finput ok" id="caption-input" rows="4" oninput="updateCaption(this)" placeholder="Write a compelling caption for the DASIG Facebook page…">🎓 Exciting discoveries at the CITE Research Expo 2025! Our talented students and researchers from Cebu Institute of Technology–University showcased groundbreaking projects spanning AI, sustainable engineering, and health innovation. A proud day for DOST Region 7! 🔬✨
+
+#DASIGConnect #CITUniversity #ResearchExpo2025 #DOSTRegion7</textarea>
+        <div class="finput-hint">Captions between 150–500 characters perform best on Facebook. Include relevant hashtags.</div>
+      </div>
+
+      <!-- AI Caption Assist -->
+      <div class="ai-assist">
+        <div class="ai-icon"><i class="ti ti-sparkles"></i></div>
+        <div class="ai-body">
+          <div class="ai-label"><i class="ti ti-check-circle"></i> AI Caption Suggestion Ready</div>
+          <div class="ai-text" id="ai-caption-text">"From lab benches to breakthroughs — the CITE Research Expo 2025 brought together the brightest minds of CIT-University, showcasing innovation across AI, engineering, and health sciences. We are proud to be part of this community of knowledge-builders. 💡 #DASIG #DOSTRegion7 #CITUniversity #ResearchExpo2025"</div>
+          <div class="ai-actions">
+            <button class="ai-btn ai-btn-use" onclick="useAiCaption()">Use This Caption</button>
+            <button class="ai-btn ai-btn-regen" onclick="regenCaption()"><i class="ti ti-refresh" style="margin-right:4px;font-size:12px"></i>Regenerate</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="fgroup" style="margin-top:16px">
+        <label class="flabel">Event Category <span style="color:var(--red)">*</span></label>
+        <select class="fselect" onchange="updateGuardrails()">
+          <option>Select a category…</option>
+          <option selected>Research & Innovation</option>
+          <option>Academic Events</option>
+          <option>Community Outreach</option>
+          <option>Awards & Recognition</option>
+          <option>Student Activities</option>
+          <option>Faculty & Staff</option>
+        </select>
+      </div>
+
+      <div class="fgroup">
+        <label class="flabel">Submitting Institution</label>
+        <div class="tag-row">
+          <div class="tag active" onclick="toggleTag(this)"><i class="ti ti-building"></i> CIT-U</div>
+          <div class="tag" onclick="toggleTag(this)">Silliman University</div>
+          <div class="tag" onclick="toggleTag(this)">VSU</div>
+          <div class="tag" onclick="toggleTag(this)">USC</div>
+          <div class="tag" onclick="toggleTag(this)">UC</div>
+        </div>
+        <div class="finput-hint">Your institution is pre-selected. Submissions are scoped to your institution's workspace.</div>
+      </div>
+
+      <div class="fgroup">
+        <label class="flabel">Internal Notes <span style="color:var(--muted-2);font-weight:400;text-transform:none;letter-spacing:0"> — optional, not published</span></label>
+        <textarea class="finput" rows="2" placeholder="Notes for your Validator (e.g. context, requests)…"></textarea>
+      </div>
+    </div>
+
+    <!-- ── SECTION 3: SLOT PICKER ── -->
+    <div class="form-section">
+      <div class="section-head">
+        <div class="section-label">
+          <div class="section-icon si-purple"><i class="ti ti-calendar-event"></i></div>
+          <div>
+            <div class="section-title">Preferred Publishing Slot</div>
+            <div class="section-subtitle">Request a publish date — subject to Administrator approval</div>
+          </div>
+        </div>
+        <span class="section-badge" style="background:var(--amber-dim);color:var(--amber);border:1px solid var(--amber-bdr);font-size:10px">
+          <i class="ti ti-clock" style="font-size:11px;margin-right:3px"></i>Pending M4 Scheduler
+        </span>
+      </div>
+
+      <div class="slot-grid" id="slot-grid">
+        <!-- Populated by JS -->
+      </div>
+
+      <div class="fgroup">
+        <label class="flabel">Preferred Time</label>
+        <div class="time-slots" id="time-slots">
+          <div class="time-pill taken">8:00 AM</div>
+          <div class="time-pill selected" onclick="selectTime(this)">10:00 AM</div>
+          <div class="time-pill" onclick="selectTime(this)">12:00 PM</div>
+          <div class="time-pill" onclick="selectTime(this)">2:00 PM</div>
+          <div class="time-pill" onclick="selectTime(this)">4:00 PM</div>
+          <div class="time-pill taken">6:00 PM</div>
+          <div class="time-pill" onclick="selectTime(this)">8:00 PM</div>
+        </div>
+      </div>
+
+      <div class="slot-note">
+        <i class="ti ti-info-circle"></i>
+        <span>Final scheduling is determined by the DASIG Administrator in Module 4. Your preferred slot is a request, not a guarantee. Slots shown in grey are already occupied.</span>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ══ RIGHT: GUARDRAIL STATUS PANEL ══ -->
+  <aside class="guard-panel">
+    <div class="guard-header">
+      <div class="guard-title">
+        Content Readiness
+        <span style="font-size:10.5px;font-weight:500;color:var(--muted);font-family:var(--ff-body);letter-spacing:0">Live checks</span>
+      </div>
+    </div>
+
+    <!-- Score ring -->
+    <div class="guard-score-wrap">
+      <div class="score-ring-container">
+        <div class="score-ring">
+          <svg viewBox="0 0 64 64">
+            <circle class="score-ring-bg" cx="32" cy="32" r="28"/>
+            <circle class="score-ring-fill" id="score-ring-fill" cx="32" cy="32" r="28"
+              stroke-dasharray="175.9"
+              stroke-dashoffset="35"
+              stroke="#16A34A"/>
+          </svg>
+          <div class="score-center">
+            <div class="score-num" id="score-num" style="color:#16A34A">80</div>
+            <div class="score-label">score</div>
+          </div>
+        </div>
+        <div class="score-info">
+          <div class="score-grade" id="score-grade">Good to submit</div>
+          <div class="score-desc" id="score-desc">Most checks pass. One warning remaining — review before submitting.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Required checks -->
+    <div class="guard-section">
+      <div class="guard-section-title"><i class="ti ti-circle-check"></i> Required Fields</div>
+      <div class="check-item">
+        <div class="check-icon ci-pass"><i class="ti ti-check"></i></div>
+        <div class="check-text">
+          <div class="check-title">Event title</div>
+          <div class="check-sub">CITE Research Expo 2025</div>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-icon ci-pass"><i class="ti ti-check"></i></div>
+        <div class="check-text">
+          <div class="check-title">Event date</div>
+          <div class="check-sub">May 18, 2025</div>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-icon ci-pass" id="check-caption-icon"><i class="ti ti-check"></i></div>
+        <div class="check-text">
+          <div class="check-title">Facebook caption</div>
+          <div class="check-sub" id="check-caption-sub">287 characters · Good length</div>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-icon ci-pass"><i class="ti ti-check"></i></div>
+        <div class="check-text">
+          <div class="check-title">Event category selected</div>
+          <div class="check-sub">Research & Innovation</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Media checks -->
+    <div class="guard-section">
+      <div class="guard-section-title"><i class="ti ti-photo"></i> Media Quality</div>
+      <div class="check-item">
+        <div class="check-icon ci-pass"><i class="ti ti-check"></i></div>
+        <div class="check-text">
+          <div class="check-title">Minimum 1 file uploaded</div>
+          <div class="check-sub">4 files attached</div>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-icon ci-pass"><i class="ti ti-check"></i></div>
+        <div class="check-text">
+          <div class="check-title">All files within size limit</div>
+          <div class="check-sub">Largest: 4.1 MB of 25 MB max</div>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-icon ci-pass"><i class="ti ti-check"></i></div>
+        <div class="check-text">
+          <div class="check-title">Accepted file formats only</div>
+          <div class="check-sub">3× JPG · 1× MP4</div>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-icon ci-warn"><i class="ti ti-alert-triangle"></i></div>
+        <div class="check-text">
+          <div class="check-title">Image resolution</div>
+          <div class="check-sub">1 image below recommended 1080px width — Facebook may compress it</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content guardrails -->
+    <div class="guard-section">
+      <div class="guard-section-title"><i class="ti ti-shield-check"></i> Content Guardrails</div>
+      <div class="check-item">
+        <div class="check-icon ci-pass"><i class="ti ti-check"></i></div>
+        <div class="check-text">
+          <div class="check-title">Hashtags present</div>
+          <div class="check-sub">#DASIGConnect #DOSTRegion7 +2 more</div>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-icon ci-pass"><i class="ti ti-check"></i></div>
+        <div class="check-text">
+          <div class="check-title">Institution tag matches account</div>
+          <div class="check-sub">CIT-U — verified</div>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-icon ci-pass"><i class="ti ti-check"></i></div>
+        <div class="check-text">
+          <div class="check-title">No prohibited keywords</div>
+          <div class="check-sub">Caption cleared</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slot check -->
+    <div class="guard-section">
+      <div class="guard-section-title"><i class="ti ti-calendar"></i> Scheduling</div>
+      <div class="check-item">
+        <div class="check-icon ci-pass"><i class="ti ti-check"></i></div>
+        <div class="check-text">
+          <div class="check-title">Preferred slot selected</div>
+          <div class="check-sub">May 22 · 10:00 AM</div>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="check-icon ci-idle"><i class="ti ti-clock"></i></div>
+        <div class="check-text">
+          <div class="check-title">Slot confirmation</div>
+          <div class="check-sub">Awaiting Administrator assignment via M4 Scheduler</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Facebook Preview -->
+    <div class="fb-preview-wrap">
+      <div class="guard-section-title" style="padding:0;margin-bottom:10px"><i class="ti ti-brand-facebook"></i> Facebook Preview</div>
+      <div class="fb-preview">
+        <div class="fb-preview-head">
+          <div class="fb-page-icon"><i class="ti ti-brand-facebook"></i></div>
+          <div>
+            <div class="fb-page-name">DASIG Region 7</div>
+            <div class="fb-page-date">May 22 · <i class="ti ti-world" style="font-size:11px"></i></div>
+          </div>
+        </div>
+        <div class="fb-preview-img">🎓</div>
+        <div class="fb-preview-caption" id="fb-preview-caption">
+          🎓 Exciting discoveries at the CITE Research Expo 2025! Our talented students and researchers from <em>Cebu Institute of Technology–University</em> showcased groundbreaking projects spanning AI, sustainable engineering…
+          <span style="color:var(--muted)">See more</span>
+        </div>
+        <div class="fb-reactions">
+          <i class="ti ti-thumb-up"></i> 24 &nbsp;·&nbsp;
+          <i class="ti ti-message-circle"></i> 5 &nbsp;·&nbsp;
+          <i class="ti ti-share"></i> 3
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="guard-actions">
+      <button class="guard-submit-btn" onclick="showSubmitModal()"><i class="ti ti-send"></i> Submit for Review</button>
+      <button class="guard-save-btn" onclick="showSaved()"><i class="ti ti-device-floppy"></i> Save Draft</button>
+    </div>
+  </aside>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     SUBMIT MODAL
+══════════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="submit-modal">
+  <div class="modal">
+    <div class="modal-icon" style="background:var(--blue-dim);color:var(--blue)"><i class="ti ti-send"></i></div>
+    <div class="modal-title">Submit for Review?</div>
+    <div class="modal-desc">
+      Your submission <strong>CITE Research Expo 2025</strong> will be sent to your institution's Validator for review. You won't be able to edit it while it's under review.
+      <br><br>
+      <span style="font-size:12px;color:var(--muted)">Readiness score: <strong style="color:var(--green)">80 / 100</strong> · 1 warning (non-blocking)</span>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-cancel" onclick="closeModal('submit-modal')">Go Back</button>
+      <button class="modal-btn modal-btn-confirm" onclick="doSubmit()"><i class="ti ti-send" style="margin-right:5px"></i>Confirm Submission</button>
+    </div>
+  </div>
+</div>
+
+<!-- Submit success modal -->
+<div class="modal-overlay hidden" id="success-modal">
+  <div class="modal">
+    <div class="modal-icon" style="background:var(--green-dim);color:var(--green)"><i class="ti ti-circle-check"></i></div>
+    <div class="modal-title">Submission sent!</div>
+    <div class="modal-desc">
+      <strong>CITE Research Expo 2025</strong> has been submitted to your Validator at CIT-U. You'll be notified when it's reviewed or if changes are requested.
+      <br><br>
+      <span style="font-size:12px;color:var(--muted)">Status: <strong style="color:var(--blue)">Under Review</strong></span>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-success" onclick="closeModal('success-modal')"><i class="ti ti-check" style="margin-right:5px"></i>Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete modal -->
+<div class="modal-overlay hidden" id="delete-modal">
+  <div class="modal">
+    <div class="modal-icon" style="background:var(--red-dim);color:var(--red)"><i class="ti ti-trash"></i></div>
+    <div class="modal-title">Delete this draft?</div>
+    <div class="modal-desc">This will permanently delete <strong>CITE Research Expo 2025</strong> and all uploaded media. This action cannot be undone.</div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-cancel" onclick="closeModal('delete-modal')">Cancel</button>
+      <button class="modal-btn" style="background:var(--red);color:white" onclick="confirmDelete()"><i class="ti ti-trash" style="margin-right:5px"></i>Delete Draft</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     TOAST
+══════════════════════════════════════════════ -->
+<div class="toast hidden" id="toast"></div>
+
+<script>
+/* ── QUEUE DATA ── */
+const QUEUE = [
+  {id:1,title:'CITE Research Expo 2025',   inst:'CIT-U',       date:'May 18',status:'draft',    files:4, active:true},
+  {id:2,title:'CITE Innovation Lab Launch', inst:'CIT-U',       date:'May 12',status:'draft',    files:2, active:false},
+  {id:3,title:'SU Foundation Day Coverage',inst:'Silliman',    date:'May 10',status:'submitted', files:5, active:false},
+  {id:4,title:'USC Science & Tech Fair',   inst:'USC',         date:'May 8', status:'review',   files:3, active:false},
+  {id:5,title:'VSU Innovation Summit',     inst:'VSU',         date:'May 5', status:'approved', files:4, active:false},
+  {id:6,title:'DASIG Year-End Recap',      inst:'CIT-U',       date:'Apr 28',status:'scheduled',files:6, active:false},
+];
+const BADGE_MAP = {draft:'badge-draft',submitted:'badge-submitted',review:'badge-review',approved:'badge-approved',scheduled:'badge-scheduled',published:'badge-published'};
+const LABEL_MAP = {draft:'Draft',submitted:'Submitted',review:'Under Review',approved:'Approved',scheduled:'Scheduled',published:'Published'};
+const EMOJIS    = ['🎓','🔬','🏆','🎤','📸','🌟'];
+
+function renderQueue(filter='drafts') {
+  const list = document.getElementById('queue-list');
+  const items = QUEUE.filter(q => {
+    if(filter==='drafts') return q.status==='draft';
+    if(filter==='submitted') return ['submitted','review','approved','scheduled','published'].includes(q.status);
+    return true;
+  });
+  list.innerHTML = items.map(q => `
+    <div class="queue-item ${q.active?'active':''}" onclick="selectQueue(${q.id})">
+      <div class="qi-top">
+        <div class="qi-title">${q.title}</div>
+        <span class="qi-badge ${BADGE_MAP[q.status]}">${LABEL_MAP[q.status]}</span>
+      </div>
+      <div class="qi-meta">
+        <i class="ti ti-building" style="font-size:12px"></i>${q.inst}
+        <span class="qi-dot"></span>${q.date}
+      </div>
+      <div class="qi-media">
+        ${Array.from({length:Math.min(q.files,3)},(_,i)=>`<div class="qi-thumb">${EMOJIS[(q.id+i)%EMOJIS.length]}</div>`).join('')}
+        ${q.files>3?`<div class="qi-thumb" style="font-size:11px;color:var(--muted)">+${q.files-3}</div>`:''}
+      </div>
+    </div>
+  `).join('');
+}
+renderQueue();
+
+function switchTab(btn, filter) {
+  document.querySelectorAll('.stab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  renderQueue(filter);
+}
+function selectQueue(id) {
+  QUEUE.forEach(q=>q.active=q.id===id);
+  renderQueue(document.querySelector('.stab.active').dataset.filter||'drafts');
+  showToast('Draft loaded','info');
+}
+function newDraft() {
+  showToast('New draft created','success');
+}
+
+/* ── SLOT PICKER ── */
+const DAYS = ['Thu','Fri','Sat','Sun','Mon','Tue','Wed'];
+const DATES= [22,23,24,25,26,27,28];
+const AVAIL= ['open','few','open','full','open','open','few'];
+let selectedSlot = 0;
+
+function renderSlots() {
+  const grid = document.getElementById('slot-grid');
+  const now = new Date();
+  grid.innerHTML = DATES.map((d,i)=>`
+    <div class="slot-card ${AVAIL[i]==='full'?'unavailable':''} ${i===selectedSlot?'selected':''}" onclick="selectSlot(this,${i})">
+      <div class="slot-day">May ${DAYS[i]}</div>
+      <div class="slot-date">${d}</div>
+      <div class="slot-month">May 2025</div>
+      <div class="slot-avail avail-${AVAIL[i]}">${AVAIL[i]==='open'?'Open':AVAIL[i]==='few'?'2 left':'Full'}</div>
+    </div>
+  `).join('');
+}
+renderSlots();
+
+function selectSlot(el,idx){
+  if(el.classList.contains('unavailable')) return;
+  selectedSlot=idx;
+  document.querySelectorAll('.slot-card').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected');
+  updateGuardrails();
+}
+function selectTime(el){
+  if(el.classList.contains('taken')) return;
+  document.querySelectorAll('.time-pill').forEach(p=>p.classList.remove('selected'));
+  el.classList.add('selected');
+  updateGuardrails();
+}
+
+/* ── CAPTION / GUARDRAILS ── */
+const AI_CAPTIONS = [
+  '"From lab benches to breakthroughs — the CITE Research Expo 2025 brought together the brightest minds of CIT-University, showcasing innovation across AI, engineering, and health sciences. 💡 #DASIG #DOSTRegion7 #CITUniversity #ResearchExpo2025"',
+  '"Innovation takes center stage at the CITE Research Expo 2025! Congratulations to all student researchers who presented their work and pushed the boundaries of knowledge. 🏆 #CITUniversity #DOSTRegion7 #ResearchExpo"',
+  '"DASIG Region 7 celebrates the future of science and technology at the CIT-U Research Expo 2025. Proud of our student researchers making waves in AI, engineering, and health innovation! 🌟 #DASIGConnect #DOSTRegion7"'
+];
+let aiIdx = 0;
+
+function updateCaption(el){
+  const len = el.value.length;
+  const counter = document.getElementById('caption-count');
+  counter.textContent = `${len} / 500 chars`;
+  counter.className = 'flabel-count' + (len<150?' warn': len<=500?' ok':' warn');
+  el.className = 'finput' + (len>=150&&len<=500?' ok':' err');
+  updateGuardrails();
+}
+
+function updateGuardrails(){
+  const cap = document.getElementById('caption-input');
+  const len = cap ? cap.value.length : 0;
+  const captionOk = len>=150&&len<=500;
+  const icon = document.getElementById('check-caption-icon');
+  const sub  = document.getElementById('check-caption-sub');
+  if(icon&&sub){
+    icon.className='check-icon '+(captionOk?'ci-pass':'ci-warn');
+    icon.innerHTML=captionOk?'<i class="ti ti-check"></i>':'<i class="ti ti-alert-triangle"></i>';
+    sub.textContent=captionOk?`${len} characters · Good length`:len<150?`Only ${len} chars — aim for 150+`:`${len} chars — too long`;
+  }
+  // Score
+  const score = captionOk ? 80 : 65;
+  const ring  = document.getElementById('score-ring-fill');
+  const numEl = document.getElementById('score-num');
+  const grade = document.getElementById('score-grade');
+  const desc  = document.getElementById('score-desc');
+  if(ring&&numEl){
+    const circumference = 175.9;
+    const offset = circumference - (score/100)*circumference;
+    ring.style.strokeDashoffset=offset;
+    ring.style.stroke=score>=80?'#16A34A':score>=60?'#D97706':'#DC2626';
+    numEl.textContent=score;
+    numEl.style.color=score>=80?'#16A34A':score>=60?'#D97706':'#DC2626';
+    grade.textContent=score>=80?'Good to submit':score>=60?'Needs attention':'Incomplete';
+    desc.textContent=score>=80?'Most checks pass. One warning — ok to submit.':'Caption length needs attention before submitting.';
+  }
+  // Update save status
+  updateSaveStatus('saving');
+  setTimeout(()=>updateSaveStatus('saved'),800);
+}
+
+function updateSaveStatus(state){
+  const el=document.getElementById('save-status');
+  if(state==='saving'){ el.className='nav-save-status'; el.innerHTML='<i class="ti ti-loader-2" style="animation:spin 0.7s linear infinite"></i> Saving…'; }
+  else{ el.className='nav-save-status saved'; el.innerHTML='<i class="ti ti-cloud-check"></i> Draft saved'; }
+}
+
+function useAiCaption(){
+  const cap=document.getElementById('caption-input');
+  const raw=AI_CAPTIONS[aiIdx].replace(/^"|"$/g,'');
+  cap.value=raw;
+  updateCaption(cap);
+  showToast('AI caption applied','success');
+}
+function regenCaption(){
+  aiIdx=(aiIdx+1)%AI_CAPTIONS.length;
+  document.getElementById('ai-caption-text').textContent=AI_CAPTIONS[aiIdx];
+  showToast('New caption generated','info');
+}
+
+/* ── FILMSTRIP ── */
+function selectFilm(el){
+  document.querySelectorAll('.film-item').forEach(f=>f.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function removeFilm(e,btn){
+  e.stopPropagation();
+  btn.closest('.film-item').remove();
+  renumberFilms();
+  showToast('File removed','info');
+  updateGuardrails();
+}
+function renumberFilms(){
+  document.querySelectorAll('.film-item').forEach((f,i)=>{
+    const n=f.querySelector('.film-num');
+    if(n) n.textContent=i+1;
+  });
+}
+let uploading=false;
+function triggerUpload(){
+  if(uploading) return;
+  uploading=true;
+  const prog=document.getElementById('upload-progress');
+  prog.style.display='block';
+  const fill=prog.querySelector('.progress-fill');
+  fill.style.width='0%';
+  let w=0;
+  const t=setInterval(()=>{
+    w=Math.min(w+Math.random()*15,100);
+    fill.style.width=w+'%';
+    if(w>=100){
+      clearInterval(t);
+      uploading=false;
+      setTimeout(()=>{ prog.style.display='none'; showToast('File uploaded successfully','success'); updateGuardrails(); },400);
+    }
+  },120);
+}
+function handleDrop(){
+  triggerUpload();
+}
+
+/* ── MODALS ── */
+function showSubmitModal(){ document.getElementById('submit-modal').classList.remove('hidden'); }
+function deleteDraft(){ document.getElementById('delete-modal').classList.remove('hidden'); }
+function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
+function doSubmit(){
+  closeModal('submit-modal');
+  document.getElementById('success-modal').classList.remove('hidden');
+  QUEUE[0].status='submitted'; QUEUE[0].active=false;
+  renderQueue('drafts');
+}
+function confirmDelete(){
+  closeModal('delete-modal');
+  showToast('Draft deleted','err');
+}
+
+/* ── TOAST ── */
+let toastTimer=null;
+function showToast(msg,type='info'){
+  const t=document.getElementById('toast');
+  const ico={success:'ti-circle-check',info:'ti-info-circle',err:'ti-alert-circle',warn:'ti-alert-triangle'}[type]||'ti-info-circle';
+  t.className=`toast ${type}`;
+  t.innerHTML=`<i class="ti ${ico}"></i>${msg}`;
+  t.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.add('hidden'),2800);
+}
+function showSaved(){ updateSaveStatus('saving'); setTimeout(()=>{ updateSaveStatus('saved'); showToast('Draft saved successfully','success'); },700); }
+
+/* ── MISC ── */
+function toggleTag(el){ el.classList.toggle('active'); }
+function doSave(){ showSaved(); }
+
+/* ── SPIN KEYFRAME ── */
+const style=document.createElement('style');
+style.textContent='@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+document.head.appendChild(style);
+
+/* ── CLOSE MODALS ON OVERLAY CLICK ── */
+document.querySelectorAll('.modal-overlay').forEach(o=>{
+  o.addEventListener('click',e=>{ if(e.target===o) o.classList.add('hidden'); });
+});
+</script>
+</body>
+</html>

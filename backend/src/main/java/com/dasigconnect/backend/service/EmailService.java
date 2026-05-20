@@ -28,12 +28,16 @@ public class EmailService {
     }
 
     public void sendInvitationEmail(String to, String token) {
-        String link = appBaseUrl + "/invite/accept?token=" + token;
+        String link = buildInvitationLink(token);
         sendHtml(
                 to,
                 "You're invited to DASIGConnect",
                 "<p>You have been invited to DASIGConnect.</p><p><a href=\"" + link + "\">Accept invitation</a></p>",
                 "You have been invited to DASIGConnect.\n\nAccept your invitation: " + link);
+    }
+
+    public String buildInvitationLink(String token) {
+        return appBaseUrl.replaceAll("/$", "") + "/invite?token=" + token;
     }
 
     public void sendPasswordResetEmail(String to, String token) {

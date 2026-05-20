@@ -15,6 +15,7 @@ import ForgotSentScreen from '../features/auth/ForgotSentScreen'
 import InviteScreen from '../features/auth/InviteScreen'
 import NoAccountScreen from '../features/auth/NoAccountScreen'
 import DashboardScreen from '../features/dashboard/DashboardScreen'
+import SubmissionScreen from '../features/submission/SubmissionScreen'
 import SessionModal from '../components/modals/SessionModal'
 
 const LOCKOUT_LIMIT = 5
@@ -57,6 +58,7 @@ function App() {
 
   const [showDropdown, setShowDropdown] = useState(false)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [authReady, setAuthReady] = useState(false)
   const [showSessionModal, setShowSessionModal] = useState(false)
   
   const [bannerRemaining, setBannerRemaining] = useState(0)
@@ -83,6 +85,7 @@ function App() {
         localStorage.removeItem('dasigconnect_user')
       }
     }
+    setAuthReady(true)
   }, [])
 
   useEffect(() => {
@@ -274,6 +277,10 @@ function App() {
     }
   }
 
+  if (!authReady) {
+    return <div className="screen active" />
+  }
+
   return (
     <>
       <Routes>
@@ -363,6 +370,10 @@ function App() {
           ) : (
             <Navigate to="/login" replace />
           )
+        } />
+
+        <Route path="/submissions/new" element={
+          currentUser ? <SubmissionScreen user={currentUser} /> : <Navigate to="/login" replace />
         } />
 
         <Route path="*" element={<Navigate to="/" replace />} />

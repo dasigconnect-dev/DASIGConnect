@@ -55,6 +55,7 @@ class InvitationServiceTest {
         institution.setId(institutionId);
         institution.setName("CIT-U");
         institution.setCode("citu");
+        institution.setEmailDomain("example.com");
     }
 
     private InvitationToken buildToken(boolean used, boolean expired) {
@@ -108,7 +109,25 @@ class InvitationServiceTest {
         assertThat(result.recipientEmail()).isEqualTo("user@example.com");
         assertThat(result.assignedRole()).isEqualTo(UserRole.contributor);
         assertThat(result.institutionId()).isEqualTo(institutionId);
+        assertThat(result.emailDelivered()).isTrue();
+        assertThat(result.invitationUrl()).contains("/invite?token=");
+        verify(userRepository).save(argThat(user ->
+                user.getEmail().equals("user@example.com")
+                        && user.getRole() == UserRole.contributor
+                        && user.getAccountState().name().equals("pending")));
         verify(emailService).sendInvitationEmail(eq("user@example.com"), any());
+    }
+
+    @Test
+    void createInvitation_withWrongInstitutionDomain_throws400() {
+        when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
+        CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
+                "user@other.edu.ph", institutionId, UserRole.contributor);
+
+        assertThatThrownBy(() -> invitationService.createInvitation(dto))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(400);
     }
 
     // ── validateToken ─────────────────────────────────────────────────────
@@ -179,6 +198,7 @@ class InvitationServiceTest {
             return u;
         });
         when(jwtService.generateAccessToken(any())).thenReturn("new.jwt.token");
+        when(userRepository.findByEmail("invitee@example.com")).thenReturn(Optional.of(new User()));
 
         LoginResponseDto result = invitationService.acceptInvitation(
                 new AcceptInvitationRequestDto("validrawtoken", "password1"));

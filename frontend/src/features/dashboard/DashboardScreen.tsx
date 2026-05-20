@@ -1,4 +1,5 @@
 import { useState, useEffect, type CSSProperties } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Screen from '../../components/layout/Screen'
 import type { User } from '../../types/auth.types'
 import { createInstitution, inviteUser, listInstitutions } from '../../api/authApi'
@@ -57,6 +58,7 @@ export default function DashboardScreen({
   onStayLoggedIn,
   onLogout,
 }: DashboardScreenProps) {
+  const navigate = useNavigate()
   const [openModal, setOpenModal] = useState<'institution' | 'invite' | null>(null)
   const [institutions, setInstitutions] = useState<
     { id: string; name: string; code: string; emailDomain: string }[]
@@ -65,6 +67,19 @@ export default function DashboardScreen({
   const [institutionsError, setInstitutionsError] = useState('')
 
   useEffect(() => {
+    if (user?.role === 'validator' && user.inst) {
+      setInstitutions([
+        {
+          id: user.inst,
+          name: 'Your institution',
+          code: '',
+          emailDomain: '',
+        },
+      ])
+      setInviteSelectedInstId(user.inst)
+      setInviteRole('contributor')
+      return
+    }
     if (user?.role !== 'admin') return
     setInstitutionsLoading(true)
     setInstitutionsError('')
@@ -200,12 +215,19 @@ export default function DashboardScreen({
 
     for (const email of rawEmails) {
       try {
-        await inviteUser({
+        const response = await inviteUser({
           recipientEmail: email,
           institutionId: inviteSelectedInstId,
           assignedRole: inviteRole,
         })
-        success.push(email)
+        if (response.data.emailDelivered) {
+          success.push(email)
+        } else {
+          failed.push({
+            email,
+            reason: `Account was provisioned, but the email was not delivered. Invite link: ${response.data.invitationUrl}`,
+          })
+        }
       } catch (err: any) {
         failed.push({
           email,
@@ -230,7 +252,16 @@ export default function DashboardScreen({
   }
 
   const handleActionClick = (title: string) => {
+    if (title === 'Submit Event Content') {
+      navigate('/submissions/new')
+      return
+    }
     if (title === 'Invite Users') {
+      setOpenModal('invite')
+      return
+    }
+    if (title === 'Manage Contributors') {
+      setInviteRole('contributor')
       setOpenModal('invite')
       return
     }
@@ -287,6 +318,9 @@ export default function DashboardScreen({
                 className="sidebar-link"
                 id="side-nav-submit"
                 style={{ display: navVisibility(user).submit ? 'flex' : 'none' }}
+                onClick={() => {
+                  if (user?.role === 'contributor') navigate('/submissions/new')
+                }}
               >
                 <i className="ti ti-photo-up"></i>
                 <span id="side-nav-submit-lbl">{navVisibility(user).submitLabel}</span>
@@ -296,7 +330,7 @@ export default function DashboardScreen({
                 id="side-nav-manage"
                 style={{ display: navVisibility(user).manage ? 'flex' : 'none' }}
                 onClick={() => {
-                  if (user?.role === 'admin') setOpenModal('invite')
+                  if (user?.role === 'admin' || user?.role === 'validator') setOpenModal('invite')
                 }}
               >
                 <i className="ti ti-users"></i> Manage Users
@@ -409,8 +443,9 @@ export default function DashboardScreen({
             <div className="action-grid" id="action-grid">
               {actionsForRole(user).map((action) => {
                 const isClickable =
-                  user?.role === 'admin' &&
-                  (action.title === 'Invite Users' || action.title === 'Add Institution')
+                  (user?.role === 'admin' &&
+                    (action.title === 'Invite Users' || action.title === 'Add Institution')) ||
+                  (user?.role === 'validator' && action.title === 'Manage Contributors')
                 const Element = isClickable ? 'button' : 'div'
                 return (
                   <Element
@@ -620,6 +655,7 @@ export default function DashboardScreen({
                           className="dash-select"
                           value={inviteRole}
                           onChange={(event) => setInviteRole(event.target.value as 'validator' | 'contributor')}
+                          disabled={user?.role === 'validator'}
                         >
                           <option value="validator">Validator</option>
                           <option value="contributor">Contributor</option>

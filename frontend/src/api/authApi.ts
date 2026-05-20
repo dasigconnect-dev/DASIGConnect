@@ -1,8 +1,8 @@
 import axios from 'axios'
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1'
+const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
-const api = axios.create({
+export const api = axios.create({
   baseURL: BASE_URL,
 })
 
@@ -84,6 +84,17 @@ export interface InviteUserRequest {
 }
 
 export function inviteUser(data: InviteUserRequest) {
-  return api.post('/invitations', data)
+  return api.post<InvitationResponse>('/invitations', data)
+}
+
+export interface InvitationResponse {
+  id: string
+  recipientEmail: string
+  assignedRole: string
+  institutionId: string
+  expiresAt: string
+  createdAt: string
+  emailDelivered: boolean
+  invitationUrl: string
 }
 

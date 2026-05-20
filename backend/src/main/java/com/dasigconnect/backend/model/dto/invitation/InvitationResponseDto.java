@@ -10,4 +10,6 @@ public record InvitationResponseDto(
         UserRole assignedRole,
         UUID institutionId,
         Instant expiresAt,
-        Instant createdAt) {}
+        Instant createdAt,
+        boolean emailDelivered,
+        String invitationUrl) {}
