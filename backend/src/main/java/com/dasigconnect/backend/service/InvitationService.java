@@ -205,6 +205,66 @@ public class InvitationService {
         }
     }
 
+    /**
+     * Resends an invitation by generating a new token for the same recipient.
+     * Used when the original email was undelivered (pending_email_undelivered state).
+     * The original token record remains but is superseded by the new one.
+     */
+    public InvitationResponseDto resend(UUID tokenId, JwtUserDetails requester) {
+        InvitationToken original = invitationTokenRepository.findById(tokenId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invitation not found"));
+
+        if (original.getUsedAt() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Invitation has already been accepted");
+        }
+
+        validateInviterScope(new CreateInvitationRequestDto(
+                original.getRecipientEmail(),
+                original.getInstitution().getId(),
+                original.getAssignedRole()), requester);
+
+        // Reset user state to pending so they can accept the new link
+        userRepository.findByEmail(original.getRecipientEmail()).ifPresent(user -> {
+            if (user.getAccountState() == UserStatus.pending_email_undelivered) {
+                user.setAccountState(UserStatus.pending);
+                userRepository.save(user);
+            }
+        });
+
+        String rawToken = TokenHashUtils.generateRawToken();
+        String tokenHash = TokenHashUtils.sha256Hex(rawToken);
+
+        InvitationToken newToken = new InvitationToken();
+        newToken.setRecipientEmail(original.getRecipientEmail());
+        newToken.setAssignedRole(original.getAssignedRole());
+        newToken.setInstitution(original.getInstitution());
+        newToken.setTokenHash(tokenHash);
+        newToken.setExpiresAt(Instant.now().plus(Duration.ofHours(72)));
+        invitationTokenRepository.save(newToken);
+
+        boolean emailDelivered = true;
+        try {
+            emailService.sendInvitationEmail(original.getRecipientEmail(), rawToken);
+        } catch (RuntimeException ex) {
+            emailDelivered = false;
+            userRepository.findByEmail(original.getRecipientEmail()).ifPresent(user -> {
+                user.setAccountState(UserStatus.pending_email_undelivered);
+                userRepository.save(user);
+            });
+            log.warn("Resend invitation email failed for {}: {}", original.getRecipientEmail(), ex.getMessage());
+        }
+
+        return new InvitationResponseDto(
+                newToken.getId(),
+                newToken.getRecipientEmail(),
+                newToken.getAssignedRole(),
+                newToken.getInstitution().getId(),
+                newToken.getExpiresAt(),
+                newToken.getCreatedAt(),
+                emailDelivered,
+                emailService.buildInvitationLink(rawToken));
+    }
+
     private void validateInviterScope(CreateInvitationRequestDto dto, JwtUserDetails inviter) {
         if (inviter == null || "administrator".equalsIgnoreCase(inviter.role())) {
             return;

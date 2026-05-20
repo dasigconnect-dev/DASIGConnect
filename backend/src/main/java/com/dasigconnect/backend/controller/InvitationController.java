@@ -12,11 +12,13 @@ import org.springframework.security.core.Authentication;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/invitations")
@@ -49,5 +51,19 @@ public class InvitationController {
     public ResponseEntity<LoginResponseDto> accept(
             @RequestBody @Valid AcceptInvitationRequestDto dto) {
         return ResponseEntity.ok(invitationService.acceptInvitation(dto));
+    }
+
+    /**
+     * POST /api/v1/invitations/{id}/resend
+     * Resends the invitation email with a fresh token.
+     * Used when the original delivery failed (pending_email_undelivered).
+     */
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR','VALIDATOR')")
+    @PostMapping("/{id}/resend")
+    public ResponseEntity<InvitationResponseDto> resend(
+            @PathVariable UUID id,
+            Authentication authentication) {
+        JwtUserDetails requester = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails p ? p : null;
+        return ResponseEntity.ok(invitationService.resend(id, requester));
     }
 }
