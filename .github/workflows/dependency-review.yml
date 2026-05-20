@@ -1,0 +1,46 @@
+name: Dependency Review
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      # Only runs when dependency files change
+      - 'backend/pom.xml'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+
+permissions:
+  contents: read
+  pull-requests: write  # Allows posting review comments on the PR
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          # Block PR merge if any added dependency has a known vulnerability
+          fail-on-severity: moderate  # Options: low, moderate, high, critical
+
+          # Post a summary comment on the PR listing all changes
+          comment-summary-in-pr: always
+
+          # Allowed licenses — reject dependencies with incompatible licenses
+          allow-licenses: >-
+            MIT,
+            Apache-2.0,
+            BSD-2-Clause,
+            BSD-3-Clause,
+            ISC,
+            MPL-2.0,
+            LGPL-2.1,
+            LGPL-3.0
+
+          # Deny any dependency that is known to be malicious
+          deny-packages: >-
+            pkg:npm/event-stream,
+            pkg:npm/flatmap-stream
