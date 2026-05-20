@@ -67,9 +67,16 @@ public class InstitutionService {
                     "Institution code '" + request.getInstitutionCode() + "' is already in use.");
         }
 
+                String emailDomain = request.getEmailDomain().trim().toLowerCase();
+                if (institutionRepository.existsByEmailDomain(emailDomain)) {
+                        throw new IllegalArgumentException(
+                                        "Email domain '" + emailDomain + "' is already in use.");
+                }
+
         Institution institution = new Institution();
         institution.setName(request.getName());
         institution.setCode(request.getInstitutionCode()); // M1: field is 'code', not 'institutionCode'
+        institution.setEmailDomain(emailDomain);
         institution.setStatus(InstitutionStatus.onboarding);
 
         institution = institutionRepository.save(institution);
@@ -87,6 +94,16 @@ public class InstitutionService {
         log.info("Institution created: {} ({}), status=ONBOARDING", institution.getName(), institution.getId());
         return InstitutionDto.from(institution);
     }
+
+        /**
+         * Returns all institutions for ADMINISTRATOR views.
+         */
+        @Transactional(readOnly = true)
+        public java.util.List<InstitutionDto> listInstitutions() {
+                return institutionRepository.findAll().stream()
+                                .map(InstitutionDto::from)
+                                .toList();
+        }
 
     /**
      * Retrieves an institution by ID. Returns HTTP 404 (not 403) for

@@ -29,6 +29,11 @@ public class InstitutionDto {
     private String institutionCode;
 
     /**
+     * Email domain associated with the institution (e.g., su.edu.ph).
+     */
+    private String emailDomain;
+
+    /**
      * One of: onboarding, active, inactive_no_validator Matches the lowercase
      * InstitutionStatus enum values defined by M1.
      */
@@ -38,10 +43,11 @@ public class InstitutionDto {
     public InstitutionDto() {
     }
 
-    public InstitutionDto(UUID id, String name, String institutionCode, InstitutionStatus status) {
+    public InstitutionDto(UUID id, String name, String institutionCode, String emailDomain, InstitutionStatus status) {
         this.id = id;
         this.name = name;
         this.institutionCode = institutionCode;
+        this.emailDomain = emailDomain;
         this.status = status;
     }
 
@@ -63,6 +69,7 @@ public class InstitutionDto {
                 institution.getId(),
                 institution.getName(),
                 institution.getCode(), // M1 field is getCode(), not getInstitutionCode()
+                institution.getEmailDomain(),
                 institution.getStatus()
         );
     }
@@ -92,6 +99,14 @@ public class InstitutionDto {
         this.institutionCode = institutionCode;
     }
 
+    public String getEmailDomain() {
+        return emailDomain;
+    }
+
+    public void setEmailDomain(String emailDomain) {
+        this.emailDomain = emailDomain;
+    }
+
     public InstitutionStatus getStatus() {
         return status;
     }
@@ -106,6 +121,7 @@ public class InstitutionDto {
                 + "id=" + id
                 + ", name='" + name + '\''
                 + ", institutionCode='" + institutionCode + '\''
+            + ", emailDomain='" + emailDomain + '\''
                 + ", status=" + status
                 + '}';
     }

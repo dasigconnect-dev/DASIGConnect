@@ -1,5 +1,18 @@
 package com.dasigconnect.backend.service;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
 import com.dasigconnect.backend.model.dto.auth.LoginResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.AcceptInvitationRequestDto;
 import com.dasigconnect.backend.model.dto.invitation.CreateInvitationRequestDto;
@@ -13,20 +26,14 @@ import com.dasigconnect.backend.model.entity.UserStatus;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.security.TokenHashUtils;
+
 import jakarta.persistence.EntityManager;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Map;
-import java.util.UUID;
-import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @Transactional
 public class InvitationService {
+
+    private static final Logger log = LoggerFactory.getLogger(InvitationService.class);
 
     private final InvitationTokenRepository invitationTokenRepository;
     private final UserRepository userRepository;
@@ -74,7 +81,11 @@ public class InvitationService {
         token.setExpiresAt(Instant.now().plus(Duration.ofHours(72)));
         invitationTokenRepository.save(token);
 
-        emailService.sendInvitationEmail(dto.recipientEmail(), rawToken);
+        try {
+            emailService.sendInvitationEmail(dto.recipientEmail(), rawToken);
+        } catch (RuntimeException ex) {
+            log.warn("Invitation email failed for {}: {}", dto.recipientEmail(), ex.getMessage());
+        }
 
         return new InvitationResponseDto(
                 token.getId(),

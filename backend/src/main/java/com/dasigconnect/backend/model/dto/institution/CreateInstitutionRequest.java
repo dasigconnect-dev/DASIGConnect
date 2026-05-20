@@ -47,13 +47,24 @@ public class CreateInstitutionRequest {
     )
     private String institutionCode;
 
+        /**
+         * Domain used to route emails to this institution (e.g., su.edu.ph).
+         */
+        @NotBlank(message = "Email domain is required.")
+        @Pattern(
+            regexp = "^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+            message = "Email domain must be valid (e.g. su.edu.ph)."
+        )
+        private String emailDomain;
+
     // ── Constructors ──────────────────────────────────────────────────────────
     public CreateInstitutionRequest() {
     }
 
-    public CreateInstitutionRequest(String name, String institutionCode) {
+    public CreateInstitutionRequest(String name, String institutionCode, String emailDomain) {
         this.name = name;
         this.institutionCode = institutionCode;
+        this.emailDomain = emailDomain;
     }
 
     // ── Getters & Setters ─────────────────────────────────────────────────────
@@ -73,11 +84,20 @@ public class CreateInstitutionRequest {
         this.institutionCode = institutionCode;
     }
 
+    public String getEmailDomain() {
+        return emailDomain;
+    }
+
+    public void setEmailDomain(String emailDomain) {
+        this.emailDomain = emailDomain;
+    }
+
     @Override
     public String toString() {
         return "CreateInstitutionRequest{"
                 + "name='" + name + '\''
                 + ", institutionCode='" + institutionCode + '\''
+            + ", emailDomain='" + emailDomain + '\''
                 + '}';
     }
 }
