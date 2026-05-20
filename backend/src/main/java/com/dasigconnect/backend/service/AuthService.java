@@ -22,22 +22,28 @@ public class AuthService {
     private final AccountLockoutService accountLockoutService;
     private final JWTService jwtService;
     private final AuditLogService auditLogService;
+    private final TenantScopeService tenantScopeService;
 
     public AuthService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             AccountLockoutService accountLockoutService,
             JWTService jwtService,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            TenantScopeService tenantScopeService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.accountLockoutService = accountLockoutService;
         this.jwtService = jwtService;
         this.auditLogService = auditLogService;
+        this.tenantScopeService = tenantScopeService;
     }
 
     @Transactional
     public LoginResponseDto login(LoginRequestDto dto, HttpServletRequest request) {
+        // Temporarily elevate scope to administrator to bypass RLS during authentication lookup
+        tenantScopeService.bindTenantScope(null, "administrator");
+
         User user = userRepository.findByEmail(dto.email())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
 

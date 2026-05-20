@@ -15,6 +15,7 @@ Legend: Done / In Progress / Not Started
 - Done: Security infrastructure: `JwtAuthenticationFilter`, `SecurityConfig`, `JwtUserDetails`
 - Done: Flyway V1 migration and RLS policies
 - Done: `JacksonConfig`, HikariCP configuration
+- Done: `BackendApplication` custom `flyway` and `dbDiagnostics` beans gated with `@ConditionalOnProperty(spring.flyway.enabled)` — required for `@WebMvcTest` and `@SpringBootTest` test isolation
 
 ### M1 Tests
 - Done: `BackendApplicationTests`
@@ -35,7 +36,7 @@ Legend: Done / In Progress / Not Started
 ### M2 Tests
 - Done: `AccountLockoutServiceTest`
 - Done: `AuthServiceTest`
-- Done: `InvitationServiceTest`
+- Done: `InvitationServiceTest` (includes `buildInvitationLink` mock fix for dev branch)
 - Done: `PasswordServiceTest`
 - Done: `AuthControllerTest`
 - Done: `InvitationControllerTest`
@@ -53,11 +54,12 @@ Legend: Done / In Progress / Not Started
 - Done: `StaleDraftSlotReleaseJob`
 - Done: Exceptions: `GuardRailViolationException`, `InstitutionNotFoundException`, `SlotAlreadyTakenException`
 - Done: DTOs: `CreateInstitutionRequest`, `InstitutionDto`, `GuardRailResult`, `GuardRailViolation`
+- Done: `Institution.emailDomain` field + `V2__add_institution_email_domain.sql` Flyway migration (UC-1.2 extension — on `dev`)
 
 ### M4 Tests
-- Done: `InstitutionDtoTest`
+- Done: `InstitutionDtoTest` (updated for 3-arg `CreateInstitutionRequest` constructor)
 - Done: `GuardRailDtoTest`
-- Done: `InstitutionServiceTest`
+- Done: `InstitutionServiceTest` (updated for 3-arg `CreateInstitutionRequest` constructor)
 - Done: `GuardRailServiceTest`
 - Done: `SlotReservationTest`
 
@@ -72,7 +74,7 @@ Legend: Done / In Progress / Not Started
 - Not Started: UC-3.3 AI Classification & Recommendation - `VoyageAIClient`, cosine similarity search
 - Not Started: UC-3.4 Manual Publishing Fallback - `ManualPublishingFallbackController`
 - Not Started: UC-3.5 Admin Exception Handling - escalation flow
-- Not Started: Flyway V2 migration for upcoming schema changes
+- Done: Flyway V2 migration — `V2__add_institution_email_domain.sql` (on `dev`)
 
 ---
 
@@ -94,9 +96,8 @@ Legend: Done / In Progress / Not Started
 
 - Done: M1 test branch merged to `main`
 - Done: M4 test branch merged to `main`
-- In Progress: Push docs/handoff updates on `docs-and-skills`
-- In Progress: Local warning/import cleanup in test files is stashed while docs are being pushed
-  - `AuthControllerTest.java`
-  - `AuthServiceTest.java`
-  - `InvitationServiceTest.java`
-  - `InstitutionServiceTest.java`
+- Done: Docs/handoff updates merged to `main` via PRs #13, #15, #16
+- Done: Test warning/import cleanup (`AuthControllerTest`, `AuthServiceTest`, `InvitationServiceTest`, `InstitutionServiceTest`)
+- Done: `origin/main` merged into `dev` (20 commits, 0 conflicts) — 2026-05-20
+- Done: Test compatibility fixes after merge (3-arg `CreateInstitutionRequest`, `buildInvitationLink` mock, `BackendApplication` conditional beans) — 124 tests passing on `dev`
+- Not Started: Push `dev` to `origin/dev` (pending user approval)

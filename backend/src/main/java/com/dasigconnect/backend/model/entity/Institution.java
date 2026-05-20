@@ -1,5 +1,8 @@
 package com.dasigconnect.backend.model.entity;
 
+import java.time.Instant;
+import java.util.UUID;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -8,8 +11,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-import java.time.Instant;
-import java.util.UUID;
 
 @Entity
 @Table(name = "institutions")
@@ -23,6 +24,9 @@ public class Institution {
 
     @Column(nullable = false, unique = true, length = 50)
     private String code;
+
+    @Column(name = "email_domain", nullable = false, unique = true, length = 255)
+    private String emailDomain;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -71,6 +75,14 @@ public class Institution {
 
     public void setCode(String code) {
         this.code = code;
+    }
+
+    public String getEmailDomain() {
+        return emailDomain;
+    }
+
+    public void setEmailDomain(String emailDomain) {
+        this.emailDomain = emailDomain;
     }
 
     public InstitutionStatus getStatus() {

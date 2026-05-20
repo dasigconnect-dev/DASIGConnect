@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.controller;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -30,10 +31,10 @@ import jakarta.validation.Valid;
  * .toUpperCase() when creating the GrantedAuthority, so
  * @PreAuthorize("hasRole('ADMINISTRATOR')") works correctly with M1's enum.
  *
- * Base path: /api/admin/institutions
+ * Base path: /api/v1/admin/institutions
  */
 @RestController
-@RequestMapping("/api/admin/institutions")
+@RequestMapping("/api/v1/admin/institutions")
 @PreAuthorize("hasRole('ADMINISTRATOR')")
 public class InstitutionController {
 
@@ -77,5 +78,15 @@ public class InstitutionController {
             @PathVariable UUID institutionId) {
         InstitutionDto dto = institutionService.getInstitution(institutionId);
         return ResponseEntity.ok(dto);
+    }
+
+    /**
+     * GET /api/admin/institutions
+     *
+     * Returns all institutions for Administrator dropdowns and management.
+     */
+    @GetMapping
+    public ResponseEntity<List<InstitutionDto>> listInstitutions() {
+        return ResponseEntity.ok(institutionService.listInstitutions());
     }
 }

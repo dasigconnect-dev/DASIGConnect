@@ -57,8 +57,9 @@ class InvitationControllerTest {
     void createInvitation_asAdministrator_returns201() throws Exception {
         InvitationResponseDto response = new InvitationResponseDto(
                 UUID.randomUUID(), "user@example.com", UserRole.contributor,
-                INSTITUTION_ID, Instant.now().plusSeconds(3600), Instant.now());
-        when(invitationService.createInvitation(any())).thenReturn(response);
+                INSTITUTION_ID, Instant.now().plusSeconds(3600), Instant.now(),
+                true, "http://localhost:5173/invite?token=token");
+        when(invitationService.createInvitation(any(), any())).thenReturn(response);
 
         mockMvc.perform(post("/api/v1/invitations")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -67,7 +68,8 @@ class InvitationControllerTest {
                                 """.formatted(INSTITUTION_ID)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.recipientEmail").value("user@example.com"))
-                .andExpect(jsonPath("$.assignedRole").value("contributor"));
+                .andExpect(jsonPath("$.assignedRole").value("contributor"))
+                .andExpect(jsonPath("$.emailDelivered").value(true));
     }
 
     @Test
@@ -91,6 +93,23 @@ class InvitationControllerTest {
                                 {"recipientEmail":"user@example.com","institutionId":"%s","assignedRole":"contributor"}
                                 """.formatted(INSTITUTION_ID)))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "VALIDATOR")
+    void createInvitation_asValidator_reachesService() throws Exception {
+        InvitationResponseDto response = new InvitationResponseDto(
+                UUID.randomUUID(), "user@example.com", UserRole.contributor,
+                INSTITUTION_ID, Instant.now().plusSeconds(3600), Instant.now(),
+                true, "http://localhost:5173/invite?token=token");
+        when(invitationService.createInvitation(any(), any())).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/invitations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"recipientEmail":"user@example.com","institutionId":"%s","assignedRole":"contributor"}
+                                """.formatted(INSTITUTION_ID)))
+                .andExpect(status().isCreated());
     }
 
     @Test

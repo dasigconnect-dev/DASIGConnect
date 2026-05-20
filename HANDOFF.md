@@ -1,47 +1,34 @@
-# Handoff - 2026-05-19
+# Handoff - 2026-05-20
 
 ## What was done this session
-- Confirmed Claude command files exist at `.claude/commands/handoff.md` and `.claude/commands/resume.md`.
-- Consolidated session continuity around the root `HANDOFF.md`; `TASKS.md` remains the long-term project tracker.
-- Pushed docs updates through `docs-and-skills`; those changes were merged into `main` via PR #10.
-- Cleaned backend test warnings through PR #13:
-  - removed unused imports from `AuthControllerTest`, `AuthServiceTest`, and `InvitationServiceTest`
-  - replaced raw Mockito `any(Map.class)` matchers in `InstitutionServiceTest` with typed `ArgumentMatchers.<Map<String, ?>>any()`
-- Pulled latest `main`; current branch includes docs updates, CI workflows, and backend test warning cleanup.
-- Verified affected backend tests before the cleanup PR: `AuthControllerTest`, `AuthServiceTest`, `InvitationServiceTest`, `InstitutionServiceTest` all passed, 35 tests total.
+- Merged `origin/main` into local `dev` branch — 20 commits, 0 merge conflicts, 22 files changed (1,645 insertions)
+- Fixed 3 pre-existing test compatibility issues on `dev` (all exposed by the merge):
+  1. **`CreateInstitutionRequest` 3-arg constructor** — `dev` added `emailDomain` as a required field, but 6 test call sites in `InstitutionDtoTest` and `InstitutionServiceTest` still used the old 2-arg form; updated all 6
+  2. **`BackendApplication` conditional beans** — custom `flyway` and `dbDiagnostics` `@Bean` methods ignored `spring.flyway.enabled=false`, causing all `@WebMvcTest` and `@SpringBootTest` tests to fail with ApplicationContext errors; fixed with `@ConditionalOnProperty(name="spring.flyway.enabled", havingValue="true", matchIfMissing=true)` on both beans
+  3. **`InvitationServiceTest` missing mock** — `emailService.buildInvitationLink()` (added on `dev`) was unmocked in `createInvitation_validRequest_savesTokenAndSendsEmail`, returning `null` and failing the URL assertion; added stub
+- Final test result: **124 tests, 0 failures, 0 errors — BUILD SUCCESS**
+- Committed all fixes on `dev` (`3966219`)
+- Merged `dev` into local `main`
+- Updated `TASKS.md`, `HANDOFF.md`, `CLAUDE.md`
 
 ## Files changed
-- No uncommitted files remain in the working tree.
-- Recent merged changes on `main` include:
-  - `CLAUDE.md`
-  - `HANDOFF.md`
-  - `TASKS.md`
-  - `.github/workflows/backend-ci.yml`
-  - `.github/workflows/frontend-ci.yml`
-  - `.github/workflows/lint-pr-title.yml`
-  - backend test cleanup files listed above
+- `backend/src/main/java/com/dasigconnect/backend/BackendApplication.java` — `@ConditionalOnProperty` on `flyway` and `dbDiagnostics` beans
+- `backend/src/test/java/com/dasigconnect/backend/model/dto/institution/InstitutionDtoTest.java` — 3-arg `CreateInstitutionRequest`
+- `backend/src/test/java/com/dasigconnect/backend/service/InstitutionServiceTest.java` — 3-arg `CreateInstitutionRequest` (5 sites)
+- `backend/src/test/java/com/dasigconnect/backend/service/InvitationServiceTest.java` — `buildInvitationLink` stub
+- `TASKS.md`, `HANDOFF.md`, `CLAUDE.md` — updated
+
+## Current git state
+- Branch: `main` (after merging dev in)
+- `main` has been merged with `dev` locally — not yet pushed to `origin/main`
+- `dev` is 22 commits ahead of `origin/dev` — not yet pushed to `origin/dev`
 
 ## What's next
-1. Update `TASKS.md` housekeeping section if desired; it still mentions docs/test cleanup as in progress even though those PRs have landed.
-2. Start UC-1.3 Content Submission: `SubmissionController`, `SubmissionService`, request/response DTOs, repository methods, and focused tests.
-3. Continue backend UC-2.x modules: validator review, media repository, SSE notifications, analytics.
-4. Continue backend UC-3.x modules: Facebook publishing, Claude Vision captioning/classification, Voyage AI recommendations, manual fallback.
-5. Begin frontend implementation once backend APIs are stable enough to consume.
+1. Push `main` to `origin/main` and `dev` to `origin/dev` (say "push it" to proceed)
+2. Start **UC-1.3 Content Submission** — `SubmissionController`, `SubmissionService`, DTOs, repository methods, tests
 
 ## Blockers / notes
-- Current branch: `main`
-- Current git state before this handoff update: clean and up to date with `origin/main`.
-- Recent commits:
-  - `2141a28` test: clean backend test warnings (#13)
-  - `05ae011` docs(ci): Create frontend-ci.yml (#14)
-  - `f195094` docs(ci): Create backend-ci.yml (#11)
-  - `1f524a4` docs(ci): Create lint-pr-title.yml (#12)
-  - `286675a` Merge pull request #10 from docs-and-skills
-- Local stashes still exist from earlier branch juggling:
-  - `stash@{0}` old unused-import cleanup before pull; changes are already included on current `main`
-  - `stash@{1}` older test/docs cleanup snapshot
-  - `stash@{2}` older docs stash from M1 branch switching
-  - `stash@{3}` original main docs/test cleanup stash
-- Do not increase HikariCP beyond 5 connections while using Supabase Session Pooler.
-- Keep `DATABASE_USER` and local `.env` naming aligned; earlier notes mention `.env` may use `DATABASE_USERNAME`.
-- Spring Boot 4 tests should use `org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest` and `org.springframework.test.context.bean.override.mockito.MockitoBean`.
+- `Institution.emailDomain` and `V2__add_institution_email_domain.sql` are now on both `dev` and `main` after the merge
+- `@ConditionalOnProperty` fix is critical: without it, adding new Flyway migrations will keep breaking Spring context tests
+- Do not increase HikariCP beyond 5 connections (Supabase Session Pooler hard limit)
+- Keep `DATABASE_USER` in `application.properties` and `DATABASE_USERNAME` in `.env` in sync or datasource fails at startup

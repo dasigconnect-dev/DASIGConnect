@@ -33,6 +33,7 @@ class AuthServiceTest {
     @Mock AccountLockoutService accountLockoutService;
     @Mock JWTService jwtService;
     @Mock AuditLogService auditLogService;
+    @Mock TenantScopeService tenantScopeService;
     @InjectMocks AuthService authService;
 
     @Mock HttpServletRequest request;

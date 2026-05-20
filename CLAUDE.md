@@ -144,6 +144,7 @@ Render env vars (`DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`) must be s
 | `feature/M2-auth-backend` (Chris) | ✅ Merged to main | `AuthController`, `InvitationController`, `PasswordController`, `AuthService`, `AccountLockoutService`, `InvitationService`, `PasswordService`, `GlobalExceptionHandler`, `JwtUserDetails`, `TokenHashUtils` |
 | `feature/M2-auth-backend-test` (Chris) | ✅ Merged to main | 57 unit + controller tests across M1 & M2 (all passing) |
 | `feat/m4-institution-scheduling` | ✅ Merged to main | `InstitutionController`, `InstitutionService`, `GuardRailService`, `SlotReservationService`, `WorkspaceProvisionerService`, `StaleDraftSlotReleaseJob`, guard rail DTOs & exceptions |
+| `dev` (active) | 🔄 In progress | UC-1.2 extension: `Institution.emailDomain` + `V2__add_institution_email_domain.sql`; `BackendApplication` `@ConditionalOnProperty` bean fix; 124 tests passing |
 | UC-1.3 Content Submission | ⬜ Not started | `SubmissionController`, `SubmissionService` |
 | UC-2.x Validation, Notifications, Analytics | ⬜ Not started | Validator review flow, media repository, SSE notifications, analytics |
 | UC-3.x Scheduling, Publishing, AI | ⬜ Not started | Facebook auto-publish, Claude Vision captions, Voyage AI embeddings, manual fallback |
@@ -164,3 +165,4 @@ Render env vars (`DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`) must be s
 - **HikariCP max 5 connections** — Supabase Session Pooler limit; do not increase without changing Supabase plan
 - **Flyway migrations** — `ddl-auto` should be `validate` in prod; migrations live in `src/main/resources/db/migration/`
 - **Facebook Dev mode** — API-published posts are invisible to the public until DASIG completes Meta Business Verification; this is expected behavior, not a bug
+- **`BackendApplication` custom beans** — the `flyway` and `dbDiagnostics` `@Bean` methods are gated with `@ConditionalOnProperty(name="spring.flyway.enabled", havingValue="true", matchIfMissing=true)`; setting `spring.flyway.enabled=false` in `src/test/resources/application.properties` skips both beans, which is required for `@WebMvcTest` and `@SpringBootTest` isolation

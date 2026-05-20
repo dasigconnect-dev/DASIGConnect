@@ -61,7 +61,7 @@ class InstitutionDtoTest {
     @DisplayName("CreateInstitutionRequest getters return correct values")
     void createRequest_gettersReturnCorrectValues() {
         CreateInstitutionRequest req = new CreateInstitutionRequest(
-                "Ateneo de Davao University", "ADDU");
+                "Ateneo de Davao University", "ADDU", "addu.edu.ph");
 
         assertThat(req.getName()).isEqualTo("Ateneo de Davao University");
         assertThat(req.getInstitutionCode()).isEqualTo("ADDU");

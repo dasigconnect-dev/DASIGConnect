@@ -15,5 +15,7 @@ public interface InstitutionRepository extends JpaRepository<Institution, UUID> 
 
     boolean existsByCode(String code);
 
+    boolean existsByEmailDomain(String emailDomain);
+
     List<Institution> findAllByStatus(InstitutionStatus status);
 }

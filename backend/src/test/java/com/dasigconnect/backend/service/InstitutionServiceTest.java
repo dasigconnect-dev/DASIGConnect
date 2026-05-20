@@ -76,7 +76,7 @@ class InstitutionServiceTest {
             when(institutionRepository.existsByCode("CIT-U")).thenReturn(false);
             when(institutionRepository.save(any())).thenReturn(mockInstitution);
 
-            CreateInstitutionRequest req = new CreateInstitutionRequest("Cebu Institute of Technology - University", "CIT-U");
+            CreateInstitutionRequest req = new CreateInstitutionRequest("Cebu Institute of Technology - University", "CIT-U", "cit.edu.ph");
             InstitutionDto result = institutionService.createInstitution(req);
 
             assertThat(result.getStatus()).isEqualTo(InstitutionStatus.onboarding);
@@ -90,7 +90,7 @@ class InstitutionServiceTest {
             when(institutionRepository.existsByCode(anyString())).thenReturn(false);
             when(institutionRepository.save(any())).thenReturn(mockInstitution);
 
-            institutionService.createInstitution(new CreateInstitutionRequest("Test Uni", "TU"));
+            institutionService.createInstitution(new CreateInstitutionRequest("Test Uni", "TU", "tu.edu.ph"));
 
             verify(workspaceProvisioner, times(1)).provision(any(Institution.class));
         }
@@ -101,7 +101,7 @@ class InstitutionServiceTest {
             when(institutionRepository.existsByCode(anyString())).thenReturn(false);
             when(institutionRepository.save(any())).thenReturn(mockInstitution);
 
-            institutionService.createInstitution(new CreateInstitutionRequest("Test Uni", "TU"));
+            institutionService.createInstitution(new CreateInstitutionRequest("Test Uni", "TU", "tu.edu.ph"));
 
             verify(auditLogService, times(1)).recordSystemAction(
                     eq("INSTITUTION_CREATED"), any(UUID.class), org.mockito.ArgumentMatchers.<Map<String, ?>>any());
@@ -112,7 +112,7 @@ class InstitutionServiceTest {
         void shouldThrow_whenCodeAlreadyExists() {
             when(institutionRepository.existsByCode("CIT-U")).thenReturn(true);
 
-            CreateInstitutionRequest req = new CreateInstitutionRequest("Another CIT", "CIT-U");
+            CreateInstitutionRequest req = new CreateInstitutionRequest("Another CIT", "CIT-U", "another.edu.ph");
 
             assertThatThrownBy(() -> institutionService.createInstitution(req))
                     .isInstanceOf(IllegalArgumentException.class)
@@ -125,7 +125,7 @@ class InstitutionServiceTest {
             when(institutionRepository.existsByCode("CIT-U")).thenReturn(true);
 
             try {
-                institutionService.createInstitution(new CreateInstitutionRequest("Test", "CIT-U"));
+                institutionService.createInstitution(new CreateInstitutionRequest("Test", "CIT-U", "test.edu.ph"));
             } catch (IllegalArgumentException ignored) {
             }
 
