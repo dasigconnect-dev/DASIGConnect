@@ -1,8 +1,10 @@
 package com.dasigconnect.backend.controller;
 
 import com.dasigconnect.backend.model.dto.user.UserDto;
+import com.dasigconnect.backend.model.dto.user.UpdateUserStatusRequestDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.UserService;
+import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -10,8 +12,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -52,6 +57,23 @@ public class UserController {
             @RequestParam UUID institutionId,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(userService.listByInstitution(institutionId, user));
+    }
+
+    @GetMapping("/users/{id}")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'VALIDATOR')")
+    public ResponseEntity<UserDto> getUser(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(userService.getById(id, user));
+    }
+
+    @PatchMapping("/users/{id}/status")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'VALIDATOR')")
+    public ResponseEntity<UserDto> updateStatus(
+            @PathVariable UUID id,
+            @RequestBody @Valid UpdateUserStatusRequestDto request,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(userService.updateStatus(id, request.accountState(), user));
     }
 
     /**

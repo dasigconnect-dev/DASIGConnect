@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -23,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -97,6 +99,47 @@ class UserControllerTest {
     @WithMockUser(roles = "ADMINISTRATOR")
     void userCounts_missingInstitutionId_returns400() throws Exception {
         mockMvc.perform(get("/api/v1/users/counts"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "VALIDATOR")
+    void getUser_asValidator_returnsUser() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID institutionId = UUID.randomUUID();
+        when(userService.getById(any(), any())).thenReturn(userDto(
+                userId, "contributor@cit.edu.ph", UserRole.contributor, institutionId));
+
+        mockMvc.perform(get("/api/v1/users/{id}", userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(userId.toString()))
+                .andExpect(jsonPath("$.email").value("contributor@cit.edu.ph"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMINISTRATOR")
+    void updateStatus_asAdministrator_returnsUpdatedUser() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID institutionId = UUID.randomUUID();
+        User inactive = user(userId, "contributor@cit.edu.ph", UserRole.contributor, institution(institutionId));
+        inactive.setAccountState(UserStatus.inactive);
+        when(userService.updateStatus(any(), any(), any())).thenReturn(UserDto.from(inactive));
+
+        mockMvc.perform(patch("/api/v1/users/{id}/status", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(""" 
+                                {"accountState":"inactive"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accountState").value("inactive"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMINISTRATOR")
+    void updateStatus_missingStatus_returns400() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/{id}/status", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
                 .andExpect(status().isBadRequest());
     }
 

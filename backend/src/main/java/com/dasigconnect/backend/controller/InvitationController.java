@@ -5,9 +5,13 @@ import com.dasigconnect.backend.model.dto.invitation.AcceptInvitationRequestDto;
 import com.dasigconnect.backend.model.dto.invitation.CreateInvitationRequestDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationValidateResponseDto;
+import com.dasigconnect.backend.model.dto.invitation.PendingInvitationDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.InvitationService;
 import jakarta.validation.Valid;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -18,7 +22,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/invitations")
@@ -65,5 +68,23 @@ public class InvitationController {
             Authentication authentication) {
         JwtUserDetails requester = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails p ? p : null;
         return ResponseEntity.ok(invitationService.resend(id, requester));
+    }
+
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR','VALIDATOR')")
+    @GetMapping("/pending")
+    public ResponseEntity<List<PendingInvitationDto>> pending(
+            @RequestParam UUID institutionId,
+            Authentication authentication) {
+        JwtUserDetails requester = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails p ? p : null;
+        return ResponseEntity.ok(invitationService.listPending(institutionId, requester));
+    }
+
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR','VALIDATOR')")
+    @GetMapping("/pending/count")
+    public ResponseEntity<Map<String, Long>> pendingCount(
+            @RequestParam UUID institutionId,
+            Authentication authentication) {
+        JwtUserDetails requester = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails p ? p : null;
+        return ResponseEntity.ok(invitationService.countPending(institutionId, requester));
     }
 }

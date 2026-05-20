@@ -2,6 +2,7 @@ package com.dasigconnect.backend.service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -18,6 +19,7 @@ import com.dasigconnect.backend.model.dto.invitation.AcceptInvitationRequestDto;
 import com.dasigconnect.backend.model.dto.invitation.CreateInvitationRequestDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationValidateResponseDto;
+import com.dasigconnect.backend.model.dto.invitation.PendingInvitationDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.InvitationToken;
 import com.dasigconnect.backend.model.entity.User;
@@ -265,6 +267,24 @@ public class InvitationService {
                 emailService.buildInvitationLink(rawToken));
     }
 
+    @Transactional(readOnly = true)
+    public List<PendingInvitationDto> listPending(UUID institutionId, JwtUserDetails requester) {
+        validateInstitutionScope(institutionId, requester);
+        return invitationTokenRepository
+                .findByInstitutionIdAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(institutionId, Instant.now())
+                .stream()
+                .map(PendingInvitationDto::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Long> countPending(UUID institutionId, JwtUserDetails requester) {
+        validateInstitutionScope(institutionId, requester);
+        return Map.of(
+                "pendingInvitations",
+                invitationTokenRepository.countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(institutionId, Instant.now()));
+    }
+
     private void validateInviterScope(CreateInvitationRequestDto dto, JwtUserDetails inviter) {
         if (inviter == null || "administrator".equalsIgnoreCase(inviter.role())) {
             return;
@@ -277,6 +297,18 @@ public class InvitationService {
         }
         if (inviter.institutionId() == null || !inviter.institutionId().equals(dto.institutionId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Validators can only invite users to their own institution");
+        }
+    }
+
+    private void validateInstitutionScope(UUID institutionId, JwtUserDetails requester) {
+        if (requester == null || "administrator".equalsIgnoreCase(requester.role())) {
+            return;
+        }
+        if (!"validator".equalsIgnoreCase(requester.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators and validators can view invitations");
+        }
+        if (requester.institutionId() == null || !requester.institutionId().equals(institutionId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Validators can only view invitations for their own institution");
         }
     }
 }

@@ -1,6 +1,8 @@
 package com.dasigconnect.backend.controller;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -22,6 +24,7 @@ import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.model.dto.auth.LoginResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationValidateResponseDto;
+import com.dasigconnect.backend.model.dto.invitation.PendingInvitationDto;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.service.InvitationService;
 import com.dasigconnect.backend.service.JWTService;
@@ -147,5 +150,49 @@ class InvitationControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fields.password").exists());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMINISTRATOR")
+    void resend_asAdministrator_returnsInvitation() throws Exception {
+        UUID invitationId = UUID.randomUUID();
+        InvitationResponseDto response = new InvitationResponseDto(
+                UUID.randomUUID(), "user@example.com", UserRole.contributor,
+                INSTITUTION_ID, Instant.now().plusSeconds(3600), Instant.now(),
+                true, "http://localhost:5173/invite?token=new-token");
+        when(invitationService.resend(any(), any())).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/invitations/{id}/resend", invitationId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recipientEmail").value("user@example.com"))
+                .andExpect(jsonPath("$.emailDelivered").value(true));
+    }
+
+    @Test
+    @WithMockUser(roles = "VALIDATOR")
+    void pending_asValidator_returnsPendingInvitations() throws Exception {
+        UUID invitationId = UUID.randomUUID();
+        when(invitationService.listPending(any(), any())).thenReturn(List.of(new PendingInvitationDto(
+                invitationId,
+                "user@example.com",
+                UserRole.contributor,
+                INSTITUTION_ID,
+                Instant.now().plusSeconds(3600),
+                Instant.now())));
+
+        mockMvc.perform(get("/api/v1/invitations/pending").param("institutionId", INSTITUTION_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(invitationId.toString()))
+                .andExpect(jsonPath("$[0].recipientEmail").value("user@example.com"));
+    }
+
+    @Test
+    @WithMockUser(roles = "VALIDATOR")
+    void pendingCount_asValidator_returnsCount() throws Exception {
+        when(invitationService.countPending(any(), any())).thenReturn(Map.of("pendingInvitations", 3L));
+
+        mockMvc.perform(get("/api/v1/invitations/pending/count").param("institutionId", INSTITUTION_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pendingInvitations").value(3));
     }
 }

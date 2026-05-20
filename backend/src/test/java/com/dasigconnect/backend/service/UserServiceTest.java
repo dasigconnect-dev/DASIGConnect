@@ -135,6 +135,58 @@ class UserServiceTest {
         verify(userRepository).countByInstitutionIdAndRole(institutionId, UserRole.validator);
     }
 
+    @Test
+    void getById_validatorCanViewOwnInstitutionUser() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+
+        UserDto result = userService.getById(userId, principal(UUID.randomUUID(), "validator", institutionId));
+
+        assertThat(result.getEmail()).isEqualTo("contributor@cit.edu.ph");
+    }
+
+    @Test
+    void getById_validatorCannotViewOtherInstitutionUser() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+
+        assertThatThrownBy(() -> userService.getById(userId, principal(UUID.randomUUID(), "validator", UUID.randomUUID())))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void updateStatus_administratorCanDeactivateUser() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        when(userRepository.save(contributor)).thenReturn(contributor);
+
+        UserDto result = userService.updateStatus(userId, UserStatus.inactive,
+                principal(UUID.randomUUID(), "administrator", null));
+
+        assertThat(result.getAccountState()).isEqualTo("inactive");
+        verify(userRepository).save(contributor);
+    }
+
+    @Test
+    void updateStatus_rejectsPendingStatusChange() {
+        assertThatThrownBy(() -> userService.updateStatus(userId, UserStatus.pending,
+                principal(UUID.randomUUID(), "administrator", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void updateStatus_validatorCannotManageValidator() {
+        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.validator, institution);
+        when(userRepository.findById(validator.getId())).thenReturn(Optional.of(validator));
+
+        assertThatThrownBy(() -> userService.updateStatus(validator.getId(), UserStatus.inactive,
+                principal(UUID.randomUUID(), "validator", institutionId)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
     private static JwtUserDetails principal(UUID id, String role, UUID institutionId) {
         return new JwtUserDetails(id, role + "@example.com", role, institutionId);
     }
