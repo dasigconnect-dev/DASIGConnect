@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom'
 import {
   acceptInvitation,
   login,
   logout as logoutRequest,
   requestPasswordReset,
+  resetPassword as resetPasswordRequest,
   setAuthToken,
   validateInvitation,
 } from '../api/authApi'
@@ -12,6 +13,7 @@ import type { User } from '../types/auth.types'
 import LoginScreen from '../features/auth/LoginScreen'
 import ForgotScreen from '../features/auth/ForgotScreen'
 import ForgotSentScreen from '../features/auth/ForgotSentScreen'
+import ResetPasswordScreen from '../features/auth/ResetPasswordScreen'
 import InviteScreen from '../features/auth/InviteScreen'
 import NoAccountScreen from '../features/auth/NoAccountScreen'
 import DashboardScreen from '../features/dashboard/DashboardScreen'
@@ -20,6 +22,7 @@ import SessionModal from '../components/modals/SessionModal'
 
 const LOCKOUT_LIMIT = 5
 const LOCKOUT_SECONDS = 15 * 60
+const SESSION_WARNING_SECONDS = 5 * 60
 
 function App() {
   const navigate = useNavigate()
@@ -44,6 +47,14 @@ function App() {
 
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotSentEmail, setForgotSentEmail] = useState('')
+  const [resetToken, setResetToken] = useState<string | null>(null)
+  const [resetPassword, setResetPassword] = useState('')
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('')
+  const [showResetPassword, setShowResetPassword] = useState(false)
+  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetError, setResetError] = useState('')
+  const [resetSuccess, setResetSuccess] = useState(false)
 
   const [inviteToken, setInviteToken] = useState<string | null>(null)
   const [inviteState, setInviteState] = useState<'form' | 'success' | 'expired' | 'already'>('form')
@@ -63,6 +74,9 @@ function App() {
   
   const [bannerRemaining, setBannerRemaining] = useState(0)
   const [bannerTimerId, setBannerTimerId] = useState<number | null>(null)
+  const [, setSessionWarningDismissed] = useState(false)
+  const bannerTimerRef = useRef<number | null>(null)
+  const sessionWarningDismissedRef = useRef(false)
 
   const inviteRules = useMemo(() => {
     const length = invitePassword.length >= 8
@@ -80,6 +94,7 @@ function App() {
       setAuthToken(savedToken)
       try {
         setCurrentUser(JSON.parse(savedUser))
+        startSessionCountdown(savedToken)
       } catch {
         localStorage.removeItem('dasigconnect_token')
         localStorage.removeItem('dasigconnect_user')
@@ -87,6 +102,15 @@ function App() {
     }
     setAuthReady(true)
   }, [])
+
+  useEffect(() => {
+    if (location.pathname !== '/reset-password') return
+    const params = new URLSearchParams(location.search)
+    const token = params.get('token')
+    setResetToken(token)
+    setResetError(token ? '' : 'Reset token is missing or invalid.')
+    setResetSuccess(false)
+  }, [location.pathname, location.search])
 
   useEffect(() => {
     if (location.pathname !== '/invite') return
@@ -108,6 +132,8 @@ function App() {
         void handleLogin()
       } else if (location.pathname === '/forgot-password') {
         void handleForgotSubmit()
+      } else if (location.pathname === '/reset-password') {
+        void handleResetPassword()
       } else if (location.pathname === '/dashboard' && showSessionModal) {
         void handleModalLogin()
       }
@@ -177,6 +203,7 @@ function App() {
       localStorage.setItem('dasigconnect_token', apiUser.accessToken)
       localStorage.setItem('dasigconnect_user', JSON.stringify(user))
       setCurrentUser(user)
+      startSessionCountdown(apiUser.accessToken)
       navigate('/dashboard')
       resetLoginState()
     } catch (err: any) {
@@ -192,6 +219,34 @@ function App() {
       }
     } finally {
       setLoginLoading(false)
+    }
+  }
+
+  async function handleResetPassword() {
+    if (!resetToken) {
+      setResetError('Reset token is missing or invalid.')
+      return
+    }
+    if (resetPassword.length < 8) {
+      setResetError('Password must be at least 8 characters.')
+      return
+    }
+    if (resetPassword !== resetConfirmPassword) {
+      setResetError('Passwords do not match.')
+      return
+    }
+
+    setResetLoading(true)
+    setResetError('')
+    try {
+      await resetPasswordRequest(resetToken, resetPassword)
+      setResetSuccess(true)
+      setResetPassword('')
+      setResetConfirmPassword('')
+    } catch (err: any) {
+      setResetError(err.response?.data?.error || err.message || 'Password reset failed.')
+    } finally {
+      setResetLoading(false)
     }
   }
 
@@ -216,6 +271,7 @@ function App() {
       const response = await acceptInvitation(inviteToken, invitePassword)
       setAuthToken(response.data.accessToken)
       localStorage.setItem('dasigconnect_token', response.data.accessToken)
+      startSessionCountdown(response.data.accessToken)
       setInviteState('success')
     } catch {
       setInviteState('expired')
@@ -236,7 +292,7 @@ function App() {
     setCurrentUser(null)
     setShowDropdown(false)
     setShowSessionModal(false)
-    stopBanner()
+    stopSessionCountdown()
     resetLoginState()
     navigate('/login')
   }
@@ -247,6 +303,7 @@ function App() {
       const response = await login(email, modalPassword)
       setAuthToken(response.data.accessToken)
       localStorage.setItem('dasigconnect_token', response.data.accessToken)
+      startSessionCountdown(response.data.accessToken)
       setShowSessionModal(false)
       setModalError(false)
     } catch {
@@ -254,14 +311,57 @@ function App() {
     }
   }
 
-  function stopBanner() {
-    if (bannerTimerId) window.clearInterval(bannerTimerId)
+  function stopSessionCountdown() {
+    if (bannerTimerRef.current) window.clearInterval(bannerTimerRef.current)
+    bannerTimerRef.current = null
     setBannerRemaining(0)
     setBannerTimerId(null)
+    sessionWarningDismissedRef.current = false
+    setSessionWarningDismissed(false)
   }
 
   function handleStayLoggedIn() {
-    stopBanner()
+    setModalEmail(currentUser?.email || '')
+    setShowSessionModal(true)
+    setBannerRemaining(0)
+  }
+
+  function dismissSessionBanner() {
+    sessionWarningDismissedRef.current = true
+    setSessionWarningDismissed(true)
+    setBannerRemaining(0)
+  }
+
+  function startSessionCountdown(token: string) {
+    if (bannerTimerRef.current) window.clearInterval(bannerTimerRef.current)
+    bannerTimerRef.current = null
+    sessionWarningDismissedRef.current = false
+    setSessionWarningDismissed(false)
+
+    const expiresAt = getTokenExpiryMs(token)
+    if (!expiresAt) return
+
+    let timerId: number | null = null
+    const tick = () => {
+      const remaining = Math.ceil((expiresAt - Date.now()) / 1000)
+      if (remaining <= 0) {
+        if (timerId) window.clearInterval(timerId)
+        bannerTimerRef.current = null
+        setBannerTimerId(null)
+        setBannerRemaining(0)
+        setModalEmail(currentUser?.email || loginEmail)
+        setShowSessionModal(true)
+        return
+      }
+      if (remaining <= SESSION_WARNING_SECONDS && !sessionWarningDismissedRef.current) {
+        setBannerRemaining(remaining)
+      }
+    }
+
+    tick()
+    timerId = window.setInterval(tick, 1000)
+    bannerTimerRef.current = timerId
+    setBannerTimerId(timerId)
   }
 
   async function validateInviteToken(token: string) {
@@ -327,6 +427,25 @@ function App() {
           />
         } />
 
+        <Route path="/reset-password" element={
+          <ResetPasswordScreen
+            active={true}
+            password={resetPassword}
+            confirmPassword={resetConfirmPassword}
+            showPassword={showResetPassword}
+            showConfirmPassword={showResetConfirmPassword}
+            loading={resetLoading}
+            error={resetError}
+            success={resetSuccess}
+            onPasswordChange={setResetPassword}
+            onConfirmPasswordChange={setResetConfirmPassword}
+            onTogglePassword={() => setShowResetPassword(!showResetPassword)}
+            onToggleConfirmPassword={() => setShowResetConfirmPassword(!showResetConfirmPassword)}
+            onSubmit={() => void handleResetPassword()}
+            onBack={() => navigate('/login')}
+          />
+        } />
+
         <Route path="/invite" element={
           <InviteScreen
             active={true}
@@ -363,7 +482,7 @@ function App() {
               bannerTime={bannerTime}
               showDropdown={showDropdown}
               onToggleDropdown={() => setShowDropdown(!showDropdown)}
-              onDismissBanner={stopBanner}
+              onDismissBanner={dismissSessionBanner}
               onStayLoggedIn={handleStayLoggedIn}
               onLogout={() => void handleLogout()}
             />
@@ -433,6 +552,19 @@ function formatExpiry(expiresAt: string) {
   const hours = Math.floor(diff / (1000 * 60 * 60))
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
   return `in ${hours}h ${minutes}m`
+}
+
+function getTokenExpiryMs(token: string) {
+  const [, payload] = token.split('.')
+  if (!payload) return null
+  try {
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    const claims = JSON.parse(window.atob(padded))
+    return typeof claims.exp === 'number' ? claims.exp * 1000 : null
+  } catch {
+    return null
+  }
 }
 
 export default App

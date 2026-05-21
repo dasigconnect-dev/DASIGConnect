@@ -7,9 +7,14 @@ import {
 } from '../api/submissionApi'
 
 const emptyLookups: SubmissionLookups = {
-  categories: [],
-  tags: [],
-  preferredTimes: [],
+  allowedFileTypes: [],
+  allowedImageTypes: [],
+  allowedVideoTypes: [],
+  maxFileSizeMb: 50,
+  maxMediaAssetsPerSubmission: 10,
+  maxTitleLength: 255,
+  minScheduleLeadTimeHours: 2,
+  maxScheduleDaysAhead: 30,
 }
 
 export function useSubmissions() {

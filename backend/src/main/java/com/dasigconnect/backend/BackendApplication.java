@@ -71,6 +71,7 @@ public class BackendApplication {
 
 	@Bean
 	@ConditionalOnBean(DataSource.class)
+	@ConditionalOnProperty(name = "spring.flyway.enabled", havingValue = "true", matchIfMissing = true)
 	public CommandLineRunner dbDiagnostics(
 			DataSource dataSource,
 			com.dasigconnect.backend.repository.UserRepository userRepository,

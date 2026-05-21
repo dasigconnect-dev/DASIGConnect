@@ -6,13 +6,32 @@ services:
     startCommand: java -jar target/backend-0.0.1-SNAPSHOT.jar
     envVars:
       - key: DATABASE_URL
-        scope: build
         sync: false
       - key: DATABASE_USER
-        scope: build
         sync: false
       - key: DATABASE_PASSWORD
-        scope: build
+        sync: false
+      - key: MAIL_HOST
+        sync: false
+      - key: MAIL_PORT
+        sync: false
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_SMTP_AUTH
+        sync: false
+      - key: MAIL_SMTP_STARTTLS_ENABLE
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: APP_FRONTEND_BASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
         sync: false
       - key: JAVA_OPTS
         value: -Xmx512m -Xms256m

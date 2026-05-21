@@ -2,7 +2,8 @@ import { useState, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Screen from '../../components/layout/Screen'
 import type { User } from '../../types/auth.types'
-import { createInstitution, inviteUser, listInstitutions } from '../../api/authApi'
+import { createInstitution, getUserCounts, inviteUser, listInstitutions } from '../../api/authApi'
+import { listSubmissions, type SubmissionSummary } from '../../api/submissionApi'
 
 interface DashboardScreenProps {
   active: boolean
@@ -45,6 +46,12 @@ interface ActivityItem {
   }
 }
 
+interface DashboardStats {
+  submissions: SubmissionSummary[]
+  contributors: number
+  validators: number
+}
+
 const emptyContributorActivity: ActivityItem[] = []
 
 export default function DashboardScreen({
@@ -65,6 +72,11 @@ export default function DashboardScreen({
   >([])
   const [institutionsLoading, setInstitutionsLoading] = useState(false)
   const [institutionsError, setInstitutionsError] = useState('')
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
+    submissions: [],
+    contributors: 0,
+    validators: 0,
+  })
 
   useEffect(() => {
     if (user?.role === 'validator' && user.inst) {
@@ -100,6 +112,59 @@ export default function DashboardScreen({
       })
       .finally(() => setInstitutionsLoading(false))
   }, [user?.role])
+
+  useEffect(() => {
+    if (!user) return
+    listSubmissions()
+      .then((response) => {
+        setDashboardStats((current) => ({ ...current, submissions: response.data }))
+      })
+      .catch(() => {
+        setDashboardStats((current) => ({ ...current, submissions: [] }))
+      })
+  }, [user?.role, user?.inst])
+
+  useEffect(() => {
+    if (!user) return
+    if (user.role === 'contributor') {
+      setDashboardStats((current) => ({ ...current, contributors: 0, validators: 0 }))
+      return
+    }
+
+    const institutionIds = user.role === 'admin'
+      ? institutions.map((institution) => institution.id)
+      : user.inst
+        ? [user.inst]
+        : []
+
+    if (institutionIds.length === 0) {
+      setDashboardStats((current) => ({ ...current, contributors: 0, validators: 0 }))
+      return
+    }
+
+    let active = true
+    Promise.all(institutionIds.map((institutionId) => getUserCounts(institutionId)))
+      .then((responses) => {
+        if (!active) return
+        const totals = responses.reduce(
+          (sum, response) => ({
+            contributors: sum.contributors + response.data.contributors,
+            validators: sum.validators + response.data.validators,
+          }),
+          { contributors: 0, validators: 0 },
+        )
+        setDashboardStats((current) => ({ ...current, ...totals }))
+      })
+      .catch(() => {
+        if (active) {
+          setDashboardStats((current) => ({ ...current, contributors: 0, validators: 0 }))
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [user?.role, user?.inst, institutions])
 
   const [instName, setInstName] = useState('')
   const [instDomain, setInstDomain] = useState('')
@@ -430,7 +495,7 @@ export default function DashboardScreen({
             </div>
 
             <div className="stat-grid" id="stat-grid">
-              {statsForRole(user).map((stat) => (
+              {statsForRole(user, dashboardStats, institutions.length).map((stat) => (
                 <div className="stat-card" key={stat.label}>
                   <div className="stat-icon" style={{ color: stat.color }}>
                     <i className={stat.icon}></i>
@@ -846,22 +911,28 @@ function notice(user: User | null) {
   }
 }
 
-function statsForRole(user: User | null): StatItem[] {
+function statsForRole(user: User | null, stats: DashboardStats, institutionCount: number): StatItem[] {
   if (!user) return []
+  const submissions = stats.submissions
+  const publishedCount = submissions.filter((item) =>
+    item.status === 'published' || item.status === 'published_manual' || item.status === 'admin_direct_post'
+  ).length
+  const scheduledCount = submissions.filter((item) => item.status === 'scheduled').length
+  const reviewCount = submissions.filter((item) => item.status === 'pending' || item.status === 'in_review').length
   if (user.role === 'admin') {
     return [
-      { icon: 'ti ti-building', color: '#1877F2', label: 'Member Institutions', value: '0' },
-      { icon: 'ti ti-users', color: '#16A34A', label: 'Total Users', value: '0' },
+      { icon: 'ti ti-building', color: '#1877F2', label: 'Member Institutions', value: String(institutionCount) },
+      { icon: 'ti ti-users', color: '#16A34A', label: 'Total Users', value: String(stats.contributors + stats.validators) },
       { icon: 'ti ti-clock-pause', color: '#D97706', label: 'Pending Invites', value: '0', highlight: true },
-      { icon: 'ti ti-calendar-event', color: '#7C3AED', label: 'Scheduled Posts', value: '0' },
-      { icon: 'ti ti-photo-check', color: '#1877F2', label: 'Published This Month', value: '0' },
+      { icon: 'ti ti-calendar-event', color: '#7C3AED', label: 'Scheduled Posts', value: String(scheduledCount) },
+      { icon: 'ti ti-photo-check', color: '#1877F2', label: 'Published This Month', value: String(publishedCount) },
     ]
   }
   if (user.role === 'validator') {
     return [
-      { icon: 'ti ti-file-time', color: '#D97706', label: 'Pending Review', value: '0', highlight: true },
-      { icon: 'ti ti-circle-check', color: '#16A34A', label: 'Approved This Month', value: '0' },
-      { icon: 'ti ti-users', color: '#1877F2', label: 'Contributors', value: '0' },
+      { icon: 'ti ti-file-time', color: '#D97706', label: 'Pending Review', value: String(reviewCount), highlight: true },
+      { icon: 'ti ti-circle-check', color: '#16A34A', label: 'Approved This Month', value: String(scheduledCount + publishedCount) },
+      { icon: 'ti ti-users', color: '#1877F2', label: 'Contributors', value: String(stats.contributors) },
       {
         icon: 'ti ti-building',
         color: '#7C3AED',
@@ -872,10 +943,10 @@ function statsForRole(user: User | null): StatItem[] {
     ]
   }
   return [
-    { icon: 'ti ti-photo-up', color: '#1877F2', label: 'My Submissions', value: '0' },
-    { icon: 'ti ti-circle-check', color: '#16A34A', label: 'Approved', value: '0' },
-    { icon: 'ti ti-clock', color: '#D97706', label: 'Under Review', value: '0' },
-    { icon: 'ti ti-brand-facebook', color: '#7C3AED', label: 'Published', value: '0' },
+    { icon: 'ti ti-photo-up', color: '#1877F2', label: 'My Submissions', value: String(submissions.length) },
+    { icon: 'ti ti-circle-check', color: '#16A34A', label: 'Approved', value: String(scheduledCount + publishedCount) },
+    { icon: 'ti ti-clock', color: '#D97706', label: 'Under Review', value: String(reviewCount) },
+    { icon: 'ti ti-brand-facebook', color: '#7C3AED', label: 'Published', value: String(publishedCount) },
   ]
 }
 

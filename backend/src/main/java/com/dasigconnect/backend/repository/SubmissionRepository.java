@@ -33,9 +33,13 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
     """)
     long countUnpublishedByInstitution(@Param("institutionId") UUID institutionId);
 
-    /**
-     * Find all submissions by institution, used by InstitutionService when
-     * transitioning institution states.
-     */
     List<Submission> findAllByInstitutionId(UUID institutionId);
+
+    // UC-1.3 list queries — role-filtered
+    List<Submission> findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(UUID contributorId, UUID institutionId);
+    List<Submission> findByInstitutionIdOrderByCreatedAtDesc(UUID institutionId);
+    List<Submission> findAllByOrderByCreatedAtDesc();
+
+    boolean existsByIdAndInstitutionId(UUID id, UUID institutionId);
+    boolean existsByIdAndContributorId(UUID id, UUID contributorId);
 }

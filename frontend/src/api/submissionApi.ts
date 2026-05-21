@@ -36,10 +36,14 @@ export interface SubmissionPayload {
 }
 
 export interface SubmissionLookups {
-  categories: Array<{ value: string; label: string }>
-  tags: Array<{ value: string; label: string }>
-  preferredTimes: string[]
-  facebookPageName?: string
+  allowedFileTypes: string[]
+  allowedImageTypes: string[]
+  allowedVideoTypes: string[]
+  maxFileSizeMb: number
+  maxMediaAssetsPerSubmission: number
+  maxTitleLength: number
+  minScheduleLeadTimeHours: number
+  maxScheduleDaysAhead: number
 }
 
 export interface GuardRailViolation {
@@ -49,9 +53,10 @@ export interface GuardRailViolation {
 }
 
 export interface GuardRailResult {
-  hardViolations: GuardRailViolation[]
+  hardBlocks: GuardRailViolation[]
   softWarnings: GuardRailViolation[]
-  passed: boolean
+  blocked: boolean
+  clean: boolean
 }
 
 export function listSubmissions(signal?: AbortSignal) {
@@ -63,7 +68,7 @@ export function getSubmission(id: string, signal?: AbortSignal) {
 }
 
 export function createDraft(payload: SubmissionPayload) {
-  return api.post<SubmissionSummary>('/submissions/drafts', payload)
+  return api.post<SubmissionSummary>('/submissions', payload)
 }
 
 export function updateDraft(id: string, payload: SubmissionPayload) {
@@ -78,21 +83,65 @@ export function deleteDraft(id: string) {
   return api.delete<void>(`/submissions/${id}`)
 }
 
-export function uploadSubmissionMedia(id: string, files: File[]) {
-  const data = new FormData()
-  files.forEach((file) => data.append('files', file))
-  return api.post(`/submissions/${id}/media`, data, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
+export async function uploadSubmissionMedia(id: string, files: File[]) {
+  const responses = []
+  for (const file of files) {
+    const storageUrl = await uploadToSupabaseStorage(id, file)
+    responses.push(await api.post(`/submissions/${id}/media`, {
+      storageUrl,
+      fileName: file.name,
+      fileType: fileTypeFromFile(file),
+      fileSizeBytes: file.size,
+    }))
+  }
+  return responses.at(-1)
 }
 
 export function getSubmissionLookups(signal?: AbortSignal) {
   return api.get<SubmissionLookups>('/submissions/lookups', { signal })
 }
 
-export function validateGuardRails(institutionId: string, scheduledAt: string) {
-  return api.post<GuardRailResult>('/guardrails/validate', {
-    institutionId,
-    scheduledAt,
+export function validateGuardRails(submissionId: string, scheduledAt: string) {
+  return api.post<GuardRailResult>(`/submissions/${submissionId}/evaluate-slot`, { scheduledAt })
+}
+
+async function uploadToSupabaseStorage(submissionId: string, file: File) {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  const bucket = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !bucket || !anonKey) {
+    throw new Error('Supabase upload is not configured. Set VITE_SUPABASE_URL, VITE_SUPABASE_STORAGE_BUCKET, and VITE_SUPABASE_ANON_KEY.')
+  }
+
+  const path = `${submissionId}/${crypto.randomUUID()}-${safeFileName(file.name)}`
+  const uploadUrl = `${supabaseUrl.replace(/\/$/, '')}/storage/v1/object/${bucket}/${path}`
+  const response = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${anonKey}`,
+      apikey: anonKey,
+      'Content-Type': file.type || 'application/octet-stream',
+      'x-upsert': 'false',
+    },
+    body: file,
   })
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => '')
+    throw new Error(message || 'Supabase media upload failed.')
+  }
+
+  return `${supabaseUrl.replace(/\/$/, '')}/storage/v1/object/public/${bucket}/${path}`
+}
+
+function fileTypeFromFile(file: File) {
+  const extension = file.name.split('.').pop()?.toLowerCase()
+  if (extension) return extension
+  const subtype = file.type.split('/')[1]?.toLowerCase()
+  return subtype || 'jpeg'
+}
+
+function safeFileName(fileName: string) {
+  return fileName.replace(/[^a-zA-Z0-9._-]/g, '-')
 }

@@ -31,10 +31,11 @@ import jakarta.validation.Valid;
  * .toUpperCase() when creating the GrantedAuthority, so
  * @PreAuthorize("hasRole('ADMINISTRATOR')") works correctly with M1's enum.
  *
- * Base path: /api/v1/admin/institutions
+ * Base path: /api/v1/institutions
+ * Legacy alias: /api/v1/admin/institutions
  */
 @RestController
-@RequestMapping("/api/v1/admin/institutions")
+@RequestMapping({"/api/v1/institutions", "/api/v1/admin/institutions"})
 @PreAuthorize("hasRole('ADMINISTRATOR')")
 public class InstitutionController {
 

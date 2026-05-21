@@ -5,14 +5,15 @@ import com.dasigconnect.backend.model.dto.invitation.AcceptInvitationRequestDto;
 import com.dasigconnect.backend.model.dto.invitation.CreateInvitationRequestDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationValidateResponseDto;
+import com.dasigconnect.backend.model.dto.invitation.PendingInvitationDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.InvitationToken;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
+import com.dasigconnect.backend.model.entity.UserStatus;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
-import com.dasigconnect.backend.security.TokenHashUtils;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,11 +22,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -235,5 +237,83 @@ class InvitationServiceTest {
         ArgumentCaptor<InvitationToken> tokenCaptor = ArgumentCaptor.forClass(InvitationToken.class);
         verify(invitationTokenRepository).save(tokenCaptor.capture());
         assertThat(tokenCaptor.getValue().getUsedAt()).isNotNull();
+    }
+
+    @Test
+    void resend_validInvitation_savesFreshTokenAndSendsEmail() {
+        InvitationToken original = buildToken(false, false);
+        User pendingUser = new User();
+        pendingUser.setEmail(original.getRecipientEmail());
+        pendingUser.setRole(UserRole.contributor);
+        pendingUser.setInstitution(institution);
+        pendingUser.setAccountState(UserStatus.pending_email_undelivered);
+
+        when(invitationTokenRepository.findById(original.getId())).thenReturn(Optional.of(original));
+        when(userRepository.findByEmail(original.getRecipientEmail())).thenReturn(Optional.of(pendingUser));
+        when(invitationTokenRepository.save(any())).thenAnswer(inv -> {
+            InvitationToken token = inv.getArgument(0);
+            token.setId(UUID.randomUUID());
+            return token;
+        });
+        when(emailService.buildInvitationLink(anyString())).thenReturn("http://localhost/invite?token=new");
+
+        InvitationResponseDto result = invitationService.resend(
+                original.getId(),
+                principal("administrator", null));
+
+        assertThat(result.recipientEmail()).isEqualTo(original.getRecipientEmail());
+        assertThat(result.emailDelivered()).isTrue();
+        verify(emailService).sendInvitationEmail(eq(original.getRecipientEmail()), anyString());
+        verify(invitationTokenRepository).save(argThat(token ->
+                token.getRecipientEmail().equals(original.getRecipientEmail())
+                        && token.getAssignedRole() == original.getAssignedRole()
+                        && token.getUsedAt() == null));
+    }
+
+    @Test
+    void resend_usedInvitation_throws409() {
+        InvitationToken original = buildToken(true, false);
+        when(invitationTokenRepository.findById(original.getId())).thenReturn(Optional.of(original));
+
+        assertThatThrownBy(() -> invitationService.resend(original.getId(), principal("administrator", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(409);
+    }
+
+    @Test
+    void listPending_validatorCanListOwnInstitution() {
+        InvitationToken token = buildToken(false, false);
+        when(invitationTokenRepository.findByInstitutionIdAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
+                eq(institutionId), any())).thenReturn(List.of(token));
+
+        List<PendingInvitationDto> result = invitationService.listPending(
+                institutionId,
+                principal("validator", institutionId));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).recipientEmail()).isEqualTo("invitee@example.com");
+    }
+
+    @Test
+    void countPending_validatorCannotCountOtherInstitution() {
+        assertThatThrownBy(() -> invitationService.countPending(UUID.randomUUID(), principal("validator", institutionId)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(403);
+    }
+
+    @Test
+    void countPending_administratorReturnsCount() {
+        when(invitationTokenRepository.countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(eq(institutionId), any()))
+                .thenReturn(4L);
+
+        Map<String, Long> result = invitationService.countPending(institutionId, principal("administrator", null));
+
+        assertThat(result).containsEntry("pendingInvitations", 4L);
+    }
+
+    private static JwtUserDetails principal(String role, UUID institutionId) {
+        return new JwtUserDetails(UUID.randomUUID(), role + "@example.com", role, institutionId);
     }
 }

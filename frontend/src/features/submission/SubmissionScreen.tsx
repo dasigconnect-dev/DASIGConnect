@@ -98,14 +98,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const previewCaption = form.caption.trim() || 'Your caption preview will appear here as you write.'
 
   useEffect(() => {
-    if (!scheduledAt || !user.inst) {
+    if (!scheduledAt || !form.id) {
       setGuardRails(null)
       setGuardRailError('')
       return
     }
 
     const timer = window.setTimeout(() => {
-      validateGuardRails(user.inst, scheduledAt)
+      validateGuardRails(form.id!, scheduledAt)
         .then((response) => {
           setGuardRails(response.data)
           setGuardRailError('')
@@ -117,7 +117,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }, 350)
 
     return () => window.clearTimeout(timer)
-  }, [scheduledAt, user.inst])
+  }, [scheduledAt, form.id])
 
   useEffect(() => {
     if (!toast) return
@@ -210,15 +210,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setSaveState('idle')
   }
 
-  function toggleTag(value: string) {
-    setForm((current) => ({
-      ...current,
-      tags: current.tags.includes(value)
-        ? current.tags.filter((item) => item !== value)
-        : [...current.tags, value],
-    }))
-  }
-
   return (
     <div className="submission-screen">
       <nav className="sub-topnav">
@@ -266,8 +257,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             {!loading && error && (
               <QueueState
                 icon="ti-database-off"
-                title="Submission backend is not ready yet"
-                description="The UI is available, but the draft queue needs SubmissionController endpoints before it can load real data."
+                title="Unable to load submissions"
+                description="Check your session and backend connection, then refresh the queue."
               />
             )}
             {!loading && !error && queued.length === 0 && (
@@ -401,10 +392,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             <div className="sub-field-row">
               <Field label="Event Category">
                 <select className="sub-fselect" value={form.category} onChange={(event) => updateField('category', event.target.value)}>
-                  <option value="">{lookupsLoading ? 'Loading categories...' : 'Select category'}</option>
-                  {lookups.categories.map((category) => (
-                    <option key={category.value} value={category.value}>{category.label}</option>
-                  ))}
+                  <option value="">{lookupsLoading ? 'Loading options...' : 'Backend categories unavailable'}</option>
                 </select>
               </Field>
               <Field label="Institution Scope">
@@ -415,21 +403,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             <Field label="Tags">
               {lookupsError && (
                 <div className="sub-inline-note">
-                  Backend lookup options are not available yet. You can still inspect the form layout.
+                  Backend tag options are not available yet. You can still save and submit the required submission fields.
                 </div>
               )}
               <div className="sub-tag-row">
-                {lookups.tags.map((tag) => (
-                  <button
-                    className={`sub-tag ${form.tags.includes(tag.value) ? 'active' : ''}`}
-                    key={tag.value}
-                    type="button"
-                    onClick={() => toggleTag(tag.value)}
-                  >
-                    {tag.label}
-                  </button>
-                ))}
-                {!lookupsLoading && lookups.tags.length === 0 && <span className="sub-muted-text">No backend tags available.</span>}
+                <span className="sub-muted-text">No backend tags available.</span>
               </div>
             </Field>
 
@@ -451,16 +429,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 <input className="sub-finput" type="date" value={form.scheduledDate} onChange={(event) => updateField('scheduledDate', event.target.value)} />
               </Field>
               <Field label="Preferred Time">
-                {lookups.preferredTimes.length > 0 ? (
-                  <select className="sub-fselect" value={form.scheduledTime} onChange={(event) => updateField('scheduledTime', event.target.value)}>
-                    <option value="">Select time</option>
-                    {lookups.preferredTimes.map((time) => (
-                      <option key={time} value={time}>{time}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input className="sub-finput" type="time" value={form.scheduledTime} onChange={(event) => updateField('scheduledTime', event.target.value)} />
-                )}
+                <input className="sub-finput" type="time" value={form.scheduledTime} onChange={(event) => updateField('scheduledTime', event.target.value)} />
               </Field>
             </div>
             {guardRailError && <div className="sub-inline-error">{guardRailError}</div>}
@@ -479,19 +448,19 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             <CheckItem pass={Boolean(form.eventTitle.trim())} title="Event title" sub={form.eventTitle || 'Required'} />
             <CheckItem pass={Boolean(form.eventDate)} title="Event date" sub={form.eventDate ? formatDate(form.eventDate) : 'Required'} />
             <CheckItem pass={captionTone(form.caption) === 'ok'} title="Caption length" sub={`${form.caption.length} characters`} />
-            <CheckItem pass={Boolean(form.category)} title="Event category" sub={form.category || 'Awaiting backend category'} />
+            <CheckItem pass title="Event category" sub="Not required by backend UC-1.3" />
           </GuardSection>
 
           <GuardSection title="Media Quality" icon="ti-photo">
             <CheckItem pass={form.files.length > 0} title="Minimum 1 file uploaded" sub={`${form.files.length} file(s) attached`} />
-            <CheckItem pass={form.files.every((file) => file.size <= 25 * 1024 * 1024)} title="All files within size limit" sub="25 MB max per file" />
-            <CheckItem pass={form.files.every((file) => file.type.startsWith('image/') || file.type.startsWith('video/'))} title="Accepted file formats only" sub="Images and videos" />
+            <CheckItem pass={form.files.every((file) => file.size <= lookups.maxFileSizeMb * 1024 * 1024)} title="All files within size limit" sub={`${lookups.maxFileSizeMb} MB max per file`} />
+            <CheckItem pass={form.files.every((file) => isAllowedFile(file, lookups.allowedFileTypes))} title="Accepted file formats only" sub={lookups.allowedFileTypes.join(', ') || 'Awaiting backend lookup'} />
           </GuardSection>
 
           <GuardSection title="Scheduling" icon="ti-calendar">
             <CheckItem pass={Boolean(scheduledAt)} title="Preferred slot selected" sub={scheduledAt ? formatDateTime(scheduledAt) : 'Select date and time'} />
             {guardRails ? (
-              <CheckItem pass={guardRails.passed} title="Slot confirmation" sub={guardRails.passed ? 'Guardrails passed' : `${guardRails.hardViolations.length} blocking issue(s)`} />
+              <CheckItem pass={!guardRails.blocked} title="Slot confirmation" sub={guardRails.clean ? 'Guardrails passed' : `${guardRails.hardBlocks.length} blocking issue(s)`} />
             ) : (
               <CheckItem pass={false} idle title="Slot confirmation" sub="Awaiting backend guardrail response" />
             )}
@@ -503,7 +472,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               <div className="sub-fb-preview-head">
                 <div className="sub-fb-page-icon"><i className="ti ti-brand-facebook"></i></div>
                 <div>
-                  <div className="sub-fb-page-name">{lookups.facebookPageName || 'DASIG Facebook Page'}</div>
+                  <div className="sub-fb-page-name">DASIG Facebook Page</div>
                   <div className="sub-fb-page-date">{scheduledAt ? formatDate(scheduledAt) : 'Unscheduled'} <i className="ti ti-world"></i></div>
                 </div>
               </div>
@@ -714,10 +683,10 @@ function calculateReadiness(form: FormState, guardRails: GuardRailResult | null)
   if (form.eventTitle.trim()) score += 15
   if (form.eventDate) score += 15
   if (captionTone(form.caption) === 'ok') score += 20
-  if (form.category) score += 10
+  score += 10
   if (form.files.length > 0) score += 20
   if (form.scheduledDate && form.scheduledTime) score += 10
-  if (guardRails?.passed) score += 10
+  if (guardRails && !guardRails.blocked) score += 10
 
   return {
     score,
@@ -774,4 +743,10 @@ function toastIcon(type: 'success' | 'info' | 'err' | 'warn') {
   if (type === 'err') return 'ti-alert-circle'
   if (type === 'warn') return 'ti-alert-triangle'
   return 'ti-info-circle'
+}
+
+function isAllowedFile(file: File, allowedFileTypes: string[]) {
+  if (allowedFileTypes.length === 0) return true
+  const extension = file.name.split('.').pop()?.toLowerCase()
+  return Boolean(extension && allowedFileTypes.includes(extension))
 }

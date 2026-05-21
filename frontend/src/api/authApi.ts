@@ -20,6 +20,16 @@ export interface LoginResponse {
   institutionId: string
 }
 
+export interface UserProfileResponse {
+  id: string
+  email: string
+  role: string
+  accountState: string
+  institutionId: string | null
+  institutionName: string | null
+  createdAt: string
+}
+
 export function login(email: string, password: string) {
   return api.post<LoginResponse>('/auth/login', { email, password })
 }
@@ -53,6 +63,10 @@ export function acceptInvitation(token: string, password: string) {
   return api.post<LoginResponse>('/invitations/accept', { token, password })
 }
 
+export function getMe() {
+  return api.get<UserProfileResponse>('/me')
+}
+
 export interface InstitutionResponse {
   id: string
   name: string
@@ -66,7 +80,7 @@ export function createInstitution(
   institutionCode: string,
   emailDomain: string,
 ) {
-  return api.post<InstitutionResponse>('/admin/institutions', {
+  return api.post<InstitutionResponse>('/institutions', {
     name,
     institutionCode,
     emailDomain,
@@ -74,7 +88,19 @@ export function createInstitution(
 }
 
 export function listInstitutions() {
-  return api.get<InstitutionResponse[]>('/admin/institutions')
+  return api.get<InstitutionResponse[]>('/institutions')
+}
+
+export function getUserCounts(institutionId: string) {
+  return api.get<{ contributors: number; validators: number }>('/users/counts', {
+    params: { institutionId },
+  })
+}
+
+export function listUsers(institutionId: string) {
+  return api.get<UserProfileResponse[]>('/users', {
+    params: { institutionId },
+  })
 }
 
 export interface InviteUserRequest {
