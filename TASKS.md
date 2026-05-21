@@ -28,7 +28,7 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: M4 tests: institution DTO/service, guard rails, slot reservations.
 
 ### UC-1.3 - Content Submission Backend
-- Done: Flyway V3 migration for `media_assets`, `asset_tags`, `submission_media_assets`, RLS, and pgvector index.
+- Done: Flyway V4 migration for `media_assets`, `asset_tags`, `submission_media_assets`, RLS, and pgvector index.
 - Done: `MediaFileType`, `MediaAsset`, `SubmissionMediaAsset`.
 - Done: `MediaAssetRepository`, `SubmissionMediaAssetRepository`, `SubmissionRepository` additions, `UserRepository` additions.
 - Done: DTOs for create/update/response/summary/lookups/slot evaluation/media attachment.
@@ -43,6 +43,8 @@ Legend: Done / In Progress / Not Started / Deferred
 
 ### Backend Verification
 - Done: backend test suite passed with 163 tests.
+- Done: Flyway duplicate migration version conflict fixed; source and generated migrations now use unique versions `V1`, `V2`, `V3`, and `V4`.
+- Done: `mvn clean` and `mvn -DskipTests package` passed after the migration rename.
 - Note: `.\mvnw.cmd` fails in the current PowerShell environment; direct Maven from `.m2/wrapper/dists` was used successfully.
 
 ### Pending - Backend
@@ -69,6 +71,7 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: dashboard supports administrator, validator, and contributor views.
 - Done: institution provisioning modal wired to canonical `/api/v1/institutions`.
 - Done: invite users modal wired to invitation endpoints.
+- Note: no built-in validator account exists; create validators through the administrator invite flow.
 
 ### UC-1.3 Submission Form
 - Done: submission list wired to `GET /api/v1/submissions`.
@@ -95,6 +98,7 @@ Legend: Done / In Progress / Not Started / Deferred
 
 ### Frontend Verification
 - Done: `npm.cmd run build` passed.
+- Local setup: `frontend/.env.local` should contain `VITE_API_URL=http://localhost:8080/api/v1` when using the Vite dev server with the local backend. This file is intentionally ignored by Git.
 - Required env vars for browser media upload:
   - `VITE_SUPABASE_URL`
   - `VITE_SUPABASE_STORAGE_BUCKET`
@@ -108,6 +112,7 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: M4 test branch merged to `main`.
 - Done: docs/handoff updates merged to `main` via PRs #13, #15, #16.
 - Done: UC-1.3 backend and frontend API wiring completed locally on `feature/uc13-submission-backend`.
+- Done: UC-1.3 Flyway migration conflict fixed by renaming media migration to `V4__media_assets.sql`.
 - In Progress: merge/code review path for `feature/uc13-submission-backend`.
 - Not Started: configure real SMTP credentials in backend runtime environment.
 - Not Started: configure Supabase service/browser upload environment variables in deployed environments.

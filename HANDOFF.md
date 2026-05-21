@@ -14,6 +14,7 @@ Current branch: `feature/uc13-submission-backend`
 - Done: `GlobalExceptionHandler` now returns `400 Bad Request` for missing request parameters instead of falling through to generic server error handling.
 - Done: `InstitutionController` now exposes canonical `/api/v1/institutions` and keeps `/api/v1/admin/institutions` as a legacy alias.
 - Done: M2 stragglers remain in place: resend invitation, `GET /me`, scoped user listing, and user role counts.
+- Done: Flyway duplicate version conflict fixed by keeping `V3__ensure_institution_email_domain.sql` and renaming the media migration to `V4__media_assets.sql`.
 
 ### Frontend
 - Done: submission API wiring now matches the backend:
@@ -25,12 +26,14 @@ Current branch: `feature/uc13-submission-backend`
 - Done: reset password screen and `/reset-password` route are wired to `POST /api/v1/auth/reset-password`.
 - Done: session warning infrastructure now reads JWT `exp`, starts a five-minute countdown, and opens the expiry modal at timeout.
 - Done: dashboard stat tiles are no longer all hardcoded zero; they use live submission/user/institution endpoints where backend support exists.
+- Done locally: `frontend/.env.local` points Vite to `http://localhost:8080/api/v1`; this file is intentionally ignored and should not be committed.
 
 ## Verification
 
 - Frontend: `npm.cmd run build` passed.
 - Backend: `mvn test` passed using the local Maven distribution because `.\mvnw.cmd` fails in this PowerShell environment.
 - Backend result: `Tests run: 163, Failures: 0, Errors: 0, Skipped: 0`.
+- Flyway duplicate migration check: source and generated `target/classes/db/migration` now have unique versions `V1`, `V2`, `V3`, and `V4`; `mvn clean` and `mvn -DskipTests package` passed.
 
 Backend test command used:
 
@@ -48,10 +51,12 @@ Backend test command used:
 - Analytics still need UC-2.4 backend aggregate endpoints.
 - Calendar, publishing, Facebook fallback, AI captions, and AI recommendations still need UC-3.x backend.
 - `GET /api/v1/me` helper exists client-side, but app hydration still primarily depends on login/localStorage state. A future cleanup should hydrate current user from `/me` on app load.
+- No built-in validator account exists. Validators must be invited from the administrator dashboard, accept the invite, and set their password.
 - Supabase browser upload requires frontend env vars:
   - `VITE_SUPABASE_URL`
   - `VITE_SUPABASE_STORAGE_BUCKET`
   - `VITE_SUPABASE_ANON_KEY`
+- Local frontend/backend connection requires `frontend/.env.local` with `VITE_API_URL=http://localhost:8080/api/v1`.
 - Backend runtime still needs real SMTP and Supabase service credentials in the environment.
 - `.\mvnw.cmd` currently fails to start Maven in this PowerShell environment; direct Maven from `.m2/wrapper/dists` works.
 
@@ -62,3 +67,4 @@ Backend test command used:
 - Keep `DATABASE_USER` / `DATABASE_USERNAME` environment naming aligned with `application.properties` and local `.env`.
 - Media upload pattern is frontend direct-to-Supabase first, backend metadata second. Do not switch Module 1 endpoints to multipart upload.
 - Do not log JWTs, reset tokens, invitation tokens, passwords, or API keys.
+- Do not edit generated migration files under `backend/target`; fix Flyway issues only in `backend/src/main/resources/db/migration`.

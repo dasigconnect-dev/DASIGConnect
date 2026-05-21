@@ -44,6 +44,14 @@ npm run preview
 
 Vite dev server default: `http://localhost:5173`.
 
+For local frontend-to-backend calls, create `frontend/.env.local`:
+
+```env
+VITE_API_URL=http://localhost:8080/api/v1
+```
+
+`frontend/.env.local` is intentionally ignored and should not be committed.
+
 ---
 
 ## Architecture
@@ -100,11 +108,13 @@ Current branch: `feature/uc13-submission-backend`.
 - Session expiry countdown is wired from JWT `exp`.
 - Dashboard stats use live endpoints where backend support exists.
 - `InstitutionController` exposes canonical `/api/v1/institutions` and legacy `/api/v1/admin/institutions`.
+- Flyway migration versions are unique after the UC-1.3 fix: `V3__ensure_institution_email_domain.sql` and `V4__media_assets.sql`.
 
 ### Verification
 
 - Backend: 163 tests passing.
 - Frontend: `npm.cmd run build` passing.
+- Migration sanity: `mvn clean` and `mvn -DskipTests package` passed after renaming the media migration from V3 to V4.
 
 ### Known Gaps
 
@@ -116,6 +126,7 @@ Current branch: `feature/uc13-submission-backend`.
 - Analytics need UC-2.4 backend.
 - Calendar, auto-publish, manual fallback, AI captions, and recommendations need UC-3.x backend.
 - Client has a `/me` helper, but app boot should still be cleaned up to hydrate current user from `GET /api/v1/me`.
+- No built-in validator account exists. Use the administrator dashboard to invite validators, then accept the invitation and set a password.
 - Browser media upload requires `VITE_SUPABASE_URL`, `VITE_SUPABASE_STORAGE_BUCKET`, and `VITE_SUPABASE_ANON_KEY`.
 - Backend runtime still needs real SMTP and Supabase service credentials.
 
@@ -159,7 +170,7 @@ Important enum values are lowercase in the database, including roles and statuse
 | `feature/M2-auth-backend-test` | Merged | M1/M2 tests |
 | `feat/m4-institution-scheduling` | Merged | Institution management, guard rails, slot reservation, provisioning |
 | `dev` | In progress | UC-1.2 extension, conditional bean fix, merged foundation work |
-| `feature/uc13-submission-backend` | Done locally, not merged | UC-1.3 backend, required tests, frontend API wiring, reset password/session/dashboard fixes |
+| `feature/uc13-submission-backend` | Done locally, not merged | UC-1.3 backend, required tests, frontend API wiring, reset password/session/dashboard fixes, Flyway V4 media migration |
 | UC-2.x | Not started | Validation, media repository, notifications, analytics |
 | UC-3.x | Not started | Calendar, publishing, AI captions/classification/recommendations |
 
@@ -172,6 +183,7 @@ See `TASKS.md` for the detailed task checklist and current gaps.
 - JWT auth is stateless; do not introduce server-side sessions.
 - Tenant isolation is enforced in application services and PostgreSQL RLS.
 - Flyway owns schema changes. Add migrations instead of relying on Hibernate DDL.
+- Do not edit generated files under `backend/target`; fix migration conflicts in `backend/src/main/resources/db/migration`.
 - `BackendApplication` custom Flyway/diagnostic beans are gated by `spring.flyway.enabled`; tests depend on this isolation.
 - `MediaAsset.embedding` is not Hibernate-mapped because pgvector `VECTOR(1024)` is handled through native queries.
 - Media upload is direct-to-Supabase from the frontend, followed by backend metadata attach. The backend does not receive multipart file bytes for Module 1.
