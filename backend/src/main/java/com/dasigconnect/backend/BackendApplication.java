@@ -2,21 +2,57 @@ package com.dasigconnect.backend;
 
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import javax.sql.DataSource;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 
 @SpringBootApplication
 public class BackendApplication {
 
 	public static void main(String[] args) {
+		loadLocalEnvFiles();
 		SpringApplication.run(BackendApplication.class, args);
 	}
 
+	private static void loadLocalEnvFiles() {
+		List<Path> candidates = List.of(Path.of(".env"), Path.of("backend", ".env"));
+		for (Path candidate : candidates) {
+			if (!Files.isRegularFile(candidate)) {
+				continue;
+			}
+			try {
+				for (String line : Files.readAllLines(candidate)) {
+					String trimmed = line.trim();
+					if (trimmed.isBlank() || trimmed.startsWith("#")) {
+						continue;
+					}
+					int separator = trimmed.indexOf('=');
+					if (separator <= 0) {
+						continue;
+					}
+					String key = trimmed.substring(0, separator).trim();
+					String value = trimmed.substring(separator + 1).trim();
+					if (System.getProperty(key) == null && System.getenv(key) == null) {
+						System.setProperty(key, value);
+					}
+				}
+			} catch (IOException ex) {
+				System.err.println("Warning: Could not load local env file " + candidate + ": " + ex.getMessage());
+			}
+		}
+	}
+
 	@Bean
+	@ConditionalOnProperty(name = "spring.flyway.enabled", havingValue = "true", matchIfMissing = true)
 	public org.flywaydb.core.Flyway flyway(DataSource dataSource) {
 		System.out.println("==================================================");
 		System.out.println("INITIALIZING CUSTOM FLYWAY BEAN...");
@@ -34,6 +70,7 @@ public class BackendApplication {
 	}
 
 	@Bean
+	@ConditionalOnBean(DataSource.class)
 	public CommandLineRunner dbDiagnostics(
 			DataSource dataSource,
 			com.dasigconnect.backend.repository.UserRepository userRepository,

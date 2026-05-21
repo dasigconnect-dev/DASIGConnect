@@ -11,6 +11,7 @@ import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
 import com.dasigconnect.backend.repository.UserRepository;
+import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.security.TokenHashUtils;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +48,8 @@ class InvitationServiceTest {
 
     private Institution institution;
     private UUID institutionId;
+    private JwtUserDetails adminPrincipal;
+    private JwtUserDetails validatorPrincipal;
 
     @BeforeEach
     void setUp() {
@@ -56,6 +59,8 @@ class InvitationServiceTest {
         institution.setName("CIT-U");
         institution.setCode("citu");
         institution.setEmailDomain("example.com");
+        adminPrincipal = new JwtUserDetails(UUID.randomUUID(), "admin@dasigconnect.com", "administrator", null);
+        validatorPrincipal = new JwtUserDetails(UUID.randomUUID(), "validator@example.com", "validator", institutionId);
     }
 
     private InvitationToken buildToken(boolean used, boolean expired) {
@@ -101,6 +106,7 @@ class InvitationServiceTest {
             t.setId(UUID.randomUUID());
             return t;
         });
+        when(emailService.buildInvitationLink(any())).thenReturn("http://localhost:5173/invite?token=token");
 
         CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
                 "user@example.com", institutionId, UserRole.contributor);
@@ -119,12 +125,31 @@ class InvitationServiceTest {
     }
 
     @Test
-    void createInvitation_withWrongInstitutionDomain_throws400() {
+    void createInvitation_adminWithDifferentEmailDomain_savesTokenAndSendsEmail() {
+        when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
+        when(invitationTokenRepository.save(any())).thenAnswer(inv -> {
+            InvitationToken t = inv.getArgument(0);
+            t.setId(UUID.randomUUID());
+            return t;
+        });
+        when(emailService.buildInvitationLink(any())).thenReturn("http://localhost:5173/invite?token=token");
+        CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
+                "user@gmail.com", institutionId, UserRole.validator);
+
+        InvitationResponseDto result = invitationService.createInvitation(dto, adminPrincipal);
+
+        assertThat(result.recipientEmail()).isEqualTo("user@gmail.com");
+        assertThat(result.assignedRole()).isEqualTo(UserRole.validator);
+        verify(emailService).sendInvitationEmail(eq("user@gmail.com"), any());
+    }
+
+    @Test
+    void createInvitation_validatorWithWrongInstitutionDomain_throws400() {
         when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
         CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
                 "user@other.edu.ph", institutionId, UserRole.contributor);
 
-        assertThatThrownBy(() -> invitationService.createInvitation(dto))
+        assertThatThrownBy(() -> invitationService.createInvitation(dto, validatorPrincipal))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
                 .isEqualTo(400);

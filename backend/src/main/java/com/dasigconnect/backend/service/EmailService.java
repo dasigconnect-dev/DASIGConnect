@@ -7,11 +7,14 @@ import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class EmailService {
 
+    private static final Logger log = LoggerFactory.getLogger(EmailService.class);
     private static final int MAX_ATTEMPTS = 3;
 
     private final JavaMailSender mailSender;
@@ -21,10 +24,22 @@ public class EmailService {
     public EmailService(
             JavaMailSender mailSender,
             @Value("${app.mail.from:no-reply@dasigconnect.local}") String fromAddress,
-            @Value("${app.frontend.base-url:http://localhost:5173}") String appBaseUrl) {
+            @Value("${app.frontend.base-url:http://localhost:5173}") String appBaseUrl,
+            @Value("${spring.mail.host:localhost}") String mailHost,
+            @Value("${spring.mail.port:2525}") int mailPort,
+            @Value("${spring.mail.username:}") String mailUsername,
+            @Value("${spring.mail.properties.mail.smtp.auth:false}") boolean smtpAuth,
+            @Value("${spring.mail.properties.mail.smtp.starttls.enable:false}") boolean startTlsEnabled) {
         this.mailSender = mailSender;
         this.fromAddress = fromAddress;
         this.appBaseUrl = appBaseUrl;
+        log.info("Email service configured with SMTP {}:{}, username={}, from={}, auth={}, starttls={}",
+                mailHost,
+                mailPort,
+                blankToPlaceholder(mailUsername),
+                fromAddress,
+                smtpAuth,
+                startTlsEnabled);
     }
 
     public void sendInvitationEmail(String to, String token) {
@@ -64,7 +79,7 @@ public class EmailService {
         retry(() -> {
             try {
                 MimeMessage message = mailSender.createMimeMessage();
-                MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
+                MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
                 helper.setFrom(fromAddress);
                 helper.setTo(to);
                 helper.setSubject(subject);
@@ -86,6 +101,26 @@ public class EmailService {
                 lastFailure = ex;
             }
         }
-        throw lastFailure;
+        String failureMessage = rootCauseMessage(lastFailure);
+        log.warn("Email delivery failed after {} attempts: {}", MAX_ATTEMPTS, failureMessage, lastFailure);
+        throw new IllegalStateException(
+                "Email delivery failed after " + MAX_ATTEMPTS + " attempts: " + failureMessage,
+                lastFailure);
+    }
+
+    private static String blankToPlaceholder(String value) {
+        return value == null || value.isBlank() ? "<empty>" : value;
+    }
+
+    private static String rootCauseMessage(Throwable throwable) {
+        if (throwable == null) {
+            return "unknown error";
+        }
+        Throwable cursor = throwable;
+        while (cursor.getCause() != null) {
+            cursor = cursor.getCause();
+        }
+        String message = cursor.getMessage();
+        return cursor.getClass().getSimpleName() + (message == null || message.isBlank() ? "" : ": " + message);
     }
 }

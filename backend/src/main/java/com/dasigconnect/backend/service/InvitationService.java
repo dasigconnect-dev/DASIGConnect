@@ -76,7 +76,9 @@ public class InvitationService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Institution not found");
         }
         validateInviterScope(dto, inviter);
-        validateInstitutionEmailDomain(recipientEmail, institution);
+        if (isValidator(inviter)) {
+            validateInstitutionEmailDomain(recipientEmail, institution);
+        }
 
         User invitedUser = userRepository.findByEmail(recipientEmail)
                 .map(existing -> prepareExistingPendingUser(existing, dto.assignedRole(), institution))
@@ -206,10 +208,10 @@ public class InvitationService {
     }
 
     private void validateInviterScope(CreateInvitationRequestDto dto, JwtUserDetails inviter) {
-        if (inviter == null || "administrator".equalsIgnoreCase(inviter.role())) {
+        if (inviter == null || isAdministrator(inviter)) {
             return;
         }
-        if (!"validator".equalsIgnoreCase(inviter.role())) {
+        if (!isValidator(inviter)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators and validators can send invitations");
         }
         if (dto.assignedRole() != UserRole.contributor) {
@@ -218,5 +220,13 @@ public class InvitationService {
         if (inviter.institutionId() == null || !inviter.institutionId().equals(dto.institutionId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Validators can only invite users to their own institution");
         }
+    }
+
+    private boolean isAdministrator(JwtUserDetails inviter) {
+        return inviter != null && "administrator".equalsIgnoreCase(inviter.role());
+    }
+
+    private boolean isValidator(JwtUserDetails inviter) {
+        return inviter != null && "validator".equalsIgnoreCase(inviter.role());
     }
 }

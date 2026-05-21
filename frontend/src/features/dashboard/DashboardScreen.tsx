@@ -95,7 +95,7 @@ export default function DashboardScreen({
       })
       .catch((err: any) => {
         setInstitutionsError(
-          err.response?.data?.message || 'Unable to load institutions. Please refresh.',
+          getApiErrorMessage(err, 'Unable to load institutions. Please refresh.'),
         )
       })
       .finally(() => setInstitutionsLoading(false))
@@ -168,7 +168,7 @@ export default function DashboardScreen({
       setInstDomain('')
     } catch (err: any) {
       setInstError(
-        err.response?.data?.message || err.message || 'An error occurred while provisioning the workspace.'
+        getApiErrorMessage(err, 'An error occurred while provisioning the workspace.')
       )
     } finally {
       setInstLoading(false)
@@ -183,8 +183,9 @@ export default function DashboardScreen({
       .split(/[\s,\n]+/)
       .map((email) => email.trim())
       .filter((email) => email.length > 0)
+    const inviteEmails = Array.from(new Set(rawEmails.map((email) => email.toLowerCase())))
 
-    if (rawEmails.length === 0) {
+    if (inviteEmails.length === 0) {
       alert('Please enter at least one recipient email address.')
       return
     }
@@ -194,9 +195,9 @@ export default function DashboardScreen({
       return
     }
 
-    if (rawEmails.length > 15) {
+    if (inviteEmails.length > 15) {
       setInviteResults({
-        total: rawEmails.length,
+        total: inviteEmails.length,
         success: [],
         failed: [
           {
@@ -213,7 +214,15 @@ export default function DashboardScreen({
     const success: string[] = []
     const failed: { email: string; reason: string }[] = []
 
-    for (const email of rawEmails) {
+    for (const email of inviteEmails) {
+      if (!isValidEmail(email)) {
+        failed.push({
+          email,
+          reason: 'Enter a valid email address.',
+        })
+        continue
+      }
+
       try {
         const response = await inviteUser({
           recipientEmail: email,
@@ -231,13 +240,13 @@ export default function DashboardScreen({
       } catch (err: any) {
         failed.push({
           email,
-          reason: err.response?.data?.message || err.message || 'Invitation failed to process.',
+          reason: getApiErrorMessage(err, 'Invitation failed to process.'),
         })
       }
     }
 
     setInviteResults({
-      total: rawEmails.length,
+      total: inviteEmails.length,
       success,
       failed,
     })
@@ -964,6 +973,14 @@ function normalizeDomain(domain: string) {
 
 function isValidDomain(domain: string) {
   return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)
+}
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+function getApiErrorMessage(err: any, fallback: string) {
+  return err.response?.data?.error || err.response?.data?.message || err.message || fallback
 }
 
 function generateInstitutionCode(name: string, domain: string) {
