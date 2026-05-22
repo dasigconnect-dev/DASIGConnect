@@ -100,6 +100,10 @@ public class SubmissionService {
         submission.setCaption(dto.getCaption());
         submission.setDescription(dto.getDescription());
         submission.setStatus(SubmissionStatus.draft);
+        submission.setCategory(dto.getCategory());
+        if (dto.getTags() != null && !dto.getTags().isEmpty()) {
+            submission.setTags(String.join(",", dto.getTags()));
+        }
 
         submission = submissionRepository.save(submission);
 
@@ -128,6 +132,10 @@ public class SubmissionService {
         if (dto.getEventDate() != null) submission.setEventDate(dto.getEventDate());
         if (dto.getCaption() != null) submission.setCaption(dto.getCaption());
         if (dto.getDescription() != null) submission.setDescription(dto.getDescription());
+        if (dto.getCategory() != null) submission.setCategory(dto.getCategory());
+        if (dto.getTags() != null) {
+            submission.setTags(dto.getTags().isEmpty() ? null : String.join(",", dto.getTags()));
+        }
 
         if (dto.getScheduledAt() != null && !dto.getScheduledAt().equals(submission.getScheduledAt())) {
             submission.setScheduledAt(dto.getScheduledAt());
@@ -149,7 +157,8 @@ public class SubmissionService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only DRAFT submissions can be deleted. Current status: " + submission.getStatus());
         }
-        slotReservationService.release(submissionId);
+        submissionMediaAssetRepository.deleteBySubmissionId(submissionId);
+        slotReservationService.deleteAllForSubmission(submissionId);
         submissionRepository.delete(submission);
         log.info("Submission {} deleted by contributor {}", submissionId, user.userId());
     }

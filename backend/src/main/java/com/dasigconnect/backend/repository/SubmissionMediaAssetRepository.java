@@ -18,6 +18,8 @@ public interface SubmissionMediaAssetRepository extends JpaRepository<Submission
 
     long countBySubmissionId(UUID submissionId);
 
+    void deleteBySubmissionId(UUID submissionId);
+
     @Query("""
         SELECT COUNT(sma) FROM SubmissionMediaAsset sma
         WHERE sma.mediaAsset.id = :assetId

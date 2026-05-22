@@ -103,14 +103,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const previewCaption = form.caption.trim() || 'Your caption preview will appear here as you write.'
 
   useEffect(() => {
-    if (!scheduledAt || !form.id) {
+    if (!scheduledAt) {
       setGuardRails(null)
       setGuardRailError('')
       return
     }
 
     const timer = window.setTimeout(() => {
-      validateGuardRails(form.id!, scheduledAt)
+      validateGuardRails(scheduledAt)
         .then((response) => {
           setGuardRails(response.data)
           setGuardRailError('')
@@ -122,7 +122,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }, 350)
 
     return () => window.clearTimeout(timer)
-  }, [scheduledAt, form.id])
+  }, [scheduledAt])
 
   useEffect(() => {
     if (!toast) return
@@ -142,10 +142,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       eventDate: submission.eventDate || '',
       caption: submission.caption || '',
       description: submission.description || '',
-      category: '',
+      category: submission.category || '',
       scheduledDate: submission.scheduledAt ? submission.scheduledAt.slice(0, 10) : '',
       scheduledTime: submission.scheduledAt ? formatTimeInput(submission.scheduledAt) : '',
-      tags: [],
+      tags: submission.tags ?? [],
       files: [],
     })
     setToast({ message: 'Submission loaded', type: 'info' })
@@ -175,7 +175,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       const payload = toPayload(form, scheduledAt)
       const draft = form.id ? await updateDraft(form.id, payload) : await createDraft(payload)
       if (form.files.length > 0) {
-        await uploadSubmissionMedia(draft.data.id, form.files)
+        try {
+          await uploadSubmissionMedia(draft.data.id, form.files)
+        } catch (uploadErr: any) {
+          setToast({ message: 'Media upload skipped: ' + (uploadErr.message || 'Supabase not configured'), type: 'warn' })
+        }
       }
       const submitted = await submitForReview(draft.data.id)
       setSubmissions((current) => upsertSubmission(current, submitted.data))
@@ -403,7 +407,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             <div className="sub-field-row">
               <Field label="Event Category">
                 <select className="sub-fselect" value={form.category} onChange={(event) => updateField('category', event.target.value)}>
-                  <option value="">{lookupsLoading ? 'Loading options...' : 'Backend categories unavailable'}</option>
+                  <option value="">{lookupsLoading ? 'Loading...' : 'Select a category'}</option>
+                  {lookups.categories?.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
                 </select>
               </Field>
               <Field label="Institution Scope">
@@ -414,11 +421,30 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             <Field label="Tags">
               {lookupsError && (
                 <div className="sub-inline-note">
-                  Backend tag options are not available yet. You can still save and submit the required submission fields.
+                  Tag options could not be loaded. You can still save and submit.
                 </div>
               )}
               <div className="sub-tag-row">
-                <span className="sub-muted-text">No backend tags available.</span>
+                {lookups.availableTags?.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    className={`sub-tag ${form.tags.includes(tag) ? 'active' : ''}`}
+                    onClick={() =>
+                      updateField(
+                        'tags',
+                        form.tags.includes(tag)
+                          ? form.tags.filter((t) => t !== tag)
+                          : [...form.tags, tag],
+                      )
+                    }
+                  >
+                    {tag}
+                  </button>
+                ))}
+                {!lookupsLoading && !lookups.availableTags?.length && (
+                  <span className="sub-muted-text">No tags available.</span>
+                )}
               </div>
             </Field>
 
@@ -680,6 +706,8 @@ function toPayload(form: FormState, scheduledAt?: string): SubmissionPayload {
     caption: form.caption.trim(),
     description: form.description.trim(),
     scheduledAt,
+    category: form.category || undefined,
+    tags: form.tags.length > 0 ? form.tags : undefined,
   }
 }
 

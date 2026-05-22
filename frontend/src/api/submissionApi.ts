@@ -25,6 +25,8 @@ export interface SubmissionSummary {
   submittedAt?: string
   updatedAt?: string
   mediaCount?: number
+  category?: string
+  tags?: string[]
 }
 
 export interface SubmissionPayload {
@@ -33,6 +35,8 @@ export interface SubmissionPayload {
   caption: string
   description: string
   scheduledAt?: string
+  category?: string
+  tags?: string[]
 }
 
 export interface SubmissionLookups {
@@ -44,6 +48,8 @@ export interface SubmissionLookups {
   maxTitleLength: number
   minScheduleLeadTimeHours: number
   maxScheduleDaysAhead: number
+  categories: string[]
+  availableTags: string[]
 }
 
 export interface GuardRailViolation {
@@ -101,8 +107,8 @@ export function getSubmissionLookups(signal?: AbortSignal) {
   return api.get<SubmissionLookups>('/submissions/lookups', { signal })
 }
 
-export function validateGuardRails(submissionId: string, scheduledAt: string) {
-  return api.post<GuardRailResult>(`/submissions/${submissionId}/evaluate-slot`, { scheduledAt })
+export function validateGuardRails(scheduledAt: string) {
+  return api.post<GuardRailResult>('/guardrails/validate', { scheduledAt })
 }
 
 async function uploadToSupabaseStorage(submissionId: string, file: File) {
