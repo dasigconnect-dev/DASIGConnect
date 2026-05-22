@@ -2,7 +2,6 @@ package com.dasigconnect.backend;
 
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
@@ -75,9 +74,9 @@ public class BackendApplication {
 	}
 
 	@Bean
-	@ConditionalOnBean(DataSource.class)
 	@ConditionalOnProperty(name = "spring.flyway.enabled", havingValue = "true", matchIfMissing = true)
 	public CommandLineRunner dbDiagnostics(
+			org.flywaydb.core.Flyway flyway,
 			DataSource dataSource,
 			com.dasigconnect.backend.repository.UserRepository userRepository,
 			org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
