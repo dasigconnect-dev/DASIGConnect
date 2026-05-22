@@ -146,6 +146,34 @@ class InvitationServiceTest {
     }
 
     @Test
+    void createInvitation_existingPendingToken_invalidatesOldTokenBeforeIssuingNewOne() {
+        InvitationToken oldToken = buildToken(false, false);
+        oldToken.setRecipientEmail("user@example.com");
+        when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
+        when(invitationTokenRepository.findByRecipientEmailAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
+                eq("user@example.com"), any())).thenReturn(List.of(oldToken));
+        when(invitationTokenRepository.save(any())).thenAnswer(inv -> {
+            InvitationToken t = inv.getArgument(0);
+            if (t.getId() == null) {
+                t.setId(UUID.randomUUID());
+            }
+            return t;
+        });
+        when(emailService.buildInvitationLink(any())).thenReturn("http://localhost:5173/invite?token=token");
+
+        invitationService.createInvitation(new CreateInvitationRequestDto(
+                "user@example.com",
+                institutionId,
+                UserRole.contributor));
+
+        assertThat(oldToken.getUsedAt()).isNotNull();
+        verify(invitationTokenRepository).save(argThat(token ->
+                "user@example.com".equals(token.getRecipientEmail())
+                        && token.getUsedAt() == null
+                        && token.getTokenHash() != null));
+    }
+
+    @Test
     void createInvitation_validatorWithWrongInstitutionDomain_throws400() {
         when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
         CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
@@ -250,6 +278,8 @@ class InvitationServiceTest {
 
         when(invitationTokenRepository.findById(original.getId())).thenReturn(Optional.of(original));
         when(userRepository.findByEmail(original.getRecipientEmail())).thenReturn(Optional.of(pendingUser));
+        when(invitationTokenRepository.findByRecipientEmailAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
+                eq(original.getRecipientEmail()), any())).thenReturn(List.of(original));
         when(invitationTokenRepository.save(any())).thenAnswer(inv -> {
             InvitationToken token = inv.getArgument(0);
             token.setId(UUID.randomUUID());
@@ -263,6 +293,7 @@ class InvitationServiceTest {
 
         assertThat(result.recipientEmail()).isEqualTo(original.getRecipientEmail());
         assertThat(result.emailDelivered()).isTrue();
+        assertThat(original.getUsedAt()).isNotNull();
         verify(emailService).sendInvitationEmail(eq(original.getRecipientEmail()), anyString());
         verify(invitationTokenRepository).save(argThat(token ->
                 token.getRecipientEmail().equals(original.getRecipientEmail())

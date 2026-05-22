@@ -87,6 +87,9 @@ public class InvitationService {
                 .orElseGet(() -> createPendingUser(recipientEmail, dto.assignedRole(), institution));
         userRepository.save(invitedUser);
 
+        Instant now = Instant.now();
+        invalidateOpenInvitations(recipientEmail, now);
+
         String rawToken = TokenHashUtils.generateRawToken();
         String tokenHash = TokenHashUtils.sha256Hex(rawToken);
 
@@ -95,7 +98,7 @@ public class InvitationService {
         token.setAssignedRole(dto.assignedRole());
         token.setInstitution(institution);
         token.setTokenHash(tokenHash);
-        token.setExpiresAt(Instant.now().plus(Duration.ofHours(72)));
+        token.setExpiresAt(now.plus(Duration.ofHours(72)));
         invitationTokenRepository.save(token);
 
         boolean emailDelivered = true;
@@ -235,6 +238,9 @@ public class InvitationService {
             }
         });
 
+        Instant now = Instant.now();
+        invalidateOpenInvitations(original.getRecipientEmail(), now);
+
         String rawToken = TokenHashUtils.generateRawToken();
         String tokenHash = TokenHashUtils.sha256Hex(rawToken);
 
@@ -243,7 +249,7 @@ public class InvitationService {
         newToken.setAssignedRole(original.getAssignedRole());
         newToken.setInstitution(original.getInstitution());
         newToken.setTokenHash(tokenHash);
-        newToken.setExpiresAt(Instant.now().plus(Duration.ofHours(72)));
+        newToken.setExpiresAt(now.plus(Duration.ofHours(72)));
         invitationTokenRepository.save(newToken);
 
         boolean emailDelivered = true;
@@ -300,6 +306,15 @@ public class InvitationService {
         if (inviter.institutionId() == null || !inviter.institutionId().equals(dto.institutionId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Validators can only invite users to their own institution");
         }
+    }
+
+    private void invalidateOpenInvitations(String recipientEmail, Instant now) {
+        invitationTokenRepository
+                .findByRecipientEmailAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(recipientEmail, now)
+                .forEach(token -> {
+                    token.setUsedAt(now);
+                    invitationTokenRepository.save(token);
+                });
     }
 
     private boolean isAdministrator(JwtUserDetails inviter) {

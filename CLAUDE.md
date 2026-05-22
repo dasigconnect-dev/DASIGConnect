@@ -91,7 +91,7 @@ React SPA (Vercel) -> Spring Boot REST API (Render) -> Supabase PostgreSQL + pgv
 
 ---
 
-## Current Local Status - 2026-05-21
+## Current Local Status - 2026-05-22
 
 Current branch: `feature/uc13-submission-backend`.
 
@@ -106,29 +106,33 @@ Current branch: `feature/uc13-submission-backend`.
 - Frontend API wiring now matches backend contracts for submissions, guard rail evaluation, media upload metadata, institutions, and lookups.
 - Reset password page is implemented.
 - Session expiry countdown is wired from JWT `exp`.
-- Dashboard stats use live endpoints where backend support exists.
+- Dashboard stats use live endpoints where backend support exists, including pending invitation counts.
+- Dashboard invite/manage modal lists pending invitations, supports resend, and shows current users for the selected institution.
+- App auth state hydrates from `GET /api/v1/me` after login, invite accept, session relogin, and saved-token restore.
+- Invitation create/resend now supersedes older unused, unexpired invite tokens for the same recipient email.
+- User count queries now enforce validator institution scope.
 - `InstitutionController` exposes canonical `/api/v1/institutions` and legacy `/api/v1/admin/institutions`.
 - Flyway migration versions are unique after the UC-1.3 fix: `V3__ensure_institution_email_domain.sql` and `V4__media_assets.sql`.
+- Local datasource configuration supports `DASIG_DATABASE_*` overrides before falling back to standard `DATABASE_*` values and a local JDBC default.
 
 ### Verification
 
 - Backend: 163 tests passing.
+- Backend focused auth/onboarding tests: 50 tests passing across `InvitationServiceTest`, `InvitationControllerTest`, `UserServiceTest`, and `UserControllerTest`.
 - Frontend: `npm.cmd run build` passing.
 - Migration sanity: `mvn clean` and `mvn -DskipTests package` passed after renaming the media migration from V3 to V4.
 
 ### Known Gaps
 
-- Pending invitation count is still hardcoded because no backend pending-invitation count/list endpoint exists.
 - Submission lookups do not return categories, tags, or preferred time slots.
 - Media library / asset picker needs UC-2.2 backend: `GET/DELETE /api/v1/media-assets`.
 - Validator review actions need UC-2.1 backend.
 - SSE notifications need UC-2.3 backend.
 - Analytics need UC-2.4 backend.
 - Calendar, auto-publish, manual fallback, AI captions, and recommendations need UC-3.x backend.
-- Client has a `/me` helper, but app boot should still be cleaned up to hydrate current user from `GET /api/v1/me`.
 - No built-in validator account exists. Use the administrator dashboard to invite validators, then accept the invitation and set a password.
-- Browser media upload requires `VITE_SUPABASE_URL`, `VITE_SUPABASE_STORAGE_BUCKET`, and `VITE_SUPABASE_ANON_KEY`.
-- Backend runtime still needs real SMTP and Supabase service credentials.
+- Browser media upload verification is blocked until team Supabase access/credentials are available. Required frontend vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_STORAGE_BUCKET`, and `VITE_SUPABASE_ANON_KEY`.
+- Backend deployment runtime still needs team-owned SMTP and Supabase service credentials. Local SMTP is configured through ignored env files.
 
 ---
 
@@ -170,7 +174,7 @@ Important enum values are lowercase in the database, including roles and statuse
 | `feature/M2-auth-backend-test` | Merged | M1/M2 tests |
 | `feat/m4-institution-scheduling` | Merged | Institution management, guard rails, slot reservation, provisioning |
 | `dev` | In progress | UC-1.2 extension, conditional bean fix, merged foundation work |
-| `feature/uc13-submission-backend` | Done locally, not merged | UC-1.3 backend, required tests, frontend API wiring, reset password/session/dashboard fixes, Flyway V4 media migration |
+| `feature/uc13-submission-backend` | Done locally, not merged | UC-1.3 backend, required tests, frontend API wiring, reset password/session/dashboard fixes, pending invite/user management UI, invite token superseding, Flyway V4 media migration |
 | UC-2.x | Not started | Validation, media repository, notifications, analytics |
 | UC-3.x | Not started | Calendar, publishing, AI captions/classification/recommendations |
 
@@ -187,5 +191,7 @@ See `TASKS.md` for the detailed task checklist and current gaps.
 - `BackendApplication` custom Flyway/diagnostic beans are gated by `spring.flyway.enabled`; tests depend on this isolation.
 - `MediaAsset.embedding` is not Hibernate-mapped because pgvector `VECTOR(1024)` is handled through native queries.
 - Media upload is direct-to-Supabase from the frontend, followed by backend metadata attach. The backend does not receive multipart file bytes for Module 1.
+- Invitation links are treated as superseded when a fresh invite/resend is issued for the same email; do not leave multiple open invite links for one pending account.
+- The frontend should display institution names from `GET /api/v1/me`; email-domain guessing is only a fallback.
 - Do not increase HikariCP max pool size past 5 unless the Supabase plan/pooler changes.
 - Do not log JWTs, passwords, reset tokens, invitation tokens, or API keys.

@@ -12,5 +12,8 @@ public interface InvitationTokenRepository extends JpaRepository<InvitationToken
     List<InvitationToken> findByInstitutionIdAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
             UUID institutionId,
             Instant now);
+    List<InvitationToken> findByRecipientEmailAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
+            String recipientEmail,
+            Instant now);
     long countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(UUID institutionId, Instant now);
 }

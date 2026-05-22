@@ -72,7 +72,8 @@ public class UserService {
      * Returns counts of contributors and validators for an institution.
      * Used for dashboard summary tiles.
      */
-    public java.util.Map<String, Long> countByRole(UUID institutionId) {
+    public java.util.Map<String, Long> countByRole(UUID institutionId, JwtUserDetails requester) {
+        validateInstitutionScope(institutionId, requester);
         return java.util.Map.of(
                 "contributors", userRepository.countByInstitutionIdAndRole(institutionId, UserRole.contributor),
                 "validators", userRepository.countByInstitutionIdAndRole(institutionId, UserRole.validator)

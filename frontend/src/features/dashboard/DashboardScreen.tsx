@@ -2,7 +2,17 @@ import { useState, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Screen from '../../components/layout/Screen'
 import type { User } from '../../types/auth.types'
-import { createInstitution, getUserCounts, inviteUser, listInstitutions } from '../../api/authApi'
+import {
+  createInstitution,
+  getPendingInvitationCount,
+  getUserCounts,
+  inviteUser,
+  listInstitutions,
+  listPendingInvitations,
+  listUsers,
+  resendInvitation,
+} from '../../api/authApi'
+import type { PendingInvitationResponse, UserProfileResponse } from '../../api/authApi'
 import { listSubmissions, type SubmissionSummary } from '../../api/submissionApi'
 
 interface DashboardScreenProps {
@@ -50,6 +60,7 @@ interface DashboardStats {
   submissions: SubmissionSummary[]
   contributors: number
   validators: number
+  pendingInvitations: number
 }
 
 const emptyContributorActivity: ActivityItem[] = []
@@ -76,19 +87,20 @@ export default function DashboardScreen({
     submissions: [],
     contributors: 0,
     validators: 0,
+    pendingInvitations: 0,
   })
 
   useEffect(() => {
-    if (user?.role === 'validator' && user.inst) {
+    if (user?.role === 'validator' && user.institutionId) {
       setInstitutions([
         {
-          id: user.inst,
-          name: 'Your institution',
+          id: user.institutionId,
+          name: getInstitutionName(user),
           code: '',
           emailDomain: '',
         },
       ])
-      setInviteSelectedInstId(user.inst)
+      setInviteSelectedInstId(user.institutionId)
       setInviteRole('contributor')
       return
     }
@@ -111,7 +123,7 @@ export default function DashboardScreen({
         )
       })
       .finally(() => setInstitutionsLoading(false))
-  }, [user?.role])
+  }, [user?.role, user?.institutionId, user?.inst])
 
   useEffect(() => {
     if (!user) return
@@ -127,44 +139,72 @@ export default function DashboardScreen({
   useEffect(() => {
     if (!user) return
     if (user.role === 'contributor') {
-      setDashboardStats((current) => ({ ...current, contributors: 0, validators: 0 }))
+      setDashboardStats((current) => ({
+        ...current,
+        contributors: 0,
+        validators: 0,
+        pendingInvitations: 0,
+      }))
       return
     }
 
     const institutionIds = user.role === 'admin'
       ? institutions.map((institution) => institution.id)
-      : user.inst
-        ? [user.inst]
+      : user.institutionId
+        ? [user.institutionId]
         : []
 
     if (institutionIds.length === 0) {
-      setDashboardStats((current) => ({ ...current, contributors: 0, validators: 0 }))
+      setDashboardStats((current) => ({
+        ...current,
+        contributors: 0,
+        validators: 0,
+        pendingInvitations: 0,
+      }))
       return
     }
 
     let active = true
-    Promise.all(institutionIds.map((institutionId) => getUserCounts(institutionId)))
+    Promise.all(
+      institutionIds.map(async (institutionId) => {
+        const [countsResponse, pendingResponse] = await Promise.all([
+          getUserCounts(institutionId),
+          getPendingInvitationCount(institutionId),
+        ])
+        return {
+          contributors: countsResponse.data.contributors,
+          validators: countsResponse.data.validators,
+          pendingInvitations: pendingResponse.data.pendingInvitations,
+        }
+      }),
+    )
       .then((responses) => {
         if (!active) return
         const totals = responses.reduce(
-          (sum, response) => ({
-            contributors: sum.contributors + response.data.contributors,
-            validators: sum.validators + response.data.validators,
+          (sum, item) => ({
+            contributors: sum.contributors + item.contributors,
+            validators: sum.validators + item.validators,
+            pendingInvitations: sum.pendingInvitations + item.pendingInvitations,
           }),
-          { contributors: 0, validators: 0 },
+          { contributors: 0, validators: 0, pendingInvitations: 0 },
         )
         setDashboardStats((current) => ({ ...current, ...totals }))
       })
       .catch(() => {
         if (active) {
-          setDashboardStats((current) => ({ ...current, contributors: 0, validators: 0 }))
+          setDashboardStats((current) => ({
+            ...current,
+            contributors: 0,
+            validators: 0,
+            pendingInvitations: 0,
+          }))
         }
       })
 
     return () => {
       active = false
     }
-  }, [user?.role, user?.inst, institutions])
+  }, [user?.role, user?.institutionId, institutions])
 
   const [instName, setInstName] = useState('')
   const [instDomain, setInstDomain] = useState('')
@@ -181,12 +221,22 @@ export default function DashboardScreen({
     success: string[]
     failed: { email: string; reason: string }[]
   } | null>(null)
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitationResponse[]>([])
+  const [managedUsers, setManagedUsers] = useState<UserProfileResponse[]>([])
+  const [managementLoading, setManagementLoading] = useState(false)
+  const [managementError, setManagementError] = useState('')
+  const [resendingInviteId, setResendingInviteId] = useState<string | null>(null)
 
   useEffect(() => {
     if (institutions.length > 0 && !inviteSelectedInstId) {
       setInviteSelectedInstId(institutions[0].id)
     }
   }, [institutions, inviteSelectedInstId])
+
+  useEffect(() => {
+    if (openModal !== 'invite' || !inviteSelectedInstId) return
+    void loadManagementLists(inviteSelectedInstId)
+  }, [openModal, inviteSelectedInstId])
 
   const handleCloseModals = () => {
     setOpenModal(null)
@@ -196,6 +246,9 @@ export default function DashboardScreen({
     setInstSuccess(null)
     setInviteEmailsText('')
     setInviteResults(null)
+    setPendingInvitations([])
+    setManagedUsers([])
+    setManagementError('')
   }
 
   const handleProvisionInstitution = async (e: React.FormEvent) => {
@@ -315,7 +368,42 @@ export default function DashboardScreen({
       success,
       failed,
     })
+    void loadManagementLists(inviteSelectedInstId)
     setInviteLoading(false)
+  }
+
+  const handleResendInvitation = async (id: string) => {
+    setResendingInviteId(id)
+    setManagementError('')
+    try {
+      await resendInvitation(id)
+      if (inviteSelectedInstId) {
+        await loadManagementLists(inviteSelectedInstId)
+      }
+    } catch (err: any) {
+      setManagementError(getApiErrorMessage(err, 'Unable to resend invitation.'))
+    } finally {
+      setResendingInviteId(null)
+    }
+  }
+
+  async function loadManagementLists(institutionId: string) {
+    setManagementLoading(true)
+    setManagementError('')
+    try {
+      const [usersResponse, pendingResponse] = await Promise.all([
+        listUsers(institutionId),
+        listPendingInvitations(institutionId),
+      ])
+      setManagedUsers(usersResponse.data)
+      setPendingInvitations(pendingResponse.data)
+    } catch (err: any) {
+      setManagedUsers([])
+      setPendingInvitations([])
+      setManagementError(getApiErrorMessage(err, 'Unable to load users and invitations.'))
+    } finally {
+      setManagementLoading(false)
+    }
   }
 
   const handleResubmitFailedOnly = () => {
@@ -445,7 +533,7 @@ export default function DashboardScreen({
                       </div>
                       <div className="udrop-role" id="dd-role-inst">
                         {user
-                          ? `${capitalize(user.role)} · ${shortInstitution(user.inst)}`
+                          ? `${capitalize(user.role)} · ${shortInstitution(getInstitutionName(user))}`
                           : ''}
                       </div>
                     </div>
@@ -788,6 +876,84 @@ export default function DashboardScreen({
                       </div>
                     )}
 
+                    <div className="dash-management-grid">
+                      <section className="dash-management-panel">
+                        <div className="dash-management-head">
+                          <div>
+                            <div className="dash-management-title">Pending Invites</div>
+                            <div className="dash-management-sub">
+                              {pendingInvitations.length} active invite link{pendingInvitations.length === 1 ? '' : 's'}
+                            </div>
+                          </div>
+                        </div>
+                        {managementLoading ? (
+                          <div className="dash-empty-row">Loading invitations...</div>
+                        ) : pendingInvitations.length === 0 ? (
+                          <div className="dash-empty-row">No pending invitations.</div>
+                        ) : (
+                          <div className="dash-compact-list">
+                            {pendingInvitations.map((invite) => (
+                              <div className="dash-compact-row" key={invite.id}>
+                                <div>
+                                  <div className="dash-compact-primary">{invite.recipientEmail}</div>
+                                  <div className="dash-compact-meta">
+                                    {formatRoleLabel(invite.assignedRole)} · expires {formatDate(invite.expiresAt)}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn-text"
+                                  disabled={resendingInviteId === invite.id}
+                                  onClick={() => void handleResendInvitation(invite.id)}
+                                >
+                                  {resendingInviteId === invite.id ? 'Resending...' : 'Resend'}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+
+                      <section className="dash-management-panel">
+                        <div className="dash-management-head">
+                          <div>
+                            <div className="dash-management-title">Users</div>
+                            <div className="dash-management-sub">
+                              {managedUsers.length} account{managedUsers.length === 1 ? '' : 's'} in this institution
+                            </div>
+                          </div>
+                        </div>
+                        {managementLoading ? (
+                          <div className="dash-empty-row">Loading users...</div>
+                        ) : managedUsers.length === 0 ? (
+                          <div className="dash-empty-row">No users found.</div>
+                        ) : (
+                          <div className="dash-compact-list">
+                            {managedUsers.map((managedUser) => (
+                              <div className="dash-compact-row" key={managedUser.id}>
+                                <div>
+                                  <div className="dash-compact-primary">{managedUser.email}</div>
+                                  <div className="dash-compact-meta">
+                                    {formatRoleLabel(managedUser.role)} · {formatAccountState(managedUser.accountState)}
+                                  </div>
+                                </div>
+                                <span className={`dash-state-pill ${stateClass(managedUser.accountState)}`}>
+                                  {formatAccountState(managedUser.accountState)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    </div>
+
+                    {managementError && (
+                      <div className="alert alert-err">
+                        <i className="ti ti-alert-circle"></i>
+                        <div>{managementError}</div>
+                      </div>
+                    )}
+
                     <div className="dash-modal-actions">
                       <button type="button" className="btn-ghost" onClick={handleCloseModals}>
                         Cancel
@@ -825,7 +991,12 @@ const DOMAIN_MAP: Record<string, string> = {
 function getInstitutionName(user: User | null): string {
   if (!user) return 'Institution'
   if (user.role === 'admin') return 'DASIG'
-  
+
+  const explicitInstitution = user.inst?.trim()
+  if (explicitInstitution && explicitInstitution !== user.institutionId) {
+    return explicitInstitution
+  }
+
   const emailDomain = user.email.split('@')[1]?.split('.')[0]?.toLowerCase() || ''
   return DOMAIN_MAP[emailDomain] || emailDomain.toUpperCase() || 'Institution'
 }
@@ -923,7 +1094,7 @@ function statsForRole(user: User | null, stats: DashboardStats, institutionCount
     return [
       { icon: 'ti ti-building', color: '#1877F2', label: 'Member Institutions', value: String(institutionCount) },
       { icon: 'ti ti-users', color: '#16A34A', label: 'Total Users', value: String(stats.contributors + stats.validators) },
-      { icon: 'ti ti-clock-pause', color: '#D97706', label: 'Pending Invites', value: '0', highlight: true },
+      { icon: 'ti ti-clock-pause', color: '#D97706', label: 'Pending Invites', value: String(stats.pendingInvitations), highlight: stats.pendingInvitations > 0 },
       { icon: 'ti ti-calendar-event', color: '#7C3AED', label: 'Scheduled Posts', value: String(scheduledCount) },
       { icon: 'ti ti-photo-check', color: '#1877F2', label: 'Published This Month', value: String(publishedCount) },
     ]
@@ -1034,8 +1205,38 @@ function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
+function formatRoleLabel(value: string) {
+  const normalized = value.toLowerCase()
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+}
+
 function shortInstitution(value: string) {
   return value
+}
+
+function formatDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'soon'
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+function formatAccountState(value: string) {
+  return value
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function stateClass(value: string) {
+  const normalized = value.toLowerCase()
+  if (normalized.includes('inactive')) return 'state-muted'
+  if (normalized.includes('active')) return 'state-active'
+  if (normalized.includes('undelivered')) return 'state-warning'
+  if (normalized.includes('pending')) return 'state-pending'
+  return 'state-muted'
 }
 
 function normalizeDomain(domain: string) {

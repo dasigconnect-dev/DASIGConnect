@@ -128,11 +128,23 @@ class UserServiceTest {
         when(userRepository.countByInstitutionIdAndRole(institutionId, UserRole.contributor)).thenReturn(12L);
         when(userRepository.countByInstitutionIdAndRole(institutionId, UserRole.validator)).thenReturn(2L);
 
-        Map<String, Long> result = userService.countByRole(institutionId);
+        Map<String, Long> result = userService.countByRole(
+                institutionId,
+                principal(UUID.randomUUID(), "validator", institutionId));
 
         assertThat(result).containsEntry("contributors", 12L).containsEntry("validators", 2L);
         verify(userRepository).countByInstitutionIdAndRole(institutionId, UserRole.contributor);
         verify(userRepository).countByInstitutionIdAndRole(institutionId, UserRole.validator);
+    }
+
+    @Test
+    void countByRole_validatorCannotCountOtherInstitution() {
+        assertThatThrownBy(() -> userService.countByRole(
+                UUID.randomUUID(),
+                principal(UUID.randomUUID(), "validator", institutionId)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test

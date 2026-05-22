@@ -86,6 +86,6 @@ public class UserController {
     public ResponseEntity<Map<String, Long>> userCounts(
             @RequestParam UUID institutionId,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(userService.countByRole(institutionId));
+        return ResponseEntity.ok(userService.countByRole(institutionId, user));
     }
 }

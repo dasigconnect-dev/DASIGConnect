@@ -87,7 +87,7 @@ class UserControllerTest {
     @WithMockUser(roles = "ADMINISTRATOR")
     void userCounts_asAdministrator_returnsCounts() throws Exception {
         UUID institutionId = UUID.randomUUID();
-        when(userService.countByRole(institutionId)).thenReturn(Map.of("contributors", 5L, "validators", 1L));
+        when(userService.countByRole(any(), any())).thenReturn(Map.of("contributors", 5L, "validators", 1L));
 
         mockMvc.perform(get("/api/v1/users/counts").param("institutionId", institutionId.toString()))
                 .andExpect(status().isOk())

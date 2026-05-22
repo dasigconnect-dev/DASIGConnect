@@ -15,8 +15,11 @@ Legend: Done / In Progress / Not Started / Deferred
 ### M2 - Auth & User Provisioning
 - Done: `AuthController` - login/logout.
 - Done: `InvitationController` - create, validate, accept, resend.
+- Done: invitation lifecycle hardening - a new invite/resend invalidates older unused, unexpired invite tokens for the same email.
 - Done: `PasswordController` - forgot/reset password.
 - Done: `UserController` - `GET /api/v1/me`, `GET /api/v1/users?institutionId=`, `GET /api/v1/users/counts?institutionId=`.
+- Done: pending invitation endpoints - `GET /api/v1/invitations/pending` and `GET /api/v1/invitations/pending/count`.
+- Done: validator scope enforcement for user counts and pending invitations.
 - Done: `AuthService`, `AccountLockoutService`, `InvitationService`, `PasswordService`, `UserService`, `UserDto`, `JwtUserDetails`, `TokenHashUtils`, `GlobalExceptionHandler`.
 - Done: M2 tests: account lockout, auth, invitations, password, and controller coverage.
 
@@ -84,8 +87,10 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: backend lookup shape wired for allowed file types, file size, media count, and schedule windows.
 
 ### Dashboard
-- Done: stat tiles use live endpoints where available: submissions, institutions, and user counts.
-- Gap: pending invitation count remains hardcoded `0` until backend exposes a count/list endpoint for pending invitations.
+- Done: stat tiles use live endpoints where available: submissions, institutions, user counts, and pending invitation counts.
+- Done: invite/manage modal lists pending invitations and current users for the selected institution.
+- Done: pending invitations can be resent from the invite/manage modal.
+- Done: current user state hydrates from `GET /api/v1/me` after login, invite accept, session relogin, and saved-token restore.
 
 ### Pending - Frontend
 - Gap: category/tag/preferred-time selection is limited because backend lookups do not currently return those fields.
@@ -94,7 +99,7 @@ Legend: Done / In Progress / Not Started / Deferred
 - Gap: notification badge/stream needs UC-2.3 SSE backend.
 - Gap: analytics dashboard needs UC-2.4 backend.
 - Gap: calendar, publishing, AI caption, and recommendation screens need UC-3.x backend.
-- Gap: `GET /api/v1/me` helper exists, but app load should still be cleaned up to hydrate current user from `/me`.
+- Gap: Supabase browser upload cannot be fully verified until the team lead provides the Supabase URL, storage bucket, and anon key.
 
 ### Frontend Verification
 - Done: `npm.cmd run build` passed.
@@ -113,6 +118,7 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: docs/handoff updates merged to `main` via PRs #13, #15, #16.
 - Done: UC-1.3 backend and frontend API wiring completed locally on `feature/uc13-submission-backend`.
 - Done: UC-1.3 Flyway migration conflict fixed by renaming media migration to `V4__media_assets.sql`.
+- Done: Module 1 auth/onboarding cleanup completed locally: `/me` hydration, pending invite count/list/resend UI, invite token superseding, and user-count tenant scope hardening.
 - In Progress: merge/code review path for `feature/uc13-submission-backend`.
-- Not Started: configure real SMTP credentials in backend runtime environment.
-- Not Started: configure Supabase service/browser upload environment variables in deployed environments.
+- Done locally: SMTP credentials are configured in ignored local environment files; deployment runtime still needs team-owned SMTP values.
+- Not Started: configure Supabase service/browser upload environment variables in deployed environments; blocked until team lead provides Supabase access/credentials.

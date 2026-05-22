@@ -17,7 +17,7 @@ export function setAuthToken(token: string | null) {
 export interface LoginResponse {
   accessToken: string
   role: string
-  institutionId: string
+  institutionId: string | null
 }
 
 export interface UserProfileResponse {
@@ -101,6 +101,31 @@ export function listUsers(institutionId: string) {
   return api.get<UserProfileResponse[]>('/users', {
     params: { institutionId },
   })
+}
+
+export interface PendingInvitationResponse {
+  id: string
+  recipientEmail: string
+  assignedRole: string
+  institutionId: string
+  expiresAt: string
+  createdAt: string
+}
+
+export function listPendingInvitations(institutionId: string) {
+  return api.get<PendingInvitationResponse[]>('/invitations/pending', {
+    params: { institutionId },
+  })
+}
+
+export function getPendingInvitationCount(institutionId: string) {
+  return api.get<{ pendingInvitations: number }>('/invitations/pending/count', {
+    params: { institutionId },
+  })
+}
+
+export function resendInvitation(id: string) {
+  return api.post<InvitationResponse>(`/invitations/${id}/resend`)
 }
 
 export interface InviteUserRequest {

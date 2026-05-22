@@ -519,7 +519,7 @@ html,body{height:100%;font-family:var(--ff-body);-webkit-font-smoothing:antialia
   animation:fadeInModal 0.25s ease;
 }
 .dash-modal-card{
-  width:100%;max-width:640px;
+  width:100%;max-width:760px;
   background:var(--d-surface);
   border:1px solid var(--d-border);
   border-radius:var(--r-lg);
@@ -561,9 +561,24 @@ html,body{height:100%;font-family:var(--ff-body);-webkit-font-smoothing:antialia
 .dash-invite-list{font-size:12.5px;color:var(--d-muted);margin-bottom:10px}
 .dash-invite-list strong{color:var(--d-text);display:block;margin-bottom:4px}
 .dash-invite-failed{color:#B91C1C}
+.dash-management-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+.dash-management-panel{border:1px solid var(--d-border);background:#FFFFFF;border-radius:12px;padding:12px;min-height:160px}
+.dash-management-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
+.dash-management-title{font-size:13px;font-weight:700;color:var(--d-text)}
+.dash-management-sub{font-size:11.5px;color:var(--d-muted);margin-top:2px}
+.dash-compact-list{display:flex;flex-direction:column;gap:8px;max-height:230px;overflow:auto;padding-right:2px}
+.dash-compact-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #EEF2F8;border-radius:8px;padding:8px 9px;background:#F9FBFF}
+.dash-compact-primary{font-size:12.5px;font-weight:600;color:var(--d-text);overflow-wrap:anywhere}
+.dash-compact-meta{font-size:11.5px;color:var(--d-muted);margin-top:2px}
+.dash-empty-row{font-size:12.5px;color:var(--d-muted);padding:12px;border:1px dashed var(--d-border);border-radius:8px;background:#F9FBFF}
+.dash-state-pill{display:inline-flex;align-items:center;white-space:nowrap;border-radius:999px;padding:3px 8px;font-size:10.5px;font-weight:700}
+.state-active{background:#DCFCE7;color:#166534}
+.state-pending{background:#FEF9C3;color:#854D0E}
+.state-warning{background:#FEE2E2;color:#991B1B}
+.state-muted{background:#E5E7EB;color:#374151}
 
 @media(max-width:900px){
-  .dash-field-grid{grid-template-columns:1fr}
+  .dash-field-grid,.dash-management-grid{grid-template-columns:1fr}
 }
 @media(max-width:768px){
   .dash-modal-card{padding:22px 20px}

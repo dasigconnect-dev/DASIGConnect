@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom'
 import {
   acceptInvitation,
+  getMe,
   login,
   logout as logoutRequest,
   requestPasswordReset,
@@ -9,6 +10,7 @@ import {
   setAuthToken,
   validateInvitation,
 } from '../api/authApi'
+import type { LoginResponse, UserProfileResponse } from '../api/authApi'
 import type { User } from '../types/auth.types'
 import LoginScreen from '../features/auth/LoginScreen'
 import ForgotScreen from '../features/auth/ForgotScreen'
@@ -93,8 +95,10 @@ function App() {
     if (savedToken && savedUser) {
       setAuthToken(savedToken)
       try {
-        setCurrentUser(JSON.parse(savedUser))
+        const parsedUser = JSON.parse(savedUser) as User
+        setCurrentUser(parsedUser)
         startSessionCountdown(savedToken)
+        void refreshCurrentUser(parsedUser)
       } catch {
         localStorage.removeItem('dasigconnect_token')
         localStorage.removeItem('dasigconnect_user')
@@ -186,20 +190,9 @@ function App() {
     try {
       const response = await login(email, loginPassword)
       const apiUser = response.data
-      const role = mapApiRole(apiUser.role)
-      const nameFromEmail = email.split('@')[0] || 'User'
-      const user: User = {
-        email,
-        pw: '',
-        role,
-        name: nameFromEmail
-          .split('.')
-          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-          .join(' '),
-        inst: apiUser.institutionId || 'Institution',
-        initials: initialsFromEmail(email),
-      }
+      const fallbackUser = buildUserFromLogin(email, apiUser)
       setAuthToken(apiUser.accessToken)
+      const user = await loadCurrentUser(fallbackUser)
       localStorage.setItem('dasigconnect_token', apiUser.accessToken)
       localStorage.setItem('dasigconnect_user', JSON.stringify(user))
       setCurrentUser(user)
@@ -270,7 +263,12 @@ function App() {
     try {
       const response = await acceptInvitation(inviteToken, invitePassword)
       setAuthToken(response.data.accessToken)
+      const email = inviteEmail.trim().toLowerCase()
+      const fallbackUser = buildUserFromLogin(email, response.data, inviteInstitution)
+      const user = await loadCurrentUser(fallbackUser)
       localStorage.setItem('dasigconnect_token', response.data.accessToken)
+      localStorage.setItem('dasigconnect_user', JSON.stringify(user))
+      setCurrentUser(user)
       startSessionCountdown(response.data.accessToken)
       setInviteState('success')
     } catch {
@@ -302,7 +300,11 @@ function App() {
     try {
       const response = await login(email, modalPassword)
       setAuthToken(response.data.accessToken)
+      const fallbackUser = buildUserFromLogin(email, response.data)
+      const user = await loadCurrentUser(fallbackUser)
       localStorage.setItem('dasigconnect_token', response.data.accessToken)
+      localStorage.setItem('dasigconnect_user', JSON.stringify(user))
+      setCurrentUser(user)
       startSessionCountdown(response.data.accessToken)
       setShowSessionModal(false)
       setModalError(false)
@@ -362,6 +364,12 @@ function App() {
     timerId = window.setInterval(tick, 1000)
     bannerTimerRef.current = timerId
     setBannerTimerId(timerId)
+  }
+
+  async function refreshCurrentUser(fallbackUser: User) {
+    const user = await loadCurrentUser(fallbackUser)
+    localStorage.setItem('dasigconnect_user', JSON.stringify(user))
+    setCurrentUser(user)
   }
 
   async function validateInviteToken(token: string) {
@@ -527,6 +535,57 @@ function mapApiRole(role: string): User['role'] {
   if (normalized.includes('admin')) return 'admin'
   if (normalized.includes('validator')) return 'validator'
   return 'contributor'
+}
+
+async function loadCurrentUser(fallbackUser: User) {
+  try {
+    const response = await getMe()
+    return buildUserFromProfile(response.data, fallbackUser.email)
+  } catch {
+    return fallbackUser
+  }
+}
+
+function buildUserFromLogin(
+  email: string,
+  apiUser: LoginResponse,
+  fallbackInstitutionName?: string,
+): User {
+  return {
+    email,
+    pw: '',
+    role: mapApiRole(apiUser.role),
+    name: displayNameFromEmail(email),
+    inst: fallbackInstitutionName || institutionFallbackFromEmail(email),
+    institutionId: apiUser.institutionId,
+    initials: initialsFromEmail(email),
+  }
+}
+
+function buildUserFromProfile(profile: UserProfileResponse, fallbackEmail: string): User {
+  const email = (profile.email || fallbackEmail).trim().toLowerCase()
+  return {
+    email,
+    pw: '',
+    role: mapApiRole(profile.role),
+    name: displayNameFromEmail(email),
+    inst: profile.institutionName || institutionFallbackFromEmail(email),
+    institutionId: profile.institutionId,
+    initials: initialsFromEmail(email),
+  }
+}
+
+function displayNameFromEmail(email: string) {
+  const name = email.split('@')[0] || 'User'
+  return name
+    .split('.')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function institutionFallbackFromEmail(email: string) {
+  const emailDomain = email.split('@')[1]?.split('.')[0]?.toLowerCase() || ''
+  return emailDomain.toUpperCase() || 'Institution'
 }
 
 function initialsFromEmail(email: string) {

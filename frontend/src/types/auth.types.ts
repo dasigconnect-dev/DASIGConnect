@@ -14,5 +14,6 @@ export interface User {
   role: UserRole
   name: string
   inst: string
+  institutionId?: string | null
   initials: string
 }
