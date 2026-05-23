@@ -3,6 +3,8 @@ package com.dasigconnect.backend.controller;
 import com.dasigconnect.backend.model.dto.guardrail.GuardRailResult;
 import com.dasigconnect.backend.model.dto.submission.AttachAssetDto;
 import com.dasigconnect.backend.model.dto.submission.AttachMediaDto;
+import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlRequest;
+import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlResponse;
 import com.dasigconnect.backend.model.dto.submission.SlotEvaluateRequestDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionCreateDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionLookupsDto;
@@ -138,6 +140,20 @@ public class SubmissionController {
             @Valid @RequestBody SlotEvaluateRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(submissionService.evaluateSlot(dto, user));
+    }
+
+    /**
+     * POST /api/v1/submissions/{id}/media/upload-url
+     * Returns a Supabase signed upload URL so the browser can upload directly
+     * without needing the anon key or storage RLS policies.
+     */
+    @PostMapping("/{id}/media/upload-url")
+    @PreAuthorize("hasRole('CONTRIBUTOR')")
+    public ResponseEntity<SignedUploadUrlResponse> getSignedUploadUrl(
+            @PathVariable UUID id,
+            @Valid @RequestBody SignedUploadUrlRequest dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(submissionService.createSignedUploadUrl(id, dto, user));
     }
 
     /**

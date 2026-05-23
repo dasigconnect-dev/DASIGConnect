@@ -15,6 +15,8 @@ const emptyLookups: SubmissionLookups = {
   maxTitleLength: 255,
   minScheduleLeadTimeHours: 2,
   maxScheduleDaysAhead: 30,
+  categories: [],
+  availableTags: [],
 }
 
 export function useSubmissions() {

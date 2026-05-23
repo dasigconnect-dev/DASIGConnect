@@ -103,4 +103,8 @@ public interface SlotReservationRepository extends JpaRepository<SlotReservation
         AND r.status <> com.dasigconnect.backend.model.entity.SlotReservationStatus.released
     """)
     int releaseBySubmissionId(@Param("submissionId") UUID submissionId);
+
+    @Modifying
+    @Query("DELETE FROM SlotReservation r WHERE r.submission.id = :submissionId")
+    void deleteBySubmissionId(@Param("submissionId") UUID submissionId);
 }

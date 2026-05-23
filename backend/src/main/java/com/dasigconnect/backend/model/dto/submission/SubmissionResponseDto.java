@@ -4,6 +4,7 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
 import com.dasigconnect.backend.model.entity.Submission;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -28,6 +29,8 @@ public class SubmissionResponseDto {
     private Instant createdAt;
     private Instant updatedAt;
     private List<MediaAssetSummaryDto> mediaAssets;
+    private String category;
+    private List<String> tags;
 
     public static SubmissionResponseDto from(Submission s, List<MediaAssetSummaryDto> mediaAssets) {
         SubmissionResponseDto dto = new SubmissionResponseDto();
@@ -50,6 +53,10 @@ public class SubmissionResponseDto {
         dto.createdAt = s.getCreatedAt();
         dto.updatedAt = s.getUpdatedAt();
         dto.mediaAssets = mediaAssets;
+        dto.category = s.getCategory();
+        dto.tags = (s.getTags() == null || s.getTags().isBlank())
+                ? List.of()
+                : Arrays.stream(s.getTags().split(",")).map(String::trim).filter(t -> !t.isEmpty()).toList();
         return dto;
     }
 
@@ -72,4 +79,6 @@ public class SubmissionResponseDto {
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public List<MediaAssetSummaryDto> getMediaAssets() { return mediaAssets; }
+    public String getCategory() { return category; }
+    public List<String> getTags() { return tags; }
 }

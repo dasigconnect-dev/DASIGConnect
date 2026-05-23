@@ -3,6 +3,7 @@ package com.dasigconnect.backend.model.dto.submission;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 public class SubmissionUpdateDto {
 
@@ -16,6 +17,11 @@ public class SubmissionUpdateDto {
     private String description;
 
     private Instant scheduledAt;
+
+    @Size(max = 100)
+    private String category;
+
+    private List<String> tags;
 
     public String getEventTitle() { return eventTitle; }
     public void setEventTitle(String eventTitle) { this.eventTitle = eventTitle; }
@@ -31,4 +37,10 @@ public class SubmissionUpdateDto {
 
     public Instant getScheduledAt() { return scheduledAt; }
     public void setScheduledAt(Instant scheduledAt) { this.scheduledAt = scheduledAt; }
+
+    public String getCategory() { return category; }
+    public void setCategory(String category) { this.category = category; }
+
+    public List<String> getTags() { return tags; }
+    public void setTags(List<String> tags) { this.tags = tags; }
 }

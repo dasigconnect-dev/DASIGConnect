@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import {
   createDraft,
   deleteDraft,
+  getSubmission,
   submitForReview,
   updateDraft,
   uploadSubmissionMedia,
   validateGuardRails,
   type GuardRailResult,
+  type SavedMediaAsset,
   type SubmissionPayload,
   type SubmissionStatus,
   type SubmissionSummary,
@@ -31,6 +33,7 @@ interface FormState {
   scheduledTime: string
   tags: string[]
   files: File[]
+  savedAssets: SavedMediaAsset[]
 }
 
 type QueueFilter = 'drafts' | 'submitted' | 'all'
@@ -48,6 +51,7 @@ const initialForm: FormState = {
   scheduledTime: '',
   tags: [],
   files: [],
+  savedAssets: [],
 }
 
 const statusLabels: Record<SubmissionStatus, string> = {
@@ -104,14 +108,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const previewCaption = form.caption.trim() || 'Your caption preview will appear here as you write.'
 
   useEffect(() => {
-    if (!scheduledAt || !form.id) {
+    if (!scheduledAt) {
       setGuardRails(null)
       setGuardRailError('')
       return
     }
 
     const timer = window.setTimeout(() => {
-      validateGuardRails(form.id!, scheduledAt)
+      validateGuardRails(scheduledAt)
         .then((response) => {
           setGuardRails(response.data)
           setGuardRailError('')
@@ -123,27 +127,32 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }, 350)
 
     return () => window.clearTimeout(timer)
-  }, [scheduledAt, form.id])
+  }, [scheduledAt])
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }))
     setSaveState('idle')
   }
 
-  function applySubmission(submission: SubmissionSummary) {
-    setForm({
-      id: submission.id,
-      eventTitle: submission.eventTitle || '',
-      eventDate: submission.eventDate || '',
-      caption: submission.caption || '',
-      description: submission.description || '',
-      category: '',
-      scheduledDate: submission.scheduledAt ? submission.scheduledAt.slice(0, 10) : '',
-      scheduledTime: submission.scheduledAt ? formatTimeInput(submission.scheduledAt) : '',
-      tags: [],
-      files: [],
-    })
-    // Selection acknowledged — no toast needed (content loads visually)
+  async function applySubmission(summary: SubmissionSummary) {
+    try {
+      const { data: submission } = await getSubmission(summary.id)
+      setForm({
+        id: submission.id,
+        eventTitle: submission.eventTitle || '',
+        eventDate: submission.eventDate || '',
+        caption: submission.caption || '',
+        description: submission.description || '',
+        category: submission.category || '',
+        scheduledDate: submission.scheduledAt ? submission.scheduledAt.slice(0, 10) : '',
+        scheduledTime: submission.scheduledAt ? formatTimeInput(submission.scheduledAt) : '',
+        tags: submission.tags ?? [],
+        files: [],
+        savedAssets: submission.mediaAssets ?? [],
+      })
+    } catch {
+      toast.error('Could not load submission detail.')
+    }
   }
 
   async function handleSave() {
@@ -151,11 +160,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     try {
       const payload = toPayload(form, scheduledAt)
       const response = form.id ? await updateDraft(form.id, payload) : await createDraft(payload)
+      let finalResponse = response
       if (form.files.length > 0) {
-        await uploadSubmissionMedia(response.data.id, form.files)
+        const uploadResult = await uploadSubmissionMedia(response.data.id, form.files)
+        if (uploadResult) finalResponse = uploadResult as typeof response
       }
-      setForm((current) => ({ ...current, id: response.data.id, files: [] }))
-      setSubmissions((current) => upsertSubmission(current, response.data))
+      const savedAssets = (finalResponse.data as SubmissionSummary).mediaAssets ?? []
+      setForm((current) => ({ ...current, id: finalResponse.data.id, files: [], savedAssets }))
+      setSubmissions((current) => upsertSubmission(current, finalResponse.data))
       setSaveState('saved')
       toast.success('Draft saved.')
     } catch (err: any) {
@@ -170,7 +182,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       const payload = toPayload(form, scheduledAt)
       const draft = form.id ? await updateDraft(form.id, payload) : await createDraft(payload)
       if (form.files.length > 0) {
-        await uploadSubmissionMedia(draft.data.id, form.files)
+        try {
+          await uploadSubmissionMedia(draft.data.id, form.files)
+        } catch (uploadErr: any) {
+          toast.warning('Media upload skipped: ' + (uploadErr.message || 'Supabase not configured'))
+        }
       }
       const submitted = await submitForReview(draft.data.id)
       setSubmissions((current) => upsertSubmission(current, submitted.data))
@@ -275,7 +291,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 className={`sub-queue-item ${item.id === form.id ? 'active' : ''}`}
                 key={item.id}
                 type="button"
-                onClick={() => applySubmission(item)}
+                onClick={() => void applySubmission(item)}
               >
                 <div className="sub-qi-top">
                   <div className="sub-qi-title">{item.eventTitle || 'Untitled submission'}</div>
@@ -331,8 +347,18 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 <span>JPG</span><span>PNG</span><span>MP4</span><span>MOV</span>
               </div>
             </label>
-            {form.files.length > 0 && (
+            {(form.savedAssets.length > 0 || form.files.length > 0) && (
               <div className="sub-filmstrip">
+                {form.savedAssets.map((asset) => (
+                  <div className="sub-film-item" key={asset.id}>
+                    {asset.fileType.startsWith('image') || ['jpeg','jpg','png','webp','gif'].includes(asset.fileType) ? (
+                      <img src={asset.storageUrl} alt={asset.fileName} />
+                    ) : (
+                      <div className="sub-film-video"><i className="ti ti-video"></i></div>
+                    )}
+                    <span className="sub-film-badge">{asset.fileType.toUpperCase()}</span>
+                  </div>
+                ))}
                 {form.files.map((file, index) => (
                   <button
                     className={`sub-film-item ${selectedFileIndex === index ? 'selected' : ''}`}
@@ -398,7 +424,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             <div className="sub-field-row">
               <Field label="Event Category">
                 <select className="sub-fselect" value={form.category} onChange={(event) => updateField('category', event.target.value)}>
-                  <option value="">{lookupsLoading ? 'Loading options...' : 'Backend categories unavailable'}</option>
+                  <option value="">{lookupsLoading ? 'Loading...' : 'Select a category'}</option>
+                  {lookups.categories?.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
                 </select>
               </Field>
               <Field label="Institution Scope">
@@ -409,11 +438,30 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             <Field label="Tags">
               {lookupsError && (
                 <div className="sub-inline-note">
-                  Backend tag options are not available yet. You can still save and submit the required submission fields.
+                  Tag options could not be loaded. You can still save and submit.
                 </div>
               )}
               <div className="sub-tag-row">
-                <span className="sub-muted-text">No backend tags available.</span>
+                {lookups.availableTags?.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    className={`sub-tag ${form.tags.includes(tag) ? 'active' : ''}`}
+                    onClick={() =>
+                      updateField(
+                        'tags',
+                        form.tags.includes(tag)
+                          ? form.tags.filter((t) => t !== tag)
+                          : [...form.tags, tag],
+                      )
+                    }
+                  >
+                    {tag}
+                  </button>
+                ))}
+                {!lookupsLoading && !lookups.availableTags?.length && (
+                  <span className="sub-muted-text">No tags available.</span>
+                )}
               </div>
             </Field>
 
@@ -458,7 +506,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           </GuardSection>
 
           <GuardSection title="Media Quality" icon="ti-photo">
-            <CheckItem pass={form.files.length > 0} title="Minimum 1 file uploaded" sub={`${form.files.length} file(s) attached`} />
+            <CheckItem pass={form.files.length > 0 || form.savedAssets.length > 0} title="Minimum 1 file uploaded" sub={`${form.savedAssets.length + form.files.length} file(s) attached`} />
             <CheckItem pass={form.files.every((file) => file.size <= lookups.maxFileSizeMb * 1024 * 1024)} title="All files within size limit" sub={`${lookups.maxFileSizeMb} MB max per file`} />
             <CheckItem pass={form.files.every((file) => isAllowedFile(file, lookups.allowedFileTypes))} title="Accepted file formats only" sub={lookups.allowedFileTypes.join(', ') || 'Awaiting backend lookup'} />
           </GuardSection>
@@ -669,6 +717,8 @@ function toPayload(form: FormState, scheduledAt?: string): SubmissionPayload {
     caption: form.caption.trim(),
     description: form.description.trim(),
     scheduledAt,
+    category: form.category || undefined,
+    tags: form.tags.length > 0 ? form.tags : undefined,
   }
 }
 
@@ -684,7 +734,7 @@ function calculateReadiness(form: FormState, guardRails: GuardRailResult | null)
   if (form.eventDate) score += 15
   if (captionTone(form.caption) === 'ok') score += 20
   score += 10
-  if (form.files.length > 0) score += 20
+  if (form.files.length > 0 || form.savedAssets.length > 0) score += 20
   if (form.scheduledDate && form.scheduledTime) score += 10
   if (guardRails && !guardRails.blocked) score += 10
 

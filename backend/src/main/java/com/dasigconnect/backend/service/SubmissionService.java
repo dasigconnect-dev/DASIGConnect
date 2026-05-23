@@ -6,6 +6,8 @@ import com.dasigconnect.backend.model.dto.guardrail.GuardRailResult;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.AttachAssetDto;
 import com.dasigconnect.backend.model.dto.submission.AttachMediaDto;
+import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlRequest;
+import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlResponse;
 import com.dasigconnect.backend.model.dto.submission.SlotEvaluateRequestDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionCreateDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
@@ -61,6 +63,7 @@ public class SubmissionService {
     private final SlotReservationService slotReservationService;
     private final GuardRailService guardRailService;
     private final AuditLogService auditLogService;
+    private final SupabaseStorageService supabaseStorageService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -74,13 +77,26 @@ public class SubmissionService {
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
             SlotReservationService slotReservationService,
             GuardRailService guardRailService,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            SupabaseStorageService supabaseStorageService) {
         this.submissionRepository = submissionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.slotReservationService = slotReservationService;
         this.guardRailService = guardRailService;
         this.auditLogService = auditLogService;
+        this.supabaseStorageService = supabaseStorageService;
+    }
+
+    @Transactional(readOnly = true)
+    public SignedUploadUrlResponse createSignedUploadUrl(UUID submissionId, SignedUploadUrlRequest dto, JwtUserDetails user) {
+        Submission submission = loadForContributor(submissionId, user);
+        assertEditableStatus(submission);
+        String safeFileName = dto.getFileName().replaceAll("[^a-zA-Z0-9._-]", "-");
+        String objectPath = submissionId + "/" + UUID.randomUUID() + "-" + safeFileName;
+        String signedUrl = supabaseStorageService.createSignedUploadUrl(objectPath);
+        String publicUrl = supabaseStorageService.getPublicUrl(objectPath);
+        return new SignedUploadUrlResponse(signedUrl, publicUrl, objectPath);
     }
 
     /**
@@ -100,6 +116,10 @@ public class SubmissionService {
         submission.setCaption(dto.getCaption());
         submission.setDescription(dto.getDescription());
         submission.setStatus(SubmissionStatus.draft);
+        submission.setCategory(dto.getCategory());
+        if (dto.getTags() != null && !dto.getTags().isEmpty()) {
+            submission.setTags(String.join(",", dto.getTags()));
+        }
 
         submission = submissionRepository.save(submission);
 
@@ -128,6 +148,10 @@ public class SubmissionService {
         if (dto.getEventDate() != null) submission.setEventDate(dto.getEventDate());
         if (dto.getCaption() != null) submission.setCaption(dto.getCaption());
         if (dto.getDescription() != null) submission.setDescription(dto.getDescription());
+        if (dto.getCategory() != null) submission.setCategory(dto.getCategory());
+        if (dto.getTags() != null) {
+            submission.setTags(dto.getTags().isEmpty() ? null : String.join(",", dto.getTags()));
+        }
 
         if (dto.getScheduledAt() != null && !dto.getScheduledAt().equals(submission.getScheduledAt())) {
             submission.setScheduledAt(dto.getScheduledAt());
@@ -149,7 +173,8 @@ public class SubmissionService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only DRAFT submissions can be deleted. Current status: " + submission.getStatus());
         }
-        slotReservationService.release(submissionId);
+        submissionMediaAssetRepository.deleteBySubmissionId(submissionId);
+        slotReservationService.deleteAllForSubmission(submissionId);
         submissionRepository.delete(submission);
         log.info("Submission {} deleted by contributor {}", submissionId, user.userId());
     }

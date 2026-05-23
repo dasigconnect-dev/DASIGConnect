@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 public class SubmissionCreateDto {
 
@@ -21,6 +22,11 @@ public class SubmissionCreateDto {
 
     private Instant scheduledAt;
 
+    @Size(max = 100)
+    private String category;
+
+    private List<String> tags;
+
     public String getEventTitle() { return eventTitle; }
     public void setEventTitle(String eventTitle) { this.eventTitle = eventTitle; }
 
@@ -35,4 +41,10 @@ public class SubmissionCreateDto {
 
     public Instant getScheduledAt() { return scheduledAt; }
     public void setScheduledAt(Instant scheduledAt) { this.scheduledAt = scheduledAt; }
+
+    public String getCategory() { return category; }
+    public void setCategory(String category) { this.category = category; }
+
+    public List<String> getTags() { return tags; }
+    public void setTags(List<String> tags) { this.tags = tags; }
 }

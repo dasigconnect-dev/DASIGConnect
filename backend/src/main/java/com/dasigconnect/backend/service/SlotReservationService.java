@@ -149,6 +149,11 @@ public class SlotReservationService {
         return updated;
     }
 
+    @Transactional
+    public void deleteAllForSubmission(UUID submissionId) {
+        slotReservationRepository.deleteBySubmissionId(submissionId);
+    }
+
     /**
      * Confirms (locks) the slot reservation after a submission is approved.
      *
