@@ -88,7 +88,6 @@ class SubmissionServiceTest {
         contributorPrincipal = principal(contributorId, "contributor", institutionId);
 
         ReflectionTestUtils.setField(submissionService, "entityManager", entityManager);
-        ReflectionTestUtils.setField(submissionService, "guardRailsEnforced", true);
     }
 
     @Test
@@ -149,7 +148,7 @@ class SubmissionServiceTest {
 
         submissionService.delete(submissionId, contributorPrincipal);
 
-        verify(slotReservationService).deleteAllForSubmission(submissionId);
+        verify(slotReservationService).release(submissionId);
         verify(submissionRepository).delete(submission);
     }
 
@@ -198,23 +197,6 @@ class SubmissionServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.CONFLICT);
-    }
-
-    @Test
-    void submit_blockedGuardRail_whenEnforcementDisabled_transitionsToPending() {
-        ReflectionTestUtils.setField(submissionService, "guardRailsEnforced", false);
-        UUID submissionId = UUID.randomUUID();
-        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
-        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
-        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
-        when(submissionRepository.save(submission)).thenReturn(submission);
-        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
-        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
-
-        SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
-
-        assertThat(result.getStatus()).isEqualTo("pending");
-        verify(guardRailService, never()).validate(any(), any());
     }
 
     @Test

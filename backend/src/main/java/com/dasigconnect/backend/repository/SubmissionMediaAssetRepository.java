@@ -1,14 +1,12 @@
 package com.dasigconnect.backend.repository;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
+import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-
-import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 public interface SubmissionMediaAssetRepository extends JpaRepository<SubmissionMediaAsset, UUID> {
 
@@ -19,8 +17,6 @@ public interface SubmissionMediaAssetRepository extends JpaRepository<Submission
     boolean existsBySubmissionIdAndMediaAssetId(UUID submissionId, UUID mediaAssetId);
 
     long countBySubmissionId(UUID submissionId);
-
-    void deleteBySubmissionId(UUID submissionId);
 
     @Query("""
         SELECT COUNT(sma) FROM SubmissionMediaAsset sma

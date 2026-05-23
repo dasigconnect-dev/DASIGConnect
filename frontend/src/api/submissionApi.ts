@@ -1,152 +1,147 @@
-import { api } from "./authApi";
+import { api } from './authApi'
 
 export type SubmissionStatus =
-  | "draft"
-  | "pending"
-  | "in_review"
-  | "needs_revision"
-  | "scheduled"
-  | "publish_failed"
-  | "published"
-  | "published_manual"
-  | "admin_direct_post"
-  | "rejected";
-
-export interface SavedMediaAsset {
-  id: string;
-  storageUrl: string;
-  fileName: string;
-  fileType: string;
-  fileSizeBytes: number;
-}
+  | 'draft'
+  | 'pending'
+  | 'in_review'
+  | 'needs_revision'
+  | 'scheduled'
+  | 'publish_failed'
+  | 'published'
+  | 'published_manual'
+  | 'admin_direct_post'
+  | 'rejected'
 
 export interface SubmissionSummary {
-  id: string;
-  institutionId: string;
-  institutionName?: string;
-  eventTitle: string;
-  eventDate: string;
-  caption?: string;
-  description?: string;
-  status: SubmissionStatus;
-  scheduledAt?: string;
-  submittedAt?: string;
-  updatedAt?: string;
-  mediaCount?: number;
-  category?: string;
-  tags?: string[];
-  mediaAssets?: SavedMediaAsset[];
+  id: string
+  institutionId: string
+  institutionName?: string
+  eventTitle: string
+  eventDate: string
+  caption?: string
+  description?: string
+  status: SubmissionStatus
+  scheduledAt?: string
+  submittedAt?: string
+  updatedAt?: string
+  mediaCount?: number
 }
 
 export interface SubmissionPayload {
-  eventTitle: string;
-  eventDate: string;
-  caption: string;
-  description: string;
-  scheduledAt?: string;
-  category?: string;
-  tags?: string[];
+  eventTitle: string
+  eventDate: string
+  caption: string
+  description: string
+  scheduledAt?: string
 }
 
 export interface SubmissionLookups {
-  allowedFileTypes: string[];
-  allowedImageTypes: string[];
-  allowedVideoTypes: string[];
-  maxFileSizeMb: number;
-  maxMediaAssetsPerSubmission: number;
-  maxTitleLength: number;
-  minScheduleLeadTimeHours: number;
-  maxScheduleDaysAhead: number;
-  categories: string[];
-  availableTags: string[];
+  allowedFileTypes: string[]
+  allowedImageTypes: string[]
+  allowedVideoTypes: string[]
+  maxFileSizeMb: number
+  maxMediaAssetsPerSubmission: number
+  maxTitleLength: number
+  minScheduleLeadTimeHours: number
+  maxScheduleDaysAhead: number
 }
 
 export interface GuardRailViolation {
-  code: string;
-  message: string;
-  suggestedSlots?: string[];
+  code: string
+  message: string
+  suggestedSlots?: string[]
 }
 
 export interface GuardRailResult {
-  hardBlocks: GuardRailViolation[];
-  softWarnings: GuardRailViolation[];
-  blocked: boolean;
-  clean: boolean;
+  hardBlocks: GuardRailViolation[]
+  softWarnings: GuardRailViolation[]
+  blocked: boolean
+  clean: boolean
 }
 
 export function listSubmissions(signal?: AbortSignal) {
-  return api.get<SubmissionSummary[]>("/submissions", { signal });
+  return api.get<SubmissionSummary[]>('/submissions', { signal })
 }
 
 export function getSubmission(id: string, signal?: AbortSignal) {
-  return api.get<SubmissionSummary>(`/submissions/${id}`, { signal });
+  return api.get<SubmissionSummary>(`/submissions/${id}`, { signal })
 }
 
 export function createDraft(payload: SubmissionPayload) {
-  return api.post<SubmissionSummary>("/submissions", payload);
+  return api.post<SubmissionSummary>('/submissions', payload)
 }
 
 export function updateDraft(id: string, payload: SubmissionPayload) {
-  return api.patch<SubmissionSummary>(`/submissions/${id}`, payload);
+  return api.patch<SubmissionSummary>(`/submissions/${id}`, payload)
 }
 
 export function submitForReview(id: string) {
-  return api.post<SubmissionSummary>(`/submissions/${id}/submit`);
+  return api.post<SubmissionSummary>(`/submissions/${id}/submit`)
 }
 
 export function deleteDraft(id: string) {
-  return api.delete<void>(`/submissions/${id}`);
+  return api.delete<void>(`/submissions/${id}`)
 }
 
 export async function uploadSubmissionMedia(id: string, files: File[]) {
-  const responses = [];
+  const responses = []
   for (const file of files) {
-    const {
-      data: { signedUrl, publicUrl },
-    } = await api.post<{ signedUrl: string; publicUrl: string; path: string }>(
-      `/submissions/${id}/media/upload-url`,
-      { fileName: safeFileName(file.name), fileType: fileTypeFromFile(file) },
-    );
-    const upload = await fetch(signedUrl, {
-      method: "PUT",
-      headers: { "Content-Type": file.type || "application/octet-stream" },
-      body: file,
-    });
-    if (!upload.ok) {
-      const msg = await upload.text().catch(() => "");
-      throw new Error(msg || "Supabase media upload failed.");
-    }
-    responses.push(
-      await api.post(`/submissions/${id}/media`, {
-        storageUrl: publicUrl,
-        fileName: file.name,
-        fileType: fileTypeFromFile(file),
-        fileSizeBytes: file.size,
-      }),
-    );
+    const storageUrl = await uploadToSupabaseStorage(id, file)
+    responses.push(await api.post(`/submissions/${id}/media`, {
+      storageUrl,
+      fileName: file.name,
+      fileType: fileTypeFromFile(file),
+      fileSizeBytes: file.size,
+    }))
   }
-  return responses.at(-1);
+  return responses.at(-1)
 }
 
 export function getSubmissionLookups(signal?: AbortSignal) {
-  return api.get<SubmissionLookups>("/submissions/lookups", { signal });
+  return api.get<SubmissionLookups>('/submissions/lookups', { signal })
 }
 
-export function validateGuardRails(scheduledAt: string) {
-  return api.post<GuardRailResult>("/guardrails/validate", { scheduledAt });
+export function validateGuardRails(submissionId: string, scheduledAt: string) {
+  return api.post<GuardRailResult>(`/submissions/${submissionId}/evaluate-slot`, { scheduledAt })
+}
+
+async function uploadToSupabaseStorage(submissionId: string, file: File) {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  const bucket = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !bucket || !anonKey) {
+    throw new Error('Supabase upload is not configured. Set VITE_SUPABASE_URL, VITE_SUPABASE_STORAGE_BUCKET, and VITE_SUPABASE_ANON_KEY.')
+  }
+
+  const path = `${submissionId}/${crypto.randomUUID()}-${safeFileName(file.name)}`
+  const uploadUrl = `${supabaseUrl.replace(/\/$/, '')}/storage/v1/object/${bucket}/${path}`
+  const response = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${anonKey}`,
+      apikey: anonKey,
+      'Content-Type': file.type || 'application/octet-stream',
+      'x-upsert': 'false',
+    },
+    body: file,
+  })
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => '')
+    throw new Error(message || 'Supabase media upload failed.')
+  }
+
+  return `${supabaseUrl.replace(/\/$/, '')}/storage/v1/object/public/${bucket}/${path}`
 }
 
 function fileTypeFromFile(file: File) {
-  const extension = file.name.split(".").pop()?.toLowerCase();
-  if (extension) return normalizeFileType(extension);
-  const subtype = file.type.split("/")[1]?.toLowerCase();
-  return normalizeFileType(subtype || "jpeg");
-}
-
-function normalizeFileType(fileType: string) {
-  return fileType === "jpg" ? "jpeg" : fileType;
+  const extension = file.name.split('.').pop()?.toLowerCase()
+  if (extension) return extension
+  const subtype = file.type.split('/')[1]?.toLowerCase()
+  return subtype || 'jpeg'
 }
 
 function safeFileName(fileName: string) {
-  return fileName.replace(/[^a-zA-Z0-9._-]/g, "-");
+  return fileName.replace(/[^a-zA-Z0-9._-]/g, '-')
 }

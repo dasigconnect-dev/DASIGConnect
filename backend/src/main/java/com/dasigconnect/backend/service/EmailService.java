@@ -1,8 +1,10 @@
 package com.dasigconnect.backend.service;
 
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
 import java.io.UnsupportedEncodingException;
 import java.time.Year;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,10 +13,6 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
-
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.internet.MimeMessage;
 
 @Service
 public class EmailService {
@@ -109,8 +107,8 @@ public class EmailService {
                         </html>
                         """.formatted(escapedLink, escapedLink, escapedLink),
                 "You have been invited to DASIGConnect.\n\n"
-                + "Accept your invitation: " + link + "\n\n"
-                + "If you did not expect this invitation, you can ignore this email.");
+                        + "Accept your invitation: " + link + "\n\n"
+                        + "If you did not expect this invitation, you can ignore this email.");
     }
 
     public String buildInvitationLink(String token) {
@@ -170,8 +168,8 @@ public class EmailService {
                         </html>
                         """.formatted(escapedLink, escapedLink, escapedLink),
                 "Use this link to reset your DASIGConnect password:\n\n"
-                + link + "\n\n"
-                + "If you did not request this reset, you can ignore this email.");
+                        + link + "\n\n"
+                        + "If you did not request this reset, you can ignore this email.");
     }
 
     public void sendPlainText(String to, String subject, String body) {

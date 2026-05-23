@@ -120,14 +120,10 @@ Current branch: `feature/uc13-submission-backend`.
 - Backend Supabase config supports `DASIG_SUPABASE_URL`, `DASIG_SUPABASE_SERVICE_ROLE_KEY`, and `DASIG_SUPABASE_STORAGE_BUCKET`.
 - Flyway fresh Supabase startup is fixed with baseline version `0`, allowing V1 through V4 to run on a new Supabase `public` schema.
 - Local frontend Supabase upload env values are configured through ignored `frontend/.env.local` for the `dasigconnect-media` bucket.
-- Guard rail enforcement is now configurable through `APP_GUARDRAILS_ENFORCED`; local default is `false` to keep save draft / submit-for-review testing unblocked while scheduling rules are tuned.
-- `GuardRailViolationException` now returns a structured `422` payload instead of falling through as a generic internal server error.
-- Submission queue UI has been restyled into a clearer queue panel, and frontend `.jpg` file checks/upload metadata now normalize to `jpeg`.
 
 ### Verification
 
-- Backend: 163 tests passing from the full prior suite.
-- Backend focused submission verification: 42 tests passing across `SlotReservationServiceTest`, `SubmissionServiceTest`, and `SubmissionControllerTest`.
+- Backend: 163 tests passing.
 - Backend focused auth/onboarding tests: 50 tests passing across `InvitationServiceTest`, `InvitationControllerTest`, `UserServiceTest`, and `UserControllerTest`.
 - Frontend: `npm.cmd run build` passing.
 - Migration sanity: `mvn clean` and `mvn -DskipTests package` passed after renaming the media migration from V3 to V4.
@@ -135,8 +131,6 @@ Current branch: `feature/uc13-submission-backend`.
 
 ### Known Gaps
 
-- Save draft / submit-for-review remains the active Module 1 blocker until the browser flow is manually verified against the current backend and Supabase environment. The testing bypass and frontend payload defaults are in place, but the issue is not considered closed.
-- Submission queue design has been improved locally, but still needs review with real queue data and responsive/mobile widths.
 - Submission lookups do not return categories, tags, or preferred time slots.
 - Media library / asset picker needs UC-2.2 backend: `GET/DELETE /api/v1/media-assets`.
 - Validator review actions need UC-2.1 backend.
@@ -153,26 +147,26 @@ Current branch: `feature/uc13-submission-backend`.
 
 ### User Roles
 
-| Role            | Scope           | Key Capabilities                                             |
-| --------------- | --------------- | ------------------------------------------------------------ |
-| `CONTRIBUTOR`   | Per institution | Submit content and upload media                              |
-| `VALIDATOR`     | Per institution | Review institution submissions                               |
-| `ADMINISTRATOR` | Network-wide    | Manage institutions, users, approvals, scheduling, analytics |
+| Role | Scope | Key Capabilities |
+|---|---|---|
+| `CONTRIBUTOR` | Per institution | Submit content and upload media |
+| `VALIDATOR` | Per institution | Review institution submissions |
+| `ADMINISTRATOR` | Network-wide | Manage institutions, users, approvals, scheduling, analytics |
 
 ### Core Entities
 
-| Entity                 | Purpose                                                                    |
-| ---------------------- | -------------------------------------------------------------------------- |
-| `User`                 | System user with role and institution binding                              |
-| `Institution`          | DASIG member HEI workspace                                                 |
-| `Submission`           | Content submission with event details and status                           |
-| `SlotReservation`      | Scheduled slot reservation for a submission                                |
-| `InvitationToken`      | One-time onboarding token                                                  |
-| `PasswordResetToken`   | One-time password reset token                                              |
-| `AccountLockout`       | Failed-login tracking                                                      |
-| `AuditLog`             | Immutable state-changing action log                                        |
-| `MediaAsset`           | Supabase-backed media metadata; pgvector embedding is not Hibernate-mapped |
-| `SubmissionMediaAsset` | Submission-to-media junction with display order                            |
+| Entity | Purpose |
+|---|---|
+| `User` | System user with role and institution binding |
+| `Institution` | DASIG member HEI workspace |
+| `Submission` | Content submission with event details and status |
+| `SlotReservation` | Scheduled slot reservation for a submission |
+| `InvitationToken` | One-time onboarding token |
+| `PasswordResetToken` | One-time password reset token |
+| `AccountLockout` | Failed-login tracking |
+| `AuditLog` | Immutable state-changing action log |
+| `MediaAsset` | Supabase-backed media metadata; pgvector embedding is not Hibernate-mapped |
+| `SubmissionMediaAsset` | Submission-to-media junction with display order |
 
 Important enum values are lowercase in the database, including roles and statuses. Keep Java/database serialization aligned with the existing code.
 
@@ -180,16 +174,16 @@ Important enum values are lowercase in the database, including roles and statuse
 
 ## Development Modules
 
-| Branch / Area                     | Status                   | Notes                                                                                                                                                                               |
-| --------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `feature/M1-model-foundation`     | Merged                   | Foundation entities, repositories, JWT/audit/email/tenant/security infrastructure, Flyway V1                                                                                        |
-| `feature/M2-auth-backend`         | Merged                   | Auth, invitations, password reset, lockout, global exception handling                                                                                                               |
-| `feature/M2-auth-backend-test`    | Merged                   | M1/M2 tests                                                                                                                                                                         |
-| `feat/m4-institution-scheduling`  | Merged                   | Institution management, guard rails, slot reservation, provisioning                                                                                                                 |
-| `dev`                             | In progress              | UC-1.2 extension, conditional bean fix, merged foundation work                                                                                                                      |
+| Branch / Area | Status | Notes |
+|---|---|---|
+| `feature/M1-model-foundation` | Merged | Foundation entities, repositories, JWT/audit/email/tenant/security infrastructure, Flyway V1 |
+| `feature/M2-auth-backend` | Merged | Auth, invitations, password reset, lockout, global exception handling |
+| `feature/M2-auth-backend-test` | Merged | M1/M2 tests |
+| `feat/m4-institution-scheduling` | Merged | Institution management, guard rails, slot reservation, provisioning |
+| `dev` | In progress | UC-1.2 extension, conditional bean fix, merged foundation work |
 | `feature/uc13-submission-backend` | Done locally, not merged | UC-1.3 backend, required tests, frontend API wiring, reset password/session/dashboard fixes, pending invite/user management UI, invite token superseding, Flyway V4 media migration |
-| UC-2.x                            | Not started              | Validation, media repository, notifications, analytics                                                                                                                              |
-| UC-3.x                            | Not started              | Calendar, publishing, AI captions/classification/recommendations                                                                                                                    |
+| UC-2.x | Not started | Validation, media repository, notifications, analytics |
+| UC-3.x | Not started | Calendar, publishing, AI captions/classification/recommendations |
 
 See `TASKS.md` for the detailed task checklist and current gaps.
 

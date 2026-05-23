@@ -58,12 +58,6 @@ public class Submission {
     @Column(name = "platform_post_id", length = 255)
     private String platformPostId;
 
-    @Column(name = "category", length = 100)
-    private String category;
-
-    @Column(name = "tags", columnDefinition = "text")
-    private String tags;
-
     @Column(name = "validator_remarks", columnDefinition = "text")
     private String validatorRemarks;
 
@@ -198,12 +192,6 @@ public class Submission {
     public void setPlatformPostId(String platformPostId) {
         this.platformPostId = platformPostId;
     }
-
-    public String getCategory() { return category; }
-    public void setCategory(String category) { this.category = category; }
-
-    public String getTags() { return tags; }
-    public void setTags(String tags) { this.tags = tags; }
 
     public String getValidatorRemarks() {
         return validatorRemarks;
