@@ -17,6 +17,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Query("SELECT m FROM MediaAsset m WHERE m.institution.id = :institutionId AND m.deletedAt IS NULL ORDER BY m.createdAt DESC")
     List<MediaAsset> findActiveByInstitution(@Param("institutionId") UUID institutionId);
 
+    @Query("SELECT m FROM MediaAsset m WHERE m.deletedAt IS NULL ORDER BY m.createdAt DESC")
+    List<MediaAsset> findAllActive();
+
     boolean existsByAssetCode(String assetCode);
 
     @Modifying
