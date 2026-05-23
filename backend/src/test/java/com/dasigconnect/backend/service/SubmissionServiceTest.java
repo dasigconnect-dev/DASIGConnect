@@ -18,9 +18,11 @@ import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
+import com.dasigconnect.backend.model.entity.NotificationEventType;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
+import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
@@ -34,6 +36,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -47,6 +51,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class SubmissionServiceTest {
 
     @Mock
@@ -68,6 +73,12 @@ class SubmissionServiceTest {
     private AuditLogService auditLogService;
 
     @Mock
+    private NotificationService notificationService;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
     private EntityManager entityManager;
 
     @InjectMocks
@@ -86,6 +97,9 @@ class SubmissionServiceTest {
         institution = institution(institutionId);
         contributor = user(contributorId, "contributor@cit.edu.ph", UserRole.contributor, institution);
         contributorPrincipal = principal(contributorId, "contributor", institutionId);
+
+        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.validator))
+                .thenReturn(List.of());
 
         ReflectionTestUtils.setField(submissionService, "entityManager", entityManager);
         ReflectionTestUtils.setField(submissionService, "guardRailsEnforced", true);
@@ -158,17 +172,27 @@ class SubmissionServiceTest {
         UUID submissionId = UUID.randomUUID();
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
+        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.validator, institution);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.validator))
+                .thenReturn(List.of(validator));
 
         SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
 
         assertThat(result.getStatus()).isEqualTo("pending");
         assertThat(result.getSubmittedAt()).isNotNull();
         verify(auditLogService).record(eq(contributor), eq("SUBMISSION_SUBMITTED"), eq(null), eq(null), eq(submissionId), any());
+        // T1 — contributor does NOT receive a notification; validators receive the spec message
+        verify(notificationService, never()).createNotification(eq(contributor), any(), any(), any());
+        verify(notificationService).createNotification(
+                eq(validator),
+                eq(NotificationEventType.submission_pending),
+                org.mockito.ArgumentMatchers.contains("submitted 'Research Expo' for review"),
+                eq("/submissions/" + submissionId));
     }
 
     @Test

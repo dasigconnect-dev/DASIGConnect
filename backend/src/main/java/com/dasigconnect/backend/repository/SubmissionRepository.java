@@ -42,4 +42,18 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
 
     boolean existsByIdAndInstitutionId(UUID id, UUID institutionId);
     boolean existsByIdAndContributorId(UUID id, UUID contributorId);
+
+    @Query("""
+        SELECT s FROM Submission s
+        WHERE s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review
+        )
+        AND s.scheduledAt IS NOT NULL
+        AND s.scheduledAt >= :windowStart
+        AND s.scheduledAt < :windowEnd
+        """)
+    List<Submission> findApproachingDeadlines(
+            @Param("windowStart") java.time.Instant windowStart,
+            @Param("windowEnd") java.time.Instant windowEnd);
 }

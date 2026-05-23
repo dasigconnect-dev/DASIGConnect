@@ -29,13 +29,16 @@ import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
+import com.dasigconnect.backend.model.entity.NotificationEventType;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
+import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
+import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 
 import jakarta.persistence.EntityManager;
@@ -65,6 +68,8 @@ public class SubmissionService {
     private final GuardRailService guardRailService;
     private final AuditLogService auditLogService;
     private final SupabaseStorageService supabaseStorageService;
+    private final NotificationService notificationService;
+    private final UserRepository userRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -79,7 +84,9 @@ public class SubmissionService {
             SlotReservationService slotReservationService,
             GuardRailService guardRailService,
             AuditLogService auditLogService,
-            SupabaseStorageService supabaseStorageService) {
+            SupabaseStorageService supabaseStorageService,
+            NotificationService notificationService,
+            UserRepository userRepository) {
         this.submissionRepository = submissionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
@@ -87,6 +94,8 @@ public class SubmissionService {
         this.guardRailService = guardRailService;
         this.auditLogService = auditLogService;
         this.supabaseStorageService = supabaseStorageService;
+        this.notificationService = notificationService;
+        this.userRepository = userRepository;
     }
 
     @Transactional(readOnly = true)
@@ -231,6 +240,25 @@ public class SubmissionService {
                 "SUBMISSION_SUBMITTED", null, null,
                 submissionId,
                 Map.of("scheduledAt", submission.getScheduledAt().toString()));
+
+        // T1 — notify all institution validators (spec: contributor does not receive T1)
+        String contributorEmail = submission.getContributor().getEmail();
+        String scheduledPart = submission.getScheduledAt() != null
+                ? " — scheduled for " + formatInstant(submission.getScheduledAt())
+                : "";
+        String t1Message = contributorEmail + " submitted '" + submission.getEventTitle()
+                + "' for review" + scheduledPart + ".";
+        String submissionLink = "/submissions/" + submissionId;
+
+        List<User> validators = userRepository
+                .findByInstitutionIdAndRoleOrderByCreatedAtDesc(user.institutionId(), UserRole.validator);
+        for (User validator : validators) {
+            notificationService.createNotification(
+                    validator,
+                    NotificationEventType.submission_pending,
+                    t1Message,
+                    submissionLink);
+        }
 
         log.info("Submission {} → PENDING by contributor {}", submissionId, user.userId());
         return buildResponse(submission);
@@ -412,5 +440,10 @@ public class SubmissionService {
 
     private String generateAssetCode() {
         return "ASSET-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+
+    private static String formatInstant(Instant instant) {
+        return java.time.ZonedDateTime.ofInstant(instant, java.time.ZoneOffset.UTC)
+                .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm 'UTC'"));
     }
 }
