@@ -32,6 +32,7 @@ import SessionModal from "../components/modals/SessionModal";
 import Toast from "../components/common/Toast";
 import LoginSplash from "../components/common/LoginSplash";
 import PageLoader from "../components/common/PageLoader";
+import ProtectedRoute from "../components/common/ProtectedRoute";
 import { useToast } from "../context/ToastContext";
 
 const LOCKOUT_LIMIT = 5;
@@ -578,18 +579,20 @@ function App() {
           />
           <Route
             path="/admin/user-management/invitations"
-            element={<UserInvitationsScreen user={currentUser!} />}
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator"]}>
+                <UserInvitationsScreen user={currentUser!} />
+              </ProtectedRoute>
+            }
           />
         </Route>
 
         <Route
           path="/submissions/new"
           element={
-            currentUser ? (
-              <SubmissionScreen user={currentUser} />
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            <ProtectedRoute user={currentUser} allowedRoles={["contributor"]}>
+              <SubmissionScreen user={currentUser!} />
+            </ProtectedRoute>
           }
         />
 
