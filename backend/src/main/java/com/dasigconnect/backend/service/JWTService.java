@@ -1,10 +1,5 @@
 package com.dasigconnect.backend.service;
 
-import com.dasigconnect.backend.model.entity.User;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
@@ -13,10 +8,19 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
 import javax.crypto.SecretKey;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
+import com.dasigconnect.backend.model.entity.User;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 
 @Service
 public class JWTService {
@@ -28,7 +32,7 @@ public class JWTService {
 
     @Autowired
     public JWTService(
-            @Value("${app.jwt.secret:${JWT_SECRET:dev-only-change-me}}") String secret,
+            @Value("${app.jwt.secret}") String secret,
             @Value("${app.jwt.access-token-ttl-minutes:480}") long accessTokenTtlMinutes) {
         this(Clock.systemUTC(), secret, Duration.ofMinutes(accessTokenTtlMinutes));
     }
