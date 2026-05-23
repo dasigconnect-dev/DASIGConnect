@@ -19,7 +19,7 @@ import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.repository.NotificationRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
-import com.dasigconnect.backend.service.EmailService;
+import com.dasigconnect.backend.service.EmailDeliveryService;
 import com.dasigconnect.backend.service.NotificationService;
 
 /**
@@ -39,19 +39,19 @@ public class ValidationDeadlineNotificationJob {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
-    private final EmailService emailService;
+    private final EmailDeliveryService emailDeliveryService;
 
     public ValidationDeadlineNotificationJob(
             SubmissionRepository submissionRepository,
             NotificationRepository notificationRepository,
             UserRepository userRepository,
             NotificationService notificationService,
-            EmailService emailService) {
+            EmailDeliveryService emailDeliveryService) {
         this.submissionRepository = submissionRepository;
         this.notificationRepository = notificationRepository;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
-        this.emailService = emailService;
+        this.emailDeliveryService = emailDeliveryService;
     }
 
     @Scheduled(fixedDelay = 5 * 60 * 1000)
@@ -81,12 +81,18 @@ public class ValidationDeadlineNotificationJob {
             for (User v : validators) {
                 if (alreadyNotified(v, link)) continue;
                 notificationService.createNotification(v, NotificationEventType.validation_timeout, msg, link);
-                sendEmailSilently(v.getEmail(), "DASIGConnect — URGENT: Validation deadline approaching", msg);
+                emailDeliveryService.send(v,
+                        NotificationEventType.validation_timeout.name(),
+                        "DASIGConnect — URGENT: Validation deadline approaching",
+                        msg);
             }
             for (User admin : admins) {
                 if (alreadyNotified(admin, link)) continue;
                 notificationService.createNotification(admin, NotificationEventType.validation_timeout, msg, link);
-                sendEmailSilently(admin.getEmail(), "DASIGConnect — URGENT: Validation deadline approaching", msg);
+                emailDeliveryService.send(admin,
+                        NotificationEventType.validation_timeout.name(),
+                        "DASIGConnect — URGENT: Validation deadline approaching",
+                        msg);
             }
         }
     }
@@ -95,14 +101,6 @@ public class ValidationDeadlineNotificationJob {
         Instant since = Instant.now().minusSeconds(30 * 60);
         return notificationRepository.existsByRecipientIdAndEventTypeAndDeepLinkAndCreatedAtAfter(
                 recipient.getId(), NotificationEventType.validation_timeout, deepLink, since);
-    }
-
-    private void sendEmailSilently(String to, String subject, String body) {
-        try {
-            emailService.sendPlainText(to, subject, body);
-        } catch (Exception ex) {
-            log.warn("T8 email to {} failed: {}", to, ex.getMessage());
-        }
     }
 
     static String fmt(Instant instant) {

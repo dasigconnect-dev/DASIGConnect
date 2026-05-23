@@ -6,8 +6,6 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,7 +17,7 @@ import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.repository.UserRepository;
-import com.dasigconnect.backend.service.EmailService;
+import com.dasigconnect.backend.service.EmailDeliveryService;
 import com.dasigconnect.backend.service.NotificationService;
 
 /**
@@ -31,21 +29,20 @@ import com.dasigconnect.backend.service.NotificationService;
 @Component
 public class NotificationEventListener {
 
-    private static final Logger log = LoggerFactory.getLogger(NotificationEventListener.class);
     private static final DateTimeFormatter SLOT_FMT =
             DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm 'UTC'");
 
     private final NotificationService notificationService;
     private final UserRepository userRepository;
-    private final EmailService emailService;
+    private final EmailDeliveryService emailDeliveryService;
 
     public NotificationEventListener(
             NotificationService notificationService,
             UserRepository userRepository,
-            EmailService emailService) {
+            EmailDeliveryService emailDeliveryService) {
         this.notificationService = notificationService;
         this.userRepository = userRepository;
-        this.emailService = emailService;
+        this.emailDeliveryService = emailDeliveryService;
     }
 
     // ── T2 — Submission approved (SCHEDULED) ─────────────────────────────────
@@ -61,7 +58,8 @@ public class NotificationEventListener {
         String link = "/submissions/" + s.getId();
 
         notificationService.createNotification(contributor, NotificationEventType.submission_approved, msg, link);
-        sendEmailSilently(contributor.getEmail(),
+        emailDeliveryService.send(contributor,
+                NotificationEventType.submission_approved.name(),
                 "DASIGConnect — Submission approved",
                 msg + "\n\nView your scheduled post: " + link);
     }
@@ -80,7 +78,10 @@ public class NotificationEventListener {
         notificationService.createNotification(contributor, NotificationEventType.submission_needs_revision, msg, link);
         String emailBody = msg + "\n\nValidator remarks:\n" + event.remarks()
                 + "\n\nView submission: " + link;
-        sendEmailSilently(contributor.getEmail(), "DASIGConnect — Revision requested", emailBody);
+        emailDeliveryService.send(contributor,
+                NotificationEventType.submission_needs_revision.name(),
+                "DASIGConnect — Revision requested",
+                emailBody);
     }
 
     // ── T4 — Submission rejected (REJECTED) ──────────────────────────────────
@@ -96,7 +97,10 @@ public class NotificationEventListener {
         notificationService.createNotification(contributor, NotificationEventType.submission_rejected, msg, link);
         String emailBody = msg + "\n\nRejection reason:\n" + event.reason()
                 + "\n\nView submission: " + link;
-        sendEmailSilently(contributor.getEmail(), "DASIGConnect — Submission rejected", emailBody);
+        emailDeliveryService.send(contributor,
+                NotificationEventType.submission_rejected.name(),
+                "DASIGConnect — Submission rejected",
+                emailBody);
     }
 
     // ── T5 — Post published (automated, PUBLISHED) ───────────────────────────
@@ -145,7 +149,10 @@ public class NotificationEventListener {
                 + ". Manual action required.";
         for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.submission_publish_failed, adminMsg, link);
-            sendEmailSilently(admin.getEmail(), "DASIGConnect — Publishing failed", adminMsg);
+            emailDeliveryService.send(admin,
+                    NotificationEventType.submission_publish_failed.name(),
+                    "DASIGConnect — Publishing failed",
+                    adminMsg);
         }
 
         String contributorMsg = "Your post '" + s.getEventTitle()
@@ -185,7 +192,10 @@ public class NotificationEventListener {
         notificationService.createNotification(event.contributor(), NotificationEventType.override_denied, msg, link);
         String emailBody = msg + (event.reason() != null ? "\n\nAdministrator reason: " + event.reason() : "")
                 + "\n\nView submission: " + link;
-        sendEmailSilently(event.contributor().getEmail(), "DASIGConnect — Override request denied", emailBody);
+        emailDeliveryService.send(event.contributor(),
+                NotificationEventType.override_denied.name(),
+                "DASIGConnect — Override request denied",
+                emailBody);
     }
 
     // ── T11 — Admin direct post ───────────────────────────────────────────────
@@ -212,7 +222,10 @@ public class NotificationEventListener {
         String link = "/admin/integrations";
         for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.token_expiring, msg, link);
-            sendEmailSilently(admin.getEmail(), "DASIGConnect — Token expiry warning", msg);
+            emailDeliveryService.send(admin,
+                    NotificationEventType.token_expiring.name(),
+                    "DASIGConnect — Token expiry warning",
+                    msg);
         }
     }
 
@@ -227,7 +240,10 @@ public class NotificationEventListener {
         String link = "/admin/resolution-center";
         for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.token_invalid, msg, link);
-            sendEmailSilently(admin.getEmail(), "DASIGConnect — CRITICAL: Token validation failed", msg);
+            emailDeliveryService.send(admin,
+                    NotificationEventType.token_invalid.name(),
+                    "DASIGConnect — CRITICAL: Token validation failed",
+                    msg);
         }
     }
 
@@ -242,7 +258,10 @@ public class NotificationEventListener {
         String link = "/admin/institutions/" + event.institution().getId();
         for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.institution_no_validator, msg, link);
-            sendEmailSilently(admin.getEmail(), "DASIGConnect — No active Validator at " + name, msg);
+            emailDeliveryService.send(admin,
+                    NotificationEventType.institution_no_validator.name(),
+                    "DASIGConnect — No active Validator at " + name,
+                    msg);
         }
     }
 
@@ -285,7 +304,10 @@ public class NotificationEventListener {
                 + " or submit a new override request.";
 
         notificationService.createNotification(event.contributor(), NotificationEventType.override_slot_suggested, msg, link);
-        sendEmailSilently(event.contributor().getEmail(), "DASIGConnect — Alternative slot suggested", msg);
+        emailDeliveryService.send(event.contributor(),
+                NotificationEventType.override_slot_suggested.name(),
+                "DASIGConnect — Alternative slot suggested",
+                msg);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -296,14 +318,6 @@ public class NotificationEventListener {
 
     private List<User> admins() {
         return userRepository.findByRole(UserRole.administrator);
-    }
-
-    private void sendEmailSilently(String to, String subject, String body) {
-        try {
-            emailService.sendPlainText(to, subject, body);
-        } catch (Exception ex) {
-            log.warn("Email notification to {} failed (in-app notification was already persisted): {}", to, ex.getMessage());
-        }
     }
 
     private static String fmt(Instant instant) {
