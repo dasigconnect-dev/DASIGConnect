@@ -56,4 +56,26 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
     List<Submission> findApproachingDeadlines(
             @Param("windowStart") java.time.Instant windowStart,
             @Param("windowEnd") java.time.Instant windowEnd);
+
+    // UC-2.1 validation queue — PENDING + IN_REVIEW sorted by scheduledAt ASC
+    @Query("""
+        SELECT s FROM Submission s
+        WHERE s.institution.id = :institutionId
+        AND s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review
+        )
+        ORDER BY s.scheduledAt ASC NULLS LAST
+        """)
+    List<Submission> findValidationQueueByInstitution(@Param("institutionId") UUID institutionId);
+
+    @Query("""
+        SELECT s FROM Submission s
+        WHERE s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review
+        )
+        ORDER BY s.scheduledAt ASC NULLS LAST
+        """)
+    List<Submission> findValidationQueue();
 }
