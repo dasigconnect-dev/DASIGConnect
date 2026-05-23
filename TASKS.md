@@ -53,6 +53,12 @@ Legend: Done / In Progress / Not Started / Deferred
 
 ### Backend Verification
 
+<<<<<<< HEAD
+
+=======
+
+> > > > > > > feature/m1-submission-tags-guardrails
+
 - Done: backend test suite passed with 163 tests.
 - Done: Flyway duplicate migration version conflict fixed; source and generated migrations now use unique versions `V1`, `V2`, `V3`, and `V4`.
 - Done: `mvn clean` and `mvn -DskipTests package` passed after the migration rename.
@@ -61,6 +67,12 @@ Legend: Done / In Progress / Not Started / Deferred
 - Note: `.\mvnw.cmd` fails in the current PowerShell environment; direct Maven from `.m2/wrapper/dists` was used successfully.
 
 ### Pending - Backend
+
+<<<<<<< HEAD
+
+=======
+
+> > > > > > > feature/m1-submission-tags-guardrails
 
 - Not Started: UC-2.1 Content Validation - review queue, approve/reject/needs-revision transitions.
 - Not Started: UC-2.2 Media Repository - `MediaAssetController`, `GET/DELETE /api/v1/media-assets`.
@@ -78,6 +90,12 @@ Legend: Done / In Progress / Not Started / Deferred
 
 ### UC-1.1 / UC-1.2 Auth & Onboarding
 
+<<<<<<< HEAD
+
+=======
+
+> > > > > > > feature/m1-submission-tags-guardrails
+
 - Done: login/logout UI wired to auth endpoints.
 - Done: invitation accept flow.
 - Done: forgot password request flow.
@@ -89,6 +107,12 @@ Legend: Done / In Progress / Not Started / Deferred
 - Note: no built-in validator account exists; create validators through the administrator invite flow.
 
 ### UC-1.3 Submission Form
+
+<<<<<<< HEAD
+
+=======
+
+> > > > > > > feature/m1-submission-tags-guardrails
 
 - Done: submission list wired to `GET /api/v1/submissions`.
 - Done: draft creation wired to `POST /api/v1/submissions`.
@@ -105,12 +129,24 @@ Legend: Done / In Progress / Not Started / Deferred
 
 ### Dashboard
 
+<<<<<<< HEAD
+
+=======
+
+> > > > > > > feature/m1-submission-tags-guardrails
+
 - Done: stat tiles use live endpoints where available: submissions, institutions, user counts, and pending invitation counts.
 - Done: invite/manage modal lists pending invitations and current users for the selected institution.
 - Done: pending invitations can be resent from the invite/manage modal.
 - Done: current user state hydrates from `GET /api/v1/me` after login, invite accept, session relogin, and saved-token restore.
 
 ### Pending - Frontend
+
+<<<<<<< HEAD
+
+=======
+
+> > > > > > > feature/m1-submission-tags-guardrails
 
 - Gap: submission queue design improved locally but still needs user/team review against real data and mobile widths.
 - Gap: save draft / submit review still needs final UI-level debugging; current local changes are intended to unblock testing but are not yet proven end to end.
@@ -123,6 +159,12 @@ Legend: Done / In Progress / Not Started / Deferred
 - Gap: Supabase browser upload env is now configured locally, but the full upload flow still needs manual verification through the submission form.
 
 ### Frontend Verification
+
+<<<<<<< HEAD
+
+=======
+
+> > > > > > > feature/m1-submission-tags-guardrails
 
 - Done: `npm.cmd run build` passed.
 - Local setup: `frontend/.env.local` should contain `VITE_API_URL=http://localhost:8080/api/v1` when using the Vite dev server with the local backend. This file is intentionally ignored by Git.
