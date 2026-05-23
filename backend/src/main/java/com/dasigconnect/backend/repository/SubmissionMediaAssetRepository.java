@@ -22,16 +22,26 @@ public interface SubmissionMediaAssetRepository extends JpaRepository<Submission
 
     void deleteBySubmissionId(UUID submissionId);
 
+    List<SubmissionMediaAsset> findByMediaAssetIdOrderByCreatedAtDesc(UUID mediaAssetId);
+
     @Query("""
         SELECT COUNT(sma) FROM SubmissionMediaAsset sma
         WHERE sma.mediaAsset.id = :assetId
           AND sma.submission.status IN (
-              com.dasigconnect.backend.model.entity.SubmissionStatus.draft,
-              com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
-              com.dasigconnect.backend.model.entity.SubmissionStatus.in_review,
-              com.dasigconnect.backend.model.entity.SubmissionStatus.needs_revision,
-              com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled
+                            com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
+                            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review,
+                            com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled
           )
         """)
-    long countActiveSubmissionsByAssetId(@Param("assetId") UUID assetId);
+    long countBlockingSubmissionsByAssetId(@Param("assetId") UUID assetId);
+
+    @Query("""
+                SELECT COUNT(sma) FROM SubmissionMediaAsset sma
+                WHERE sma.mediaAsset.id = :assetId
+                    AND sma.submission.status IN (
+                            com.dasigconnect.backend.model.entity.SubmissionStatus.draft,
+                            com.dasigconnect.backend.model.entity.SubmissionStatus.needs_revision
+                    )
+                """)
+    long countDraftSubmissionsByAssetId(@Param("assetId") UUID assetId);
 }
