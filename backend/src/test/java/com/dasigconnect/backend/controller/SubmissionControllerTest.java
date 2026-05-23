@@ -1,7 +1,9 @@
 package com.dasigconnect.backend.controller;
 
 import com.dasigconnect.backend.config.SecurityConfig;
+import com.dasigconnect.backend.exception.GuardRailViolationException;
 import com.dasigconnect.backend.model.dto.guardrail.GuardRailResult;
+import com.dasigconnect.backend.model.dto.guardrail.GuardRailViolation;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.entity.Institution;
@@ -78,8 +80,8 @@ class SubmissionControllerTest {
         when(submissionService.create(any(), any())).thenReturn(responseDto(UUID.randomUUID(), SubmissionStatus.draft));
 
         mockMvc.perform(post("/api/v1/submissions")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
                                 {"eventTitle":"Research Expo","eventDate":"2026-06-01","caption":"Caption"}
                                 """))
                 .andExpect(status().isCreated())
@@ -91,8 +93,8 @@ class SubmissionControllerTest {
     @WithMockUser(roles = "VALIDATOR")
     void create_asValidator_returns403() throws Exception {
         mockMvc.perform(post("/api/v1/submissions")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
                                 {"eventTitle":"Research Expo","eventDate":"2026-06-01"}
                                 """))
                 .andExpect(status().isForbidden());
@@ -102,8 +104,8 @@ class SubmissionControllerTest {
     @WithMockUser(roles = "CONTRIBUTOR")
     void create_missingEventTitle_returns400() throws Exception {
         mockMvc.perform(post("/api/v1/submissions")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
                                 {"eventDate":"2026-06-01"}
                                 """))
                 .andExpect(status().isBadRequest())
@@ -129,12 +131,32 @@ class SubmissionControllerTest {
         when(submissionService.update(any(), any(), any())).thenReturn(responseDto(submissionId, SubmissionStatus.draft));
 
         mockMvc.perform(patch("/api/v1/submissions/{id}", submissionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
                                 {"eventTitle":"Updated Expo"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(submissionId.toString()));
+    }
+
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
+    void update_guardRailViolation_returns422WithViolations() throws Exception {
+        UUID submissionId = UUID.randomUUID();
+        when(submissionService.update(any(), any(), any()))
+                .thenThrow(new GuardRailViolationException(List.of(
+                        new GuardRailViolation("GR-H2", "Scheduled time must be at least 2 hours from now."))));
+
+        mockMvc.perform(patch("/api/v1/submissions/{id}", submissionId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                                {"scheduledAt":"2026-06-01T08:00:00Z"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.status").value(422))
+                .andExpect(jsonPath("$.error").value("Scheduled time must be at least 2 hours from now."))
+                .andExpect(jsonPath("$.summary").value("Slot rejected: GR-H2"))
+                .andExpect(jsonPath("$.violations[0].code").value("GR-H2"));
     }
 
     @Test
@@ -166,8 +188,8 @@ class SubmissionControllerTest {
         when(submissionService.evaluateSlot(any(), any())).thenReturn(new GuardRailResult());
 
         mockMvc.perform(post("/api/v1/submissions/{id}/evaluate-slot", submissionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
                                 {"scheduledAt":"2026-06-01T08:00:00Z"}
                                 """))
                 .andExpect(status().isOk())
@@ -182,8 +204,8 @@ class SubmissionControllerTest {
         when(submissionService.attachMedia(any(), any(), any())).thenReturn(responseDto(submissionId, SubmissionStatus.draft));
 
         mockMvc.perform(post("/api/v1/submissions/{id}/media", submissionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
                                 {"storageUrl":"https://storage.example/photo.jpg","fileName":"photo.jpg","fileType":"jpeg","fileSizeBytes":1024}
                                 """))
                 .andExpect(status().isCreated())
@@ -194,8 +216,8 @@ class SubmissionControllerTest {
     @WithMockUser(roles = "CONTRIBUTOR")
     void attachMedia_missingStorageUrl_returns400() throws Exception {
         mockMvc.perform(post("/api/v1/submissions/{id}/media", UUID.randomUUID())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
                                 {"fileName":"photo.jpg","fileType":"jpeg","fileSizeBytes":1024}
                                 """))
                 .andExpect(status().isBadRequest())
@@ -209,8 +231,8 @@ class SubmissionControllerTest {
         when(submissionService.attachAsset(any(), any(), any())).thenReturn(responseDto(submissionId, SubmissionStatus.draft));
 
         mockMvc.perform(post("/api/v1/submissions/{id}/assets", submissionId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
                                 {"mediaAssetId":"%s"}
                                 """.formatted(UUID.randomUUID())))
                 .andExpect(status().isCreated())

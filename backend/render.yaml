@@ -1,16 +1,28 @@
 services:
   - type: web
     name: dasigconnect-backend
-    runtime: java
-    buildCommand: mvn clean package -DskipTests
-    startCommand: java -jar target/backend-0.0.1-SNAPSHOT.jar
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     envVars:
-      - key: DATABASE_URL
+      # Database
+      - key: DASIG_DATABASE_URL
         sync: false
-      - key: DATABASE_USER
+      - key: DASIG_DATABASE_USER
         sync: false
-      - key: DATABASE_PASSWORD
+      - key: DASIG_DATABASE_PASSWORD
         sync: false
+      # Supabase
+      - key: DASIG_SUPABASE_URL
+        sync: false
+      - key: DASIG_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DASIG_SUPABASE_STORAGE_BUCKET
+        sync: false
+      # JWT
+      - key: JWT_SECRET
+        sync: false
+      # Mail
       - key: MAIL_HOST
         sync: false
       - key: MAIL_PORT
@@ -19,19 +31,32 @@ services:
         sync: false
       - key: MAIL_PASSWORD
         sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: MAIL_FROM_NAME
+        sync: false
+      - key: MAIL_REPLY_TO
+        sync: false
       - key: MAIL_SMTP_AUTH
         sync: false
       - key: MAIL_SMTP_STARTTLS_ENABLE
         sync: false
-      - key: MAIL_FROM
+      - key: MAIL_SMTP_STARTTLS_REQUIRED
         sync: false
+      - key: MAIL_SMTP_SSL_TRUST
+        sync: false
+      - key: MAIL_SMTP_CONNECTION_TIMEOUT
+        sync: false
+      - key: MAIL_SMTP_TIMEOUT
+        sync: false
+      - key: MAIL_SMTP_WRITE_TIMEOUT
+        sync: false
+      - key: MAIL_SMTP_DEBUG
+        sync: false
+      - key: MAIL_SMTP_DEBUG_AUTH
+        sync: false
+      # App
       - key: APP_FRONTEND_BASE_URL
-        sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_STORAGE_BUCKET
-        sync: false
-      - key: JAVA_OPTS
-        value: -Xmx512m -Xms256m
+        value: https://dasigconnect.vercel.app
+      - key: APP_GUARDRAILS_ENFORCED
+        value: "true"

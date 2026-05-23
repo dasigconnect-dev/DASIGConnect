@@ -22,6 +22,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.dasigconnect.backend.exception.GuardRailViolationException;
 import com.dasigconnect.backend.exception.SlotAlreadyTakenException;
@@ -72,6 +73,7 @@ class SlotReservationServiceTest {
         mockInstitution.setId(institutionId);
 
         lenient().when(guardRailService.validate(any(), any())).thenReturn(new GuardRailResult());
+        ReflectionTestUtils.setField(slotReservationService, "guardRailsEnforced", true);
     }
 
     // ── reserve() ─────────────────────────────────────────────────────────────
@@ -110,6 +112,25 @@ class SlotReservationServiceTest {
         }
 
         @Test
+        @DisplayName("should return existing reservation when submission already owns requested slot")
+        void shouldReturnExistingReservation_whenSameSlotAlreadyHeld() {
+            SlotReservation existing = new SlotReservation();
+            existing.setSubmission(mockSubmission);
+            existing.setInstitution(mockInstitution);
+            existing.setScheduledAt(validSlot);
+            existing.setStatus(SlotReservationStatus.held);
+            when(slotReservationRepository.findActiveBySubmissionId(submissionId))
+                    .thenReturn(Optional.of(existing));
+
+            SlotReservation result = slotReservationService.reserve(submissionId, institutionId, validSlot);
+
+            assertThat(result).isSameAs(existing);
+            verify(guardRailService, never()).validate(any(), any());
+            verify(slotReservationRepository, never()).releaseBySubmissionId(any());
+            verify(slotReservationRepository, never()).save(any());
+        }
+
+        @Test
         @DisplayName("should throw GuardRailViolationException when hard blocks present")
         void shouldThrow_whenHardBlockPresent() {
             GuardRailViolation block = new GuardRailViolation("GR-H2", "Too soon");
@@ -120,6 +141,18 @@ class SlotReservationServiceTest {
                     .isInstanceOf(GuardRailViolationException.class);
 
             verify(slotReservationRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("should save reservation when guard rail enforcement is disabled")
+        void shouldSave_whenGuardRailEnforcementDisabled() {
+            ReflectionTestUtils.setField(slotReservationService, "guardRailsEnforced", false);
+            when(slotReservationRepository.save(any())).thenReturn(new SlotReservation());
+
+            slotReservationService.reserve(submissionId, institutionId, validSlot);
+
+            verify(guardRailService, never()).validate(any(), any());
+            verify(slotReservationRepository).save(any(SlotReservation.class));
         }
 
         @Test

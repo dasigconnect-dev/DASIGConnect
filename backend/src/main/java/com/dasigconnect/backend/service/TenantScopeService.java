@@ -22,7 +22,7 @@ public class TenantScopeService {
 
     private void setLocal(String key, String value) {
         entityManager
-                .createNativeQuery("SELECT set_config(:key, :value, true)")
+                .createNativeQuery("SELECT set_config(:key, :value, false)")
                 .setParameter("key", key)
                 .setParameter("value", value)
                 .getSingleResult();

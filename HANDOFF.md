@@ -5,6 +5,7 @@ Current branch: `feature/uc13-submission-backend`
 ## Status
 
 ### Backend
+
 - Done: UC-1.3 submission backend endpoints on `/api/v1/submissions`.
 - Done: required merge-blocking tests:
   - `SubmissionServiceTest`
@@ -21,8 +22,11 @@ Current branch: `feature/uc13-submission-backend`
 - Done: local datasource config supports `DASIG_DATABASE_*` overrides first, then standard `DATABASE_*` variables, with a local JDBC fallback. This avoids accidental unresolved/provider-style database URLs during local runs.
 - Done: backend Supabase config supports `DASIG_SUPABASE_URL`, `DASIG_SUPABASE_SERVICE_ROLE_KEY`, and `DASIG_SUPABASE_STORAGE_BUCKET`.
 - Done: Flyway fresh Supabase startup is fixed by using baseline version `0`; a new Supabase `public` schema now baselines at `0` and runs V1 through V4 instead of skipping V1.
+- Done locally: guard rail enforcement can be disabled with `APP_GUARDRAILS_ENFORCED=false` for testing. Local default is currently false so GR-H1/GR-H2/GR-H3 do not block draft save or submit-for-review testing.
+- Done locally: guard rail reservation failures return structured `422` responses with violation details instead of generic internal server errors.
 
 ### Frontend
+
 - Done: submission API wiring now matches the backend:
   - `POST /api/v1/submissions` for draft creation.
   - `POST /api/v1/submissions/{id}/evaluate-slot` with `{ scheduledAt }`.
@@ -34,6 +38,11 @@ Current branch: `feature/uc13-submission-backend`
 - Done: dashboard stat tiles are no longer all hardcoded zero; they use live submission/user/institution/pending-invitation endpoints where backend support exists.
 - Done: app auth state hydrates from `GET /api/v1/me` after login, invite accept, session modal relogin, and saved-token restore. This prevents Gmail/domain guessing from overriding the real institution.
 - Done: invite/manage modal now lists pending invitations and current users for the selected institution, including resend actions for active pending invites.
+- Done locally: user management now has a reusable `UserManagementPanel` with selected-user details and deactivate/reactivate actions wired to `PATCH /api/v1/users/{id}/status`.
+- Done locally: invite validator flow warns when the selected institution already has active validators, but allows the administrator to proceed after confirmation.
+- Done locally: `.jpg` files are normalized to `jpeg` for submission readiness and backend media metadata.
+- Done locally: submission queue styling has been improved with a clearer left-side queue panel, count badge, item containers, hover state, and active state.
+- Done locally: frontend submit buttons are no longer blocked by readiness score during testing, and draft payloads use safe defaults for blank required backend fields.
 - Done locally: `frontend/.env.local` points Vite to `http://localhost:8080/api/v1` and contains the Supabase browser upload variables for the `dasigconnect-media` bucket. This file is intentionally ignored and should not be committed.
 
 ## Verification
@@ -46,6 +55,8 @@ Current branch: `feature/uc13-submission-backend`
 - Flyway duplicate migration check: source and generated `target/classes/db/migration` now have unique versions `V1`, `V2`, `V3`, and `V4`; `mvn clean` and `mvn -DskipTests package` passed.
 - Fresh Supabase DB check: backend applied V1 through V4 successfully, then a second startup validated migrations and started with 0 pending migrations.
 - Latest frontend check after local Supabase env wiring: `npm.cmd run build` passed.
+- Latest focused submission backend check: `SlotReservationServiceTest`, `SubmissionServiceTest`, and `SubmissionControllerTest` passed.
+- Latest focused submission backend result: 42 tests, 0 failures, 0 errors.
 
 Backend test command used:
 
@@ -55,6 +66,8 @@ Backend test command used:
 
 ## Remaining Gaps
 
+- Active Module 1 blocker: save draft and submit-for-review are not yet considered solved. Backend guard rail blocking has been bypassed for testing and frontend payload defaults were added, but the browser flow still needs manual debugging/verification against the current backend and Supabase setup.
+- Submission queue design improved locally, but still needs user/team review with real queue data and responsive/mobile widths.
 - `GET /api/v1/submissions/lookups` does not provide categories, tags, or preferred time slots. The frontend no longer assumes those fields, but richer category/tag UI needs backend support.
 - `AssetPickerModal` / media library still needs UC-2.2 backend: `MediaAssetController`, especially `GET /api/v1/media-assets` and delete behavior.
 - Validator review queue actions still need UC-2.1 backend: approve, reject, needs-revision, and validator/admin transition rules.

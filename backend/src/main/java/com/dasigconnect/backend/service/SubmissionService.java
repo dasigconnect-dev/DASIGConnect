@@ -1,11 +1,26 @@
 package com.dasigconnect.backend.service;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
 import com.dasigconnect.backend.exception.MediaAssetNotFoundException;
 import com.dasigconnect.backend.exception.SubmissionNotFoundException;
 import com.dasigconnect.backend.model.dto.guardrail.GuardRailResult;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.AttachAssetDto;
 import com.dasigconnect.backend.model.dto.submission.AttachMediaDto;
+import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlRequest;
+import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlResponse;
 import com.dasigconnect.backend.model.dto.submission.SlotEvaluateRequestDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionCreateDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
@@ -22,29 +37,18 @@ import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
+
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Business logic for UC-1.3: Content Submission and Self-Service Scheduling.
  *
- * State machine (submissions this service owns):
- *   DRAFT → PENDING (submit)
- *   NEEDS_REVISION → PENDING (re-submit)
- *   DRAFT → deleted (delete)
+ * State machine (submissions this service owns): DRAFT → PENDING (submit)
+ * NEEDS_REVISION → PENDING (re-submit) DRAFT → deleted (delete)
  *
- * Transitions owned by other services (ValidationService — Module 2):
- *   PENDING → IN_REVIEW → APPROVED/NEEDS_REVISION/REJECTED → SCHEDULED
+ * Transitions owned by other services (ValidationService — Module 2): PENDING →
+ * IN_REVIEW → APPROVED/NEEDS_REVISION/REJECTED → SCHEDULED
  */
 @Service
 @Transactional
@@ -60,9 +64,13 @@ public class SubmissionService {
     private final SlotReservationService slotReservationService;
     private final GuardRailService guardRailService;
     private final AuditLogService auditLogService;
+    private final SupabaseStorageService supabaseStorageService;
 
     @PersistenceContext
     private EntityManager entityManager;
+
+    @Value("${app.guardrails.enforced:true}")
+    private boolean guardRailsEnforced = true;
 
     public SubmissionService(
             SubmissionRepository submissionRepository,
@@ -70,19 +78,32 @@ public class SubmissionService {
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
             SlotReservationService slotReservationService,
             GuardRailService guardRailService,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            SupabaseStorageService supabaseStorageService) {
         this.submissionRepository = submissionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.slotReservationService = slotReservationService;
         this.guardRailService = guardRailService;
         this.auditLogService = auditLogService;
+        this.supabaseStorageService = supabaseStorageService;
+    }
+
+    @Transactional(readOnly = true)
+    public SignedUploadUrlResponse createSignedUploadUrl(UUID submissionId, SignedUploadUrlRequest dto, JwtUserDetails user) {
+        Submission submission = loadForContributor(submissionId, user);
+        assertEditableStatus(submission);
+        String safeFileName = dto.getFileName().replaceAll("[^a-zA-Z0-9._-]", "-");
+        String objectPath = submissionId + "/" + UUID.randomUUID() + "-" + safeFileName;
+        String signedUrl = supabaseStorageService.createSignedUploadUrl(objectPath);
+        String publicUrl = supabaseStorageService.getPublicUrl(objectPath);
+        return new SignedUploadUrlResponse(signedUrl, publicUrl, objectPath);
     }
 
     /**
-     * Creates a new submission in DRAFT status.
-     * If scheduledAt is provided, validates guard rails and reserves the slot.
-     * Guard rail violations are returned as HTTP 409 with the violation details.
+     * Creates a new submission in DRAFT status. If scheduledAt is provided,
+     * validates guard rails and reserves the slot. Guard rail violations are
+     * returned as HTTP 409 with the violation details.
      */
     public SubmissionResponseDto create(SubmissionCreateDto dto, JwtUserDetails user) {
         User contributor = entityManager.getReference(User.class, user.userId());
@@ -96,6 +117,10 @@ public class SubmissionService {
         submission.setCaption(dto.getCaption());
         submission.setDescription(dto.getDescription());
         submission.setStatus(SubmissionStatus.draft);
+        submission.setCategory(dto.getCategory());
+        if (dto.getTags() != null && !dto.getTags().isEmpty()) {
+            submission.setTags(String.join(",", dto.getTags()));
+        }
 
         submission = submissionRepository.save(submission);
 
@@ -113,17 +138,31 @@ public class SubmissionService {
     }
 
     /**
-     * Updates a DRAFT or NEEDS_REVISION submission (auto-save support).
-     * If scheduledAt changes, releases the old slot and reserves the new one.
+     * Updates a DRAFT or NEEDS_REVISION submission (auto-save support). If
+     * scheduledAt changes, releases the old slot and reserves the new one.
      */
     public SubmissionResponseDto update(UUID submissionId, SubmissionUpdateDto dto, JwtUserDetails user) {
         Submission submission = loadForContributor(submissionId, user);
         assertEditableStatus(submission);
 
-        if (dto.getEventTitle() != null) submission.setEventTitle(dto.getEventTitle());
-        if (dto.getEventDate() != null) submission.setEventDate(dto.getEventDate());
-        if (dto.getCaption() != null) submission.setCaption(dto.getCaption());
-        if (dto.getDescription() != null) submission.setDescription(dto.getDescription());
+        if (dto.getEventTitle() != null) {
+            submission.setEventTitle(dto.getEventTitle());
+        }
+        if (dto.getEventDate() != null) {
+            submission.setEventDate(dto.getEventDate());
+        }
+        if (dto.getCaption() != null) {
+            submission.setCaption(dto.getCaption());
+        }
+        if (dto.getDescription() != null) {
+            submission.setDescription(dto.getDescription());
+        }
+        if (dto.getCategory() != null) {
+            submission.setCategory(dto.getCategory());
+        }
+        if (dto.getTags() != null) {
+            submission.setTags(dto.getTags().isEmpty() ? null : String.join(",", dto.getTags()));
+        }
 
         if (dto.getScheduledAt() != null && !dto.getScheduledAt().equals(submission.getScheduledAt())) {
             submission.setScheduledAt(dto.getScheduledAt());
@@ -136,8 +175,8 @@ public class SubmissionService {
     }
 
     /**
-     * Deletes a DRAFT submission and releases its slot reservation.
-     * Only the owning contributor may delete. Only DRAFT status is deletable.
+     * Deletes a DRAFT submission and removes its slot reservations. Only the
+     * owning contributor may delete. Only DRAFT status is deletable.
      */
     public void delete(UUID submissionId, JwtUserDetails user) {
         Submission submission = loadForContributor(submissionId, user);
@@ -145,15 +184,16 @@ public class SubmissionService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only DRAFT submissions can be deleted. Current status: " + submission.getStatus());
         }
-        slotReservationService.release(submissionId);
+        submissionMediaAssetRepository.deleteBySubmissionId(submissionId);
+        slotReservationService.deleteAllForSubmission(submissionId);
         submissionRepository.delete(submission);
         log.info("Submission {} deleted by contributor {}", submissionId, user.userId());
     }
 
     /**
-     * Transitions DRAFT → PENDING (initial submission) or
-     * NEEDS_REVISION → PENDING (re-submission after revision request).
-     * Re-validates guard rails before accepting.
+     * Transitions DRAFT → PENDING (initial submission) or NEEDS_REVISION →
+     * PENDING (re-submission after revision request). Re-validates guard rails
+     * before accepting.
      */
     public SubmissionResponseDto submit(UUID submissionId, JwtUserDetails user) {
         Submission submission = loadForContributor(submissionId, user);
@@ -162,19 +202,24 @@ public class SubmissionService {
                 && submission.getStatus() != SubmissionStatus.needs_revision) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only DRAFT or NEEDS_REVISION submissions can be submitted. Current status: "
-                            + submission.getStatus());
+                    + submission.getStatus());
         }
 
-        if (submission.getScheduledAt() == null) {
+        if (guardRailsEnforced && submission.getScheduledAt() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A scheduled time must be selected before submitting.");
         }
 
         // Re-run guard rails — slot may have been taken since draft was saved
-        GuardRailResult result = guardRailService.validate(user.institutionId(), submission.getScheduledAt());
-        if (result.isBlocked()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Guard rail violation: " + result.getHardBlocks().get(0).getMessage());
+        if (guardRailsEnforced && submission.getScheduledAt() != null) {
+            GuardRailResult result = guardRailService.validate(user.institutionId(), submission.getScheduledAt());
+            if (result.isBlocked()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Guard rail violation: " + result.getHardBlocks().get(0).getMessage());
+            }
+        } else {
+            log.info("Guard rail enforcement disabled; submitting {} without blocking slot validation.",
+                    submissionId);
         }
 
         submission.setStatus(SubmissionStatus.pending);
@@ -201,20 +246,24 @@ public class SubmissionService {
     }
 
     /**
-     * Lists submissions filtered by the caller's role:
-     * - CONTRIBUTOR: only their own submissions for their institution
-     * - VALIDATOR: all submissions for their institution
-     * - ADMINISTRATOR: all submissions (not filtered by institution)
+     * Lists submissions filtered by the caller's role: - CONTRIBUTOR: only
+     * their own submissions for their institution - VALIDATOR: all submissions
+     * for their institution - ADMINISTRATOR: all submissions (not filtered by
+     * institution)
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> list(JwtUserDetails user) {
         List<Submission> submissions = switch (user.role().toLowerCase()) {
-            case "contributor" -> submissionRepository
-                    .findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(user.userId(), user.institutionId());
-            case "validator" -> submissionRepository
-                    .findByInstitutionIdOrderByCreatedAtDesc(user.institutionId());
-            case "administrator" -> submissionRepository.findAllByOrderByCreatedAtDesc();
-            default -> throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Unknown role");
+            case "contributor" ->
+                submissionRepository
+                .findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(user.userId(), user.institutionId());
+            case "validator" ->
+                submissionRepository
+                .findByInstitutionIdOrderByCreatedAtDesc(user.institutionId());
+            case "administrator" ->
+                submissionRepository.findAllByOrderByCreatedAtDesc();
+            default ->
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Unknown role");
         };
 
         return submissions.stream()
@@ -223,8 +272,8 @@ public class SubmissionService {
     }
 
     /**
-     * Returns full submission detail. Accessible by the owning contributor,
-     * any validator of the same institution, or any administrator.
+     * Returns full submission detail. Accessible by the owning contributor, any
+     * validator of the same institution, or any administrator.
      */
     @Transactional(readOnly = true)
     public SubmissionResponseDto get(UUID submissionId, JwtUserDetails user) {
@@ -235,9 +284,9 @@ public class SubmissionService {
     }
 
     /**
-     * Attaches a new media file to a submission.
-     * The frontend uploads the file directly to Supabase Storage and passes
-     * the resulting URL here. A MediaAsset record is created and linked.
+     * Attaches a new media file to a submission. The frontend uploads the file
+     * directly to Supabase Storage and passes the resulting URL here. A
+     * MediaAsset record is created and linked.
      */
     public SubmissionResponseDto attachMedia(UUID submissionId, AttachMediaDto dto, JwtUserDetails user) {
         Submission submission = loadForContributor(submissionId, user);
@@ -274,8 +323,8 @@ public class SubmissionService {
     }
 
     /**
-     * Attaches an existing media library asset to a submission.
-     * Used by the media recommendation panel and AssetPickerModal.
+     * Attaches an existing media library asset to a submission. Used by the
+     * media recommendation panel and AssetPickerModal.
      */
     public SubmissionResponseDto attachAsset(UUID submissionId, AttachAssetDto dto, JwtUserDetails user) {
         Submission submission = loadForContributor(submissionId, user);
@@ -307,7 +356,6 @@ public class SubmissionService {
     }
 
     // ── Private Helpers ──────────────────────────────────────────────────────
-
     private Submission loadForContributor(UUID submissionId, JwtUserDetails user) {
         Submission submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new SubmissionNotFoundException(submissionId));
@@ -328,7 +376,8 @@ public class SubmissionService {
 
     private void assertReadAccess(Submission submission, JwtUserDetails user) {
         switch (user.role().toLowerCase()) {
-            case "administrator" -> { /* full access */ }
+            case "administrator" -> {
+                /* full access */ }
             case "validator" -> {
                 if (!submission.getInstitution().getId().equals(user.institutionId())) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied.");
@@ -339,7 +388,8 @@ public class SubmissionService {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied.");
                 }
             }
-            default -> throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Unknown role.");
+            default ->
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Unknown role.");
         }
     }
 

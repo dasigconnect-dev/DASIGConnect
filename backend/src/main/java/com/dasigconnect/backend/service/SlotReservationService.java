@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +52,9 @@ public class SlotReservationService {
     private final InstitutionRepository institutionRepository;
     private final GuardRailService guardRailService;
 
+    @Value("${app.guardrails.enforced:true}")
+    private boolean guardRailsEnforced = true;
+
     public SlotReservationService(
             SlotReservationRepository slotReservationRepository,
             SubmissionRepository submissionRepository,
@@ -76,15 +80,30 @@ public class SlotReservationService {
      */
     @Transactional
     public SlotReservation reserve(UUID submissionId, UUID institutionId, Instant requestedSlot) {
-        // Step 1: Guard rail validation
-        GuardRailResult result = guardRailService.validate(institutionId, requestedSlot);
-        if (result.isBlocked()) {
-            throw new GuardRailViolationException(result.getHardBlocks());
+        SlotReservation existingReservation = slotReservationRepository.findActiveBySubmissionId(submissionId)
+                .orElse(null);
+        if (existingReservation != null && existingReservation.getScheduledAt().compareTo(requestedSlot) == 0) {
+            log.debug("Submission {} already owns slot {}; skipping duplicate reservation.",
+                    submissionId, requestedSlot);
+            return existingReservation;
         }
-        // Soft warnings are logged but do not block (frontend handles the warning UI)
-        if (result.hasWarnings()) {
-            log.info("Slot reservation proceeding with soft warnings for submission {}: {}",
-                    submissionId, result.getSoftWarnings());
+
+        if (guardRailsEnforced) {
+            // Step 1: Guard rail validation
+            GuardRailResult result = guardRailService.validate(institutionId, requestedSlot);
+            if (result.isBlocked()) {
+                log.info("Slot reservation rejected for submission {} institution {} slot {}: {}",
+                        submissionId, institutionId, requestedSlot, result.getHardBlocks());
+                throw new GuardRailViolationException(result.getHardBlocks());
+            }
+            // Soft warnings are logged but do not block (frontend handles the warning UI)
+            if (result.hasWarnings()) {
+                log.info("Slot reservation proceeding with soft warnings for submission {}: {}",
+                        submissionId, result.getSoftWarnings());
+            }
+        } else {
+            log.info("Guard rail enforcement disabled; reserving requested slot {} for submission {}.",
+                    requestedSlot, submissionId);
         }
 
         // Step 2: Load entities
@@ -128,6 +147,11 @@ public class SlotReservationService {
             log.info("Released slot reservation for submission {}", submissionId);
         }
         return updated;
+    }
+
+    @Transactional
+    public void deleteAllForSubmission(UUID submissionId) {
+        slotReservationRepository.deleteBySubmissionId(submissionId);
     }
 
     /**

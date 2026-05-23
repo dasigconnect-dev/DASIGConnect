@@ -1,8 +1,10 @@
 package com.dasigconnect.backend.model.dto.submission;
 
-import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
+
+import jakarta.validation.constraints.Size;
 
 public class SubmissionUpdateDto {
 
@@ -17,18 +19,64 @@ public class SubmissionUpdateDto {
 
     private Instant scheduledAt;
 
-    public String getEventTitle() { return eventTitle; }
-    public void setEventTitle(String eventTitle) { this.eventTitle = eventTitle; }
+    @Size(max = 100)
+    private String category;
 
-    public LocalDate getEventDate() { return eventDate; }
-    public void setEventDate(LocalDate eventDate) { this.eventDate = eventDate; }
+    private List<String> tags;
 
-    public String getCaption() { return caption; }
-    public void setCaption(String caption) { this.caption = caption; }
+    public String getEventTitle() {
+        return eventTitle;
+    }
 
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
+    public void setEventTitle(String eventTitle) {
+        this.eventTitle = eventTitle;
+    }
 
-    public Instant getScheduledAt() { return scheduledAt; }
-    public void setScheduledAt(Instant scheduledAt) { this.scheduledAt = scheduledAt; }
+    public LocalDate getEventDate() {
+        return eventDate;
+    }
+
+    public void setEventDate(LocalDate eventDate) {
+        this.eventDate = eventDate;
+    }
+
+    public String getCaption() {
+        return caption;
+    }
+
+    public void setCaption(String caption) {
+        this.caption = caption;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public Instant getScheduledAt() {
+        return scheduledAt;
+    }
+
+    public void setScheduledAt(Instant scheduledAt) {
+        this.scheduledAt = scheduledAt;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
+    }
+
+    public List<String> getTags() {
+        return tags;
+    }
+
+    public void setTags(List<String> tags) {
+        this.tags = tags;
+    }
 }
