@@ -164,7 +164,7 @@ public class SubmissionService {
     }
 
     /**
-     * Deletes a DRAFT submission and releases its slot reservation.
+     * Deletes a DRAFT submission and removes its slot reservations.
      * Only the owning contributor may delete. Only DRAFT status is deletable.
      */
     public void delete(UUID submissionId, JwtUserDetails user) {

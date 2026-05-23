@@ -149,7 +149,7 @@ class SubmissionServiceTest {
 
         submissionService.delete(submissionId, contributorPrincipal);
 
-        verify(slotReservationService).release(submissionId);
+        verify(slotReservationService).deleteAllForSubmission(submissionId);
         verify(submissionRepository).delete(submission);
     }
 
