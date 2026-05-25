@@ -11,6 +11,7 @@ interface InstitutionUsersCardProps {
   loading: boolean
   updatingUserId: string | null
   onToggleUserStatus: (user: UserProfileResponse) => void
+  showRoleControls?: boolean
 }
 
 type RoleFilter = 'all' | 'validator' | 'contributor'
@@ -22,6 +23,7 @@ export default function InstitutionUsersCard({
   loading,
   updatingUserId,
   onToggleUserStatus,
+  showRoleControls = true,
 }: InstitutionUsersCardProps) {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
@@ -32,7 +34,7 @@ export default function InstitutionUsersCard({
     if (search && !searchValue.includes(search.toLowerCase())) {
       return false
     }
-    if (roleFilter !== 'all' && user.role.toLowerCase() !== roleFilter) {
+    if (showRoleControls && roleFilter !== 'all' && user.role.toLowerCase() !== roleFilter) {
       return false
     }
     if (statusFilter !== 'all') {
@@ -46,7 +48,7 @@ export default function InstitutionUsersCard({
     return true
   })
 
-  const hasFilters = search !== '' || roleFilter !== 'all' || statusFilter !== 'all'
+  const hasFilters = search !== '' || (showRoleControls && roleFilter !== 'all') || statusFilter !== 'all'
 
   return (
     <section className={`um-data-card${loading ? ' is-busy' : ''}`} aria-busy={loading}>
@@ -77,22 +79,26 @@ export default function InstitutionUsersCard({
             />
           </div>
         </div>
-        <div className="um-filter-divider" role="separator" aria-hidden="true"></div>
-        <div className="um-filter-group">
-          <span className="um-filter-label">Role</span>
-          <div className="um-filter-pills" role="group" aria-label="Filter by role">
-            {(['all', 'contributor', 'validator'] as RoleFilter[]).map((value) => (
-              <button
-                key={value}
-                type="button"
-                className={`um-filter-pill${roleFilter === value ? ' is-active' : ''}`}
-                onClick={() => setRoleFilter(value)}
-              >
-                {value === 'all' ? 'All Roles' : value.charAt(0).toUpperCase() + value.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
+        {showRoleControls && (
+          <>
+            <div className="um-filter-divider" role="separator" aria-hidden="true"></div>
+            <div className="um-filter-group">
+              <span className="um-filter-label">Role</span>
+              <div className="um-filter-pills" role="group" aria-label="Filter by role">
+                {(['all', 'contributor', 'validator'] as RoleFilter[]).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`um-filter-pill${roleFilter === value ? ' is-active' : ''}`}
+                    onClick={() => setRoleFilter(value)}
+                  >
+                    {value === 'all' ? 'All Roles' : value.charAt(0).toUpperCase() + value.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
         <div className="um-filter-divider" role="separator" aria-hidden="true"></div>
         <div className="um-filter-group">
           <span className="um-filter-label">Status</span>
@@ -145,7 +151,7 @@ export default function InstitutionUsersCard({
             <thead>
               <tr>
                 <th>User</th>
-                <th>Role</th>
+                {showRoleControls && <th>Role</th>}
                 <th>Institution</th>
                 <th>Status</th>
                 <th>{statusFilter === 'pending' ? 'Expires' : 'Joined'}</th>
@@ -196,11 +202,13 @@ export default function InstitutionUsersCard({
                         </div>
                       </div>
                     </td>
-                    <td>
-                      <span className={`um-role-tag is-${managedUser.role.toLowerCase()}`}>
-                        {formatRoleLabel(managedUser.role)}
-                      </span>
-                    </td>
+                    {showRoleControls && (
+                      <td>
+                        <span className={`um-role-tag is-${managedUser.role.toLowerCase()}`}>
+                          {formatRoleLabel(managedUser.role)}
+                        </span>
+                      </td>
+                    )}
                     <td>{managedUser.institutionName || '—'}</td>
                     <td>
                       <span className={`um-badge ${stateClass(managedUser.accountState)}`}>

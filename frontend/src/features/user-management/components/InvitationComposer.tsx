@@ -45,7 +45,9 @@ export default function InvitationComposer({
           <div>
             <div className="um-composer-title">Send Invitations</div>
             <div className="um-composer-subtitle">
-              Invite contributors or validators securely into this institution workspace.
+              {canChooseRole
+                ? 'Invite contributors or validators securely into this institution workspace.'
+                : 'Invite contributors securely into this institution workspace.'}
             </div>
           </div>
         </div>

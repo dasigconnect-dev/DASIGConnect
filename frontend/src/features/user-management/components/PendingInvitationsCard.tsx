@@ -10,6 +10,7 @@ interface PendingInvitationsCardProps {
   loading: boolean
   resendingInvitationId: string | null
   onResend: (id: string) => void
+  showRoleControls?: boolean
 }
 
 type RoleFilter = 'all' | 'validator' | 'contributor'
@@ -21,6 +22,7 @@ export default function PendingInvitationsCard({
   loading,
   resendingInvitationId,
   onResend,
+  showRoleControls = true,
 }: PendingInvitationsCardProps) {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
@@ -30,7 +32,7 @@ export default function PendingInvitationsCard({
     if (search && !invite.recipientEmail.toLowerCase().includes(search.toLowerCase())) {
       return false
     }
-    if (roleFilter !== 'all' && invite.assignedRole.toLowerCase() !== roleFilter) {
+    if (showRoleControls && roleFilter !== 'all' && invite.assignedRole.toLowerCase() !== roleFilter) {
       return false
     }
     if (expiryFilter !== 'all') {
@@ -44,7 +46,7 @@ export default function PendingInvitationsCard({
     return true
   })
 
-  const hasFilters = search !== '' || roleFilter !== 'all' || expiryFilter !== 'all'
+  const hasFilters = search !== '' || (showRoleControls && roleFilter !== 'all') || expiryFilter !== 'all'
 
   return (
     <section className={`um-data-card um-pending-card${loading ? ' is-busy' : ''}`} aria-busy={loading}>
@@ -72,21 +74,23 @@ export default function PendingInvitationsCard({
             aria-label="Search invitations"
           />
         </div>
-        <div className="um-filter-group">
-          <span className="um-filter-label">Role</span>
-          <div className="um-filter-pills" role="group" aria-label="Filter by role">
-            {(['all', 'contributor', 'validator'] as RoleFilter[]).map((value) => (
-              <button
-                key={value}
-                type="button"
-                className={`um-filter-pill${roleFilter === value ? ' is-active' : ''}`}
-                onClick={() => setRoleFilter(value)}
-              >
-                {value === 'all' ? 'All' : value.charAt(0).toUpperCase() + value.slice(1)}
-              </button>
-            ))}
+        {showRoleControls && (
+          <div className="um-filter-group">
+            <span className="um-filter-label">Role</span>
+            <div className="um-filter-pills" role="group" aria-label="Filter by role">
+              {(['all', 'contributor', 'validator'] as RoleFilter[]).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`um-filter-pill${roleFilter === value ? ' is-active' : ''}`}
+                  onClick={() => setRoleFilter(value)}
+                >
+                  {value === 'all' ? 'All' : value.charAt(0).toUpperCase() + value.slice(1)}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
         <div className="um-filter-group">
           <span className="um-filter-label">Expiry</span>
           <div className="um-filter-pills" role="group" aria-label="Filter by expiry">
@@ -137,7 +141,7 @@ export default function PendingInvitationsCard({
             <thead>
               <tr>
                 <th>Recipient</th>
-                <th>Role</th>
+                {showRoleControls && <th>Role</th>}
                 <th>Institution</th>
                 <th>Expires</th>
                 <th>Status</th>
@@ -152,9 +156,11 @@ export default function PendingInvitationsCard({
                     <td>
                       <strong>{invite.recipientEmail}</strong>
                     </td>
-                    <td>
-                      <span className="um-role-tag">{formatRoleLabel(invite.assignedRole)}</span>
-                    </td>
+                    {showRoleControls && (
+                      <td>
+                        <span className="um-role-tag">{formatRoleLabel(invite.assignedRole)}</span>
+                      </td>
+                    )}
                     <td>{institutionName(invite.institutionId, institutions)}</td>
                     <td>
                       <span className={expiryClass(invite.expiresAt)}>

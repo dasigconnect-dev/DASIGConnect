@@ -72,6 +72,21 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
     () => institutions.find((inst) => inst.id === selectedInstitutionId) ?? null,
     [institutions, selectedInstitutionId],
   )
+  const isValidatorWorkspace = user.role === 'validator'
+  const visibleManagedUsers = useMemo(
+    () =>
+      isValidatorWorkspace
+        ? managedUsers.filter((managedUser) => managedUser.role.toLowerCase() === 'contributor')
+        : managedUsers,
+    [isValidatorWorkspace, managedUsers],
+  )
+  const visiblePendingInvitations = useMemo(
+    () =>
+      isValidatorWorkspace
+        ? pendingInvitations.filter((invite) => invite.assignedRole.toLowerCase() === 'contributor')
+        : pendingInvitations,
+    [isValidatorWorkspace, pendingInvitations],
+  )
 
   const initializing =
     institutionsLoading ||
@@ -175,6 +190,14 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
 
     // Button is disabled when role is null, but guard here for type safety
     if (!inviteRole) return
+    if (user.role === 'validator' && inviteRole !== 'contributor') {
+      setInviteResults({
+        total: inviteEmails.length,
+        success: [],
+        failed: [{ email: 'Batch', reason: 'Validators can only invite contributors.' }],
+      })
+      return
+    }
 
     if (inviteRole === 'validator') {
       const proceed = await confirmValidatorInvite()
@@ -386,8 +409,8 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
           >
             <i className="ti ti-send" aria-hidden="true"></i>
             Invitations
-            {pendingInvitations.length > 0 && (
-              <span className="um-tab-badge">{pendingInvitations.length}</span>
+            {visiblePendingInvitations.length > 0 && (
+              <span className="um-tab-badge">{visiblePendingInvitations.length}</span>
             )}
           </button>
           <button
@@ -401,8 +424,8 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
           >
             <i className="ti ti-users" aria-hidden="true"></i>
             Users
-            {managedUsers.length > 0 && (
-              <span className="um-tab-badge is-neutral">{managedUsers.length}</span>
+            {visibleManagedUsers.length > 0 && (
+              <span className="um-tab-badge is-neutral">{visibleManagedUsers.length}</span>
             )}
           </button>
         </div>
@@ -443,11 +466,12 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
             )}
 
             <PendingInvitationsCard
-              invitations={pendingInvitations}
+              invitations={visiblePendingInvitations}
               institutions={institutions}
               loading={managementLoading}
               resendingInvitationId={resendingInvitationId}
               onResend={(id) => void handleResendInvitation(id)}
+              showRoleControls={!isValidatorWorkspace}
             />
           </div>
         )}
@@ -464,47 +488,50 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
               <div className="um-metrics-row">
                 <MetricCard
                   icon="ti ti-users"
-                  label="Total Users"
-                  value={managedUsers.length}
+                  label={isValidatorWorkspace ? 'Total Contributors' : 'Total Users'}
+                  value={visibleManagedUsers.length}
                   loading={managementLoading && managedUsers.length === 0}
                 />
                 <MetricCard
                   icon="ti ti-user-check"
                   label="Active"
-                  value={managedUsers.filter((u) => u.accountState.toLowerCase() === 'active').length}
+                  value={visibleManagedUsers.filter((u) => u.accountState.toLowerCase() === 'active').length}
                   loading={managementLoading && managedUsers.length === 0}
                   accent="green"
                 />
-                <MetricCard
-                  icon="ti ti-shield-check"
-                  label="Validators"
-                  value={managedUsers.filter((u) => u.role.toLowerCase() === 'validator').length}
-                  loading={managementLoading && managedUsers.length === 0}
-                  accent="purple"
-                />
+                {!isValidatorWorkspace && (
+                  <MetricCard
+                    icon="ti ti-shield-check"
+                    label="Validators"
+                    value={managedUsers.filter((u) => u.role.toLowerCase() === 'validator').length}
+                    loading={managementLoading && managedUsers.length === 0}
+                    accent="purple"
+                  />
+                )}
                 <MetricCard
                   icon="ti ti-pencil"
                   label="Contributors"
-                  value={managedUsers.filter((u) => u.role.toLowerCase() === 'contributor').length}
+                  value={visibleManagedUsers.filter((u) => u.role.toLowerCase() === 'contributor').length}
                   loading={managementLoading && managedUsers.length === 0}
                   accent="blue"
                 />
                 <MetricCard
                   icon="ti ti-clock-pause"
                   label="Pending Invites"
-                  value={pendingInvitations.length}
+                  value={visiblePendingInvitations.length}
                   loading={managementLoading && pendingInvitations.length === 0}
-                  accent={pendingInvitations.length > 0 ? 'gold' : undefined}
+                  accent={visiblePendingInvitations.length > 0 ? 'gold' : undefined}
                 />
               </div>
             )}
 
             <InstitutionUsersCard
               currentUser={user}
-              users={managedUsers}
+              users={visibleManagedUsers}
               loading={managementLoading}
               updatingUserId={updatingUserId}
               onToggleUserStatus={handleToggleUserStatus}
+              showRoleControls={!isValidatorWorkspace}
             />
           </div>
         )}
