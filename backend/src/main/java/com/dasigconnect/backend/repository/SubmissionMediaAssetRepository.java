@@ -14,6 +14,16 @@ public interface SubmissionMediaAssetRepository extends JpaRepository<Submission
 
     List<SubmissionMediaAsset> findBySubmissionIdOrderByDisplayOrderAsc(UUID submissionId);
 
+    /** PublishingSchedulerJob: loads junction rows with mediaAsset eagerly joined so
+     *  the lazy proxy does not need a session after the transaction closes. */
+    @Query("""
+        SELECT sma FROM SubmissionMediaAsset sma
+        JOIN FETCH sma.mediaAsset
+        WHERE sma.submission.id = :submissionId
+        ORDER BY sma.displayOrder ASC
+        """)
+    List<SubmissionMediaAsset> findBySubmissionIdWithMediaAsset(@Param("submissionId") UUID submissionId);
+
     Optional<SubmissionMediaAsset> findBySubmissionIdAndMediaAssetId(UUID submissionId, UUID mediaAssetId);
 
     boolean existsBySubmissionIdAndMediaAssetId(UUID submissionId, UUID mediaAssetId);
