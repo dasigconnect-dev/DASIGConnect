@@ -189,7 +189,7 @@ Fix applied:
 - Submission queue design needs review with real data and mobile widths.
 - Submission lookups do not return categories, tags, or preferred time slots.
 - UC-2.2 Media Repository backend + frontend implemented (list/detail/upload/delete, signed URL, multi-select → New Post, Add to Draft picker). Remaining: mp4 uploads fail when the Supabase `dasigconnect-media` bucket disallows `video/*` MIME types or sets a low file-size limit — fix in the Supabase dashboard (bucket settings), not code.
-- Validator review actions need UC-2.1 backend.
+- UC-2.1 backend and frontend are implemented (see Development Modules table).
 - Analytics need UC-2.4 backend.
 - AI captions (UC-3.2) and AI classification/recommendation (UC-3.3) not started.
 - No built-in validator account exists. Use the administrator dashboard to invite validators.
@@ -237,7 +237,7 @@ Important enum values are lowercase in the database, including roles and statuse
 | `dev`                             | In progress              | UC-1.2 extension, conditional bean fix, merged foundation work                                                                                                                      |
 | `feature/uc13-submission-backend` | Done locally, not merged | UC-1.3 backend, required tests, frontend API wiring, reset password/session/dashboard fixes, pending invite/user management UI, invite token superseding, Flyway V4 media migration |
 | `module3`                         | Done locally, not merged | UC-3.1 backend + frontend: publishing pipeline, calendar API/UI, Facebook Graph API integration, token encryption, scheduler jobs, Resolution Center backend/UI (UC-3.4), dynamic Facebook Preview modal, media carousel, and persisted submission media reordering. UC-2.2 Media Repository: backend + frontend fully implemented. UC-2.3 Notifications: backend (SSE, T1–T17, deadline job, email log) + frontend (route, hook, components, sidebar badge, CORS fix) fully implemented. 208 backend tests passing; frontend build passing. |
-| UC-2.1                            | Not started              | Content validation — validator review queue, approve/revision/reject transitions                                                                                                    |
+| UC-2.1                            | Done locally, not merged | Content validation — `ValidationController`, `ValidationService`, `ReviewLockService`, `ReviewLockCleanupJob`, entities (`ReviewLock`, `ValidationLog`, `ValidationAction`), V10 migration, frontend `ValidationQueueScreen` + `useValidationQueue` + `validationApi` |
 | UC-2.4                            | Not started              | Analytics Dashboard — aggregate endpoints + frontend charts                                                                                                                         |
 | UC-3.2 / UC-3.3                   | Not started              | AI Caption (Claude Vision), AI Classification & Recommendation (Voyage AI)                                                                                                          |
 
