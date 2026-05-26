@@ -1,20 +1,25 @@
 package com.dasigconnect.backend.exception;
 
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -53,6 +58,14 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", ex.getMessage(), "status", 400));
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalState(IllegalStateException ex) {
+        log.error("Upstream/storage failure", ex);
+        String message = ex.getMessage() != null ? ex.getMessage() : "Upstream service error";
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(Map.of("error", message, "status", 502));
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, Object>> handleDataIntegrity(DataIntegrityViolationException ex) {
         return ResponseEntity.status(409)
@@ -82,6 +95,22 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleNoResourceFound(NoResourceFoundException ex) {
         return ResponseEntity.status(404)
                 .body(Map.of("error", "Not found", "status", 404));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex,
+            HttpServletRequest request) {
+        String[] supported = ex.getSupportedMethods();
+        log.warn("Method not allowed: {} {} (supported: {})",
+                request.getMethod(), request.getRequestURI(),
+                supported != null ? Arrays.toString(supported) : "none");
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(Map.of(
+                "error", "Method not allowed",
+                "method", request.getMethod(),
+                "path", request.getRequestURI(),
+                "supportedMethods", supported != null ? supported : new String[0],
+                "status", 405));
     }
 
     @ExceptionHandler(AccessDeniedException.class)

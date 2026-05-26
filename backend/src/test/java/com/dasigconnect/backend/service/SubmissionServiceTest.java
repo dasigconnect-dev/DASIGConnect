@@ -178,6 +178,7 @@ class SubmissionServiceTest {
         when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
         when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.validator))
                 .thenReturn(List.of(validator));
@@ -234,12 +235,46 @@ class SubmissionServiceTest {
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
 
         SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
 
         assertThat(result.getStatus()).isEqualTo("pending");
         verify(guardRailService, never()).validate(any(), any());
+    }
+
+    @Test
+    void submit_withoutMedia_returns422() {
+        UUID submissionId = UUID.randomUUID();
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
+
+        assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        verify(submissionRepository, never()).save(submission);
+    }
+
+    @Test
+    void submit_withoutCaption_returns422() {
+        UUID submissionId = UUID.randomUUID();
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
+        submission.setCaption("   ");
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(2L);
+
+        assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        verify(submissionRepository, never()).save(submission);
     }
 
     @Test

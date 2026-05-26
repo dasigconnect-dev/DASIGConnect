@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  attachAsset,
   createDraft,
   deleteDraft,
   getSubmission,
@@ -16,6 +17,7 @@ import {
   type SubmissionStatus,
   type SubmissionSummary,
 } from "../../api/submissionApi";
+import { getMediaAsset } from "../../api/mediaApi";
 import {
   useSubmissionLookups,
   useSubmissions,
@@ -46,6 +48,7 @@ interface FormState {
   files: File[];
   savedAssets: SavedMediaAsset[];
   mediaOrder: string[];
+  pendingAssetIds: string[];
 }
 
 type QueueFilter = "drafts" | "submitted" | "all";
@@ -66,6 +69,7 @@ const initialForm: FormState = {
   files: [],
   savedAssets: [],
   mediaOrder: [],
+  pendingAssetIds: [],
 };
 
 const statusLabels: Record<SubmissionStatus, string> = {
@@ -83,6 +87,7 @@ const statusLabels: Record<SubmissionStatus, string> = {
 
 export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { submissions, setSubmissions, loading, error, refresh } =
     useSubmissions();
   const {
@@ -92,6 +97,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   } = useSubmissionLookups();
   const toast = useToast();
   const detailsSectionRef = useRef<HTMLElement | null>(null);
+  const prefilledRef = useRef(false);
   const [filter, setFilter] = useState<QueueFilter>("drafts");
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -193,6 +199,78 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     return () => window.clearTimeout(timer);
   }, [scheduledAt]);
 
+  // Consume ?assetIds= from the Media Library "New Post" action exactly once.
+  useEffect(() => {
+    if (prefilledRef.current) return;
+    const raw = searchParams.get("assetIds");
+    if (!raw) return;
+    prefilledRef.current = true;
+
+    const ids = raw.split(",").map((value) => value.trim()).filter(Boolean);
+    if (ids.length === 0) return;
+
+    void (async () => {
+      const results = await Promise.allSettled(ids.map((id) => getMediaAsset(id)));
+      const assets: SavedMediaAsset[] = results
+        .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof getMediaAsset>>> =>
+          result.status === "fulfilled",
+        )
+        .map((result) => {
+          const asset = result.value.data;
+          return {
+            id: asset.id,
+            storageUrl: asset.storageUrl,
+            fileName: asset.fileName,
+            fileType: asset.fileType,
+            fileSizeBytes: asset.fileSizeBytes,
+          };
+        });
+
+      if (assets.length === 0) {
+        toast.error("Selected media could not be loaded.");
+        return;
+      }
+
+      setForm((current) => ({
+        ...current,
+        savedAssets: assets,
+        mediaOrder: assets.map((asset) => savedMediaKey(asset.id)),
+        pendingAssetIds: assets.map((asset) => asset.id),
+      }));
+
+      if (assets.length < ids.length) {
+        toast.warning("Some selected assets could not be loaded.");
+      } else {
+        toast.success(
+          `${assets.length} asset${assets.length > 1 ? "s" : ""} ready to attach.`,
+        );
+      }
+    })();
+  }, [searchParams, toast]);
+
+  function clearAssetIdParam() {
+    if (!searchParams.has("assetIds")) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("assetIds");
+    setSearchParams(next, { replace: true });
+  }
+
+  async function attachPendingAssets(submissionId: string, pendingIds: string[]) {
+    let latest: Awaited<ReturnType<typeof attachAsset>> | null = null;
+    for (const assetId of pendingIds) {
+      try {
+        latest = await attachAsset(submissionId, assetId);
+      } catch (err: unknown) {
+        if (!isConflictError(err)) {
+          toast.warning(
+            getErrorMessage(err, "A selected asset could not be attached."),
+          );
+        }
+      }
+    }
+    return latest;
+  }
+
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
     setSaveState("idle");
@@ -221,6 +299,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         mediaOrder: (submission.mediaAssets ?? []).map((asset) =>
           savedMediaKey(asset.id),
         ),
+        pendingAssetIds: [],
       });
       setActiveMediaIndex(0);
     } catch {
@@ -236,9 +315,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         ? await updateDraft(form.id, payload)
         : await createDraft(payload);
       let finalResponse = response;
+      if (form.pendingAssetIds.length > 0) {
+        const attached = await attachPendingAssets(
+          response.data.id,
+          form.pendingAssetIds,
+        );
+        if (attached) finalResponse = attached;
+      }
       if (form.files.length > 0) {
         const uploadResult = await uploadSubmissionMedia(
-          response.data.id,
+          finalResponse.data.id,
           getOrderedLocalFiles(form),
         );
         if (uploadResult) finalResponse = uploadResult as typeof response;
@@ -259,10 +345,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         files: [],
         savedAssets: orderedSavedAssets,
         mediaOrder: orderedSavedAssets.map((asset) => savedMediaKey(asset.id)),
+        pendingAssetIds: [],
       }));
       setSubmissions((current) =>
         upsertSubmission(current, finalResponse.data),
       );
+      clearAssetIdParam();
       setSaveState("saved");
       toast.success("Draft saved.");
     } catch (err: unknown) {
@@ -272,6 +360,19 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   async function handleSubmit() {
+    const missing: string[] = [];
+    if (!form.eventTitle.trim()) missing.push("an event title");
+    if (!form.eventDate) missing.push("an event date");
+    if (!form.caption.trim()) missing.push("a caption");
+    if (form.files.length + form.savedAssets.length === 0) {
+      missing.push("at least one media file");
+    }
+    if (missing.length > 0) {
+      toast.error(`Add ${missing.join(", ")} before submitting.`);
+      setModal(null);
+      return;
+    }
+
     setSubmitting(true);
     try {
       const payload = toPayload(form, scheduledAt);
@@ -279,10 +380,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         ? await updateDraft(form.id, payload)
         : await createDraft(payload);
       let draftResponse = draft;
+      if (form.pendingAssetIds.length > 0) {
+        const attached = await attachPendingAssets(
+          draft.data.id,
+          form.pendingAssetIds,
+        );
+        if (attached) draftResponse = attached;
+      }
       if (form.files.length > 0) {
         try {
           const uploadResult = await uploadSubmissionMedia(
-            draft.data.id,
+            draftResponse.data.id,
             getOrderedLocalFiles(form),
           );
           if (uploadResult) draftResponse = uploadResult as typeof draft;
@@ -312,7 +420,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         mediaOrder: (submitted.data.mediaAssets ?? current.savedAssets).map(
           (asset) => savedMediaKey(asset.id),
         ),
+        pendingAssetIds: [],
       }));
+      clearAssetIdParam();
       setModal("success");
       toast.success("Submission sent for review.");
       void refresh();
@@ -1261,6 +1371,12 @@ function getErrorMessage(error: unknown, fallback: string) {
     response?: { data?: { error?: string } };
   };
   return maybeError.response?.data?.error || maybeError.message || fallback;
+}
+
+function isConflictError(error: unknown) {
+  if (typeof error !== "object" || error === null) return false;
+  const status = (error as { response?: { status?: number } }).response?.status;
+  return status === 409;
 }
 
 function getOrderedLocalFiles(form: FormState) {

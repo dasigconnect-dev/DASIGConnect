@@ -103,7 +103,9 @@ Legend: Done / In Progress / Not Started / Deferred
 ### Pending - Backend
 
 - Not Started: UC-2.1 Content Validation - review queue, approve/reject/needs-revision transitions.
-- Not Started: UC-2.2 Media Repository - `MediaAssetController`, `GET/DELETE /api/v1/media-assets`.
+- Done: UC-2.2 Media Repository backend - `MediaAssetController` (`GET/GET{id}/DELETE /api/v1/media-assets`, `POST /upload-url`, `POST /upload`, `POST /{id}/use-in-new-post`, `POST /{id}/add-to-draft`, tag endpoints), `MediaAssetService`, `SupabaseStorageService` signed upload URLs.
+- Done: Submission content-completeness validation - `SubmissionService.submit()` now rejects with 422 when event title, event date, caption, or ≥1 media asset is missing (always enforced, independent of `app.guardrails.enforced`). Tests: `submit_withoutMedia_returns422`, `submit_withoutCaption_returns422`.
+- Done: `GlobalExceptionHandler` handles `HttpRequestMethodNotSupportedException` (405) and `IllegalStateException` (502) so storage failures surface clearly.
 - Not Started: UC-2.3 Notifications - SSE endpoint, notification service, emitter registry.
 - Not Started: UC-2.4 Analytics Dashboard - aggregate endpoints.
 - Not Started: UC-3.2 AI Caption - Claude Vision client and async generation.
@@ -162,6 +164,16 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: `frontend/src/api/resolutionApi.ts` calls `GET /api/v1/resolution/failures` and the action endpoints for retry plus manual publish start/complete/cancel.
 - Done: Resolution Center supports action busy states, confirmation modals, success/error toast feedback, list refresh after successful actions, and responsive failure cards.
 - Done: frontend code is componentized under `frontend/src/features/calendar`, `frontend/src/features/resolution`, `frontend/src/hooks`, and `frontend/src/api`; no hardcoded calendar events or failure records.
+
+### UC-2.2 Frontend - Media Repository
+
+- Done: Media Repository route `/media-repository` with grid/list, search, sort, tag filters, network-view (admin), detail panel, upload modal, and 3-tier delete.
+- Done: multi-select via per-card checkboxes; selection persists across navigation through the reusable `usePersistentSelection` hook (sessionStorage).
+- Done: floating selection action bar (count, Clear, New Post) and a selection review list in the detail panel (view/deselect each).
+- Done: "New Post (N)" navigates to `/submissions/new?assetIds=...`; `SubmissionScreen` consumes the param, pre-fills media, and attaches via `POST /submissions/{id}/assets` on save/submit (strips the param after first save).
+- Done: "Add to Draft" picker (`AddToDraftModal`) appends selected assets to an existing contributor draft; "Download Original" performs a true blob download.
+- Done: upload uses XHR with real progress, a 25 MB client guard, and surfaces the Supabase error on failure.
+- Gap: mp4 uploads depend on the Supabase `dasigconnect-media` bucket allowing `video/*` MIME types and a sufficient file-size limit (dashboard config, not code).
 
 ### Pending - Frontend
 

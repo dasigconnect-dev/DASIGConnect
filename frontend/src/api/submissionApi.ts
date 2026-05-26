@@ -106,6 +106,12 @@ export function reorderSubmissionMedia(id: string, mediaAssetIds: string[]) {
   });
 }
 
+export function attachAsset(id: string, mediaAssetId: string) {
+  return api.post<SubmissionSummary>(`/submissions/${id}/assets`, {
+    mediaAssetId,
+  });
+}
+
 export async function uploadSubmissionMedia(id: string, files: File[]) {
   const responses = [];
   for (const file of files) {

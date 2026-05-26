@@ -4,26 +4,30 @@ import { formatFileSize, formatUploadDate, isVideoType } from "../utils";
 interface AssetCardProps {
   asset: MediaAsset;
   selected: boolean;
+  checked?: boolean;
   listView: boolean;
   animationDelay?: number;
   showInstitutionChip?: boolean;
   onClick: () => void;
+  onToggleCheck?: () => void;
 }
 
 export default function AssetCard({
   asset,
   selected,
+  checked = false,
   listView,
   animationDelay = 0,
   showInstitutionChip = false,
   onClick,
+  onToggleCheck,
 }: AssetCardProps) {
   const isVideo = isVideoType(asset.fileType);
   const primaryTag = asset.aiTags?.[0];
 
   return (
     <div
-      className={`med-card${selected ? " selected" : ""}`}
+      className={`med-card${selected ? " selected" : ""}${checked ? " checked" : ""}`}
       style={{ animationDelay: `${animationDelay}ms` }}
       onClick={onClick}
       role="button"
@@ -32,6 +36,20 @@ export default function AssetCard({
       aria-pressed={selected}
     >
       <div className="med-card-thumb">
+        {onToggleCheck && (
+          <button
+            type="button"
+            className={`med-card-check${checked ? " checked" : ""}`}
+            onClick={(e) => { e.stopPropagation(); onToggleCheck(); }}
+            role="checkbox"
+            aria-checked={checked}
+            aria-label={checked ? `Deselect ${asset.title}` : `Select ${asset.title}`}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20,6 9,17 4,12" />
+            </svg>
+          </button>
+        )}
         {asset.storageUrl ? (
           <img
             className="med-card-thumb-img"

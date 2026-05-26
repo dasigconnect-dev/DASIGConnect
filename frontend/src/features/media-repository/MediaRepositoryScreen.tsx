@@ -8,7 +8,13 @@ import {
   getMediaAssetUploadUrl,
   registerMediaAsset,
 } from "../../api/mediaApi";
+import {
+  attachAsset,
+  listSubmissions,
+  type SubmissionSummary,
+} from "../../api/submissionApi";
 import { useToast } from "../../context/ToastContext";
+import { usePersistentSelection } from "../../hooks/usePersistentSelection";
 import { useMediaAssets } from "./hooks/useMediaAssets";
 import type { SortOption, ViewMode, DeleteTier } from "./types";
 import AssetCard from "./components/AssetCard";
@@ -16,10 +22,18 @@ import FilterBar from "./components/FilterBar";
 import AssetDetailPanel from "./components/AssetDetailPanel";
 import UploadModal from "./components/UploadModal";
 import DeleteModal from "./components/DeleteModal";
+import AddToDraftModal from "./components/AddToDraftModal";
 import "../../styles/media-repository.css";
 
 interface MediaRepositoryScreenProps {
   user: User;
+}
+
+const MAX_UPLOAD_MB = 25;
+
+function isConflict(error: unknown) {
+  if (typeof error !== "object" || error === null) return false;
+  return (error as { response?: { status?: number } }).response?.status === 409;
 }
 
 function safeFileName(fileName: string) {
@@ -29,6 +43,36 @@ function safeFileName(fileName: string) {
 function fileTypeFromFile(file: File) {
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   return ext === "jpg" ? "jpeg" : ext;
+}
+
+// PUT the file straight to Supabase using XHR so we can report real upload
+// progress (fetch() cannot) and surface the actual Supabase status on failure.
+function putToSupabase(
+  signedUrl: string,
+  file: File,
+  onProgress?: (pct: number) => void,
+) {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", signedUrl);
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        const detail = xhr.responseText ? `: ${xhr.responseText.slice(0, 160)}` : "";
+        reject(new Error(`Storage rejected the upload (${xhr.status})${detail}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Network error during upload."));
+    xhr.ontimeout = () => reject(new Error("Upload timed out."));
+    xhr.send(file);
+  });
 }
 
 export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenProps) {
@@ -46,6 +90,17 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   const [selectedAsset, setSelectedAsset] = useState<MediaAsset | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+
+  const {
+    selected: checkedIds,
+    toggle: toggleCheck,
+    clear: clearSelection,
+  } = usePersistentSelection("dasigconnect:media-selection");
+
+  const [addToDraftOpen, setAddToDraftOpen] = useState(false);
+  const [drafts, setDrafts] = useState<SubmissionSummary[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [busyDraftId, setBusyDraftId] = useState<string | null>(null);
 
   const [uploadOpen, setUploadOpen] = useState(false);
 
@@ -92,6 +147,12 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     return result;
   }, [assets, search, sort, activeTags]);
 
+  const selectedAssets = useMemo(
+    () => assets.filter((a) => checkedIds.has(a.id)),
+    [assets, checkedIds],
+  );
+  const selectionMode = checkedIds.size > 0;
+
   function openAsset(asset: MediaAsset) {
     setSelectedAsset(asset);
     setPanelOpen(true);
@@ -103,6 +164,69 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   function closePanel() {
     setPanelOpen(false);
     setSelectedAsset(null);
+  }
+
+  function clearChecked() {
+    clearSelection();
+    if (!selectedAsset) setPanelOpen(false);
+  }
+
+  function handleToggleCheck(asset: MediaAsset) {
+    const willCheck = !checkedIds.has(asset.id);
+    toggleCheck(asset.id);
+    if (willCheck) openAsset(asset);
+  }
+
+  function activeAssetIds() {
+    if (checkedIds.size > 0) return [...checkedIds];
+    return selectedAsset ? [selectedAsset.id] : [];
+  }
+
+  function handleNewPost() {
+    const ids = activeAssetIds();
+    if (ids.length === 0) return;
+    navigate(`/submissions/new?assetIds=${encodeURIComponent(ids.join(","))}`);
+  }
+
+  function openAddToDraft() {
+    if (activeAssetIds().length === 0) return;
+    setAddToDraftOpen(true);
+    setDraftsLoading(true);
+    listSubmissions()
+      .then((res) => setDrafts(res.data.filter((item) => item.status === "draft")))
+      .catch(() => toast.error("Could not load your drafts."))
+      .finally(() => setDraftsLoading(false));
+  }
+
+  async function handleSelectDraft(draftId: string) {
+    const ids = activeAssetIds();
+    if (ids.length === 0) return;
+    setBusyDraftId(draftId);
+    let added = 0;
+    let alreadyThere = 0;
+    try {
+      for (const assetId of ids) {
+        try {
+          await attachAsset(draftId, assetId);
+          added += 1;
+        } catch (err: unknown) {
+          if (isConflict(err)) alreadyThere += 1;
+          else throw err;
+        }
+      }
+      setAddToDraftOpen(false);
+      clearSelection();
+      const summary =
+        added > 0
+          ? `Added ${added} ${added === 1 ? "asset" : "assets"} to the draft.`
+          : "Those assets are already in that draft.";
+      toast.success(alreadyThere > 0 && added > 0 ? `${summary} ${alreadyThere} already there.` : summary);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Could not add to draft.";
+      toast.error(message);
+    } finally {
+      setBusyDraftId(null);
+    }
   }
 
   function toggleTag(tag: string) {
@@ -122,19 +246,24 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     });
   }
 
-  async function handleUpload(file: File) {
+  async function handleUpload(file: File, onProgress?: (pct: number) => void) {
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      const message = `${file.name} is ${(file.size / (1024 * 1024)).toFixed(1)} MB — over the ${MAX_UPLOAD_MB} MB limit.`;
+      toast.error(message);
+      throw new Error(message);
+    }
+
     try {
+      onProgress?.(0);
       const { data: urlData } = await getMediaAssetUploadUrl({
         fileName: safeFileName(file.name),
         fileType: fileTypeFromFile(file),
       });
 
-      const upload = await fetch(urlData.signedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      if (!upload.ok) throw new Error("Supabase upload failed.");
+      // Reserve the last 10% for the metadata-register call below.
+      await putToSupabase(urlData.signedUrl, file, (pct) =>
+        onProgress?.(Math.round(pct * 0.9)),
+      );
 
       await registerMediaAsset({
         storageUrl: urlData.publicUrl,
@@ -142,6 +271,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
       });
+      onProgress?.(100);
 
       toast.success("Asset uploaded! AI classification in progress…");
       void refresh();
@@ -149,6 +279,30 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       const message = err instanceof Error ? err.message : "Upload failed.";
       toast.error(message);
       throw err;
+    }
+  }
+
+  async function handleDownload() {
+    if (!selectedAsset?.storageUrl) {
+      toast.error("No file URL available.");
+      return;
+    }
+    const { storageUrl, fileName } = selectedAsset;
+    try {
+      const response = await fetch(storageUrl);
+      if (!response.ok) throw new Error(`Status ${response.status}`);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = fileName || "asset";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      // CORS or network blocked the blob fetch — fall back to opening the file.
+      window.open(storageUrl, "_blank");
     }
   }
 
@@ -292,16 +446,18 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       ) : filteredAssets.length === 0 ? (
         <EmptyState hasSearch={search.length > 0 || activeTags.size > 0} onUpload={() => setUploadOpen(true)} />
       ) : (
-        <div className={`med-grid${viewMode === "list" ? " list-view" : ""}`}>
+        <div className={`med-grid${viewMode === "list" ? " list-view" : ""}${checkedIds.size > 0 ? " selecting" : ""}`}>
           {filteredAssets.map((asset, idx) => (
             <AssetCard
               key={asset.id}
               asset={asset}
               selected={selectedAsset?.id === asset.id}
+              checked={checkedIds.has(asset.id)}
               listView={viewMode === "list"}
               animationDelay={Math.min(idx * 40, 480)}
               showInstitutionChip={networkView && isAdmin}
               onClick={() => openAsset(asset)}
+              onToggleCheck={() => handleToggleCheck(asset)}
             />
           ))}
         </div>
@@ -312,16 +468,16 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         asset={selectedAsset}
         open={panelOpen}
         isAdmin={isAdmin}
+        selectionMode={selectionMode}
+        selectedAssets={selectedAssets}
+        onViewAsset={(a) => openAsset(a)}
+        onDeselectAsset={(id) => toggleCheck(id)}
+        onNewPost={handleNewPost}
+        onClearSelection={clearChecked}
         onClose={closePanel}
-        onUseInNewPost={() => {
-          toast.success("Opening submission form with this asset pre-loaded…");
-          navigate("/submissions/new");
-        }}
-        onAddToDraft={() => toast.success("Appended to active draft.")}
-        onDownload={() => {
-          if (selectedAsset?.storageUrl) window.open(selectedAsset.storageUrl, "_blank");
-          else toast.error("No file URL available.");
-        }}
+        canAddToDraft={user.role === "contributor"}
+        onAddToDraft={openAddToDraft}
+        onDownload={() => void handleDownload()}
         onDeleteBlocked={() => openDeleteModal("blocked")}
         onDeleteWarning={() => openDeleteModal("warning")}
         onDeleteFree={() => openDeleteModal("free")}
@@ -346,6 +502,46 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onClose={() => { if (!deleting) setDeleteOpen(false); }}
         onConfirmDelete={() => void handleConfirmDelete()}
       />
+
+      {/* Add to Draft Modal (portal) */}
+      <AddToDraftModal
+        open={addToDraftOpen}
+        assetCount={activeAssetIds().length}
+        drafts={drafts}
+        loading={draftsLoading}
+        busyDraftId={busyDraftId}
+        onClose={() => { if (busyDraftId === null) setAddToDraftOpen(false); }}
+        onSelectDraft={(id) => void handleSelectDraft(id)}
+        onNewPostInstead={() => { setAddToDraftOpen(false); handleNewPost(); }}
+      />
+
+      {/* Selection action bar */}
+      <div className={`med-selbar${checkedIds.size > 0 ? " visible" : ""}`} role="region" aria-label="Selected assets">
+        <button
+          className="med-selbar-info"
+          type="button"
+          onClick={() => setPanelOpen(true)}
+          title="View selected assets"
+        >
+          <span className="med-selbar-count">{checkedIds.size}</span>
+          <span>{checkedIds.size === 1 ? "asset selected" : "assets selected"}</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
+            <polyline points="9,18 15,12 9,6" />
+          </svg>
+        </button>
+        <div className="med-selbar-actions">
+          <button className="med-btn med-btn-ghost med-btn-sm" onClick={clearChecked} type="button">
+            Clear
+          </button>
+          <button className="med-btn med-btn-primary med-btn-sm" onClick={handleNewPost} type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            New Post
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

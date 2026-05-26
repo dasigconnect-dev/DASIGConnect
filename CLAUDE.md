@@ -146,6 +146,18 @@ Fix applied:
 
 `SlotAlreadyTakenException` was not handled by `GlobalExceptionHandler` and fell through to the catch-all, returning 500 instead of 409 Conflict. Added explicit handler returning 409 with the exception message.
 
+### Media Library ↔ Submission Integration + Upload/Validation Fixes (2026-05-26)
+
+- **Media Library multi-select → New Post.** `AssetCard` has a selection checkbox (separate from the body click that opens the detail panel). A floating action bar shows the count with Clear / New Post. New Post navigates to `/submissions/new?assetIds=a,b,c`.
+- **Selection persists across navigation** via a reusable hook `frontend/src/hooks/usePersistentSelection.ts` (sessionStorage-backed `Set<string>`, keyed by `dasigconnect:media-selection`). Reusable system-wide.
+- **Submission consumes `?assetIds=`.** `SubmissionScreen` reads the param on mount, fetches each asset's detail, pre-fills `savedAssets`/`mediaOrder`, and attaches them on Save/Submit via new `attachAsset()` (`POST /submissions/{id}/assets`), tolerating 409. The param is stripped after the first save to prevent double-attach.
+- **Asset detail panel** shows a Selection review list (view/deselect each, chevron navigation). Footer "Use in New Post" was renamed to **New Post (N)** and rewired to the selection navigation; the redundant selection-block button was removed.
+- **Add to Draft** is now functional via `AddToDraftModal` — lists the contributor's existing drafts and appends selected assets through `attachAsset` (contributor-only; falls back to New Post if no drafts).
+- **Download Original** upgraded to a true blob download (falls back to opening in a new tab if CORS blocks the fetch).
+- **Media upload fix.** Library upload now uses `XMLHttpRequest` for real `upload.onprogress` (was a fake 10%→100% bar with `fetch`), enforces a 25 MB client-side guard, and surfaces the actual Supabase status on failure. Note: mp4 upload failures are typically the Supabase bucket's allowed MIME types / file-size limit, now visible in the error toast.
+- **Submission content-completeness validation (the key fix).** `SubmissionService.submit()` previously only checked status and (when `app.guardrails.enforced=true`) the schedule, so incomplete submissions reached PENDING. Added `assertContentComplete()` — enforced on **every** submit regardless of the guard-rail flag — rejecting with **422** when event title, event date, caption, or ≥1 media asset is missing. `SubmissionScreen.handleSubmit` blocks the same set client-side with a toast. Schedule remains gated by `app.guardrails.enforced` (off by default).
+- **GlobalExceptionHandler** gained handlers for `HttpRequestMethodNotSupportedException` (405 with method/path/supportedMethods) and `IllegalStateException` (502 with the upstream/storage message) so storage failures stop masquerading as generic 500s.
+
 ### Verification
 
 - Backend: **208 tests passing** (0 failures, 0 errors) — all 163 prior tests pass plus UC-3.1 additions.
@@ -160,13 +172,14 @@ Fix applied:
 - Migration sanity: `mvn clean` and `mvn spring-boot:run` applied V11–V17 successfully on existing Supabase DB.
 - Submit-for-review flow: confirmed working end-to-end in the browser.
 - Facebook publish: confirmed — photo post published to DasigConnect Facebook Page.
+- Submission validation (2026-05-26): `SubmissionServiceTest` 17/17 and `SubmissionControllerTest` 14/14 pass after adding the content-completeness gate and two new tests (`submit_withoutMedia_returns422`, `submit_withoutCaption_returns422`). Frontend `npm run build` + targeted ESLint pass for the media-repository and submission slices.
 
 ### Known Gaps
 
 - UC-3.1 frontend browser action testing still needs an authenticated admin session and active backend to manually exercise retry, manual publish start, complete, and cancel against live data.
 - Submission queue design needs review with real data and mobile widths.
 - Submission lookups do not return categories, tags, or preferred time slots.
-- Media library / asset picker needs UC-2.2 backend: `GET/DELETE /api/v1/media-assets`.
+- UC-2.2 Media Repository backend + frontend implemented (list/detail/upload/delete, signed URL, multi-select → New Post, Add to Draft picker). Remaining: mp4 uploads fail when the Supabase `dasigconnect-media` bucket disallows `video/*` MIME types or sets a low file-size limit — fix in the Supabase dashboard (bucket settings), not code.
 - Validator review actions need UC-2.1 backend.
 - SSE notifications need UC-2.3 backend.
 - Analytics need UC-2.4 backend.

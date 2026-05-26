@@ -495,7 +495,7 @@
 
 .med-video-badge {
   position: absolute;
-  top: 8px;
+  bottom: 8px;
   left: 8px;
   background: rgba(10, 22, 40, 0.75);
   color: white;
@@ -1290,6 +1290,230 @@
 @keyframes med-shimmer {
   from { background-position: 200% 0; }
   to   { background-position: -200% 0; }
+}
+
+/* ===== MULTI-SELECT ===== */
+.med-card-check {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background: rgba(10, 22, 40, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: transparent;
+  opacity: 0;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s, opacity 0.15s;
+}
+.med-card:hover .med-card-check,
+.med-grid.selecting .med-card-check,
+.med-card-check.checked { opacity: 1; }
+.med-card-check:hover { transform: scale(1.08); }
+.med-card-check:focus-visible {
+  outline: 2px solid var(--med-blue);
+  outline-offset: 2px;
+  opacity: 1;
+}
+.med-card-check.checked {
+  background: var(--med-blue);
+  border-color: var(--med-blue);
+  color: #fff;
+}
+
+.med-card.checked {
+  border-color: var(--med-blue);
+  box-shadow: 0 0 0 2px var(--med-blue);
+}
+.med-card.checked .med-card-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(37, 99, 235, 0.12);
+  pointer-events: none;
+}
+
+.med-grid.selecting { padding-bottom: 88px; }
+
+/* Floating selection action bar */
+.med-selbar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 14px 12px 22px;
+  background: var(--med-navy-deep);
+  color: #fff;
+  border-radius: var(--med-radius-full);
+  box-shadow: 0 12px 32px rgba(10, 22, 40, 0.32);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 140%);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+}
+.med-selbar.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+}
+.med-selbar-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 4px 8px 4px 4px;
+  border-radius: var(--med-radius-sm);
+  transition: background 0.15s;
+}
+.med-selbar-info:hover { background: rgba(255, 255, 255, 0.1); }
+.med-selbar-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  background: var(--med-blue);
+  color: #fff;
+  border-radius: var(--med-radius-full);
+  font-size: 13px;
+  font-weight: 800;
+}
+.med-selbar-actions { display: flex; align-items: center; gap: 8px; }
+.med-selbar .med-btn-ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
+}
+.med-selbar .med-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .med-selbar,
+  .med-card-check { transition: none; }
+}
+
+/* Selection review inside the detail panel */
+.med-sel-block { margin-bottom: 20px; }
+.med-sel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.med-sel-clear {
+  background: transparent;
+  border: none;
+  color: var(--med-blue);
+  font: 600 12px var(--med-ff-body);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--med-radius-sm);
+}
+.med-sel-clear:hover { text-decoration: underline; }
+
+.med-sel-list { display: flex; flex-direction: column; gap: 8px; }
+.med-sel-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border: 1px solid var(--med-border);
+  border-radius: var(--med-radius-md);
+  background: var(--med-surface-0);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.med-sel-row:hover { border-color: #b5c0d8; background: var(--med-surface-1); }
+.med-sel-row.active {
+  border-color: var(--med-blue);
+  background: var(--med-blue-dim);
+}
+.med-sel-row:focus-visible {
+  outline: 2px solid var(--med-blue);
+  outline-offset: 1px;
+}
+.med-sel-thumb {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: var(--med-radius-sm);
+  overflow: hidden;
+  background: var(--med-navy-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.med-sel-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.med-sel-info { flex: 1; min-width: 0; }
+.med-sel-name {
+  font: 600 13px var(--med-ff-body);
+  color: var(--med-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.med-sel-meta { font: 400 11px var(--med-ff-body); color: var(--med-muted); margin-top: 2px; }
+.med-sel-row-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.med-sel-chevron { color: var(--med-muted); }
+.med-sel-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--med-muted);
+  border-radius: var(--med-radius-full);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.med-sel-remove:hover { background: #fee2e2; color: var(--med-error); }
+.med-sel-divider {
+  height: 1px;
+  background: var(--med-border);
+  margin: 20px 0 4px;
+}
+
+/* Add-to-draft modal */
+.med-draft-empty {
+  text-align: center;
+  color: var(--med-text-2);
+  font-size: 13px;
+  padding: 24px 8px;
+}
+.med-draft-empty-title {
+  font: 600 15px var(--med-ff-body);
+  color: var(--med-text);
+  margin-bottom: 6px;
+}
+.med-draft-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--med-border);
+  border-top-color: var(--med-blue);
+  border-radius: var(--med-radius-full);
+  animation: med-spin 0.7s linear infinite;
+}
+@keyframes med-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Scrollbar */

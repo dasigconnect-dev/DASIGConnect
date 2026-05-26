@@ -243,6 +243,10 @@ public class SubmissionService {
                     submissionId);
         }
 
+        // Content completeness is a data-integrity invariant, not a scheduling
+        // guard rail — enforce it on every submit regardless of guardRailsEnforced.
+        assertContentComplete(submission);
+
         submission.setStatus(SubmissionStatus.pending);
         submission.setSubmittedAt(Instant.now());
         submission = submissionRepository.save(submission);
@@ -280,6 +284,31 @@ public class SubmissionService {
 
         log.info("Submission {} → PENDING by contributor {}", submissionId, user.userId());
         return buildResponse(submission);
+    }
+
+    /**
+     * Rejects a submit when the post is missing fields required for a publishable
+     * post: an event title, an event date, a caption, and at least one media
+     * asset. Throws 422 listing everything that is still missing.
+     */
+    private void assertContentComplete(Submission submission) {
+        List<String> missing = new java.util.ArrayList<>();
+        if (submission.getEventTitle() == null || submission.getEventTitle().isBlank()) {
+            missing.add("an event title");
+        }
+        if (submission.getEventDate() == null) {
+            missing.add("an event date");
+        }
+        if (submission.getCaption() == null || submission.getCaption().isBlank()) {
+            missing.add("a caption");
+        }
+        if (submissionMediaAssetRepository.countBySubmissionId(submission.getId()) == 0) {
+            missing.add("at least one media file");
+        }
+        if (!missing.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Submission is incomplete — add " + String.join(", ", missing) + " before submitting.");
+        }
     }
 
     /**

@@ -5,7 +5,7 @@ interface UploadModalProps {
   open: boolean;
   institutionName: string;
   onClose: () => void;
-  onUpload: (file: File) => Promise<void>;
+  onUpload: (file: File, onProgress?: (pct: number) => void) => Promise<void>;
 }
 
 export default function UploadModal({ open, institutionName, onClose, onUpload }: UploadModalProps) {
@@ -35,9 +35,9 @@ export default function UploadModal({ open, institutionName, onClose, onUpload }
   async function handleUpload() {
     if (!selectedFile) return;
     setUploading(true);
-    setProgress(10);
+    setProgress(0);
     try {
-      await onUpload(selectedFile);
+      await onUpload(selectedFile, setProgress);
       setProgress(100);
       setTimeout(() => {
         setSelectedFile(null);
