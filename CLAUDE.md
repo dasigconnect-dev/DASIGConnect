@@ -111,6 +111,9 @@ Current branch: `module3`
 - Admin reschedule via `PATCH /api/v1/submissions/{id}/reschedule` supports guard rail overrides with audit trail.
 - UC-3.4 Resolution Center: `ManualPublishingService` + `ResolutionController` (`/api/v1/resolution`).
 - `AbandonmentDetectorJob` clears manual publish sessions open longer than 2 hours.
+- UC-3.1 frontend Calendar route `/scheduler/calendar` is wired to `GET /api/v1/calendar` using FullCalendar, reusable calendar components, status legend, event detail modal, loading/empty/error states, and refresh/retry controls.
+- UC-3.4 frontend Resolution Center route `/admin/resolution` is wired to `GET /api/v1/resolution/failures` plus retry and manual-publish start/complete/cancel actions using reusable cards, status/action components, modals, busy states, toasts, and refresh-after-action behavior.
+- UC-3.1 frontend API separation is in place: `frontend/src/api/calendarApi.ts` owns calendar calls and `frontend/src/api/resolutionApi.ts` owns Resolution Center calls.
 - UC-1.3 submission backend is implemented and tested (on `feature/uc13-submission-backend`, pending merge).
 - Frontend API wiring matches backend contracts for submissions, guard rail evaluation, media upload metadata, institutions, and lookups.
 - Reset password page implemented. Session expiry countdown wired from JWT `exp`.
@@ -142,13 +145,17 @@ Fix applied:
 
 - Backend: **208 tests passing** (0 failures, 0 errors) — all 163 prior tests pass plus UC-3.1 additions.
 - Frontend: `npm.cmd run build` passing.
+- UC-3.1 frontend: `npm.cmd run build` passed after Calendar and Resolution Center implementation.
+- UC-3.1 frontend: targeted ESLint passed for `src/features/calendar`, `src/features/resolution`, `src/hooks/useCalendarEvents.ts`, `src/hooks/useResolutionFailures.ts`, `src/api/calendarApi.ts`, and `src/api/resolutionApi.ts`.
+- Full-project `npm.cmd run lint` still fails due pre-existing lint debt in older files outside the UC-3.1 frontend slice.
+- Vite dev server started locally on `http://127.0.0.1:5176/` because ports 5173-5175 were occupied.
 - Migration sanity: `mvn clean` and `mvn spring-boot:run` applied V11–V17 successfully on existing Supabase DB.
 - Submit-for-review flow: confirmed working end-to-end in the browser.
 - Facebook publish: confirmed — photo post published to DasigConnect Facebook Page.
 
 ### Known Gaps
 
-- **UC-3.1 frontend**: Calendar page (FullCalendar.js) and Resolution Center page not yet wired. Backend is ready.
+- UC-3.1 frontend browser action testing still needs an authenticated admin session and active backend to manually exercise retry, manual publish start, complete, and cancel against live data.
 - Submission queue design needs review with real data and mobile widths.
 - Submission lookups do not return categories, tags, or preferred time slots.
 - Media library / asset picker needs UC-2.2 backend: `GET/DELETE /api/v1/media-assets`.
@@ -200,7 +207,7 @@ Important enum values are lowercase in the database, including roles and statuse
 | `feat/m4-institution-scheduling`  | Merged                   | Institution management, guard rails, slot reservation, provisioning                                                                                                                 |
 | `dev`                             | In progress              | UC-1.2 extension, conditional bean fix, merged foundation work                                                                                                                      |
 | `feature/uc13-submission-backend` | Done locally, not merged | UC-1.3 backend, required tests, frontend API wiring, reset password/session/dashboard fixes, pending invite/user management UI, invite token superseding, Flyway V4 media migration |
-| `module3`                         | Done locally, not merged | UC-3.1 backend: publishing pipeline, calendar API, Facebook Graph API integration, token encryption, scheduler jobs, resolution center (UC-3.4). 208 tests passing.                |
+| `module3`                         | Done locally, not merged | UC-3.1 backend + frontend: publishing pipeline, calendar API/UI, Facebook Graph API integration, token encryption, scheduler jobs, Resolution Center backend/UI (UC-3.4). 208 backend tests passing; frontend build passing. |
 | UC-2.x                            | Not started              | Validation, media repository, notifications, analytics                                                                                                                              |
 | UC-3.2 / UC-3.3                   | Not started              | AI Caption (Claude Vision), AI Classification & Recommendation (Voyage AI)                                                                                                          |
 

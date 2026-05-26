@@ -148,6 +148,16 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: pending invitations can be resent from the invite/manage modal.
 - Done: current user state hydrates from `GET /api/v1/me` after login, invite accept, session relogin, and saved-token restore.
 
+### UC-3.1 Frontend - Calendar & Resolution Center
+
+- Done: Calendar route `/scheduler/calendar` wired through reusable React components and `useCalendarEvents`.
+- Done: `frontend/src/api/calendarApi.ts` calls `GET /api/v1/calendar` and maps backend calendar DTOs into FullCalendar events.
+- Done: FullCalendar month/week views render live backend events with status coloring, legend, event details modal, loading, empty, error, refresh, and retry states.
+- Done: Resolution Center route `/admin/resolution` wired through reusable React components and `useResolutionFailures`.
+- Done: `frontend/src/api/resolutionApi.ts` calls `GET /api/v1/resolution/failures` and the action endpoints for retry plus manual publish start/complete/cancel.
+- Done: Resolution Center supports action busy states, confirmation modals, success/error toast feedback, list refresh after successful actions, and responsive failure cards.
+- Done: frontend code is componentized under `frontend/src/features/calendar`, `frontend/src/features/resolution`, `frontend/src/hooks`, and `frontend/src/api`; no hardcoded calendar events or failure records.
+
 ### Pending - Frontend
 
 - Gap: submission queue design improved locally but still needs user/team review against real data and mobile widths.
@@ -157,14 +167,16 @@ Legend: Done / In Progress / Not Started / Deferred
 - Gap: validator review actions need UC-2.1 backend.
 - Gap: notification badge/stream needs UC-2.3 SSE backend.
 - Gap: analytics dashboard needs UC-2.4 backend.
-- Gap: Calendar page needs UC-3.1 frontend wiring (FullCalendar.js + `/api/v1/calendar`).
-- Gap: Resolution Center page needs UC-3.4 frontend wiring (`/api/v1/resolution` endpoints).
 - Gap: AI caption and recommendation screens need UC-3.2/UC-3.3 backend.
 - Gap: Supabase browser upload env is now configured locally, but the full upload flow still needs manual verification through the submission form.
 
 ### Frontend Verification
 
 - Done: `npm.cmd run build` passed.
+- Done: UC-3.1 frontend build verification passed after Calendar and Resolution Center wiring.
+- Done: targeted ESLint passed for new/changed Calendar, Resolution Center, API, and hook files.
+- Note: full-project `npm.cmd run lint` still fails due pre-existing lint debt in older files (`App.tsx`, dashboard, submission, validation, user-management, shared toast/button files); not caused by the UC-3.1 frontend slice.
+- Done locally: Vite dev server started successfully on `http://127.0.0.1:5176/` because ports 5173-5175 were occupied.
 - Local setup: `frontend/.env.local` should contain `VITE_API_URL=http://localhost:8080/api/v1` when using the Vite dev server with the local backend. This file is intentionally ignored by Git.
 - Required env vars for browser media upload:
   - `VITE_SUPABASE_URL`
@@ -183,9 +195,9 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: UC-1.3 Flyway migration conflict fixed by renaming media migration to `V4__media_assets.sql`.
 - Done: Module 1 auth/onboarding cleanup completed locally: `/me` hydration, pending invite count/list/resend UI, invite token superseding, and user-count tenant scope hardening.
 - Done: UC-3.1 publishing pipeline backend implemented on `module3` branch (208 tests passing).
+- Done: UC-3.1 frontend wiring completed locally: Calendar page and Resolution Center page connected to verified backend endpoints.
 - In Progress: merge/code review path for `feature/uc13-submission-backend`.
-- In Progress: merge/code review path for `module3` (UC-3.1 backend).
+- In Progress: merge/code review path for `module3` (UC-3.1 backend + frontend).
 - Done locally: SMTP credentials are configured in ignored local environment files; deployment runtime still needs team-owned SMTP values.
 - Done locally: Supabase database, service-role, frontend upload, and storage bucket env values are configured in ignored env files.
 - Not Started: configure Supabase service/browser upload environment variables in deployed environments.
-- Not Started: UC-3.1 frontend wiring (Calendar page + Resolution Center page).

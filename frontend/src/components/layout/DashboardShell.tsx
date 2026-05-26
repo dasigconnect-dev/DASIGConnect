@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
 
-export type DashboardNavId = 'home' | 'submit' | 'institution-management' | 'user-management' | 'scheduler' | 'analytics'
+export type DashboardNavId = 'home' | 'submit' | 'institution-management' | 'user-management' | 'scheduler' | 'resolution' | 'analytics'
 
 interface DashboardShellProps {
   user: User
@@ -189,8 +189,16 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
     {
       id: 'scheduler',
       icon: 'ti ti-calendar-event',
-      label: 'Scheduler',
-      visible: user.role === 'admin' || user.role === 'validator',
+      label: 'Calendar',
+      path: '/scheduler/calendar',
+      visible: true,
+    },
+    {
+      id: 'resolution',
+      icon: 'ti ti-alert-triangle',
+      label: 'Resolution Center',
+      path: '/admin/resolution',
+      visible: user.role === 'admin',
     },
     {
       id: 'analytics',

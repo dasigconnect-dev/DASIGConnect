@@ -39,16 +39,38 @@ Current branch: `module3`
 
 A photo post was published to the DasigConnect Facebook Page from a scheduled submission. The full pipeline (submit → PENDING → [validation skipped in dev] → SCHEDULED → `PublishingSchedulerJob` → Graph API) confirmed working in Development mode.
 
+### 4. UC-3.1 Frontend Calendar + Resolution Center - IMPLEMENTED
+
+**Calendar page:**
+- Route: `/scheduler/calendar`
+- API: `GET /api/v1/calendar`
+- Files/components: `frontend/src/api/calendarApi.ts`, `frontend/src/hooks/useCalendarEvents.ts`, and reusable components under `frontend/src/features/calendar/`.
+- Uses FullCalendar month/week views with live backend events, status coloring, legend, event detail modal, loading state, empty state, error state, refresh, and retry.
+
+**Resolution Center page:**
+- Route: `/admin/resolution`
+- API base: `/api/v1/resolution`
+- Files/components: `frontend/src/api/resolutionApi.ts`, `frontend/src/hooks/useResolutionFailures.ts`, and reusable components under `frontend/src/features/resolution/`.
+- Wired actions: list failures, retry, manual publish start, manual publish complete, manual publish cancel.
+- Includes busy/disabled action states, confirmation modals, success/error toast feedback, and refresh-after-action behavior.
+
+**Frontend verification:**
+- `npm.cmd run build` passed.
+- Targeted ESLint passed for the new/changed UC-3.1 frontend files.
+- Full-project `npm.cmd run lint` still fails because of pre-existing lint debt in older unrelated files.
+- Vite dev server started locally at `http://127.0.0.1:5176/` because ports 5173-5175 were occupied.
+
 ## Current State
 
 - **Branch:** `module3` — not yet merged to `main`
 - **Backend tests:** 208 passing (no regressions)
+- **Frontend build:** passing after UC-3.1 Calendar + Resolution Center wiring
 - **Submit flow:** working end-to-end in the browser
 - **Facebook publish:** confirmed working
 
 ## Remaining Gaps
 
-- **UC-3.1 frontend:** Calendar page (FullCalendar.js + `GET /api/v1/calendar`) and Resolution Center page (`/api/v1/resolution` endpoints) not yet implemented.
+- **UC-3.1 frontend manual browser verification:** use an authenticated admin session plus active backend data to click-test Resolution Center retry/manual publish start/complete/cancel actions against live records.
 - **UC-2.x:** Content validation (2.1), media repository (2.2), SSE notifications (2.3), analytics (2.4) — not started.
 - **UC-3.2 / 3.3:** AI caption (Claude Vision) and AI classification/recommendation (Voyage AI) — not started.
 - Submission lookups do not return categories, tags, or preferred time slots.
