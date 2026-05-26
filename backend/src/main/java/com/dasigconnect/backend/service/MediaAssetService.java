@@ -27,6 +27,8 @@ import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
 import com.dasigconnect.backend.model.entity.User;
+import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlResponseDto;
 import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
@@ -45,6 +47,7 @@ public class MediaAssetService {
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
     private final AssetTagRepository assetTagRepository;
     private final SubmissionService submissionService;
+    private final SupabaseStorageService supabaseStorageService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -54,12 +57,14 @@ public class MediaAssetService {
             SubmissionRepository submissionRepository,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
             AssetTagRepository assetTagRepository,
-            SubmissionService submissionService) {
+            SubmissionService submissionService,
+            SupabaseStorageService supabaseStorageService) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.assetTagRepository = assetTagRepository;
         this.submissionService = submissionService;
+        this.supabaseStorageService = supabaseStorageService;
     }
 
     @Transactional(readOnly = true)
@@ -215,6 +220,14 @@ public class MediaAssetService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tag not found.");
         }
         assetTagRepository.delete(tag);
+    }
+
+    public MediaAssetUploadUrlResponseDto createUploadUrl(MediaAssetUploadUrlRequestDto dto, JwtUserDetails user) {
+        String safeFileName = dto.getFileName().replaceAll("[^a-zA-Z0-9._-]", "-");
+        String objectPath = user.institutionId() + "/" + UUID.randomUUID() + "-" + safeFileName;
+        String signedUrl = supabaseStorageService.createSignedUploadUrl(objectPath);
+        String publicUrl = supabaseStorageService.getPublicUrl(objectPath);
+        return new MediaAssetUploadUrlResponseDto(signedUrl, publicUrl, objectPath);
     }
 
     private String generateAssetCode() {

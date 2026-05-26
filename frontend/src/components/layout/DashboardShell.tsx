@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
 
-export type DashboardNavId = 'home' | 'submit' | 'institution-management' | 'user-management' | 'scheduler' | 'analytics'
+export type DashboardNavId = 'home' | 'submit' | 'institution-management' | 'user-management' | 'scheduler' | 'analytics' | 'media-repository'
 
 interface DashboardShellProps {
   user: User
@@ -185,6 +185,13 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       label: 'User Management',
       path: '/admin/user-management/invitations',
       visible: user.role === 'validator',
+    },
+    {
+      id: 'media-repository',
+      icon: 'ti ti-photo',
+      label: 'Media Repository',
+      path: '/media-repository',
+      visible: true,
     },
     {
       id: 'scheduler',
