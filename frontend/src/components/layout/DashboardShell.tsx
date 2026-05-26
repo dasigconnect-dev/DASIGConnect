@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
 
-export type DashboardNavId = 'home' | 'submit' | 'institution-management' | 'user-management' | 'scheduler' | 'resolution' | 'analytics' | 'media-repository'
+export type DashboardNavId = 'home' | 'submit' | 'institution-management' | 'user-management' | 'scheduler' | 'resolution' | 'analytics' | 'media-repository' | 'notifications'
 
 interface DashboardShellProps {
   user: User
@@ -16,6 +16,7 @@ interface DashboardShellProps {
   onStayLoggedIn: () => void
   onLogout: () => void
   logoutLoading: boolean
+  notificationBadge?: number
   children: ReactNode
 }
 
@@ -38,6 +39,7 @@ export default function DashboardShell({
   onStayLoggedIn,
   onLogout,
   logoutLoading,
+  notificationBadge = 0,
   children,
 }: DashboardShellProps) {
   const navigate = useNavigate()
@@ -91,6 +93,11 @@ export default function DashboardShell({
               >
                 <i className={item.icon}></i>
                 <span>{item.label}</span>
+                {item.id === 'notifications' && notificationBadge > 0 && (
+                  <span className="sidebar-notif-badge">
+                    {notificationBadge > 99 ? '99+' : notificationBadge}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -191,6 +198,13 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       icon: 'ti ti-photo',
       label: 'Media Repository',
       path: '/media-repository',
+      visible: true,
+    },
+    {
+      id: 'notifications',
+      icon: 'ti ti-bell',
+      label: 'Notifications',
+      path: '/notifications',
       visible: true,
     },
     {
