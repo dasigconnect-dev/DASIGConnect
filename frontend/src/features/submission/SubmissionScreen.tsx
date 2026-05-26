@@ -29,6 +29,7 @@ import type { FacebookPreviewDetailsData } from "../../types/facebook";
 import { useToast } from "../../context/ToastContext";
 import FacebookPreviewCard from "../../components/facebook/FacebookPreviewCard";
 import FacebookPreviewModal from "../../components/facebook/FacebookPreviewModal";
+import CaptionSuggestButton from "./components/CaptionSuggestButton";
 
 interface SubmissionScreenProps {
   user: User;
@@ -837,18 +838,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               </div>
             </Field>
 
-            <div className="sub-ai-assist">
-              <div className="sub-ai-icon">
-                <i className="ti ti-sparkles"></i>
-              </div>
-              <div>
-                <div className="sub-ai-title">AI caption assist</div>
-                <div className="sub-ai-text">
-                  AI caption generation will appear here when the backend
-                  integration for media analysis is available.
-                </div>
-              </div>
-            </div>
+            <CaptionSuggestButton
+              submissionId={form.id}
+              hasImageAssets={
+                form.files.some((f) => f.type.startsWith("image/")) ||
+                form.savedAssets.some(
+                  (a) => !["mp4", "mov", "webm"].includes(a.fileType)
+                )
+              }
+              onCaptionApplied={(caption) => updateField("caption", caption)}
+            />
 
             <div className="sub-field-row">
               <Field label="Event Category">
