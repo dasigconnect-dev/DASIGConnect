@@ -127,7 +127,7 @@ export default function UploadModal({ open, institutionName, onClose, onUpload }
             </div>
             <div className="med-spec-item">
               <div className="med-spec-label">Max File Size</div>
-              <div className="med-spec-val">25 MB per file</div>
+              <div className="med-spec-val">50 MB per file</div>
             </div>
             <div className="med-spec-item">
               <div className="med-spec-label">Classification</div>

@@ -195,18 +195,24 @@ Fix applied:
 - **Smart instruction detection:** `ClaudeVisionClient.buildPrompt()` updated so Claude reads the caption field and determines intent before generating: if the text is a directive or question ("make a caption about X", "focus on Y"), Claude treats it as creative direction and generates captions following that request; if it reads like a draft caption, Claude refines it. No UI change required — the caption field already serves both purposes.
 - **No auto-display confirmed:** `suggest()` is only triggered by explicit user button click ("✨ Suggest Caption") or the "Regenerate" button inside the panel. No `useEffect` auto-fires suggestions.
 
+### Gap Audit (2026-05-27)
+
+- **`DASIG_SUPABASE_SERVICE_ROLE_KEY` confirmed present** in `backend/.env` and correctly mapped to `app.supabase.service-role-key` in `application.properties` — no code change needed.
+- **Categories and tags confirmed working** — `GET /api/v1/submissions/lookups` returns both fields and the submission form renders them. Gap note was stale.
+- **Media Library upload guard raised 25 MB → 50 MB** — `MediaRepositoryScreen.tsx` `MAX_UPLOAD_MB` and `UploadModal.tsx` display text updated to align with Supabase free-tier 50 MB global limit. Per-type limits (25 MB image / 500 MB video) require Supabase Pro; code for per-type split was explored but reverted.
+
 ### Known Gaps
 
 - UC-3.1 frontend browser action testing still needs an authenticated admin session and active backend to manually exercise retry, manual publish start, complete, and cancel against live data.
 - Submission queue design needs review with real data and mobile widths.
-- Submission lookups do not return categories, tags, or preferred time slots.
-- UC-2.2 Media Repository backend + frontend implemented (list/detail/upload/delete, signed URL, multi-select → New Post, Add to Draft picker). Remaining: mp4 uploads fail when the Supabase `dasigconnect-media` bucket disallows `video/*` MIME types or sets a low file-size limit — fix in the Supabase dashboard (bucket settings), not code.
-- UC-2.1 backend and frontend are implemented (see Development Modules table).
+- Submission lookups do not return preferred time slots (not yet required for current scope). Categories and tags are working.
+- UC-2.2 Media Repository: mp4 uploads require Supabase `dasigconnect-media` bucket to allow `video/*` MIME types and max file size set to 50 MB in dashboard settings.
 - Analytics need UC-2.4 backend.
-- UC-3.2 AI caption requires a backend restart to activate all Java changes. Also requires `APP_SUPABASE_SERVICE_ROLE_KEY` env var for private bucket fallback. Browser end-to-end test pending (test both instruction path and draft-refine path).
+- UC-3.2 AI caption requires a backend restart to activate all Java changes. `DASIG_SUPABASE_SERVICE_ROLE_KEY` is already wired. Browser end-to-end test pending (test both instruction path and draft-refine path).
 - AI classification/recommendation (UC-3.3) not started.
 - No built-in validator account exists. Use the administrator dashboard to invite validators.
-- Backend deployment runtime still needs team-owned SMTP and Supabase service credentials.
+- Backend deployment runtime still needs team-owned SMTP credentials configured on Render.
+- Per-type file size limits (images 25 MB / videos 500 MB) require Supabase Pro upgrade — currently capped at 50 MB for all file types.
 
 ---
 
@@ -249,7 +255,7 @@ Important enum values are lowercase in the database, including roles and statuse
 | `feat/m4-institution-scheduling`  | Merged                   | Institution management, guard rails, slot reservation, provisioning                                                                                                                 |
 | `dev`                             | In progress              | UC-1.2 extension, conditional bean fix, merged foundation work                                                                                                                      |
 | `feature/uc13-submission-backend` | Done locally, not merged | UC-1.3 backend, required tests, frontend API wiring, reset password/session/dashboard fixes, pending invite/user management UI, invite token superseding, Flyway V4 media migration |
-| `module3`                         | Done locally, not merged | UC-3.1 backend + frontend: publishing pipeline, calendar API/UI, Facebook Graph API integration, token encryption, scheduler jobs, Resolution Center backend/UI (UC-3.4), dynamic Facebook Preview modal, media carousel, and persisted submission media reordering. UC-2.2 Media Repository: backend + frontend fully implemented. UC-2.3 Notifications: backend (SSE, T1–T17, deadline job, email log) + frontend (route, hook, components, sidebar badge, CORS fix) fully implemented. 208 backend tests passing; frontend build passing. UC-3.2 AI Caption enhanced: base64 images, 5 MB resize, existingCaption context, inline button redesign (`AiCaptionButton`, `AiCaptionSuggestion`, `useAiCaptionAssist`), caption counter bottom-right, hover-delete on filmstrip assets. `buildPrompt()` updated with instruction-vs-draft intent detection so Claude follows user directives typed in the caption field. |
+| `module3`                         | Done locally, not merged | UC-3.1 backend + frontend: publishing pipeline, calendar API/UI, Facebook Graph API integration, token encryption, scheduler jobs, Resolution Center backend/UI (UC-3.4), dynamic Facebook Preview modal, media carousel, and persisted submission media reordering. UC-2.2 Media Repository: backend + frontend fully implemented. UC-2.3 Notifications: backend (SSE, T1–T17, deadline job, email log) + frontend (route, hook, components, sidebar badge, CORS fix) fully implemented. 208 backend tests passing; frontend build passing. UC-3.2 AI Caption enhanced: base64 images, 5 MB resize, existingCaption context, inline button redesign (`AiCaptionButton`, `AiCaptionSuggestion`, `useAiCaptionAssist`), caption counter bottom-right, hover-delete on filmstrip assets. `buildPrompt()` updated with instruction-vs-draft intent detection so Claude follows user directives typed in the caption field. Media Library upload guard raised 25 MB → 50 MB (Supabase free-tier limit). |
 | UC-2.1                            | Done locally, not merged | Content validation — `ValidationController`, `ValidationService`, `ReviewLockService`, `ReviewLockCleanupJob`, entities (`ReviewLock`, `ValidationLog`, `ValidationAction`), V10 migration, frontend `ValidationQueueScreen` + `useValidationQueue` + `validationApi` |
 | UC-2.4                            | Not started              | Analytics Dashboard — aggregate endpoints + frontend charts                                                                                                                         |
 | UC-3.2 / UC-3.3                   | Not started              | AI Caption (Claude Vision), AI Classification & Recommendation (Voyage AI)                                                                                                          |

@@ -1696,6 +1696,7 @@ function isAllowedFile(file: File, allowedFileTypes: string[]) {
   return Boolean(extension && allowedFileTypes.includes(extension));
 }
 
+
 function normalizeFileType(fileType: string) {
   return fileType === "jpg" ? "jpeg" : fileType;
 }

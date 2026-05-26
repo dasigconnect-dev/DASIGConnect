@@ -173,14 +173,15 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: floating selection action bar (count, Clear, New Post) and a selection review list in the detail panel (view/deselect each).
 - Done: "New Post (N)" navigates to `/submissions/new?assetIds=...`; `SubmissionScreen` consumes the param, pre-fills media, and attaches via `POST /submissions/{id}/assets` on save/submit (strips the param after first save).
 - Done: "Add to Draft" picker (`AddToDraftModal`) appends selected assets to an existing contributor draft; "Download Original" performs a true blob download.
-- Done: upload uses XHR with real progress, a 25 MB client guard, and surfaces the Supabase error on failure.
-- Gap: mp4 uploads depend on the Supabase `dasigconnect-media` bucket allowing `video/*` MIME types and a sufficient file-size limit (dashboard config, not code).
+- Done: upload uses XHR with real progress, a 50 MB client guard (raised from 25 MB to match Supabase free-tier limit), and surfaces the Supabase error on failure.
+- Gap: mp4 uploads depend on the Supabase `dasigconnect-media` bucket allowing `video/*` MIME types and file-size limit set to 50 MB (dashboard config, not code). Per-type limits (25 MB image / 500 MB video) require Supabase Pro upgrade.
 
 ### Pending - Frontend
 
 - Gap: submission queue design improved locally but still needs user/team review against real data and mobile widths.
 - Done: save draft / submit-for-review verified end-to-end (2026-05-26).
-- Gap: category/tag/preferred-time selection is limited because backend lookups do not currently return those fields.
+- Done: categories and tags are confirmed returned by `GET /api/v1/submissions/lookups` and rendered in the submission form — gap was stale.
+- Gap: preferred time slots are not returned by lookups (not yet required for current scope).
 - Done: UC-2.3 Notifications frontend — `/notifications` route, `NotificationsScreen`, `useNotifications` hook (real-time SSE via fetch+ReadableStream, list fetch, mark-read, mark-all-read, filter tabs, incoming animation with `latestIncomingId`), 7 components (AuditLog, BellWidget, DeliveryChannels, FilterTabs, NotificationItem, NotificationList, SseStatusBar), `notificationApi.ts`, `notifications.css`, sidebar notification badge (unread count polled in `DashboardLayout` on mount + window focus), CORS fixed for any Vite dev port.
 - Done: UC-2.1 Validation frontend — `ValidationQueueScreen.tsx` (queue panel, review lock acquire/release, approve/revision/reject decision modals, lock ownership UX), `useValidationQueue.ts` hook, `validationApi.ts`, `validation.css`, route wired in `App.tsx` and sidebar nav in `DashboardShell`.
 - Gap: analytics dashboard needs UC-2.4 backend.

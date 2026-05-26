@@ -29,7 +29,7 @@ interface MediaRepositoryScreenProps {
   user: User;
 }
 
-const MAX_UPLOAD_MB = 25;
+const MAX_UPLOAD_MB = 50;
 
 function isConflict(error: unknown) {
   if (typeof error !== "object" || error === null) return false;
