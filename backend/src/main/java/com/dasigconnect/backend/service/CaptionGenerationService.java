@@ -46,13 +46,14 @@ public class CaptionGenerationService {
      * Generates three caption variants (professional / community / energetic).
      * Validates that the submission belongs to the caller's institution and has at least one image.
      */
-    public CaptionResponseDto generateCaptions(UUID submissionId, UUID userId, UUID institutionId) {
+    public CaptionResponseDto generateCaptions(UUID submissionId, UUID userId, UUID institutionId,
+                                               String existingCaption) {
         // Step 1: Fetch submission data in a short read-only transaction
         SubmissionContext ctx = loadSubmissionContext(submissionId, institutionId);
 
-        // Step 2: Call Claude outside any transaction (10-second timeout enforced by client)
+        // Step 2: Call Claude outside any transaction (timeout enforced by client)
         List<CaptionVariantDto> variants = claudeVisionClient.generateCaptions(
-                ctx.imageUrls(), ctx.eventTitle());
+                ctx.imageUrls(), ctx.eventTitle(), existingCaption);
 
         // Step 3: Log generation event in a new transaction
         logInteraction(submissionId, ctx.institutionId(), "re_generate", null);

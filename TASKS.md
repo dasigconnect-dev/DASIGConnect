@@ -108,7 +108,7 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: `GlobalExceptionHandler` handles `HttpRequestMethodNotSupportedException` (405) and `IllegalStateException` (502) so storage failures surface clearly.
 - Done: UC-2.3 Notifications — `NotificationService` (SSE emitter registry, list/unread/history/markRead/markAllRead), `NotificationController` (`GET /notifications`, `/unread-count`, `/history`, `PATCH /{id}/read`, `/read-all`, SSE `GET /stream`), `NotificationEventListener` (triggers T2–T17 via Spring events, `REQUIRES_NEW` propagation so failures never roll back business actions), `ValidationDeadlineNotificationJob` (T8 — urgent 30-min deadline alerts with dedup), V14 Flyway migration (`notifications` table + RLS policy), `EmailDeliveryService` (plain-text delivery with `email_delivery_log` tracking), V15 Flyway migration (`email_delivery_log`). Backend event classes: `SubmissionApprovedEvent`, `RevisionRequestedEvent`, `SubmissionRejectedEvent`, `PostPublishedEvent`, `PostPublishedManualEvent`, `PublishFailedEvent`, `OverrideApprovedEvent`, `OverrideDeniedEvent`, `OverrideSlotSuggestedEvent`, `AdminDirectPostEvent`, `TokenExpiryWarningEvent`, `TokenValidationFailedEvent`, `InstitutionNoValidatorEvent`, `InstitutionOnboardedEvent`, `SubmissionRescheduledEvent`.
 - Not Started: UC-2.4 Analytics Dashboard - aggregate endpoints.
-- Not Started: UC-3.2 AI Caption - Claude Vision client and async generation.
+- Done: UC-3.2 AI Caption backend — `ClaudeVisionClient` base64 image encoding, in-memory resize (5 MB limit), Supabase service-role-key auth fallback, smart image curation prompt, `existingCaption` context support with prompt injection defense, 512 max_tokens, 30s timeout. `CaptionRequestDto` + `CaptionGenerationService` + `CaptionController` updated to pass existingCaption.
 - Not Started: UC-3.3 AI Classification & Recommendation - Voyage AI client and embedding pipeline.
 - Not Started: UC-3.5 Admin Exception Handling / Override Request.
 
@@ -183,7 +183,8 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: UC-2.3 Notifications frontend — `/notifications` route, `NotificationsScreen`, `useNotifications` hook (real-time SSE via fetch+ReadableStream, list fetch, mark-read, mark-all-read, filter tabs, incoming animation with `latestIncomingId`), 7 components (AuditLog, BellWidget, DeliveryChannels, FilterTabs, NotificationItem, NotificationList, SseStatusBar), `notificationApi.ts`, `notifications.css`, sidebar notification badge (unread count polled in `DashboardLayout` on mount + window focus), CORS fixed for any Vite dev port.
 - Done: UC-2.1 Validation frontend — `ValidationQueueScreen.tsx` (queue panel, review lock acquire/release, approve/revision/reject decision modals, lock ownership UX), `useValidationQueue.ts` hook, `validationApi.ts`, `validation.css`, route wired in `App.tsx` and sidebar nav in `DashboardShell`.
 - Gap: analytics dashboard needs UC-2.4 backend.
-- Gap: AI caption and recommendation screens need UC-3.2/UC-3.3 backend.
+- Done: UC-3.2 AI Caption frontend — `useAiCaptionAssist` hook, `AiCaptionButton` inline pill button (idle/loading/error/rate-limited states), `AiCaptionSuggestion` panel (3 variant rows, tone badges, expand-to-edit, Use/Dismiss), caption counter repositioned to bottom-right inside textarea, hover-delete on saved filmstrip assets, `aiApi.ts` validateStatus fix + existingCaption param. Backend restart required to activate Java changes.
+- Gap: AI recommendation screen needs UC-3.3 backend.
 - Gap: Supabase browser upload env is now configured locally, but the full upload flow still needs manual verification through the submission form.
 
 ### Frontend Verification

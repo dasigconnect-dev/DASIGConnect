@@ -29,7 +29,9 @@ import type { FacebookPreviewDetailsData } from "../../types/facebook";
 import { useToast } from "../../context/ToastContext";
 import FacebookPreviewCard from "../../components/facebook/FacebookPreviewCard";
 import FacebookPreviewModal from "../../components/facebook/FacebookPreviewModal";
-import CaptionSuggestButton from "./components/CaptionSuggestButton";
+import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
+import AiCaptionButton from "./components/AiCaptionButton";
+import AiCaptionSuggestion from "./components/AiCaptionSuggestion";
 
 interface SubmissionScreenProps {
   user: User;
@@ -177,6 +179,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       ? previewValidation.blockingErrors[0]
       : undefined;
   const canSubmitCurrentSubmission = form.status === "draft";
+
+  const hasImageAssets = useMemo(
+    () =>
+      form.files.some((f) => f.type.startsWith("image/")) ||
+      form.savedAssets.some(
+        (a) => !["mp4", "mov", "webm"].includes(a.fileType),
+      ),
+    [form.files, form.savedAssets],
+  );
+  const aiCaption = useAiCaptionAssist(form.id, hasImageAssets, form.caption);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -470,6 +482,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setSaveState("idle");
   }
 
+  function handleRemoveSavedAsset(assetId: string) {
+    setForm((current) => ({
+      ...current,
+      savedAssets: current.savedAssets.filter((a) => a.id !== assetId),
+      mediaOrder: current.mediaOrder.filter(
+        (key) => key !== savedMediaKey(assetId),
+      ),
+    }));
+    setSaveState("idle");
+  }
+
   async function handleReorderMedia(orderedIds: string[]) {
     const sortedSavedAssets = sortSavedAssetsByOrder(form.savedAssets, orderedIds);
     const sortedFiles = sortFilesByOrder(form.files, orderedIds);
@@ -746,6 +769,19 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     <span className="sub-film-badge">
                       {asset.fileType.toUpperCase()}
                     </span>
+                    <span
+                      className="sub-film-del"
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Remove asset"
+                      onClick={() => handleRemoveSavedAsset(asset.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ")
+                          handleRemoveSavedAsset(asset.id);
+                      }}
+                    >
+                      <i className="ti ti-x"></i>
+                    </span>
                   </div>
                 ))}
                 {form.files.map((file, index) => (
@@ -822,32 +858,44 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             </div>
             <Field
               label="Caption"
-              count={`${form.caption.length} / 500 chars`}
-              tone={captionTone(form.caption)}
+              action={
+                <AiCaptionButton
+                  state={aiCaption.state}
+                  canSuggest={aiCaption.canSuggest}
+                  rateLimitReset={aiCaption.rateLimitReset}
+                  onSuggest={aiCaption.suggest}
+                />
+              }
             >
-              <textarea
-                className={`sub-finput ${captionTone(form.caption)}`}
-                rows={4}
-                value={form.caption}
-                onChange={(event) => updateField("caption", event.target.value)}
-                placeholder="Write a compelling caption for the DASIG Facebook page..."
-              />
+              <div className="sub-caption-wrapper">
+                <textarea
+                  className={`sub-finput ${captionTone(form.caption)}`}
+                  rows={4}
+                  value={form.caption}
+                  onChange={(event) => updateField("caption", event.target.value)}
+                  placeholder="Write a compelling caption for the DASIG Facebook page..."
+                />
+                <span className={`sub-caption-counter ${captionTone(form.caption)}`}>
+                  {form.caption.length} / 500
+                </span>
+              </div>
+              {aiCaption.variants && (
+                <AiCaptionSuggestion
+                  variants={aiCaption.variants}
+                  onApply={(caption, tone, action) => {
+                    updateField("caption", caption);
+                    aiCaption.logApply(tone, action);
+                  }}
+                  onDismissOne={aiCaption.logDismissOne}
+                  onDismissAll={aiCaption.dismissAll}
+                  onRegenerate={aiCaption.regenerate}
+                />
+              )}
               <div className="sub-finput-hint">
                 Captions between 150-500 characters perform best on Facebook.
                 Include relevant hashtags.
               </div>
             </Field>
-
-            <CaptionSuggestButton
-              submissionId={form.id}
-              hasImageAssets={
-                form.files.some((f) => f.type.startsWith("image/")) ||
-                form.savedAssets.some(
-                  (a) => !["mp4", "mov", "webm"].includes(a.fileType)
-                )
-              }
-              onCaptionApplied={(caption) => updateField("caption", caption)}
-            />
 
             <div className="sub-field-row">
               <Field label="Event Category">
@@ -1171,20 +1219,25 @@ function Field({
   label,
   count,
   tone,
+  action,
   children,
 }: {
   label: string;
   count?: string;
   tone?: string;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <label className="sub-fgroup">
       <span className="sub-flabel">
         {label}
-        {count && (
-          <span className={`sub-flabel-count ${tone || ""}`}>{count}</span>
-        )}
+        <span className="sub-flabel-right">
+          {count && (
+            <span className={`sub-flabel-count ${tone || ""}`}>{count}</span>
+          )}
+          {action}
+        </span>
       </span>
       {children}
     </label>

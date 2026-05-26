@@ -24,12 +24,17 @@ export type CaptionAction =
   | "dismiss";
 
 export async function suggestCaption(
-  submissionId: string
+  submissionId: string,
+  existingCaption?: string
 ): Promise<CaptionResponse> {
   const res = await api.post<{ submissionId: string; variants: CaptionVariant[] }>(
     "/ai/caption",
-    { submissionId },
-    { validateStatus: null }
+    {
+      submissionId,
+      // Only send if non-empty — backend treats null/absent as "generate from scratch"
+      ...(existingCaption?.trim() ? { existingCaption: existingCaption.trim() } : {}),
+    },
+    { validateStatus: () => true }
   );
 
   const remaining = res.headers?.["x-ratelimit-remaining"];

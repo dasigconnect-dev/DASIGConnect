@@ -183,6 +183,13 @@ Fix applied:
 - **Simulation artifacts removed:** The module2 prototype had mock SSE events and a `simulateSSE` button; those were stripped. All data flows from the live backend.
 - **Verification:** `npm.cmd run build` passed (187 modules, 0 TypeScript errors). Browser SSE verification pending (needs running backend).
 
+### UC-3.2 AI Caption Enhancements (2026-05-26)
+
+- **Backend fixes:** `ClaudeVisionClient` now base64-encodes images (Supabase URLs may be auth-gated). In-memory resize via `BufferedImage`/`Graphics2D`/`ImageIO` handles >5 MB images (scales 70%→50%→35%→25%→15% until JPEG ≤ 5 MB). `java.awt.headless=true` set for Render server compatibility. Supabase service-role-key auth fallback on 401/403. Prompt updated: image curation guidance (deprioritize title/banner slides) + conditional draft refinement via `<context>` tags with injection defense. `max_tokens` 1024→512, timeout 10s→30s.
+- **existingCaption flow:** `CaptionRequestDto`, `CaptionGenerationService`, `CaptionController` updated to pass `existingCaption` through to Claude so AI refines existing text rather than replacing it.
+- **Frontend redesign:** Removed large AI card; replaced with inline `AiCaptionButton` pill in Caption label row and `AiCaptionSuggestion` panel below textarea. `useAiCaptionAssist` hook owns all AI state. `aiApi.ts` `validateStatus: null` → `() => true` fix.
+- **UX polish:** Caption counter repositioned to bottom-right inside textarea. Hover-visible X delete button added to saved filmstrip assets.
+
 ### Known Gaps
 
 - UC-3.1 frontend browser action testing still needs an authenticated admin session and active backend to manually exercise retry, manual publish start, complete, and cancel against live data.
@@ -191,7 +198,8 @@ Fix applied:
 - UC-2.2 Media Repository backend + frontend implemented (list/detail/upload/delete, signed URL, multi-select → New Post, Add to Draft picker). Remaining: mp4 uploads fail when the Supabase `dasigconnect-media` bucket disallows `video/*` MIME types or sets a low file-size limit — fix in the Supabase dashboard (bucket settings), not code.
 - UC-2.1 backend and frontend are implemented (see Development Modules table).
 - Analytics need UC-2.4 backend.
-- AI captions (UC-3.2) and AI classification/recommendation (UC-3.3) not started.
+- UC-3.2 AI caption backend requires a backend restart to activate (Java `ClaudeVisionClient` changes). Also requires `APP_SUPABASE_SERVICE_ROLE_KEY` env var for private bucket fallback. Browser end-to-end test pending.
+- AI classification/recommendation (UC-3.3) not started.
 - No built-in validator account exists. Use the administrator dashboard to invite validators.
 - Backend deployment runtime still needs team-owned SMTP and Supabase service credentials.
 
@@ -236,7 +244,7 @@ Important enum values are lowercase in the database, including roles and statuse
 | `feat/m4-institution-scheduling`  | Merged                   | Institution management, guard rails, slot reservation, provisioning                                                                                                                 |
 | `dev`                             | In progress              | UC-1.2 extension, conditional bean fix, merged foundation work                                                                                                                      |
 | `feature/uc13-submission-backend` | Done locally, not merged | UC-1.3 backend, required tests, frontend API wiring, reset password/session/dashboard fixes, pending invite/user management UI, invite token superseding, Flyway V4 media migration |
-| `module3`                         | Done locally, not merged | UC-3.1 backend + frontend: publishing pipeline, calendar API/UI, Facebook Graph API integration, token encryption, scheduler jobs, Resolution Center backend/UI (UC-3.4), dynamic Facebook Preview modal, media carousel, and persisted submission media reordering. UC-2.2 Media Repository: backend + frontend fully implemented. UC-2.3 Notifications: backend (SSE, T1–T17, deadline job, email log) + frontend (route, hook, components, sidebar badge, CORS fix) fully implemented. 208 backend tests passing; frontend build passing. |
+| `module3`                         | Done locally, not merged | UC-3.1 backend + frontend: publishing pipeline, calendar API/UI, Facebook Graph API integration, token encryption, scheduler jobs, Resolution Center backend/UI (UC-3.4), dynamic Facebook Preview modal, media carousel, and persisted submission media reordering. UC-2.2 Media Repository: backend + frontend fully implemented. UC-2.3 Notifications: backend (SSE, T1–T17, deadline job, email log) + frontend (route, hook, components, sidebar badge, CORS fix) fully implemented. 208 backend tests passing; frontend build passing. UC-3.2 AI Caption enhanced: base64 images, 5 MB resize, existingCaption context, inline button redesign (`AiCaptionButton`, `AiCaptionSuggestion`, `useAiCaptionAssist`), caption counter bottom-right, hover-delete on filmstrip assets. |
 | UC-2.1                            | Done locally, not merged | Content validation — `ValidationController`, `ValidationService`, `ReviewLockService`, `ReviewLockCleanupJob`, entities (`ReviewLock`, `ValidationLog`, `ValidationAction`), V10 migration, frontend `ValidationQueueScreen` + `useValidationQueue` + `validationApi` |
 | UC-2.4                            | Not started              | Analytics Dashboard — aggregate endpoints + frontend charts                                                                                                                         |
 | UC-3.2 / UC-3.3                   | Not started              | AI Caption (Claude Vision), AI Classification & Recommendation (Voyage AI)                                                                                                          |
