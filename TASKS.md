@@ -106,7 +106,7 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: UC-2.2 Media Repository backend - `MediaAssetController` (`GET/GET{id}/DELETE /api/v1/media-assets`, `POST /upload-url`, `POST /upload`, `POST /{id}/use-in-new-post`, `POST /{id}/add-to-draft`, tag endpoints), `MediaAssetService`, `SupabaseStorageService` signed upload URLs.
 - Done: Submission content-completeness validation - `SubmissionService.submit()` now rejects with 422 when event title, event date, caption, or ≥1 media asset is missing (always enforced, independent of `app.guardrails.enforced`). Tests: `submit_withoutMedia_returns422`, `submit_withoutCaption_returns422`.
 - Done: `GlobalExceptionHandler` handles `HttpRequestMethodNotSupportedException` (405) and `IllegalStateException` (502) so storage failures surface clearly.
-- Not Started: UC-2.3 Notifications - SSE endpoint, notification service, emitter registry.
+- Done: UC-2.3 Notifications — `NotificationService` (SSE emitter registry, list/unread/history/markRead/markAllRead), `NotificationController` (`GET /notifications`, `/unread-count`, `/history`, `PATCH /{id}/read`, `/read-all`, SSE `GET /stream`), `NotificationEventListener` (triggers T2–T17 via Spring events, `REQUIRES_NEW` propagation so failures never roll back business actions), `ValidationDeadlineNotificationJob` (T8 — urgent 30-min deadline alerts with dedup), V14 Flyway migration (`notifications` table + RLS policy), `EmailDeliveryService` (plain-text delivery with `email_delivery_log` tracking), V15 Flyway migration (`email_delivery_log`). Backend event classes: `SubmissionApprovedEvent`, `RevisionRequestedEvent`, `SubmissionRejectedEvent`, `PostPublishedEvent`, `PostPublishedManualEvent`, `PublishFailedEvent`, `OverrideApprovedEvent`, `OverrideDeniedEvent`, `OverrideSlotSuggestedEvent`, `AdminDirectPostEvent`, `TokenExpiryWarningEvent`, `TokenValidationFailedEvent`, `InstitutionNoValidatorEvent`, `InstitutionOnboardedEvent`, `SubmissionRescheduledEvent`.
 - Not Started: UC-2.4 Analytics Dashboard - aggregate endpoints.
 - Not Started: UC-3.2 AI Caption - Claude Vision client and async generation.
 - Not Started: UC-3.3 AI Classification & Recommendation - Voyage AI client and embedding pipeline.
@@ -180,9 +180,8 @@ Legend: Done / In Progress / Not Started / Deferred
 - Gap: submission queue design improved locally but still needs user/team review against real data and mobile widths.
 - Done: save draft / submit-for-review verified end-to-end (2026-05-26).
 - Gap: category/tag/preferred-time selection is limited because backend lookups do not currently return those fields.
-- Gap: `AssetPickerModal` cannot be fully wired until UC-2.2 media asset list/delete endpoints exist.
+- Done: UC-2.3 Notifications frontend — `/notifications` route, `NotificationsScreen`, `useNotifications` hook (real-time SSE via fetch+ReadableStream, list fetch, mark-read, mark-all-read, filter tabs, incoming animation with `latestIncomingId`), 7 components (AuditLog, BellWidget, DeliveryChannels, FilterTabs, NotificationItem, NotificationList, SseStatusBar), `notificationApi.ts`, `notifications.css`, sidebar notification badge (unread count polled in `DashboardLayout` on mount + window focus), CORS fixed for any Vite dev port.
 - Gap: validator review actions need UC-2.1 backend.
-- Gap: notification badge/stream needs UC-2.3 SSE backend.
 - Gap: analytics dashboard needs UC-2.4 backend.
 - Gap: AI caption and recommendation screens need UC-3.2/UC-3.3 backend.
 - Gap: Supabase browser upload env is now configured locally, but the full upload flow still needs manual verification through the submission form.
@@ -203,6 +202,7 @@ Legend: Done / In Progress / Not Started / Deferred
   - `VITE_SUPABASE_STORAGE_BUCKET`
   - `VITE_SUPABASE_ANON_KEY`
 - Done locally: `frontend/.env.local` contains the Vite Supabase upload variables and uses the `dasigconnect-media` bucket.
+- Done: UC-2.3 Notifications (2026-05-26): `npm.cmd run build` passed (187 modules, 0 TypeScript errors) after completing notification integration — routing, hook, components, sidebar badge, CORS fix. Browser verification pending (needs running backend for SSE stream).
 
 ---
 

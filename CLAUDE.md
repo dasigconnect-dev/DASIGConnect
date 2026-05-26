@@ -174,6 +174,15 @@ Fix applied:
 - Facebook publish: confirmed — photo post published to DasigConnect Facebook Page.
 - Submission validation (2026-05-26): `SubmissionServiceTest` 17/17 and `SubmissionControllerTest` 14/14 pass after adding the content-completeness gate and two new tests (`submit_withoutMedia_returns422`, `submit_withoutCaption_returns422`). Frontend `npm run build` + targeted ESLint pass for the media-repository and submission slices.
 
+### UC-2.3 Notification Integration (2026-05-26)
+
+- **Backend (fully complete):** `NotificationService` (SSE emitter registry, CRUD, mark-read), `NotificationController` (`GET /notifications`, `/unread-count`, `/history`, `PATCH /{id}/read`, `PATCH /read-all`, SSE `GET /stream`), `NotificationEventListener` (T2–T17 via `@TransactionalEventListener(AFTER_COMMIT)`, each in its own `REQUIRES_NEW` transaction so failures never roll back the triggering business action), `ValidationDeadlineNotificationJob` (T8 — every 5 min, dedup within 30-min window), `EmailDeliveryService` (plain-text with `email_delivery_log`), V14 (`notifications` table + RLS), V15 (`email_delivery_log`). All 15 event record classes under `event/`.
+- **Frontend (fully complete):** `/notifications` route wired in `App.tsx`; `DashboardLayout` active-nav mapping; Notifications sidebar nav item in `DashboardShell`; `notificationApi.ts` (REST + fetch-based SSE stream with `Authorization` header); `useNotifications` hook (list fetch, SSE subscription, filter, mark-read/all-read, `latestIncomingId` tracking for incoming animation); 7 components (AuditLog, BellWidget, DeliveryChannels, FilterTabs, NotificationItem, NotificationList, SseStatusBar); `notifications.css`.
+- **Sidebar notification badge:** `DashboardLayout` polls `GET /api/v1/notifications/unread-count` on mount and window focus; passes count to `DashboardShell` which renders a red badge on the Notifications nav item when unread > 0.
+- **CORS fix:** `SecurityConfig` changed from `setAllowedOrigins` (hardcoded port 5173) to `setAllowedOriginPatterns(localhost:*, 127.0.0.1:*)` so the SSE stream works on any Vite dev port.
+- **Simulation artifacts removed:** The module2 prototype had mock SSE events and a `simulateSSE` button; those were stripped. All data flows from the live backend.
+- **Verification:** `npm.cmd run build` passed (187 modules, 0 TypeScript errors). Browser SSE verification pending (needs running backend).
+
 ### Known Gaps
 
 - UC-3.1 frontend browser action testing still needs an authenticated admin session and active backend to manually exercise retry, manual publish start, complete, and cancel against live data.
@@ -181,7 +190,6 @@ Fix applied:
 - Submission lookups do not return categories, tags, or preferred time slots.
 - UC-2.2 Media Repository backend + frontend implemented (list/detail/upload/delete, signed URL, multi-select → New Post, Add to Draft picker). Remaining: mp4 uploads fail when the Supabase `dasigconnect-media` bucket disallows `video/*` MIME types or sets a low file-size limit — fix in the Supabase dashboard (bucket settings), not code.
 - Validator review actions need UC-2.1 backend.
-- SSE notifications need UC-2.3 backend.
 - Analytics need UC-2.4 backend.
 - AI captions (UC-3.2) and AI classification/recommendation (UC-3.3) not started.
 - No built-in validator account exists. Use the administrator dashboard to invite validators.
@@ -228,8 +236,9 @@ Important enum values are lowercase in the database, including roles and statuse
 | `feat/m4-institution-scheduling`  | Merged                   | Institution management, guard rails, slot reservation, provisioning                                                                                                                 |
 | `dev`                             | In progress              | UC-1.2 extension, conditional bean fix, merged foundation work                                                                                                                      |
 | `feature/uc13-submission-backend` | Done locally, not merged | UC-1.3 backend, required tests, frontend API wiring, reset password/session/dashboard fixes, pending invite/user management UI, invite token superseding, Flyway V4 media migration |
-| `module3`                         | Done locally, not merged | UC-3.1 backend + frontend: publishing pipeline, calendar API/UI, Facebook Graph API integration, token encryption, scheduler jobs, Resolution Center backend/UI (UC-3.4), dynamic Facebook Preview modal, media carousel, and persisted submission media reordering. 208 backend tests passing for UC-3.1 baseline; focused submission reorder tests passing; frontend build passing. |
-| UC-2.x                            | Not started              | Validation, media repository, notifications, analytics                                                                                                                              |
+| `module3`                         | Done locally, not merged | UC-3.1 backend + frontend: publishing pipeline, calendar API/UI, Facebook Graph API integration, token encryption, scheduler jobs, Resolution Center backend/UI (UC-3.4), dynamic Facebook Preview modal, media carousel, and persisted submission media reordering. UC-2.2 Media Repository: backend + frontend fully implemented. UC-2.3 Notifications: backend (SSE, T1–T17, deadline job, email log) + frontend (route, hook, components, sidebar badge, CORS fix) fully implemented. 208 backend tests passing; frontend build passing. |
+| UC-2.1                            | Not started              | Content validation — validator review queue, approve/revision/reject transitions                                                                                                    |
+| UC-2.4                            | Not started              | Analytics Dashboard — aggregate endpoints + frontend charts                                                                                                                         |
 | UC-3.2 / UC-3.3                   | Not started              | AI Caption (Claude Vision), AI Classification & Recommendation (Voyage AI)                                                                                                          |
 
 See `TASKS.md` for the detailed task checklist and current gaps.
