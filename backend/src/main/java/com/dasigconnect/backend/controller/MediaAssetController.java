@@ -20,6 +20,8 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetAddToDraftRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUseInNewPostRequestDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -79,6 +81,14 @@ public class MediaAssetController {
             @Valid @RequestBody MediaAssetAddToDraftRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(mediaAssetService.addToDraft(id, dto, user));
+    }
+
+    @PostMapping("/upload-url")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MediaAssetUploadUrlResponseDto> getUploadUrl(
+            @Valid @RequestBody MediaAssetUploadUrlRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaAssetService.createUploadUrl(dto, user));
     }
 
     @PostMapping("/upload")

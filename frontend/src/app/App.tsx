@@ -31,6 +31,7 @@ import UserInvitationsScreen from "../features/user-management/UserInvitationsSc
 import InstitutionManagementScreen from "../features/institution-management/InstitutionManagementScreen";
 import CalendarScreen from "../features/calendar/CalendarScreen";
 import ResolutionCenterScreen from "../features/resolution/ResolutionCenterScreen";
+import MediaRepositoryScreen from "../features/media-repository/MediaRepositoryScreen";
 import DashboardLayout from "../components/layout/DashboardLayout";
 import SessionModal from "../components/modals/SessionModal";
 import Toast from "../components/common/Toast";
@@ -674,6 +675,14 @@ function App() {
             element={
               <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
                 <ResolutionCenterScreen user={currentUser!} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/media-repository"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+                <MediaRepositoryScreen user={currentUser!} />
               </ProtectedRoute>
             }
           />
