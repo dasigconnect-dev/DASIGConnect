@@ -225,7 +225,8 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       id: 'analytics',
       icon: 'ti ti-chart-bar',
       label: 'Analytics',
-      visible: user.role === 'admin',
+      path: '/analytics',
+      visible: true,
     },
   ]
 }
