@@ -4,7 +4,7 @@ import type { User } from "../../types/auth.types";
 import { useResolutionFailures } from "../../hooks/useResolutionFailures";
 import ResolutionFailureCard from "./ResolutionFailureCard";
 import ResolutionRetryModal from "./ResolutionRetryModal";
-import ResolutionCompleteModal from "./ResolutionCompleteModal";
+import ManualPublishWorkflowPanel from "./ManualPublishWorkflowPanel";
 import {
   ResolutionEmptyState,
   ResolutionErrorState,
@@ -15,11 +15,6 @@ interface ResolutionCenterScreenProps {
   user: User;
 }
 
-type ActionModal =
-  | { type: "retry"; item: FailedPublication }
-  | { type: "complete"; item: FailedPublication }
-  | null;
-
 export default function ResolutionCenterScreen({
   user,
 }: ResolutionCenterScreenProps) {
@@ -28,13 +23,18 @@ export default function ResolutionCenterScreen({
     loading,
     error,
     busy,
+    activeDetail,
+    detailLoading,
     refresh,
     handleRetry,
     handleStartManual,
     handleCancelManual,
     handleCompleteManual,
+    openWorkflowPanel,
+    closeWorkflowPanel,
   } = useResolutionFailures();
-  const [modal, setModal] = useState<ActionModal>(null);
+
+  const [retryItem, setRetryItem] = useState<FailedPublication | null>(null);
 
   return (
     <div className="screen-root" data-role={user.role}>
@@ -73,39 +73,51 @@ export default function ResolutionCenterScreen({
               key={item.submissionId}
               item={item}
               busy={busy === item.submissionId}
-              onRetry={() => setModal({ type: "retry", item })}
+              onRetry={() => setRetryItem(item)}
               onStartManual={() => void handleStartManual(item)}
               onCancelManual={() => void handleCancelManual(item)}
-              onComplete={() => setModal({ type: "complete", item })}
+              onComplete={() => openWorkflowPanel(item)}
             />
           ))}
         </div>
       )}
 
       <ResolutionRetryModal
-        item={modal?.type === "retry" ? modal.item : null}
-        busy={modal?.type === "retry" ? busy === modal.item.submissionId : false}
+        item={retryItem}
+        busy={retryItem ? busy === retryItem.submissionId : false}
         onConfirm={() => {
-          if (modal?.type === "retry") {
-            void handleRetry(modal.item).then(() => setModal(null));
+          if (retryItem) {
+            void handleRetry(retryItem).then(() => setRetryItem(null));
           }
         }}
-        onClose={() => setModal(null)}
+        onClose={() => setRetryItem(null)}
       />
 
-      <ResolutionCompleteModal
-        item={modal?.type === "complete" ? modal.item : null}
-        busy={
-          modal?.type === "complete" ? busy === modal.item.submissionId : false
-        }
+      <ManualPublishWorkflowPanel
+        detail={activeDetail}
+        loading={detailLoading}
+        busy={activeDetail ? busy === activeDetail.submissionId : detailLoading}
         onConfirm={(postUrl, notes) => {
-          if (modal?.type === "complete") {
-            void handleCompleteManual(modal.item, postUrl, notes).then(() =>
-              setModal(null),
+          if (activeDetail) {
+            const item = failures.find(
+              (f) => f.submissionId === activeDetail.submissionId,
             );
+            if (item) {
+              void handleCompleteManual(item, postUrl, notes);
+            }
           }
         }}
-        onClose={() => setModal(null)}
+        onCancel={() => {
+          if (activeDetail) {
+            const item = failures.find(
+              (f) => f.submissionId === activeDetail.submissionId,
+            );
+            if (item) {
+              void handleCancelManual(item);
+            }
+          }
+        }}
+        onClose={closeWorkflowPanel}
       />
     </div>
   );
