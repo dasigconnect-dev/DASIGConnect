@@ -1,78 +1,35 @@
-# Handoff — 2026-05-28 (Session 6)
+# Handoff — 2026-05-28 (Session 7)
 
 ## What was done this session
 
-### Media Asset Retention Policy (Backend)
-
-- **V23 migration** (`V23__media_asset_retention_purge.sql`) adds `deleted_by_user_id UUID`, `purged_at TIMESTAMPTZ`, and a retention lookup index on `(deleted_at, purged_at)` to `media_assets`.
-- **`MediaAssetService.delete()` and `bulkDelete()`** now record `deleted_by_user_id` (the acting user's UUID) on soft-delete.
-- **`MediaAssetRetentionService`** — purges assets whose `deleted_at` has exceeded the configurable retention window. Purge clears: pgvector embedding, embedding model/timestamp, AI category/description/confidence, AI classification model/timestamp, asset tags (DB rows), and the Supabase storage object (best-effort, not fatal on failure).
-- **`MediaAssetRetentionPurgeJob`** — `@Scheduled` daily at 02:30 UTC by default. Processes assets in configurable batches.
-- **`MediaAssetBulkDeleteRequestDto`** + **`MediaAssetBulkDeleteResponseDto`** — new DTOs for the bulk delete endpoint.
-- **Config keys added** (`application.properties`): `MEDIA_ASSET_DELETED_RETENTION_DAYS` (default 30), `MEDIA_ASSET_PURGE_BATCH_SIZE` (default 25), `MEDIA_ASSET_PURGE_CRON` (default `0 30 2 * * *`).
-- **Tests**: `MediaAssetRetentionServiceTest` (new), `MediaAssetServiceTest` (new), `MediaAssetControllerTest` (updated for bulk delete + retention fields).
-
-### Media Repository UI — Selected-Assets Actions Cleanup
-
-- **Removed redundant floating action bar** (`med-selbar`) — the dark pill at the bottom of the page that appeared on multi-select. The right-side sidebar already handles selected-asset actions.
-- **Removed header Delete button** — the `Delete N` danger button that appeared in the page header when assets were checked.
-- **Sidebar actions restructured** — actions footer in `AssetDetailPanel` is now two rows:
-  - Row 1 (flex, equal width): `[Delete]` `[Download]` `[Add to Draft]`
-  - Row 2 (full width): `[+ New Submission (N)]`
-- **Bulk delete wired into the sidebar** — added `canBulkDelete` (computed from `selectedAssets.every(canDeleteAsset)`) and `onRequestBulkDelete={openBulkDeleteModal}` props to `AssetDetailPanel`. In selection mode the Delete button triggers bulk delete; in single-asset mode it triggers single delete.
-- **Backend deletion authorization verified correct** — `loadAssetForDelete` already enforces Admin = unrestricted, Validator = institution-scoped, Contributor = own uploads only (checked by `userId`, not email). No backend changes needed.
-- **CSS cleanup** — removed `.med-selbar` block (~60 lines), `.med-grid.selecting { padding-bottom: 88px }`, and `.med-delete-section` / `.med-delete-label` / `.med-delete-triggers` rules.
-
-### Asset Card — Click-to-Select
-
-- **Clicking anywhere on the card now toggles selection** — previously the user had to click the small checkbox square in the top-left corner.
-- **Checkbox square kept as visual indicator** — converted from an interactive `<button>` to `<span aria-hidden="true">`. Shows check mark on hover (all cards) and stays visible when checked.
-- **`onToggleCheck` prop removed** from `AssetCard` interface — the card's `onClick` now calls `handleToggleCheck(asset)` directly from the screen.
+- **Java deprecation warning cleanup** — replaced all `HttpStatus.UNPROCESSABLE_ENTITY` (deprecated in Spring 7) with `HttpStatusCode.valueOf(422)` across `GlobalExceptionHandler`, `CaptionGenerationService`, and `DirectPostService` (7 occurrences). Replaced `ResponseEntity.unprocessableEntity()` with `ResponseEntity.status(422)` in `GlobalExceptionHandler`.
+- **Unused import removed** — `AIClassificationService` import deleted from `MediaAssetService.java` (never referenced in the file body).
+- **Unused constants removed** — `PUBLISHING_SUCCESS_TARGET = 95.0` deleted from `MetricsAggregatorService.java`; `MAX_OVERRIDE_REQUESTS = 2` deleted from `OverrideRequestService.java`.
+- **Test assertions updated** — `CaptionGenerationServiceTest` two 422 assertions changed from `isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY)` to `.value() == 422` to match Spring 7 renamed reason phrase (`UNPROCESSABLE_CONTENT`).
+- **UC-3.5 cherry-pick confirmed complete** — all 12 backend files (`ExceptionHandlingController`, 8 DTOs, `OverrideRequest`/`OverrideRequestDecision` entities, `OverrideRequestRepository`, `ExpiredOverrideCleanupJob`, 4 services, `SubmissionStatus` with new enum values) and `V24__override_requests.sql` verified present on `module3`.
+- **269 backend tests passing** after all cleanup — 0 failures, 0 errors.
 
 ## Files changed
 
-### Backend
-- `backend/src/main/java/com/dasigconnect/backend/controller/MediaAssetController.java` — bulk delete endpoint wired.
-- `backend/src/main/java/com/dasigconnect/backend/model/dto/media/MediaAssetDetailDto.java` — retention/provenance fields exposed.
-- `backend/src/main/java/com/dasigconnect/backend/model/dto/media/MediaAssetSummaryDto.java` — updated for retention fields.
-- `backend/src/main/java/com/dasigconnect/backend/model/dto/media/MediaAssetBulkDeleteRequestDto.java` — new bulk delete request DTO.
-- `backend/src/main/java/com/dasigconnect/backend/model/dto/media/MediaAssetBulkDeleteResponseDto.java` — new bulk delete response DTO.
-- `backend/src/main/java/com/dasigconnect/backend/model/entity/MediaAsset.java` — `deletedByUserId` and `purgedAt` fields.
-- `backend/src/main/java/com/dasigconnect/backend/repository/AssetTagRepository.java` — bulk delete by asset ID for purge.
-- `backend/src/main/java/com/dasigconnect/backend/repository/MediaAssetRepository.java` — purge candidate query.
-- `backend/src/main/java/com/dasigconnect/backend/service/MediaAssetService.java` — records `deletedByUserId`; `bulkDelete` added.
-- `backend/src/main/java/com/dasigconnect/backend/service/MediaAssetRetentionService.java` — new; purge loop, storage delete, field clearing.
-- `backend/src/main/java/com/dasigconnect/backend/service/SupabaseStorageService.java` — delete object method used by retention purge.
-- `backend/src/main/java/com/dasigconnect/backend/schedule/MediaAssetRetentionPurgeJob.java` — new; daily cron job.
-- `backend/src/main/resources/db/migration/V23__media_asset_retention_purge.sql` — new migration.
-- `backend/src/main/resources/application.properties` — retention config keys.
-- `backend/src/test/java/com/dasigconnect/backend/controller/MediaAssetControllerTest.java` — bulk delete + retention tests.
-- `backend/src/test/java/com/dasigconnect/backend/service/MediaAssetRetentionServiceTest.java` — new.
-- `backend/src/test/java/com/dasigconnect/backend/service/MediaAssetServiceTest.java` — new.
-
-### Frontend
-- `frontend/src/features/media-repository/MediaRepositoryScreen.tsx` — removed `med-selbar`, removed header Delete button, wired `canBulkDelete` + `onRequestBulkDelete` to panel, changed card `onClick` to `handleToggleCheck`.
-- `frontend/src/features/media-repository/components/AssetCard.tsx` — removed `onToggleCheck` prop; checkbox converted to visual-only `<span>`.
-- `frontend/src/features/media-repository/components/AssetDetailPanel.tsx` — added `canBulkDelete` / `onRequestBulkDelete` props; restructured actions into two rows.
-- `frontend/src/features/media-repository/components/DeleteModal.tsx` — updated for bulk delete flow.
-- `frontend/src/features/media-repository/hooks/useMediaAssets.ts` — minor hook updates.
-- `frontend/src/api/mediaApi.ts` — bulk delete API call added.
-- `frontend/src/styles/media-repository.css` — removed `med-selbar`, `med-delete-section`, and `selecting` padding rules.
+- `backend/src/main/java/com/dasigconnect/backend/exception/GlobalExceptionHandler.java` — replaced deprecated `ResponseEntity.unprocessableEntity()`
+- `backend/src/main/java/com/dasigconnect/backend/service/CaptionGenerationService.java` — replaced `HttpStatus.UNPROCESSABLE_ENTITY`, added `HttpStatusCode` import
+- `backend/src/main/java/com/dasigconnect/backend/service/DirectPostService.java` — replaced all 7 `HttpStatus.UNPROCESSABLE_ENTITY` occurrences, added `HttpStatusCode` import
+- `backend/src/main/java/com/dasigconnect/backend/service/MediaAssetService.java` — removed unused `AIClassificationService` import
+- `backend/src/main/java/com/dasigconnect/backend/service/MetricsAggregatorService.java` — removed unused `PUBLISHING_SUCCESS_TARGET` constant
+- `backend/src/main/java/com/dasigconnect/backend/service/OverrideRequestService.java` — removed unused `MAX_OVERRIDE_REQUESTS` constant; IDE linter also auto-applied `UNPROCESSABLE_CONTENT` fix in `suggest()`
+- `backend/src/test/java/com/dasigconnect/backend/service/CaptionGenerationServiceTest.java` — updated 2 assertions to compare status code as integer value
 
 ## What's next
 
-1. **Run backend tests** — `./mvnw test` to verify `MediaAssetRetentionServiceTest`, `MediaAssetServiceTest`, and `MediaAssetControllerTest` pass with V23 migration applied.
-2. **Browser test Media Repository** — verify: (a) clicking a card selects it and opens the panel, (b) Delete/Download/Add to Draft appear in the correct row in the sidebar, (c) bulk delete from the sidebar works for selected assets, (d) the floating bar is gone.
-3. **Apply V23 migration on Supabase** — restart the backend and confirm Flyway applies V23 cleanly (`deleted_by_user_id`, `purged_at`, index).
-4. **UC-3.3 browser E2E** — save a draft with title/caption/category/tags → Submit Content → Media Assets → AI Suggestions → generate, select, add, and verify order persists.
-5. **UC-3.4 browser test** — run as authenticated admin; test manual publish start, copy/download, Facebook page open, completion URL validation, cancel, retry, abandonment note.
-6. **AI caption browser E2E** — restart backend to activate `ClaudeVisionClient` changes, then test instruction and draft-refine paths.
-7. **Analytics browser test** — open `/analytics` as contributor, validator, and admin against a live backend.
+1. **UC-3.5 frontend** — implement the 5-tab Resolution Center extension: `ValidationTimeoutTab`, `OverrideRequestsTab`, `DirectPostTab`, `TokenManagementPanel`, `SlotSuggestionModal`, `RejectOnBehalfModal`, per-tab badge counts; wire to `ExceptionHandlingController` endpoints under `/api/admin/resolution`.
+2. **Apply V24 migration** — restart the backend locally to trigger Flyway V24 (`override_requests` table) on the Supabase DB before testing UC-3.5 endpoints.
+3. **Browser E2E for UC-3.3 media suggestions** — restart backend with `VOYAGE_API_KEY` + `ANTHROPIC_API_KEY`, confirm V21/V22 applied, run through suggest-media flow in Submit Content.
+4. **Browser E2E for UC-2.3 notifications** — verify SSE stream connects, notifications arrive, sidebar badge updates, mark-read/all-read work against live backend.
+5. **Pre-merge lint cleanup** — fix pre-existing debt in `App.tsx`, dashboard, submission, validation, user-management files so full-project `npm run lint` passes before final PR.
 
 ## Blockers / notes
 
-- V23 has not been applied to the Supabase database yet — backend must be restarted to trigger Flyway migration before retention purge can run.
-- UC-3.3 requires `VOYAGE_API_KEY` + `ANTHROPIC_API_KEY` in `backend/.env` and Flyway V21/V22 already applied.
-- Backend `.\mvnw.cmd` still fails in PowerShell on this machine; use `mvnw` (bash) or direct Maven from `.m2/wrapper/dists`.
-- Full-project `npm run lint` still fails due to pre-existing lint debt in older frontend files outside this session's scope.
-- The `canDeleteAsset` frontend check compares `asset.uploaderName` vs `user.email` for contributors — slightly fragile but server-side auth is the authoritative check. No security issue.
+- `OverrideRequestService.submissionRepository` field is unused — the IDE linter (VS Code Java extension) keeps restoring it. The compiler warning is cosmetic and does not affect tests or runtime. Add `@SuppressWarnings("unused")` if needed, or leave as-is since UC-3.5 override approval may need it later.
+- V24 migration has not been applied to Supabase yet — backend restart required before UC-3.5 endpoints can be browser-tested.
+- UC-3.5 frontend is the last major unimplemented feature in the current module scope.
+- Full-project `npm run lint` still fails due to pre-existing debt outside current feature slices — not blocking development but should be resolved before final PR.

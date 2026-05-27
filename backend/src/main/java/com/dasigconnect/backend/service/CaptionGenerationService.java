@@ -10,6 +10,7 @@ import com.dasigconnect.backend.repository.AiInteractionLogRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -105,7 +106,7 @@ public class CaptionGenerationService {
                 .toList();
 
         if (imageUrls.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Caption generation requires at least one image asset on the submission.");
         }
 

@@ -128,7 +128,8 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done locally: UC-3.3 lightweight AI provenance - V22 adds media AI classification/embedding timestamps and model names plus `asset_tags.source`. Manual tags and AI-generated tags are now distinguished in storage, API detail DTOs, recommendation weighting, and match reasons.
 - Done locally: UC-3.3 AI media pipeline documentation - current design is upload metadata -> Claude Vision asset enrichment -> Voyage embedding/vectorization -> pgvector semantic search -> deterministic reranking -> hover/focus match reasons. This keeps suggestion-time token use low because images are scanned once at upload/reconciliation time.
 - Deferred / Cut from current scope: contributor-facing category/tag AI suggestion. Do not continue the `useAiClassification` / `AiClassificationButton` / `AiClassificationSuggestion` path or add `/api/v1/ai/submissions/{id}/suggestions` unless scope changes; media suggestion has higher impact for UC-3.3.
-- Not Started: UC-3.5 Admin Exception Handling / Override Request.
+- Done locally: UC-3.5 Administrator Exception Handling backend — cherry-picked from `feat/uc35-exception-handling` into `module3`. All files present: `ExceptionHandlingController`, 8 DTOs under `model/dto/exception/`, `OverrideRequest`/`OverrideRequestDecision` entities, `OverrideRequestRepository`, `ExpiredOverrideCleanupJob`, `DirectPostService`, `OverrideRequestService`, `TokenManagementService`, `ValidationTimeoutService`, `SubmissionStatus` new enum values (`direct_post_scheduled`, `admin_direct_post`, `direct_post_failed`), `V24__override_requests.sql` migration. V24 not yet applied to Supabase — backend restart required.
+- Not Started: UC-3.5 Administrator Exception Handling frontend — 5-tab Resolution Center extension (`ValidationTimeoutTab`, `OverrideRequestsTab`, `DirectPostTab`, `TokenManagementPanel`, `SlotSuggestionModal`, `RejectOnBehalfModal`, per-tab badge counts).
 
 ---
 
@@ -186,7 +187,7 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: `resolutionApi.ts` extended with `ManualPublishDetail`, `ManualPublishMediaItem` interfaces and `getResolutionDetail(id)`.
 - Done: `useResolutionFailures.ts` extended with `activeDetail`/`detailLoading` state, `openWorkflowPanel()`/`closeWorkflowPanel()`; `handleStartManual` auto-opens panel.
 - Done: `ResolutionCenterScreen.tsx` — wired `ManualPublishWorkflowPanel` replacing simple complete modal.
-- Not Started: UC-3.5 frontend — 5-tab Resolution Center (API Failures, Timeouts, Overrides, Direct Post, System & Audit) with per-tab badge counts, `ValidationTimeoutTab`, `OverrideRequestsTab`, `DirectPostTab`, `TokenManagementPanel`, `SlotSuggestionModal`, `RejectOnBehalfModal`.
+- Not Started: UC-3.5 frontend — 5-tab Resolution Center (API Failures, Timeouts, Overrides, Direct Post, System & Audit) with per-tab badge counts, `ValidationTimeoutTab`, `OverrideRequestsTab`, `DirectPostTab`, `TokenManagementPanel`, `SlotSuggestionModal`, `RejectOnBehalfModal`; wire to `ExceptionHandlingController` endpoints under `/api/admin/resolution`.
 
 ### UC-2.2 Frontend - Media Repository
 
@@ -255,3 +256,4 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done locally: SMTP credentials are configured in ignored local environment files; deployment runtime still needs team-owned SMTP values.
 - Done locally: Supabase database, service-role, frontend upload, and storage bucket env values are configured in ignored env files.
 - Not Started: configure Supabase service/browser upload environment variables in deployed environments.
+- Done: Spring 7 deprecation warning cleanup — `HttpStatus.UNPROCESSABLE_ENTITY` replaced with `HttpStatusCode.valueOf(422)` in `GlobalExceptionHandler`, `CaptionGenerationService`, `DirectPostService` (7 occurrences); `ResponseEntity.unprocessableEntity()` replaced with `ResponseEntity.status(422)`; unused `AIClassificationService` import removed from `MediaAssetService`; unused `PUBLISHING_SUCCESS_TARGET` removed from `MetricsAggregatorService`; unused `MAX_OVERRIDE_REQUESTS` removed from `OverrideRequestService`. 269 tests passing.

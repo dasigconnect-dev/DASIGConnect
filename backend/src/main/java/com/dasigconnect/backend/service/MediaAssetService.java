@@ -38,8 +38,6 @@ import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
-import com.dasigconnect.backend.service.AIClassificationService;
-
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 

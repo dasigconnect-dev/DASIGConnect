@@ -93,7 +93,7 @@ public class GlobalExceptionHandler {
         String message = ex.getViolations().isEmpty()
                 ? ex.getMessage()
                 : ex.getViolations().get(0).getMessage();
-        return ResponseEntity.unprocessableEntity()
+        return ResponseEntity.status(422)
                 .body(Map.of(
                         "error", message,
                         "summary", ex.getMessage(),

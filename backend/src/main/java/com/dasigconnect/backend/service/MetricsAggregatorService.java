@@ -42,7 +42,6 @@ public class MetricsAggregatorService {
 
     private static final double COMPLETENESS_TARGET = 95.0;
     private static final double POSTS_PER_MONTH_TARGET = 4.0;
-    private static final double PUBLISHING_SUCCESS_TARGET = 95.0;
 
     private final AnalyticsRepository analyticsRepository;
 
