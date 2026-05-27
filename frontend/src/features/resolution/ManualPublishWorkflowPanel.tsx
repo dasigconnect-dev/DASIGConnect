@@ -44,10 +44,37 @@ function formatCountdown(ms: number) {
   return `${s}s remaining`;
 }
 
+function formatDatetime(iso: string | null) {
+  if (!iso) return "Not scheduled";
+  return new Date(iso).toLocaleString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function formatAbandonedAt(iso: string) {
+  return new Date(iso).toLocaleString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 function isImageType(fileType: string) {
   return ["jpeg", "jpg", "png", "gif", "webp"].includes(
     fileType.toLowerCase(),
   );
+}
+
+function urlInvalid(url: string) {
+  return url.trim().length > 0 && !url.trim().startsWith("https://www.facebook.com/");
 }
 
 export default function ManualPublishWorkflowPanel({
@@ -98,9 +125,22 @@ export default function ManualPublishWorkflowPanel({
     });
   }
 
+  function handleUrlChange(value: string) {
+    setPostUrl(value);
+    if (urlInvalid(value)) {
+      setPostUrlError(
+        "Please enter a valid Facebook post URL (e.g., https://www.facebook.com/...).",
+      );
+    } else {
+      setPostUrlError("");
+    }
+  }
+
   function handleConfirm() {
-    if (postUrl.trim() && !postUrl.startsWith("https://www.facebook.com/")) {
-      setPostUrlError("Must be a facebook.com URL.");
+    if (urlInvalid(postUrl)) {
+      setPostUrlError(
+        "Please enter a valid Facebook post URL (e.g., https://www.facebook.com/...).",
+      );
       return;
     }
     onConfirm(postUrl.trim() || undefined, notes.trim() || undefined);
@@ -108,6 +148,13 @@ export default function ManualPublishWorkflowPanel({
 
   const images = detail?.mediaAssets.filter((a) => isImageType(a.fileType)) ?? [];
   const videos = detail?.mediaAssets.filter((a) => !isImageType(a.fileType)) ?? [];
+  const confirmDisabled = busy || loading || urlInvalid(postUrl);
+
+  const contributorName = detail
+    ? [detail.contributorFirstName, detail.contributorLastName]
+        .filter(Boolean)
+        .join(" ") || detail.contributorEmail
+    : null;
 
   return (
     <div
@@ -160,6 +207,43 @@ export default function ManualPublishWorkflowPanel({
 
           {!loading && detail && (
             <>
+              {/* Abandonment note (A2) */}
+              {detail.lastManualPublishAbandonedAt && (
+                <div className="res-workflow-abandoned-note">
+                  <i className="ti ti-info-circle" aria-hidden="true" />
+                  <span>
+                    A manual publishing attempt was started at{" "}
+                    <strong>
+                      {formatAbandonedAt(detail.lastManualPublishAbandonedAt)}
+                    </strong>{" "}
+                    and abandoned. The submission is still awaiting manual
+                    publication.
+                  </span>
+                </div>
+              )}
+
+              {/* Submission meta */}
+              <div className="res-workflow-meta-row">
+                <div className="res-workflow-meta-item">
+                  <span className="res-workflow-meta-label">Scheduled</span>
+                  <span className="res-workflow-meta-value">
+                    {formatDatetime(detail.scheduledAt)}
+                  </span>
+                </div>
+                <div className="res-workflow-meta-item">
+                  <span className="res-workflow-meta-label">Contributor</span>
+                  <span className="res-workflow-meta-value">
+                    {contributorName}
+                  </span>
+                </div>
+                <div className="res-workflow-meta-item">
+                  <span className="res-workflow-meta-label">Submission ID</span>
+                  <span className="res-workflow-meta-value res-workflow-meta-id">
+                    {detail.submissionId.slice(0, 8)}…
+                  </span>
+                </div>
+              </div>
+
               {/* Step 1 — Copy Content */}
               <section className="res-workflow-step">
                 <div className="res-workflow-step-label">
@@ -219,6 +303,12 @@ export default function ManualPublishWorkflowPanel({
 
                 {videos.length > 0 && (
                   <div className="res-workflow-video-list">
+                    <p className="res-workflow-video-note">
+                      <i className="ti ti-info-circle" aria-hidden="true" />
+                      This submission contains a video file. Download it to your
+                      device, then upload it manually when creating the Facebook
+                      post.
+                    </p>
                     {videos.map((vid) => (
                       <a
                         key={vid.id}
@@ -250,7 +340,7 @@ export default function ManualPublishWorkflowPanel({
                   className="btn-primary btn-sm res-workflow-fb-btn"
                 >
                   <i className="ti ti-brand-facebook" aria-hidden="true" />
-                  Open DASIG Facebook Page
+                  Open DASIG Facebook Page →
                   <i className="ti ti-external-link" aria-hidden="true" />
                 </a>
               </section>
@@ -264,7 +354,7 @@ export default function ManualPublishWorkflowPanel({
 
                 <div className="form-field">
                   <label htmlFor="res-wf-post-url" className="form-label">
-                    Facebook Post URL{" "}
+                    Live Post URL{" "}
                     <span className="form-label-optional">(optional)</span>
                   </label>
                   <input
@@ -273,10 +363,7 @@ export default function ManualPublishWorkflowPanel({
                     className={`form-input${postUrlError ? " input-error" : ""}`}
                     placeholder="https://www.facebook.com/permalink/..."
                     value={postUrl}
-                    onChange={(e) => {
-                      setPostUrl(e.target.value);
-                      setPostUrlError("");
-                    }}
+                    onChange={(e) => handleUrlChange(e.target.value)}
                     aria-invalid={postUrlError ? "true" : "false"}
                     aria-describedby={
                       postUrlError ? "res-wf-post-url-error" : undefined
@@ -291,7 +378,7 @@ export default function ManualPublishWorkflowPanel({
 
                 <div className="form-field">
                   <label htmlFor="res-wf-notes" className="form-label">
-                    Notes{" "}
+                    Admin Notes{" "}
                     <span className="form-label-optional">(optional)</span>
                   </label>
                   <textarea
@@ -322,7 +409,7 @@ export default function ManualPublishWorkflowPanel({
           <button
             type="button"
             className="btn-primary"
-            disabled={busy || loading}
+            disabled={confirmDisabled}
             onClick={handleConfirm}
           >
             {busy ? (

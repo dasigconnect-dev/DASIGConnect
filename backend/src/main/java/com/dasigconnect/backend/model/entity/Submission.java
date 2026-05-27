@@ -76,6 +76,9 @@ public class Submission {
     @Column(name = "manual_publish_started_at")
     private Instant manualPublishStartedAt;
 
+    @Column(name = "last_manual_publish_abandoned_at")
+    private Instant lastManualPublishAbandonedAt;
+
     @Column(name = "published_manual_url", columnDefinition = "text")
     private String publishedManualUrl;
 
@@ -235,6 +238,14 @@ public class Submission {
 
     public void setManualPublishStartedAt(Instant manualPublishStartedAt) {
         this.manualPublishStartedAt = manualPublishStartedAt;
+    }
+
+    public Instant getLastManualPublishAbandonedAt() {
+        return lastManualPublishAbandonedAt;
+    }
+
+    public void setLastManualPublishAbandonedAt(Instant lastManualPublishAbandonedAt) {
+        this.lastManualPublishAbandonedAt = lastManualPublishAbandonedAt;
     }
 
     public String getPublishedManualUrl() {

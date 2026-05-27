@@ -87,8 +87,12 @@ public class ManualPublishingService {
             }
         }
 
+        String priorStatus = s.getStatus().name();
+        Instant scheduledAt = s.getScheduledAt();
+        Instant publishedAt = Instant.now();
+
         s.setStatus(SubmissionStatus.published_manual);
-        s.setPublishedAt(Instant.now());
+        s.setPublishedAt(publishedAt);
         s.setPublishedManualUrl(dto.getPostUrl());
         s.setPublishedManualNotes(dto.getNotes());
         s.setManualPublishStartedAt(null);
@@ -100,8 +104,11 @@ public class ManualPublishingService {
                 null, null,
                 submissionId,
                 Map.of(
-                    "postUrl", dto.getPostUrl() != null ? dto.getPostUrl() : "",
-                    "notes", dto.getNotes() != null ? dto.getNotes() : ""
+                    "priorStatus",   priorStatus,
+                    "scheduledAt",   scheduledAt != null ? scheduledAt.toString() : "",
+                    "publishedAt",   publishedAt.toString(),
+                    "postUrl",       dto.getPostUrl() != null ? dto.getPostUrl() : "",
+                    "notes",         dto.getNotes() != null ? dto.getNotes() : ""
                 )
         );
 
@@ -142,13 +149,21 @@ public class ManualPublishingService {
 
     /** Called by AbandonmentDetectorJob — clears sessions open longer than 2 hours. */
     public void clearAbandoned(Submission s) {
+        Instant startedAt = s.getManualPublishStartedAt();
+        Instant abandonedAt = Instant.now();
+
         s.setManualPublishStartedAt(null);
+        s.setLastManualPublishAbandonedAt(abandonedAt);
         submissionRepository.save(s);
 
         auditLogService.recordSystemAction(
                 "MANUAL_PUBLISH_ABANDONED",
                 s.getId(),
-                Map.of("submissionStatus", s.getStatus().name())
+                Map.of(
+                    "submissionStatus", s.getStatus().name(),
+                    "startedAt",        startedAt != null ? startedAt.toString() : "",
+                    "abandonedAt",      abandonedAt.toString()
+                )
         );
 
         log.warn("Cleared abandoned manual publish session for submission {}.", s.getId());

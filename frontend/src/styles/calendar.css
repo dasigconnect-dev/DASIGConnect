@@ -679,6 +679,79 @@
   font-size: 14px;
 }
 
+.res-workflow-abandoned-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0;
+  padding: 12px 24px;
+  background: #fffbeb;
+  border-bottom: 1px solid #fde68a;
+  font-size: 13px;
+  color: #92400e;
+  line-height: 1.5;
+}
+
+.res-workflow-abandoned-note i {
+  flex-shrink: 0;
+  font-size: 15px;
+  margin-top: 1px;
+}
+
+.res-workflow-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  padding: 12px 24px;
+  background: var(--d-bg);
+  border-bottom: 1px solid var(--d-border);
+}
+
+.res-workflow-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.res-workflow-meta-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--d-muted);
+}
+
+.res-workflow-meta-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--d-text);
+}
+
+.res-workflow-meta-id {
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.res-workflow-video-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  padding: 9px 12px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  color: #1e40af;
+  line-height: 1.5;
+}
+
+.res-workflow-video-note i {
+  flex-shrink: 0;
+  font-size: 14px;
+  margin-top: 1px;
+}
+
 .res-workflow-step {
   padding: 18px 24px;
   border-bottom: 1px solid var(--d-border);
