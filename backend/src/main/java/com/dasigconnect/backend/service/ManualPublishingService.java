@@ -25,9 +25,12 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 
 /**
- * Manages the UC-3.4 manual publishing fallback workflow.
+ * UC-3.4 manual publishing fallback workflow.
  *
- * Flow: Admin clicks "Publish Manually" → start() → Admin publishes on Facebook → complete()
+ * Eligible submissions: PUBLISH_FAILED (automated retries exhausted) and
+ * SCHEDULED (only when the Facebook Page token is expired/failed, GR-T4 active).
+ *
+ * Flow: Admin calls start() → publishes on Facebook → calls complete().
  * Abandonment: AbandonmentDetectorJob calls clearAbandoned() for sessions open > 2 hours.
  */
 @Service
@@ -54,14 +57,23 @@ public class ManualPublishingService {
     }
 
     public void start(UUID submissionId, JwtUserDetails admin) {
-        Submission s = loadPublishFailed(submissionId);
+        Submission s = loadEligibleForManualPublish(submissionId);
         s.setManualPublishStartedAt(Instant.now());
         submissionRepository.save(s);
+
+        auditLogService.record(
+                entityManager.getReference(User.class, admin.userId()),
+                "MANUAL_PUBLISH_STARTED",
+                null, null,
+                submissionId,
+                Map.of("submissionStatus", s.getStatus().name())
+        );
+
         log.info("Admin {} started manual publish for submission {}.", admin.userId(), submissionId);
     }
 
     public void complete(UUID submissionId, ManualPublishCompleteDto dto, JwtUserDetails admin) {
-        Submission s = loadPublishFailed(submissionId);
+        Submission s = loadEligibleForManualPublish(submissionId);
 
         if (s.getManualPublishStartedAt() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -98,9 +110,19 @@ public class ManualPublishingService {
     }
 
     public void cancel(UUID submissionId, JwtUserDetails admin) {
-        Submission s = loadPublishFailed(submissionId);
+        Submission s = loadEligibleForManualPublish(submissionId);
+        String previousStatus = s.getStatus().name();
         s.setManualPublishStartedAt(null);
         submissionRepository.save(s);
+
+        auditLogService.record(
+                entityManager.getReference(User.class, admin.userId()),
+                "MANUAL_PUBLISH_CANCELLED",
+                null, null,
+                submissionId,
+                Map.of("submissionStatus", previousStatus)
+        );
+
         log.info("Admin {} cancelled manual publish for submission {}.", admin.userId(), submissionId);
     }
 
@@ -122,15 +144,23 @@ public class ManualPublishingService {
     public void clearAbandoned(Submission s) {
         s.setManualPublishStartedAt(null);
         submissionRepository.save(s);
+
+        auditLogService.recordSystemAction(
+                "MANUAL_PUBLISH_ABANDONED",
+                s.getId(),
+                Map.of("submissionStatus", s.getStatus().name())
+        );
+
         log.warn("Cleared abandoned manual publish session for submission {}.", s.getId());
     }
 
-    private Submission loadPublishFailed(UUID submissionId) {
+    private Submission loadEligibleForManualPublish(UUID submissionId) {
         Submission s = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new SubmissionNotFoundException(submissionId));
-        if (s.getStatus() != SubmissionStatus.publish_failed) {
+        if (s.getStatus() != SubmissionStatus.publish_failed
+                && s.getStatus() != SubmissionStatus.scheduled) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Only PUBLISH_FAILED submissions can be manually published.");
+                    "Only PUBLISH_FAILED or SCHEDULED submissions are eligible for manual publishing.");
         }
         return s;
     }
