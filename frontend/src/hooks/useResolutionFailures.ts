@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import {
   cancelManualPublish,
   completeManualPublish,
+  getResolutionDetail,
   getResolutionFailures,
   retryPublication,
   startManualPublish,
   type FailedPublication,
+  type ManualPublishDetail,
 } from "../api/resolutionApi";
 import { useToast } from "../context/ToastContext";
 
@@ -14,6 +16,8 @@ export interface UseResolutionFailuresResult {
   loading: boolean;
   error: string;
   busy: string | null;
+  activeDetail: ManualPublishDetail | null;
+  detailLoading: boolean;
   refresh: () => void;
   handleRetry: (item: FailedPublication) => Promise<void>;
   handleStartManual: (item: FailedPublication) => Promise<void>;
@@ -23,6 +27,8 @@ export interface UseResolutionFailuresResult {
     postUrl?: string,
     notes?: string,
   ) => Promise<void>;
+  openWorkflowPanel: (item: FailedPublication) => void;
+  closeWorkflowPanel: () => void;
 }
 
 export function useResolutionFailures(): UseResolutionFailuresResult {
@@ -32,6 +38,8 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [activeDetail, setActiveDetail] = useState<ManualPublishDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -50,6 +58,23 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
   }, [tick]);
 
   const refresh = useCallback(() => setTick((n) => n + 1), []);
+
+  function openWorkflowPanel(item: FailedPublication) {
+    setActiveDetail(null);
+    setDetailLoading(true);
+    getResolutionDetail(item.submissionId)
+      .then((res) => setActiveDetail(res.data))
+      .catch(() => {
+        toast.error("Could not load submission details.");
+        setDetailLoading(false);
+      })
+      .finally(() => setDetailLoading(false));
+  }
+
+  function closeWorkflowPanel() {
+    setActiveDetail(null);
+    setDetailLoading(false);
+  }
 
   async function handleRetry(item: FailedPublication) {
     setBusy(item.submissionId);
@@ -70,6 +95,8 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
       await startManualPublish(item.submissionId);
       toast.success("Manual publish session started.");
       refresh();
+      // Automatically open the workflow panel after starting
+      openWorkflowPanel({ ...item, manualPublishInProgress: true });
     } catch {
       toast.error("Could not start manual publish.");
     } finally {
@@ -82,6 +109,7 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
     try {
       await cancelManualPublish(item.submissionId);
       toast.info("Manual publish cancelled.");
+      closeWorkflowPanel();
       refresh();
     } catch {
       toast.error("Could not cancel manual publish.");
@@ -102,6 +130,7 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
         notes: notes || undefined,
       });
       toast.success(`"${item.eventTitle}" marked as published.`);
+      closeWorkflowPanel();
       refresh();
     } catch {
       toast.error("Could not complete manual publish.");
@@ -115,10 +144,14 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
     loading,
     error,
     busy,
+    activeDetail,
+    detailLoading,
     refresh,
     handleRetry,
     handleStartManual,
     handleCancelManual,
     handleCompleteManual,
+    openWorkflowPanel,
+    closeWorkflowPanel,
   };
 }
