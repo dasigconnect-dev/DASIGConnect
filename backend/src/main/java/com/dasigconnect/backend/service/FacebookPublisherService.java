@@ -321,22 +321,30 @@ public class FacebookPublisherService {
     @Transactional
     public void markPublished(Submission submission, String postId) {
         Submission s = submissionRepository.findById(submission.getId()).orElse(submission);
-        s.setStatus(SubmissionStatus.published);
+        boolean isDirectPost = s.getStatus() == SubmissionStatus.direct_post_scheduled;
+        s.setStatus(isDirectPost ? SubmissionStatus.admin_direct_post : SubmissionStatus.published);
         s.setPlatformPostId(postId);
         s.setPublishedAt(Instant.now());
         submissionRepository.save(s);
         String postUrl = "https://www.facebook.com/" + postId.replace("_", "/posts/");
-        eventPublisher.publishEvent(new PostPublishedEvent(s, postUrl));
-        log.info("Submission {} published successfully as post {}.", s.getId(), postId);
+        if (isDirectPost) {
+            eventPublisher.publishEvent(new com.dasigconnect.backend.event.AdminDirectPostEvent(
+                    s.getInstitution(), s.getCaption(), postUrl));
+        } else {
+            eventPublisher.publishEvent(new PostPublishedEvent(s, postUrl));
+        }
+        log.info("Submission {} published successfully as post {} (status={}).",
+                s.getId(), postId, s.getStatus());
     }
 
     @Transactional
     public void markFailed(Submission submission, String error) {
         Submission s = submissionRepository.findById(submission.getId()).orElse(submission);
-        s.setStatus(SubmissionStatus.publish_failed);
+        boolean isDirectPost = s.getStatus() == SubmissionStatus.direct_post_scheduled;
+        s.setStatus(isDirectPost ? SubmissionStatus.direct_post_failed : SubmissionStatus.publish_failed);
         submissionRepository.save(s);
         eventPublisher.publishEvent(new PublishFailedEvent(s, error));
-        log.error("Submission {} publishing failed: {}", s.getId(), error);
+        log.error("Submission {} publishing failed (status={}): {}", s.getId(), s.getStatus(), error);
     }
 
     @Transactional

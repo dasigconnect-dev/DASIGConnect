@@ -10,5 +10,7 @@ public enum SubmissionStatus {
     published,
     published_manual,
     admin_direct_post,
+    direct_post_scheduled,
+    direct_post_failed,
     rejected
 }
