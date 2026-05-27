@@ -160,6 +160,43 @@
 .med-network-bar svg { color: var(--med-gold); flex-shrink: 0; }
 .med-network-bar strong { font-weight: 700; }
 
+.med-institution-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  background: var(--med-surface-0);
+  border: 1px solid var(--med-border);
+  border-radius: var(--med-radius-md);
+  box-shadow: 0 1px 3px rgba(10, 22, 40, 0.05);
+}
+
+.med-inst-filter-btn {
+  min-height: 38px;
+  border: 1px solid var(--med-border);
+  border-radius: 8px;
+  background: var(--med-surface-1);
+  color: var(--med-text-2);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.med-inst-filter-btn:hover {
+  background: var(--med-blue-light);
+  border-color: #93C5FD;
+  color: var(--med-blue);
+}
+
+.med-inst-filter-btn.active {
+  background: var(--med-blue);
+  border-color: var(--med-blue);
+  color: white;
+}
+
 /* ===== FILTER BAR ===== */
 .med-filter-bar {
   background: var(--med-surface-0);
@@ -929,23 +966,6 @@
 
 .med-panel-action-row .med-btn { flex: 1; justify-content: center; }
 
-.med-delete-section {
-  padding-top: 8px;
-  border-top: 1px dashed var(--med-border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.med-delete-label {
-  font-size: 12px;
-  color: var(--med-muted);
-}
-
-.med-delete-triggers {
-  display: flex;
-  gap: 8px;
-}
 
 /* ===== MODAL OVERLAY ===== */
 .med-modal-overlay {
@@ -1338,74 +1358,7 @@
   pointer-events: none;
 }
 
-.med-grid.selecting { padding-bottom: 88px; }
-
-/* Floating selection action bar */
-.med-selbar {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 12px 14px 12px 22px;
-  background: var(--med-navy-deep);
-  color: #fff;
-  border-radius: var(--med-radius-full);
-  box-shadow: 0 12px 32px rgba(10, 22, 40, 0.32);
-  opacity: 0;
-  pointer-events: none;
-  transform: translate(-50%, 140%);
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
-}
-.med-selbar.visible {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translate(-50%, 0);
-}
-.med-selbar-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-  background: transparent;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  padding: 4px 8px 4px 4px;
-  border-radius: var(--med-radius-sm);
-  transition: background 0.15s;
-}
-.med-selbar-info:hover { background: rgba(255, 255, 255, 0.1); }
-.med-selbar-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 26px;
-  height: 26px;
-  padding: 0 7px;
-  background: var(--med-blue);
-  color: #fff;
-  border-radius: var(--med-radius-full);
-  font-size: 13px;
-  font-weight: 800;
-}
-.med-selbar-actions { display: flex; align-items: center; gap: 8px; }
-.med-selbar .med-btn-ghost {
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.28);
-  color: #fff;
-}
-.med-selbar .med-btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .med-selbar,
   .med-card-check { transition: none; }
 }
 

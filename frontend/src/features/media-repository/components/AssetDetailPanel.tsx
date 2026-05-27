@@ -5,7 +5,6 @@ import { formatFileSize, formatUploadDate, formatResolution, formatFileTypeName,
 interface AssetDetailPanelProps {
   asset: MediaAsset | null;
   open: boolean;
-  isAdmin: boolean;
   selectionMode?: boolean;
   selectedAssets?: MediaAsset[];
   canAddToDraft?: boolean;
@@ -16,9 +15,10 @@ interface AssetDetailPanelProps {
   onClearSelection?: () => void;
   onAddToDraft: () => void;
   onDownload: () => void;
-  onDeleteBlocked: () => void;
-  onDeleteWarning: () => void;
-  onDeleteFree: () => void;
+  canDelete?: boolean;
+  onRequestDelete: () => void;
+  canBulkDelete?: boolean;
+  onRequestBulkDelete?: () => void;
 }
 
 const submissionStatusLabel: Record<string, string> = {
@@ -44,7 +44,6 @@ const submissionStatusBadge: Record<string, string> = {
 export default function AssetDetailPanel({
   asset,
   open,
-  isAdmin,
   selectionMode = false,
   selectedAssets = [],
   canAddToDraft = false,
@@ -55,9 +54,10 @@ export default function AssetDetailPanel({
   onClearSelection,
   onAddToDraft,
   onDownload,
-  onDeleteBlocked,
-  onDeleteWarning,
-  onDeleteFree,
+  canDelete = false,
+  onRequestDelete,
+  canBulkDelete = false,
+  onRequestBulkDelete,
 }: AssetDetailPanelProps) {
   const newPostCount = selectionMode ? selectedAssets.length : asset ? 1 : 0;
   const panel = (
@@ -272,13 +272,26 @@ export default function AssetDetailPanel({
       {/* Actions */}
       {asset && (
       <div className="med-panel-actions">
+        {/* Row 1: Delete · Download · Add to Draft */}
         <div className="med-panel-action-row">
-          <button className="med-btn med-btn-primary med-btn-sm" onClick={() => onNewPost?.()} type="button">
+          {(selectionMode ? canBulkDelete : canDelete) && (
+            <button
+              className="med-btn med-btn-danger med-btn-sm"
+              onClick={selectionMode ? onRequestBulkDelete : onRequestDelete}
+              title={selectionMode ? `Delete ${selectedAssets.length} selected assets` : "Delete this asset"}
+              type="button"
+            >
+              <TrashIcon />
+              {selectionMode && selectedAssets.length > 1 ? `Delete (${selectedAssets.length})` : "Delete"}
+            </button>
+          )}
+          <button className="med-btn med-btn-ghost med-btn-sm" onClick={onDownload} type="button">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7,10 12,15 17,10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            New Post ({newPostCount})
+            Download
           </button>
           {canAddToDraft && (
             <button className="med-btn med-btn-ghost med-btn-sm" onClick={onAddToDraft} type="button">
@@ -291,52 +304,19 @@ export default function AssetDetailPanel({
           )}
         </div>
 
-        <button className="med-btn med-btn-ghost med-btn-sm" onClick={onDownload} type="button" style={{ width: "100%", justifyContent: "center" }}>
+        {/* Row 2: New Submission */}
+        <button
+          className="med-btn med-btn-primary med-btn-sm"
+          onClick={() => onNewPost?.()}
+          type="button"
+          style={{ width: "100%", justifyContent: "center" }}
+        >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7,10 12,15 17,10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-          Download Original
+          + New Submission ({newPostCount})
         </button>
-
-        {isAdmin && asset && (
-          <div className="med-delete-section">
-            <span className="med-delete-label">Administrator actions:</span>
-            <div className="med-delete-triggers">
-              <button
-                className="med-btn med-btn-xs med-btn-ghost"
-                onClick={onDeleteBlocked}
-                title="A6a — Deletion Blocked"
-                type="button"
-                style={{ color: "var(--med-error)", borderColor: "#fecaca" }}
-              >
-                <TrashIcon />
-                A6a
-              </button>
-              <button
-                className="med-btn med-btn-xs med-btn-ghost"
-                onClick={onDeleteWarning}
-                title="A6b — Delete with Warning"
-                type="button"
-                style={{ color: "#92400E", borderColor: "#fde68a" }}
-              >
-                <TrashIcon />
-                A6b
-              </button>
-              <button
-                className="med-btn med-btn-xs med-btn-ghost"
-                onClick={onDeleteFree}
-                title="A6c — Free Deletion"
-                type="button"
-                style={{ color: "var(--med-success)", borderColor: "#bbf7d0" }}
-              >
-                <TrashIcon />
-                A6c
-              </button>
-            </div>
-          </div>
-        )}
       </div>
       )}
     </div>

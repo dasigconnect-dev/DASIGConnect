@@ -23,6 +23,8 @@ public class MediaAssetDetailDto {
     private Instant embeddingGeneratedAt;
     private String embeddingModel;
     private Instant createdAt;
+    private UUID institutionId;
+    private String institutionName;
     private UUID uploaderId;
     private String uploaderEmail;
     private List<MediaAssetUsageDto> usedIn;
@@ -44,6 +46,8 @@ public class MediaAssetDetailDto {
         dto.embeddingGeneratedAt = asset.getEmbeddingGeneratedAt();
         dto.embeddingModel = asset.getEmbeddingModel();
         dto.createdAt = asset.getCreatedAt();
+        dto.institutionId = asset.getInstitution().getId();
+        dto.institutionName = asset.getInstitution().getName();
         dto.uploaderId = asset.getUploader().getId();
         dto.uploaderEmail = asset.getUploader().getEmail();
         dto.usedIn = usedIn;
@@ -105,6 +109,14 @@ public class MediaAssetDetailDto {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public UUID getInstitutionId() {
+        return institutionId;
+    }
+
+    public String getInstitutionName() {
+        return institutionName;
     }
 
     public UUID getUploaderId() {

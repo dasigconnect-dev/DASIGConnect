@@ -67,4 +67,51 @@ public class SupabaseStorageService {
     public String getPublicUrl(String objectPath) {
         return supabaseUrl + "/storage/v1/object/public/" + bucket + "/" + objectPath;
     }
+
+    public boolean deletePublicObject(String publicUrl) {
+        if (!isConfigured()) {
+            log.warn("Supabase storage is not configured; skipping object purge.");
+            return false;
+        }
+        String objectPath = objectPathFromPublicUrl(publicUrl);
+        if (objectPath == null || objectPath.isBlank()) {
+            log.warn("Could not derive Supabase object path from URL; skipping object purge.");
+            return false;
+        }
+        try {
+            String endpoint = supabaseUrl + "/storage/v1/object/" + bucket + "/" + objectPath;
+            HttpClient client = HttpClient.newHttpClient();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(endpoint))
+                    .header("Authorization", "Bearer " + serviceRoleKey)
+                    .DELETE()
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                return true;
+            }
+            if (response.statusCode() == 404) {
+                log.info("Supabase object already missing during purge: {}", objectPath);
+                return true;
+            }
+            log.warn("Supabase object purge failed {} for {}: {}", response.statusCode(), objectPath, response.body());
+            return false;
+        } catch (Exception ex) {
+            log.warn("Failed to purge Supabase object {}: {}", objectPath, ex.getMessage());
+            return false;
+        }
+    }
+
+    private String objectPathFromPublicUrl(String publicUrl) {
+        if (publicUrl == null || publicUrl.isBlank()) {
+            return null;
+        }
+        String marker = "/storage/v1/object/public/" + bucket + "/";
+        int index = publicUrl.indexOf(marker);
+        if (index < 0) {
+            return null;
+        }
+        return publicUrl.substring(index + marker.length());
+    }
 }

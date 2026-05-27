@@ -1,7 +1,9 @@
 package com.dasigconnect.backend.service;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.UUID;
 
@@ -13,6 +15,8 @@ import org.springframework.web.server.ResponseStatusException;
 import com.dasigconnect.backend.model.dto.media.AddAssetTagRequestDto;
 import com.dasigconnect.backend.model.dto.media.AssetTagDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetAddToDraftRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
@@ -79,6 +83,7 @@ public class MediaAssetService {
             String aiCategory,
             String mediaType,
             UUID uploaderId,
+            UUID institutionId,
             String sort,
             int page,
             int pageSize,
@@ -90,10 +95,16 @@ public class MediaAssetService {
         String trimmedCategory = aiCategory == null ? "" : aiCategory.trim();
         String trimmedMediaType = mediaType == null ? "" : mediaType.trim().toLowerCase();
 
-        boolean networkScope = isAdmin(user) && "network".equalsIgnoreCase(scope);
-        List<MediaAsset> source = networkScope
-                ? mediaAssetRepository.findAllActive()
-                : mediaAssetRepository.findActiveByInstitution(user.institutionId());
+        boolean admin = isAdmin(user);
+        boolean networkScope = admin && "network".equalsIgnoreCase(scope);
+        List<MediaAsset> source;
+        if (admin && institutionId != null) {
+            source = mediaAssetRepository.findActiveByInstitution(institutionId);
+        } else if (admin || networkScope) {
+            source = mediaAssetRepository.findAllActive();
+        } else {
+            source = mediaAssetRepository.findActiveByInstitution(user.institutionId());
+        }
 
         List<MediaAsset> filtered = source
                 .stream()
@@ -169,8 +180,41 @@ public class MediaAssetService {
     }
 
     public void delete(UUID assetId, boolean force, JwtUserDetails user) {
-        MediaAsset asset = loadAsset(assetId, user);
+        MediaAsset asset = loadAssetForDelete(assetId, user);
+        validateDeleteReferences(assetId, force);
 
+        asset.setDeletedAt(Instant.now());
+        asset.setDeletedByUserId(user.userId());
+        mediaAssetRepository.save(asset);
+    }
+
+    public MediaAssetBulkDeleteResponseDto bulkDelete(MediaAssetBulkDeleteRequestDto dto, JwtUserDetails user) {
+        List<UUID> assetIds = new ArrayList<>(new LinkedHashSet<>(dto.getAssetIds()));
+        if (assetIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Select at least one asset to delete.");
+        }
+        if (assetIds.size() > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You can delete up to 100 assets at once.");
+        }
+
+        List<MediaAsset> assets = assetIds.stream()
+                .map(id -> loadAssetForDelete(id, user))
+                .toList();
+
+        for (UUID assetId : assetIds) {
+            validateDeleteReferences(assetId, dto.isForce());
+        }
+
+        Instant deletedAt = Instant.now();
+        for (MediaAsset asset : assets) {
+            asset.setDeletedAt(deletedAt);
+            asset.setDeletedByUserId(user.userId());
+        }
+        mediaAssetRepository.saveAll(assets);
+        return new MediaAssetBulkDeleteResponseDto(assetIds);
+    }
+
+    private void validateDeleteReferences(UUID assetId, boolean force) {
         long blockingCount = submissionMediaAssetRepository.countBlockingSubmissionsByAssetId(assetId);
         if (blockingCount > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -182,9 +226,6 @@ public class MediaAssetService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Asset is referenced by drafts. Use force=true to delete.");
         }
-
-        asset.setDeletedAt(Instant.now());
-        mediaAssetRepository.save(asset);
     }
 
     public MediaAssetDetailDto upload(MediaAssetUploadRequestDto dto, JwtUserDetails user) {
@@ -265,6 +306,14 @@ public class MediaAssetService {
         return user.role() != null && user.role().toLowerCase().contains("admin");
     }
 
+    private boolean isValidator(JwtUserDetails user) {
+        return user.role() != null && user.role().toLowerCase().contains("validator");
+    }
+
+    private boolean isContributor(JwtUserDetails user) {
+        return user.role() != null && user.role().toLowerCase().contains("contributor");
+    }
+
     private MediaAsset loadAsset(UUID assetId, JwtUserDetails user) {
         MediaAsset asset = mediaAssetRepository.findActiveById(assetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
@@ -272,6 +321,30 @@ public class MediaAssetService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
         }
         return asset;
+    }
+
+    private MediaAsset loadAssetForDelete(UUID assetId, JwtUserDetails user) {
+        MediaAsset asset = mediaAssetRepository.findActiveById(assetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
+
+        if (isAdmin(user)) {
+            return asset;
+        }
+        if (isValidator(user)) {
+            if (asset.getInstitution().getId().equals(user.institutionId())) {
+                return asset;
+            }
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
+        }
+        if (isContributor(user)) {
+            boolean sameInstitution = asset.getInstitution().getId().equals(user.institutionId());
+            boolean owner = asset.getUploader() != null && asset.getUploader().getId().equals(user.userId());
+            if (sameInstitution && owner) {
+                return asset;
+            }
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Contributors can only delete assets they uploaded.");
+        }
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to delete media assets.");
     }
 
     private static boolean containsIgnoreCase(String value, String query) {

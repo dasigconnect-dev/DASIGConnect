@@ -89,4 +89,32 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     @Query("SELECT m FROM MediaAsset m WHERE m.id IN :ids AND m.deletedAt IS NULL")
     List<MediaAsset> findActiveByIds(@Param("ids") List<UUID> ids);
+
+    @Query(value = """
+        SELECT * FROM media_assets
+        WHERE deleted_at IS NOT NULL
+          AND purged_at IS NULL
+          AND deleted_at < :cutoff
+        ORDER BY deleted_at ASC
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<MediaAsset> findDeletedReadyForPurge(@Param("cutoff") java.time.Instant cutoff,
+                                               @Param("limit") int limit);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+        UPDATE media_assets
+        SET embedding = NULL,
+            embedding_generated_at = NULL,
+            embedding_model = NULL,
+            ai_category = NULL,
+            ai_confidence = NULL,
+            ai_description = NULL,
+            ai_classified_at = NULL,
+            ai_classification_model = NULL,
+            purged_at = NOW()
+        WHERE id = :id
+        """, nativeQuery = true)
+    void purgeAiProfile(@Param("id") UUID id);
 }

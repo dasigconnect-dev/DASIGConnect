@@ -94,7 +94,7 @@ React SPA (Vercel) -> Spring Boot REST API (Render) -> Supabase PostgreSQL + pgv
 
 ---
 
-## Current Local Status - 2026-05-27 (Session 5)
+## Current Local Status - 2026-05-28 (Session 6)
 
 Current branch: `module3`
 
@@ -247,6 +247,31 @@ Fix applied:
 - **UI polish:** AI media suggestion accents in `media-picker.css` use DASIGConnect blue tokens instead of violet.
 - **Verification:** full backend `.\mvnw.cmd test` passed with 220 tests. Frontend `npm.cmd run build` passed.
 
+### UC-2.2 Media Asset Retention Policy (2026-05-28)
+
+- **Flyway V23** adds `deleted_by_user_id UUID`, `purged_at TIMESTAMPTZ`, and a retention lookup index to `media_assets`.
+- **`MediaAssetService.delete()` and `bulkDelete()`** now record `deleted_by_user_id` (acting user UUID) at soft-delete time.
+- **`MediaAssetRetentionService`** purges soft-deleted assets after the configurable retention window expires. Purge clears: pgvector embedding, embedding model/timestamp, AI category/description/confidence, AI classification model/timestamp, DB asset tags, and the Supabase storage object (best-effort).
+- **`MediaAssetRetentionPurgeJob`** runs daily at 02:30 UTC by default, processes up to `MEDIA_ASSET_PURGE_BATCH_SIZE` (25) assets per run.
+- **Config keys:** `MEDIA_ASSET_DELETED_RETENTION_DAYS` (default 30), `MEDIA_ASSET_PURGE_BATCH_SIZE` (default 25), `MEDIA_ASSET_PURGE_CRON` (default `0 30 2 * * *`).
+- **`MediaAssetBulkDeleteRequestDto`** + **`MediaAssetBulkDeleteResponseDto`** added for the bulk delete endpoint.
+- **Tests:** `MediaAssetRetentionServiceTest` (new), `MediaAssetServiceTest` (new), `MediaAssetControllerTest` (updated).
+
+### UC-2.2 Media Repository UI Cleanup (2026-05-28)
+
+- **Removed redundant floating action bar** (`med-selbar` pill at bottom of page) — all selected-asset actions are now in the right-side detail panel.
+- **Removed header Delete button** — the `Delete N` danger button that appeared in the page header when assets were checked is gone.
+- **Sidebar actions restructured:** Row 1 = `[Delete] [Download] [Add to Draft]` (flex equal-width); Row 2 = `[+ New Submission (N)]` (full-width). Bulk delete is wired into the sidebar via `canBulkDelete` + `onRequestBulkDelete` props on `AssetDetailPanel`.
+- **Backend deletion authorization verified correct** — `loadAssetForDelete` enforces Admin = unrestricted, Validator = institution-scoped, Contributor = own uploads by UUID. No backend changes needed.
+- **CSS cleanup:** removed `.med-selbar` (~60 lines), `.med-grid.selecting padding-bottom`, `.med-delete-section`, `.med-delete-label`, `.med-delete-triggers`.
+
+### Asset Card Click-to-Select (2026-05-28)
+
+- **Clicking anywhere on a card now toggles selection** — previously required clicking the small checkbox square in the corner.
+- **Checkbox square kept as visual indicator** — converted from interactive `<button>` to `<span aria-hidden="true">`. Appears on hover and stays visible when checked.
+- **`onToggleCheck` prop removed** from `AssetCard` — the card's `onClick` directly calls `handleToggleCheck(asset)`.
+- **Verification:** frontend `npm.cmd run build` passed (219 modules, 0 TypeScript errors). Targeted ESLint clean on `MediaRepositoryScreen.tsx` and `AssetDetailPanel.tsx`.
+
 ### Known Gaps
 
 - UC-3.1 / UC-3.4 frontend browser action testing still needs an authenticated admin session and active backend to manually exercise retry, manual publish start, complete, cancel, and the full 3-step workflow panel against live data.
@@ -255,6 +280,7 @@ Fix applied:
 - Submission queue design needs review with real data and mobile widths.
 - Submission lookups do not return preferred time slots (not yet required for current scope). Categories and tags are working.
 - UC-2.2 Media Repository: mp4 uploads require Supabase `dasigconnect-media` bucket to allow `video/*` MIME types and max file size set to 50 MB in dashboard settings.
+- UC-2.2 Media Repository retention: V23 migration has not yet been applied to the Supabase database — restart the backend to trigger Flyway before the retention purge job can run.
 - UC-2.4 Analytics component extraction is done. Browser review with contributor, validator, and admin accounts against a running backend is still needed.
 - UC-3.2 AI caption requires a backend restart to activate all Java changes. `DASIG_SUPABASE_SERVICE_ROLE_KEY` is already wired. Browser end-to-end test pending (test both instruction path and draft-refine path).
 - UC-3.3 media suggestion still needs targeted frontend lint and browser E2E with `VOYAGE_API_KEY`, `ANTHROPIC_API_KEY`, Flyway V21/V22 applied, and media assets that have embeddings.
@@ -304,7 +330,7 @@ Important enum values are lowercase in the database, including roles and statuse
 | `feat/m4-institution-scheduling`  | Merged                   | Institution management, guard rails, slot reservation, provisioning                                                                                                                 |
 | `dev`                             | In progress              | UC-1.2 extension, conditional bean fix, merged foundation work                                                                                                                      |
 | `feature/uc13-submission-backend` | Done locally, not merged | UC-1.3 backend, required tests, frontend API wiring, reset password/session/dashboard fixes, pending invite/user management UI, invite token superseding, Flyway V4 media migration |
-| `module3`                         | Done locally, not merged | UC-3.1 backend + frontend: publishing pipeline, calendar API/UI, Facebook Graph API integration, token encryption, scheduler jobs, Resolution Center backend/UI (UC-3.4), dynamic Facebook Preview modal, media carousel, and persisted submission media reordering. UC-2.2 Media Repository: backend + frontend fully implemented. UC-2.3 Notifications: backend (SSE, T1-T17, deadline job, email log) + frontend (route, hook, components, sidebar badge, CORS fix) fully implemented. UC-2.4 Analytics backend + frontend implemented with role-scoped contributor/validator/admin analytics, admin institution filtering, full reports, and CSV export. UC-3.2 AI Caption enhanced: base64 images, 5 MB resize, existingCaption context, inline button redesign (`AiCaptionButton`, `AiCaptionSuggestion`, `useAiCaptionAssist`), caption counter bottom-right, hover-delete on filmstrip assets. `buildPrompt()` updated with instruction-vs-draft intent detection so Claude follows user directives typed in the caption field. UC-3.3 media recommendation is in progress: `voyage-4-lite` embeddings with explicit 1024 dimensions, async image classification/embedding support pipeline, pgvector media suggestion endpoints, Submit Content media picker with AI Suggestions tab, blue AI suggestion accents, and explainable match reasons. Category/tag AI suggestion is cut from current scope. UC-3.4 Manual Publishing Fallback fully spec-compliant: `ManualPublishWorkflowPanel` 3-step workflow, V19 migration (`last_manual_publish_abandoned_at`), abandonment banner (A2), URL validation disabling confirm (A3), audit log completeness, duplicate `AbandonmentDetectorJob` deleted, and 43 new backend tests passing. Media Library upload guard raised 25 MB -> 50 MB (Supabase free-tier limit). Full backend test count was 220 passing before syncing remote UC-3.4; rerun after final merge resolution. |
+| `module3`                         | Done locally, not merged | UC-3.1 backend + frontend: publishing pipeline, calendar API/UI, Facebook Graph API integration, token encryption, scheduler jobs, Resolution Center backend/UI (UC-3.4), dynamic Facebook Preview modal, media carousel, and persisted submission media reordering. UC-2.2 Media Repository: backend + frontend fully implemented. Soft-delete retention lifecycle added (V23 migration, `MediaAssetRetentionService`, `MediaAssetRetentionPurgeJob`, 30-day purge window). UC-2.3 Notifications: backend (SSE, T1-T17, deadline job, email log) + frontend (route, hook, components, sidebar badge, CORS fix) fully implemented. UC-2.4 Analytics backend + frontend implemented with role-scoped contributor/validator/admin analytics, admin institution filtering, full reports, and CSV export. UC-3.2 AI Caption enhanced: base64 images, 5 MB resize, existingCaption context, inline button redesign (`AiCaptionButton`, `AiCaptionSuggestion`, `useAiCaptionAssist`), caption counter bottom-right, hover-delete on filmstrip assets. `buildPrompt()` updated with instruction-vs-draft intent detection so Claude follows user directives typed in the caption field. UC-3.3 media recommendation is in progress: `voyage-4-lite` embeddings with explicit 1024 dimensions, async image classification/embedding support pipeline, pgvector media suggestion endpoints, Submit Content media picker with AI Suggestions tab, blue AI suggestion accents, and explainable match reasons. Category/tag AI suggestion is cut from current scope. UC-3.4 Manual Publishing Fallback fully spec-compliant: `ManualPublishWorkflowPanel` 3-step workflow, V19 migration, abandonment banner, URL validation disabling confirm, audit log completeness, and 43 new backend tests passing. Media Repository UI: redundant floating action bar removed; sidebar actions restructured (Delete/Download/Add to Draft on row 1, New Submission on row 2); card click now toggles selection directly. |
 | UC-2.1                            | Done locally, not merged | Content validation — `ValidationController`, `ValidationService`, `ReviewLockService`, `ReviewLockCleanupJob`, entities (`ReviewLock`, `ValidationLog`, `ValidationAction`), V10 migration, frontend `ValidationQueueScreen` + `useValidationQueue` + `validationApi` |
 | UC-2.4                            | Done locally, needs browser test | Analytics Dashboard — role-scoped backend summary/report/export endpoints plus frontend role views. All 7 role-view components extracted into dedicated files (`ContributorAnalyticsView`, `ValidatorAnalyticsView`, `AdminAnalyticsPanel`, `RoleMetricPanel`, `StatusBreakdownPanel`, `ContentIssuesPanel`, `CategoryPerformancePanel`). Remaining gap: browser-test contributor/validator/admin accounts against live backend. |
 | UC-3.2 / UC-3.3                   | In progress              | AI Caption is implemented locally. UC-3.3 media recommendation is partially implemented with `voyage-4-lite` 1024-dimensional embeddings, pgvector search, and Submit Content AI Suggestions. Category/tag AI suggestion is intentionally cut from current scope. |

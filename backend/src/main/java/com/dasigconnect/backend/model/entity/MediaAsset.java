@@ -71,6 +71,12 @@ public class MediaAsset {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    @Column(name = "deleted_by_user_id")
+    private UUID deletedByUserId;
+
+    @Column(name = "purged_at")
+    private Instant purgedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -127,6 +133,12 @@ public class MediaAsset {
 
     public Instant getDeletedAt() { return deletedAt; }
     public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
+
+    public UUID getDeletedByUserId() { return deletedByUserId; }
+    public void setDeletedByUserId(UUID deletedByUserId) { this.deletedByUserId = deletedByUserId; }
+
+    public Instant getPurgedAt() { return purgedAt; }
+    public void setPurgedAt(Instant purgedAt) { this.purgedAt = purgedAt; }
 
     public Instant getCreatedAt() { return createdAt; }
 

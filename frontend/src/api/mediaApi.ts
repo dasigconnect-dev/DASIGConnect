@@ -25,6 +25,7 @@ export interface MediaAsset {
   storageUrl: string;
   institutionId: string;
   institutionName?: string;
+  uploaderId?: string;
   uploaderName?: string;
   uploadedAt: string;
   status: MediaAssetStatus;
@@ -69,6 +70,10 @@ interface MediaAssetPageResponse {
     fileSizeBytes: number;
     aiCategory?: string | null;
     createdAt: string;
+    institutionId?: string | null;
+    institutionName?: string | null;
+    uploaderId?: string | null;
+    uploaderEmail?: string | null;
   }>;
   totalCount: number;
   page: number;
@@ -77,6 +82,7 @@ interface MediaAssetPageResponse {
 
 export interface MediaAssetSearchParams {
   networkView?: boolean;
+  institutionId?: string | null;
   query?: string;
   aiCategory?: string;
   mediaType?: "image" | "video";
@@ -100,18 +106,22 @@ function rawToAsset(raw: MediaAssetPageResponse["items"][0]): MediaAsset {
     fileType: raw.fileType,
     fileSizeBytes: raw.fileSizeBytes,
     storageUrl: raw.storageUrl,
-    institutionId: "",
+    institutionId: raw.institutionId ?? "",
+    institutionName: raw.institutionName ?? undefined,
+    uploaderId: raw.uploaderId ?? undefined,
+    uploaderName: raw.uploaderEmail ?? undefined,
     uploadedAt: raw.createdAt,
     status: "ready" as const,
     aiTags: raw.aiCategory ? [{ label: raw.aiCategory, confidence: 100 }] : [],
   };
 }
 
-export function listMediaAssets(params?: { networkView?: boolean }, signal?: AbortSignal) {
+export function listMediaAssets(params?: { networkView?: boolean; institutionId?: string | null }, signal?: AbortSignal) {
   const scope = params?.networkView ? "network" : undefined;
+  const institutionId = params?.institutionId ?? undefined;
   return api
     .get<MediaAssetPageResponse>("/media-assets", {
-      params: scope ? { scope } : undefined,
+      params: { ...(scope ? { scope } : {}), ...(institutionId ? { institutionId } : {}) },
       signal,
     })
     .then((response) => ({
@@ -126,6 +136,7 @@ export async function searchMediaAssets(
 ): Promise<MediaAssetPage> {
   const queryParams: Record<string, string | number | undefined> = {
     scope: params.networkView ? "network" : undefined,
+    institutionId: params.institutionId ?? undefined,
     query: params.query || undefined,
     aiCategory: params.aiCategory || undefined,
     mediaType: params.mediaType || undefined,
@@ -157,6 +168,9 @@ interface MediaAssetDetailResponse {
   aiCategory?: string | null;
   aiConfidence?: number | null;
   createdAt: string;
+  institutionId?: string | null;
+  institutionName?: string | null;
+  uploaderId?: string | null;
   uploaderEmail?: string | null;
   usedIn?: Array<{
     submissionId: string;
@@ -189,7 +203,9 @@ function mapDetailToAsset(raw: MediaAssetDetailResponse): MediaAsset {
     fileType: raw.fileType,
     fileSizeBytes: raw.fileSizeBytes,
     storageUrl: raw.storageUrl,
-    institutionId: "",
+    institutionId: raw.institutionId ?? "",
+    institutionName: raw.institutionName ?? undefined,
+    uploaderId: raw.uploaderId ?? undefined,
     uploaderName: raw.uploaderEmail ?? undefined,
     uploadedAt: raw.createdAt,
     status: "ready",
@@ -212,6 +228,13 @@ export function getMediaAsset(id: string, signal?: AbortSignal) {
 
 export function deleteMediaAsset(id: string, force = false) {
   return api.delete<void>(`/media-assets/${id}`, { params: force ? { force: true } : undefined });
+}
+
+export function bulkDeleteMediaAssets(assetIds: string[], force = false) {
+  return api.post<{ deletedIds: string[]; deletedCount: number }>("/media-assets/bulk-delete", {
+    assetIds,
+    force,
+  });
 }
 
 export function getMediaAssetUploadUrl(payload: MediaAssetUploadUrlRequest) {

@@ -15,6 +15,8 @@ public interface AssetTagRepository extends JpaRepository<AssetTag, UUID> {
 
     boolean existsByMediaAssetIdAndLabel(UUID mediaAssetId, String label);
 
+    void deleteByMediaAssetId(UUID mediaAssetId);
+
     @Query("""
             SELECT t.mediaAsset.id, t.label
             FROM AssetTag t

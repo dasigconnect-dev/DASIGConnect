@@ -9,7 +9,6 @@ interface AssetCardProps {
   animationDelay?: number;
   showInstitutionChip?: boolean;
   onClick: () => void;
-  onToggleCheck?: () => void;
 }
 
 export default function AssetCard({
@@ -20,7 +19,6 @@ export default function AssetCard({
   animationDelay = 0,
   showInstitutionChip = false,
   onClick,
-  onToggleCheck,
 }: AssetCardProps) {
   const isVideo = isVideoType(asset.fileType);
   const primaryTag = asset.aiTags?.[0];
@@ -36,20 +34,11 @@ export default function AssetCard({
       aria-pressed={selected}
     >
       <div className="med-card-thumb">
-        {onToggleCheck && (
-          <button
-            type="button"
-            className={`med-card-check${checked ? " checked" : ""}`}
-            onClick={(e) => { e.stopPropagation(); onToggleCheck(); }}
-            role="checkbox"
-            aria-checked={checked}
-            aria-label={checked ? `Deselect ${asset.title}` : `Select ${asset.title}`}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20,6 9,17 4,12" />
-            </svg>
-          </button>
-        )}
+        <span className={`med-card-check${checked ? " checked" : ""}`} aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20,6 9,17 4,12" />
+          </svg>
+        </span>
         {asset.storageUrl ? (
           <img
             className="med-card-thumb-img"
