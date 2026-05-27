@@ -82,10 +82,13 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
 
     // ── UC-3.1 Publishing Pipeline ─────────────────────────────────────────────
 
-    /** PublishingSchedulerJob: SCHEDULED submissions whose slot falls inside the current publish window. */
+    /** PublishingSchedulerJob: SCHEDULED and DIRECT_POST_SCHEDULED submissions due for publishing. */
     @Query("""
         SELECT s FROM Submission s
-        WHERE s.status = com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled
+        WHERE s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled
+        )
         AND s.scheduledAt BETWEEN :from AND :to
         ORDER BY s.scheduledAt ASC
         """)
@@ -93,22 +96,43 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("from") Instant from,
             @Param("to") Instant to);
 
-    /** StaleSubmissionDetectorJob (GR-T9): SCHEDULED submissions whose slot has already passed. */
+    /** StaleSubmissionDetectorJob (GR-T9): SCHEDULED / DIRECT_POST_SCHEDULED submissions whose slot has passed. */
     @Query("""
         SELECT s FROM Submission s
-        WHERE s.status = com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled
+        WHERE s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled
+        )
         AND s.scheduledAt < :cutoff
         ORDER BY s.scheduledAt ASC
         """)
     List<Submission> findMissedScheduledSubmissions(@Param("cutoff") Instant cutoff);
 
-    /** Resolution Center: all PUBLISH_FAILED submissions sorted newest-scheduled first. */
+    /** Resolution Center: PUBLISH_FAILED and DIRECT_POST_FAILED submissions sorted newest-scheduled first. */
     @Query("""
         SELECT s FROM Submission s
-        WHERE s.status = com.dasigconnect.backend.model.entity.SubmissionStatus.publish_failed
+        WHERE s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.publish_failed,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_failed
+        )
         ORDER BY s.scheduledAt DESC
         """)
     List<Submission> findPublishFailures();
+
+    /** UC-3.5 Category B: escalated PENDING/IN_REVIEW submissions due within the given window. */
+    @Query("""
+        SELECT s FROM Submission s
+        WHERE s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review
+        )
+        AND s.scheduledAt IS NOT NULL
+        AND s.scheduledAt BETWEEN :from AND :to
+        ORDER BY s.scheduledAt ASC
+        """)
+    List<Submission> findEscalatedForTimeout(
+            @Param("from") Instant from,
+            @Param("to") Instant to);
 
     /** Calendar API (admin): all submissions with a scheduled slot, any status. */
     @Query("""
