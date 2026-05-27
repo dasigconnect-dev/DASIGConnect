@@ -28,6 +28,7 @@ public class ManualPublishDetailDto {
     private List<MediaItem> mediaAssets;
     private boolean manualPublishInProgress;
     private Instant manualPublishStartedAt;
+    private Instant lastManualPublishAbandonedAt;
 
     public static ManualPublishDetailDto from(Submission s, List<SubmissionMediaAsset> junctionRows) {
         ManualPublishDetailDto dto = new ManualPublishDetailDto();
@@ -53,6 +54,7 @@ public class ManualPublishDetailDto {
                 .toList();
         dto.manualPublishInProgress = s.getManualPublishStartedAt() != null;
         dto.manualPublishStartedAt = s.getManualPublishStartedAt();
+        dto.lastManualPublishAbandonedAt = s.getLastManualPublishAbandonedAt();
         return dto;
     }
 
@@ -71,4 +73,5 @@ public class ManualPublishDetailDto {
     public List<MediaItem> getMediaAssets() { return mediaAssets; }
     public boolean isManualPublishInProgress() { return manualPublishInProgress; }
     public Instant getManualPublishStartedAt() { return manualPublishStartedAt; }
+    public Instant getLastManualPublishAbandonedAt() { return lastManualPublishAbandonedAt; }
 }

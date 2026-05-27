@@ -17,6 +17,7 @@ public class FailedPublicationDto {
     private Instant lastAttemptAt;
     private String lastError;
     private boolean manualPublishInProgress;
+    private Instant lastManualPublishAbandonedAt;
 
     public static FailedPublicationDto from(Submission s, PublicationAttempt lastAttempt) {
         FailedPublicationDto dto = new FailedPublicationDto();
@@ -27,6 +28,7 @@ public class FailedPublicationDto {
         dto.scheduledAt = s.getScheduledAt();
         dto.retryCount = s.getRetryCount();
         dto.manualPublishInProgress = s.getManualPublishStartedAt() != null;
+        dto.lastManualPublishAbandonedAt = s.getLastManualPublishAbandonedAt();
         if (lastAttempt != null) {
             dto.lastAttemptAt = lastAttempt.getAttemptedAt();
             dto.lastError = lastAttempt.getErrorDetail();
@@ -43,4 +45,5 @@ public class FailedPublicationDto {
     public Instant getLastAttemptAt() { return lastAttemptAt; }
     public String getLastError() { return lastError; }
     public boolean isManualPublishInProgress() { return manualPublishInProgress; }
+    public Instant getLastManualPublishAbandonedAt() { return lastManualPublishAbandonedAt; }
 }

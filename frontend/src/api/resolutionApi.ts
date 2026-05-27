@@ -10,6 +10,7 @@ export interface FailedPublication {
   lastAttemptAt: string | null;
   lastError: string | null;
   manualPublishInProgress: boolean;
+  lastManualPublishAbandonedAt: string | null;
 }
 
 export interface ManualPublishMediaItem {
@@ -34,6 +35,7 @@ export interface ManualPublishDetail {
   mediaAssets: ManualPublishMediaItem[];
   manualPublishInProgress: boolean;
   manualPublishStartedAt: string | null;
+  lastManualPublishAbandonedAt: string | null;
 }
 
 export interface ManualPublishCompletePayload {
