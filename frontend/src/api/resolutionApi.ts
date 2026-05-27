@@ -38,6 +38,30 @@ export interface ManualPublishDetail {
   lastManualPublishAbandonedAt: string | null;
 }
 
+export interface ManualPublishMediaItem {
+  id: string;
+  storageUrl: string;
+  fileType: string;
+  fileName: string;
+  displayOrder: number;
+}
+
+export interface ManualPublishDetail {
+  submissionId: string;
+  eventTitle: string;
+  caption: string | null;
+  status: string;
+  scheduledAt: string | null;
+  contributorFirstName: string | null;
+  contributorLastName: string | null;
+  contributorEmail: string;
+  institutionId: string;
+  institutionName: string;
+  mediaAssets: ManualPublishMediaItem[];
+  manualPublishInProgress: boolean;
+  manualPublishStartedAt: string | null;
+}
+
 export interface ManualPublishCompletePayload {
   postUrl?: string;
   notes?: string;
