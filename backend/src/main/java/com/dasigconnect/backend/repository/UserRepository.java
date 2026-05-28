@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
+import com.dasigconnect.backend.model.entity.UserStatus;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
 
@@ -18,6 +19,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     List<User> findByInstitutionIdAndRoleOrderByCreatedAtDesc(UUID institutionId, UserRole role);
 
     long countByInstitutionIdAndRole(UUID institutionId, UserRole role);
+
+    long countByInstitutionIdAndRoleAndAccountState(UUID institutionId, UserRole role, UserStatus accountState);
 
     List<User> findByRole(UserRole role);
 }

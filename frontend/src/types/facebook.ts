@@ -25,6 +25,8 @@ export interface FacebookPreviewDetailItem {
 
 export interface FacebookPreviewDetailsData {
   statusLabel: string;
+  readinessScore: number;
+  completionLabel: string;
   category: string;
   institution: string;
   tags: string[];

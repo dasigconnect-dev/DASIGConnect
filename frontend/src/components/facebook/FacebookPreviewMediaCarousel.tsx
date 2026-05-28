@@ -47,6 +47,7 @@ export default function FacebookPreviewMediaCarousel({
     >
       <div className="fb-preview-media">
         {current.type === "video" ? (
+          <>
           <video
             src={current.url}
             muted
@@ -55,6 +56,12 @@ export default function FacebookPreviewMediaCarousel({
             aria-label={current.alt}
             controls={size === "large"}
           />
+          {size === "large" && (
+            <span className="fb-preview-play-overlay" aria-hidden="true">
+              <i className="ti ti-player-play-filled" />
+            </span>
+          )}
+          </>
         ) : current.type === "image" ? (
           <img src={current.url} alt={current.alt} />
         ) : (

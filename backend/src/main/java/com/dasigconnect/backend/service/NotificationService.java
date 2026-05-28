@@ -27,11 +27,18 @@ import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.NotificationRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 
+/**
+ * Class-level @Transactional is intentionally absent.
+ * subscribe() and dispatch() must never run inside a JPA transaction —
+ * holding a DB connection across an SSE stream lifetime exhausts the
+ * HikariCP pool (5-connection Supabase limit).
+ */
 @Service
-@Transactional
 public class NotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
+    // 30-minute SSE timeout — prevents silent infinite connections
+    private static final long SSE_TIMEOUT_MS = 30L * 60L * 1000L;
 
     private final NotificationRepository notificationRepository;
     private final Map<UUID, CopyOnWriteArrayList<SseEmitter>> emitters = new ConcurrentHashMap<>();
@@ -63,6 +70,7 @@ public class NotificationService {
         return notificationRepository.countByRecipientIdAndReadAtIsNull(user.userId());
     }
 
+    @Transactional
     public void markRead(UUID notificationId, JwtUserDetails user) {
         Notification notification = notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification not found."));
@@ -75,27 +83,51 @@ public class NotificationService {
         }
     }
 
+    @Transactional
     public void markAllRead(JwtUserDetails user) {
         notificationRepository.markAllRead(user.userId(), Instant.now());
     }
 
+    /**
+     * Opens an SSE stream for the authenticated user.
+     * No @Transactional — acquiring a DB connection here would hold it for the
+     * entire stream lifetime, exhausting the 5-connection pool.
+     */
     public SseEmitter subscribe(JwtUserDetails user) {
-        SseEmitter emitter = new SseEmitter(0L);
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         emitters.computeIfAbsent(user.userId(), key -> new CopyOnWriteArrayList<>()).add(emitter);
 
-        emitter.onCompletion(() -> removeEmitter(user.userId(), emitter));
-        emitter.onTimeout(() -> removeEmitter(user.userId(), emitter));
-        emitter.onError(ex -> removeEmitter(user.userId(), emitter));
+        emitter.onCompletion(() -> {
+            removeEmitter(user.userId(), emitter);
+            log.info("SSE stream completed for user {} — active streams: {}", user.userId(), activeStreamCount());
+        });
+        emitter.onTimeout(() -> {
+            removeEmitter(user.userId(), emitter);
+            log.info("SSE stream timed out for user {} — active streams: {}", user.userId(), activeStreamCount());
+        });
+        emitter.onError(ex -> {
+            removeEmitter(user.userId(), emitter);
+            log.debug("SSE stream error for user {}: {}", user.userId(), ex.getMessage());
+        });
 
         try {
             emitter.send(SseEmitter.event().name("connected").data("ok"));
         } catch (IOException ex) {
             removeEmitter(user.userId(), emitter);
+            return emitter;
         }
 
+        log.info("SSE stream opened for user {} — active streams: {}", user.userId(), activeStreamCount());
         return emitter;
     }
 
+    /**
+     * Saves a notification and immediately dispatches it to any live SSE streams.
+     * @Transactional covers only the DB write; dispatch() is a self-call that
+     * runs in the same transaction for a brief moment — acceptable since SSE
+     * sends are in-memory buffer operations, not blocking network I/O.
+     */
+    @Transactional
     public Notification createNotification(User recipient, NotificationEventType eventType, String message, String deepLink) {
         Notification notification = new Notification();
         notification.setRecipient(recipient);
@@ -107,6 +139,10 @@ public class NotificationService {
         return saved;
     }
 
+    /**
+     * Pushes a notification to all live SSE emitters for the recipient.
+     * No @Transactional — no DB access here. Broken emitters are removed safely.
+     */
     public void dispatch(Notification notification) {
         List<SseEmitter> userEmitters = emitters.get(notification.getRecipient().getId());
         if (userEmitters == null || userEmitters.isEmpty()) {
@@ -116,8 +152,8 @@ public class NotificationService {
         for (SseEmitter emitter : userEmitters) {
             try {
                 emitter.send(SseEmitter.event().name("notification").data(dto));
-            } catch (IOException ex) {
-                log.debug("Failed to send SSE notification to {}", notification.getRecipient().getId(), ex);
+            } catch (IOException | IllegalStateException ex) {
+                log.debug("Failed to send SSE to {}: {}", notification.getRecipient().getId(), ex.getMessage());
                 removeEmitter(notification.getRecipient().getId(), emitter);
             }
         }
@@ -132,5 +168,9 @@ public class NotificationService {
         if (userEmitters.isEmpty()) {
             emitters.remove(userId);
         }
+    }
+
+    private int activeStreamCount() {
+        return emitters.values().stream().mapToInt(List::size).sum();
     }
 }

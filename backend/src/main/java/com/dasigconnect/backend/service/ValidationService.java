@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -158,19 +159,19 @@ public class ValidationService {
 
     private void validateRemarks(String remarks) {
         if (remarks == null || remarks.trim().length() < 10 || remarks.trim().length() > 1000) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Remarks must be between 10 and 1000 characters.");
         }
     }
 
     private void validateRejectionCode(String reasonCode, String notes) {
         if (reasonCode == null || !VALID_REJECTION_CODES.contains(reasonCode)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Invalid rejection reason code. Valid codes: "
                             + String.join(", ", VALID_REJECTION_CODES));
         }
         if ("OTHER".equals(reasonCode) && (notes == null || notes.trim().isEmpty())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Notes are required when rejection reason is OTHER.");
         }
     }

@@ -11,7 +11,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.external.ClaudeVisionClient;
@@ -93,8 +92,8 @@ class CaptionGenerationServiceTest {
 
         assertThatThrownBy(() -> service.generateCaptions(submissionId, userId, institutionId, null))
                 .isInstanceOf(ResponseStatusException.class)
-                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                        .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode().value())
+                        .isEqualTo(422));
 
         verify(claudeVisionClient, never()).generateCaptions(any(), any(), any());
     }
@@ -112,8 +111,8 @@ class CaptionGenerationServiceTest {
 
         assertThatThrownBy(() -> service.generateCaptions(submissionId, UUID.randomUUID(), institutionId, null))
                 .isInstanceOf(ResponseStatusException.class)
-                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
-                        .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode().value())
+                        .isEqualTo(422));
     }
 
     @Test

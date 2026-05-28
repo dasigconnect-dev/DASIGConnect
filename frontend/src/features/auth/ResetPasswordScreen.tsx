@@ -131,8 +131,15 @@ export default function ResetPasswordScreen({
                   </button>
                 </div>
               </div>
-              <button type="button" className="btn-primary" onClick={onSubmit} disabled={!canSubmit}>
-                <i className="ti ti-key"></i> {loading ? 'Updating...' : 'Update Password'}
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={onSubmit}
+                disabled={!canSubmit}
+                aria-busy={loading}
+              >
+                <i className={`ti ${loading ? 'ti-loader-2 auth-btn-spinner' : 'ti-key'}`}></i>
+                {loading ? 'Updating...' : 'Update Password'}
               </button>
             </>
           )}

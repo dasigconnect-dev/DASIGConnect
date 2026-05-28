@@ -2,6 +2,7 @@ package com.dasigconnect.backend.service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -9,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 
@@ -42,6 +44,33 @@ public class PublishingQueryService {
      */
     public List<Submission> loadDueSubmissions(Instant from, Instant to) {
         return submissionRepository.findScheduledInPublishWindow(from, to);
+    }
+
+    /**
+     * Atomically claims a due submission before the Facebook API call.
+     * This prevents overlapping scheduler runs or multiple app instances from
+     * publishing the same scheduled row while the first run is still in flight.
+     */
+    @Transactional
+    public Optional<Submission> claimForPublishing(Submission dueSubmission) {
+        SubmissionStatus current = dueSubmission.getStatus();
+        SubmissionStatus claimed = switch (current) {
+            case scheduled -> SubmissionStatus.publishing;
+            case direct_post_scheduled -> SubmissionStatus.direct_post_publishing;
+            default -> null;
+        };
+        if (claimed == null) {
+            return Optional.empty();
+        }
+
+        int updated = submissionRepository.claimForPublishing(
+                dueSubmission.getId(),
+                current,
+                claimed);
+        if (updated != 1) {
+            return Optional.empty();
+        }
+        return submissionRepository.findById(dueSubmission.getId());
     }
 
     /**

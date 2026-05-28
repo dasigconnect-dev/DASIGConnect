@@ -31,4 +31,8 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
             NotificationEventType eventType,
             String deepLink,
             Instant since);
+
+    @Modifying
+    @Query("DELETE FROM Notification n WHERE n.recipient.id = :recipientId")
+    void deleteByRecipientId(@Param("recipientId") UUID recipientId);
 }

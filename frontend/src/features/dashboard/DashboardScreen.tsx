@@ -52,7 +52,6 @@ interface DashboardStats {
   pendingInvitations: number;
 }
 
-const emptyContributorActivity: ActivityItem[] = [];
 
 export default function DashboardScreen({ user }: DashboardScreenProps) {
   const navigate = useNavigate();
@@ -188,6 +187,10 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
     "Institution Overview": "/admin/institution-management",
     "User Management": "/admin/user-management/invitations",
     "Invite Contributor": "/admin/user-management/invitations",
+    "Review Queue": "/validation/queue",
+    "View Calendar": "/scheduler/calendar",
+    "Resolution Center": "/admin/resolution",
+    "Analytics": "/analytics",
   };
 
   const handleActionClick = (title: string) => {
@@ -213,29 +216,11 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
         </div>
 
         <div className="first-login-notice" id="first-login-notice">
-          <i className={notice(user).icon}></i>
-          <div dangerouslySetInnerHTML={{ __html: notice(user).html }}></div>
+          <i className={notice(user, dashboardStats).icon}></i>
+          <div dangerouslySetInnerHTML={{ __html: notice(user, dashboardStats).html }}></div>
         </div>
 
-        <div
-          className={`fb-bar${roleChip(user).className === "chip-admin" ? "" : " hidden"}`}
-          id="fb-bar"
-        >
-          <div className="fb-bar-left">
-            <i className="ti ti-brand-facebook fb-icon"></i>
-            <div className="fb-bar-text">
-              <div className="fb-bar-title">DASIG Facebook Page Connected</div>
-              <div className="fb-bar-sub">
-                Approved content can be scheduled directly to the DASIG Facebook
-                page · Last synced 2 min ago
-              </div>
-            </div>
-          </div>
-          <button type="button" className="fb-btn">
-            <i className="ti ti-settings" style={{ marginRight: 5 }}></i>Manage
-            Connection
-          </button>
-        </div>
+
 
         <div className="stat-grid" id="stat-grid">
           {statsForRole(user, dashboardStats, institutions.length).map(
@@ -293,7 +278,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
               </tr>
             </thead>
             <tbody id="activity-body">
-              {activityForRole(user).length === 0 ? (
+              {activityForRole(user, dashboardStats.submissions, institutions).length === 0 ? (
                 <tr>
                   <td
                     colSpan={4}
@@ -318,7 +303,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
                   </td>
                 </tr>
               ) : (
-                activityForRole(user).map((row) => (
+                activityForRole(user, dashboardStats.submissions, institutions).map((row) => (
                   <tr key={`${row.title}-${row.submitted}`}>
                     <td>
                       <strong>{row.title}</strong>
@@ -374,18 +359,6 @@ function getInstitutionName(user: User | null): string {
   return DOMAIN_MAP[emailDomain] || emailDomain.toUpperCase() || "Institution";
 }
 
-function roleChip(user: User | null) {
-  if (!user) {
-    return { className: "chip-contributor", label: "Contributor" };
-  }
-  if (user.role === "admin") {
-    return { className: "chip-admin", label: "Administrator" };
-  }
-  if (user.role === "validator") {
-    return { className: "chip-validator", label: "Validator" };
-  }
-  return { className: "chip-contributor", label: "Contributor" };
-}
 
 function greeting(user: User | null) {
   const hour = new Date().getHours();
@@ -398,27 +371,33 @@ function greeting(user: User | null) {
 function subline(user: User | null) {
   if (!user) return "";
   const instName = getInstitutionName(user);
-  return `${capitalize(user.role)} · ${instName} · First login today`;
+  return `${capitalize(user.role)} · ${instName}`;
 }
 
-function notice(user: User | null) {
+function notice(user: User | null, stats: DashboardStats) {
   if (!user) {
     return {
       icon: "ti ti-confetti",
-      html: "<strong>Welcome to DASIGConnect!</strong> Your account is now active and bound to your institution's workspace. This is your first login — explore your dashboard and start submitting content for your institution's events.",
+      html: "<strong>Welcome to DASIGConnect!</strong> Your account is now active. Explore your dashboard and start submitting content for your institution's events.",
     };
   }
   if (user.role === "admin") {
     return {
-      icon: "ti ti-alert-circle",
-      html: "<strong>Administrator workspace.</strong> You have full network-wide visibility. <strong>0 failed batch invitations</strong> require attention. <strong>0 submissions</strong> are pending scheduler assignment.",
+      icon: "ti ti-shield-check",
+      html: "<strong>Administrator workspace.</strong> You have full network-wide visibility across all member institutions.",
     };
   }
   if (user.role === "validator") {
     const instName = getInstitutionName(user);
+    const pending = stats.submissions.filter(
+      (s) => s.status === "pending" || s.status === "in_review",
+    ).length;
+    const pendingText = pending > 0
+      ? `You have <strong>${pending} submission${pending === 1 ? "" : "s"} awaiting your review</strong> from ${instName} contributors.`
+      : `No submissions are currently pending review from ${instName} contributors.`;
     return {
       icon: "ti ti-clipboard-check",
-      html: `Welcome back, <strong>Validator.</strong> You have <strong>0 submissions pending your review</strong> from ${instName} contributors. Approved content moves to the DASIG Administrator for scheduling.`,
+      html: `${pendingText} Approved content moves to the DASIG Administrator for scheduling.`,
     };
   }
   const instName = getInstitutionName(user);
@@ -567,14 +546,21 @@ function actionsForRole(user: User | null): ActionItem[] {
   if (user.role === "validator") {
     return [
       {
-        icon: "ti ti-users",
+        icon: "ti ti-clipboard-check",
         accent: "ac-blue",
+        title: "Review Queue",
+        subtitle: "Review pending submissions from contributors",
+        emphasized: true,
+      },
+      {
+        icon: "ti ti-users",
+        accent: "ac-green",
         title: "User Management",
         subtitle: "View and manage institution members",
       },
       {
         icon: "ti ti-user-plus",
-        accent: "ac-green",
+        accent: "ac-purple",
         title: "Invite Contributor",
         subtitle: "Send an invitation to a new contributor",
       },
@@ -591,9 +577,69 @@ function actionsForRole(user: User | null): ActionItem[] {
   ];
 }
 
-function activityForRole(user: User | null): ActivityItem[] {
-  if (!user) return emptyContributorActivity;
-  return emptyContributorActivity;
+function activityForRole(
+  user: User | null,
+  submissions: SubmissionSummary[],
+  institutions: { id: string; name: string }[],
+): ActivityItem[] {
+  if (!user || submissions.length === 0) return [];
+
+  const sorted = [...submissions]
+    .sort((a, b) => {
+      const dateA = a.submittedAt ?? a.createdAt ?? "";
+      const dateB = b.submittedAt ?? b.createdAt ?? "";
+      return dateB.localeCompare(dateA);
+    })
+    .slice(0, 5);
+
+  return sorted.map((s) => {
+    const institutionName =
+      s.institutionName ||
+      institutions.find((i) => i.id === s.institutionId)?.name ||
+      getInstitutionName(user);
+
+    const submitted = s.submittedAt ?? s.createdAt ?? "";
+    const submittedLabel = submitted
+      ? new Date(submitted).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "—";
+
+    return {
+      title: s.eventTitle,
+      subtitle: s.category ?? "",
+      institution: institutionName,
+      submitted: submittedLabel,
+      status: statusDisplay(s.status),
+    };
+  });
+}
+
+function statusDisplay(status: SubmissionSummary["status"]): ActivityItem["status"] {
+  switch (status) {
+    case "draft":
+      return { label: "Draft", icon: "ti ti-pencil", className: "pill-draft" };
+    case "pending":
+      return { label: "Pending Review", icon: "ti ti-clock", className: "pill-pending" };
+    case "in_review":
+      return { label: "In Review", icon: "ti ti-eye", className: "pill-review" };
+    case "needs_revision":
+      return { label: "Needs Revision", icon: "ti ti-pencil-minus", className: "pill-revision" };
+    case "scheduled":
+      return { label: "Scheduled", icon: "ti ti-calendar-event", className: "pill-scheduled" };
+    case "publish_failed":
+      return { label: "Publish Failed", icon: "ti ti-alert-circle", className: "pill-failed" };
+    case "published":
+    case "published_manual":
+    case "admin_direct_post":
+      return { label: "Published", icon: "ti ti-circle-check", className: "pill-published" };
+    case "rejected":
+      return { label: "Rejected", icon: "ti ti-x", className: "pill-rejected" };
+    default:
+      return { label: status, icon: "ti ti-circle", className: "" };
+  }
 }
 
 function capitalize(value: string) {

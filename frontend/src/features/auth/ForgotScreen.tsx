@@ -102,8 +102,10 @@ export default function ForgotScreen({
             className="btn-primary"
             onClick={onSubmit}
             disabled={loading}
+            aria-busy={loading}
           >
-            <i className="ti ti-send"></i> {loading ? 'Sending...' : 'Send Reset Link'}
+            <i className={`ti ${loading ? 'ti-loader-2 auth-btn-spinner' : 'ti-send'}`}></i>
+            {loading ? 'Sending...' : 'Send Reset Link'}
           </button>
           <button type="button" className="btn-ghost" onClick={onBack}>
             Cancel

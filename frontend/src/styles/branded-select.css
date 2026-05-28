@@ -1,0 +1,254 @@
+.dc-select {
+  position: relative;
+  width: 100%;
+}
+
+.dc-select.mlt-select,
+.dc-select.med-sort-select,
+.dc-select.um-inst-select {
+  appearance: auto;
+  background: transparent;
+  background-image: none;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  cursor: default;
+  height: auto;
+  outline: none;
+  padding: 0;
+}
+
+.dc-select.mlt-select {
+  flex: 0 0 auto;
+  min-width: 164px;
+  width: 164px;
+}
+
+.dc-select.med-sort-select {
+  flex: 0 0 auto;
+  width: 168px;
+}
+
+.dc-select.um-inst-select {
+  flex: 1;
+  max-width: 320px;
+}
+
+.analytics-filter .dc-select {
+  min-width: 190px;
+  width: 190px;
+}
+
+.dc-select.is-open {
+  z-index: 360;
+}
+
+.dc-select-trigger {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--sub-border, #d5e0f1);
+  border-radius: var(--sub-r-sm, 8px);
+  background: var(--sub-surface-2, #f8fbff);
+  color: var(--sub-text, #071833);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.25;
+  padding: 10px 13px;
+  text-align: left;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.dc-select-trigger:hover:not(:disabled),
+.dc-select-trigger.open {
+  background: var(--sub-surface, #fff);
+  border-color: var(--sub-blue, #1877f2);
+  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.1);
+}
+
+.dc-select-trigger:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.dc-select-trigger .placeholder {
+  color: var(--sub-muted, #64799a);
+}
+
+.dc-select-trigger i {
+  color: var(--sub-blue, #1877f2);
+  flex: 0 0 auto;
+  font-size: 17px;
+}
+
+.dc-select-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 370;
+  width: 100%;
+  min-width: 100%;
+  border: 1px solid var(--sub-blue-bdr, #a9ccff);
+  border-radius: var(--sub-r, 12px);
+  background: var(--sub-surface, #fff);
+  box-shadow: 0 18px 44px rgba(12, 29, 61, 0.18);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  animation: dc-select-pop 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.dc-select.mlt-select .dc-select-popover {
+  left: 0;
+  right: auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(280px, calc(100vw - 32px));
+}
+.dc-select.med-sort-select.is-open {
+  z-index: 3000;
+}
+.dc-select.med-sort-select .dc-select-trigger {
+  min-height: 44px;
+  border-radius: 10px;
+  background: var(--sub-surface, #fff);
+}
+.dc-select.med-sort-select .dc-select-popover {
+  z-index: 3001;
+  width: 100%;
+  min-width: 100%;
+  max-height: 228px;
+  padding: 5px;
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(12, 29, 61, 0.16);
+}
+.dc-select.med-sort-select .dc-select-option {
+  min-height: 38px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.dc-select.drop-up .dc-select-popover {
+  top: auto;
+  bottom: calc(100% + 8px);
+  box-shadow: 0 -18px 44px rgba(12, 29, 61, 0.16);
+}
+
+.dc-select-hint {
+  margin: 2px 2px 5px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--sub-surface-2, #f8fbff);
+  color: var(--sub-muted, #64799a);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.3;
+  pointer-events: none;
+}
+
+.dc-select-option {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--sub-text, #071833);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.35;
+  padding: 9px 10px;
+  text-align: left;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.dc-select-option:hover:not(:disabled) {
+  background: var(--sub-blue-dim, #eaf3ff);
+  border-color: var(--sub-blue-bdr, #a9ccff);
+  color: var(--sub-blue, #1877f2);
+  transform: translateX(1px);
+}
+
+.dc-select-option.default-option {
+  background: var(--sub-surface-2, #f8fbff);
+  color: var(--sub-muted, #64799a);
+  font-weight: 800;
+}
+
+.dc-select-option.default-option:hover:not(:disabled) {
+  background: var(--sub-blue-dim, #eaf3ff);
+  border-color: var(--sub-blue-bdr, #a9ccff);
+  color: var(--sub-blue, #1877f2);
+}
+
+.dc-select-option.selected {
+  background: var(--sub-blue, #1877f2);
+  border-color: var(--sub-blue, #1877f2);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(24, 119, 242, 0.18);
+}
+
+.dc-select-option.selected:hover {
+  color: #fff;
+}
+
+.dc-select-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.dc-select-option i {
+  flex: 0 0 auto;
+  font-size: 15px;
+}
+
+.dc-select-empty {
+  color: var(--sub-muted, #64799a);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 12px 10px;
+  text-align: center;
+}
+
+.dc-select-spin {
+  animation: dc-select-spin 0.8s linear infinite;
+}
+
+@keyframes dc-select-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes dc-select-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dc-select-popover,
+  .dc-select-spin {
+    animation: none;
+  }
+}

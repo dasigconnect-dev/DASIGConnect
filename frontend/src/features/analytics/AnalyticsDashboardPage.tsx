@@ -11,6 +11,7 @@ import KpiTileGroup from "./components/KpiTileGroup";
 import OperationalHealthPanel from "./components/OperationalHealthPanel";
 import PostsByInstitutionChart from "./components/PostsByInstitutionChart";
 import ValidatorAnalyticsView from "./components/ValidatorAnalyticsView";
+import BrandedSelect from "../../components/ui/BrandedSelect";
 import { formatDateRange, formatDateTime } from "./analyticsUtils";
 import "../../styles/analytics.css";
 
@@ -71,17 +72,18 @@ export default function AnalyticsDashboardPage({ user }: Props) {
           {summary?.adminView && (
             <label className="analytics-filter">
               <span>Institution</span>
-              <select
+              <BrandedSelect
                 value={institutionId ?? ""}
-                onChange={(event) => setInstitutionId(event.target.value || null)}
-              >
-                <option value="">All institutions</option>
-                {summary.institutionFilterOptions.map((item) => (
-                  <option key={item.institutionId} value={item.institutionId}>
-                    {item.institutionName}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setInstitutionId(value || null)}
+                ariaLabel="Filter analytics by institution"
+                options={[
+                  { value: "", label: "All institutions" },
+                  ...summary.institutionFilterOptions.map((item) => ({
+                    value: item.institutionId,
+                    label: item.institutionName,
+                  })),
+                ]}
+              />
             </label>
           )}
           <div className="analytics-segmented" aria-label="Analytics range">

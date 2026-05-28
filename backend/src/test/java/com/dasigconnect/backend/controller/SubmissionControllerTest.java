@@ -152,7 +152,7 @@ class SubmissionControllerTest {
                 .content("""
                                 {"scheduledAt":"2026-06-01T08:00:00Z"}
                                 """))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().is(422))
                 .andExpect(jsonPath("$.status").value(422))
                 .andExpect(jsonPath("$.error").value("Scheduled time must be at least 2 hours from now."))
                 .andExpect(jsonPath("$.summary").value("Slot rejected: GR-H2"))

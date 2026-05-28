@@ -18,6 +18,15 @@ interface InvitationComposerProps {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }
 
+function composerSubtitle(canChooseRole: boolean, institution: InstitutionOption | null) {
+  if (canChooseRole) return 'Invite contributors or validators securely into this institution workspace.'
+  const status = institution?.status
+  if (status === 'inactive' || status === 'pending') {
+    return 'Invite a validator to activate this institution workspace.'
+  }
+  return 'Invite contributors securely into this institution workspace.'
+}
+
 export default function InvitationComposer({
   chips,
   emailDraft,
@@ -45,9 +54,7 @@ export default function InvitationComposer({
           <div>
             <div className="um-composer-title">Send Invitations</div>
             <div className="um-composer-subtitle">
-              {canChooseRole
-                ? 'Invite contributors or validators securely into this institution workspace.'
-                : 'Invite contributors securely into this institution workspace.'}
+              {composerSubtitle(canChooseRole, selectedInstitution)}
             </div>
           </div>
         </div>

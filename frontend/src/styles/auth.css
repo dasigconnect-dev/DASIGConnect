@@ -569,6 +569,21 @@ body {
   opacity: 0.35;
   cursor: not-allowed;
 }
+.btn-primary[aria-busy="true"]:disabled {
+  opacity: 0.85;
+  cursor: wait;
+}
+.auth-btn-spinner {
+  animation: auth-btn-spin 0.7s linear infinite;
+}
+@keyframes auth-btn-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
 .btn-ghost {
   width: 100%;
   background: transparent;
@@ -1038,6 +1053,84 @@ body {
   margin-bottom: 22px;
 }
 
+#session-modal .modal-card {
+  background: #112347;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  color: #f0f4ff;
+}
+
+#session-modal .modal-title {
+  color: #f0f4ff;
+}
+
+#session-modal .modal-desc,
+#session-modal .flabel,
+#session-modal .eye-btn {
+  color: #7a90b8;
+}
+
+#session-modal .finput {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  color: #f0f4ff;
+}
+
+#session-modal .finput::placeholder {
+  color: rgba(122, 144, 184, 0.4);
+}
+
+#session-modal .finput:focus {
+  border-color: #1877f2;
+  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.12);
+}
+
+#session-modal .finput:disabled,
+#session-modal .eye-btn:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+#session-modal .eye-btn:hover {
+  color: #f0f4ff;
+}
+
+#session-modal .btn-primary {
+  background: #1877f2;
+  color: #fff;
+}
+
+#session-modal .btn-primary:hover:not(:disabled) {
+  background: #1565d8;
+}
+
+#session-modal .session-signout-btn {
+  color: #7a90b8;
+  border-color: rgba(255, 255, 255, 0.13);
+  margin-top: 10px;
+}
+
+#session-modal .session-signout-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #f0f4ff;
+}
+
+#session-modal .btn-primary:disabled,
+#session-modal .session-signout-btn:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+#session-modal .alert-err {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fda4a4;
+}
+
+#session-modal .alert-err i {
+  color: #ef4444;
+}
+
 #screen-dashboard {
   background: var(--d-bg);
 }
@@ -1124,7 +1217,24 @@ body {
 .sidebar-nav {
   display: flex;
   flex-direction: column;
+  gap: 16px;
+}
+.sidebar-nav-group {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
+}
+.sidebar-nav-group + .sidebar-nav-group {
+  padding-top: 14px;
+  border-top: 1px solid var(--d-border);
+}
+.sidebar-nav-label {
+  padding: 0 8px 2px;
+  color: var(--d-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .sidebar-link {
   display: flex;
@@ -1157,18 +1267,42 @@ body {
 }
 .sidebar-notif-badge {
   margin-left: auto;
-  background: var(--error, #ef4444);
+  background: var(--d-blue);
   color: #fff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 9px;
+  min-width: 24px;
+  height: 22px;
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 4px;
+  gap: 3px;
+  padding: 0 8px;
   line-height: 1;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
+  animation: sidebar-notif-pop 0.26s ease both;
+}
+.sidebar-notif-badge-label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  opacity: 0.88;
+}
+.sidebar-link.active .sidebar-notif-badge,
+.sidebar-link:hover .sidebar-notif-badge {
+  background: #1d4ed8;
+}
+@keyframes sidebar-notif-pop {
+  from {
+    opacity: 0;
+    transform: translateX(4px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
 }
 .dash-content-container {
   flex: 1;
@@ -1207,19 +1341,37 @@ body {
   border: 1px solid #bfdbfe;
 }
 .dash-avatar {
-  width: 36px;
+  min-width: 52px;
   height: 36px;
-  border-radius: 50%;
+  border-radius: 999px;
   background: var(--d-blue);
   border: 2px solid #bfdbfe;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
+  padding: 0 8px 0 10px;
   font-size: 13px;
   font-weight: 700;
   color: white;
   cursor: pointer;
   position: relative;
+  transition: background 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.dash-avatar:hover,
+.dash-avatar.open,
+.dash-avatar:focus-visible {
+  background: #0f55bd;
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.14);
+  outline: none;
+}
+.dash-avatar-caret {
+  font-size: 13px;
+  transition: transform 0.18s ease;
+}
+.dash-avatar.open .dash-avatar-caret {
+  transform: rotate(180deg);
 }
 .user-dropdown {
   position: absolute;

@@ -21,10 +21,15 @@ export default function FacebookPreviewHeader({
       <div className="fb-preview-page-meta">
         <div className="fb-preview-page-name">{pageName}</div>
         <div className="fb-preview-page-date">
+          Published by {pageName}
+          <span aria-hidden="true">•</span>
           {publishDate ? formatPreviewDate(publishDate) : "Draft schedule"}
           <i className="ti ti-world" aria-hidden="true" />
         </div>
       </div>
+      <button className="fb-preview-more" type="button" aria-label="Post options" tabIndex={-1}>
+        <i className="ti ti-dots" aria-hidden="true" />
+      </button>
     </div>
   );
 }

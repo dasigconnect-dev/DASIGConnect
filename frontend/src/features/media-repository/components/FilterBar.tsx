@@ -1,3 +1,4 @@
+import BrandedSelect from "../../../components/ui/BrandedSelect";
 import type { SortOption, ViewMode } from "../types";
 
 interface AiTagChip {
@@ -51,17 +52,18 @@ export default function FilterBar({
           />
         </div>
 
-        <select
+        <BrandedSelect
           className="med-sort-select"
           value={sort}
-          onChange={(e) => onSortChange(e.target.value as SortOption)}
-        >
-          <option value="newest">Newest</option>
-          <option value="oldest">Oldest</option>
-          <option value="name">Name A–Z</option>
-          <option value="size">Largest</option>
-        </select>
-
+          onChange={(value) => onSortChange(value as SortOption)}
+          ariaLabel="Sort media assets"
+          options={[
+            { value: "newest", label: "Newest" },
+            { value: "oldest", label: "Oldest" },
+            { value: "name", label: "Name A-Z" },
+            { value: "size", label: "Largest" },
+          ]}
+        />
         <div className="med-view-toggle">
           <button
             className={`med-view-btn${viewMode === "grid" ? " active" : ""}`}

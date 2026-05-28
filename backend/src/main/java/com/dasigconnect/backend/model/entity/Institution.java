@@ -30,7 +30,7 @@ public class Institution {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
-    private InstitutionStatus status = InstitutionStatus.onboarding;
+    private InstitutionStatus status = InstitutionStatus.inactive;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

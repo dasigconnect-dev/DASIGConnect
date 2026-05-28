@@ -53,9 +53,17 @@ public class PublishingSchedulerJob {
 
         for (Submission submission : due) {
             try {
-                List<MediaAsset> assets = publishingQueryService.loadAssetsForSubmission(submission.getId());
+                Submission claimed = publishingQueryService.claimForPublishing(submission)
+                        .orElse(null);
+                if (claimed == null) {
+                    log.info("PublishingSchedulerJob: submission {} was already claimed for publishing.",
+                            submission.getId());
+                    continue;
+                }
+
+                List<MediaAsset> assets = publishingQueryService.loadAssetsForSubmission(claimed.getId());
                 // Called outside any transaction — Facebook API must not hold a DB connection
-                facebookPublisherService.publish(submission, assets);
+                facebookPublisherService.publish(claimed, assets);
             } catch (Exception ex) {
                 log.error("Unexpected error publishing submission {}: {}",
                         submission.getId(), ex.getMessage(), ex);

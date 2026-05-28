@@ -29,14 +29,6 @@ import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 
-/**
- * Unit tests for InstitutionService.
- *
- * Tests institution creation, state machine transitions, and 404 behavior.
- *
- * Place at:
- * backend/src/test/java/com/dasigconnect/backend/service/InstitutionServiceTest.java
- */
 @ExtendWith(MockitoExtension.class)
 class InstitutionServiceTest {
 
@@ -62,7 +54,7 @@ class InstitutionServiceTest {
         mockInstitution.setId(institutionId);
         mockInstitution.setName("Cebu Institute of Technology - University");
         mockInstitution.setCode("CIT-U");
-        mockInstitution.setStatus(InstitutionStatus.onboarding);
+        mockInstitution.setStatus(InstitutionStatus.inactive);
     }
 
     // ── createInstitution ─────────────────────────────────────────────────────
@@ -71,15 +63,15 @@ class InstitutionServiceTest {
     class CreateInstitutionTests {
 
         @Test
-        @DisplayName("should create institution with ONBOARDING status")
-        void shouldCreateInstitution_withOnboardingStatus() {
+        @DisplayName("should create institution with INACTIVE status")
+        void shouldCreateInstitution_withInactiveStatus() {
             when(institutionRepository.existsByCode("CIT-U")).thenReturn(false);
             when(institutionRepository.save(any())).thenReturn(mockInstitution);
 
             CreateInstitutionRequest req = new CreateInstitutionRequest("Cebu Institute of Technology - University", "CIT-U", "cit.edu.ph");
             InstitutionDto result = institutionService.createInstitution(req);
 
-            assertThat(result.getStatus()).isEqualTo(InstitutionStatus.onboarding);
+            assertThat(result.getStatus()).isEqualTo(InstitutionStatus.inactive);
             assertThat(result.getInstitutionCode()).isEqualTo("CIT-U");
             assertThat(result.getName()).isEqualTo("Cebu Institute of Technology - University");
         }
@@ -159,14 +151,60 @@ class InstitutionServiceTest {
         }
     }
 
-    // ── State machine transitions ─────────────────────────────────────────────
+    // ── transitionToPending ───────────────────────────────────────────────────
     @Nested
-    @DisplayName("transitionToActive() — ONBOARDING → ACTIVE")
-    class TransitionToActiveTests {
+    @DisplayName("transitionToPending() — INACTIVE → PENDING")
+    class TransitionToPendingTests {
 
         @Test
-        @DisplayName("should transition from ONBOARDING to ACTIVE")
-        void shouldTransition_fromOnboardingToActive() {
+        @DisplayName("should transition from INACTIVE to PENDING")
+        void shouldTransition_fromInactiveToPending() {
+            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+            when(institutionRepository.save(any())).thenReturn(mockInstitution);
+
+            institutionService.transitionToPending(institutionId);
+
+            assertThat(mockInstitution.getStatus()).isEqualTo(InstitutionStatus.pending);
+            verify(institutionRepository).save(mockInstitution);
+        }
+
+        @Test
+        @DisplayName("should write audit log on transition to PENDING")
+        void shouldWriteAuditLog_onPending() {
+            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+            when(institutionRepository.save(any())).thenReturn(mockInstitution);
+
+            institutionService.transitionToPending(institutionId);
+
+            verify(auditLogService).recordSystemAction(
+                    eq("INSTITUTION_PENDING"), eq(institutionId), org.mockito.ArgumentMatchers.<Map<String, ?>>any());
+        }
+
+        @Test
+        @DisplayName("should reject transition when not in INACTIVE state")
+        void shouldRejectTransition_whenNotInactive() {
+            mockInstitution.setStatus(InstitutionStatus.active);
+            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+
+            assertThatThrownBy(() -> institutionService.transitionToPending(institutionId))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("inactive");
+        }
+    }
+
+    // ── transitionToActive ────────────────────────────────────────────────────
+    @Nested
+    @DisplayName("transitionToActive() — PENDING → ACTIVE")
+    class TransitionToActiveTests {
+
+        @BeforeEach
+        void setPending() {
+            mockInstitution.setStatus(InstitutionStatus.pending);
+        }
+
+        @Test
+        @DisplayName("should transition from PENDING to ACTIVE")
+        void shouldTransition_fromPendingToActive() {
             when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
             when(institutionRepository.save(any())).thenReturn(mockInstitution);
 
@@ -177,7 +215,19 @@ class InstitutionServiceTest {
         }
 
         @Test
-        @DisplayName("should write audit log on transition")
+        @DisplayName("should also accept INACTIVE as precondition")
+        void shouldTransition_fromInactiveToActive() {
+            mockInstitution.setStatus(InstitutionStatus.inactive);
+            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+            when(institutionRepository.save(any())).thenReturn(mockInstitution);
+
+            institutionService.transitionToActive(institutionId);
+
+            assertThat(mockInstitution.getStatus()).isEqualTo(InstitutionStatus.active);
+        }
+
+        @Test
+        @DisplayName("should write audit log on activation")
         void shouldWriteAuditLog_onActivation() {
             when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
             when(institutionRepository.save(any())).thenReturn(mockInstitution);
@@ -189,78 +239,55 @@ class InstitutionServiceTest {
         }
 
         @Test
-        @DisplayName("should reject transition when not in ONBOARDING state")
-        void shouldRejectTransition_whenNotOnboarding() {
-            mockInstitution.setStatus(InstitutionStatus.active); // already active
+        @DisplayName("should reject transition when already ACTIVE")
+        void shouldRejectTransition_whenAlreadyActive() {
+            mockInstitution.setStatus(InstitutionStatus.active);
             when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
 
             assertThatThrownBy(() -> institutionService.transitionToActive(institutionId))
                     .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("onboarding");
+                    .hasMessageContaining("pending");
         }
     }
 
+    // ── transitionToInactive ──────────────────────────────────────────────────
     @Nested
-    @DisplayName("transitionToInactiveNoValidator() — ACTIVE → INACTIVE_NO_VALIDATOR")
+    @DisplayName("transitionToInactive() — ACTIVE or PENDING → INACTIVE")
     class TransitionToInactiveTests {
 
-        @BeforeEach
-        void setActive() {
-            mockInstitution.setStatus(InstitutionStatus.active);
-        }
-
         @Test
-        @DisplayName("should transition from ACTIVE to INACTIVE_NO_VALIDATOR")
+        @DisplayName("should transition from ACTIVE to INACTIVE")
         void shouldTransition_fromActiveToInactive() {
-            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
-            when(institutionRepository.save(any())).thenReturn(mockInstitution);
-
-            institutionService.transitionToInactiveNoValidator(institutionId);
-
-            assertThat(mockInstitution.getStatus()).isEqualTo(InstitutionStatus.inactive_no_validator);
-        }
-
-        @Test
-        @DisplayName("should reject transition when not in ACTIVE state")
-        void shouldRejectTransition_whenNotActive() {
-            mockInstitution.setStatus(InstitutionStatus.onboarding);
-            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
-
-            assertThatThrownBy(() -> institutionService.transitionToInactiveNoValidator(institutionId))
-                    .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("active");
-        }
-    }
-
-    @Nested
-    @DisplayName("reactivate() — INACTIVE_NO_VALIDATOR → ACTIVE")
-    class ReactivateTests {
-
-        @BeforeEach
-        void setInactive() {
-            mockInstitution.setStatus(InstitutionStatus.inactive_no_validator);
-        }
-
-        @Test
-        @DisplayName("should reactivate from INACTIVE_NO_VALIDATOR to ACTIVE")
-        void shouldReactivate() {
-            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
-            when(institutionRepository.save(any())).thenReturn(mockInstitution);
-
-            institutionService.reactivate(institutionId);
-
-            assertThat(mockInstitution.getStatus()).isEqualTo(InstitutionStatus.active);
-        }
-
-        @Test
-        @DisplayName("should reject reactivation when not in INACTIVE_NO_VALIDATOR state")
-        void shouldRejectReactivation_whenNotInactive() {
             mockInstitution.setStatus(InstitutionStatus.active);
             when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+            when(institutionRepository.save(any())).thenReturn(mockInstitution);
 
-            assertThatThrownBy(() -> institutionService.reactivate(institutionId))
+            institutionService.transitionToInactive(institutionId);
+
+            assertThat(mockInstitution.getStatus()).isEqualTo(InstitutionStatus.inactive);
+        }
+
+        @Test
+        @DisplayName("should transition from PENDING to INACTIVE")
+        void shouldTransition_fromPendingToInactive() {
+            mockInstitution.setStatus(InstitutionStatus.pending);
+            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+            when(institutionRepository.save(any())).thenReturn(mockInstitution);
+
+            institutionService.transitionToInactive(institutionId);
+
+            assertThat(mockInstitution.getStatus()).isEqualTo(InstitutionStatus.inactive);
+        }
+
+        @Test
+        @DisplayName("should reject transition when already INACTIVE")
+        void shouldRejectTransition_whenAlreadyInactive() {
+            mockInstitution.setStatus(InstitutionStatus.inactive);
+            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+
+            assertThatThrownBy(() -> institutionService.transitionToInactive(institutionId))
                     .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("inactive_no_validator");
+                    .hasMessageContaining("active or pending");
         }
     }
 }

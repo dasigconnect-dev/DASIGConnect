@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type {
   FacebookPreviewDetailsData,
   FacebookPreviewMediaItem,
@@ -56,6 +56,12 @@ export default function FacebookPreviewModal({
   onEditDetails,
   onRetryPreview,
 }: FacebookPreviewModalProps) {
+  const [activeTab, setActiveTab] = useState<"preview" | "details">("preview");
+
+  useEffect(() => {
+    if (open) setActiveTab("preview");
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
 
@@ -97,19 +103,60 @@ export default function FacebookPreviewModal({
           </button>
         </div>
 
-        <div className="fb-preview-modal-body">
-          <div className="fb-preview-modal-post">
-            <FacebookPreviewCard
-              pageName={pageName}
-              pageAvatarUrl={pageAvatarUrl}
-              publishDate={publishDate}
-              caption={caption}
-              mediaItems={mediaItems}
-              activeMediaIndex={activeMediaIndex}
-              onMediaIndexChange={onMediaIndexChange}
-              error={previewError}
-              size="large"
-            />
+        <div className="fb-preview-modal-tabs" role="tablist" aria-label="Facebook preview sections">
+          <button
+            type="button"
+            className={activeTab === "preview" ? "active" : ""}
+            role="tab"
+            aria-selected={activeTab === "preview"}
+            onClick={() => setActiveTab("preview")}
+          >
+            <i className="ti ti-brand-facebook" aria-hidden="true" />
+            Preview
+          </button>
+          <button
+            type="button"
+            className={activeTab === "details" ? "active" : ""}
+            role="tab"
+            aria-selected={activeTab === "details"}
+            onClick={() => setActiveTab("details")}
+          >
+            <i className="ti ti-list-check" aria-hidden="true" />
+            Submission Details
+            {details.missingItems.length > 0 && (
+              <span>{details.missingItems.length}</span>
+            )}
+          </button>
+        </div>
+
+        <div className={`fb-preview-modal-body ${activeTab === "preview" ? "preview-mode" : "details-mode"}`}>
+          {activeTab === "preview" ? (
+          <div className="fb-preview-modal-post" role="tabpanel">
+            <div className="fb-preview-stage-head">
+              <div>
+                <span>Public feed preview</span>
+                <strong>What followers will see</strong>
+              </div>
+              <p>Preview only. Engagement controls are shown for context.</p>
+            </div>
+            <div className="fb-preview-feed-shell">
+              <div className="fb-preview-feed-bar">
+                <span></span>
+                Social post preview
+                <span></span>
+              </div>
+              <FacebookPreviewCard
+                pageName={pageName}
+                pageAvatarUrl={pageAvatarUrl}
+                publishDate={publishDate}
+                caption={caption}
+                mediaItems={mediaItems}
+                activeMediaIndex={activeMediaIndex}
+                onMediaIndexChange={onMediaIndexChange}
+                error={previewError}
+                size="large"
+              />
+            </div>
             <FacebookPreviewMediaReorder
               mediaItems={mediaItems}
               activeMediaId={mediaItems[activeMediaIndex]?.id}
@@ -118,17 +165,22 @@ export default function FacebookPreviewModal({
               onReorder={onReorderMedia}
             />
           </div>
-          <FacebookPreviewDetails details={details} />
+          ) : (
+            <div className="fb-preview-details-tab" role="tabpanel">
+              <FacebookPreviewDetails details={details} />
+            </div>
+          )}
         </div>
 
-        {submitDisabledReason && (
-          <div className="fb-preview-action-note" role="status">
-            <i className="ti ti-info-circle" aria-hidden="true" />
-            {submitDisabledReason}
-          </div>
-        )}
-
         <div className="fb-preview-modal-actions">
+          <div className="fb-preview-footer-guidance" role="status">
+            <i className="ti ti-shield-check" aria-hidden="true" />
+            <span>
+              {submitDisabledReason
+                ? submitDisabledReason
+                : "Submitting sends this post to your institution validator. You can still save changes as a draft before sending."}
+            </span>
+          </div>
           {previewError && onRetryPreview && (
             <button
               className="fb-preview-modal-btn secondary"

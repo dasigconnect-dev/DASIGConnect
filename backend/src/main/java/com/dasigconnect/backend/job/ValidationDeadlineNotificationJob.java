@@ -10,7 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.dasigconnect.backend.model.entity.NotificationEventType;
 import com.dasigconnect.backend.model.entity.Submission;
@@ -55,7 +54,6 @@ public class ValidationDeadlineNotificationJob {
     }
 
     @Scheduled(fixedDelay = 5 * 60 * 1000)
-    @Transactional
     public void checkValidationDeadlines() {
         Instant now = Instant.now();
         Instant windowEnd = now.plusSeconds(30 * 60);

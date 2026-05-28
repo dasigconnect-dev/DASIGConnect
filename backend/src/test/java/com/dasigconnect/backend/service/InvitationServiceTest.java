@@ -7,6 +7,7 @@ import com.dasigconnect.backend.model.dto.invitation.InvitationResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationValidateResponseDto;
 import com.dasigconnect.backend.model.dto.invitation.PendingInvitationDto;
 import com.dasigconnect.backend.model.entity.Institution;
+import com.dasigconnect.backend.model.entity.InstitutionStatus;
 import com.dasigconnect.backend.model.entity.InvitationToken;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
@@ -34,6 +35,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,6 +49,7 @@ class InvitationServiceTest {
     @Mock JWTService jwtService;
     @Mock EmailService emailService;
     @Mock AuditLogService auditLogService;
+    @Mock InstitutionService institutionService;
     @InjectMocks InvitationService invitationService;
 
     private Institution institution;
@@ -61,15 +65,20 @@ class InvitationServiceTest {
         institution.setName("CIT-U");
         institution.setCode("citu");
         institution.setEmailDomain("example.com");
+        institution.setStatus(InstitutionStatus.active); // default for most tests
         adminPrincipal = new JwtUserDetails(UUID.randomUUID(), "admin@dasigconnect.com", "administrator", null);
         validatorPrincipal = new JwtUserDetails(UUID.randomUUID(), "validator@example.com", "validator", institutionId);
     }
 
     private InvitationToken buildToken(boolean used, boolean expired) {
+        return buildToken(used, expired, UserRole.contributor);
+    }
+
+    private InvitationToken buildToken(boolean used, boolean expired, UserRole role) {
         InvitationToken token = new InvitationToken();
         token.setId(UUID.randomUUID());
         token.setRecipientEmail("invitee@example.com");
-        token.setAssignedRole(UserRole.contributor);
+        token.setAssignedRole(role);
         token.setInstitution(institution);
         token.setTokenHash("anyhash");
         token.setExpiresAt(expired ? Instant.now().minusSeconds(1) : Instant.now().plusSeconds(3600));
@@ -101,7 +110,7 @@ class InvitationServiceTest {
     }
 
     @Test
-    void createInvitation_validRequest_savesTokenAndSendsEmail() {
+    void createInvitation_contributorForActiveInstitution_savesTokenAndSendsEmail() {
         when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
         when(invitationTokenRepository.save(any())).thenAnswer(inv -> {
             InvitationToken t = inv.getArgument(0);
@@ -127,7 +136,73 @@ class InvitationServiceTest {
     }
 
     @Test
-    void createInvitation_adminWithDifferentEmailDomain_savesTokenAndSendsEmail() {
+    void createInvitation_contributorForInactiveInstitution_throws409() {
+        institution.setStatus(InstitutionStatus.inactive);
+        when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
+
+        CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
+                "user@example.com", institutionId, UserRole.contributor);
+
+        assertThatThrownBy(() -> invitationService.createInvitation(dto))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(409);
+    }
+
+    @Test
+    void createInvitation_contributorForPendingInstitution_throws409() {
+        institution.setStatus(InstitutionStatus.pending);
+        when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
+
+        CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
+                "user@example.com", institutionId, UserRole.contributor);
+
+        assertThatThrownBy(() -> invitationService.createInvitation(dto))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(409);
+    }
+
+    @Test
+    void createInvitation_validatorForInactiveInstitution_transitionsToPendingAndSendsEmail() {
+        institution.setStatus(InstitutionStatus.inactive);
+        when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
+        when(invitationTokenRepository.save(any())).thenAnswer(inv -> {
+            InvitationToken t = inv.getArgument(0);
+            t.setId(UUID.randomUUID());
+            return t;
+        });
+        when(emailService.buildInvitationLink(any())).thenReturn("http://localhost:5173/invite?token=token");
+
+        CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
+                "validator@example.com", institutionId, UserRole.validator);
+        InvitationResponseDto result = invitationService.createInvitation(dto, adminPrincipal);
+
+        assertThat(result.assignedRole()).isEqualTo(UserRole.validator);
+        verify(institutionService).transitionToPending(institutionId);
+        verify(emailService).sendInvitationEmail(eq("validator@example.com"), any());
+    }
+
+    @Test
+    void createInvitation_validatorForPendingInstitution_doesNotTransitionAgain() {
+        institution.setStatus(InstitutionStatus.pending);
+        when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
+        when(invitationTokenRepository.save(any())).thenAnswer(inv -> {
+            InvitationToken t = inv.getArgument(0);
+            t.setId(UUID.randomUUID());
+            return t;
+        });
+        when(emailService.buildInvitationLink(any())).thenReturn("http://localhost:5173/invite?token=token");
+
+        invitationService.createInvitation(
+                new CreateInvitationRequestDto("validator2@example.com", institutionId, UserRole.validator),
+                adminPrincipal);
+
+        verify(institutionService, never()).transitionToPending(any());
+    }
+
+    @Test
+    void createInvitation_validatorWithDifferentEmailDomain_adminBypassesDomainCheck() {
         when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
         when(invitationTokenRepository.save(any())).thenAnswer(inv -> {
             InvitationToken t = inv.getArgument(0);
@@ -136,13 +211,13 @@ class InvitationServiceTest {
         });
         when(emailService.buildInvitationLink(any())).thenReturn("http://localhost:5173/invite?token=token");
         CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
-                "user@gmail.com", institutionId, UserRole.validator);
+                "validator@gmail.com", institutionId, UserRole.validator);
 
         InvitationResponseDto result = invitationService.createInvitation(dto, adminPrincipal);
 
-        assertThat(result.recipientEmail()).isEqualTo("user@gmail.com");
+        assertThat(result.recipientEmail()).isEqualTo("validator@gmail.com");
         assertThat(result.assignedRole()).isEqualTo(UserRole.validator);
-        verify(emailService).sendInvitationEmail(eq("user@gmail.com"), any());
+        verify(emailService).sendInvitationEmail(eq("validator@gmail.com"), any());
     }
 
     @Test
@@ -243,7 +318,7 @@ class InvitationServiceTest {
     }
 
     @Test
-    void acceptInvitation_valid_createsUserAndReturnsJwt() {
+    void acceptInvitation_contributor_createsUserAndReturnsJwt() {
         InvitationToken token = buildToken(false, false);
         when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
         when(passwordEncoder.encode("password1")).thenReturn("$hashed");
@@ -270,6 +345,49 @@ class InvitationServiceTest {
         ArgumentCaptor<InvitationToken> tokenCaptor = ArgumentCaptor.forClass(InvitationToken.class);
         verify(invitationTokenRepository).save(tokenCaptor.capture());
         assertThat(tokenCaptor.getValue().getUsedAt()).isNotNull();
+
+        // contributor acceptance must NOT trigger institution status change
+        verify(institutionService, never()).transitionToActive(any());
+    }
+
+    @Test
+    void acceptInvitation_validatorForPendingInstitution_transitionsToActive() {
+        institution.setStatus(InstitutionStatus.pending);
+        InvitationToken token = buildToken(false, false, UserRole.validator);
+        when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
+        when(passwordEncoder.encode(any())).thenReturn("$hashed");
+        when(userRepository.save(any())).thenAnswer(inv -> {
+            User u = inv.getArgument(0);
+            u.setId(UUID.randomUUID());
+            return u;
+        });
+        when(jwtService.generateAccessToken(any())).thenReturn("jwt");
+        when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(new User()));
+
+        invitationService.acceptInvitation(
+                new AcceptInvitationRequestDto("tok", "Jane", "Doe", "pass"));
+
+        verify(institutionService).transitionToActive(institutionId);
+    }
+
+    @Test
+    void acceptInvitation_validatorForActiveInstitution_doesNotTransitionAgain() {
+        institution.setStatus(InstitutionStatus.active);
+        InvitationToken token = buildToken(false, false, UserRole.validator);
+        when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
+        when(passwordEncoder.encode(any())).thenReturn("$hashed");
+        when(userRepository.save(any())).thenAnswer(inv -> {
+            User u = inv.getArgument(0);
+            u.setId(UUID.randomUUID());
+            return u;
+        });
+        when(jwtService.generateAccessToken(any())).thenReturn("jwt");
+        when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(new User()));
+
+        invitationService.acceptInvitation(
+                new AcceptInvitationRequestDto("tok", "Jane", "Doe", "pass"));
+
+        verify(institutionService, never()).transitionToActive(any());
     }
 
     @Test

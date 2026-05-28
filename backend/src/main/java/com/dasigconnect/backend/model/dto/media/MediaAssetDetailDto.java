@@ -18,7 +18,13 @@ public class MediaAssetDetailDto {
     private String aiCategory;
     private BigDecimal aiConfidence;
     private String aiDescription;
+    private Instant aiClassifiedAt;
+    private String aiClassificationModel;
+    private Instant embeddingGeneratedAt;
+    private String embeddingModel;
     private Instant createdAt;
+    private UUID institutionId;
+    private String institutionName;
     private UUID uploaderId;
     private String uploaderEmail;
     private List<MediaAssetUsageDto> usedIn;
@@ -35,7 +41,13 @@ public class MediaAssetDetailDto {
         dto.aiCategory = asset.getAiCategory();
         dto.aiConfidence = asset.getAiConfidence();
         dto.aiDescription = asset.getAiDescription();
+        dto.aiClassifiedAt = asset.getAiClassifiedAt();
+        dto.aiClassificationModel = asset.getAiClassificationModel();
+        dto.embeddingGeneratedAt = asset.getEmbeddingGeneratedAt();
+        dto.embeddingModel = asset.getEmbeddingModel();
         dto.createdAt = asset.getCreatedAt();
+        dto.institutionId = asset.getInstitution().getId();
+        dto.institutionName = asset.getInstitution().getName();
         dto.uploaderId = asset.getUploader().getId();
         dto.uploaderEmail = asset.getUploader().getEmail();
         dto.usedIn = usedIn;
@@ -79,8 +91,32 @@ public class MediaAssetDetailDto {
         return aiDescription;
     }
 
+    public Instant getAiClassifiedAt() {
+        return aiClassifiedAt;
+    }
+
+    public String getAiClassificationModel() {
+        return aiClassificationModel;
+    }
+
+    public Instant getEmbeddingGeneratedAt() {
+        return embeddingGeneratedAt;
+    }
+
+    public String getEmbeddingModel() {
+        return embeddingModel;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public UUID getInstitutionId() {
+        return institutionId;
+    }
+
+    public String getInstitutionName() {
+        return institutionName;
     }
 
     public UUID getUploaderId() {

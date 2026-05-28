@@ -5,10 +5,12 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionStatus;
 
 /**
  * Extends the base SubmissionRepository created by M1.
@@ -43,6 +45,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
 
     boolean existsByIdAndInstitutionId(UUID id, UUID institutionId);
     boolean existsByIdAndContributorId(UUID id, UUID contributorId);
+    boolean existsByContributorId(UUID contributorId);
 
     @Query("""
         SELECT s FROM Submission s
@@ -96,12 +99,26 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("from") Instant from,
             @Param("to") Instant to);
 
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+        UPDATE Submission s
+        SET s.status = :claimedStatus
+        WHERE s.id = :submissionId
+          AND s.status = :expectedStatus
+        """)
+    int claimForPublishing(
+            @Param("submissionId") UUID submissionId,
+            @Param("expectedStatus") SubmissionStatus expectedStatus,
+            @Param("claimedStatus") SubmissionStatus claimedStatus);
+
     /** StaleSubmissionDetectorJob (GR-T9): SCHEDULED / DIRECT_POST_SCHEDULED submissions whose slot has passed. */
     @Query("""
         SELECT s FROM Submission s
         WHERE s.status IN (
             com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.publishing,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_publishing
         )
         AND s.scheduledAt < :cutoff
         ORDER BY s.scheduledAt ASC

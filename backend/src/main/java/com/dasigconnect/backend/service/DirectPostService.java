@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
@@ -107,7 +108,7 @@ public class DirectPostService {
 
         // GR-H3: hard block for scheduled posts more than 30 days ahead
         if (!dto.isPublishImmediately() && targetSlot.isAfter(Instant.now().plus(GR_H3_MAX_FUTURE))) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "GR-H3: Direct posts cannot be scheduled more than 30 days in advance.");
         }
 
@@ -117,7 +118,7 @@ public class DirectPostService {
                 .anyMatch(v -> "GR-H1".equals(v.getCode()));
 
         if (hasH1Conflict && !dto.isAcknowledgedGrH1Conflict()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "GR-H1: A post is already scheduled within 30 minutes of this slot. "
                     + "Set acknowledgedGrH1Conflict=true to proceed.");
         }
@@ -182,10 +183,16 @@ public class DirectPostService {
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void publishImmediately(UUID submissionId) {
-        List<MediaAsset> assets = publishingQueryService.loadAssetsForSubmission(submissionId);
         Submission s = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found."));
-        facebookPublisherService.publish(s, assets);
+        Submission claimed = publishingQueryService.claimForPublishing(s)
+                .orElse(null);
+        if (claimed == null) {
+            log.info("Immediate direct post {} was already claimed for publishing.", submissionId);
+            return;
+        }
+        List<MediaAsset> assets = publishingQueryService.loadAssetsForSubmission(submissionId);
+        facebookPublisherService.publish(claimed, assets);
     }
 
     /**
@@ -201,22 +208,22 @@ public class DirectPostService {
 
     private void validateRequest(DirectPostRequestDto dto) {
         if (dto.getInstitutionId() == null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Institution is required.");
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422), "Institution is required.");
         }
         if (dto.getCaption() == null || dto.getCaption().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Caption is required.");
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422), "Caption is required.");
         }
         if (dto.getReason() == null || dto.getReason().trim().length() < REASON_MIN_LENGTH) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Reason must be at least " + REASON_MIN_LENGTH + " characters.");
         }
         if (!dto.isPublishImmediately() && dto.getScheduledAt() == null) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "scheduledAt is required when publishImmediately is false.");
         }
         if (!dto.isPublishImmediately() && dto.getScheduledAt() != null
                 && dto.getScheduledAt().isBefore(Instant.now())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "scheduledAt must be in the future.");
         }
     }

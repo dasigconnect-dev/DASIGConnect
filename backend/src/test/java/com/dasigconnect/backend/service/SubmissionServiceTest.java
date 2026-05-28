@@ -256,7 +256,8 @@ class SubmissionServiceTest {
         assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .extracting(status -> status.value())
+                .isEqualTo(422);
         verify(submissionRepository, never()).save(submission);
     }
 
@@ -273,7 +274,8 @@ class SubmissionServiceTest {
         assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .extracting(status -> status.value())
+                .isEqualTo(422);
         verify(submissionRepository, never()).save(submission);
     }
 
@@ -350,7 +352,8 @@ class SubmissionServiceTest {
         assertThatThrownBy(() -> submissionService.attachMedia(submissionId, new AttachMediaDto(), contributorPrincipal))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .extracting(status -> status.value())
+                .isEqualTo(422);
     }
 
     @Test

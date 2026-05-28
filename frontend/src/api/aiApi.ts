@@ -1,5 +1,100 @@
 import { api } from "./authApi";
 
+// ─── UC-3.3 Classification, Recommendation & Media Suggestion ────────────────
+
+export interface ClassificationSuggestions {
+  suggestedCategory: string | null;
+  suggestedTags: string[];
+  confidence: number | null;
+  assetCount: number;
+}
+
+export interface SimilarMediaAsset {
+  id: string;
+  assetCode: string;
+  storageUrl: string;
+  fileName: string;
+  fileType: string;
+  fileSizeBytes: number;
+  aiCategory: string | null;
+  createdAt: string;
+}
+
+export type AiInteractionType = "tag_classification" | "media_recommendation";
+export type AiInteractionAction = "accepted" | "dismissed" | "shown";
+
+export async function getClassificationSuggestions(
+  submissionId: string
+): Promise<ClassificationSuggestions> {
+  const res = await api.get<ClassificationSuggestions>(
+    `/ai/submissions/${submissionId}/suggestions`,
+    { validateStatus: () => true }
+  );
+  if (res.status !== 200) throw new Error("suggestions_unavailable");
+  return res.data;
+}
+
+export async function getSimilarMedia(
+  submissionId: string
+): Promise<SimilarMediaAsset[]> {
+  const res = await api.get<SimilarMediaAsset[]>(
+    `/ai/submissions/${submissionId}/similar-media`,
+    { validateStatus: () => true }
+  );
+  if (res.status !== 200) return [];
+  return res.data;
+}
+
+export interface MediaSuggestResult {
+  id: string;
+  assetCode: string;
+  storageUrl: string;
+  fileName: string;
+  fileType: string;
+  fileSizeBytes: number;
+  aiCategory: string | null;
+  similarityScore: number;
+  matchReasons?: string[];
+  createdAt: string;
+}
+
+export interface MediaSuggestRequest {
+  eventTitle?: string;
+  caption?: string;
+  category?: string;
+  tags?: string[];
+}
+
+export async function suggestMedia(
+  submissionId: string,
+  params: MediaSuggestRequest
+): Promise<MediaSuggestResult[]> {
+  const res = await api.post<MediaSuggestResult[]>(
+    `/ai/submissions/${submissionId}/suggest-media`,
+    params,
+    { validateStatus: () => true }
+  );
+  if (res.status !== 200) return [];
+  return res.data ?? [];
+}
+
+/** Fire-and-forget — never throws. */
+export function logAiInteraction(
+  submissionId: string,
+  type: AiInteractionType,
+  actionTaken: AiInteractionAction
+): void {
+  api
+    .post(`/ai/submissions/${submissionId}/log-interaction`, {
+      submissionId,
+      type,
+      actionTaken,
+    })
+    .catch(() => {});
+}
+
+// ─── UC-3.2 Caption Generation ───────────────────────────────────────────────
+
 export type CaptionTone = "professional" | "community" | "energetic";
 
 export interface CaptionVariant {

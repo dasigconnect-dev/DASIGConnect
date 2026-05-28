@@ -30,7 +30,7 @@ function isCanceledError(error: unknown) {
   return isApiError(error) && error.name === "CanceledError";
 }
 
-export function useMediaAssets(networkView = false) {
+export function useMediaAssets(networkView = false, institutionId?: string | null) {
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -39,7 +39,7 @@ export function useMediaAssets(networkView = false) {
     (signal?: AbortSignal) => {
       setLoading(true);
       setError("");
-      return listMediaAssets({ networkView }, signal)
+      return listMediaAssets({ networkView, institutionId }, signal)
         .then((response) => setAssets(Array.isArray(response.data) ? response.data : []))
         .catch((err: unknown) => {
           if (isCanceledError(err)) return;
@@ -47,7 +47,7 @@ export function useMediaAssets(networkView = false) {
         })
         .finally(() => setLoading(false));
     },
-    [networkView],
+    [networkView, institutionId],
   );
 
   useEffect(() => {

@@ -76,6 +76,7 @@ function App() {
   const [modalEmail, setModalEmail] = useState("");
   const [modalPassword, setModalPassword] = useState("");
   const [modalError, setModalError] = useState(false);
+  const [modalLoginLoading, setModalLoginLoading] = useState(false);
   const [showModalPassword, setShowModalPassword] = useState(false);
 
   const [forgotEmail, setForgotEmail] = useState("");
@@ -169,12 +170,14 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (location.pathname !== "/reset-password") return;
+    if (!isPasswordResetPath(location.pathname)) return;
     const params = new URLSearchParams(location.search);
     const token = params.get("token");
     setResetToken(token);
     setResetError(token ? "" : "Reset token is missing or invalid.");
     setResetSuccess(false);
+    setResetPassword("");
+    setResetConfirmPassword("");
   }, [location.pathname, location.search]);
 
   useEffect(() => {
@@ -197,9 +200,14 @@ function App() {
         void handleLogin();
       } else if (location.pathname === "/forgot-password") {
         void handleForgotSubmit();
-      } else if (location.pathname === "/reset-password") {
+      } else if (isPasswordResetPath(location.pathname)) {
         void handleResetPassword();
-      } else if (location.pathname === "/dashboard" && showSessionModal) {
+      } else if (
+        location.pathname === "/dashboard" &&
+        showSessionModal &&
+        !modalLoginLoading &&
+        !logoutLoading
+      ) {
         void handleModalLogin();
       }
     }
@@ -213,6 +221,8 @@ function App() {
     loginPassword,
     modalEmail,
     modalPassword,
+    modalLoginLoading,
+    logoutLoading,
   ]);
 
   useEffect(() => {
@@ -393,6 +403,9 @@ function App() {
   }
 
   async function handleModalLogin() {
+    if (modalLoginLoading || logoutLoading) return;
+    setModalLoginLoading(true);
+    setModalError(false);
     const email = modalEmail.trim().toLowerCase();
     try {
       const response = await login(email, modalPassword);
@@ -405,8 +418,11 @@ function App() {
       startSessionCountdown(response.data.accessToken);
       setShowSessionModal(false);
       setModalError(false);
+      setModalPassword("");
     } catch {
       setModalError(true);
+    } finally {
+      setModalLoginLoading(false);
     }
   }
 
@@ -577,6 +593,30 @@ function App() {
         />
 
         <Route
+          path="/forgot-password/reset"
+          element={
+            <ResetPasswordScreen
+              active={true}
+              password={resetPassword}
+              confirmPassword={resetConfirmPassword}
+              showPassword={showResetPassword}
+              showConfirmPassword={showResetConfirmPassword}
+              loading={resetLoading}
+              error={resetError}
+              success={resetSuccess}
+              onPasswordChange={setResetPassword}
+              onConfirmPasswordChange={setResetConfirmPassword}
+              onTogglePassword={() => setShowResetPassword(!showResetPassword)}
+              onToggleConfirmPassword={() =>
+                setShowResetConfirmPassword(!showResetConfirmPassword)
+              }
+              onSubmit={() => void handleResetPassword()}
+              onBack={() => navigate("/login")}
+            />
+          }
+        />
+
+        <Route
           path="/invite"
           element={
             <InviteScreen
@@ -692,7 +732,7 @@ function App() {
             path="/notifications"
             element={
               <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
-                <NotificationsScreen />
+                <NotificationsScreen user={currentUser!} />
               </ProtectedRoute>
             }
           />
@@ -723,10 +763,13 @@ function App() {
         email={modalEmail}
         password={modalPassword}
         error={modalError}
+        submitLoading={modalLoginLoading}
+        signOutLoading={logoutLoading}
         onEmailChange={setModalEmail}
         onPasswordChange={setModalPassword}
         onTogglePassword={() => setShowModalPassword(!showModalPassword)}
         onSubmit={() => void handleModalLogin()}
+        onSignOut={() => void handleLogout()}
         showPassword={showModalPassword}
       />
     </>
@@ -740,6 +783,10 @@ function formatTimer(seconds: number) {
   return `${minutes.toString().padStart(2, "0")}:${remaining
     .toString()
     .padStart(2, "0")}`;
+}
+
+function isPasswordResetPath(pathname: string) {
+  return pathname === "/reset-password" || pathname === "/forgot-password/reset";
 }
 
 function mapApiRole(role: string): User["role"] {

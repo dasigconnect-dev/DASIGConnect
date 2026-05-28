@@ -10,6 +10,7 @@ interface DeleteModalProps {
   blockingUsages: MediaUsage[];
   warningUsages: MediaUsage[];
   deleting: boolean;
+  assetCount?: number;
   onClose: () => void;
   onConfirmDelete: () => void;
 }
@@ -41,6 +42,7 @@ export default function DeleteModal({
   blockingUsages,
   warningUsages,
   deleting,
+  assetCount = asset ? 1 : 0,
   onClose,
   onConfirmDelete,
 }: DeleteModalProps) {
@@ -64,7 +66,10 @@ export default function DeleteModal({
           {tier === "blocked" && (
             <BlockedBody usage={blockingUsages[0] ?? null} />
           )}
-          {tier === "warning" && (
+          {tier === "warning" && assetCount > 1 && (
+            <BulkWarningBody assetCount={assetCount} />
+          )}
+          {tier === "warning" && assetCount <= 1 && (
             <WarningBody usages={warningUsages} />
           )}
           {tier === "free" && asset && (
@@ -79,14 +84,14 @@ export default function DeleteModal({
             <>
               <button className="med-btn med-btn-ghost" onClick={onClose} type="button" disabled={deleting}>Cancel</button>
               <button className="med-btn med-btn-warn-confirm" onClick={onConfirmDelete} type="button" disabled={deleting}>
-                {deleting ? "Deleting…" : "Delete & Flag Reference"}
+                {deleting ? "Deleting..." : assetCount > 1 ? `Delete ${assetCount} Assets` : "Delete & Flag Reference"}
               </button>
             </>
           ) : (
             <>
               <button className="med-btn med-btn-ghost" onClick={onClose} type="button" disabled={deleting}>Cancel</button>
               <button className="med-btn med-btn-danger" onClick={onConfirmDelete} type="button" disabled={deleting}>
-                {deleting ? "Deleting…" : "Delete Asset"}
+                {deleting ? "Deleting..." : "Delete Asset"}
               </button>
             </>
           )}
@@ -142,6 +147,29 @@ function BlockedBody({ usage }: { usage: MediaUsage | null }) {
       )}
       <p style={{ fontSize: 12, color: "var(--med-muted)", marginTop: 16, lineHeight: 1.5 }}>
         No deletion occurs. The physical media file is retained. This action has been logged.
+      </p>
+    </>
+  );
+}
+
+function BulkWarningBody({ assetCount }: { assetCount: number }) {
+  return (
+    <>
+      <div className="med-delete-warning-banner">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+        <div>
+          <div className="med-banner-title warn">Delete {assetCount} Selected Assets</div>
+          <div className="med-banner-sub">
+            This removes the selected assets from the Media Library. If any asset is referenced by an active submission, the server will reject the bulk delete and keep the selection unchanged.
+          </div>
+        </div>
+      </div>
+      <p style={{ fontSize: 13, color: "var(--med-text-2)", marginBottom: 0, lineHeight: 1.6 }}>
+        Draft references may be left for contributors to replace before submission. This action is limited by your role permissions.
       </p>
     </>
   );

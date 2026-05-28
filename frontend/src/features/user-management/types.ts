@@ -7,6 +7,7 @@ export interface InstitutionOption {
   name: string
   code: string
   emailDomain: string
+  status: string
 }
 
 export interface InviteFailure {
@@ -27,5 +28,6 @@ export function toInstitutionOption(item: InstitutionResponse): InstitutionOptio
     name: item.name,
     code: item.institutionCode,
     emailDomain: item.emailDomain,
+    status: item.status,
   }
 }

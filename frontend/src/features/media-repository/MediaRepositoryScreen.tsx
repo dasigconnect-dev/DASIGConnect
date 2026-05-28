@@ -1,13 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { MediaAsset, MediaUsage } from "../../api/mediaApi";
 import {
+  bulkDeleteMediaAssets,
   deleteMediaAsset,
   getMediaAsset,
   getMediaAssetUploadUrl,
   registerMediaAsset,
 } from "../../api/mediaApi";
+import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
 import {
   attachAsset,
   listSubmissions,
@@ -80,8 +82,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const navigate = useNavigate();
   const isAdmin = user.role === "admin";
 
-  const [networkView, setNetworkView] = useState(false);
-  const { assets, setAssets, loading, error, refresh } = useMediaAssets(networkView);
+  const [networkView, setNetworkView] = useState(isAdmin);
+  const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
+  const [selectedInstitutionId, setSelectedInstitutionId] = useState<string | null>(null);
+  const { assets, setAssets, loading, error, refresh } = useMediaAssets(networkView, selectedInstitutionId);
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("newest");
@@ -107,6 +111,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTier, setDeleteTier] = useState<DeleteTier | null>(null);
   const [deleteAsset, setDeleteAsset] = useState<MediaAsset | null>(null);
+  const [deleteAssets, setDeleteAssets] = useState<MediaAsset[]>([]);
   const [blockingUsages, setBlockingUsages] = useState<MediaUsage[]>([]);
   const [warningUsages, setWarningUsages] = useState<MediaUsage[]>([]);
   const [deleting, setDeleting] = useState(false);
@@ -122,6 +127,13 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       .sort((a, b) => b[1] - a[1])
       .map(([label, count]) => ({ label, count }));
   }, [assets]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    listInstitutions()
+      .then((res) => setInstitutions(res.data))
+      .catch(() => toast.error("Could not load institution filters."));
+  }, [isAdmin, toast]);
 
   const filteredAssets = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -152,6 +164,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     [assets, checkedIds],
   );
   const selectionMode = checkedIds.size > 0;
+  const canBulkDelete = selectedAssets.length > 0 && selectedAssets.every(canDeleteAsset);
 
   function openAsset(asset: MediaAsset) {
     setSelectedAsset(asset);
@@ -163,23 +176,59 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   function closePanel() {
     setPanelOpen(false);
-    setSelectedAsset(null);
+    // selectedAsset is intentionally kept so the panel slides out with its
+    // content visible instead of going blank mid-animation. openAsset() always
+    // sets a fresh asset before the panel is shown again, so no stale data
+    // is ever displayed to the user.
   }
 
   function clearChecked() {
     clearSelection();
-    if (!selectedAsset) setPanelOpen(false);
+    closePanel();
+  }
+
+  // Deselects a single asset by ID and keeps panel state consistent:
+  // - nothing left checked  → slide the panel closed
+  // - others still checked, panel was showing this asset → switch to another selected asset
+  // - others still checked, panel shows something else  → leave panel alone
+  function handleDeselect(id: string) {
+    const remainingIds = new Set(checkedIds);
+    remainingIds.delete(id);
+    toggleCheck(id);
+
+    if (remainingIds.size === 0) {
+      closePanel();
+    } else if (selectedAsset?.id === id) {
+      const nextAsset = assets.find((a) => remainingIds.has(a.id));
+      if (nextAsset) openAsset(nextAsset);
+      else closePanel();
+    }
+    // else: panel already shows a different, still-selected asset — no change needed
   }
 
   function handleToggleCheck(asset: MediaAsset) {
-    const willCheck = !checkedIds.has(asset.id);
-    toggleCheck(asset.id);
-    if (willCheck) openAsset(asset);
+    if (checkedIds.has(asset.id)) {
+      handleDeselect(asset.id);
+    } else {
+      toggleCheck(asset.id);
+      openAsset(asset);
+    }
   }
 
   function activeAssetIds() {
     if (checkedIds.size > 0) return [...checkedIds];
     return selectedAsset ? [selectedAsset.id] : [];
+  }
+
+  function canDeleteAsset(asset: MediaAsset) {
+    if (isAdmin) return true;
+    if (user.role === "validator") {
+      return Boolean(user.institutionId && asset.institutionId === user.institutionId);
+    }
+    if (user.role === "contributor") {
+      return Boolean(asset.uploaderName && asset.uploaderName.toLowerCase() === user.email.toLowerCase());
+    }
+    return false;
   }
 
   function handleNewPost() {
@@ -309,6 +358,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   function openDeleteModal(tier: DeleteTier) {
     if (!selectedAsset) return;
     setDeleteAsset(selectedAsset);
+    setDeleteAssets([selectedAsset]);
     setDeleteTier(tier);
 
     if (tier === "blocked") {
@@ -331,21 +381,62 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     setDeleteOpen(true);
   }
 
+  function deleteTierForAsset(asset: MediaAsset): DeleteTier {
+    const usedIn = asset.usedIn ?? [];
+    if (usedIn.some((u) => u.submissionStatus === "scheduled" || u.submissionStatus === "in_review" || u.submissionStatus === "pending")) {
+      return "blocked";
+    }
+    if (usedIn.some((u) => u.submissionStatus === "draft" || u.submissionStatus === "needs_revision")) {
+      return "warning";
+    }
+    return "free";
+  }
+
+  function openSingleDeleteModal() {
+    if (!selectedAsset || !canDeleteAsset(selectedAsset)) return;
+    openDeleteModal(deleteTierForAsset(selectedAsset));
+  }
+
+  function openBulkDeleteModal() {
+    if (selectedAssets.length === 0) return;
+    const deletable = selectedAssets.filter(canDeleteAsset);
+    if (deletable.length !== selectedAssets.length) {
+      toast.error("One or more selected assets cannot be deleted by your role.");
+      return;
+    }
+    setDeleteAssets(deletable);
+    setDeleteAsset(deletable[0] ?? null);
+    setBlockingUsages([]);
+    setWarningUsages([]);
+    setDeleteTier("warning");
+    setDeleteOpen(true);
+  }
+
   async function handleConfirmDelete() {
     if (!deleteAsset) return;
     setDeleting(true);
     try {
-      await deleteMediaAsset(deleteAsset.id, deleteTier === "warning");
-      setAssets((prev) => prev.filter((a) => a.id !== deleteAsset.id));
-      if (selectedAsset?.id === deleteAsset.id) closePanel();
+      const ids = deleteAssets.length > 0 ? deleteAssets.map((asset) => asset.id) : [deleteAsset.id];
+      if (ids.length > 1) {
+        await bulkDeleteMediaAssets(ids, true);
+      } else {
+        await deleteMediaAsset(deleteAsset.id, deleteTier === "warning");
+      }
+      setAssets((prev) => prev.filter((a) => !ids.includes(a.id)));
+      ids.forEach((id) => {
+        if (checkedIds.has(id)) toggleCheck(id);
+      });
+      if (selectedAsset && ids.includes(selectedAsset.id)) closePanel();
       setDeleteOpen(false);
       toast.success(
-        deleteTier === "warning"
-          ? "Asset deleted. Broken reference flagged in draft."
-          : "Asset deleted. Terminal submission records updated.",
+        ids.length > 1
+          ? `${ids.length} assets deleted from the media library.`
+          : deleteTier === "warning"
+            ? "Asset deleted. Broken reference flagged in draft."
+            : "Asset deleted. Terminal submission records updated.",
       );
     } catch {
-      toast.error("Failed to delete asset.");
+      toast.error("Failed to delete asset. It may be referenced by an active submission or outside your delete scope.");
     } finally {
       setDeleting(false);
     }
@@ -357,7 +448,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       <div className="med-header">
         <div>
           <h1 className="med-title">Media Repository</h1>
-          <p className="med-subtitle">Institution assets · AI-classified · UC-2.2</p>
+          <p className="med-subtitle">Institution assets · AI-classified</p>
         </div>
         <div className="med-header-actions">
           <button
@@ -377,10 +468,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
             onClick={() => navigate("/submissions/new")}
             type="button"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
             New Submission
           </button>
         </div>
@@ -397,6 +484,28 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           <span>
             <strong>Network View active</strong> — Showing assets across all DASIG member institutions. This session is being logged in the access audit log (BR-MED-01).
           </span>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="med-institution-filter" role="tablist" aria-label="Institution media categories">
+          <button
+            className={`med-inst-filter-btn${selectedInstitutionId === null ? " active" : ""}`}
+            type="button"
+            onClick={() => setSelectedInstitutionId(null)}
+          >
+            All institutions
+          </button>
+          {institutions.map((institution) => (
+            <button
+              key={institution.id}
+              className={`med-inst-filter-btn${selectedInstitutionId === institution.id ? " active" : ""}`}
+              type="button"
+              onClick={() => setSelectedInstitutionId(institution.id)}
+            >
+              {institution.name}
+            </button>
+          ))}
         </div>
       )}
 
@@ -456,8 +565,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
               listView={viewMode === "list"}
               animationDelay={Math.min(idx * 40, 480)}
               showInstitutionChip={networkView && isAdmin}
-              onClick={() => openAsset(asset)}
-              onToggleCheck={() => handleToggleCheck(asset)}
+              onClick={() => handleToggleCheck(asset)}
             />
           ))}
         </div>
@@ -467,20 +575,20 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       <AssetDetailPanel
         asset={selectedAsset}
         open={panelOpen}
-        isAdmin={isAdmin}
         selectionMode={selectionMode}
         selectedAssets={selectedAssets}
         onViewAsset={(a) => openAsset(a)}
-        onDeselectAsset={(id) => toggleCheck(id)}
+        onDeselectAsset={(id) => handleDeselect(id)}
         onNewPost={handleNewPost}
         onClearSelection={clearChecked}
         onClose={closePanel}
         canAddToDraft={user.role === "contributor"}
         onAddToDraft={openAddToDraft}
         onDownload={() => void handleDownload()}
-        onDeleteBlocked={() => openDeleteModal("blocked")}
-        onDeleteWarning={() => openDeleteModal("warning")}
-        onDeleteFree={() => openDeleteModal("free")}
+        canDelete={selectedAsset ? canDeleteAsset(selectedAsset) : false}
+        onRequestDelete={openSingleDeleteModal}
+        canBulkDelete={canBulkDelete}
+        onRequestBulkDelete={openBulkDeleteModal}
       />
 
       {/* Upload Modal (portal) */}
@@ -499,6 +607,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         blockingUsages={blockingUsages}
         warningUsages={warningUsages}
         deleting={deleting}
+        assetCount={deleteAssets.length || (deleteAsset ? 1 : 0)}
         onClose={() => { if (!deleting) setDeleteOpen(false); }}
         onConfirmDelete={() => void handleConfirmDelete()}
       />
@@ -515,33 +624,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onNewPostInstead={() => { setAddToDraftOpen(false); handleNewPost(); }}
       />
 
-      {/* Selection action bar */}
-      <div className={`med-selbar${checkedIds.size > 0 ? " visible" : ""}`} role="region" aria-label="Selected assets">
-        <button
-          className="med-selbar-info"
-          type="button"
-          onClick={() => setPanelOpen(true)}
-          title="View selected assets"
-        >
-          <span className="med-selbar-count">{checkedIds.size}</span>
-          <span>{checkedIds.size === 1 ? "asset selected" : "assets selected"}</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7 }}>
-            <polyline points="9,18 15,12 9,6" />
-          </svg>
-        </button>
-        <div className="med-selbar-actions">
-          <button className="med-btn med-btn-ghost med-btn-sm" onClick={clearChecked} type="button">
-            Clear
-          </button>
-          <button className="med-btn med-btn-primary med-btn-sm" onClick={handleNewPost} type="button">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            New Post
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

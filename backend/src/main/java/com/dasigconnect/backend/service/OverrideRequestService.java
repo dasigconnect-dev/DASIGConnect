@@ -39,10 +39,9 @@ public class OverrideRequestService {
 
     private static final Logger log = LoggerFactory.getLogger(OverrideRequestService.class);
 
-    // UC-1.3 limit: max 2 override requests per submission before auto-escalation flag
-    private static final int MAX_OVERRIDE_REQUESTS = 2;
 
     private final OverrideRequestRepository overrideRequestRepository;
+    @SuppressWarnings("unused")
     private final SubmissionRepository submissionRepository;
     private final UserRepository userRepository;
     private final SlotReservationService slotReservationService;
@@ -118,7 +117,7 @@ public class OverrideRequestService {
         // Validate the suggested slot against all hard rules (GR-H1, H2, H3)
         var result = guardRailService.validate(s.getInstitution().getId(), suggestedSlot);
         if (result.isBlocked()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Suggested slot violates guard rail rules: " + result.getHardBlocks().get(0).getMessage());
         }
 

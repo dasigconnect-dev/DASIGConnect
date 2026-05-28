@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
+  cancelInvitation,
   createInstitution,
+  deleteUser,
   getUserCounts,
   getPendingInvitationCount,
   listInstitutions,
@@ -27,6 +29,7 @@ interface InstitutionWithStats {
   name: string
   code: string
   emailDomain: string
+  status: string
   contributors: number
   validators: number
   pendingInvitations: number
@@ -118,6 +121,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
           name: item.name,
           code: item.institutionCode,
           emailDomain: item.emailDomain,
+          status: item.status,
           contributors: 0,
           validators: 0,
           pendingInvitations: 0,
@@ -167,6 +171,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
             name: selectedInstitution.name,
             code: selectedInstitution.code,
             emailDomain: selectedInstitution.emailDomain,
+            status: selectedInstitution.status,
           }
         : null,
     [selectedInstitution],
@@ -232,7 +237,8 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
     setActiveTab('invitations')
     setEmailChips([])
     setEmailDraft('')
-    setInviteRole(null)
+    // Pre-select validator role for non-active institutions since contributors cannot be invited yet
+    setInviteRole(inst.status === 'active' ? null : 'validator')
     setInviteResults(null)
     setPendingInvitations([])
     setManagedUsers([])
@@ -271,6 +277,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
         name: response.data.name,
         code: response.data.institutionCode,
         emailDomain: response.data.emailDomain,
+        status: response.data.status,
         contributors: 0,
         validators: 0,
         pendingInvitations: 0,
@@ -427,6 +434,66 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
       toast.success(nextState === 'inactive' ? 'Account deactivated.' : 'Account reactivated.')
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to update account status.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  function handleDeleteUser(managedUser: UserProfileResponse) {
+    setConfirmDialog({
+      title: 'Remove User',
+      message: `Are you sure you want to permanently remove ${getUserDisplayName(managedUser)}? This cannot be undone.`,
+      confirmLabel: 'Remove',
+      dangerous: true,
+      onConfirm: () => {
+        setConfirmDialog(null)
+        void executeDeleteUser(managedUser)
+      },
+    })
+  }
+
+  async function executeDeleteUser(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
+    try {
+      await deleteUser(managedUser.id)
+      setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
+      toast.success('User removed.')
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to remove user.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  function handleCancelInvitationFromUsers(managedUser: UserProfileResponse) {
+    setConfirmDialog({
+      title: 'Cancel Invitation',
+      message: `Cancel the pending invitation for ${managedUser.email}?`,
+      confirmLabel: 'Cancel invitation',
+      dangerous: true,
+      onConfirm: () => {
+        setConfirmDialog(null)
+        void executeCancelInvitationByEmail(managedUser)
+      },
+    })
+  }
+
+  async function executeCancelInvitationByEmail(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
+    try {
+      const match = pendingInvitations.find(
+        (inv) => inv.recipientEmail.toLowerCase() === managedUser.email.toLowerCase(),
+      )
+      if (match) {
+        await cancelInvitation(match.id)
+      }
+      setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
+      if (selectedInstitution) {
+        await loadManagementLists(selectedInstitution.id)
+      }
+      toast.success('Invitation cancelled.')
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to cancel invitation.'))
     } finally {
       setUpdatingUserId(null)
     }
@@ -596,7 +663,10 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
               <i className="ti ti-building-community" aria-hidden="true"></i>
             </div>
             <div className="im-detail-info">
-              <h1 className="im-detail-name">{selectedInstitution.name}</h1>
+              <div className="im-detail-name-row">
+                <h1 className="im-detail-name">{selectedInstitution.name}</h1>
+                <InstitutionStatusBadge status={selectedInstitution.status} />
+              </div>
               <div className="im-detail-meta">
                 {selectedInstitution.code && (
                   <span className="im-meta-chip">
@@ -674,12 +744,28 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
               aria-labelledby="im-tab-invitations"
               className="um-tab-panel"
             >
+              {selectedInstitution?.status === 'inactive' && (
+                <div className="alert alert-info im-status-banner" role="status">
+                  <i className="ti ti-info-circle" aria-hidden="true"></i>
+                  <div>
+                    <strong>Institution is inactive.</strong> Invite a validator to activate this workspace. Contributors can only be invited once the institution is active.
+                  </div>
+                </div>
+              )}
+              {selectedInstitution?.status === 'pending' && (
+                <div className="alert alert-warn im-status-banner" role="status">
+                  <i className="ti ti-clock" aria-hidden="true"></i>
+                  <div>
+                    <strong>Awaiting validator activation.</strong> A validator invitation has been sent. Contributors can be invited once the validator activates their account.
+                  </div>
+                </div>
+              )}
               <InvitationComposer
                 chips={emailChips}
                 emailDraft={emailDraft}
                 role={inviteRole}
                 selectedInstitution={selectedInstitutionOption}
-                canChooseRole={true}
+                canChooseRole={selectedInstitution?.status === 'active'}
                 sending={sending}
                 onDraftChange={setEmailDraft}
                 onAddChip={(email) => {
@@ -761,6 +847,8 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
                 loading={managementLoading}
                 updatingUserId={updatingUserId}
                 onToggleUserStatus={handleToggleUserStatus}
+                onDeleteUser={handleDeleteUser}
+                onCancelInvitation={handleCancelInvitationFromUsers}
               />
             </div>
           )}
@@ -925,7 +1013,10 @@ function InstitutionCard({ institution, onManage }: InstitutionCardProps) {
           <i className="ti ti-building-community" aria-hidden="true"></i>
         </div>
         <div className="im-inst-card-info">
-          <h2 className="im-inst-card-name">{institution.name}</h2>
+          <div className="im-inst-card-name-row">
+            <h2 className="im-inst-card-name">{institution.name}</h2>
+            <InstitutionStatusBadge status={institution.status} />
+          </div>
           <div className="im-inst-card-meta">
             {institution.code && (
               <span className="im-inst-card-chip">
@@ -1008,6 +1099,33 @@ function MetricCard({ icon, label, value, loading, accent }: MetricCardProps) {
         )}
       </div>
     </div>
+  )
+}
+
+// ── InstitutionStatusBadge ────────────────────────────────────────────────────
+
+function InstitutionStatusBadge({ status }: { status: string }) {
+  if (status === 'active') {
+    return (
+      <span className="im-status-badge is-active">
+        <i className="ti ti-circle-check-filled" aria-hidden="true"></i>
+        Active
+      </span>
+    )
+  }
+  if (status === 'pending') {
+    return (
+      <span className="im-status-badge is-pending">
+        <i className="ti ti-clock" aria-hidden="true"></i>
+        Pending
+      </span>
+    )
+  }
+  return (
+    <span className="im-status-badge is-inactive">
+      <i className="ti ti-circle-x" aria-hidden="true"></i>
+      Inactive
+    </span>
   )
 }
 

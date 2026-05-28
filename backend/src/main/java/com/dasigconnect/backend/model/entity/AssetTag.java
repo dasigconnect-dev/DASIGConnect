@@ -26,6 +26,9 @@ public class AssetTag {
     @Column(nullable = false, length = 50)
     private String label;
 
+    @Column(nullable = false, length = 20)
+    private String source = "manual";
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -43,6 +46,9 @@ public class AssetTag {
 
     public String getLabel() { return label; }
     public void setLabel(String label) { this.label = label; }
+
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
 
     public Instant getCreatedAt() { return createdAt; }
 }

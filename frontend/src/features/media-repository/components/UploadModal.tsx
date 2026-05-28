@@ -10,37 +10,44 @@ interface UploadModalProps {
 
 export default function UploadModal({ open, institutionName, onClose, onUpload }: UploadModalProps) {
   const [dragOver, setDragOver] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  function handleFileSelect(file: File) {
-    setSelectedFile(file);
+  function handleFilesSelect(files: File[]) {
+    setSelectedFiles(files);
     setProgress(0);
   }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFileSelect(file);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) handleFilesSelect(files);
   }
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) handleFileSelect(file);
+    const files = Array.from(e.target.files ?? []);
+    if (files.length > 0) handleFilesSelect(files);
+    e.target.value = "";
   }
 
   async function handleUpload() {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
     setUploading(true);
     setProgress(0);
     try {
-      await onUpload(selectedFile, setProgress);
+      const total = selectedFiles.length;
+      for (const [index, file] of selectedFiles.entries()) {
+        const completedBase = (index / total) * 100;
+        await onUpload(file, (pct) => {
+          setProgress(Math.round(completedBase + pct / total));
+        });
+      }
       setProgress(100);
       setTimeout(() => {
-        setSelectedFile(null);
+        setSelectedFiles([]);
         setProgress(0);
         setUploading(false);
         onClose();
@@ -53,10 +60,13 @@ export default function UploadModal({ open, institutionName, onClose, onUpload }
 
   function handleClose() {
     if (uploading) return;
-    setSelectedFile(null);
+    setSelectedFiles([]);
     setProgress(0);
     onClose();
   }
+
+  const selectedCount = selectedFiles.length;
+  const uploadLabel = selectedCount > 1 ? `Upload ${selectedCount} Assets` : "Upload Asset";
 
   const modal = (
     <div className={`med-modal-overlay${open ? " open" : ""}`} onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}>
@@ -72,7 +82,7 @@ export default function UploadModal({ open, institutionName, onClose, onUpload }
         </div>
 
         <div className="med-modal-body">
-          {!selectedFile ? (
+          {selectedCount === 0 ? (
             <div
               className={`med-dropzone${dragOver ? " drag-over" : ""}`}
               onClick={() => inputRef.current?.click()}
@@ -88,35 +98,43 @@ export default function UploadModal({ open, institutionName, onClose, onUpload }
                 </svg>
               </div>
               <div className="med-dropzone-title">
-                Drop files here or <span className="med-dropzone-link">browse</span>
+                Drop files here or <span className="med-dropzone-link">browse multiple assets</span>
               </div>
               <div className="med-dropzone-sub">Upload directly to the institutional media library</div>
               <input
                 ref={inputRef}
                 type="file"
+                multiple
                 style={{ display: "none" }}
-                accept=".jpg,.jpeg,.png,.gif,.mp4,.mov,.webp"
+                accept=".jpg,.jpeg,.png,.gif,.mp4,.mov,.webm,.webp"
                 onChange={handleInputChange}
               />
             </div>
           ) : (
-            <div className="med-upload-file-row">
-              <div className="med-upload-file-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <polyline points="21,15 16,10 5,21" />
-                </svg>
-              </div>
-              <div className="med-upload-file-info">
-                <div className="med-upload-file-name">{selectedFile.name}</div>
-                <div className="med-upload-progress-bar">
-                  <div className="med-upload-progress-fill" style={{ width: `${progress}%` }} />
+            <div>
+              {selectedFiles.map((file) => (
+                <div className="med-upload-file-row" key={`${file.name}-${file.lastModified}-${file.size}`}>
+                  <div className="med-upload-file-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <polyline points="21,15 16,10 5,21" />
+                    </svg>
+                  </div>
+                  <div className="med-upload-file-info">
+                    <div className="med-upload-file-name">{file.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--med-muted)", marginTop: 2 }}>
+                      {(file.size / (1024 * 1024)).toFixed(1)} MB
+                    </div>
+                  </div>
                 </div>
+              ))}
+              <div className="med-upload-progress-bar" style={{ marginTop: 12 }}>
+                <div className="med-upload-progress-fill" style={{ width: `${progress}%` }} />
               </div>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--med-blue)" }}>
-                {progress > 0 ? `${progress}%` : ""}
-              </span>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--med-blue)", marginTop: 8, textAlign: "right" }}>
+                {progress > 0 ? `${progress}%` : `${selectedCount} selected`}
+              </div>
             </div>
           )}
 
@@ -148,14 +166,14 @@ export default function UploadModal({ open, institutionName, onClose, onUpload }
             className="med-btn med-btn-primary"
             onClick={() => void handleUpload()}
             type="button"
-            disabled={!selectedFile || uploading}
+            disabled={selectedCount === 0 || uploading}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="16,16 12,12 8,16" />
               <line x1="12" y1="12" x2="12" y2="21" />
               <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
             </svg>
-            {uploading ? "Uploading…" : "Upload Asset"}
+            {uploading ? "Uploading..." : uploadLabel}
           </button>
         </div>
       </div>

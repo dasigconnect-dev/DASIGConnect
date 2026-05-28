@@ -54,9 +54,13 @@
   font-weight: 700;
 }
 
-.analytics-filter select {
+.analytics-filter select,
+.analytics-filter .dc-select {
   min-width: 190px;
   height: 44px;
+}
+
+.analytics-filter select {
   border: 1px solid #d7deea;
   border-radius: 8px;
   background: #ffffff;
@@ -672,7 +676,8 @@
   }
 
   .analytics-filter,
-  .analytics-filter select {
+  .analytics-filter select,
+  .analytics-filter .dc-select {
     width: 100%;
   }
 

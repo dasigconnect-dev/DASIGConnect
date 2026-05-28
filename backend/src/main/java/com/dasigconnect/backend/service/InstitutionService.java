@@ -16,18 +16,15 @@ import com.dasigconnect.backend.model.entity.InstitutionStatus;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 
 /**
- * Manages the institution lifecycle for UC-1.2.
+ * Manages the institution lifecycle.
  *
- * Institution state machine: ONBOARDING → ACTIVE (when first Validator
- * activates their account — event-driven) ACTIVE → INACTIVE_NO_VALIDATOR (when
- * all Validators become inactive — event-driven by M2) INACTIVE_NO_VALIDATOR →
- * ACTIVE (when a new Validator activates)
+ * State machine:
+ *   INACTIVE  → (admin sends validator invitation)  → PENDING
+ *   PENDING   → (validator activates account)       → ACTIVE
+ *   ACTIVE    → (all validators deactivated)        → INACTIVE
+ *   PENDING   → (last validator invitation cancelled, no active validators) → INACTIVE
  *
  * Invalid transitions are rejected with IllegalStateException → HTTP 409.
- *
- * This service does NOT directly manage Users or send emails — those are M2's
- * domain. M2's InvitationService calls transitionToActive() when the first
- * Validator activates.
  */
 @Service
 @Transactional
@@ -49,70 +46,47 @@ public class InstitutionService {
     }
 
     /**
-     * Creates a new institution and provisions its isolated workspace.
-     *
-     * UC-1.2 flow step 1: Administrator submits institution name + code →
-     * Institution created with status = onboarding →
-     * WorkspaceProvisionerService sets up RLS context → AuditLog records the
-     * action
-     *
-     * @param request the validated CreateInstitutionRequest from the controller
-     * @return InstitutionDto of the newly created institution
-     * @throws IllegalArgumentException if the institution code is already taken
+     * Creates a new institution with status INACTIVE and provisions its RLS workspace.
      */
     public InstitutionDto createInstitution(CreateInstitutionRequest request) {
-        // Validate uniqueness of code before persisting
         if (institutionRepository.existsByCode(request.getInstitutionCode())) {
             throw new IllegalArgumentException(
                     "Institution code '" + request.getInstitutionCode() + "' is already in use.");
         }
 
-                String emailDomain = request.getEmailDomain().trim().toLowerCase();
-                if (institutionRepository.existsByEmailDomain(emailDomain)) {
-                        throw new IllegalArgumentException(
-                                        "Email domain '" + emailDomain + "' is already in use.");
-                }
+        String emailDomain = request.getEmailDomain().trim().toLowerCase();
+        if (institutionRepository.existsByEmailDomain(emailDomain)) {
+            throw new IllegalArgumentException(
+                    "Email domain '" + emailDomain + "' is already in use.");
+        }
 
         Institution institution = new Institution();
         institution.setName(request.getName());
-        institution.setCode(request.getInstitutionCode()); // M1: field is 'code', not 'institutionCode'
+        institution.setCode(request.getInstitutionCode());
         institution.setEmailDomain(emailDomain);
-        institution.setStatus(InstitutionStatus.onboarding);
+        institution.setStatus(InstitutionStatus.inactive);
 
         institution = institutionRepository.save(institution);
 
-        // Provision RLS workspace context for this institution
         workspaceProvisioner.provision(institution);
 
-        // Audit log — null actor = system-initiated (Administrator identified by SecurityContext in controller)
         auditLogService.recordSystemAction(
                 "INSTITUTION_CREATED",
                 institution.getId(),
                 Map.of("name", institution.getName(), "code", institution.getCode())
         );
 
-        log.info("Institution created: {} ({}), status=ONBOARDING", institution.getName(), institution.getId());
+        log.info("Institution created: {} ({}), status=INACTIVE", institution.getName(), institution.getId());
         return InstitutionDto.from(institution);
     }
 
-        /**
-         * Returns all institutions for ADMINISTRATOR views.
-         */
-        @Transactional(readOnly = true)
-        public java.util.List<InstitutionDto> listInstitutions() {
-                return institutionRepository.findAll().stream()
-                                .map(InstitutionDto::from)
-                                .toList();
-        }
+    @Transactional(readOnly = true)
+    public java.util.List<InstitutionDto> listInstitutions() {
+        return institutionRepository.findAll().stream()
+                .map(InstitutionDto::from)
+                .toList();
+    }
 
-    /**
-     * Retrieves an institution by ID. Returns HTTP 404 (not 403) for
-     * missing/inaccessible institutions per SRS 3.4.6.4.
-     *
-     * @param institutionId the institution UUID
-     * @return InstitutionDto
-     * @throws InstitutionNotFoundException if not found
-     */
     @Transactional(readOnly = true)
     public InstitutionDto getInstitution(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)
@@ -121,100 +95,86 @@ public class InstitutionService {
     }
 
     /**
-     * Transitions an institution from ONBOARDING → ACTIVE.
-     *
-     * Called by M2's InvitationService (event-driven) when the first Validator
-     * activates their account. No Administrator action is required.
-     *
-     * @param institutionId the institution to activate
-     * @throws InstitutionNotFoundException if institution does not exist
-     * @throws IllegalStateException if institution is not in ONBOARDING status
+     * INACTIVE → PENDING. Called when an admin sends a validator invitation.
+     */
+    public void transitionToPending(UUID institutionId) {
+        Institution institution = institutionRepository.findById(institutionId)
+                .orElseThrow(() -> new InstitutionNotFoundException(institutionId));
+
+        if (institution.getStatus() != InstitutionStatus.inactive) {
+            throw new IllegalStateException(
+                    "Cannot transition institution " + institutionId + " to PENDING: "
+                    + "current status is " + institution.getStatus()
+                    + " (expected: inactive)");
+        }
+
+        institution.setStatus(InstitutionStatus.pending);
+        institutionRepository.save(institution);
+
+        auditLogService.recordSystemAction(
+                "INSTITUTION_PENDING",
+                institutionId,
+                Map.of("previousStatus", "inactive")
+        );
+
+        log.info("Institution {} transitioned INACTIVE → PENDING", institutionId);
+    }
+
+    /**
+     * PENDING → ACTIVE. Called when the first validator activates their account.
+     * Also accepts INACTIVE as a precondition to handle edge cases.
      */
     public void transitionToActive(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)
                 .orElseThrow(() -> new InstitutionNotFoundException(institutionId));
 
-        if (institution.getStatus() != InstitutionStatus.onboarding) {
+        if (institution.getStatus() != InstitutionStatus.pending
+                && institution.getStatus() != InstitutionStatus.inactive) {
             throw new IllegalStateException(
                     "Cannot transition institution " + institutionId + " to ACTIVE: "
                     + "current status is " + institution.getStatus()
-                    + " (expected: onboarding)");
+                    + " (expected: pending)");
         }
 
+        String previousStatus = institution.getStatus().name();
         institution.setStatus(InstitutionStatus.active);
         institutionRepository.save(institution);
 
         auditLogService.recordSystemAction(
                 "INSTITUTION_ACTIVATED",
                 institutionId,
-                Map.of("previousStatus", "onboarding")
+                Map.of("previousStatus", previousStatus)
         );
 
-        log.info("Institution {} transitioned ONBOARDING → ACTIVE", institutionId);
+        log.info("Institution {} transitioned {} → ACTIVE", institutionId, previousStatus.toUpperCase());
     }
 
     /**
-     * Transitions an institution from ACTIVE → INACTIVE_NO_VALIDATOR.
-     *
-     * Called by M2's UserService (event-driven) when the last active Validator
-     * of an institution becomes inactive or is removed.
-     *
-     * Per SRS: all pending submissions are escalated to Administrator (that
-     * escalation logic is in M5's SubmissionService).
-     *
-     * @param institutionId the institution to mark inactive
+     * ACTIVE or PENDING → INACTIVE. Called when all validators are deactivated/removed,
+     * or when the last pending validator invitation is cancelled.
      */
-    public void transitionToInactiveNoValidator(UUID institutionId) {
+    public void transitionToInactive(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)
                 .orElseThrow(() -> new InstitutionNotFoundException(institutionId));
 
-        if (institution.getStatus() != InstitutionStatus.active) {
+        if (institution.getStatus() != InstitutionStatus.active
+                && institution.getStatus() != InstitutionStatus.pending) {
             throw new IllegalStateException(
-                    "Cannot transition institution " + institutionId + " to INACTIVE_NO_VALIDATOR: "
+                    "Cannot transition institution " + institutionId + " to INACTIVE: "
                     + "current status is " + institution.getStatus()
-                    + " (expected: active)");
+                    + " (expected: active or pending)");
         }
 
-        institution.setStatus(InstitutionStatus.inactive_no_validator);
+        String previousStatus = institution.getStatus().name();
+        institution.setStatus(InstitutionStatus.inactive);
         institutionRepository.save(institution);
 
         auditLogService.recordSystemAction(
-                "INSTITUTION_INACTIVE_NO_VALIDATOR",
+                "INSTITUTION_INACTIVE",
                 institutionId,
-                Map.of("previousStatus", "active")
+                Map.of("previousStatus", previousStatus)
         );
 
-        log.info("Institution {} transitioned ACTIVE → INACTIVE_NO_VALIDATOR", institutionId);
-    }
-
-    /**
-     * Transitions an institution from INACTIVE_NO_VALIDATOR → ACTIVE.
-     *
-     * Called when a new Validator activates for an institution that lost all
-     * its validators.
-     *
-     * @param institutionId the institution to reactivate
-     */
-    public void reactivate(UUID institutionId) {
-        Institution institution = institutionRepository.findById(institutionId)
-                .orElseThrow(() -> new InstitutionNotFoundException(institutionId));
-
-        if (institution.getStatus() != InstitutionStatus.inactive_no_validator) {
-            throw new IllegalStateException(
-                    "Cannot reactivate institution " + institutionId + ": "
-                    + "current status is " + institution.getStatus()
-                    + " (expected: inactive_no_validator)");
-        }
-
-        institution.setStatus(InstitutionStatus.active);
-        institutionRepository.save(institution);
-
-        auditLogService.recordSystemAction(
-                "INSTITUTION_REACTIVATED",
-                institutionId,
-                Map.of("previousStatus", "inactive_no_validator")
-        );
-
-        log.info("Institution {} reactivated INACTIVE_NO_VALIDATOR → ACTIVE", institutionId);
+        log.info("Institution {} transitioned {} → INACTIVE", institutionId, previousStatus.toUpperCase());
     }
 }

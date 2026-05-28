@@ -30,31 +30,31 @@ class InstitutionDtoTest {
     }
 
     @Test
-    @DisplayName("from() maps ONBOARDING status correctly")
-    void from_mapsOnboardingStatus() {
-        Institution institution = new Institution();
-        institution.setId(UUID.randomUUID());
-        institution.setName("Test");
-        institution.setCode("TEST");
-        institution.setStatus(InstitutionStatus.onboarding);
-
-        InstitutionDto dto = InstitutionDto.from(institution);
-
-        assertThat(dto.getStatus()).isEqualTo(InstitutionStatus.onboarding);
-    }
-
-    @Test
-    @DisplayName("from() maps INACTIVE_NO_VALIDATOR status correctly")
+    @DisplayName("from() maps INACTIVE status correctly")
     void from_mapsInactiveStatus() {
         Institution institution = new Institution();
         institution.setId(UUID.randomUUID());
         institution.setName("Test");
         institution.setCode("TEST");
-        institution.setStatus(InstitutionStatus.inactive_no_validator);
+        institution.setStatus(InstitutionStatus.inactive);
 
         InstitutionDto dto = InstitutionDto.from(institution);
 
-        assertThat(dto.getStatus()).isEqualTo(InstitutionStatus.inactive_no_validator);
+        assertThat(dto.getStatus()).isEqualTo(InstitutionStatus.inactive);
+    }
+
+    @Test
+    @DisplayName("from() maps PENDING status correctly")
+    void from_mapsPendingStatus() {
+        Institution institution = new Institution();
+        institution.setId(UUID.randomUUID());
+        institution.setName("Test");
+        institution.setCode("TEST");
+        institution.setStatus(InstitutionStatus.pending);
+
+        InstitutionDto dto = InstitutionDto.from(institution);
+
+        assertThat(dto.getStatus()).isEqualTo(InstitutionStatus.pending);
     }
 
     @Test

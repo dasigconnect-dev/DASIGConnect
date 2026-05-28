@@ -10,4 +10,6 @@ import com.dasigconnect.backend.model.entity.ValidationLog;
 public interface ValidationLogRepository extends JpaRepository<ValidationLog, UUID> {
 
     List<ValidationLog> findBySubmissionIdOrderByCreatedAtDesc(UUID submissionId);
+
+    boolean existsByValidatorId(UUID validatorId);
 }

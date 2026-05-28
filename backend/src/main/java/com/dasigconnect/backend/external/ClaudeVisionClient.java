@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.external;
 
 import com.dasigconnect.backend.model.dto.ai.CaptionVariantDto;
+import com.dasigconnect.backend.model.dto.ai.MediaClassificationDto;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -148,7 +149,14 @@ public class ClaudeVisionClient {
         }
     }
 
+    public record PreparedImage(byte[] bytes, String mediaType) {}
+
     private record ImageData(byte[] bytes, String mediaType) {}
+
+    public PreparedImage prepareImageForEmbedding(String url) {
+        ImageData data = fetchAndPrepareImage(url);
+        return new PreparedImage(data.bytes(), data.mediaType());
+    }
 
     private ImageData fetchAndPrepareImage(String url) {
         byte[] raw = fetchImageBytes(url);
@@ -327,6 +335,223 @@ public class ClaudeVisionClient {
             log.warn("Failed to parse Claude response: {}", e.getMessage());
             throw new ClaudeApiException("Could not parse caption variants from Claude response.");
         }
+    }
+
+    // ─── UC-3.3 Media Classification ────────────────────────────────────────────
+
+    private static final List<String> ALLOWED_CATEGORIES = List.of(
+            "Food", "People", "Event", "Technology", "Research", "Education",
+            "Sports", "Culture", "Nature", "Document", "Product", "Architecture",
+            "Artwork", "Other"
+    );
+
+    private static final List<String> ALLOWED_ASSET_TYPES = List.of(
+            "Product Photo", "Food Photo", "Event Photo", "Lab Photo",
+            "Project Presentation", "Poster", "Document", "Screenshot",
+            "Portrait", "Group Photo", "Landscape", "Building Photo",
+            "Artwork Photo", "Infographic", "Other"
+    );
+
+    /**
+     * Classifies images into a DASIG event category with confidence and suggested tags.
+     * Uses a structured JSON prompt distinct from caption generation.
+     *
+     * @param imageUrls Supabase Storage URLs of the media assets to classify (max 4)
+     * @return MediaClassificationDto with category, confidence, description, and suggestedTags
+     * @throws ClaudeApiException on timeout or non-2xx response
+     */
+    public MediaClassificationDto classifyMedia(List<String> imageUrls) {
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new ClaudeApiException("Anthropic API key is not configured.");
+        }
+        if (imageUrls == null || imageUrls.isEmpty()) {
+            throw new ClaudeApiException("At least one image URL is required for classification.");
+        }
+
+        String payload = buildClassificationPayload(imageUrls);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL))
+                .header("x-api-key", apiKey)
+                .header("anthropic-version", ANTHROPIC_VERSION)
+                .header("content-type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(payload))
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> response;
+        try {
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (java.net.http.HttpTimeoutException e) {
+            throw new ClaudeApiException("Claude classification timed out.");
+        } catch (Exception e) {
+            throw new ClaudeApiException("Claude classification request failed: " + e.getMessage());
+        }
+
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            log.warn("Claude classification returned status {}: {}", response.statusCode(), response.body());
+            throw new ClaudeApiException("Claude API error (HTTP " + response.statusCode() + ").");
+        }
+
+        return parseClassification(response.body());
+    }
+
+    public String modelName() {
+        return model;
+    }
+
+    private String buildClassificationPayload(List<String> imageUrls) {
+        try {
+            var contentArray = objectMapper.createArrayNode();
+
+            int imgCount = Math.min(imageUrls.size(), 4);
+            for (int i = 0; i < imgCount; i++) {
+                ImageData img = fetchAndPrepareImage(imageUrls.get(i));
+                String base64Data = Base64.getEncoder().encodeToString(img.bytes());
+
+                var imgBlock = objectMapper.createObjectNode();
+                imgBlock.put("type", "image");
+                var source = objectMapper.createObjectNode();
+                source.put("type", "base64");
+                source.put("media_type", img.mediaType());
+                source.put("data", base64Data);
+                imgBlock.set("source", source);
+                contentArray.add(imgBlock);
+            }
+
+            var textBlock = objectMapper.createObjectNode();
+            textBlock.put("type", "text");
+            textBlock.put("text", buildClassificationPrompt());
+            contentArray.add(textBlock);
+
+            var message = objectMapper.createObjectNode();
+            message.put("role", "user");
+            message.set("content", contentArray);
+
+            var messagesArray = objectMapper.createArrayNode();
+            messagesArray.add(message);
+
+            var root = objectMapper.createObjectNode();
+            root.put("model", model);
+            root.put("max_tokens", 768);
+            root.set("messages", messagesArray);
+
+            return objectMapper.writeValueAsString(root);
+        } catch (ClaudeApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ClaudeApiException("Failed to build classification payload: " + e.getMessage());
+        }
+    }
+
+    private String buildClassificationPrompt() {
+        return """
+            Analyze this media asset for a university media library.
+
+            Return ONLY valid JSON. No explanation. No markdown.
+
+            Your job is to identify what is ACTUALLY VISIBLE in this image.
+            Do NOT force it into academic, research, innovation, technology, student,
+            or event categories unless there is clear visual evidence.
+
+            Allowed primary_category values:
+            Food | People | Event | Technology | Research | Education | Sports | Culture | \
+            Nature | Document | Product | Architecture | Artwork | Other
+
+            Allowed asset_type values:
+            Product Photo | Food Photo | Event Photo | Lab Photo | Project Presentation | \
+            Poster | Document | Screenshot | Portrait | Group Photo | Landscape | \
+            Building Photo | Artwork Photo | Infographic | Other
+
+            Return this exact structure:
+            {
+              "primary_category": "",
+              "asset_type": "",
+              "ai_caption": "",
+              "visible_objects": [],
+              "specific_subjects": [],
+              "visual_style": [],
+              "dominant_colors": [],
+              "possible_use_cases": [],
+              "ai_tags": [],
+              "excluded_categories": [],
+              "confidence": 0.0
+            }
+
+            Rules:
+            - Classify based only on visual evidence.
+            - ai_caption must be factual and neutral, not promotional.
+            - ai_tags must contain 8 to 15 searchable visual tags.
+            - Tags must describe visible subjects, objects, setting, style, or use case.
+            - Do not identify private individuals by name.
+            """;
+    }
+
+    private MediaClassificationDto parseClassification(String responseBody) {
+        try {
+            JsonNode root = objectMapper.readTree(responseBody);
+            String text = root.path("content").get(0).path("text").asText().strip();
+            if (text.startsWith("```")) {
+                text = text.replaceAll("```[a-z]*\\n?", "").strip();
+            }
+
+            JsonNode node = objectMapper.readTree(text);
+
+            String category = firstText(node, "primary_category", "category").strip();
+            if (!ALLOWED_CATEGORIES.contains(category)) {
+                category = "Other";
+            }
+
+            String assetType = node.path("asset_type").asText("").strip();
+            if (!ALLOWED_ASSET_TYPES.contains(assetType)) {
+                assetType = "Other";
+            }
+
+            double confidence = Math.min(1.0, Math.max(0.0, node.path("confidence").asDouble(0.5)));
+            String description = firstText(node, "ai_caption", "description").strip();
+
+            List<String> visibleObjects = readStringArray(node, "visible_objects", 20, 60);
+            List<String> specificSubjects = readStringArray(node, "specific_subjects", 20, 80);
+            List<String> visualStyle = readStringArray(node, "visual_style", 15, 60);
+            List<String> dominantColors = readStringArray(node, "dominant_colors", 10, 40);
+            List<String> possibleUseCases = readStringArray(node, "possible_use_cases", 15, 80);
+            List<String> tags = readStringArray(node, "ai_tags", 15, 60);
+            if (tags.isEmpty()) {
+                tags = readStringArray(node, "suggestedTags", 15, 60);
+            }
+            List<String> excludedCategories = readStringArray(node, "excluded_categories", 15, 80);
+
+            return new MediaClassificationDto(category, assetType, confidence, description,
+                    visibleObjects, specificSubjects, visualStyle, dominantColors,
+                    possibleUseCases, tags, excludedCategories);
+        } catch (Exception e) {
+            log.warn("Failed to parse Claude classification response: {}", e.getMessage());
+            throw new ClaudeApiException("Could not parse classification from Claude response.");
+        }
+    }
+
+    private static String firstText(JsonNode node, String primaryField, String fallbackField) {
+        String primary = node.path(primaryField).asText("").strip();
+        if (!primary.isBlank()) return primary;
+        return node.path(fallbackField).asText("").strip();
+    }
+
+    private static List<String> readStringArray(JsonNode node, String fieldName, int maxItems, int maxLength) {
+        JsonNode array = node.path(fieldName);
+        if (!array.isArray()) return List.of();
+        List<String> values = new ArrayList<>();
+        for (JsonNode item : array) {
+            String value = item.asText("").strip().replaceAll("\\s+", " ");
+            if (value.isBlank()) continue;
+            if (value.length() > maxLength) {
+                value = value.substring(0, maxLength).strip();
+            }
+            if (!values.contains(value)) {
+                values.add(value);
+            }
+            if (values.size() >= maxItems) break;
+        }
+        return values;
     }
 
     public static class ClaudeApiException extends RuntimeException {

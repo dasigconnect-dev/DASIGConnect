@@ -1,0 +1,463 @@
+
+<style>
+  .mod-block { margin-bottom: 28px; }
+  .mod-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .mod-badge { font-size: 12px; font-weight: 500; padding: 4px 14px; border-radius: 99px; }
+  .m1 { background: #EEEDFE; color: #3C3489; }
+  .m2 { background: #E1F5EE; color: #085041; }
+  .m3 { background: #E6F1FB; color: #0C447C; }
+  .mod-title { font-size: 15px; font-weight: 500; color: var(--color-text-primary); }
+  .mod-sub { font-size: 12px; color: var(--color-text-secondary); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 12px 14px; }
+  .card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .role-pill { font-size: 10px; font-weight: 500; padding: 2px 9px; border-radius: 99px; white-space: nowrap; }
+  .fe1 { background: #EEEDFE; color: #3C3489; }
+  .fe2 { background: #E1F5EE; color: #085041; }
+  .be1 { background: #E6F1FB; color: #0C447C; }
+  .be2 { background: #FAEEDA; color: #633806; }
+  .be3 { background: #FAECE7; color: #712B13; }
+  .card-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+  .sec { font-size: 10px; font-weight: 500; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; margin: 6px 0 4px; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { font-size: 10px; padding: 1px 7px; border-radius: 99px; border: 0.5px solid var(--color-border-tertiary); color: var(--color-text-secondary); background: var(--color-background-secondary); }
+  .chip-shared { font-size: 10px; padding: 1px 7px; border-radius: 99px; color: #0C447C; background: #E6F1FB; border: 0.5px solid #85B7EB; }
+  .chip-first { font-size: 10px; padding: 1px 7px; border-radius: 99px; color: #633806; background: #FAEEDA; border: 0.5px solid #FAC775; }
+  .divider { border: none; border-top: 0.5px solid var(--color-border-tertiary); margin: 20px 0; }
+  .fe-label { font-size: 11px; font-weight: 500; color: #3C3489; margin: 0 0 6px; }
+  .be-label { font-size: 11px; font-weight: 500; color: #0C447C; margin: 8px 0 6px; }
+  .warn { background: #FAEEDA; border: 0.5px solid #FAC775; border-radius: var(--border-radius-md); padding: 8px 12px; margin-top: 10px; font-size: 11px; color: #633806; line-height: 1.6; }
+</style>
+
+<h2 class="sr-only">DASIGConnect per-module task division for 5 members</h2>
+<div style="padding:1rem 0;">
+
+  <!-- MODULE 1 -->
+  <div class="mod-block">
+    <div class="mod-header">
+      <span class="mod-badge m1">Module 1</span>
+      <div>
+        <div class="mod-title">Foundation, Auth, Institution Onboarding, Content Submission</div>
+        <div class="mod-sub">UC-1.1 · UC-1.2 · UC-1.3</div>
+      </div>
+    </div>
+
+    <div class="fe-label">Frontend (2 members)</div>
+    <div class="grid" style="margin-bottom:8px;">
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill fe1">FE-1</span>
+          <span class="card-name">Auth flows + Submission form core</span>
+        </div>
+        <div class="sec">UC-1.1 — all auth pages</div>
+        <div class="chip-row">
+          <span class="chip">LoginPage + LoginForm</span>
+          <span class="chip">InvitationAcceptPage</span>
+          <span class="chip">ForgotPasswordPage</span>
+          <span class="chip">ChangePasswordForm</span>
+          <span class="chip">SessionWarningBanner</span>
+          <span class="chip">SessionExpiredModal</span>
+          <span class="chip-shared">AuthContext (global — shared)</span>
+          <span class="chip-shared">ProtectedRoute + role routing</span>
+          <span class="chip-shared">Axios interceptors</span>
+        </div>
+        <div class="sec">UC-1.3 — submission form (content side)</div>
+        <div class="chip-row">
+          <span class="chip">SubmissionFormPage (shell + useReducer)</span>
+          <span class="chip">MediaUploadZone</span>
+          <span class="chip">Content fields (title, date, caption, desc)</span>
+          <span class="chip">Auto-save timer + "Draft saved" indicator</span>
+          <span class="chip">SubmissionQueue</span>
+          <span class="chip">SubmissionStatusBadge</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill fe2">FE-2</span>
+          <span class="card-name">Admin pages + Submission scheduling UI</span>
+        </div>
+        <div class="sec">UC-1.1 Part B + UC-1.2 — admin console</div>
+        <div class="chip-row">
+          <span class="chip">AccountManagementPage</span>
+          <span class="chip">CreateAccountModal</span>
+          <span class="chip">AccountStateBadge</span>
+          <span class="chip">InstitutionManagementPage</span>
+          <span class="chip">AddInstitutionModal</span>
+          <span class="chip">InstitutionDetailPanel</span>
+          <span class="chip">FederationOverviewPanel</span>
+          <span class="chip">InstitutionStatusBadge</span>
+        </div>
+        <div class="sec">UC-1.3 — scheduling + guard rail UI</div>
+        <div class="chip-row">
+          <span class="chip">SlotPicker (FullCalendar read-only)</span>
+          <span class="chip">GuardRailStatusPanel</span>
+          <span class="chip">AlternativeSlotSuggestions</span>
+          <span class="chip">OverrideRequestModal</span>
+          <span class="chip">AssetPickerModal</span>
+          <span class="chip">AITagPanel (stub — wired in M3)</span>
+          <span class="chip">CaptionSuggestButton (stub — wired in M3)</span>
+          <span class="chip">MediaRecommendationPanel (stub — wired in M3)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="be-label">Backend (3 members)</div>
+    <div class="grid-3">
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill be1">BE-1</span>
+          <span class="card-name">Auth, Security, Shared Services + DB</span>
+        </div>
+        <div class="sec">UC-1.1 — auth backend</div>
+        <div class="chip-row">
+          <span class="chip">AuthController (login/logout/refresh)</span>
+          <span class="chip">InvitationController + InvitationService</span>
+          <span class="chip">PasswordController</span>
+          <span class="chip">AccountLockoutService</span>
+          <span class="chip">UserManagementController + Service</span>
+          <span class="chip-shared">JWTService (shared)</span>
+          <span class="chip-shared">EmailService (shared)</span>
+          <span class="chip-shared">AuditLogService (shared)</span>
+          <span class="chip-shared">Spring Security config</span>
+          <span class="chip-shared">TenantScopeInterceptor</span>
+          <span class="chip">Bucket4j rate limiters</span>
+        </div>
+        <div class="sec">Database — owns ALL M1 migrations</div>
+        <div class="chip-row">
+          <span class="chip-first">ALL Flyway migrations (commit first)</span>
+          <span class="chip">users, invitation_tokens, account_lockouts</span>
+          <span class="chip">audit_log, password_reset_tokens</span>
+          <span class="chip">RLS policies on all scoped tables</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill be2">BE-2</span>
+          <span class="card-name">Institution Onboarding</span>
+        </div>
+        <div class="sec">UC-1.2 — full institution backend</div>
+        <div class="chip-row">
+          <span class="chip">InstitutionController</span>
+          <span class="chip">InstitutionService</span>
+          <span class="chip">WorkspaceProvisionerService (RLS setup)</span>
+          <span class="chip">InstitutionStatusService (state machine)</span>
+          <span class="chip">InstitutionRepository</span>
+          <span class="chip">OnboardingReminderJob / GR-T8</span>
+        </div>
+        <div class="sec">Database</div>
+        <div class="chip-row">
+          <span class="chip">institutions table</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill be3">BE-3</span>
+          <span class="card-name">Submission + Guard Rails</span>
+        </div>
+        <div class="sec">UC-1.3 — full submission backend</div>
+        <div class="chip-row">
+          <span class="chip">SubmissionController</span>
+          <span class="chip">SubmissionService (DRAFT→PENDING lifecycle)</span>
+          <span class="chip">GuardRailService (GR-H1/H2/H3, GR-S1/S2)</span>
+          <span class="chip">SlotReservationService</span>
+          <span class="chip">SlotEvaluationController</span>
+          <span class="chip">OverrideRequestController (creates request only)</span>
+          <span class="chip">SlotReservationCleanupJob / GR-T2</span>
+          <span class="chip">StorageService (Supabase upload)</span>
+          <span class="chip">File upload handler (MIME + magic bytes)</span>
+          <span class="chip">SubmissionRepository + SlotReservationRepository</span>
+        </div>
+        <div class="sec">Database</div>
+        <div class="chip-row">
+          <span class="chip">submissions, slot_reservations</span>
+          <span class="chip">media_assets, submission_media_assets</span>
+        </div>
+      </div>
+    </div>
+    <div class="warn">⚠ BE-1 must merge JWT + Spring Security config + DB migrations before BE-2 and BE-3 can run their services. FE-1 must merge AuthContext before FE-2 can build any admin page that reads role/institution_id.</div>
+  </div>
+
+  <hr class="divider" />
+
+  <!-- MODULE 2 -->
+  <div class="mod-block">
+    <div class="mod-header">
+      <span class="mod-badge m2">Module 2</span>
+      <div>
+        <div class="mod-title">Validation, Media Library, Notifications, Analytics</div>
+        <div class="mod-sub">UC-2.1 · UC-2.2 · UC-2.3 · UC-2.4</div>
+      </div>
+    </div>
+
+    <div class="fe-label">Frontend (2 members)</div>
+    <div class="grid" style="margin-bottom:8px;">
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill fe1">FE-1</span>
+          <span class="card-name">Validation workflow + Notifications</span>
+        </div>
+        <div class="sec">UC-2.1 — validation pages</div>
+        <div class="chip-row">
+          <span class="chip">ValidationQueuePage</span>
+          <span class="chip">SubmissionReviewPanel</span>
+          <span class="chip">MediaPreviewCarousel</span>
+          <span class="chip">RevisionHistoryBlock</span>
+          <span class="chip">RequestRevisionModal</span>
+          <span class="chip">RejectSubmissionModal</span>
+          <span class="chip">ValidationDeadlineBanner</span>
+        </div>
+        <div class="sec">UC-2.3 — notifications</div>
+        <div class="chip-row">
+          <span class="chip">NotificationBell + badge</span>
+          <span class="chip">NotificationPanel (50 items)</span>
+          <span class="chip">NotificationItem (deep-link)</span>
+          <span class="chip-shared">SSENotificationListener (global)</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill fe2">FE-2</span>
+          <span class="card-name">Media library + Analytics dashboard</span>
+        </div>
+        <div class="sec">UC-2.2 — media library</div>
+        <div class="chip-row">
+          <span class="chip">MediaLibraryPage</span>
+          <span class="chip">MediaGrid + AssetCard</span>
+          <span class="chip">AssetDetailPanel</span>
+          <span class="chip">MediaUploadModal</span>
+          <span class="chip">DeleteConfirmationDialog (3 tiers)</span>
+          <span class="chip">MediaSearchFilterBar</span>
+          <span class="chip">NetworkViewToggle (Admin)</span>
+        </div>
+        <div class="sec">UC-2.4 — analytics dashboard</div>
+        <div class="chip-row">
+          <span class="chip">AnalyticsDashboardPage</span>
+          <span class="chip">KpiTileGroup + sparklines</span>
+          <span class="chip">PostsByInstitutionChart</span>
+          <span class="chip">AIPerformancePanel</span>
+          <span class="chip">OperationalHealthPanel</span>
+          <span class="chip">FullReportModal + CSV export</span>
+          <span class="chip">ContributorBreakdownTable</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="be-label">Backend (3 members)</div>
+    <div class="grid-3">
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill be1">BE-1</span>
+          <span class="card-name">Validation workflow + Review locks</span>
+        </div>
+        <div class="sec">UC-2.1 — full validation backend</div>
+        <div class="chip-row">
+          <span class="chip">ValidationController</span>
+          <span class="chip">ValidationService</span>
+          <span class="chip">ReviewLockService</span>
+          <span class="chip">ReviewLockCleanupJob (every 1 min)</span>
+          <span class="chip">ValidationTimeoutDetectorJob / GR-T1 (every 1 min)</span>
+          <span class="chip">ValidationLogRepository</span>
+          <span class="chip">ReviewLockRepository</span>
+        </div>
+        <div class="sec">Database — owns M2 migrations</div>
+        <div class="chip-row">
+          <span class="chip-first">validation_logs, review_locks (commit first)</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill be2">BE-2</span>
+          <span class="card-name">Media repository + Notifications</span>
+        </div>
+        <div class="sec">UC-2.2 — media backend</div>
+        <div class="chip-row">
+          <span class="chip">MediaAssetController</span>
+          <span class="chip">MediaAssetService</span>
+          <span class="chip">AssetDeletionService (3-tier logic)</span>
+          <span class="chip">MediaAssetRepository</span>
+          <span class="chip">pg_trgm GIN index setup</span>
+        </div>
+        <div class="sec">UC-2.3 — notification infrastructure</div>
+        <div class="chip-row">
+          <span class="chip-shared">NotificationService (shared — publish interface Day 1)</span>
+          <span class="chip">NotificationController (SSE stream)</span>
+          <span class="chip">NotificationEventListener (all 17 triggers)</span>
+          <span class="chip">SSEEmitterRegistry</span>
+          <span class="chip">Batching + GR-T6 consolidation</span>
+        </div>
+        <div class="sec">Database</div>
+        <div class="chip-row">
+          <span class="chip">notifications, email_delivery_log</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill be3">BE-3</span>
+          <span class="card-name">Analytics dashboard</span>
+        </div>
+        <div class="sec">UC-2.4 — full analytics backend</div>
+        <div class="chip-row">
+          <span class="chip">AnalyticsController</span>
+          <span class="chip">MetricsAggregatorService</span>
+          <span class="chip">AnalyticsRepository (all KPI queries)</span>
+          <span class="chip">AVG posting delay query</span>
+          <span class="chip">Content completeness query</span>
+          <span class="chip">Posts by institution query</span>
+          <span class="chip">AI performance queries</span>
+          <span class="chip">Operational health queries</span>
+          <span class="chip">@Cacheable 60s TTL</span>
+          <span class="chip">CSV export endpoint</span>
+        </div>
+        <div class="sec">Database</div>
+        <div class="chip-row">
+          <span class="chip">ai_interaction_log</span>
+        </div>
+      </div>
+    </div>
+    <div class="warn">⚠ BE-2 must publish the <code>NotificationService.dispatch(triggerCode, recipientId, resourceId)</code> interface on Day 1 of Module 2 — BE-1's validation actions (approve/revise/reject) call it, so BE-1 stubs it until BE-2 merges. BE-3 has no external dependencies and can work fully independently from Day 1.</div>
+  </div>
+
+  <hr class="divider" />
+
+  <!-- MODULE 3 -->
+  <div class="mod-block">
+    <div class="mod-header">
+      <span class="mod-badge m3">Module 3</span>
+      <div>
+        <div class="mod-title">Calendar, Publishing, AI Features, Resolution Center</div>
+        <div class="mod-sub">UC-3.1 · UC-3.2 · UC-3.3 · UC-3.4 · UC-3.5</div>
+      </div>
+    </div>
+
+    <div class="fe-label">Frontend (2 members)</div>
+    <div class="grid" style="margin-bottom:8px;">
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill fe1">FE-1</span>
+          <span class="card-name">Master Calendar + AI panel wiring</span>
+        </div>
+        <div class="sec">UC-3.1 — calendar page</div>
+        <div class="chip-row">
+          <span class="chip">MasterCalendarPage (FullCalendar.js full-page)</span>
+          <span class="chip">CalendarEventCard (color-coded by state)</span>
+          <span class="chip">EventDetailPopover</span>
+          <span class="chip">RescheduleModal (guard rail re-validation)</span>
+          <span class="chip">CalendarSSEListener (live card color updates)</span>
+          <span class="chip">PublishingStatusToast</span>
+        </div>
+        <div class="sec">UC-3.2 + UC-3.3 — wire AI panels (stubs built in M1)</div>
+        <div class="chip-row">
+          <span class="chip">CaptionSuggestionPanel (full 3-variant impl.)</span>
+          <span class="chip">CaptionRateLimitBanner</span>
+          <span class="chip">AITagPanel (wire to real classification API)</span>
+          <span class="chip">RecommendedMediaPanel (wire to real embed API)</span>
+          <span class="chip">RecommendedAssetCard + "Add" button</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill fe2">FE-2</span>
+          <span class="card-name">Resolution Center (all 5 tabs)</span>
+        </div>
+        <div class="sec">UC-3.4 — manual publishing</div>
+        <div class="chip-row">
+          <span class="chip">ResolutionCenterPage (tab shell + routing)</span>
+          <span class="chip">PublishFailedTab</span>
+          <span class="chip">ManualPublishWorkflowPanel (3-step)</span>
+          <span class="chip">WorkflowAbandonmentTimer</span>
+          <span class="chip">MarkAsPublishedForm</span>
+          <span class="chip">AbandonmentConfirmationModal</span>
+        </div>
+        <div class="sec">UC-3.5 — exception handling tabs</div>
+        <div class="chip-row">
+          <span class="chip">ValidationTimeoutTab</span>
+          <span class="chip">OverrideRequestsTab</span>
+          <span class="chip">SlotSuggestionModal</span>
+          <span class="chip">DirectPostTab</span>
+          <span class="chip">TokenManagementPanel</span>
+          <span class="chip">RejectOnBehalfModal</span>
+          <span class="chip">AuditLogTab</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="be-label">Backend (3 members)</div>
+    <div class="grid-3">
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill be1">BE-1</span>
+          <span class="card-name">Publishing pipeline + Facebook API</span>
+        </div>
+        <div class="sec">UC-3.1 — full publishing backend</div>
+        <div class="chip-row">
+          <span class="chip">CalendarController</span>
+          <span class="chip">PublishingSchedulerJob (every 1 min)</span>
+          <span class="chip">StaleSubmissionDetectorJob / GR-T9 (every 5 min)</span>
+          <span class="chip">FacebookPublisherService (2-step photo + video)</span>
+          <span class="chip">Orphaned photo cleanup on Step 2 failure</span>
+          <span class="chip">PublishRetryService / GR-T5 (5s/25s/125s)</span>
+          <span class="chip">TokenEncryptionService (AES-256-GCM)</span>
+          <span class="chip">TokenHealthCheckJob / GR-T4 (daily)</span>
+        </div>
+        <div class="sec">Database</div>
+        <div class="chip-row">
+          <span class="chip">publication_attempts, facebook_page_tokens</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill be2">BE-2</span>
+          <span class="card-name">All AI services</span>
+        </div>
+        <div class="sec">UC-3.2 — caption generation</div>
+        <div class="chip-row">
+          <span class="chip">CaptionController + CaptionService</span>
+          <span class="chip-shared">ClaudeVisionClient (shared with classification)</span>
+          <span class="chip">Per-user rate limiter / BR-AI-07</span>
+        </div>
+        <div class="sec">UC-3.3 — classification + recommendations</div>
+        <div class="chip-row">
+          <span class="chip">ClassificationService (Stage 1)</span>
+          <span class="chip">EmbeddingService (Stage 2)</span>
+          <span class="chip">RecommendationController + RecommendationService</span>
+          <span class="chip">VoyageAIClient</span>
+          <span class="chip">EmbeddingReconciliationJob / GR-T7 (hourly)</span>
+          <span class="chip">IVFFlat index on media_assets.embedding</span>
+        </div>
+        <div class="sec">Database</div>
+        <div class="chip-row">
+          <span class="chip">ai columns on media_assets (ALTER)</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-top">
+          <span class="role-pill be3">BE-3</span>
+          <span class="card-name">Manual publishing + Exception handling</span>
+        </div>
+        <div class="sec">UC-3.4 — manual publish fallback</div>
+        <div class="chip-row">
+          <span class="chip">ManualPublishController</span>
+          <span class="chip">ManualPublishService</span>
+          <span class="chip">AbandonmentDetectorJob (every 15 min)</span>
+        </div>
+        <div class="sec">UC-3.5 — exception handling</div>
+        <div class="chip-row">
+          <span class="chip">ExceptionHandlingController</span>
+          <span class="chip">ValidationTimeoutService</span>
+          <span class="chip">OverrideRequestService</span>
+          <span class="chip">DirectPostService</span>
+          <span class="chip">TokenReauthService (OAuth callback)</span>
+          <span class="chip">ExpiredOverrideCleanupJob</span>
+        </div>
+        <div class="sec">Database</div>
+        <div class="chip-row">
+          <span class="chip">override_requests</span>
+          <span class="chip">manual publish columns on submissions</span>
+        </div>
+      </div>
+    </div>
+    <div class="warn">⚠ FE-1 wires the AI panels (caption + tags + recommendations) to real APIs in M3 — these were stubs in M1. FE-2 owns the ResolutionCenterPage tab shell; agree on the tab registration pattern with BE-3 on Day 1 of M3 so both can work without file conflicts. BE-1's <code>FacebookPublisherService</code> is the only code path that touches the FB API — BE-3's DirectPostService calls it, not the FB API directly.</div>
+  </div>
+
+</div>

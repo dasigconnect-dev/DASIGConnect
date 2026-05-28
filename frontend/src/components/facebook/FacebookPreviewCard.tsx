@@ -56,13 +56,38 @@ export default function FacebookPreviewCard({
         pageAvatarUrl={pageAvatarUrl}
         publishDate={publishDate}
       />
+      {size === "large" && <FacebookPreviewCaption caption={caption} />}
       <FacebookPreviewMedia
         mediaItems={mediaItems}
         activeIndex={activeMediaIndex}
         onActiveIndexChange={onMediaIndexChange}
         size={size}
       />
-      <FacebookPreviewCaption caption={caption} />
+      {size !== "large" && <FacebookPreviewCaption caption={caption} />}
+      {size === "large" && (
+        <>
+        <div className="fb-preview-insights" aria-hidden="true">
+          <button type="button" tabIndex={-1}>See insights</button>
+          <button type="button" tabIndex={-1}>Create ad</button>
+        </div>
+        <div className="fb-preview-engagement" aria-hidden="true">
+          <div className="fb-preview-engagement-actions">
+            <span><i className="ti ti-thumb-up" /> Like</span>
+            <span><i className="ti ti-message-circle" /> Comment</span>
+            <span><i className="ti ti-share-3" /> Share</span>
+          </div>
+          <div className="fb-preview-comment-row">
+            <span className="fb-preview-comment-avatar">
+              <i className="ti ti-brand-facebook" />
+            </span>
+            <div className="fb-preview-comment-box">
+              <span>Comment as {pageName}</span>
+              <i className="ti ti-send" />
+            </div>
+          </div>
+        </div>
+        </>
+      )}
       {onOpen && (
         <div className="fb-preview-affordance">
           <span>View full preview</span>

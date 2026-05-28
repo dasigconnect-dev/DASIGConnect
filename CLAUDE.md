@@ -30,7 +30,7 @@ See `README.md`, `TASKS.md`, and `docs/` for project context, SRS, SDD, and task
 ./mvnw test -Dtest=SubmissionServiceTest
 ```
 
-Windows note: `.\mvnw.cmd` currently fails in this PowerShell environment. Direct Maven from `.m2/wrapper/dists` was used successfully for the latest verification.
+Windows note: `.\mvnw.cmd test` was used successfully in the latest verification.
 
 ### Frontend (`/frontend`)
 
@@ -94,7 +94,7 @@ React SPA (Vercel) -> Spring Boot REST API (Render) -> Supabase PostgreSQL + pgv
 
 ---
 
-## Current Local Status - 2026-05-27 (Session 5)
+## Current Local Status - 2026-05-28 (Session 9)
 
 Current branch: `module3`
 
@@ -126,6 +126,17 @@ Current branch: `module3`
 - App auth state hydrates from `GET /api/v1/me` after login, invite accept, session relogin, and saved-token restore.
 - **Save draft / submit-for-review browser flow verified end-to-end** — 500 bug fixed (see Flyway and notification fixes below).
 - **Live Facebook publish verified** — photo post published to the DASIG Facebook Page from a scheduled submission.
+
+### Session 9 - AI Media Library, Submission UX, Publish Idempotency
+
+- **AI Media Library architecture doc updated** at `docs/md/ai-media-library-upgrade.md` with the handoff fixes needed before implementation: strict Claude JSON with `ai_tags`, `ai_caption`/`ai_tags` storage clarification, `embedding_type` naming, Voyage multimodal-vs-text embedding split, ready/non-deleted search filters, unique `(asset_id, embedding_type)`, cleanup behavior, and migration safety notes.
+- **AI Media Library backend implementation started from that MD basis:** `V25__media_asset_dual_embeddings.sql`, `MediaAssetEmbedding`, `MediaAssetEmbeddingType`, `MediaAssetStatus`, and `MediaAssetEmbeddingRepository` added. Claude/Voyage clients, AI classification, recommendation search, retention cleanup, media asset service, reconciliation job, and tests were updated for dual image/semantic embeddings and ready/deleted asset filtering.
+- **Submit Content UX updated:** wizard order is now Post Details -> Media Assets -> Preferred Schedule; new/loaded drafts open on Post Details; saved drafts no longer trigger the save-before-leaving prompt; unsaved draft changes still do.
+- **Local asset upload improved:** Submit Content file input resets after selection so the same batch can be reselected; Media Repository upload modal supports selecting/dropping multiple assets and uploads them sequentially with aggregate progress.
+- **Duplicate Facebook publish fixed:** duplicate successful `publication_attempts` confirmed for two submissions. Root cause was overlapping scheduler/app-instance execution before status changed to `published`. The fix adds atomic claim statuses before Facebook calls: `scheduled -> publishing` and `direct_post_scheduled -> direct_post_publishing`. Immediate direct posts use the same claim path.
+- **Flyway V26** adds `publishing` and `direct_post_publishing` to `chk_submissions_status` and refreshes publish-related partial indexes.
+- **Regression tests added:** `PublishingQueryServiceTest` and `PublishingSchedulerJobTest`.
+- **Verification:** backend `.\mvnw.cmd test` passed with 273 tests, 0 failures; frontend `npm.cmd run build` passed.
 
 ### Flyway Migration History Fix (2026-05-26)
 
@@ -227,17 +238,97 @@ Fix applied:
 - **`useResolutionFailures.ts`** extended: `activeDetail`/`detailLoading` state, `openWorkflowPanel()`/`closeWorkflowPanel()`; `handleStartManual` auto-opens workflow panel after API start.
 - **Frontend build and targeted ESLint clean** after all changes.
 
+### UC-3.3 Media Suggestions + Submission Media Picker (2026-05-27)
+
+- **Backend media recommendation started:** `AIRecommendationController`, `AIRecommendationService`, `VoyageAIClient`, media suggestion DTOs, and `EmbeddingReconciliationJob` are implemented locally.
+- **Recommendation endpoints:** `POST /api/v1/ai/submissions/{id}/suggest-media` embeds title/caption/tags with Voyage AI and returns ranked institution-library media using pgvector; `GET /api/v1/ai/submissions/{id}/similar-media` finds related assets from an attached asset embedding; `POST /api/v1/ai/submissions/{id}/log-interaction` records best-effort AI interaction events.
+- **Classification/embedding support pipeline:** `AIClassificationService` runs asynchronously after image upload, calls Claude Vision classification, persists `ai_category`, `ai_confidence`, and `ai_description`, then stores a Voyage embedding. If Claude classification fails, it still stores a metadata-only Voyage embedding from asset code, filename, media type, category/description when present, and tags. Video assets are skipped. This remains backend support for media recommendation/search metadata, not a contributor-facing category suggestion feature.
+- **Media library filtering:** `GET /api/v1/media-assets` supports query, AI category, media type, pagination, sort, and admin network scope filters.
+- **Submit Content media UX:** `SubmissionScreen` now uses `MediaAssetsPicker` with Upload Files, My Library, and AI Suggestions tabs. The picker includes a selected-media strip, drag/drop reorder, move/remove controls, source badges, reusable asset grid/cards, library search/filter controls, loading/empty/error states, and sticky multi-select add bars.
+- **AI Suggestions tab:** Contributors can generate recommendations from a saved draft's title/caption/tags, view ranked media with similarity scores, multi-select results, and add selected assets into the submission media order.
+- **Verification:** `npm.cmd run build` passed after the media picker changes (219 modules, 0 TypeScript errors).
+- **Scope decision:** contributor-facing category/tag AI suggestion is cut from the current scope because media suggestion has higher impact. Do not continue the `useAiClassification` / `AiClassificationButton` / `AiClassificationSuggestion` path or add `/api/v1/ai/submissions/{id}/suggestions` unless scope changes.
+- **Recommendation quality pass:** asset embedding text now includes asset code, normalized filename, media type, AI category, AI image description, AI tags, and manual tags where available. Suggestion requests now include category as well as title/caption/tags.
+- **Hybrid ranking:** `suggest-media` retrieves a wider pgvector candidate set and re-ranks with category, tag, and recency boosts before returning top suggestions. This keeps suggestion-time fast because image scanning still happens only once at upload/reconciliation time.
+- **Fallback pass:** `EmbeddingReconciliationJob` now embeds old/unscanned assets where `embedding IS NULL`, and media suggestions fall back to metadata-ranked active assets when Voyage query embedding or pgvector candidates are unavailable.
+- **Embedding dimension fix:** `VoyageAIClient` now uses `voyage-4-lite` with explicit `output_dimension=1024`, validates returned vector length, and stores vectors into the pgvector `VECTOR(1024)` column. V21 (`V21__media_embedding_1024_dimensions.sql`) restores `media_assets.embedding` to `VECTOR(1024)` after the earlier V20 512-dimension correction.
+- **Richer asset-profile recommendation:** Claude classification now asks for one broad controlled category, a detailed factual description, and 8-15 controlled tags. `AIClassificationService` persists AI tags into `asset_tags`, embeddings include upload month, and `AIRecommendationService` uses already-attached media as additional query context. Match reasons now explain combined signals: semantic similarity, category, shared tags, asset-detail terms, rich profile, and recency as a tie-breaker.
+- **Lightweight AI provenance:** V22 (`V22__media_ai_provenance.sql`) adds `ai_classified_at`, `ai_classification_model`, `embedding_generated_at`, `embedding_model`, and `asset_tags.source`. User-created tags are `manual`, Claude tags are `ai_generated`, and manual tag matches receive stronger recommendation weight than AI-detected tags.
+- **Pipeline summary:** AI media suggestion is implemented as asset enrichment plus semantic indexing. Upload stores base metadata; Claude Vision enriches the image with category, description, tags, and confidence; Voyage converts the enriched asset profile to a `voyage-4-lite` 1024-dimensional embedding; pgvector performs semantic similarity search when suggestions are requested; backend re-ranks and returns explainable match reasons without rescanning images on every suggestion request.
+- **UI polish:** AI media suggestion accents in `media-picker.css` use DASIGConnect blue tokens instead of violet.
+- **Verification:** full backend `.\mvnw.cmd test` passed with 220 tests. Frontend `npm.cmd run build` passed.
+
+### UC-2.2 Media Asset Retention Policy (2026-05-28)
+
+- **Flyway V23** adds `deleted_by_user_id UUID`, `purged_at TIMESTAMPTZ`, and a retention lookup index to `media_assets`.
+- **`MediaAssetService.delete()` and `bulkDelete()`** now record `deleted_by_user_id` (acting user UUID) at soft-delete time.
+- **`MediaAssetRetentionService`** purges soft-deleted assets after the configurable retention window expires. Purge clears: pgvector embedding, embedding model/timestamp, AI category/description/confidence, AI classification model/timestamp, DB asset tags, and the Supabase storage object (best-effort).
+- **`MediaAssetRetentionPurgeJob`** runs daily at 02:30 UTC by default, processes up to `MEDIA_ASSET_PURGE_BATCH_SIZE` (25) assets per run.
+- **Config keys:** `MEDIA_ASSET_DELETED_RETENTION_DAYS` (default 30), `MEDIA_ASSET_PURGE_BATCH_SIZE` (default 25), `MEDIA_ASSET_PURGE_CRON` (default `0 30 2 * * *`).
+- **`MediaAssetBulkDeleteRequestDto`** + **`MediaAssetBulkDeleteResponseDto`** added for the bulk delete endpoint.
+- **Tests:** `MediaAssetRetentionServiceTest` (new), `MediaAssetServiceTest` (new), `MediaAssetControllerTest` (updated).
+
+### UC-2.2 Media Repository UI Cleanup (2026-05-28)
+
+- **Removed redundant floating action bar** (`med-selbar` pill at bottom of page) — all selected-asset actions are now in the right-side detail panel.
+- **Removed header Delete button** — the `Delete N` danger button that appeared in the page header when assets were checked is gone.
+- **Sidebar actions restructured:** Row 1 = `[Delete] [Download] [Add to Draft]` (flex equal-width); Row 2 = `[+ New Submission (N)]` (full-width). Bulk delete is wired into the sidebar via `canBulkDelete` + `onRequestBulkDelete` props on `AssetDetailPanel`.
+- **Backend deletion authorization verified correct** — `loadAssetForDelete` enforces Admin = unrestricted, Validator = institution-scoped, Contributor = own uploads by UUID. No backend changes needed.
+- **CSS cleanup:** removed `.med-selbar` (~60 lines), `.med-grid.selecting padding-bottom`, `.med-delete-section`, `.med-delete-label`, `.med-delete-triggers`.
+
+### Asset Card Click-to-Select (2026-05-28)
+
+- **Clicking anywhere on a card now toggles selection** — previously required clicking the small checkbox square in the corner.
+- **Checkbox square kept as visual indicator** — converted from interactive `<button>` to `<span aria-hidden="true">`. Appears on hover and stays visible when checked.
+- **`onToggleCheck` prop removed** from `AssetCard` — the card's `onClick` directly calls `handleToggleCheck(asset)`.
+- **Verification:** frontend `npm.cmd run build` passed (219 modules, 0 TypeScript errors). Targeted ESLint clean on `MediaRepositoryScreen.tsx` and `AssetDetailPanel.tsx`.
+
+### Spring 7 Deprecation Warning Cleanup (2026-05-28)
+
+- **`GlobalExceptionHandler.java`** — `ResponseEntity.unprocessableEntity()` replaced with `ResponseEntity.status(422)`.
+- **`CaptionGenerationService.java`** — `HttpStatus.UNPROCESSABLE_ENTITY` replaced with `HttpStatusCode.valueOf(422)`; `HttpStatusCode` import added.
+- **`DirectPostService.java`** — all 7 `HttpStatus.UNPROCESSABLE_ENTITY` occurrences replaced with `HttpStatusCode.valueOf(422)`; `HttpStatusCode` import added.
+- **`MediaAssetService.java`** — unused `AIClassificationService` import removed.
+- **`MetricsAggregatorService.java`** — unused `PUBLISHING_SUCCESS_TARGET = 95.0` constant removed.
+- **`OverrideRequestService.java`** — unused `MAX_OVERRIDE_REQUESTS = 2` constant removed; IDE linter also auto-applied `UNPROCESSABLE_CONTENT` fix in `suggest()`.
+- **`CaptionGenerationServiceTest.java`** — two 422 assertions updated to `.value() == 422` to match Spring 7 renamed reason phrase.
+- **Verification:** 269 backend tests passing (0 failures, 0 errors).
+
+### UC-3.5 Administrator Exception Handling — Backend Confirmed (2026-05-28)
+
+- All 12 backend files cherry-picked from `feat/uc35-exception-handling` verified present on `module3`: `ExceptionHandlingController`, 8 DTOs (`DirectPostRequestDto`, `DirectPostResponseDto`, `OAuthInitResponseDto`, `OverrideDenyRequestDto`, `OverrideRequestDto`, `OverrideSuggestRequestDto`, `ResolutionCountsDto`, `TimeoutEscalationDto`, `TimeoutRejectRequestDto`, `TokenStatusDto`), `OverrideRequest`/`OverrideRequestDecision` entities, `OverrideRequestRepository`, `ExpiredOverrideCleanupJob`, `DirectPostService`, `OverrideRequestService`, `TokenManagementService`, `ValidationTimeoutService`, new `SubmissionStatus` enum values.
+- **`V24__override_requests.sql`** migration present; not yet applied to Supabase — requires backend restart.
+
+### UC-3.5 Administrator Exception Handling — Frontend (2026-05-28, Session 8)
+
+- **Additional Java deprecation cleanup:** `HttpStatus.UNPROCESSABLE_ENTITY` replaced with `HttpStatusCode.valueOf(422)` in `SubmissionService` (2×) and `ValidationService` (3×). `SubmissionControllerTest` 422 assertion fixed to `status().is(422)`. `@SuppressWarnings("unused")` added to `OverrideRequestService.submissionRepository`.
+- **`adminApi` axios instance** added to `authApi.ts` — base URL strips `/v1` from `VITE_API_URL`; `setAuthToken` updates both `api` and `adminApi` so UC-3.5 endpoints at `/api/admin/resolution/*` share the same Bearer token.
+- **`resolutionApi.ts`** extended with all UC-3.5 types (`ResolutionCounts`, `TimeoutEscalation`, `OverrideRequest`, `TokenStatus`, `DirectPostPayload`, etc.) and API functions using `adminApi`.
+- **`useResolutionCounts.ts`** — 60s polling hook drives red count badges on each tab.
+- **`RejectOnBehalfModal.tsx`** — shared modal for timeout reject (6-code taxonomy) and override deny (free-text); `mode` prop controls behavior.
+- **`SlotSuggestionModal.tsx`** — Cat. C alternative slot picker; `minDatetime` set via `useState` lazy initializer to satisfy `react-hooks/purity`.
+- **`ValidationTimeoutTab.tsx`** — Cat. B escalations table with Approve / Defer / Reject actions and `UrgencyPill` (red/amber/green countdown).
+- **`OverrideRequestsTab.tsx`** — Cat. C requests split into active/expired sections; Approve / Suggest / Deny; `rc-repeat-flag` badge when `overrideRequestCount >= 2`.
+- **`DirectPostTab.tsx`** — Cat. D direct post form: institution select, caption counter (80–280), immediate/schedule toggle, reason (20 min), GR-H1 ack checkbox, live Facebook preview panel; submits to `POST /admin/resolution/direct-post`.
+- **`SystemAuditTab.tsx`** — Cat. E token management table (`TokenStatusBadge` ACTIVE/EXPIRING/EXPIRED/INVALID), Re-Authenticate OAuth flow (`initOAuth` → new tab), audit log placeholder section.
+- **`ResolutionCenterScreen.tsx`** rewritten as 5-tab hub with icon+label tabs, per-tab red count badges, `refreshSignal`, and `tokenSectionRef` scroll targeting.
+- **`resolution.css`** — ~350-line stylesheet: tab bar, table variants, action button variants, urgency pills, modal styles, toggle groups, Direct Post grid, token badge variants.
+- **Commit `ea3ac10`** — 15 files, 2263 insertions. Build: 228 modules, 0 TypeScript errors. ESLint clean on all 15 files.
+
 ### Known Gaps
 
 - UC-3.1 / UC-3.4 frontend browser action testing still needs an authenticated admin session and active backend to manually exercise retry, manual publish start, complete, cancel, and the full 3-step workflow panel against live data.
 - `ManualPublishDetail` TypeScript interface is missing `lastManualPublishAbandonedAt: string | null` — linter stripped it. Re-add before browser testing UC-3.4's abandonment banner.
-- UC-3.5 Administrator Exception Handling not yet started. Requires Flyway V20 (`override_requests` table), `OverrideRequest` entity, `ExceptionHandlingController` at `/api/admin/resolution`, 4 new services, and a 5-tab frontend extension of `ResolutionCenterScreen`.
+- UC-3.5 frontend is fully implemented (build + lint clean). V24 migration not yet applied to Supabase — backend restart required before browser E2E testing of UC-3.5 endpoints (validation timeouts, override requests, direct post, token re-auth).
 - Submission queue design needs review with real data and mobile widths.
 - Submission lookups do not return preferred time slots (not yet required for current scope). Categories and tags are working.
 - UC-2.2 Media Repository: mp4 uploads require Supabase `dasigconnect-media` bucket to allow `video/*` MIME types and max file size set to 50 MB in dashboard settings.
+- UC-2.2 Media Repository retention: V23 migration has not yet been applied to the Supabase database — restart the backend to trigger Flyway before the retention purge job can run.
 - UC-2.4 Analytics component extraction is done. Browser review with contributor, validator, and admin accounts against a running backend is still needed.
 - UC-3.2 AI caption requires a backend restart to activate all Java changes. `DASIG_SUPABASE_SERVICE_ROLE_KEY` is already wired. Browser end-to-end test pending (test both instruction path and draft-refine path).
-- AI classification/recommendation (UC-3.3) not started.
+- UC-3.3 media suggestion still needs browser E2E with `VOYAGE_API_KEY`, `ANTHROPIC_API_KEY`, Flyway V25 applied, and media assets that have both image and semantic embeddings.
+- UC-3.1 publish idempotency fix requires Flyway V26 on Supabase before deployment/browser E2E. Existing duplicate Facebook posts for already-published submissions must be removed manually on Facebook if cleanup is desired.
+- Category/tag AI suggestion is intentionally cut from the current scope; stale prototype files may exist locally, but should not be treated as a required gap.
 - No built-in validator account exists. Use the administrator dashboard to invite validators.
 - Backend deployment runtime still needs team-owned SMTP credentials configured on Render.
 - Per-type file size limits (images 25 MB / videos 500 MB) require Supabase Pro upgrade — currently capped at 50 MB for all file types.
@@ -266,7 +357,7 @@ Fix applied:
 | `PasswordResetToken`   | One-time password reset token                                              |
 | `AccountLockout`       | Failed-login tracking                                                      |
 | `AuditLog`             | Immutable state-changing action log                                        |
-| `MediaAsset`           | Supabase-backed media metadata; pgvector embedding is not Hibernate-mapped |
+| `MediaAsset`           | Supabase-backed media metadata; pgvector `VECTOR(1024)` embedding is not Hibernate-mapped |
 | `SubmissionMediaAsset` | Submission-to-media junction with display order                            |
 
 Important enum values are lowercase in the database, including roles and statuses. Keep Java/database serialization aligned with the existing code.
@@ -283,10 +374,10 @@ Important enum values are lowercase in the database, including roles and statuse
 | `feat/m4-institution-scheduling`  | Merged                   | Institution management, guard rails, slot reservation, provisioning                                                                                                                 |
 | `dev`                             | In progress              | UC-1.2 extension, conditional bean fix, merged foundation work                                                                                                                      |
 | `feature/uc13-submission-backend` | Done locally, not merged | UC-1.3 backend, required tests, frontend API wiring, reset password/session/dashboard fixes, pending invite/user management UI, invite token superseding, Flyway V4 media migration |
-| `module3`                         | Done locally, not merged | UC-3.1 backend + frontend: publishing pipeline, calendar API/UI, Facebook Graph API integration, token encryption, scheduler jobs, Resolution Center backend/UI (UC-3.4), dynamic Facebook Preview modal, media carousel, and persisted submission media reordering. UC-2.2 Media Repository: backend + frontend fully implemented. UC-2.3 Notifications: backend (SSE, T1–T17, deadline job, email log) + frontend (route, hook, components, sidebar badge, CORS fix) fully implemented. UC-2.4 Analytics backend + frontend implemented with role-scoped contributor/validator/admin analytics, admin institution filtering, full reports, and CSV export. 208 backend tests passing; analytics focused backend tests passing; frontend build passing. UC-3.2 AI Caption enhanced: base64 images, 5 MB resize, existingCaption context, inline button redesign (`AiCaptionButton`, `AiCaptionSuggestion`, `useAiCaptionAssist`), caption counter bottom-right, hover-delete on filmstrip assets. `buildPrompt()` updated with instruction-vs-draft intent detection so Claude follows user directives typed in the caption field. Media Library upload guard raised 25 MB → 50 MB (Supabase free-tier limit). UC-3.4 Manual Publishing Fallback fully spec-compliant: `ManualPublishWorkflowPanel` 3-step workflow, V19 migration (`last_manual_publish_abandoned_at`), abandonment banner (A2), URL validation disabling confirm (A3), audit log completeness, duplicate `AbandonmentDetectorJob` deleted, 43 new backend tests passing. |
+| `module3`                         | Done locally, not merged | UC-3.1 backend + frontend: publishing pipeline, calendar API/UI, Facebook Graph API integration, token encryption, scheduler jobs, Resolution Center backend/UI (UC-3.4), dynamic Facebook Preview modal, media carousel, and persisted submission media reordering. UC-2.2 Media Repository: backend + frontend fully implemented. Soft-delete retention lifecycle added (V23 migration, `MediaAssetRetentionService`, `MediaAssetRetentionPurgeJob`, 30-day purge window). UC-2.3 Notifications: backend (SSE, T1-T17, deadline job, email log) + frontend (route, hook, components, sidebar badge, CORS fix) fully implemented. UC-2.4 Analytics backend + frontend implemented with role-scoped contributor/validator/admin analytics, admin institution filtering, full reports, and CSV export. UC-3.2 AI Caption enhanced: base64 images, 5 MB resize, existingCaption context, inline button redesign (`AiCaptionButton`, `AiCaptionSuggestion`, `useAiCaptionAssist`), caption counter bottom-right, hover-delete on filmstrip assets. `buildPrompt()` updated with instruction-vs-draft intent detection so Claude follows user directives typed in the caption field. UC-3.3 media recommendation is in progress: `voyage-4-lite` embeddings with explicit 1024 dimensions, async image classification/embedding support pipeline, pgvector media suggestion endpoints, Submit Content media picker with AI Suggestions tab, blue AI suggestion accents, and explainable match reasons. Category/tag AI suggestion is cut from current scope. UC-3.4 Manual Publishing Fallback fully spec-compliant: `ManualPublishWorkflowPanel` 3-step workflow, V19 migration, abandonment banner, URL validation disabling confirm, audit log completeness, and 43 new backend tests passing. Media Repository UI: redundant floating action bar removed; sidebar actions restructured (Delete/Download/Add to Draft on row 1, New Submission on row 2); card click now toggles selection directly. Session 7: Spring 7 deprecation warnings cleaned up across 5 service files + 1 test (269 tests passing); UC-3.5 backend cherry-pick confirmed complete (V24 migration, 12 new files including `ExceptionHandlingController`, `DirectPostService`, `OverrideRequestService`, `TokenManagementService`, `ValidationTimeoutService`); unused constants removed from `MetricsAggregatorService` and `OverrideRequestService`. Session 8: UC-3.5 Administrator Exception Handling frontend fully implemented — `ResolutionCenterScreen` rewritten as 5-tab hub (`ValidationTimeoutTab`, `OverrideRequestsTab`, `DirectPostTab`, `SystemAuditTab`, `RejectOnBehalfModal`, `SlotSuggestionModal`); `adminApi` instance added to `authApi.ts`; `useResolutionCounts` 60s polling hook; `resolution.css` stylesheet; additional Java deprecation fixes in `SubmissionService` + `ValidationService` + `OverrideRequestService`. Session 9: AI Media Library V25 dual embedding/status migration and backend wiring started from the MD; Submit Content details-first step order and saved-draft exit behavior updated; Media Repository multi-asset upload added; duplicate Facebook publish fixed with atomic `publishing` claim statuses and V26. Backend tests: 273 passing. Frontend build passing. |
 | UC-2.1                            | Done locally, not merged | Content validation — `ValidationController`, `ValidationService`, `ReviewLockService`, `ReviewLockCleanupJob`, entities (`ReviewLock`, `ValidationLog`, `ValidationAction`), V10 migration, frontend `ValidationQueueScreen` + `useValidationQueue` + `validationApi` |
 | UC-2.4                            | Done locally, needs browser test | Analytics Dashboard — role-scoped backend summary/report/export endpoints plus frontend role views. All 7 role-view components extracted into dedicated files (`ContributorAnalyticsView`, `ValidatorAnalyticsView`, `AdminAnalyticsPanel`, `RoleMetricPanel`, `StatusBreakdownPanel`, `ContentIssuesPanel`, `CategoryPerformancePanel`). Remaining gap: browser-test contributor/validator/admin accounts against live backend. |
-| UC-3.2 / UC-3.3                   | Not started              | AI Caption (Claude Vision), AI Classification & Recommendation (Voyage AI)                                                                                                          |
+| UC-3.2 / UC-3.3                   | In progress              | AI Caption is implemented locally. UC-3.3 media recommendation is partially implemented with `voyage-4-lite` 1024-dimensional embeddings, pgvector search, and Submit Content AI Suggestions. Category/tag AI suggestion is intentionally cut from current scope. |
 
 See `TASKS.md` for the detailed task checklist and current gaps.
 
@@ -300,8 +391,10 @@ See `TASKS.md` for the detailed task checklist and current gaps.
 - Do not edit generated files under `backend/target`; fix migration conflicts in `backend/src/main/resources/db/migration`.
 - `BackendApplication` custom Flyway/diagnostic beans are gated by `spring.flyway.enabled`; tests depend on this isolation.
 - `MediaAsset.embedding` is not Hibernate-mapped because pgvector `VECTOR(1024)` is handled through native queries.
+- AI Media Library now has a migration path toward `media_asset_embeddings` with separate `embedding_type` values (`image`, `semantic`, `keyframe`). Do not drop the old `media_assets.embedding` column until uploads, backfill, and suggestion search have been verified on the new table.
 - Media upload is direct-to-Supabase from the frontend, followed by backend metadata attach. The backend does not receive multipart file bytes for Module 1.
 - Submission media ordering is controlled by `submission_media_assets.display_order`; publishing queries already load assets ordered by this field. Use `PATCH /api/v1/submissions/{id}/media/order` for saved draft media reorder instead of mutating media asset records.
+- Publishing is now claimed before any Facebook Graph API call. Preserve the atomic `scheduled -> publishing` / `direct_post_scheduled -> direct_post_publishing` transition so overlapping scheduler runs or multiple app instances cannot publish the same submission twice.
 - Fresh Supabase `public` schemas should baseline Flyway at version `0`, not `1`; otherwise V1 is skipped and Module 1 tables are never created.
 - Invitation links are treated as superseded when a fresh invite/resend is issued for the same email; do not leave multiple open invite links for one pending account.
 - The frontend should display institution names from `GET /api/v1/me`; email-domain guessing is only a fallback.

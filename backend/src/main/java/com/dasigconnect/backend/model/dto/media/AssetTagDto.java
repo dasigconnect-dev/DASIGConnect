@@ -5,9 +5,9 @@ import java.util.UUID;
 
 import com.dasigconnect.backend.model.entity.AssetTag;
 
-public record AssetTagDto(UUID id, String label, Instant createdAt) {
+public record AssetTagDto(UUID id, String label, String source, Instant createdAt) {
 
     public static AssetTagDto from(AssetTag tag) {
-        return new AssetTagDto(tag.getId(), tag.getLabel(), tag.getCreatedAt());
+        return new AssetTagDto(tag.getId(), tag.getLabel(), tag.getSource(), tag.getCreatedAt());
     }
 }

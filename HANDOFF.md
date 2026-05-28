@@ -1,60 +1,119 @@
-# Handoff — 2026-05-27 (Session 5)
+# Handoff - 2026-05-28 (Session 9)
 
-## What was done this session
+## What Was Done This Session
 
-### UC-3.4 Manual Publishing Fallback — Backend (merged via PR #46)
-- Extended `ManualPublishingService`: `start()` writes `MANUAL_PUBLISH_STARTED` audit log; `cancel()` writes `MANUAL_PUBLISH_CANCELLED`; `clearAbandoned()` writes `MANUAL_PUBLISH_ABANDONED` with `startedAt`/`abandonedAt` and sets new `lastManualPublishAbandonedAt` field; `loadEligibleForManualPublish()` now accepts both `PUBLISH_FAILED` and `SCHEDULED` statuses.
-- `ManualPublishingService.complete()` audit log extended with `priorStatus`, `scheduledAt`, `publishedAt`.
-- Added `GET /api/v1/resolution/{id}` detail endpoint to `ResolutionController` returning full post content for the manual publish panel.
-- Created `ManualPublishDetailDto` with caption, media assets, scheduled time, contributor info, institution, in-progress flag, and abandonment timestamp.
-- Deleted duplicate `backend/src/main/java/com/dasigconnect/backend/job/AbandonmentDetectorJob.java` (identical bean already existed in `schedule/` package — caused `ConflictingBeanDefinitionException` on startup).
-- Flyway V19: `ALTER TABLE submissions ADD COLUMN last_manual_publish_abandoned_at TIMESTAMPTZ` for A2 abandonment note.
-- `Submission` entity: `lastManualPublishAbandonedAt` field + getter/setter.
-- `FailedPublicationDto`: exposes `lastManualPublishAbandonedAt` for list view.
-- Tests: `ManualPublishingServiceTest` (13 tests), `ResolutionControllerTest` (12 tests), `CaptionControllerTest` (9 tests), `CaptionGenerationServiceTest` (9 tests) — all 43 passing.
+- **AI Media Library upgrade docs were reviewed and corrected.**
+  - Updated `docs/md/ai-media-library-upgrade.md` with the main pre-implementation fixes:
+    - removed duplicate artwork examples,
+    - added `ai_tags` to the Claude JSON shape,
+    - clarified `ai_caption` / `ai_tags` storage,
+    - fixed `embedding_type` vs `type`,
+    - clarified Voyage image vs text embedding usage,
+    - added `ma.status = 'READY'` and `deleted_at IS NULL` filtering,
+    - added unique `(asset_id, embedding_type)` index and upsert guidance,
+    - expanded soft-delete/hard-delete cleanup,
+    - added migration safety notes.
 
-### UC-3.4 Manual Publishing Fallback — Frontend
-- `ManualPublishWorkflowPanel.tsx` — 3-step modal: Step 1 (copy caption + image thumbnails with download + video download with note), Step 2 (Open DASIG Facebook Page), Step 3 (Live Post URL + Admin Notes). Live 2-hour countdown timer with amber urgent state.
-- All spec gaps closed: `Mark as Published` disabled when URL non-empty and invalid (A3); URL error message matches spec; panel shows scheduled date/time, contributor name, and submission ID; video section shows required instruction note; A2 abandonment banner shown when `lastManualPublishAbandonedAt` is set.
-- `resolutionApi.ts`: added `ManualPublishDetail`, `ManualPublishMediaItem` interfaces and `getResolutionDetail(id)` call.
-- `useResolutionFailures.ts`: added `activeDetail`, `detailLoading`, `openWorkflowPanel()`, `closeWorkflowPanel()`; `handleStartManual` auto-opens panel after API start; cancel/complete both close the panel.
-- `ResolutionCenterScreen.tsx`: replaced `ResolutionCompleteModal` with `ManualPublishWorkflowPanel`.
-- `calendar.css`: `res-workflow-*` styles (card, header, timer, meta row, abandoned note, step labels, caption block, media grid, video note, FB button).
-- Targeted ESLint: 0 errors. Frontend build: ✓ 209 modules, 0 TypeScript errors.
+- **AI Media Library backend implementation started from the MD basis.**
+  - Added dual embedding support with `media_asset_embeddings`.
+  - Added media asset status lifecycle: `PROCESSING`, `READY`, `FAILED`, `DELETED`.
+  - Claude classification now returns richer structured media metadata including `ai_tags`.
+  - Voyage integration separates multimodal image embedding from text/semantic embedding.
+  - AI suggestion search now excludes deleted/non-ready media assets.
+  - Soft delete cleanup now clears embeddings/tags and marks media deleted.
+  - Added Flyway migration `V25__media_asset_dual_embeddings.sql`.
 
-## Files changed
+- **Submit Content UX updates.**
+  - Submission wizard step order changed to:
+    1. Post Details
+    2. Media Assets
+    3. Preferred Schedule
+  - New and loaded drafts open on Post Details first so title/caption/tags exist before AI media suggestion.
+  - Back navigation no longer asks to save when the draft is already saved.
+  - Back navigation still prompts when there are unsaved draft changes.
+  - Local file input can reselect the same batch after selection.
+  - Media Repository upload modal now supports selecting/dropping multiple local assets and uploads them sequentially with aggregate progress.
 
-### Backend
-- `backend/src/main/resources/db/migration/V19__submission_manual_publish_abandoned_at.sql` — new migration
-- `backend/src/main/java/com/dasigconnect/backend/model/entity/Submission.java` — added `lastManualPublishAbandonedAt` field
-- `backend/src/main/java/com/dasigconnect/backend/service/ManualPublishingService.java` — audit log completeness, SCHEDULED support, `lastManualPublishAbandonedAt`
-- `backend/src/main/java/com/dasigconnect/backend/model/dto/resolution/ManualPublishDetailDto.java` — added `lastManualPublishAbandonedAt`
-- `backend/src/main/java/com/dasigconnect/backend/model/dto/resolution/FailedPublicationDto.java` — added `lastManualPublishAbandonedAt`
-- `backend/src/main/java/com/dasigconnect/backend/controller/ResolutionController.java` — added `GET /{id}` detail endpoint
-- `backend/src/main/java/com/dasigconnect/backend/job/AbandonmentDetectorJob.java` — **deleted** (duplicate of `schedule/` package)
-- `backend/src/test/java/com/dasigconnect/backend/service/ManualPublishingServiceTest.java` — new (13 tests)
-- `backend/src/test/java/com/dasigconnect/backend/controller/ResolutionControllerTest.java` — new (12 tests)
-- `backend/src/test/java/com/dasigconnect/backend/controller/CaptionControllerTest.java` — new (9 tests)
-- `backend/src/test/java/com/dasigconnect/backend/service/CaptionGenerationServiceTest.java` — new (9 tests)
+- **Duplicate Facebook publish bug diagnosed and fixed.**
+  - Supabase showed duplicate successful publication attempts:
+    - `2c405cb4-1d0d-4e52-a7be-8a9c0fd92a73`
+    - `d3ab4d3b-af1a-420c-b76c-a6f71802bb7a`
+  - Root cause: `PublishingSchedulerJob` could pick the same `scheduled` submission in overlapping scheduler runs or app instances before the first run updated it to `published`.
+  - Fix: added an atomic publish-claim step before Facebook API calls:
+    - `scheduled -> publishing`
+    - `direct_post_scheduled -> direct_post_publishing`
+  - Only the process that successfully updates the DB row can publish. Later overlapping runs skip the row.
+  - Immediate direct posts now use the same claim flow to avoid racing the scheduler.
+  - Added Flyway migration `V26__submission_publishing_claim_status.sql`.
 
-### Frontend
-- `frontend/src/api/resolutionApi.ts` — `ManualPublishDetail`, `ManualPublishMediaItem`, `getResolutionDetail()`; `lastManualPublishAbandonedAt` added to `FailedPublication`
-- `frontend/src/features/resolution/ManualPublishWorkflowPanel.tsx` — new component (3-step workflow panel)
-- `frontend/src/features/resolution/ResolutionCenterScreen.tsx` — wired `ManualPublishWorkflowPanel`
-- `frontend/src/hooks/useResolutionFailures.ts` — detail state, open/close panel
-- `frontend/src/styles/calendar.css` — `res-workflow-*` styles
+## Files Changed This Session
 
-## What's next
+**Backend:**
+- `backend/src/main/java/com/dasigconnect/backend/model/entity/SubmissionStatus.java`
+- `backend/src/main/java/com/dasigconnect/backend/repository/SubmissionRepository.java`
+- `backend/src/main/java/com/dasigconnect/backend/schedule/PublishingSchedulerJob.java`
+- `backend/src/main/java/com/dasigconnect/backend/service/PublishingQueryService.java`
+- `backend/src/main/java/com/dasigconnect/backend/service/FacebookPublisherService.java`
+- `backend/src/main/java/com/dasigconnect/backend/service/DirectPostService.java`
+- `backend/src/main/resources/db/migration/V26__submission_publishing_claim_status.sql`
+- `backend/src/test/java/com/dasigconnect/backend/schedule/PublishingSchedulerJobTest.java`
+- `backend/src/test/java/com/dasigconnect/backend/service/PublishingQueryServiceTest.java`
 
-1. **UC-3.5 Administrator Exception Handling** — full spec provided at end of session. This is the next feature to implement. Covers 5 categories (A–E): Publishing Failure Recovery, Validation Timeout Escalation, Guard Rail Override Requests, Direct Post, Token Management. Requires `override_requests` table (Flyway V20), new entities (`OverrideRequest`), services (`ValidationTimeoutService`, `OverrideRequestService`, `DirectPostService`, `TokenManagementService`), and `ExceptionHandlingController` under `/api/admin/resolution`. Frontend: extend `ResolutionCenterScreen` to a 5-tab layout (API Failures, Timeouts, Overrides, Direct Post, System & Audit).
-2. **Browser test UC-3.4** — run dev server with authenticated admin, test the full manual publish workflow (start → copy → FB page → record URL → mark published, plus cancel and retry paths).
-3. **UC-3.3 AI Classification & Recommendation** — Voyage AI embedding pipeline; not yet started.
-4. **Analytics browser test** — still pending for UC-2.4 contributor/validator/admin views.
+**AI Media backend work from this session:**
+- `backend/src/main/resources/db/migration/V25__media_asset_dual_embeddings.sql`
+- `backend/src/main/java/com/dasigconnect/backend/model/entity/MediaAssetEmbedding.java`
+- `backend/src/main/java/com/dasigconnect/backend/model/entity/MediaAssetEmbeddingType.java`
+- `backend/src/main/java/com/dasigconnect/backend/model/entity/MediaAssetStatus.java`
+- `backend/src/main/java/com/dasigconnect/backend/repository/MediaAssetEmbeddingRepository.java`
+- plus updates to Claude/Voyage clients, media asset services, recommendation service, retention service, and related tests.
 
-## Blockers / notes
+**Frontend:**
+- `frontend/src/api/submissionApi.ts`
+- `frontend/src/components/media/UploadMediaTab.tsx`
+- `frontend/src/features/media-repository/components/UploadModal.tsx`
+- `frontend/src/features/submission/SubmissionScreen.tsx`
 
-- `feat/uc34-manual-publish-backend` branch was merged to `module3` via PR #46 during this session. All UC-3.4 work is on `module3`.
-- Flyway V19 must run before testing manual publish abandonment note — adds `last_manual_publish_abandoned_at` column to `submissions`.
-- `resolutionApi.ts` — linter removed `lastManualPublishAbandonedAt` from `ManualPublishDetail` interface; it remains on `FailedPublication`. If the abandonment note banner in `ManualPublishWorkflowPanel` needs this field, it should be re-added to `ManualPublishDetail` (backend DTO already returns it).
-- Full-project `npm.cmd run lint` still fails on pre-existing debt in `App.tsx`, dashboard, submission, validation, and user-management files — not caused by UC-3.4 work.
-- UC-3.5 spec is long and multi-category. Plan the implementation before coding: start with the Flyway migration and `OverrideRequest` entity (Category C has the only new table), then the services, then the controller, then the frontend tabbed layout.
+**Docs:**
+- `docs/md/ai-media-library-upgrade.md`
+- `HANDOFF.md`
+- `CLAUDE.md`
+- `TASKS.md`
+
+## Verification
+
+- Backend full test suite:
+  - `.\mvnw.cmd test`
+  - Result: **273 tests, 0 failures, 0 errors**
+- Focused publish-claim tests:
+  - `.\mvnw.cmd test "-Dtest=PublishingQueryServiceTest,PublishingSchedulerJobTest"`
+  - Result: **4 tests, 0 failures**
+- Frontend production build:
+  - `npm.cmd run build`
+  - Result: **passed**
+  - Existing Vite chunk-size warning remains.
+
+## Important Notes
+
+- Existing duplicate Facebook posts already created for the two affected submissions must be cleaned manually from Facebook if needed. The backend fix prevents future duplicate publishes but cannot remove already-created posts.
+- Apply Flyway migrations on backend restart before browser E2E:
+  - `V25__media_asset_dual_embeddings.sql`
+  - `V26__submission_publishing_claim_status.sql`
+- During AI media implementation, do **not** delete the old `media_assets.embedding` column immediately. The migration strategy keeps old and new embedding paths compatible while search is moved to `media_asset_embeddings`.
+- For AI features in Submit Content, saving a draft first is intentional because the backend needs a stable `submissionId` and saved media/context before running AI caption and AI media suggestion flows.
+
+## What's Next
+
+1. Restart backend so Flyway applies V25 and V26.
+2. Run browser E2E for:
+   - Submit Content step order and draft-exit prompt behavior.
+   - Multi-file local upload from Submit Content and Media Repository.
+   - AI Caption after saving draft.
+   - AI Media Suggestions after title/caption/tags exist and draft is saved.
+   - Scheduled Facebook publishing once, confirming only one `publication_attempts.result = 'success'` row per submission.
+3. In Supabase, optionally audit current duplicates:
+   ```sql
+   SELECT submission_id, result, COUNT(*)
+   FROM publication_attempts
+   GROUP BY submission_id, result
+   HAVING COUNT(*) > 1;
+   ```

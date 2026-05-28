@@ -169,7 +169,7 @@ public class FacebookPublisherService {
     // ── Photo publish (2-step) ────────────────────────────────────────────────
 
     private void publishPhotoPost(Submission submission, List<MediaAsset> images, String token) {
-        String caption = submission.getCaption() != null ? submission.getCaption() : "";
+        String caption = buildPostMessage(submission);
         List<String> stagedPhotoIds = new ArrayList<>();
         String lastError = null;
 
@@ -221,7 +221,7 @@ public class FacebookPublisherService {
     // ── Video publish (single call) ───────────────────────────────────────────
 
     private void publishVideoPost(Submission submission, MediaAsset video, String token) {
-        String caption = submission.getCaption() != null ? submission.getCaption() : "";
+        String caption = buildPostMessage(submission);
         String lastError = null;
 
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -321,7 +321,8 @@ public class FacebookPublisherService {
     @Transactional
     public void markPublished(Submission submission, String postId) {
         Submission s = submissionRepository.findById(submission.getId()).orElse(submission);
-        boolean isDirectPost = s.getStatus() == SubmissionStatus.direct_post_scheduled;
+        boolean isDirectPost = s.getStatus() == SubmissionStatus.direct_post_scheduled
+                || s.getStatus() == SubmissionStatus.direct_post_publishing;
         s.setStatus(isDirectPost ? SubmissionStatus.admin_direct_post : SubmissionStatus.published);
         s.setPlatformPostId(postId);
         s.setPublishedAt(Instant.now());
@@ -340,7 +341,8 @@ public class FacebookPublisherService {
     @Transactional
     public void markFailed(Submission submission, String error) {
         Submission s = submissionRepository.findById(submission.getId()).orElse(submission);
-        boolean isDirectPost = s.getStatus() == SubmissionStatus.direct_post_scheduled;
+        boolean isDirectPost = s.getStatus() == SubmissionStatus.direct_post_scheduled
+                || s.getStatus() == SubmissionStatus.direct_post_publishing;
         s.setStatus(isDirectPost ? SubmissionStatus.direct_post_failed : SubmissionStatus.publish_failed);
         submissionRepository.save(s);
         eventPublisher.publishEvent(new PublishFailedEvent(s, error));
@@ -431,6 +433,27 @@ public class FacebookPublisherService {
 
     private static boolean isVideo(MediaFileType type) {
         return type == MediaFileType.mp4 || type == MediaFileType.mov || type == MediaFileType.webm;
+    }
+
+    /**
+     * Builds the Facebook post message by appending manually selected tags as hashtags.
+     * Tags stored as comma-separated (e.g. "Science,Research,DOST") are appended
+     * as "#Science #Research #DOST" on a new line after the caption.
+     * Hashtags already present in the caption (starting with #) are preserved as-is.
+     */
+    private static String buildPostMessage(Submission submission) {
+        String caption = submission.getCaption() != null ? submission.getCaption().trim() : "";
+        String rawTags = submission.getTags();
+        if (rawTags == null || rawTags.isBlank()) return caption;
+
+        String hashtags = java.util.Arrays.stream(rawTags.split(","))
+                .map(String::trim)
+                .filter(t -> !t.isBlank())
+                .map(t -> "#" + t.replace(" ", ""))
+                .collect(java.util.stream.Collectors.joining(" "));
+
+        if (hashtags.isBlank()) return caption;
+        return caption.isBlank() ? hashtags : caption + "\n\n" + hashtags;
     }
 
     private static String encode(String value) {

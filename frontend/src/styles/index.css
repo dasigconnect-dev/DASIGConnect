@@ -50,6 +50,9 @@
 }
 
 :root {
+    --dc-scrollbar-thumb: #1877f2;
+    --dc-scrollbar-thumb-hover: #1565d8;
+    --dc-scrollbar-track: #eef3fa;
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
@@ -85,6 +88,9 @@
 }
 
 .dark {
+    --dc-scrollbar-thumb: #3b82f6;
+    --dc-scrollbar-thumb-hover: #60a5fa;
+    --dc-scrollbar-track: #1f2937;
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);
@@ -121,6 +127,28 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    scrollbar-width: thin;
+    scrollbar-color: var(--dc-scrollbar-thumb) var(--dc-scrollbar-track);
+    }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+    }
+  *::-webkit-scrollbar-track {
+    background: var(--dc-scrollbar-track);
+    border-radius: 999px;
+    }
+  *::-webkit-scrollbar-thumb {
+    min-height: 36px;
+    background: var(--dc-scrollbar-thumb);
+    border: 2px solid var(--dc-scrollbar-track);
+    border-radius: 999px;
+    }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--dc-scrollbar-thumb-hover);
+    }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
     }
   body {
     @apply bg-background text-foreground;

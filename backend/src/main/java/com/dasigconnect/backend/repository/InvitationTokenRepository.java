@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.repository;
 
 import com.dasigconnect.backend.model.entity.InvitationToken;
+import com.dasigconnect.backend.model.entity.UserRole;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -16,4 +17,6 @@ public interface InvitationTokenRepository extends JpaRepository<InvitationToken
             String recipientEmail,
             Instant now);
     long countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(UUID institutionId, Instant now);
+    long countByInstitutionIdAndAssignedRoleAndUsedAtIsNullAndExpiresAtAfter(
+            UUID institutionId, UserRole assignedRole, Instant now);
 }

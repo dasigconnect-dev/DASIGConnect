@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -306,7 +307,7 @@ public class SubmissionService {
             missing.add("at least one media file");
         }
         if (!missing.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Submission is incomplete — add " + String.join(", ", missing) + " before submitting.");
         }
     }
@@ -369,7 +370,7 @@ public class SubmissionService {
 
         long currentCount = submissionMediaAssetRepository.countBySubmissionId(submissionId);
         if (currentCount >= MAX_MEDIA_PER_SUBMISSION) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Maximum of " + MAX_MEDIA_PER_SUBMISSION + " media assets per submission.");
         }
 
@@ -420,7 +421,7 @@ public class SubmissionService {
 
         long currentCount = submissionMediaAssetRepository.countBySubmissionId(submissionId);
         if (currentCount >= MAX_MEDIA_PER_SUBMISSION) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Maximum of " + MAX_MEDIA_PER_SUBMISSION + " media assets per submission.");
         }
 
