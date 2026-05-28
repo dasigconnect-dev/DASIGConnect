@@ -11,7 +11,7 @@ interface Props {
   onOpenReport: (metric: AnalyticsExportMetric) => void;
 }
 
-export default function ContributorAnalyticsView({ summary, onOpenReport }: Props) {
+export default function ContributorAnalyticsView({ summary, onOpenReport }: Readonly<Props>) {
   return (
     <div className="analytics-main-grid analytics-main-grid-scoped">
       <div className="analytics-stack">
@@ -26,7 +26,7 @@ export default function ContributorAnalyticsView({ summary, onOpenReport }: Prop
             ]}
           />
         )}
-        <StatusBreakdownPanel rows={summary.statusBreakdown} />
+        <StatusBreakdownPanel rows={summary.statusBreakdown} role={summary.scopeRole} />
         <CategoryPerformancePanel rows={summary.topCategories} />
       </div>
       <div className="analytics-stack">

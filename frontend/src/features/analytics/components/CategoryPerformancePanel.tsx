@@ -7,6 +7,7 @@ export default function CategoryPerformancePanel({ rows }: { rows: CategoryPerfo
       <div className="analytics-panel-header">
         <div>
           <h2>Best Categories</h2>
+          <p>Top categories by post count and completeness rate</p>
         </div>
       </div>
       <div className="analytics-simple-list">

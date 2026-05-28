@@ -26,6 +26,13 @@ const RANGES: Array<{ value: AnalyticsRange; label: string }> = [
   { value: "ytd", label: "YTD" },
 ];
 
+const SECTION_LABELS: Record<string, string> = {
+  contributor: "Submission Quality",
+  validator: "Review Workload",
+  admin: "Network Activity",
+  administrator: "Network Activity",
+};
+
 export default function AnalyticsDashboardPage({ user }: Props) {
   const {
     range,
@@ -43,6 +50,7 @@ export default function AnalyticsDashboardPage({ user }: Props) {
   const isAdminView = summary?.adminView ?? (role === "administrator" || role === "admin");
   const isValidatorView = role === "validator";
   const isContributorView = role === "contributor";
+  const sectionLabel = SECTION_LABELS[role] ?? "Details";
 
   return (
     <div className="analytics-page" data-role={user.role}>
@@ -59,15 +67,20 @@ export default function AnalyticsDashboardPage({ user }: Props) {
               </span>
               <span className="analytics-scope-badge">
                 {summary.adminView
-                  ? summary.selectedInstitutionId ? "Institution filter" : "Network scope"
-                  : isContributorView ? "My submissions" : "Institution scope"}
+                  ? summary.selectedInstitutionId
+                    ? "Institution filter"
+                    : "Network scope"
+                  : isContributorView
+                  ? "My submissions"
+                  : "Institution scope"}
               </span>
               <span className="analytics-period">
-                Last updated {formatDateTime(summary.lastUpdated)}
+                Updated {formatDateTime(summary.lastUpdated)}
               </span>
             </div>
           )}
         </div>
+
         <div className="analytics-toolbar">
           {summary?.adminView && (
             <label className="analytics-filter">
@@ -98,7 +111,12 @@ export default function AnalyticsDashboardPage({ user }: Props) {
               </button>
             ))}
           </div>
-          <button type="button" className="btn-secondary" onClick={refresh} disabled={loading}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={refresh}
+            disabled={loading}
+          >
             <i className="ti ti-refresh" aria-hidden="true" />
             Refresh
           </button>
@@ -119,13 +137,25 @@ export default function AnalyticsDashboardPage({ user }: Props) {
 
       {!loading && !error && summary && (
         <>
+          {/* ── KPI Overview ── */}
+          <div className="analytics-section-label">
+            <h2>Key Metrics</h2>
+          </div>
           <KpiTileGroup summary={summary} onOpenReport={setReportMetric} />
+
+          {/* ── Role-specific content ── */}
+          <div className="analytics-section-label">
+            <h2>{sectionLabel}</h2>
+          </div>
+
           {isContributorView && (
             <ContributorAnalyticsView summary={summary} onOpenReport={setReportMetric} />
           )}
+
           {isValidatorView && (
             <ValidatorAnalyticsView summary={summary} onOpenReport={setReportMetric} />
           )}
+
           {isAdminView && (
             <div className="analytics-main-grid">
               <PostsByInstitutionChart rows={summary.postsByInstitution} />
@@ -144,8 +174,14 @@ export default function AnalyticsDashboardPage({ user }: Props) {
               </div>
             </div>
           )}
+
           {isAdminView && summary.selectedInstitutionId && (
-            <ContributorBreakdownTable rows={summary.contributorBreakdown} />
+            <>
+              <div className="analytics-section-label">
+                <h2>Contributor Breakdown</h2>
+              </div>
+              <ContributorBreakdownTable rows={summary.contributorBreakdown} />
+            </>
           )}
         </>
       )}

@@ -25,6 +25,14 @@ const REPORT_LABELS: Record<AnalyticsExportMetric, string> = {
   "operational-health": "Operational Health Report",
 };
 
+const REPORT_ICONS: Record<AnalyticsExportMetric, string> = {
+  "posting-delay": "ti ti-clock",
+  "content-completeness": "ti ti-checklist",
+  "posts-by-institution": "ti ti-speakerphone",
+  "ai-performance": "ti ti-robot",
+  "operational-health": "ti ti-activity",
+};
+
 const REPORT_UNITS: Record<AnalyticsExportMetric, string> = {
   "posting-delay": "days",
   "content-completeness": "percent",
@@ -32,6 +40,8 @@ const REPORT_UNITS: Record<AnalyticsExportMetric, string> = {
   "ai-performance": "events",
   "operational-health": "percent",
 };
+
+type ActiveTab = "daily" | "submissions";
 
 export default function FullReportModal({
   metric,
@@ -44,7 +54,14 @@ export default function FullReportModal({
   const [report, setReport] = useState<AnalyticsReportDto | null>(null);
   const [error, setError] = useState<{ key: string; message: string } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  // Tab is bound to the metric it was chosen for — auto-resets to "daily" when metric changes
+  const [tabEntry, setTabEntry] = useState<{ forMetric: string; tab: ActiveTab } | null>(null);
+  const activeTab: ActiveTab = tabEntry?.forMetric === metric ? tabEntry.tab : "daily";
   const requestKey = metric ? `${metric}:${range}:${institutionId ?? "network"}:${refreshKey}` : "";
+
+  function switchTab(tab: ActiveTab) {
+    if (metric) setTabEntry({ forMetric: metric, tab });
+  }
 
   useEffect(() => {
     if (!metric) return;
@@ -69,9 +86,14 @@ export default function FullReportModal({
   );
 
   if (!metric) return null;
+
   const reportReady = report?.metric === metric && report.range === range;
   const activeError = error?.key === requestKey ? error.message : null;
   const loading = !reportReady && !activeError;
+
+  const showContributor = reportReady && report.submissions.some((r) => r.contributorName);
+  const showInstitution = reportReady && report.submissions.some((r) => r.institutionName);
+  const showRevisions = reportReady && report.submissions.some((r) => r.revisionCycles !== null);
 
   async function handleDownload() {
     if (!metric) return;
@@ -86,136 +108,213 @@ export default function FullReportModal({
   function reloadReport() {
     setReport(null);
     setError(null);
-    setRefreshKey((value) => value + 1);
+    setRefreshKey((v) => v + 1);
   }
 
   return (
-    <div className="analytics-modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <div className="analytics-modal analytics-modal-wide" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+    <div
+      className="analytics-modal-backdrop"
+      role="presentation"
+      onMouseDown={onClose}
+    >
+      <div
+        className="analytics-modal-wide"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="report-modal-title"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {/* ── Header ── */}
         <div className="analytics-modal-header">
-          <div>
-            <h2>{REPORT_LABELS[metric]}</h2>
-            <p>
-              {report ? formatDateRange(report.periodStart, report.periodEnd) : `${range.toUpperCase()} detail report`}
-            </p>
+          <div className="analytics-modal-title-row">
+            <div className="analytics-modal-title-inner">
+              <div className="analytics-modal-metric-icon">
+                <i className={REPORT_ICONS[metric]} aria-hidden="true" />
+              </div>
+              <div>
+                <h2 id="report-modal-title">{REPORT_LABELS[metric]}</h2>
+                <p>
+                  {reportReady
+                    ? formatDateRange(report.periodStart, report.periodEnd)
+                    : `${range.toUpperCase()} detail report`}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="analytics-icon-btn"
+              onClick={onClose}
+              aria-label="Close report"
+            >
+              <i className="ti ti-x" aria-hidden="true" />
+            </button>
           </div>
-          <button type="button" className="analytics-icon-btn" onClick={onClose} aria-label="Close report modal">
-            <i className="ti ti-x" aria-hidden="true" />
-          </button>
         </div>
 
-        {loading && (
-          <div className="analytics-report-state">
-            <div className="analytics-skeleton" />
-            <span>Loading report details...</span>
-          </div>
-        )}
-
-        {!loading && activeError && (
-          <div className="analytics-report-state">
-            <i className="ti ti-alert-circle" aria-hidden="true" />
-            <span>{activeError}</span>
-            <button type="button" className="btn-secondary" onClick={reloadReport}>
-              Retry
+        {/* ── Tab Bar (shown once loaded) ── */}
+        {!loading && !activeError && reportReady && (
+          <div className="analytics-modal-tabs" role="tablist" aria-label="Report sections">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "daily"}
+              className={`analytics-tab-btn${activeTab === "daily" ? " active" : ""}`}
+              onClick={() => switchTab("daily")}
+            >
+              <i className="ti ti-chart-bar" aria-hidden="true" />
+              Daily Breakdown
+              <span className="analytics-tab-count">{report.dailyBreakdown.length}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "submissions"}
+              className={`analytics-tab-btn${activeTab === "submissions" ? " active" : ""}`}
+              onClick={() => switchTab("submissions")}
+            >
+              <i className="ti ti-table" aria-hidden="true" />
+              Submission Detail
+              <span className="analytics-tab-count">{report.submissions.length}</span>
             </button>
           </div>
         )}
 
-        {!loading && !activeError && reportReady && (
-          <div className="analytics-report-body">
-            <section className="analytics-report-section">
-              <div className="analytics-panel-header">
-                <div>
+        {/* ── Body ── */}
+        <div className="analytics-report-body">
+          {loading && (
+            <div className="analytics-report-state">
+              <div className="analytics-skeleton" />
+              <span>Loading report details…</span>
+            </div>
+          )}
+
+          {!loading && activeError && (
+            <div className="analytics-report-state">
+              <i className="ti ti-alert-circle" aria-hidden="true" />
+              <span>{activeError}</span>
+              <button type="button" className="btn-secondary" onClick={reloadReport}>
+                Retry
+              </button>
+            </div>
+          )}
+
+          {!loading && !activeError && reportReady && (
+            <>
+              {/* Daily Breakdown Tab */}
+              {activeTab === "daily" && (
+                <section className="analytics-report-section" role="tabpanel" aria-label="Daily Breakdown">
                   <h3>Daily Breakdown</h3>
                   <p>Per-day values for the selected metric and role scope.</p>
-                </div>
-              </div>
-              {report.dailyBreakdown.length === 0 ? (
-                <div className="analytics-empty">No daily data for this period.</div>
-              ) : (
-                <div className="analytics-daily-list">
-                  {report.dailyBreakdown.map((point) => (
-                    <div className="analytics-daily-row" key={point.date}>
-                      <span>{new Date(point.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
-                      <div className="analytics-bar-track">
-                        <span style={{ width: `${(point.value / maxDailyValue) * 100}%` }} />
-                      </div>
-                      <strong>{formatReportValue(point.value, REPORT_UNITS[metric])}</strong>
-                      {point.secondaryValue !== null && <em>{formatNumber(point.secondaryValue)}</em>}
+                  {report.dailyBreakdown.length === 0 ? (
+                    <div className="analytics-empty">No daily data for this period.</div>
+                  ) : (
+                    <div className="analytics-daily-list">
+                      {report.dailyBreakdown.map((point) => (
+                        <div className="analytics-daily-row" key={point.date}>
+                          <span>
+                            {new Date(point.date).toLocaleDateString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
+                          <div
+                            className="analytics-bar-track"
+                            aria-hidden="true"
+                            title={`${formatReportValue(point.value, REPORT_UNITS[metric])}`}
+                          >
+                            <span
+                              style={{
+                                width: `${(point.value / maxDailyValue) * 100}%`,
+                              }}
+                            />
+                          </div>
+                          <strong>{formatReportValue(point.value, REPORT_UNITS[metric])}</strong>
+                          {point.secondaryValue !== null && (
+                            <em>{formatNumber(point.secondaryValue)}</em>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  )}
+                </section>
               )}
-            </section>
 
-            <section className="analytics-report-section">
-              <div className="analytics-panel-header">
-                <div>
+              {/* Submission Detail Tab */}
+              {activeTab === "submissions" && (
+                <section className="analytics-report-section" role="tabpanel" aria-label="Submission Detail">
                   <h3>Submission Detail</h3>
                   <p>Rows are scoped by role. Restricted columns are omitted automatically.</p>
-                </div>
-              </div>
-              <div className="analytics-table-wrap">
-                <table className="analytics-table">
-                  <thead>
-                    <tr>
-                      <th>Submission</th>
-                      <th>State</th>
-                      <th>First Submitted</th>
-                      <th>Published</th>
-                      <th>Delay</th>
-                      <th>Complete</th>
-                      {report.submissions.some((row) => row.contributorName) && <th>Contributor</th>}
-                      {report.submissions.some((row) => row.institutionName) && <th>Institution</th>}
-                      {report.submissions.some((row) => row.revisionCycles !== null) && <th>Revisions</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.submissions.length === 0 ? (
-                      <tr>
-                        <td colSpan={9}>No submission rows for this period.</td>
-                      </tr>
-                    ) : (
-                      report.submissions.map((row) => (
-                        <tr key={row.submissionId}>
-                          <td>{row.eventTitle}</td>
-                          <td>{row.publicationState}</td>
-                          <td>{formatNullableDate(row.firstSubmittedAt)}</td>
-                          <td>{formatNullableDate(row.publishedAt)}</td>
-                          <td>{formatMetric({
-                            id: "delay",
-                            label: "Delay",
-                            value: row.postingDelayDays,
-                            unit: "days",
-                            sampleSize: 1,
-                            target: null,
-                            targetMet: true,
-                            deltaPercent: null,
-                            sparkline: [],
-                            secondaryLabel: null,
-                            secondaryValue: null,
-                          })}</td>
-                          <td>{row.complete ? "Yes" : "No"}</td>
-                          {report.submissions.some((item) => item.contributorName) && <td>{row.contributorName ?? ""}</td>}
-                          {report.submissions.some((item) => item.institutionName) && <td>{row.institutionName ?? ""}</td>}
-                          {report.submissions.some((item) => item.revisionCycles !== null) && <td>{row.revisionCycles ?? ""}</td>}
+                  <div className="analytics-table-wrap">
+                    <table className="analytics-table">
+                      <thead>
+                        <tr>
+                          <th>Submission</th>
+                          <th>State</th>
+                          <th>First Submitted</th>
+                          <th>Published</th>
+                          <th>Delay</th>
+                          <th>Complete</th>
+                          {showContributor && <th>Contributor</th>}
+                          {showInstitution && <th>Institution</th>}
+                          {showRevisions && <th>Revisions</th>}
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          </div>
-        )}
+                      </thead>
+                      <tbody>
+                        {report.submissions.length === 0 ? (
+                          <tr>
+                            <td colSpan={9}>No submission rows for this period.</td>
+                          </tr>
+                        ) : (
+                          report.submissions.map((row) => (
+                            <tr key={row.submissionId}>
+                              <td>{row.eventTitle}</td>
+                              <td>{row.publicationState}</td>
+                              <td>{formatNullableDate(row.firstSubmittedAt)}</td>
+                              <td>{formatNullableDate(row.publishedAt)}</td>
+                              <td>
+                                {formatMetric({
+                                  id: "delay",
+                                  label: "Delay",
+                                  value: row.postingDelayDays,
+                                  unit: "days",
+                                  sampleSize: 1,
+                                  target: null,
+                                  targetMet: true,
+                                  deltaPercent: null,
+                                  sparkline: [],
+                                  secondaryLabel: null,
+                                  secondaryValue: null,
+                                })}
+                              </td>
+                              <td>{row.complete ? "Yes" : "No"}</td>
+                              {showContributor && <td>{row.contributorName ?? ""}</td>}
+                              {showInstitution && <td>{row.institutionName ?? ""}</td>}
+                              {showRevisions && <td>{row.revisionCycles ?? ""}</td>}
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+        </div>
 
+        {/* ── Footer Actions ── */}
         <div className="analytics-modal-actions">
           <button type="button" className="btn-secondary" onClick={onClose}>
             Close
           </button>
-          <button type="button" className="btn-primary" onClick={() => void handleDownload()} disabled={busy}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => void handleDownload()}
+            disabled={busy}
+          >
             <i className="ti ti-download" aria-hidden="true" />
-            {busy ? "Preparing..." : "Download CSV"}
+            {busy ? "Preparing…" : "Download CSV"}
           </button>
         </div>
       </div>
@@ -223,13 +322,13 @@ export default function FullReportModal({
   );
 }
 
-function formatReportValue(value: number, unit: string) {
+function formatReportValue(value: number, unit: string): string {
   if (unit === "percent") return `${value.toFixed(1)}%`;
   if (unit === "days") return `${value.toFixed(1)}d`;
   return formatNumber(value);
 }
 
-function formatNullableDate(value: string | null) {
+function formatNullableDate(value: string | null): string {
   if (!value) return "-";
   return new Date(value).toLocaleDateString(undefined, {
     month: "short",

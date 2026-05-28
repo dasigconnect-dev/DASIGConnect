@@ -5,13 +5,13 @@ interface Props {
   rows: ContributorBreakdownDto[];
 }
 
-export default function ContributorBreakdownTable({ rows }: Props) {
+export default function ContributorBreakdownTable({ rows }: Readonly<Props>) {
   return (
     <section className="analytics-panel">
       <div className="analytics-panel-header">
         <div>
           <h2>Contributor Breakdown</h2>
-          <p>Contributor publishing volume, completeness, and posting delay for this scope</p>
+          <p>Publishing volume, completeness, and posting delay per contributor</p>
         </div>
       </div>
       <div className="analytics-table-wrap">

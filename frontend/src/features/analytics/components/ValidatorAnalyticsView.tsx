@@ -11,7 +11,7 @@ interface Props {
   onOpenReport: (metric: AnalyticsExportMetric) => void;
 }
 
-export default function ValidatorAnalyticsView({ summary, onOpenReport }: Props) {
+export default function ValidatorAnalyticsView({ summary, onOpenReport }: Readonly<Props>) {
   return (
     <div className="analytics-main-grid analytics-main-grid-scoped">
       <div className="analytics-stack">
@@ -38,7 +38,7 @@ export default function ValidatorAnalyticsView({ summary, onOpenReport }: Props)
           onOpenReport={() => onOpenReport("ai-performance")}
         />
         <ContentIssuesPanel rows={summary.contentIssues} />
-        <StatusBreakdownPanel rows={summary.statusBreakdown} />
+        <StatusBreakdownPanel rows={summary.statusBreakdown} role={summary.scopeRole} />
       </div>
     </div>
   );

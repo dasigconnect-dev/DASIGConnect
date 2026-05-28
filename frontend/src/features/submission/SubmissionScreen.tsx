@@ -124,11 +124,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const toast = useToast();
   const detailsSectionRef = useRef<HTMLElement | null>(null);
   const prefilledRef = useRef(false);
+  const filterParamConsumedRef = useRef(false);
   const routedSubmissionRef = useRef<string | null>(null);
   const cleanSignatureRef = useRef(getDirtySignature(initialForm));
   const shouldPromptBeforeLeaveRef = useRef(false);
   const browserBackGuardRef = useRef(false);
-  const [filter, setFilter] = useState<QueueFilter>("drafts");
+  const [filter, setFilter] = useState<QueueFilter>(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    const valid: QueueFilter[] = ["drafts", "submitted", "all"];
+    if (tab && (valid as string[]).includes(tab)) return tab as QueueFilter;
+    return "drafts";
+  });
   const [form, setForm] = useState<FormState>(initialForm);
   const [pickerItems, setPickerItems] = useState<SubmissionMediaItem[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -342,6 +348,21 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
     return () => window.clearTimeout(timer);
   }, [scheduledAt]);
+
+  // Clean up ?tab= from the URL after it has been consumed by the lazy filter initializer.
+  useEffect(() => {
+    if (filterParamConsumedRef.current) return;
+    if (!searchParams.get("tab")) return;
+    filterParamConsumedRef.current = true;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("tab");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [searchParams, setSearchParams]);
 
   // Consume ?assetIds= from the Media Library "New Post" action exactly once.
   useEffect(() => {
