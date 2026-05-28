@@ -108,8 +108,10 @@ export default function CalendarRescheduleModal({
 
           <div className="cal-reschedule-reason-group">
             <label htmlFor="cal-reschedule-reason" className="cal-reschedule-reason-label">
-              Reason for rescheduling
-              <span className="cal-reschedule-required" aria-hidden="true"> *</span>
+              <span className="cal-reschedule-reason-title">
+                Reason for rescheduling
+                <span className="cal-reschedule-required" aria-hidden="true"> *</span>
+              </span>
               <span className="cal-reschedule-reason-hint">
                 Required · minimum {MIN_REASON_LEN} characters · saved to the audit log
               </span>
@@ -124,11 +126,20 @@ export default function CalendarRescheduleModal({
               disabled={busy}
               autoFocus
             />
-            <span
-              className={`cal-reschedule-char-count${reasonTrimmed.length >= MIN_REASON_LEN ? " is-valid" : ""}`}
-            >
-              {reasonTrimmed.length} / {MIN_REASON_LEN} min
-            </span>
+            <div className="cal-reschedule-reason-footer">
+              <span className="cal-reschedule-reason-hint-inline">
+                {reasonTrimmed.length < MIN_REASON_LEN && reasonTrimmed.length > 0
+                  ? `${MIN_REASON_LEN - reasonTrimmed.length} more character${MIN_REASON_LEN - reasonTrimmed.length === 1 ? "" : "s"} needed`
+                  : reasonTrimmed.length >= MIN_REASON_LEN
+                  ? "Reason accepted"
+                  : ""}
+              </span>
+              <span
+                className={`cal-reschedule-char-count${reasonTrimmed.length >= MIN_REASON_LEN ? " is-valid" : ""}`}
+              >
+                {reasonTrimmed.length} / {MIN_REASON_LEN} min
+              </span>
+            </div>
           </div>
 
           {apiError && (
@@ -146,19 +157,25 @@ export default function CalendarRescheduleModal({
             onClick={onCancel}
             disabled={busy}
           >
+            <i className="ti ti-arrow-back-up" aria-hidden="true" />
             Cancel — keep original time
           </button>
           <button
             type="button"
-            className="btn-danger"
+            className={`btn-danger cal-reschedule-confirm-btn${!canConfirm && !busy ? " cal-reschedule-confirm-locked" : ""}`}
             onClick={handleConfirm}
             disabled={!canConfirm}
-            aria-disabled={!canConfirm}
+            title={!canConfirm && !busy ? `Enter at least ${MIN_REASON_LEN} characters to confirm` : undefined}
           >
             {busy ? (
               <>
                 <i className="ti ti-loader-2 cal-reschedule-spin" aria-hidden="true" />
                 Rescheduling…
+              </>
+            ) : !canConfirm ? (
+              <>
+                <i className="ti ti-lock" aria-hidden="true" />
+                Confirm Reschedule
               </>
             ) : (
               <>

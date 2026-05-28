@@ -6,6 +6,7 @@ import type { CalendarEvent } from "../../api/calendarApi";
 import { rescheduleSubmission } from "../../api/calendarApi";
 import type { User } from "../../types/auth.types";
 import { useCalendarEvents } from "../../hooks/useCalendarEvents";
+import { useToast } from "../../context/ToastContext";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import CalendarView, { type CalendarDropInfo } from "./CalendarView";
 import CalendarEventDetailModal from "./CalendarEventDetailModal";
@@ -22,6 +23,7 @@ interface CalendarScreenProps {
 export default function CalendarScreen({ user }: CalendarScreenProps) {
   const calendarRef = useRef<FullCalendar>(null);
   const { events, loading, error, refresh } = useCalendarEvents();
+  const toast = useToast();
   const [selected, setSelected] = useState<CalendarEvent | null>(null);
   const [pendingReschedule, setPendingReschedule] = useState<CalendarDropInfo | null>(null);
   const [calendarView, setCalendarView] = useState<CalendarViewMode>("dayGridMonth");
@@ -75,6 +77,16 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
   }
 
   function handleEventDrop(info: CalendarDropInfo) {
+    const minAllowed = new Date(Date.now() + 60 * 60 * 1000);
+    if (info.newStart <= minAllowed) {
+      info.revert();
+      toast.error(
+        info.newStart <= new Date()
+          ? "Cannot reschedule to a time in the past."
+          : "Cannot reschedule to a time within the next hour.",
+      );
+      return;
+    }
     setPendingReschedule(info);
   }
 
