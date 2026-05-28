@@ -44,15 +44,18 @@ export default function MediaAssetsPicker({
   }
 
   function handleAddItems(incoming: SubmissionMediaItem[]) {
+    if (disabled) return;
     const novel = deduplicatedAdd(incoming);
     if (novel.length > 0) onItemsChange([...items, ...novel]);
   }
 
   function handleRemove(clientId: string) {
+    if (disabled) return;
     onItemsChange(items.filter((i) => i.clientId !== clientId));
   }
 
   function handleReorder(fromIndex: number, toIndex: number) {
+    if (disabled) return;
     const next = [...items];
     const [moved] = next.splice(fromIndex, 1);
     next.splice(toIndex, 0, moved);
@@ -67,7 +70,12 @@ export default function MediaAssetsPicker({
 
   return (
     <div className="mp-root">
-      <SelectedMediaStrip items={items} onRemove={handleRemove} onReorder={handleReorder} />
+      <SelectedMediaStrip
+        items={items}
+        disabled={disabled}
+        onRemove={handleRemove}
+        onReorder={handleReorder}
+      />
 
       <div className="mp-tabs" role="tablist" aria-label="Media source">
         {tabs.map((tab) => (

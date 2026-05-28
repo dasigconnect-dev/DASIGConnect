@@ -3,6 +3,7 @@ import type { SubmissionMediaItem } from "../../types/media";
 
 interface SelectedMediaStripProps {
   items: SubmissionMediaItem[];
+  disabled?: boolean;
   onRemove: (clientId: string) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
 }
@@ -15,6 +16,7 @@ const SOURCE_LABELS: Record<string, string> = {
 
 export default function SelectedMediaStrip({
   items,
+  disabled = false,
   onRemove,
   onReorder,
 }: SelectedMediaStripProps) {
@@ -23,18 +25,21 @@ export default function SelectedMediaStrip({
   const dragNodeRef = useRef<HTMLDivElement | null>(null);
 
   function handleDragStart(e: React.DragEvent<HTMLDivElement>, index: number) {
+    if (disabled) return;
     setDragIndex(index);
     dragNodeRef.current = e.currentTarget;
     e.dataTransfer.effectAllowed = "move";
   }
 
   function handleDragOver(e: React.DragEvent<HTMLDivElement>, index: number) {
+    if (disabled) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     if (dragOverIndex !== index) setDragOverIndex(index);
   }
 
   function handleDrop(index: number) {
+    if (disabled) return;
     if (dragIndex !== null && dragIndex !== index) {
       onReorder(dragIndex, index);
     }
@@ -47,23 +52,17 @@ export default function SelectedMediaStrip({
     setDragOverIndex(null);
   }
 
-  function moveItem(fromIndex: number, direction: -1 | 1) {
-    const toIndex = fromIndex + direction;
-    if (toIndex < 0 || toIndex >= items.length) return;
-    onReorder(fromIndex, toIndex);
-  }
-
   if (items.length === 0) {
     return (
       <div className="sms-empty" aria-live="polite">
         <i className="ti ti-photo" aria-hidden />
-        <span>No media selected — add files below.</span>
+        <span>{disabled ? "No media attached." : "No media selected - add files below."}</span>
       </div>
     );
   }
 
   return (
-    <div className="sms-root" aria-label="Selected media">
+    <div className={`sms-root${disabled ? " sms-root--readonly" : ""}`} aria-label="Selected media">
       <div className="sms-strip" role="list">
         {items.map((item, index) => {
           const isDragging = dragIndex === index;
@@ -73,12 +72,13 @@ export default function SelectedMediaStrip({
               key={item.clientId}
               className={[
                 "sms-item",
+                disabled ? "sms-item--readonly" : "",
                 isDragging ? "sms-item--dragging" : "",
                 isOver ? "sms-item--drag-over" : "",
               ]
                 .filter(Boolean)
                 .join(" ")}
-              draggable
+              draggable={!disabled}
               onDragStart={(e) => handleDragStart(e, index)}
               onDragOver={(e) => handleDragOver(e, index)}
               onDrop={() => handleDrop(index)}
@@ -118,46 +118,27 @@ export default function SelectedMediaStrip({
                 <span className={`sms-source-badge sms-source-badge--${item.source}`} aria-hidden>
                   {SOURCE_LABELS[item.source]}
                 </span>
-              </div>
-
-              <div className="sms-actions">
-                <button
-                  type="button"
-                  className="sms-action-btn"
-                  onClick={() => moveItem(index, -1)}
-                  disabled={index === 0}
-                  aria-label={`Move ${item.fileName} left`}
-                  title="Move left"
-                >
-                  <i className="ti ti-chevron-left" aria-hidden />
-                </button>
-                <button
-                  type="button"
-                  className="sms-action-btn"
-                  onClick={() => moveItem(index, 1)}
-                  disabled={index === items.length - 1}
-                  aria-label={`Move ${item.fileName} right`}
-                  title="Move right"
-                >
-                  <i className="ti ti-chevron-right" aria-hidden />
-                </button>
-                <button
-                  type="button"
-                  className="sms-action-btn sms-action-btn--remove"
-                  onClick={() => onRemove(item.clientId)}
-                  aria-label={`Remove ${item.fileName}`}
-                  title="Remove"
-                >
-                  <i className="ti ti-x" aria-hidden />
-                </button>
+                {!disabled && (
+                  <button
+                    type="button"
+                    className="sms-remove-btn"
+                    onClick={() => onRemove(item.clientId)}
+                    aria-label={`Remove ${item.fileName}`}
+                    title="Remove"
+                  >
+                    <i className="ti ti-x" aria-hidden />
+                  </button>
+                )}
               </div>
             </div>
           );
         })}
       </div>
-      <p className="sms-hint" aria-hidden>
-        {items.length} selected · Drag or use arrows to reorder · First item is the preview cover
-      </p>
+      {!disabled && (
+        <p className="sms-hint" aria-hidden>
+          {items.length} selected - drag to reorder. First item is the preview cover.
+        </p>
+      )}
     </div>
   );
 }

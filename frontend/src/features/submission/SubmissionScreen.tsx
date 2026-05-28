@@ -70,6 +70,7 @@ type ModalState =
   | "draft-exit"
   | null;
 type SaveState = "idle" | "saving" | "saved";
+type PendingLeaveAction = (() => void) | null;
 type ProgressStep = "media" | "details" | "schedule";
 type CenterMode = "edit" | "preview";
 type PreviewTab = "preview" | "details";
@@ -121,12 +122,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const toast = useToast();
   const detailsSectionRef = useRef<HTMLElement | null>(null);
   const prefilledRef = useRef(false);
+  const cleanSignatureRef = useRef(getDirtySignature(initialForm));
+  const shouldPromptBeforeLeaveRef = useRef(false);
+  const browserBackGuardRef = useRef(false);
   const [filter, setFilter] = useState<QueueFilter>("drafts");
   const [form, setForm] = useState<FormState>(initialForm);
   const [pickerItems, setPickerItems] = useState<SubmissionMediaItem[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [isDirty, setIsDirty] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
+  const [pendingLeaveAction, setPendingLeaveAction] =
+    useState<PendingLeaveAction>(null);
   const [centerMode, setCenterMode] = useState<CenterMode>("edit");
   const [previewTab, setPreviewTab] = useState<PreviewTab>("preview");
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
@@ -211,11 +216,51 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const isReadOnlySubmission = form.status !== "draft";
   const canUseAiCaption = !isReadOnlySubmission;
   const hasMedia = form.files.length > 0 || form.savedAssets.length > 0;
-  const hasUnsavedDraftChanges =
-    !isReadOnlySubmission &&
-    (isDirty || (saveState !== "saved" && isDirtyDraft(form)));
+  const isDirty = useMemo(
+    () =>
+      !isReadOnlySubmission &&
+      isDirtyDraft(form) &&
+      getDirtySignature(form) !== cleanSignatureRef.current,
+    [form, isReadOnlySubmission],
+  );
+  const shouldPromptBeforeLeave = isDirty;
   const busy =
     saveState === "saving" || submitting || deleting || reorderingMedia;
+
+  useEffect(() => {
+    shouldPromptBeforeLeaveRef.current = shouldPromptBeforeLeave;
+  }, [shouldPromptBeforeLeave]);
+
+  useEffect(() => {
+    if (shouldPromptBeforeLeave && !browserBackGuardRef.current) {
+      window.history.pushState(
+        { dasigSubmissionGuard: true },
+        "",
+        window.location.href,
+      );
+      browserBackGuardRef.current = true;
+    }
+    if (!shouldPromptBeforeLeave) {
+      browserBackGuardRef.current = false;
+    }
+  }, [shouldPromptBeforeLeave]);
+
+  useEffect(() => {
+    function handleBrowserBack() {
+      if (!shouldPromptBeforeLeaveRef.current) return;
+      window.history.pushState(
+        { dasigSubmissionGuard: true },
+        "",
+        window.location.href,
+      );
+      browserBackGuardRef.current = true;
+      setPendingLeaveAction(() => exitSubmission);
+      setModal("draft-exit");
+    }
+
+    window.addEventListener("popstate", handleBrowserBack);
+    return () => window.removeEventListener("popstate", handleBrowserBack);
+  }, [navigate]);
 
   const progressSteps = useMemo(
     () => [
@@ -276,12 +321,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     return () => window.clearTimeout(timer);
   }, [scheduledAt]);
 
-  useEffect(() => {
-    if (saveState === "saved") {
-      setIsDirty(false);
-    }
-  }, [saveState]);
-
   // Consume ?assetIds= from the Media Library "New Post" action exactly once.
   useEffect(() => {
     if (prefilledRef.current) return;
@@ -321,7 +360,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         pendingAssetIds: assets.map((asset) => asset.id),
       }));
       setPickerItems(assets.map(savedAssetToPickerItem));
-      setIsDirty(true);
 
       if (assets.length < ids.length) {
         toast.warning("Some selected assets could not be loaded.");
@@ -359,7 +397,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
     setSaveState("idle");
-    setIsDirty(true);
   }
 
   function resetComposer() {
@@ -371,7 +408,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setGuardRails(null);
     setGuardRailError("");
     setSaveState("idle");
-    setIsDirty(false);
+    cleanSignatureRef.current = getDirtySignature(initialForm);
     setFilter("drafts");
     setActiveStep("details");
     clearAssetIdParam();
@@ -382,13 +419,29 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setModal(null);
   }
 
+  function exitSubmission() {
+    setModal(null);
+    setPendingLeaveAction(null);
+    setForm(initialForm);
+    setPickerItems([]);
+    setActiveMediaIndex(0);
+    setCenterMode("edit");
+    setPreviewTab("preview");
+    setGuardRails(null);
+    setGuardRailError("");
+    setSaveState("idle");
+    cleanSignatureRef.current = getDirtySignature(initialForm);
+    browserBackGuardRef.current = false;
+    navigate("/dashboard", { replace: true });
+  }
+
   function handleNewSubmission() {
     if (isReadOnlySubmission) {
       startNewSubmission();
       return;
     }
     const existingDraft = submissions.find((item) => item.status === "draft");
-    if (existingDraft || isDirtyDraft(form)) {
+    if (existingDraft || isDirty) {
       setModal("draft-choice");
       return;
     }
@@ -408,12 +461,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setActiveStep("details");
   }
 
-  function handleBack() {
-    if (hasUnsavedDraftChanges) {
+  function requestLeave(action: () => void) {
+    if (shouldPromptBeforeLeave) {
+      setPendingLeaveAction(() => action);
       setModal("draft-exit");
       return;
     }
-    navigate("/dashboard");
+    action();
+  }
+
+  function handleBack() {
+    requestLeave(exitSubmission);
   }
 
   async function refreshQueue() {
@@ -430,7 +488,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setHydratingId(summary.id);
     try {
       const { data: submission } = await getSubmission(summary.id);
-      setForm({
+      const nextForm: FormState = {
         id: submission.id,
         status: submission.status,
         eventTitle: submission.eventTitle || "",
@@ -451,7 +509,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           savedMediaKey(asset.id),
         ),
         pendingAssetIds: [],
-      });
+      };
+      setForm(nextForm);
       setPickerItems((submission.mediaAssets ?? []).map(savedAssetToPickerItem));
       setActiveMediaIndex(0);
       setFilter(submission.status === "draft" ? "drafts" : "submitted");
@@ -459,7 +518,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setCenterMode("edit");
       setPreviewTab("preview");
       setSaveState("saved");
-      setIsDirty(false);
+      cleanSignatureRef.current = getDirtySignature(nextForm);
     } catch {
       toast.error("Could not load submission detail.");
     } finally {
@@ -500,6 +559,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         );
       }
       const orderedSavedAssets = finalResponse.data.mediaAssets ?? savedAssets;
+      const nextForm: FormState = {
+        ...form,
+        id: finalResponse.data.id,
+        status: finalResponse.data.status,
+        files: [],
+        savedAssets: orderedSavedAssets,
+        mediaOrder: orderedSavedAssets.map((asset) => savedMediaKey(asset.id)),
+        pendingAssetIds: [],
+      };
       setForm((current) => ({
         ...current,
         id: finalResponse.data.id,
@@ -515,7 +583,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       );
       clearAssetIdParam();
       setSaveState("saved");
-      setIsDirty(false);
+      cleanSignatureRef.current = getDirtySignature(nextForm);
       toast.success("Draft saved.");
       return true;
     } catch (err: unknown) {
@@ -532,8 +600,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   async function handleSaveDraftAndExit() {
     const saved = await saveDraft();
     if (saved) {
+      const leave = pendingLeaveAction;
+      setPendingLeaveAction(null);
       setModal(null);
-      navigate("/dashboard");
+      if (leave) {
+        leave();
+      } else {
+        exitSubmission();
+      }
     }
   }
 
@@ -641,8 +715,19 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   async function handleDiscardDraftAndExit() {
-    await handleDelete();
-    navigate("/dashboard");
+    const leave = pendingLeaveAction;
+    setPendingLeaveAction(null);
+    setModal(null);
+    if (leave) {
+      leave();
+    } else {
+      exitSubmission();
+    }
+  }
+
+  function handleContinueEditing() {
+    setPendingLeaveAction(null);
+    setModal(null);
   }
 
   function handlePickerChange(items: SubmissionMediaItem[]) {
@@ -675,10 +760,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       mediaOrder: newMediaOrder,
     }));
     setSaveState("idle");
-    setIsDirty(true);
   }
 
   async function handleReorderMedia(orderedIds: string[]) {
+    if (isReadOnlySubmission) return;
     const sortedSavedAssets = sortSavedAssetsByOrder(form.savedAssets, orderedIds);
     const sortedFiles = sortFilesByOrder(form.files, orderedIds);
     setForm((current) => ({
@@ -688,7 +773,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       mediaOrder: orderedIds,
     }));
     setSaveState("idle");
-    setIsDirty(true);
 
     // Sync picker items to match the new order
     const orderMap = new Map(orderedIds.map((id, i) => [id, i]));
@@ -711,6 +795,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         .map((id) => id.replace("saved:", ""));
       const { data } = await reorderSubmissionMedia(form.id, savedIds);
       const nextAssets = data.mediaAssets ?? sortedSavedAssets;
+      const nextForm: FormState = {
+        ...form,
+        savedAssets: nextAssets,
+        files: [],
+        mediaOrder: nextAssets.map((asset) => savedMediaKey(asset.id)),
+      };
       setForm((current) => ({
         ...current,
         savedAssets: nextAssets,
@@ -719,7 +809,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setPickerItems(nextAssets.map(savedAssetToPickerItem));
       setSubmissions((current) => upsertSubmission(current, data));
       toast.success("Media order updated.");
-      setIsDirty(false);
+      cleanSignatureRef.current = getDirtySignature(nextForm);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err, "Media order could not be saved."));
     } finally {
@@ -745,6 +835,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           <button
             className="sub-back-btn"
             type="button"
+            onPointerDown={(event) => {
+              event.stopPropagation();
+            }}
             onClick={handleBack}
           >
             <i className="ti ti-arrow-left"></i>
@@ -764,24 +857,26 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           </div>
         </div>
         <div className="sub-nav-right">
-          <div
-            className={`sub-nav-save-status ${saveState === "saved" ? "saved" : ""}`}
-          >
-            <i
-              className={
-                saveState === "saving"
-                  ? "ti ti-loader-2 sub-spin"
-                  : saveState === "saved"
-                    ? "ti ti-cloud-check"
-                    : "ti ti-cloud"
-              }
-            ></i>
-            {saveState === "saving"
-              ? "Saving..."
-              : saveState === "saved"
-                ? "Draft saved"
-                : "Unsaved draft"}
-          </div>
+          {(isDirty || saveState === "saving" || saveState === "saved") && (
+            <div
+              className={`sub-nav-save-status ${saveState === "saved" && !isDirty ? "saved" : ""}`}
+            >
+              <i
+                className={
+                  saveState === "saving"
+                    ? "ti ti-loader-2 sub-spin"
+                    : saveState === "saved" && !isDirty
+                      ? "ti ti-cloud-check"
+                      : "ti ti-cloud"
+                }
+              ></i>
+              {saveState === "saving"
+                ? "Saving..."
+                : saveState === "saved" && !isDirty
+                  ? "Draft saved"
+                  : "Unsaved draft"}
+            </div>
+          )}
           <div className="sub-nav-chip">{formatRole(user.role)}</div>
           <div className="sub-nav-avatar">{user.initials}</div>
         </div>
@@ -963,14 +1058,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               >
                 {deleting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-trash"></i>} Delete
               </button>
-              <button
-                className="sub-btn-ghost save"
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={busy || Boolean(hydratingId)}
-              >
-                {saveState === "saving" ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
-              </button>
+              {isDirty && (
+                <button
+                  className="sub-btn-ghost save"
+                  type="button"
+                  onClick={() => void handleSave()}
+                  disabled={busy || Boolean(hydratingId)}
+                >
+                  {saveState === "saving" ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
+                </button>
+              )}
               <button
                 className="sub-btn-primary"
                 type="button"
@@ -994,7 +1091,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               mediaItems={facebookPreview.mediaItems}
               activeMediaIndex={activeMediaIndex}
               details={previewDetails}
-              canSaveDraft={form.status === "draft"}
+              canSaveDraft={form.status === "draft" && isDirty}
               canSubmitForReview={canSubmitCurrentSubmission}
               submitDisabledReason={
                 canSubmitCurrentSubmission
@@ -1003,7 +1100,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               }
               isSaving={saveState === "saving"}
               isSubmitting={submitting}
-              reorderDisabled={reorderingMedia || saveState === "saving" || submitting}
+              reorderDisabled={isReadOnlySubmission || reorderingMedia || saveState === "saving" || submitting}
               onMediaIndexChange={setActiveMediaIndex}
               onReorderMedia={(orderedIds) => void handleReorderMedia(orderedIds)}
               onSaveDraft={() => void handleSave()}
@@ -1358,14 +1455,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             >
               {submitting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-send"></i>} Submit for Review
             </button>
-            <button
-              className="sub-guard-save-btn"
-              type="button"
-              onClick={() => void handleSave()}
-              disabled={busy || Boolean(hydratingId)}
-            >
-              {saveState === "saving" ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
-            </button>
+            {isDirty && (
+              <button
+                className="sub-guard-save-btn"
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={busy || Boolean(hydratingId)}
+              >
+                {saveState === "saving" ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
+              </button>
+            )}
               </>
             )}
           </div>
@@ -1421,16 +1520,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         />
       )}
       {modal === "draft-exit" && (
-        <ConfirmModal
-          icon="ti-notes"
-          title="You are making a post"
-          description="Do you want to save this post as a draft before leaving, or delete the draft and exit?"
-          cancelLabel={deleting ? "Deleting..." : "Delete Draft"}
-          confirmLabel={saveState === "saving" ? "Saving..." : "Save as Draft"}
-          loading={saveState === "saving" || deleting}
+        <DraftExitModal
+          saving={saveState === "saving"}
           disabled={busy}
-          onCancel={() => void handleDiscardDraftAndExit()}
-          onConfirm={() => void handleSaveDraftAndExit()}
+          onSave={() => void handleSaveDraftAndExit()}
+          onDiscard={() => void handleDiscardDraftAndExit()}
+          onContinue={handleContinueEditing}
         />
       )}
     </div>
@@ -2106,6 +2201,86 @@ function TimeStepper({
   );
 }
 
+function DraftExitModal({
+  saving,
+  disabled,
+  onSave,
+  onDiscard,
+  onContinue,
+}: {
+  saving: boolean;
+  disabled: boolean;
+  onSave: () => void;
+  onDiscard: () => void;
+  onContinue: () => void;
+}) {
+  useEffect(() => {
+    if (disabled) return undefined;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      onContinue();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [disabled, onContinue]);
+
+  return (
+    <div
+      className="sub-modal-overlay"
+      onClick={disabled ? undefined : onContinue}
+    >
+      <div
+        className="sub-modal sub-modal--draft-exit"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="draft-exit-title"
+        aria-describedby="draft-exit-description"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="sub-modal-icon info">
+          <i className="ti ti-notes"></i>
+        </div>
+        <div className="sub-modal-title" id="draft-exit-title">Save this post as a draft?</div>
+        <div className="sub-modal-desc" id="draft-exit-description">
+          You have unsaved content. Save it as a draft, discard your changes, or
+          continue editing.
+        </div>
+        <div className="sub-modal-actions sub-modal-actions--three">
+          <button
+            className="sub-modal-btn sub-modal-btn--continue"
+            type="button"
+            onClick={onContinue}
+            disabled={disabled}
+          >
+            Continue Editing
+          </button>
+          <button
+            className="sub-modal-btn sub-modal-btn--discard"
+            type="button"
+            onClick={onDiscard}
+            disabled={disabled}
+          >
+            Discard
+          </button>
+          <button
+            className="sub-modal-btn sub-modal-btn--save"
+            type="button"
+            onClick={onSave}
+            disabled={disabled}
+            aria-busy={saving}
+          >
+            {saving && <i className="ti ti-loader-2 sub-spin"></i>}
+            {saving ? "Saving..." : "Save Draft"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function usePopoverCollision(open: boolean) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -2341,6 +2516,28 @@ function isDirtyDraft(form: FormState) {
       form.savedAssets.length ||
       form.pendingAssetIds.length,
   );
+}
+
+function getDirtySignature(form: FormState) {
+  return JSON.stringify({
+    eventTitle: form.eventTitle.trim(),
+    eventDate: form.eventDate,
+    caption: form.caption.trim(),
+    description: form.description.trim(),
+    category: form.category,
+    scheduledDate: form.scheduledDate,
+    scheduledTime: form.scheduledTime,
+    tags: form.tags,
+    files: form.files.map((file) => ({
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: file.lastModified,
+    })),
+    savedAssetIds: form.savedAssets.map((asset) => asset.id),
+    mediaOrder: form.mediaOrder,
+    pendingAssetIds: form.pendingAssetIds,
+  });
 }
 
 function upsertSubmission(items: SubmissionSummary[], next: SubmissionSummary) {

@@ -31,14 +31,20 @@ export default function FacebookPreviewMediaReorder({
       <div className="fb-reorder-head">
         <div>
           <h3 id="fb-reorder-title">Media Order</h3>
-          <p>Drag photos to change their posting order.</p>
+          <p>{disabled ? "Posting order is locked for submitted posts." : "Drag photos to change their posting order."}</p>
         </div>
         <span>{mediaItems.length} items</span>
       </div>
       <div className="fb-reorder-strip" aria-label="Attached media order">
         {mediaItems.map((item, index) => (
           <div
-            className={`fb-reorder-item${item.id === activeMediaId ? " active" : ""}`}
+            className={[
+              "fb-reorder-item",
+              item.id === activeMediaId ? "active" : "",
+              disabled ? "disabled" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
             key={item.id}
             draggable={!disabled}
             onDragStart={(event) => {
@@ -73,24 +79,6 @@ export default function FacebookPreviewMediaReorder({
               )}
               <b>{index + 1}</b>
             </button>
-            <div className="fb-reorder-controls" aria-label="Move media item">
-              <button
-                type="button"
-                aria-label="Move media left"
-                disabled={disabled || index === 0}
-                onClick={() => move(index, index - 1)}
-              >
-                <i className="ti ti-arrow-left" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                aria-label="Move media right"
-                disabled={disabled || index === mediaItems.length - 1}
-                onClick={() => move(index, index + 1)}
-              >
-                <i className="ti ti-arrow-right" aria-hidden="true" />
-              </button>
-            </div>
           </div>
         ))}
       </div>

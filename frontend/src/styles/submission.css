@@ -42,7 +42,7 @@
 .sub-topnav {
   position: sticky;
   top: 0;
-  z-index: 200;
+  z-index: 1400;
   height: var(--sub-nav-h);
   background: var(--sub-surface);
   border-bottom: 1px solid var(--sub-border);
@@ -74,6 +74,10 @@
   gap: 9px;
 }
 .sub-back-btn {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  pointer-events: auto;
   min-width: 78px;
   height: 34px;
   border: 1px solid var(--sub-border);
@@ -2099,8 +2103,7 @@ textarea.sub-finput {
 }
 .fb-preview-nav:focus-visible,
 .fb-preview-dots button:focus-visible,
-.fb-reorder-thumb:focus-visible,
-.fb-reorder-controls button:focus-visible {
+.fb-reorder-thumb:focus-visible {
   outline: 3px solid rgba(24, 119, 242, 0.3);
   outline-offset: 2px;
 }
@@ -2380,6 +2383,10 @@ textarea.sub-finput {
   text-align: center;
   animation: sub-modal-pop 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+.sub-modal--draft-exit {
+  max-width: 560px;
+  padding: 24px 24px 22px;
+}
 .fb-preview-modal-overlay {
   position: fixed;
   inset: 0;
@@ -2623,11 +2630,14 @@ textarea.sub-finput {
   padding: 5px;
   cursor: grab;
 }
+.fb-reorder-item.disabled {
+  cursor: default;
+}
 .fb-reorder-item.active {
   border-color: var(--sub-blue);
   box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.14);
 }
-.fb-reorder-item:active {
+.fb-reorder-item:not(.disabled):active {
   cursor: grabbing;
 }
 .fb-reorder-thumb {
@@ -2664,24 +2674,6 @@ textarea.sub-finput {
   align-items: center;
   justify-content: center;
   font-size: 10px;
-}
-.fb-reorder-controls {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  margin-top: 5px;
-}
-.fb-reorder-controls button {
-  height: 26px;
-  border: 1px solid var(--sub-border);
-  border-radius: 6px;
-  background: white;
-  color: var(--sub-muted);
-  cursor: pointer;
-}
-.fb-reorder-controls button:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
 }
 .fb-preview-details {
   min-width: 0;
@@ -2949,7 +2941,7 @@ textarea.sub-finput {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  margin: 0 auto 14px;
+  margin: 0 auto 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2976,17 +2968,25 @@ textarea.sub-finput {
   font-size: 13px;
   color: var(--sub-muted);
   line-height: 1.55;
-  margin-bottom: 22px;
+  margin: 0 auto 18px;
+  max-width: 420px;
 }
 .sub-modal-actions {
   display: flex;
   justify-content: center;
   gap: 10px;
 }
+.sub-modal-actions--three {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 10px;
+}
 .sub-modal-btn {
   border: none;
   border-radius: var(--sub-r-sm);
-  padding: 10px 16px;
+  min-height: 42px;
+  padding: 10px 14px;
   font-family: var(--sub-body);
   font-size: 13px;
   font-weight: 800;
@@ -2997,11 +2997,34 @@ textarea.sub-finput {
   align-items: center;
   justify-content: center;
   gap: 7px;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+.sub-modal-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.sub-modal-btn:focus-visible {
+  outline: 3px solid rgba(24, 119, 242, 0.22);
+  outline-offset: 2px;
 }
 .sub-modal-btn.cancel {
   background: var(--sub-surface-2);
   color: var(--sub-muted);
   border: 1px solid var(--sub-border);
+}
+.sub-modal-btn--continue {
+  background: var(--sub-surface-2);
+  color: var(--sub-muted);
+  border: 1px solid var(--sub-border);
+}
+.sub-modal-btn--continue:hover:not(:disabled) {
+  background: white;
+  color: var(--sub-text);
+  border-color: var(--sub-blue-bdr);
 }
 .sub-modal-btn.success {
   background: var(--sub-green);
@@ -3009,9 +3032,32 @@ textarea.sub-finput {
 .sub-modal-btn.danger {
   background: var(--sub-red);
 }
+.sub-modal-btn--discard {
+  background: #fff1f2;
+  color: var(--sub-red);
+  border: 1px solid rgba(220, 38, 38, 0.24);
+}
+.sub-modal-btn--discard:hover:not(:disabled) {
+  background: var(--sub-red);
+  color: white;
+  box-shadow: 0 10px 22px rgba(220, 38, 38, 0.18);
+}
+.sub-modal-btn.info {
+  background: var(--sub-blue);
+}
+.sub-modal-btn--save {
+  background: var(--sub-blue);
+  color: white;
+  box-shadow: 0 12px 26px rgba(24, 119, 242, 0.2);
+}
+.sub-modal-btn--save:hover:not(:disabled) {
+  background: #0f63d6;
+  box-shadow: 0 14px 30px rgba(24, 119, 242, 0.28);
+}
 .sub-modal-btn:disabled {
   cursor: wait;
   opacity: 0.65;
+  transform: none;
 }
 @keyframes sub-modal-fade {
   from {
@@ -3108,6 +3154,27 @@ textarea.sub-finput {
     grid-template-columns: 1fr;
     flex-direction: column;
     align-items: stretch;
+  }
+  .sub-modal--draft-exit {
+    max-width: 420px;
+    padding: 22px 18px 18px;
+  }
+  .sub-modal-actions--three {
+    display: flex;
+    flex-direction: column;
+  }
+  .sub-modal-actions--three .sub-modal-btn--save {
+    order: 1;
+  }
+  .sub-modal-actions--three .sub-modal-btn--continue {
+    order: 2;
+  }
+  .sub-modal-actions--three .sub-modal-btn--discard {
+    order: 3;
+  }
+  .sub-modal-actions--three .sub-modal-btn {
+    width: 100%;
+    min-height: 44px;
   }
   .sub-btn-ghost,
   .sub-btn-primary {
