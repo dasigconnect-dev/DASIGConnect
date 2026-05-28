@@ -96,12 +96,14 @@ export default function CalendarRescheduleModal({
 
           <div className="cal-reschedule-diff" aria-label="Schedule change">
             <div className="cal-reschedule-diff-col">
-              <span className="cal-reschedule-diff-label">From</span>
+              <span className="cal-reschedule-diff-label">Original</span>
               <span className="cal-reschedule-diff-value">{formatDatetime(originalDate)}</span>
             </div>
-            <i className="ti ti-arrow-right cal-reschedule-diff-arrow" aria-hidden="true" />
+            <div className="cal-reschedule-diff-divider" aria-hidden="true">
+              <i className="ti ti-arrow-right cal-reschedule-diff-arrow" />
+            </div>
             <div className="cal-reschedule-diff-col cal-reschedule-diff-to">
-              <span className="cal-reschedule-diff-label">To</span>
+              <span className="cal-reschedule-diff-label">New time</span>
               <span className="cal-reschedule-diff-value">{formatDatetime(newStart)}</span>
             </div>
           </div>
@@ -118,7 +120,7 @@ export default function CalendarRescheduleModal({
             </label>
             <textarea
               id="cal-reschedule-reason"
-              className="cal-reschedule-reason-input"
+              className={`cal-reschedule-reason-input${reasonTrimmed.length >= MIN_REASON_LEN ? " is-valid" : ""}`}
               rows={3}
               placeholder="Explain why this submission is being rescheduled…"
               value={reason}
@@ -127,12 +129,12 @@ export default function CalendarRescheduleModal({
               autoFocus
             />
             <div className="cal-reschedule-reason-footer">
-              <span className="cal-reschedule-reason-hint-inline">
-                {reasonTrimmed.length < MIN_REASON_LEN && reasonTrimmed.length > 0
-                  ? `${MIN_REASON_LEN - reasonTrimmed.length} more character${MIN_REASON_LEN - reasonTrimmed.length === 1 ? "" : "s"} needed`
-                  : reasonTrimmed.length >= MIN_REASON_LEN
-                  ? "Reason accepted"
-                  : ""}
+              <span className={`cal-reschedule-reason-hint-inline${reasonTrimmed.length >= MIN_REASON_LEN ? " is-valid" : ""}`}>
+                {reasonTrimmed.length >= MIN_REASON_LEN ? (
+                  <><i className="ti ti-circle-check" aria-hidden="true" /> Reason accepted</>
+                ) : reasonTrimmed.length > 0 ? (
+                  `${MIN_REASON_LEN - reasonTrimmed.length} more character${MIN_REASON_LEN - reasonTrimmed.length === 1 ? "" : "s"} needed`
+                ) : null}
               </span>
               <span
                 className={`cal-reschedule-char-count${reasonTrimmed.length >= MIN_REASON_LEN ? " is-valid" : ""}`}
@@ -158,7 +160,7 @@ export default function CalendarRescheduleModal({
             disabled={busy}
           >
             <i className="ti ti-arrow-back-up" aria-hidden="true" />
-            Cancel — keep original time
+            Cancel
           </button>
           <button
             type="button"
