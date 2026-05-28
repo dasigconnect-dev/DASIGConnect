@@ -17,9 +17,13 @@ import org.springframework.web.bind.annotation.RestController;
 import com.dasigconnect.backend.model.dto.media.AddAssetTagRequestDto;
 import com.dasigconnect.backend.model.dto.media.AssetTagDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetAddToDraftRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUseInNewPostRequestDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -46,13 +50,15 @@ public class MediaAssetController {
     public ResponseEntity<MediaAssetListResponseDto> list(
             @RequestParam(required = false) String query,
             @RequestParam(required = false) String aiCategory,
+            @RequestParam(required = false) String mediaType,
             @RequestParam(required = false) UUID uploaderId,
+            @RequestParam(required = false) UUID institutionId,
             @RequestParam(defaultValue = "newest") String sort,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "25") int pageSize,
             @RequestParam(required = false) String scope,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(mediaAssetService.list(query, aiCategory, uploaderId, sort, page, pageSize, scope, user));
+        return ResponseEntity.ok(mediaAssetService.list(query, aiCategory, mediaType, uploaderId, institutionId, sort, page, pageSize, scope, user));
     }
 
     @GetMapping("/{id}")
@@ -79,6 +85,14 @@ public class MediaAssetController {
             @Valid @RequestBody MediaAssetAddToDraftRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(mediaAssetService.addToDraft(id, dto, user));
+    }
+
+    @PostMapping("/upload-url")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MediaAssetUploadUrlResponseDto> getUploadUrl(
+            @Valid @RequestBody MediaAssetUploadUrlRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaAssetService.createUploadUrl(dto, user));
     }
 
     @PostMapping("/upload")
@@ -116,5 +130,13 @@ public class MediaAssetController {
             @AuthenticationPrincipal JwtUserDetails user) {
         mediaAssetService.delete(id, force, user);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/bulk-delete")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MediaAssetBulkDeleteResponseDto> bulkDelete(
+            @Valid @RequestBody MediaAssetBulkDeleteRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaAssetService.bulkDelete(dto, user));
     }
 }

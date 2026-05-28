@@ -71,7 +71,7 @@ class MediaAssetControllerTest {
                 1,
                 1,
                 25);
-        when(mediaAssetService.list(any(), any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
+        when(mediaAssetService.list(any(), any(), any(), any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
                 .thenReturn(response);
 
         mockMvc.perform(get("/api/v1/media-assets").param("page", "1").param("pageSize", "25"))
@@ -87,7 +87,7 @@ class MediaAssetControllerTest {
     void list_withParams_delegatesToService() throws Exception {
         UUID uploaderId = UUID.randomUUID();
         MediaAssetListResponseDto response = new MediaAssetListResponseDto(List.of(), 0, 2, 10);
-        when(mediaAssetService.list(any(), any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
+        when(mediaAssetService.list(any(), any(), any(), any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
                 .thenReturn(response);
 
         mockMvc.perform(get("/api/v1/media-assets")
@@ -102,7 +102,9 @@ class MediaAssetControllerTest {
         verify(mediaAssetService).list(
                 eq("award"),
                 eq("Awarding"),
+                any(),
                 eq(uploaderId),
+                any(),
                 eq("name"),
                 eq(2),
                 eq(10),
@@ -165,7 +167,7 @@ class MediaAssetControllerTest {
     void addTag_authenticated_returns201() throws Exception {
         UUID assetId = UUID.randomUUID();
         UUID tagId = UUID.randomUUID();
-        AssetTagDto tagDto = new AssetTagDto(tagId, "award", Instant.now());
+        AssetTagDto tagDto = new AssetTagDto(tagId, "award", "manual", Instant.now());
         when(mediaAssetService.addTag(eq(assetId), any(), any())).thenReturn(tagDto);
 
         mockMvc.perform(post("/api/v1/media-assets/{id}/tags", assetId)
@@ -201,6 +203,23 @@ class MediaAssetControllerTest {
         verify(mediaAssetService).delete(eq(assetId), eq(true), any());
     }
 
+    @Test
+    @WithMockUser
+    void bulkDelete_authenticated_returnsDeletedCount() throws Exception {
+        UUID assetId = UUID.randomUUID();
+        when(mediaAssetService.bulkDelete(any(), any()))
+                .thenReturn(new com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto(List.of(assetId)));
+
+        mockMvc.perform(post("/api/v1/media-assets/bulk-delete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"assetIds":["%s"],"force":true}
+                        """.formatted(assetId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deletedCount").value(1))
+                .andExpect(jsonPath("$.deletedIds[0]").value(assetId.toString()));
+    }
+
     private static MediaAsset mediaAsset(UUID id) {
         MediaAsset asset = new MediaAsset();
         asset.setId(id);
@@ -211,6 +230,7 @@ class MediaAssetControllerTest {
         asset.setFileSizeBytes(1024L);
         asset.setAiCategory("Awarding");
         asset.setInstitution(institution(UUID.randomUUID()));
+        asset.setUploader(user(UUID.randomUUID()));
         return asset;
     }
 

@@ -53,11 +53,29 @@ public class MediaAsset {
     @Column(name = "ai_description", columnDefinition = "text")
     private String aiDescription;
 
+    @Column(name = "ai_classified_at")
+    private Instant aiClassifiedAt;
+
+    @Column(name = "ai_classification_model", length = 100)
+    private String aiClassificationModel;
+
     // embedding VECTOR(1024) — managed via native queries; Hibernate does not map pgvector type natively
     // Use MediaAssetRepository.updateEmbedding() for writes and cosine search for reads
 
+    @Column(name = "embedding_generated_at")
+    private Instant embeddingGeneratedAt;
+
+    @Column(name = "embedding_model", length = 100)
+    private String embeddingModel;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    @Column(name = "deleted_by_user_id")
+    private UUID deletedByUserId;
+
+    @Column(name = "purged_at")
+    private Instant purgedAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -101,8 +119,26 @@ public class MediaAsset {
     public String getAiDescription() { return aiDescription; }
     public void setAiDescription(String aiDescription) { this.aiDescription = aiDescription; }
 
+    public Instant getAiClassifiedAt() { return aiClassifiedAt; }
+    public void setAiClassifiedAt(Instant aiClassifiedAt) { this.aiClassifiedAt = aiClassifiedAt; }
+
+    public String getAiClassificationModel() { return aiClassificationModel; }
+    public void setAiClassificationModel(String aiClassificationModel) { this.aiClassificationModel = aiClassificationModel; }
+
+    public Instant getEmbeddingGeneratedAt() { return embeddingGeneratedAt; }
+    public void setEmbeddingGeneratedAt(Instant embeddingGeneratedAt) { this.embeddingGeneratedAt = embeddingGeneratedAt; }
+
+    public String getEmbeddingModel() { return embeddingModel; }
+    public void setEmbeddingModel(String embeddingModel) { this.embeddingModel = embeddingModel; }
+
     public Instant getDeletedAt() { return deletedAt; }
     public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
+
+    public UUID getDeletedByUserId() { return deletedByUserId; }
+    public void setDeletedByUserId(UUID deletedByUserId) { this.deletedByUserId = deletedByUserId; }
+
+    public Instant getPurgedAt() { return purgedAt; }
+    public void setPurgedAt(Instant purgedAt) { this.purgedAt = purgedAt; }
 
     public Instant getCreatedAt() { return createdAt; }
 

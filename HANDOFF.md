@@ -1,96 +1,35 @@
-# Handoff - 2026-05-22
+# Handoff — 2026-05-28 (Session 7)
 
-Current branch: `feature/uc13-submission-backend`
+## What was done this session
 
-## Status
+- **Java deprecation warning cleanup** — replaced all `HttpStatus.UNPROCESSABLE_ENTITY` (deprecated in Spring 7) with `HttpStatusCode.valueOf(422)` across `GlobalExceptionHandler`, `CaptionGenerationService`, and `DirectPostService` (7 occurrences). Replaced `ResponseEntity.unprocessableEntity()` with `ResponseEntity.status(422)` in `GlobalExceptionHandler`.
+- **Unused import removed** — `AIClassificationService` import deleted from `MediaAssetService.java` (never referenced in the file body).
+- **Unused constants removed** — `PUBLISHING_SUCCESS_TARGET = 95.0` deleted from `MetricsAggregatorService.java`; `MAX_OVERRIDE_REQUESTS = 2` deleted from `OverrideRequestService.java`.
+- **Test assertions updated** — `CaptionGenerationServiceTest` two 422 assertions changed from `isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY)` to `.value() == 422` to match Spring 7 renamed reason phrase (`UNPROCESSABLE_CONTENT`).
+- **UC-3.5 cherry-pick confirmed complete** — all 12 backend files (`ExceptionHandlingController`, 8 DTOs, `OverrideRequest`/`OverrideRequestDecision` entities, `OverrideRequestRepository`, `ExpiredOverrideCleanupJob`, 4 services, `SubmissionStatus` with new enum values) and `V24__override_requests.sql` verified present on `module3`.
+- **269 backend tests passing** after all cleanup — 0 failures, 0 errors.
 
-### Backend
+## Files changed
 
-- Done: UC-1.3 submission backend endpoints on `/api/v1/submissions`.
-- Done: required merge-blocking tests:
-  - `SubmissionServiceTest`
-  - `SubmissionControllerTest`
-  - `UserServiceTest`
-  - `UserControllerTest`
-- Done: `GlobalExceptionHandler` now returns `400 Bad Request` for missing request parameters instead of falling through to generic server error handling.
-- Done: `InstitutionController` now exposes canonical `/api/v1/institutions` and keeps `/api/v1/admin/institutions` as a legacy alias.
-- Done: M2 stragglers remain in place: resend invitation, `GET /me`, scoped user listing, and user role counts.
-- Done: pending invitation endpoints are available on `/api/v1/invitations/pending` and `/api/v1/invitations/pending/count`.
-- Done: invitation lifecycle is hardened so creating/resending an invitation invalidates older unused, unexpired tokens for the same recipient email.
-- Done: `GET /api/v1/users/counts` now applies the same validator institution scope rule as user listing.
-- Done: Flyway duplicate version conflict fixed by keeping `V3__ensure_institution_email_domain.sql` and renaming the media migration to `V4__media_assets.sql`.
-- Done: local datasource config supports `DASIG_DATABASE_*` overrides first, then standard `DATABASE_*` variables, with a local JDBC fallback. This avoids accidental unresolved/provider-style database URLs during local runs.
-- Done: backend Supabase config supports `DASIG_SUPABASE_URL`, `DASIG_SUPABASE_SERVICE_ROLE_KEY`, and `DASIG_SUPABASE_STORAGE_BUCKET`.
-- Done: Flyway fresh Supabase startup is fixed by using baseline version `0`; a new Supabase `public` schema now baselines at `0` and runs V1 through V4 instead of skipping V1.
-- Done locally: guard rail enforcement can be disabled with `APP_GUARDRAILS_ENFORCED=false` for testing. Local default is currently false so GR-H1/GR-H2/GR-H3 do not block draft save or submit-for-review testing.
-- Done locally: guard rail reservation failures return structured `422` responses with violation details instead of generic internal server errors.
+- `backend/src/main/java/com/dasigconnect/backend/exception/GlobalExceptionHandler.java` — replaced deprecated `ResponseEntity.unprocessableEntity()`
+- `backend/src/main/java/com/dasigconnect/backend/service/CaptionGenerationService.java` — replaced `HttpStatus.UNPROCESSABLE_ENTITY`, added `HttpStatusCode` import
+- `backend/src/main/java/com/dasigconnect/backend/service/DirectPostService.java` — replaced all 7 `HttpStatus.UNPROCESSABLE_ENTITY` occurrences, added `HttpStatusCode` import
+- `backend/src/main/java/com/dasigconnect/backend/service/MediaAssetService.java` — removed unused `AIClassificationService` import
+- `backend/src/main/java/com/dasigconnect/backend/service/MetricsAggregatorService.java` — removed unused `PUBLISHING_SUCCESS_TARGET` constant
+- `backend/src/main/java/com/dasigconnect/backend/service/OverrideRequestService.java` — removed unused `MAX_OVERRIDE_REQUESTS` constant; IDE linter also auto-applied `UNPROCESSABLE_CONTENT` fix in `suggest()`
+- `backend/src/test/java/com/dasigconnect/backend/service/CaptionGenerationServiceTest.java` — updated 2 assertions to compare status code as integer value
 
-### Frontend
+## What's next
 
-- Done: submission API wiring now matches the backend:
-  - `POST /api/v1/submissions` for draft creation.
-  - `POST /api/v1/submissions/{id}/evaluate-slot` with `{ scheduledAt }`.
-  - Direct browser upload to Supabase Storage, then `POST /api/v1/submissions/{id}/media` with `{ storageUrl, fileName, fileType, fileSizeBytes }`.
-  - `GET/POST /api/v1/institutions`.
-  - Lookup typing now matches backend constants: file types, size limits, media limits, and schedule lead windows.
-- Done: reset password screen and `/reset-password` route are wired to `POST /api/v1/auth/reset-password`.
-- Done: session warning infrastructure now reads JWT `exp`, starts a five-minute countdown, and opens the expiry modal at timeout.
-- Done: dashboard stat tiles are no longer all hardcoded zero; they use live submission/user/institution/pending-invitation endpoints where backend support exists.
-- Done: app auth state hydrates from `GET /api/v1/me` after login, invite accept, session modal relogin, and saved-token restore. This prevents Gmail/domain guessing from overriding the real institution.
-- Done: invite/manage modal now lists pending invitations and current users for the selected institution, including resend actions for active pending invites.
-- Done locally: user management now has a reusable `UserManagementPanel` with selected-user details and deactivate/reactivate actions wired to `PATCH /api/v1/users/{id}/status`.
-- Done locally: invite validator flow warns when the selected institution already has active validators, but allows the administrator to proceed after confirmation.
-- Done locally: `.jpg` files are normalized to `jpeg` for submission readiness and backend media metadata.
-- Done locally: submission queue styling has been improved with a clearer left-side queue panel, count badge, item containers, hover state, and active state.
-- Done locally: frontend submit buttons are no longer blocked by readiness score during testing, and draft payloads use safe defaults for blank required backend fields.
-- Done locally: `frontend/.env.local` points Vite to `http://localhost:8080/api/v1` and contains the Supabase browser upload variables for the `dasigconnect-media` bucket. This file is intentionally ignored and should not be committed.
+1. **UC-3.5 frontend** — implement the 5-tab Resolution Center extension: `ValidationTimeoutTab`, `OverrideRequestsTab`, `DirectPostTab`, `TokenManagementPanel`, `SlotSuggestionModal`, `RejectOnBehalfModal`, per-tab badge counts; wire to `ExceptionHandlingController` endpoints under `/api/admin/resolution`.
+2. **Apply V24 migration** — restart the backend locally to trigger Flyway V24 (`override_requests` table) on the Supabase DB before testing UC-3.5 endpoints.
+3. **Browser E2E for UC-3.3 media suggestions** — restart backend with `VOYAGE_API_KEY` + `ANTHROPIC_API_KEY`, confirm V21/V22 applied, run through suggest-media flow in Submit Content.
+4. **Browser E2E for UC-2.3 notifications** — verify SSE stream connects, notifications arrive, sidebar badge updates, mark-read/all-read work against live backend.
+5. **Pre-merge lint cleanup** — fix pre-existing debt in `App.tsx`, dashboard, submission, validation, user-management files so full-project `npm run lint` passes before final PR.
 
-## Verification
+## Blockers / notes
 
-- Frontend: `npm.cmd run build` passed.
-- Backend focused auth/onboarding verification: `.\mvnw.cmd '-Dtest=InvitationServiceTest,InvitationControllerTest,UserServiceTest,UserControllerTest' test` passed.
-- Backend focused result: `Tests run: 50, Failures: 0, Errors: 0, Skipped: 0`.
-- Backend: `mvn test` passed using the local Maven distribution because `.\mvnw.cmd` fails in this PowerShell environment.
-- Backend result: `Tests run: 163, Failures: 0, Errors: 0, Skipped: 0`.
-- Flyway duplicate migration check: source and generated `target/classes/db/migration` now have unique versions `V1`, `V2`, `V3`, and `V4`; `mvn clean` and `mvn -DskipTests package` passed.
-- Fresh Supabase DB check: backend applied V1 through V4 successfully, then a second startup validated migrations and started with 0 pending migrations.
-- Latest frontend check after local Supabase env wiring: `npm.cmd run build` passed.
-- Latest focused submission backend check: `SlotReservationServiceTest`, `SubmissionServiceTest`, and `SubmissionControllerTest` passed.
-- Latest focused submission backend result: 42 tests, 0 failures, 0 errors.
-
-Backend test command used:
-
-```powershell
-& "$env:USERPROFILE\.m2\wrapper\dists\apache-maven-3.9.15\0226a00282e400185496f3b60ec5a3f029cbdc6893912937d4876d57695224e1\bin\mvn.cmd" test
-```
-
-## Remaining Gaps
-
-- Active Module 1 blocker: save draft and submit-for-review are not yet considered solved. Backend guard rail blocking has been bypassed for testing and frontend payload defaults were added, but the browser flow still needs manual debugging/verification against the current backend and Supabase setup.
-- Submission queue design improved locally, but still needs user/team review with real queue data and responsive/mobile widths.
-- `GET /api/v1/submissions/lookups` does not provide categories, tags, or preferred time slots. The frontend no longer assumes those fields, but richer category/tag UI needs backend support.
-- `AssetPickerModal` / media library still needs UC-2.2 backend: `MediaAssetController`, especially `GET /api/v1/media-assets` and delete behavior.
-- Validator review queue actions still need UC-2.1 backend: approve, reject, needs-revision, and validator/admin transition rules.
-- SSE notifications still need UC-2.3 backend.
-- Analytics still need UC-2.4 backend aggregate endpoints.
-- Calendar, publishing, Facebook fallback, AI captions, and AI recommendations still need UC-3.x backend.
-- No built-in validator account exists. Validators must be invited from the administrator dashboard, accept the invite, and set their password.
-- Supabase browser upload credentials are configured locally. The full browser upload flow still needs manual verification through the submission form. Required frontend env vars are:
-  - `VITE_SUPABASE_URL`
-  - `VITE_SUPABASE_STORAGE_BUCKET`
-  - `VITE_SUPABASE_ANON_KEY`
-- Local frontend/backend connection requires `frontend/.env.local` with `VITE_API_URL=http://localhost:8080/api/v1`.
-- Backend runtime still needs deployment-owned SMTP and Supabase service credentials in deployed environments. Local SMTP and Supabase values are configured through ignored env files.
-- `.\mvnw.cmd` may require network access to resolve dependencies in this environment; rerun with normal Maven/network permissions if dependency resolution fails.
-
-## Critical Invariants
-
-- `MediaAsset.embedding` is not mapped by Hibernate. Keep pgvector reads/writes in native repository queries.
-- Keep HikariCP max pool size at 5 for Supabase Session Pooler.
-- Keep `DATABASE_USER` / `DATABASE_USERNAME` environment naming aligned with `application.properties` and local `.env`.
-- Prefer local `DASIG_DATABASE_*` variables when testing locally to avoid collisions with provider/system `DATABASE_URL` values.
-- For fresh Supabase projects, keep Flyway baseline version at `0`; baseline version `1` marks V1 as applied without creating Module 1 tables.
-- Media upload pattern is frontend direct-to-Supabase first, backend metadata second. Do not switch Module 1 endpoints to multipart upload.
-- Invitation tokens are single-use in practice: issuing a fresh invite/resend supersedes older open links for the same email.
-- Do not log JWTs, reset tokens, invitation tokens, passwords, or API keys.
-- Do not edit generated migration files under `backend/target`; fix Flyway issues only in `backend/src/main/resources/db/migration`.
+- `OverrideRequestService.submissionRepository` field is unused — the IDE linter (VS Code Java extension) keeps restoring it. The compiler warning is cosmetic and does not affect tests or runtime. Add `@SuppressWarnings("unused")` if needed, or leave as-is since UC-3.5 override approval may need it later.
+- V24 migration has not been applied to Supabase yet — backend restart required before UC-3.5 endpoints can be browser-tested.
+- UC-3.5 frontend is the last major unimplemented feature in the current module scope.
+- Full-project `npm run lint` still fails due to pre-existing debt outside current feature slices — not blocking development but should be resolved before final PR.

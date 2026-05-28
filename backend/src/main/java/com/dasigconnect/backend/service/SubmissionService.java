@@ -1,9 +1,12 @@
 package com.dasigconnect.backend.service;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,8 +16,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import org.springframework.context.ApplicationEventPublisher;
+
+import com.dasigconnect.backend.event.SubmissionRescheduledEvent;
+import com.dasigconnect.backend.exception.GuardRailViolationException;
 import com.dasigconnect.backend.exception.MediaAssetNotFoundException;
 import com.dasigconnect.backend.exception.SubmissionNotFoundException;
+import com.dasigconnect.backend.model.dto.submission.RescheduleRequestDto;
 import com.dasigconnect.backend.model.dto.guardrail.GuardRailResult;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.AttachAssetDto;
@@ -23,6 +31,7 @@ import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlRequest;
 import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlResponse;
 import com.dasigconnect.backend.model.dto.submission.SlotEvaluateRequestDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionCreateDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
@@ -70,6 +79,7 @@ public class SubmissionService {
     private final SupabaseStorageService supabaseStorageService;
     private final NotificationService notificationService;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -86,7 +96,8 @@ public class SubmissionService {
             AuditLogService auditLogService,
             SupabaseStorageService supabaseStorageService,
             NotificationService notificationService,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            ApplicationEventPublisher eventPublisher) {
         this.submissionRepository = submissionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
@@ -96,6 +107,7 @@ public class SubmissionService {
         this.supabaseStorageService = supabaseStorageService;
         this.notificationService = notificationService;
         this.userRepository = userRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -231,6 +243,10 @@ public class SubmissionService {
                     submissionId);
         }
 
+        // Content completeness is a data-integrity invariant, not a scheduling
+        // guard rail — enforce it on every submit regardless of guardRailsEnforced.
+        assertContentComplete(submission);
+
         submission.setStatus(SubmissionStatus.pending);
         submission.setSubmittedAt(Instant.now());
         submission = submissionRepository.save(submission);
@@ -239,29 +255,60 @@ public class SubmissionService {
                 entityManager.getReference(User.class, user.userId()),
                 "SUBMISSION_SUBMITTED", null, null,
                 submissionId,
-                Map.of("scheduledAt", submission.getScheduledAt().toString()));
+                submission.getScheduledAt() != null
+                        ? Map.of("scheduledAt", submission.getScheduledAt().toString())
+                        : Map.of());
 
         // T1 — notify all institution validators (spec: contributor does not receive T1)
-        String contributorEmail = submission.getContributor().getEmail();
-        String scheduledPart = submission.getScheduledAt() != null
-                ? " — scheduled for " + formatInstant(submission.getScheduledAt())
-                : "";
-        String t1Message = contributorEmail + " submitted '" + submission.getEventTitle()
-                + "' for review" + scheduledPart + ".";
-        String submissionLink = "/submissions/" + submissionId;
+        try {
+            String contributorEmail = submission.getContributor().getEmail();
+            String scheduledPart = submission.getScheduledAt() != null
+                    ? " — scheduled for " + formatInstant(submission.getScheduledAt())
+                    : "";
+            String t1Message = contributorEmail + " submitted '" + submission.getEventTitle()
+                    + "' for review" + scheduledPart + ".";
+            String submissionLink = "/submissions/" + submissionId;
 
-        List<User> validators = userRepository
-                .findByInstitutionIdAndRoleOrderByCreatedAtDesc(user.institutionId(), UserRole.validator);
-        for (User validator : validators) {
-            notificationService.createNotification(
-                    validator,
-                    NotificationEventType.submission_pending,
-                    t1Message,
-                    submissionLink);
+            List<User> validators = userRepository
+                    .findByInstitutionIdAndRoleOrderByCreatedAtDesc(user.institutionId(), UserRole.validator);
+            for (User validator : validators) {
+                notificationService.createNotification(
+                        validator,
+                        NotificationEventType.submission_pending,
+                        t1Message,
+                        submissionLink);
+            }
+        } catch (Exception e) {
+            log.warn("T1 notifications skipped for submission {} — {}", submissionId, e.getMessage());
         }
 
         log.info("Submission {} → PENDING by contributor {}", submissionId, user.userId());
         return buildResponse(submission);
+    }
+
+    /**
+     * Rejects a submit when the post is missing fields required for a publishable
+     * post: an event title, an event date, a caption, and at least one media
+     * asset. Throws 422 listing everything that is still missing.
+     */
+    private void assertContentComplete(Submission submission) {
+        List<String> missing = new java.util.ArrayList<>();
+        if (submission.getEventTitle() == null || submission.getEventTitle().isBlank()) {
+            missing.add("an event title");
+        }
+        if (submission.getEventDate() == null) {
+            missing.add("an event date");
+        }
+        if (submission.getCaption() == null || submission.getCaption().isBlank()) {
+            missing.add("a caption");
+        }
+        if (submissionMediaAssetRepository.countBySubmissionId(submission.getId()) == 0) {
+            missing.add("at least one media file");
+        }
+        if (!missing.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Submission is incomplete — add " + String.join(", ", missing) + " before submitting.");
+        }
     }
 
     /**
@@ -381,6 +428,93 @@ public class SubmissionService {
 
         log.info("Existing asset {} attached to submission {} by contributor {}", asset.getId(), submissionId, user.userId());
         return buildResponse(submissionRepository.findById(submissionId).orElseThrow());
+    }
+
+    /**
+     * Updates the posting sequence for media already attached to an editable
+     * submission. The request must include every attached media asset exactly
+     * once so reordering cannot accidentally drop an asset.
+     */
+    public SubmissionResponseDto reorderMedia(UUID submissionId, SubmissionMediaOrderDto dto, JwtUserDetails user) {
+        Submission submission = loadForContributor(submissionId, user);
+        assertEditableStatus(submission);
+
+        List<SubmissionMediaAsset> links =
+                submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId);
+        if (links.size() != dto.getMediaAssetIds().size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "mediaAssetIds must include every attached media asset exactly once.");
+        }
+
+        HashSet<UUID> requestedIds = new HashSet<>(dto.getMediaAssetIds());
+        if (requestedIds.size() != dto.getMediaAssetIds().size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "mediaAssetIds must not contain duplicates.");
+        }
+
+        Map<UUID, SubmissionMediaAsset> linksByAssetId = links.stream()
+                .collect(Collectors.toMap(link -> link.getMediaAsset().getId(), Function.identity()));
+        if (!linksByAssetId.keySet().equals(requestedIds)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "mediaAssetIds must match the media currently attached to this submission.");
+        }
+
+        for (int index = 0; index < dto.getMediaAssetIds().size(); index++) {
+            linksByAssetId.get(dto.getMediaAssetIds().get(index)).setDisplayOrder(index);
+        }
+        submissionMediaAssetRepository.saveAll(links);
+
+        log.info("Contributor {} reordered media for submission {}", user.userId(), submissionId);
+        return buildResponse(submission);
+    }
+
+    // ── UC-3.1 Admin Reschedule ───────────────────────────────────────────────
+
+    /**
+     * Allows an Administrator to move a SCHEDULED submission to a new slot.
+     *
+     * Guard rails are re-evaluated. Hard violations block the move unless the
+     * admin supplies an overrideReason, which is then written to the audit log.
+     */
+    public SubmissionResponseDto reschedule(UUID submissionId, RescheduleRequestDto dto, JwtUserDetails user) {
+        Submission submission = submissionRepository.findById(submissionId)
+                .orElseThrow(() -> new SubmissionNotFoundException(submissionId));
+
+        if (submission.getStatus() != SubmissionStatus.scheduled) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only SCHEDULED submissions can be rescheduled. Current status: " + submission.getStatus());
+        }
+
+        Instant originalSlot = submission.getScheduledAt();
+        Instant newSlot = dto.getScheduledAt();
+
+        GuardRailResult guardRailResult = guardRailService.validate(submission.getInstitution().getId(), newSlot);
+        if (guardRailResult.isBlocked()) {
+            if (dto.getOverrideReason() == null || dto.getOverrideReason().isBlank()) {
+                throw new GuardRailViolationException(guardRailResult.getHardBlocks());
+            }
+            auditLogService.record(
+                    entityManager.getReference(User.class, user.userId()),
+                    "ADMIN_RESCHEDULE_OVERRIDE",
+                    null, null,
+                    submissionId,
+                    Map.of(
+                        "originalSlot", originalSlot.toString(),
+                        "newSlot", newSlot.toString(),
+                        "overrideReason", dto.getOverrideReason(),
+                        "violations", guardRailResult.getHardBlocks().toString()
+                    )
+            );
+        }
+
+        slotReservationService.reserveLockedSlot(submissionId, submission.getInstitution().getId(), newSlot);
+        submission.setScheduledAt(newSlot);
+        submissionRepository.save(submission);
+
+        log.info("Admin {} rescheduled submission {} from {} to {}", user.userId(), submissionId, originalSlot, newSlot);
+        eventPublisher.publishEvent(new SubmissionRescheduledEvent(submission, originalSlot, newSlot));
+
+        return buildResponse(submission);
     }
 
     // ── Private Helpers ──────────────────────────────────────────────────────

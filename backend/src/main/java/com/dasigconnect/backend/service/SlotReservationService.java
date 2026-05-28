@@ -176,6 +176,40 @@ public class SlotReservationService {
     }
 
     /**
+     * Creates a permanently locked slot reservation for an admin reschedule.
+     *
+     * Unlike reserve(), this bypasses guard rail validation (caller is responsible)
+     * and creates the reservation in LOCKED state directly — matching the post-approval
+     * state a normal submission reaches after Validator approval.
+     *
+     * @param submissionId  the submission being rescheduled
+     * @param institutionId the institution of the submission
+     * @param newSlot       the new scheduled_at time
+     */
+    @Transactional
+    public SlotReservation reserveLockedSlot(UUID submissionId, UUID institutionId, Instant newSlot) {
+        Submission submission = submissionRepository.findById(submissionId)
+                .orElseThrow(() -> new IllegalArgumentException("Submission not found: " + submissionId));
+        Institution institution = institutionRepository.findById(institutionId)
+                .orElseThrow(() -> new IllegalArgumentException("Institution not found: " + institutionId));
+
+        slotReservationRepository.releaseBySubmissionId(submissionId);
+
+        SlotReservation reservation = new SlotReservation();
+        reservation.setSubmission(submission);
+        reservation.setInstitution(institution);
+        reservation.setScheduledAt(newSlot);
+        reservation.setStatus(SlotReservationStatus.locked);
+
+        try {
+            return slotReservationRepository.save(reservation);
+        } catch (DataIntegrityViolationException ex) {
+            throw new SlotAlreadyTakenException(
+                    "This slot was just taken by another submission. Please choose a different time.");
+        }
+    }
+
+    /**
      * GR-T2: Releases all stale held reservations.
      *
      * A reservation is stale when the linked submission: - Is still in DRAFT

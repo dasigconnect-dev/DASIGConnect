@@ -14,6 +14,10 @@ public class MediaAssetSummaryDto {
     private long fileSizeBytes;
     private String aiCategory;
     private Instant createdAt;
+    private UUID institutionId;
+    private String institutionName;
+    private UUID uploaderId;
+    private String uploaderEmail;
 
     public static MediaAssetSummaryDto from(MediaAsset asset) {
         MediaAssetSummaryDto dto = new MediaAssetSummaryDto();
@@ -25,6 +29,10 @@ public class MediaAssetSummaryDto {
         dto.fileSizeBytes = asset.getFileSizeBytes();
         dto.aiCategory = asset.getAiCategory();
         dto.createdAt = asset.getCreatedAt();
+        dto.institutionId = asset.getInstitution().getId();
+        dto.institutionName = asset.getInstitution().getName();
+        dto.uploaderId = asset.getUploader().getId();
+        dto.uploaderEmail = asset.getUploader().getEmail();
         return dto;
     }
 
@@ -36,4 +44,8 @@ public class MediaAssetSummaryDto {
     public long getFileSizeBytes() { return fileSizeBytes; }
     public String getAiCategory() { return aiCategory; }
     public Instant getCreatedAt() { return createdAt; }
+    public UUID getInstitutionId() { return institutionId; }
+    public String getInstitutionName() { return institutionName; }
+    public UUID getUploaderId() { return uploaderId; }
+    public String getUploaderEmail() { return uploaderEmail; }
 }

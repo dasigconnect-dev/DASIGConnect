@@ -1,0 +1,161 @@
+{
+  "properties": [
+    {
+      "name": "app.jwt.secret",
+      "type": "java.lang.String",
+      "description": "Secret key used to sign and verify JWTs."
+    },
+    {
+      "name": "app.jwt.access-token-ttl-minutes",
+      "type": "java.lang.Integer",
+      "description": "Access token time-to-live in minutes. Default: 480 (8 hours).",
+      "defaultValue": 480
+    },
+    {
+      "name": "app.mail.from",
+      "type": "java.lang.String",
+      "description": "From address for outbound system emails.",
+      "defaultValue": "no-reply@dasigconnect.local"
+    },
+    {
+      "name": "app.mail.from.name",
+      "type": "java.lang.String",
+      "description": "Display name for the From address.",
+      "defaultValue": "DASIGConnect"
+    },
+    {
+      "name": "app.mail.reply-to",
+      "type": "java.lang.String",
+      "description": "Reply-To address for outbound system emails."
+    },
+    {
+      "name": "app.mail.smoke-test.to",
+      "type": "java.lang.String",
+      "description": "Address to receive smoke-test emails on startup (leave blank to skip)."
+    },
+    {
+      "name": "app.frontend.base-url",
+      "type": "java.lang.String",
+      "description": "Base URL of the React frontend, used to build deep-link URLs in emails.",
+      "defaultValue": "http://localhost:5173"
+    },
+    {
+      "name": "app.supabase.url",
+      "type": "java.lang.String",
+      "description": "Supabase project URL (e.g. https://<ref>.supabase.co)."
+    },
+    {
+      "name": "app.supabase.service-role-key",
+      "type": "java.lang.String",
+      "description": "Supabase service-role key used for server-side storage operations."
+    },
+    {
+      "name": "app.supabase.storage-bucket",
+      "type": "java.lang.String",
+      "description": "Supabase Storage bucket name for media assets.",
+      "defaultValue": "dasigconnect-media"
+    },
+    {
+      "name": "app.media-assets.deleted-retention-days",
+      "type": "java.lang.Integer",
+      "description": "Days to retain soft-deleted media assets before permanent purge. Default: 30.",
+      "defaultValue": 30
+    },
+    {
+      "name": "app.media-assets.purge-batch-size",
+      "type": "java.lang.Integer",
+      "description": "Maximum number of assets to purge per retention job run. Default: 25.",
+      "defaultValue": 25
+    },
+    {
+      "name": "app.media-assets.purge-cron",
+      "type": "java.lang.String",
+      "description": "Cron expression for the retention purge job. Default: daily at 02:30 UTC.",
+      "defaultValue": "0 30 2 * * *"
+    },
+    {
+      "name": "app.guardrails.enforced",
+      "type": "java.lang.Boolean",
+      "description": "When true, guard rail checks block submission scheduling. Default: false.",
+      "defaultValue": false
+    },
+    {
+      "name": "app.db-diagnostics.enabled",
+      "type": "java.lang.Boolean",
+      "description": "When true, enables the DB diagnostics endpoint. Default: false.",
+      "defaultValue": false
+    },
+    {
+      "name": "app.facebook.page-access-token",
+      "type": "java.lang.String",
+      "description": "Facebook Page Access Token for the DASIG Facebook Page."
+    },
+    {
+      "name": "app.facebook.page-id",
+      "type": "java.lang.String",
+      "description": "Numeric Facebook Page ID for the DASIG Facebook Page."
+    },
+    {
+      "name": "app.facebook.app-id",
+      "type": "java.lang.String",
+      "description": "Facebook App ID registered in the Meta Developer Portal."
+    },
+    {
+      "name": "app.facebook.app-secret",
+      "type": "java.lang.String",
+      "description": "Facebook App Secret for token validation."
+    },
+    {
+      "name": "app.facebook.api-version",
+      "type": "java.lang.String",
+      "description": "Facebook Graph API version to target.",
+      "defaultValue": "v25.0"
+    },
+    {
+      "name": "app.facebook.oauth-redirect-uri",
+      "type": "java.lang.String",
+      "description": "OAuth callback URI registered in the Meta app for token refresh flow (UC-3.5).",
+      "defaultValue": "http://localhost:8080/api/admin/resolution/tokens/oauth-callback"
+    },
+    {
+      "name": "anthropic.api.key",
+      "type": "java.lang.String",
+      "description": "Anthropic API key for Claude Vision caption and classification calls."
+    },
+    {
+      "name": "anthropic.api.model",
+      "type": "java.lang.String",
+      "description": "Anthropic model ID to use for vision requests.",
+      "defaultValue": "claude-haiku-4-5-20251001"
+    },
+    {
+      "name": "voyage.api.key",
+      "type": "java.lang.String",
+      "description": "Voyage AI API key for embedding generation (voyage-4-lite, 1024 dimensions)."
+    },
+    {
+      "name": "spring.flyway.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether to enable Flyway database migration on startup.",
+      "defaultValue": true
+    },
+    {
+      "name": "spring.flyway.locations",
+      "type": "java.lang.String[]",
+      "description": "Locations of Flyway migration scripts.",
+      "defaultValue": ["classpath:db/migration"]
+    },
+    {
+      "name": "spring.flyway.baseline-on-migrate",
+      "type": "java.lang.Boolean",
+      "description": "Whether to automatically call baseline when migrating a non-empty schema.",
+      "defaultValue": false
+    },
+    {
+      "name": "spring.flyway.baseline-version",
+      "type": "java.lang.String",
+      "description": "Version to tag an existing schema with when executing baseline.",
+      "defaultValue": "1"
+    }
+  ]
+}

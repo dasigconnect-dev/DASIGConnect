@@ -6,6 +6,7 @@ import com.dasigconnect.backend.model.dto.submission.AttachAssetDto;
 import com.dasigconnect.backend.model.dto.submission.AttachMediaDto;
 import com.dasigconnect.backend.model.dto.submission.SlotEvaluateRequestDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionCreateDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
@@ -177,6 +178,7 @@ class SubmissionServiceTest {
         when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
         when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.validator))
                 .thenReturn(List.of(validator));
@@ -233,12 +235,46 @@ class SubmissionServiceTest {
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
 
         SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
 
         assertThat(result.getStatus()).isEqualTo("pending");
         verify(guardRailService, never()).validate(any(), any());
+    }
+
+    @Test
+    void submit_withoutMedia_returns422() {
+        UUID submissionId = UUID.randomUUID();
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
+
+        assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        verify(submissionRepository, never()).save(submission);
+    }
+
+    @Test
+    void submit_withoutCaption_returns422() {
+        UUID submissionId = UUID.randomUUID();
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
+        submission.setCaption("   ");
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(2L);
+
+        assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        verify(submissionRepository, never()).save(submission);
     }
 
     @Test
@@ -334,6 +370,30 @@ class SubmissionServiceTest {
                 .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
+    @Test
+    void reorderMedia_updatesDisplayOrder() {
+        UUID submissionId = UUID.randomUUID();
+        UUID firstAssetId = UUID.randomUUID();
+        UUID secondAssetId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        SubmissionMediaAsset firstLink = mediaLink(submission, mediaAsset(firstAssetId, institution), 0);
+        SubmissionMediaAsset secondLink = mediaLink(submission, mediaAsset(secondAssetId, institution), 1);
+        SubmissionMediaOrderDto dto = new SubmissionMediaOrderDto();
+        dto.setMediaAssetIds(List.of(secondAssetId, firstAssetId));
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId))
+                .thenReturn(List.of(firstLink, secondLink))
+                .thenReturn(List.of(secondLink, firstLink));
+
+        SubmissionResponseDto result = submissionService.reorderMedia(submissionId, dto, contributorPrincipal);
+
+        assertThat(result.getId()).isEqualTo(submissionId);
+        assertThat(secondLink.getDisplayOrder()).isZero();
+        assertThat(firstLink.getDisplayOrder()).isEqualTo(1);
+        verify(submissionMediaAssetRepository).saveAll(List.of(firstLink, secondLink));
+    }
+
     private SubmissionCreateDto createDto(Instant scheduledAt) {
         SubmissionCreateDto dto = new SubmissionCreateDto();
         dto.setEventTitle("Research Expo");
@@ -383,6 +443,17 @@ class SubmissionServiceTest {
         asset.setFileType(MediaFileType.jpeg);
         asset.setFileSizeBytes(1024L);
         return asset;
+    }
+
+    private static SubmissionMediaAsset mediaLink(
+            Submission submission,
+            MediaAsset mediaAsset,
+            int displayOrder) {
+        SubmissionMediaAsset link = new SubmissionMediaAsset();
+        link.setSubmission(submission);
+        link.setMediaAsset(mediaAsset);
+        link.setDisplayOrder(displayOrder);
+        return link;
     }
 
     private static Institution institution(UUID id) {

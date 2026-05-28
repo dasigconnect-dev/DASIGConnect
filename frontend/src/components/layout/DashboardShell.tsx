@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
 
-export type DashboardNavId = 'home' | 'submit' | 'institution-management' | 'user-management' | 'scheduler' | 'analytics'
+export type DashboardNavId = 'home' | 'submit' | 'institution-management' | 'user-management' | 'scheduler' | 'resolution' | 'analytics' | 'media-repository' | 'notifications'
 
 interface DashboardShellProps {
   user: User
@@ -16,6 +16,7 @@ interface DashboardShellProps {
   onStayLoggedIn: () => void
   onLogout: () => void
   logoutLoading: boolean
+  notificationBadge?: number
   children: ReactNode
 }
 
@@ -38,6 +39,7 @@ export default function DashboardShell({
   onStayLoggedIn,
   onLogout,
   logoutLoading,
+  notificationBadge = 0,
   children,
 }: DashboardShellProps) {
   const navigate = useNavigate()
@@ -91,6 +93,11 @@ export default function DashboardShell({
               >
                 <i className={item.icon}></i>
                 <span>{item.label}</span>
+                {item.id === 'notifications' && notificationBadge > 0 && (
+                  <span className="sidebar-notif-badge">
+                    {notificationBadge > 99 ? '99+' : notificationBadge}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -187,16 +194,39 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       visible: user.role === 'validator',
     },
     {
+      id: 'media-repository',
+      icon: 'ti ti-photo',
+      label: 'Media Repository',
+      path: '/media-repository',
+      visible: true,
+    },
+    {
+      id: 'notifications',
+      icon: 'ti ti-bell',
+      label: 'Notifications',
+      path: '/notifications',
+      visible: true,
+    },
+    {
       id: 'scheduler',
       icon: 'ti ti-calendar-event',
-      label: 'Scheduler',
-      visible: user.role === 'admin' || user.role === 'validator',
+      label: 'Calendar',
+      path: '/scheduler/calendar',
+      visible: true,
+    },
+    {
+      id: 'resolution',
+      icon: 'ti ti-alert-triangle',
+      label: 'Resolution Center',
+      path: '/admin/resolution',
+      visible: user.role === 'admin',
     },
     {
       id: 'analytics',
       icon: 'ti ti-chart-bar',
       label: 'Analytics',
-      visible: user.role === 'admin',
+      path: '/analytics',
+      visible: true,
     },
   ]
 }

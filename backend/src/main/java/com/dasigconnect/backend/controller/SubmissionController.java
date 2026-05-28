@@ -24,6 +24,7 @@ import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlResponse;
 import com.dasigconnect.backend.model.dto.submission.SlotEvaluateRequestDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionCreateDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionLookupsDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
@@ -170,6 +171,19 @@ public class SubmissionController {
             @Valid @RequestBody AttachMediaDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.status(HttpStatus.CREATED).body(submissionService.attachMedia(id, dto, user));
+    }
+
+    /**
+     * PATCH /api/v1/submissions/{id}/media/order Updates display_order for
+     * media already attached to a DRAFT or NEEDS_REVISION submission.
+     */
+    @PatchMapping("/{id}/media/order")
+    @PreAuthorize("hasRole('CONTRIBUTOR')")
+    public ResponseEntity<SubmissionResponseDto> reorderMedia(
+            @PathVariable UUID id,
+            @Valid @RequestBody SubmissionMediaOrderDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(submissionService.reorderMedia(id, dto, user));
     }
 
     /**
