@@ -13,8 +13,10 @@ import com.dasigconnect.backend.security.JwtUserDetails;
 /**
  * Builds role-scoped calendar event lists from submissions with a scheduled slot.
  *
- * Admin: full detail for all institutions.
+ * Admin: full detail for all institutions, all statuses.
  * Contributor / Validator: full detail for own institution, timing-only (masked) for others.
+ *   Only calendar-visible statuses (scheduled, publishing, published variants) are included —
+ *   draft, pending, in-review, failed, and rejected rows are never returned to non-admins.
  */
 @Service
 @Transactional(readOnly = true)
@@ -41,7 +43,7 @@ public class CalendarService {
     }
 
     private List<CalendarEventDto> getScopedCalendar(JwtUserDetails user) {
-        List<Submission> all = submissionRepository.findAllWithScheduledSlot();
+        List<Submission> all = submissionRepository.findAllCalendarVisibleSlots();
         return all.stream()
                 .map(s -> {
                     boolean ownInstitution = user.institutionId() != null

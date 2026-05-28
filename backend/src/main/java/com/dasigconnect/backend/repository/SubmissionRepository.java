@@ -159,6 +159,28 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         """)
     List<Submission> findAllWithScheduledSlot();
 
+    /**
+     * Calendar API (contributor/validator): all institutions' submissions that are in a
+     * calendar-visible status only — scheduled, publishing, or published variants.
+     * Drafts, pending, in-review, failed, and rejected rows are excluded so they
+     * cannot leak cross-institution even in masked form.
+     */
+    @Query("""
+        SELECT s FROM Submission s
+        WHERE s.scheduledAt IS NOT NULL
+        AND s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.publishing,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_publishing,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.published,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.published_manual,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.admin_direct_post
+        )
+        ORDER BY s.scheduledAt ASC
+        """)
+    List<Submission> findAllCalendarVisibleSlots();
+
     /** Calendar API (contributor/validator): institution-scoped submissions with a slot. */
     @Query("""
         SELECT s FROM Submission s
