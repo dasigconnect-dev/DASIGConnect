@@ -27,7 +27,7 @@ export default function DirectPostTab() {
 
   useEffect(() => {
     api.get<InstitutionResponse[]>("/institutions")
-      .then((res) => setInstitutions(res.data.filter((i) => i.status === "ACTIVE")))
+      .then((res) => setInstitutions(res.data.filter((i) => i.status === "active")))
       .catch(() => {});
   }, []);
 

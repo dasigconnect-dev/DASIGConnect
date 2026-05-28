@@ -35,8 +35,6 @@ interface ResolutionCenterScreenProps {
 export default function ResolutionCenterScreen({ user }: ResolutionCenterScreenProps) {
   const [activeTab, setActiveTab] = useState<TabId>("failures");
   const [refreshSignal, setRefreshSignal] = useState(0);
-  const [timeoutCount, setTimeoutCount] = useState(0);
-  const [overrideCount, setOverrideCount] = useState(0);
   const [tokenIssueCount, setTokenIssueCount] = useState(0);
   const tokenSectionRef = useRef<HTMLElement>(null);
 
@@ -73,8 +71,8 @@ export default function ResolutionCenterScreen({ user }: ResolutionCenterScreenP
 
   const tabs: TabDef[] = [
     { id: "failures",     label: "API Failures",        icon: "ti-alert-circle",    count: counts.failures },
-    { id: "timeouts",     label: "Validation Timeouts", icon: "ti-clock-exclamation", count: timeoutCount },
-    { id: "overrides",    label: "Override Requests",   icon: "ti-shield-exclamation", count: overrideCount },
+    { id: "timeouts",     label: "Validation Timeouts", icon: "ti-clock-exclamation", count: counts.timeouts },
+    { id: "overrides",    label: "Override Requests",   icon: "ti-shield-exclamation", count: counts.overrides },
     { id: "direct-post",  label: "Direct Post",         icon: "ti-bolt" },
     { id: "system",       label: "System & Audit",      icon: "ti-key",             count: tokenIssueCount },
   ];
@@ -164,7 +162,6 @@ export default function ResolutionCenterScreen({ user }: ResolutionCenterScreenP
         {activeTab === "timeouts" && (
           <ValidationTimeoutTab
             refreshSignal={refreshSignal}
-            onCountChange={setTimeoutCount}
           />
         )}
 
@@ -172,7 +169,6 @@ export default function ResolutionCenterScreen({ user }: ResolutionCenterScreenP
         {activeTab === "overrides" && (
           <OverrideRequestsTab
             refreshSignal={refreshSignal}
-            onCountChange={setOverrideCount}
           />
         )}
 

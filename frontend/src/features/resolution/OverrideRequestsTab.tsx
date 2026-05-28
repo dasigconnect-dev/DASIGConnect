@@ -28,7 +28,7 @@ function isExpired(requestedSlot: string) {
 
 interface Props {
   refreshSignal: number;
-  onCountChange: (n: number) => void;
+  onCountChange?: (n: number) => void;
 }
 
 export default function OverrideRequestsTab({ refreshSignal, onCountChange }: Props) {
@@ -47,7 +47,7 @@ export default function OverrideRequestsTab({ refreshSignal, onCountChange }: Pr
       .then((res) => {
         setItems(res.data);
         const active = res.data.filter((r) => !isExpired(r.requestedSlot)).length;
-        onCountChange(active);
+        onCountChange?.(active);
       })
       .catch((err: unknown) => {
         if ((err as { name?: string }).name === "CanceledError") return;

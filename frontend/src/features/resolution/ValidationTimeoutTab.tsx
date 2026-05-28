@@ -37,7 +37,7 @@ function UrgencyPill({ scheduledAt }: UrgencyPillProps) {
 
 interface Props {
   refreshSignal: number;
-  onCountChange: (n: number) => void;
+  onCountChange?: (n: number) => void;
 }
 
 export default function ValidationTimeoutTab({ refreshSignal, onCountChange }: Props) {
@@ -54,7 +54,7 @@ export default function ValidationTimeoutTab({ refreshSignal, onCountChange }: P
     getTimeoutEscalations(signal)
       .then((res) => {
         setItems(res.data);
-        onCountChange(res.data.length);
+        onCountChange?.(res.data.length);
       })
       .catch((err: unknown) => {
         if ((err as { name?: string }).name === "CanceledError") return;
