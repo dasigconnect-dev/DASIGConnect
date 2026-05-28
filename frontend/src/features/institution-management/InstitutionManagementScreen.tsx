@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
+  cancelInvitation,
   createInstitution,
+  deleteUser,
   getUserCounts,
   getPendingInvitationCount,
   listInstitutions,
@@ -432,6 +434,66 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
     }
   }
 
+  function handleDeleteUser(managedUser: UserProfileResponse) {
+    setConfirmDialog({
+      title: 'Remove User',
+      message: `Are you sure you want to permanently remove ${getUserDisplayName(managedUser)}? This cannot be undone.`,
+      confirmLabel: 'Remove',
+      dangerous: true,
+      onConfirm: () => {
+        setConfirmDialog(null)
+        void executeDeleteUser(managedUser)
+      },
+    })
+  }
+
+  async function executeDeleteUser(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
+    try {
+      await deleteUser(managedUser.id)
+      setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
+      toast.success('User removed.')
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to remove user.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  function handleCancelInvitationFromUsers(managedUser: UserProfileResponse) {
+    setConfirmDialog({
+      title: 'Cancel Invitation',
+      message: `Cancel the pending invitation for ${managedUser.email}?`,
+      confirmLabel: 'Cancel invitation',
+      dangerous: true,
+      onConfirm: () => {
+        setConfirmDialog(null)
+        void executeCancelInvitationByEmail(managedUser)
+      },
+    })
+  }
+
+  async function executeCancelInvitationByEmail(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
+    try {
+      const match = pendingInvitations.find(
+        (inv) => inv.recipientEmail.toLowerCase() === managedUser.email.toLowerCase(),
+      )
+      if (match) {
+        await cancelInvitation(match.id)
+      }
+      setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
+      if (selectedInstitution) {
+        await loadManagementLists(selectedInstitution.id)
+      }
+      toast.success('Invitation cancelled.')
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to cancel invitation.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
   function handleResubmitFailed() {
     if (!inviteResults) return
     const failedEmails = inviteResults.failed.map((f) => f.email).filter(isValidEmail)
@@ -761,6 +823,8 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
                 loading={managementLoading}
                 updatingUserId={updatingUserId}
                 onToggleUserStatus={handleToggleUserStatus}
+                onDeleteUser={handleDeleteUser}
+                onCancelInvitation={handleCancelInvitationFromUsers}
               />
             </div>
           )}

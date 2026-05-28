@@ -22,6 +22,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     List<MediaAsset> findAllActive();
 
     boolean existsByAssetCode(String assetCode);
+    boolean existsByUploaderId(UUID uploaderId);
 
     @Modifying
     @Transactional

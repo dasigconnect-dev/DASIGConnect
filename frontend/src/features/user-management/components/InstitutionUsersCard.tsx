@@ -11,6 +11,8 @@ interface InstitutionUsersCardProps {
   loading: boolean
   updatingUserId: string | null
   onToggleUserStatus: (user: UserProfileResponse) => void
+  onDeleteUser: (user: UserProfileResponse) => void
+  onCancelInvitation: (user: UserProfileResponse) => void
   showRoleControls?: boolean
 }
 
@@ -23,6 +25,8 @@ export default function InstitutionUsersCard({
   loading,
   updatingUserId,
   onToggleUserStatus,
+  onDeleteUser,
+  onCancelInvitation,
   showRoleControls = true,
 }: InstitutionUsersCardProps) {
   const [search, setSearch] = useState('')
@@ -163,31 +167,53 @@ export default function InstitutionUsersCard({
                 const isUpdating = updatingUserId === managedUser.id
                 const isActive = managedUser.accountState.toLowerCase() === 'active'
                 const isInactive = managedUser.accountState.toLowerCase() === 'inactive'
-                const canToggle = canToggleUserStatus(currentUser, managedUser)
+                const isPending = managedUser.accountState.toLowerCase().includes('pending')
+                const canManage = canToggleUserStatus(currentUser, managedUser)
                 const displayName = getUserDisplayName(managedUser)
                 const initials = getUserInitials(managedUser)
 
-                const menuItems = [
-                  canToggle
-                    ? {
-                        label: isUpdating
-                          ? 'Updating…'
-                          : isActive
-                            ? 'Deactivate account'
-                            : 'Reactivate account',
-                        icon: isActive ? 'ti ti-user-off' : 'ti ti-user-check',
-                        onClick: () => onToggleUserStatus(managedUser),
-                        disabled: isUpdating,
-                        dangerous: isActive,
-                      }
-                    : null,
-                  {
-                    label: 'Reset password',
-                    icon: 'ti ti-key',
-                    onClick: () => undefined,
-                    disabled: true,
-                  },
-                ].filter((item): item is NonNullable<typeof item> => item !== null)
+                const menuItems = isPending
+                  ? [
+                      {
+                        label: 'Cancel invitation',
+                        icon: 'ti ti-ban',
+                        onClick: () => onCancelInvitation(managedUser),
+                        dangerous: true,
+                      },
+                      {
+                        label: 'Remove user',
+                        icon: 'ti ti-trash',
+                        onClick: () => onDeleteUser(managedUser),
+                        dangerous: true,
+                      },
+                    ]
+                  : [
+                      {
+                        label: 'Reset password',
+                        icon: 'ti ti-key',
+                        onClick: () => undefined,
+                        disabled: true,
+                      },
+                      canManage
+                        ? {
+                            label: isUpdating
+                              ? 'Updating…'
+                              : isActive
+                                ? 'Deactivate account'
+                                : 'Reactivate account',
+                            icon: isActive ? 'ti ti-user-off' : 'ti ti-user-check',
+                            onClick: () => onToggleUserStatus(managedUser),
+                            disabled: isUpdating,
+                            dangerous: isActive,
+                          }
+                        : null,
+                      {
+                        label: 'Remove user',
+                        icon: 'ti ti-trash',
+                        onClick: () => onDeleteUser(managedUser),
+                        dangerous: true,
+                      },
+                    ].filter((item): item is NonNullable<typeof item> => item !== null)
 
                 return (
                   <tr key={managedUser.id} className={isInactive ? 'is-inactive-row' : ''}>

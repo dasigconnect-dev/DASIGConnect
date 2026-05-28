@@ -21,4 +21,8 @@ public interface ReviewLockRepository extends JpaRepository<ReviewLock, UUID> {
     void deleteBySubmissionId(@Param("submissionId") UUID submissionId);
 
     List<ReviewLock> findByExpiresAtBefore(Instant now);
+
+    @Modifying
+    @Query("DELETE FROM ReviewLock r WHERE r.lockedBy.id = :userId")
+    void deleteByLockedById(@Param("userId") UUID userId);
 }

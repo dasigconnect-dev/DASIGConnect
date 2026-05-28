@@ -43,6 +43,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
 
     boolean existsByIdAndInstitutionId(UUID id, UUID institutionId);
     boolean existsByIdAndContributorId(UUID id, UUID contributorId);
+    boolean existsByContributorId(UUID contributorId);
 
     @Query("""
         SELECT s FROM Submission s

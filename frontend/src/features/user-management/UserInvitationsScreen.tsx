@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import {
+  cancelInvitation,
+  deleteUser,
   inviteUser,
   listInstitutions,
   listPendingInvitations,
@@ -64,6 +66,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
   const [managementLoading, setManagementLoading] = useState(false)
   const [managementError, setManagementError] = useState('')
   const [resendingInvitationId, setResendingInvitationId] = useState<string | null>(null)
+  const [cancellingInvitationId, setCancellingInvitationId] = useState<string | null>(null)
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
 
   // Confirm dialog (replaces window.confirm)
@@ -331,6 +334,89 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
     }
   }
 
+  function handleDeleteUser(managedUser: UserProfileResponse) {
+    setConfirmDialog({
+      title: 'Remove User',
+      message: `Remove ${getUserDisplayName(managedUser)}? If they have existing content or media, their account will be deactivated to preserve data integrity. Otherwise it will be permanently deleted.`,
+      confirmLabel: 'Remove',
+      dangerous: true,
+      onConfirm: () => {
+        setConfirmDialog(null)
+        void executeDeleteUser(managedUser)
+      },
+    })
+  }
+
+  async function executeDeleteUser(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
+    try {
+      const response = await deleteUser(managedUser.id)
+      if (response.data.action === 'deactivated') {
+        setManagedUsers((current) =>
+          current.map((item) =>
+            item.id === managedUser.id ? { ...item, accountState: 'inactive' } : item,
+          ),
+        )
+        toast.info('Account deactivated. Their content and media have been preserved.')
+      } else {
+        setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
+        toast.success('User permanently removed.')
+      }
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to remove user.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  function handleCancelInvitationFromUsers(managedUser: UserProfileResponse) {
+    setConfirmDialog({
+      title: 'Cancel Invitation',
+      message: `Cancel the pending invitation for ${managedUser.email}?`,
+      confirmLabel: 'Cancel invitation',
+      dangerous: true,
+      onConfirm: () => {
+        setConfirmDialog(null)
+        void executeCancelInvitationByEmail(managedUser)
+      },
+    })
+  }
+
+  async function executeCancelInvitationByEmail(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
+    try {
+      // Find the matching pending invitation by email and cancel it
+      const match = pendingInvitations.find(
+        (inv) => inv.recipientEmail.toLowerCase() === managedUser.email.toLowerCase(),
+      )
+      if (match) {
+        await cancelInvitation(match.id)
+      }
+      setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
+      if (selectedInstitutionId) {
+        await loadManagementLists(selectedInstitutionId)
+      }
+      toast.success('Invitation cancelled.')
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to cancel invitation.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  async function handleCancelInvitation(id: string) {
+    setCancellingInvitationId(id)
+    try {
+      await cancelInvitation(id)
+      setPendingInvitations((current) => current.filter((item) => item.id !== id))
+      toast.success('Invitation cancelled.')
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to cancel invitation.'))
+    } finally {
+      setCancellingInvitationId(null)
+    }
+  }
+
   function handleResubmitFailed() {
     if (!inviteResults) return
     const failedEmails = inviteResults.failed.map((f) => f.email).filter(isValidEmail)
@@ -468,7 +554,9 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
               institutions={institutions}
               loading={managementLoading}
               resendingInvitationId={resendingInvitationId}
+              cancellingInvitationId={cancellingInvitationId}
               onResend={(id) => void handleResendInvitation(id)}
+              onCancelInvitation={(id) => void handleCancelInvitation(id)}
               showRoleControls={!isValidatorWorkspace}
             />
           </div>
@@ -529,6 +617,8 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
               loading={managementLoading}
               updatingUserId={updatingUserId}
               onToggleUserStatus={handleToggleUserStatus}
+              onDeleteUser={handleDeleteUser}
+              onCancelInvitation={handleCancelInvitationFromUsers}
               showRoleControls={!isValidatorWorkspace}
             />
           </div>

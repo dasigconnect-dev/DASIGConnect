@@ -9,7 +9,9 @@ interface PendingInvitationsCardProps {
   institutions: InstitutionOption[]
   loading: boolean
   resendingInvitationId: string | null
+  cancellingInvitationId: string | null
   onResend: (id: string) => void
+  onCancelInvitation: (id: string) => void
   showRoleControls?: boolean
 }
 
@@ -21,7 +23,9 @@ export default function PendingInvitationsCard({
   institutions,
   loading,
   resendingInvitationId,
+  cancellingInvitationId,
   onResend,
+  onCancelInvitation,
   showRoleControls = true,
 }: PendingInvitationsCardProps) {
   const [search, setSearch] = useState('')
@@ -151,6 +155,8 @@ export default function PendingInvitationsCard({
             <tbody>
               {filtered.map((invite) => {
                 const isResending = resendingInvitationId === invite.id
+                const isCancelling = cancellingInvitationId === invite.id
+                const isBusy = isResending || isCancelling
                 return (
                   <tr key={invite.id}>
                     <td>
@@ -171,6 +177,8 @@ export default function PendingInvitationsCard({
                       <span className="um-badge is-pending">
                         {isResending ? (
                           <><InlineSpinner /> Resending</>
+                        ) : isCancelling ? (
+                          <><InlineSpinner /> Cancelling</>
                         ) : (
                           'Pending'
                         )}
@@ -184,13 +192,13 @@ export default function PendingInvitationsCard({
                             label: isResending ? 'Resending…' : 'Resend invitation',
                             icon: 'ti ti-send',
                             onClick: () => onResend(invite.id),
-                            disabled: isResending,
+                            disabled: isBusy,
                           },
                           {
-                            label: 'Revoke invitation',
+                            label: isCancelling ? 'Cancelling…' : 'Cancel invitation',
                             icon: 'ti ti-ban',
-                            onClick: () => undefined,
-                            disabled: true,
+                            onClick: () => onCancelInvitation(invite.id),
+                            disabled: isBusy,
                             dangerous: true,
                           },
                         ]}

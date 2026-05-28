@@ -285,6 +285,27 @@ public class InvitationService {
                 emailService.buildInvitationLink(rawToken));
     }
 
+    public void cancel(UUID tokenId, JwtUserDetails requester) {
+        InvitationToken token = invitationTokenRepository.findById(tokenId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invitation not found."));
+
+        if (!isAdministrator(requester)) {
+            if (requester.institutionId() == null
+                    || !token.getInstitution().getId().equals(requester.institutionId())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "You can only cancel invitations for your own institution.");
+            }
+        }
+
+        if (token.getUsedAt() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This invitation has already been accepted.");
+        }
+
+        invitationTokenRepository.delete(token);
+        log.info("Invitation {} cancelled by {}", tokenId, requester != null ? requester.userId() : "unknown");
+    }
+
     @Transactional(readOnly = true)
     public List<PendingInvitationDto> listPending(UUID institutionId, JwtUserDetails requester) {
         validateInstitutionScope(institutionId, requester);

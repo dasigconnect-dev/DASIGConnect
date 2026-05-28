@@ -3,7 +3,14 @@ package com.dasigconnect.backend.service;
 import com.dasigconnect.backend.model.dto.user.UserDto;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
+import com.dasigconnect.backend.repository.AccountLockoutRepository;
+import com.dasigconnect.backend.repository.EmailDeliveryLogRepository;
+import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.NotificationRepository;
+import com.dasigconnect.backend.repository.ReviewLockRepository;
+import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
+import com.dasigconnect.backend.repository.ValidationLogRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import java.util.List;
 import java.util.UUID;
@@ -17,9 +24,31 @@ import org.springframework.web.server.ResponseStatusException;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final NotificationRepository notificationRepository;
+    private final EmailDeliveryLogRepository emailDeliveryLogRepository;
+    private final AccountLockoutRepository accountLockoutRepository;
+    private final ReviewLockRepository reviewLockRepository;
+    private final SubmissionRepository submissionRepository;
+    private final MediaAssetRepository mediaAssetRepository;
+    private final ValidationLogRepository validationLogRepository;
 
-    public UserService(UserRepository userRepository) {
+    public UserService(
+            UserRepository userRepository,
+            NotificationRepository notificationRepository,
+            EmailDeliveryLogRepository emailDeliveryLogRepository,
+            AccountLockoutRepository accountLockoutRepository,
+            ReviewLockRepository reviewLockRepository,
+            SubmissionRepository submissionRepository,
+            MediaAssetRepository mediaAssetRepository,
+            ValidationLogRepository validationLogRepository) {
         this.userRepository = userRepository;
+        this.notificationRepository = notificationRepository;
+        this.emailDeliveryLogRepository = emailDeliveryLogRepository;
+        this.accountLockoutRepository = accountLockoutRepository;
+        this.reviewLockRepository = reviewLockRepository;
+        this.submissionRepository = submissionRepository;
+        this.mediaAssetRepository = mediaAssetRepository;
+        this.validationLogRepository = validationLogRepository;
     }
 
     /**
@@ -66,6 +95,44 @@ public class UserService {
 
         user.setAccountState(newStatus);
         return UserDto.from(userRepository.save(user));
+    }
+
+    /**
+     * Removes a user. Two outcomes based on whether the user has business data:
+     *
+     * - Has submissions, media assets, or validation history → auto-deactivate
+     *   (soft delete: account disabled, all related records preserved).
+     * - No related records → permanent delete after cleaning up owned records.
+     *
+     * Returns "deactivated" or "deleted" so the caller can surface the right message.
+     */
+    @Transactional
+    public String removeUser(UUID id, JwtUserDetails requester) {
+        var user = userRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        validateCanManageUser(
+                user.getInstitution() != null ? user.getInstitution().getId() : null,
+                user.getRole(), requester);
+
+        boolean hasData = submissionRepository.existsByContributorId(id)
+                || mediaAssetRepository.existsByUploaderId(id)
+                || validationLogRepository.existsByValidatorId(id);
+
+        if (hasData) {
+            // Preserve data integrity — just disable the account
+            user.setAccountState(UserStatus.inactive);
+            userRepository.save(user);
+            return "deactivated";
+        }
+
+        // No related records — safe to permanently delete
+        notificationRepository.deleteByRecipientId(id);
+        emailDeliveryLogRepository.deleteByRecipientId(id);
+        accountLockoutRepository.deleteByUserId(id);
+        reviewLockRepository.deleteByLockedById(id);
+        userRepository.delete(user);
+        return "deleted";
     }
 
     /**

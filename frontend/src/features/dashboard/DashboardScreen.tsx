@@ -217,25 +217,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
           <div dangerouslySetInnerHTML={{ __html: notice(user).html }}></div>
         </div>
 
-        <div
-          className={`fb-bar${roleChip(user).className === "chip-admin" ? "" : " hidden"}`}
-          id="fb-bar"
-        >
-          <div className="fb-bar-left">
-            <i className="ti ti-brand-facebook fb-icon"></i>
-            <div className="fb-bar-text">
-              <div className="fb-bar-title">DASIG Facebook Page Connected</div>
-              <div className="fb-bar-sub">
-                Approved content can be scheduled directly to the DASIG Facebook
-                page · Last synced 2 min ago
-              </div>
-            </div>
-          </div>
-          <button type="button" className="fb-btn">
-            <i className="ti ti-settings" style={{ marginRight: 5 }}></i>Manage
-            Connection
-          </button>
-        </div>
+
 
         <div className="stat-grid" id="stat-grid">
           {statsForRole(user, dashboardStats, institutions.length).map(
@@ -374,18 +356,6 @@ function getInstitutionName(user: User | null): string {
   return DOMAIN_MAP[emailDomain] || emailDomain.toUpperCase() || "Institution";
 }
 
-function roleChip(user: User | null) {
-  if (!user) {
-    return { className: "chip-contributor", label: "Contributor" };
-  }
-  if (user.role === "admin") {
-    return { className: "chip-admin", label: "Administrator" };
-  }
-  if (user.role === "validator") {
-    return { className: "chip-validator", label: "Validator" };
-  }
-  return { className: "chip-contributor", label: "Contributor" };
-}
 
 function greeting(user: User | null) {
   const hour = new Date().getHours();

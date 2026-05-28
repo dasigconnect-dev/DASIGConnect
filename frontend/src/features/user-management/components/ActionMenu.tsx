@@ -7,6 +7,7 @@ export interface ActionMenuItem {
   onClick: () => void
   disabled?: boolean
   dangerous?: boolean
+  title?: string
 }
 
 interface ActionMenuProps {
@@ -105,6 +106,7 @@ export default function ActionMenu({ items, align = 'right' }: ActionMenuProps) 
               role="menuitem"
               className={`um-action-item${item.dangerous ? ' is-danger' : ''}${item.disabled ? ' is-disabled' : ''}`}
               disabled={item.disabled}
+              title={item.title}
               onClick={() => {
                 setIsOpen(false)
                 item.onClick()

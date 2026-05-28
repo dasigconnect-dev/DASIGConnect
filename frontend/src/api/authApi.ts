@@ -162,6 +162,14 @@ export function inviteUser(data: InviteUserRequest) {
   return api.post<InvitationResponse>("/invitations", data);
 }
 
+export function deleteUser(id: string) {
+  return api.delete<{ action: 'deactivated' | 'deleted' }>(`/users/${id}`);
+}
+
+export function cancelInvitation(id: string) {
+  return api.delete(`/invitations/${id}`);
+}
+
 export interface InvitationResponse {
   id: string;
   recipientEmail: string;
