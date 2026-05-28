@@ -1,4 +1,5 @@
 import { STATUS_COLORS, STATUS_LABELS } from "./calendarStatus";
+import type { User } from "../../types/auth.types";
 
 const LEGEND_STATUSES = [
   "scheduled",
@@ -9,10 +10,14 @@ const LEGEND_STATUSES = [
   "pending",
 ];
 
-export default function CalendarLegend() {
+export default function CalendarLegend({ user }: { user: User }) {
+  const statuses = user.role === "contributor"
+    ? LEGEND_STATUSES.filter((status) => status !== "pending")
+    : LEGEND_STATUSES;
+
   return (
     <div className="cal-legend">
-      {LEGEND_STATUSES.map((status) => (
+      {statuses.map((status) => (
         <div key={status} className="cal-legend-item">
           <span className="cal-legend-dot" style={{ background: STATUS_COLORS[status].text }} />
           <span>{STATUS_LABELS[status]}</span>

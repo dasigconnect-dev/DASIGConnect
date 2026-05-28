@@ -11,6 +11,7 @@ import CalendarEventDetailModal from "./CalendarEventDetailModal";
 import CalendarLegend from "./CalendarLegend";
 import CalendarToolbar, { type CalendarViewMode } from "./CalendarToolbar";
 import { CalendarErrorState } from "./CalendarStates";
+import { visibleCalendarStatus } from "./calendarStatus";
 
 interface CalendarScreenProps {
   user: User;
@@ -95,29 +96,33 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
       statusFilter,
       dateFilter,
       now,
+      user,
     }));
-  }, [events, institutionFilter, statusFilter, dateFilter]);
+  }, [events, institutionFilter, statusFilter, dateFilter, user]);
 
   const metrics = useMemo(() => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfToday = new Date(startOfToday.getTime() + 86400000);
     return {
-      scheduled: events.filter((event) => ["scheduled", "direct_post_scheduled"].includes(event.status.toLowerCase())).length,
-      published: events.filter((event) => ["published", "published_manual"].includes(event.status.toLowerCase())).length,
-      failed: events.filter((event) => event.status.toLowerCase().includes("failed")).length,
-      attention: events.filter((event) => ["pending", "in_review", "needs_revision", "rejected"].includes(event.status.toLowerCase())).length,
+      scheduled: events.filter((event) => {
+        const status = visibleEventStatus(event, user);
+        return ["scheduled", "direct_post_scheduled"].includes(status);
+      }).length,
+      published: events.filter((event) => ["published", "published_manual"].includes(visibleEventStatus(event, user))).length,
+      failed: events.filter((event) => visibleEventStatus(event, user).includes("failed")).length,
+      attention: events.filter((event) => ["pending", "in_review", "needs_revision", "rejected"].includes(visibleEventStatus(event, user))).length,
       today: events.filter((event) => {
         const date = new Date(event.scheduledAt);
         return date >= startOfToday && date < endOfToday;
       }).length,
     };
-  }, [events]);
+  }, [events, user]);
 
   const metricEvents = useMemo(() => {
     if (!activeMetric) return [];
-    return events.filter((event) => matchesMetric(event, activeMetric));
-  }, [activeMetric, events]);
+    return events.filter((event) => matchesMetric(event, activeMetric, user));
+  }, [activeMetric, events, user]);
 
   useEffect(() => {
     if (!activeMetric) return;
@@ -177,6 +182,12 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
     endCalendarTransition();
   }, [institutionFilter, statusFilter, dateFilter]);
 
+  useEffect(() => {
+    if (user.role === "contributor" && statusFilter === "attention") {
+      setStatusFilter("all");
+    }
+  }, [statusFilter, user.role]);
+
   useEffect(() => () => {
     if (transitionTimeoutRef.current) {
       window.clearTimeout(transitionTimeoutRef.current);
@@ -184,6 +195,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
   }, []);
 
   const isAdmin = user.role === "admin";
+  const showAttentionWorkflow = user.role !== "contributor";
   const rangeLabel = useMemo(() => {
     if (!calendarRange) return "Calendar";
     const fmt = new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric" });
@@ -206,7 +218,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
     { value: "scheduled", label: "Scheduled" },
     { value: "published", label: "Published" },
     { value: "failed", label: "Failed" },
-    { value: "attention", label: "Needs attention" },
+    ...(showAttentionWorkflow ? [{ value: "attention", label: "Needs attention" }] : []),
   ];
   const dateOptions = [
     { value: "all", label: "All dates" },
@@ -230,7 +242,9 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
         <MetricCard metric="scheduled" icon="ti ti-calendar-time" label="Scheduled Posts" value={metrics.scheduled} tone="blue" onOpen={setActiveMetric} />
         <MetricCard metric="published" icon="ti ti-circle-check" label="Published" value={metrics.published} tone="green" onOpen={setActiveMetric} />
         <MetricCard metric="failed" icon="ti ti-alert-circle" label="Failed" value={metrics.failed} tone="red" onOpen={setActiveMetric} />
-        <MetricCard metric="attention" icon="ti ti-alert-triangle" label="Needs Attention" value={metrics.attention} tone="orange" onOpen={setActiveMetric} />
+        {showAttentionWorkflow && (
+          <MetricCard metric="attention" icon="ti ti-alert-triangle" label="Needs Attention" value={metrics.attention} tone="orange" onOpen={setActiveMetric} />
+        )}
         <MetricCard metric="today" icon="ti ti-sun" label="Upcoming Today" value={metrics.today} tone="purple" onOpen={setActiveMetric} />
       </section>
 
@@ -309,16 +323,17 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
             scrollToEventId={scrollTargetId}
             onScrollComplete={() => setScrollTargetId(null)}
             isBusy={isCalendarBusy}
+            user={user}
             onEventClick={setSelected}
             onDatesSet={handleDatesSet}
           />
-          <CalendarLegend />
+          <CalendarLegend user={user} />
         </>
       )}
 
       <CalendarEventDetailModal
         event={selected}
-        role={user.role}
+        user={user}
         onClose={() => setSelected(null)}
       />
 
@@ -342,6 +357,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
             institutionFilter,
             statusFilter,
             dateFilter,
+            user,
             setInstitutionFilter,
             setStatusFilter,
             setDateFilter,
@@ -356,6 +372,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
             institutionFilter,
             statusFilter,
             dateFilter,
+            user,
             setInstitutionFilter,
             setStatusFilter,
             setDateFilter,
@@ -488,8 +505,12 @@ const METRIC_LABELS: Record<MetricKey, string> = {
   today: "Upcoming Today",
 };
 
-function matchesMetric(event: CalendarEvent, metric: MetricKey) {
-  const status = event.status.toLowerCase();
+function visibleEventStatus(event: CalendarEvent, user: User) {
+  return visibleCalendarStatus(event.status, user.role, event.institutionId === user.institutionId);
+}
+
+function matchesMetric(event: CalendarEvent, metric: MetricKey, user: User) {
+  const status = visibleEventStatus(event, user);
   if (metric === "scheduled") return ["scheduled", "direct_post_scheduled"].includes(status);
   if (metric === "published") return ["published", "published_manual"].includes(status);
   if (metric === "failed") return status.includes("failed");
@@ -507,9 +528,10 @@ function matchesFilters(
     statusFilter: string;
     dateFilter: string;
     now: Date;
+    user: User;
   },
 ) {
-  const status = event.status.toLowerCase();
+  const status = visibleEventStatus(event, options.user);
   const scheduledAt = new Date(event.scheduledAt);
   if (options.institutionFilter !== "all" && event.institutionId !== options.institutionFilter) return false;
   if (options.statusFilter === "scheduled" && !["scheduled", "direct_post_scheduled"].includes(status)) return false;
@@ -530,8 +552,8 @@ function matchesDateFilter(date: Date, filter: string, now: Date) {
   return true;
 }
 
-function statusFilterForEvent(status: string) {
-  const value = status.toLowerCase();
+function statusFilterForEvent(event: CalendarEvent, user: User) {
+  const value = visibleEventStatus(event, user);
   if (["scheduled", "direct_post_scheduled"].includes(value)) return "scheduled";
   if (["published", "published_manual"].includes(value)) return "published";
   if (value.includes("failed")) return "failed";
@@ -545,6 +567,7 @@ function ensureEventVisible(
     institutionFilter: string;
     statusFilter: string;
     dateFilter: string;
+    user: User;
     setInstitutionFilter: (value: string) => void;
     setStatusFilter: (value: string) => void;
     setDateFilter: (value: string) => void;
@@ -562,8 +585,9 @@ function ensureEventVisible(
     statusFilter: options.statusFilter,
     dateFilter: "all",
     now,
+    user: options.user,
   })) {
-    nextStatus = statusFilterForEvent(event.status);
+    nextStatus = statusFilterForEvent(event, options.user);
   }
 
   let nextDate = options.dateFilter;

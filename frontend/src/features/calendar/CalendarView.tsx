@@ -7,7 +7,8 @@ import interactionPlugin from "@fullcalendar/interaction";
 import type { EventClickArg, EventContentArg, EventMountArg } from "@fullcalendar/core";
 import type { DatesSetArg } from "@fullcalendar/core";
 import type { CalendarEvent } from "../../api/calendarApi";
-import { statusColor, statusLabel } from "./calendarStatus";
+import type { User } from "../../types/auth.types";
+import { visibleStatusColor, visibleStatusLabel } from "./calendarStatus";
 import { CalendarEmptyOverlay, CalendarLoadingOverlay } from "./CalendarStates";
 import type { CalendarViewMode } from "./CalendarToolbar";
 
@@ -20,6 +21,7 @@ interface CalendarViewProps {
   scrollToEventId: string | null;
   onScrollComplete: () => void;
   isBusy: boolean;
+  user: User;
   onEventClick: (event: CalendarEvent) => void;
   onDatesSet: (arg: DatesSetArg) => void;
 }
@@ -40,9 +42,13 @@ function eventTime(iso: string) {
   });
 }
 
-function toFcEvents(events: CalendarEvent[]) {
+function isOwnInstitution(e: CalendarEvent, user: User) {
+  return Boolean(user.institutionId && e.institutionId && user.institutionId === e.institutionId);
+}
+
+function toFcEvents(events: CalendarEvent[], user: User) {
   return events.map((e) => {
-    const color = statusColor(e.status);
+    const color = visibleStatusColor(e.status, user.role, isOwnInstitution(e, user));
     return {
       id: e.id,
       title: eventTitle(e),
@@ -55,16 +61,17 @@ function toFcEvents(events: CalendarEvent[]) {
   });
 }
 
-function renderEventContent(arg: EventContentArg) {
+function renderEventContent(arg: EventContentArg, user: User) {
   const e = arg.event.extendedProps.event as CalendarEvent;
-  const color = statusColor(e.status);
+  const isOwn = isOwnInstitution(e, user);
+  const color = visibleStatusColor(e.status, user.role, isOwn);
   return (
     <div className="cal-event-pill" title={`${eventInstitution(e)} - ${eventTitle(e)}`}>
       <span className="cal-event-dot" style={{ background: color.text }} />
       <span className="cal-event-main">
         <span className="cal-event-title">{eventTitle(e)}</span>
         <span className="cal-event-meta">
-          {eventInstitution(e)} · {eventTime(e.scheduledAt)} · {statusLabel(e.status)}
+          {eventInstitution(e)} · {eventTime(e.scheduledAt)} · {visibleStatusLabel(e.status, user.role, isOwn)}
         </span>
       </span>
     </div>
@@ -80,6 +87,7 @@ export default function CalendarView({
   scrollToEventId,
   onScrollComplete,
   isBusy,
+  user,
   onEventClick,
   onDatesSet,
 }: CalendarViewProps) {
@@ -126,9 +134,9 @@ export default function CalendarView({
         ref={calendarRef}
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
         initialView={initialView}
-        events={toFcEvents(events)}
+        events={toFcEvents(events, user)}
         eventClick={handleEventClick}
-        eventContent={renderEventContent}
+        eventContent={(arg) => renderEventContent(arg, user)}
         eventDidMount={handleEventMount}
         eventWillUnmount={handleEventUnmount}
         eventClassNames={(arg) =>

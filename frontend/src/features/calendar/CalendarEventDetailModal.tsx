@@ -2,7 +2,7 @@ import type { CalendarEvent } from "../../api/calendarApi";
 import { getSubmission } from "../../api/submissionApi";
 import type { SavedMediaAsset, SubmissionSummary } from "../../api/submissionApi";
 import type { User } from "../../types/auth.types";
-import { statusColor, statusLabel } from "./calendarStatus";
+import { visibleStatusColor, visibleStatusLabel, visibleCalendarStatus } from "./calendarStatus";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -19,13 +19,13 @@ function formatDatetime(iso: string) {
 
 interface CalendarEventDetailModalProps {
   event: CalendarEvent | null;
-  role: User["role"];
+  user: User;
   onClose: () => void;
 }
 
 export default function CalendarEventDetailModal({
   event,
-  role,
+  user,
   onClose,
 }: CalendarEventDetailModalProps) {
   const drawerBodyRef = useRef<HTMLDivElement>(null);
@@ -84,6 +84,9 @@ export default function CalendarEventDetailModal({
 
   const mediaAssets = submissionDetail?.mediaAssets ?? [];
   const caption = submissionDetail?.caption?.trim();
+  const isOwnInstitution = Boolean(user.institutionId && event.institutionId && user.institutionId === event.institutionId);
+  const displayStatus = visibleCalendarStatus(event.status, user.role, isOwnInstitution);
+  const displayColor = visibleStatusColor(event.status, user.role, isOwnInstitution);
 
   return createPortal(
     <div
@@ -121,13 +124,13 @@ export default function CalendarEventDetailModal({
             <span
               className="status-badge"
               style={{
-                background: statusColor(event.status).bg,
-                color: statusColor(event.status).text,
+                background: displayColor.bg,
+                color: displayColor.text,
               }}
             >
-              {statusLabel(event.status)}
+              {visibleStatusLabel(event.status, user.role, isOwnInstitution)}
             </span>
-            <p>{workflowHint(event.status)}</p>
+            <p>{workflowHint(displayStatus)}</p>
           </section>
 
           <section className="cal-drawer-section">
@@ -143,7 +146,7 @@ export default function CalendarEventDetailModal({
                 )}
               </span>
             </div>
-            <DetailRow label="Contributor" value={role === "admin" ? "Available in submission record" : "Your institution workspace"} />
+            <DetailRow label="Contributor" value={user.role === "admin" ? "Available in submission record" : "Your institution workspace"} />
             <div className="cal-detail-row">
               <span className="cal-detail-label">Scheduled</span>
               <span className="cal-detail-value">
@@ -165,7 +168,7 @@ export default function CalendarEventDetailModal({
             <div className="cal-modal-section-label">Workflow Notes</div>
             <div className="cal-detail-row">
               <span className="cal-detail-label">Next Step</span>
-              <span className="cal-detail-value">{workflowCopy(event.status)}</span>
+              <span className="cal-detail-value">{workflowCopy(displayStatus)}</span>
             </div>
             <div className="cal-detail-row">
               <span className="cal-detail-label">Caption</span>
@@ -186,7 +189,7 @@ export default function CalendarEventDetailModal({
             />
           </details>
 
-          {role === "admin" && (
+          {user.role === "admin" && (
             <details className="cal-drawer-disclosure">
               <summary>Metadata</summary>
               <div className="cal-detail-row">
