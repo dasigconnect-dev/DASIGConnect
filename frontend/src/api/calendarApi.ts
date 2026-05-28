@@ -14,3 +14,16 @@ export interface CalendarEvent {
 export function getCalendarEvents(signal?: AbortSignal) {
   return api.get<CalendarEvent[]>("/calendar", { signal });
 }
+
+export function rescheduleSubmission(
+  id: string,
+  scheduledAt: string,
+  overrideReason?: string,
+  signal?: AbortSignal,
+) {
+  return api.patch<{ id: string }>(
+    `/submissions/${id}/reschedule`,
+    { scheduledAt, overrideReason },
+    { signal },
+  );
+}

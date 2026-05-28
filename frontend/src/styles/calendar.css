@@ -2155,3 +2155,265 @@
     justify-content: center;
   }
 }
+
+/* ============================================================
+   Drag-and-drop reschedule — admin only
+   ============================================================ */
+
+.cal-event-draggable {
+  cursor: grab;
+}
+
+.cal-event-draggable:active {
+  cursor: grabbing;
+}
+
+.cal-event-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 3px;
+  opacity: 0.55;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* FullCalendar adds .fc-dragging when actively dragging */
+.fc-dragging .cal-event-pill {
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.22);
+  opacity: 0.9;
+}
+
+/* ---- Reschedule confirmation modal ---- */
+
+.cal-reschedule-backdrop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.cal-reschedule-modal {
+  width: min(520px, 100%);
+  animation: modal-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cal-reschedule-header {
+  align-items: flex-start;
+}
+
+.cal-reschedule-title-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cal-reschedule-warn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: #fef3c7;
+  border-radius: 50%;
+  color: #d97706;
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.cal-reschedule-subtitle {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--d-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-reschedule-body {
+  gap: 18px;
+}
+
+.cal-reschedule-warning {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: var(--r);
+  padding: 12px 14px;
+  color: #92400e;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.cal-reschedule-warning i {
+  font-size: 16px;
+  margin-top: 1px;
+  flex-shrink: 0;
+  color: #d97706;
+}
+
+.cal-reschedule-warning p {
+  margin: 0;
+}
+
+.cal-reschedule-diff {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--cal-surface-soft);
+  border: 1px solid var(--cal-line);
+  border-radius: var(--r);
+  padding: 14px 16px;
+}
+
+.cal-reschedule-diff-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.cal-reschedule-diff-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--d-muted);
+}
+
+.cal-reschedule-diff-value {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--d-text);
+  line-height: 1.35;
+}
+
+.cal-reschedule-diff-to .cal-reschedule-diff-value {
+  color: var(--d-blue);
+  font-weight: 600;
+}
+
+.cal-reschedule-diff-arrow {
+  font-size: 18px;
+  color: var(--d-muted);
+  flex-shrink: 0;
+}
+
+.cal-reschedule-reason-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cal-reschedule-reason-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--d-text);
+}
+
+.cal-reschedule-required {
+  color: #dc2626;
+}
+
+.cal-reschedule-reason-hint {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--d-muted);
+}
+
+.cal-reschedule-reason-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--cal-line);
+  border-radius: var(--r);
+  font-size: 13.5px;
+  font-family: var(--ff-body);
+  color: var(--d-text);
+  background: #fff;
+  resize: vertical;
+  line-height: 1.55;
+  transition: border-color 120ms;
+  box-sizing: border-box;
+}
+
+.cal-reschedule-reason-input:focus {
+  outline: none;
+  border-color: var(--d-blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.cal-reschedule-reason-input:disabled {
+  background: var(--cal-surface-soft);
+  color: var(--d-muted);
+  cursor: not-allowed;
+}
+
+.cal-reschedule-char-count {
+  font-size: 12px;
+  color: var(--d-muted);
+  text-align: right;
+}
+
+.cal-reschedule-char-count.is-valid {
+  color: #16a34a;
+  font-weight: 600;
+}
+
+.cal-reschedule-error {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: var(--r);
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #b91c1c;
+}
+
+.cal-reschedule-error i {
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.cal-reschedule-footer {
+  gap: 10px;
+}
+
+@keyframes cal-reschedule-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.cal-reschedule-spin {
+  animation: cal-reschedule-spin 0.7s linear infinite;
+}
+
+@media (max-width: 600px) {
+  .cal-reschedule-diff {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .cal-reschedule-diff-arrow {
+    transform: rotate(90deg);
+    align-self: center;
+  }
+
+  .cal-reschedule-footer {
+    flex-direction: column;
+  }
+
+  .cal-reschedule-footer > button {
+    width: 100%;
+    justify-content: center;
+  }
+}

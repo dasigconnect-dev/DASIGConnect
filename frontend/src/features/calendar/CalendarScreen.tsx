@@ -3,11 +3,13 @@ import FullCalendar from "@fullcalendar/react";
 import type { DatesSetArg } from "@fullcalendar/core";
 import { createPortal } from "react-dom";
 import type { CalendarEvent } from "../../api/calendarApi";
+import { rescheduleSubmission } from "../../api/calendarApi";
 import type { User } from "../../types/auth.types";
 import { useCalendarEvents } from "../../hooks/useCalendarEvents";
 import BrandedSelect from "../../components/ui/BrandedSelect";
-import CalendarView from "./CalendarView";
+import CalendarView, { type CalendarDropInfo } from "./CalendarView";
 import CalendarEventDetailModal from "./CalendarEventDetailModal";
+import CalendarRescheduleModal from "./CalendarRescheduleModal";
 import CalendarLegend from "./CalendarLegend";
 import CalendarToolbar, { type CalendarViewMode } from "./CalendarToolbar";
 import { CalendarErrorState } from "./CalendarStates";
@@ -21,6 +23,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
   const calendarRef = useRef<FullCalendar>(null);
   const { events, loading, error, refresh } = useCalendarEvents();
   const [selected, setSelected] = useState<CalendarEvent | null>(null);
+  const [pendingReschedule, setPendingReschedule] = useState<CalendarDropInfo | null>(null);
   const [calendarView, setCalendarView] = useState<CalendarViewMode>("dayGridMonth");
   const [calendarRange, setCalendarRange] = useState<{
     start: Date;
@@ -69,6 +72,26 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
     if (!api) return;
     beginCalendarTransition();
     api[action]();
+  }
+
+  function handleEventDrop(info: CalendarDropInfo) {
+    setPendingReschedule(info);
+  }
+
+  async function handleRescheduleConfirm(reason: string) {
+    if (!pendingReschedule) return;
+    await rescheduleSubmission(
+      pendingReschedule.event.id,
+      pendingReschedule.newStart.toISOString(),
+      reason,
+    );
+    setPendingReschedule(null);
+    refresh();
+  }
+
+  function handleRescheduleCancel() {
+    pendingReschedule?.revert();
+    setPendingReschedule(null);
   }
 
   function handleDatesSet(arg: DatesSetArg) {
@@ -195,7 +218,6 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
   }, []);
 
   const isAdmin = user.role === "admin";
-  const showAttentionWorkflow = user.role !== "contributor";
   const rangeLabel = useMemo(() => {
     if (!calendarRange) return "Calendar";
     const fmt = new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric" });
@@ -207,18 +229,29 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
   }, [calendarRange, calendarView]);
   const contextLabel = isAdmin
     ? "System-wide publishing visibility across institutions"
-    : "Institution publishing schedule and contributor workflow updates";
+    : "View scheduled and published posts across all institutions";
   const myInstitutionLabel = user.inst ? `My Institution (${user.inst})` : "My Institution";
+  const myInstitutionEntry =
+    !isAdmin && user.institutionId
+      ? [{ value: user.institutionId, label: myInstitutionLabel }]
+      : [];
   const institutionOptions = [
-    { value: "all", label: isAdmin ? "All institutions" : myInstitutionLabel },
-    ...institutions.map(([id, name]) => ({ value: id, label: name })),
+    { value: "all", label: "All institutions" },
+    ...myInstitutionEntry,
+    ...institutions
+      .filter(([id]) => isAdmin || id !== user.institutionId)
+      .map(([id, name]) => ({ value: id, label: name })),
   ];
   const statusOptions = [
     { value: "all", label: "All statuses" },
     { value: "scheduled", label: "Scheduled" },
     { value: "published", label: "Published" },
-    { value: "failed", label: "Failed" },
-    ...(showAttentionWorkflow ? [{ value: "attention", label: "Needs attention" }] : []),
+    ...(isAdmin
+      ? [
+          { value: "failed", label: "Failed" },
+          { value: "attention", label: "Needs attention" },
+        ]
+      : []),
   ];
   const dateOptions = [
     { value: "all", label: "All dates" },
@@ -241,8 +274,10 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
       <section className="cal-overview-grid" aria-label="Publishing metrics">
         <MetricCard metric="scheduled" icon="ti ti-calendar-time" label="Scheduled Posts" value={metrics.scheduled} tone="blue" onOpen={setActiveMetric} />
         <MetricCard metric="published" icon="ti ti-circle-check" label="Published" value={metrics.published} tone="green" onOpen={setActiveMetric} />
-        <MetricCard metric="failed" icon="ti ti-alert-circle" label="Failed" value={metrics.failed} tone="red" onOpen={setActiveMetric} />
-        {showAttentionWorkflow && (
+        {isAdmin && (
+          <MetricCard metric="failed" icon="ti ti-alert-circle" label="Failed" value={metrics.failed} tone="red" onOpen={setActiveMetric} />
+        )}
+        {isAdmin && (
           <MetricCard metric="attention" icon="ti ti-alert-triangle" label="Needs Attention" value={metrics.attention} tone="orange" onOpen={setActiveMetric} />
         )}
         <MetricCard metric="today" icon="ti ti-sun" label="Upcoming Today" value={metrics.today} tone="purple" onOpen={setActiveMetric} />
@@ -326,6 +361,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
             user={user}
             onEventClick={setSelected}
             onDatesSet={handleDatesSet}
+            onEventDrop={isAdmin ? handleEventDrop : undefined}
           />
           <CalendarLegend user={user} />
         </>
@@ -336,6 +372,15 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
         user={user}
         onClose={() => setSelected(null)}
       />
+
+      {pendingReschedule && (
+        <CalendarRescheduleModal
+          event={pendingReschedule.event}
+          newStart={pendingReschedule.newStart}
+          onConfirm={handleRescheduleConfirm}
+          onCancel={handleRescheduleCancel}
+        />
+      )}
 
       <CalendarMetricResultsPanel
         metric={activeMetric}
