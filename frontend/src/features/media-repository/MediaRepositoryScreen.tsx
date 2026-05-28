@@ -139,8 +139,9 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     const term = search.trim().toLowerCase();
     let result = assets.filter((a) => {
       if (activeTags.size > 0) {
-        const assetTagLabels = new Set((a.aiTags ?? []).map((t) => t.label));
-        if (![...activeTags].every((tag) => assetTagLabels.has(tag))) return false;
+        const assetTagLabels = new Set((a.aiTags ?? []).map((t) => t.label.toLowerCase()));
+        const selectedTags = [...activeTags].map((tag) => tag.toLowerCase());
+        if (!selectedTags.some((tag) => assetTagLabels.has(tag))) return false;
       }
       if (!term) return true;
       return [a.title, a.fileName, a.uploaderName, a.institutionName, ...(a.aiTags ?? []).map((t) => t.label)]

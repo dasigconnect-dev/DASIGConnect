@@ -151,12 +151,12 @@ export default function DashboardShell({
                       {capitalize(user.role)} · {getInstitutionName(user)}
                     </div>
                   </div>
-                  <div className="udrop-item">
+                  <button type="button" className="udrop-item" disabled>
                     <i className="ti ti-key"></i> Change Password
-                  </div>
-                  <div className="udrop-item">
+                  </button>
+                  <button type="button" className="udrop-item" disabled>
                     <i className="ti ti-settings"></i> Account Settings
-                  </div>
+                  </button>
                   <div className="udrop-sep"></div>
                   <button
                     type="button"
