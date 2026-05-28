@@ -103,6 +103,10 @@ export function listInstitutions() {
   return api.get<InstitutionResponse[]>("/institutions");
 }
 
+export function deleteInstitution(id: string) {
+  return api.delete(`/institutions/${id}`);
+}
+
 export function getUserCounts(institutionId: string) {
   return api.get<{ contributors: number; validators: number }>(
     "/users/counts",

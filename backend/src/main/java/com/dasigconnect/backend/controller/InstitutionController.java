@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -89,5 +90,17 @@ public class InstitutionController {
     @GetMapping
     public ResponseEntity<List<InstitutionDto>> listInstitutions() {
         return ResponseEntity.ok(institutionService.listInstitutions());
+    }
+
+    /**
+     * DELETE /api/v1/institutions/{institutionId}
+     *
+     * Permanently removes an institution. Blocked with 400 if the institution
+     * still has users or submissions.
+     */
+    @DeleteMapping("/{institutionId}")
+    public ResponseEntity<Void> deleteInstitution(@PathVariable UUID institutionId) {
+        institutionService.deleteInstitution(institutionId);
+        return ResponseEntity.noContent().build();
     }
 }

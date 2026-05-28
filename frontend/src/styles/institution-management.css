@@ -224,7 +224,9 @@
 /* ---- Card footer ---- */
 .im-inst-card-footer {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .im-manage-btn {
@@ -254,6 +256,55 @@
 }
 
 .im-manage-btn i { font-size: 14px; }
+
+/* Trash icon button on institution card */
+.im-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border: 1.5px solid transparent;
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--d-muted);
+  font-size: 16px;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.im-delete-btn:hover {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+/* Delete button in detail view header */
+.im-delete-inst-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1.5px solid transparent;
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--d-muted);
+  font-family: var(--ff-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.im-delete-inst-btn:hover {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.im-delete-inst-btn i { font-size: 15px; }
 
 /* ---- Skeleton card (loading state) ---- */
 .im-skeleton-card {

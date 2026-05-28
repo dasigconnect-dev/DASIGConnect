@@ -107,4 +107,8 @@ public interface SlotReservationRepository extends JpaRepository<SlotReservation
     @Modifying
     @Query("DELETE FROM SlotReservation r WHERE r.submission.id = :submissionId")
     void deleteBySubmissionId(@Param("submissionId") UUID submissionId);
+
+    @Modifying
+    @Query("DELETE FROM SlotReservation r WHERE r.institution.id = :institutionId")
+    void deleteByInstitutionId(@Param("institutionId") UUID institutionId);
 }

@@ -43,6 +43,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
     List<Submission> findByInstitutionIdOrderByCreatedAtDesc(UUID institutionId);
     List<Submission> findAllByOrderByCreatedAtDesc();
 
+    boolean existsByInstitutionId(UUID institutionId);
     boolean existsByIdAndInstitutionId(UUID id, UUID institutionId);
     boolean existsByIdAndContributorId(UUID id, UUID contributorId);
     boolean existsByContributorId(UUID contributorId);

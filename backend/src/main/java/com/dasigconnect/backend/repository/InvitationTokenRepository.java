@@ -17,6 +17,8 @@ public interface InvitationTokenRepository extends JpaRepository<InvitationToken
             String recipientEmail,
             Instant now);
     long countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(UUID institutionId, Instant now);
+
+    void deleteByInstitutionId(UUID institutionId);
     long countByInstitutionIdAndAssignedRoleAndUsedAtIsNullAndExpiresAtAfter(
             UUID institutionId, UserRole assignedRole, Instant now);
 }

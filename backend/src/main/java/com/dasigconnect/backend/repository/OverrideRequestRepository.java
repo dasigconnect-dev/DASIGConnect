@@ -39,4 +39,6 @@ public interface OverrideRequestRepository extends JpaRepository<OverrideRequest
     long countNonExpiredBySubmissionId(@Param("submissionId") UUID submissionId);
 
     long countByDecision(OverrideRequestDecision decision);
+
+    void deleteByInstitutionId(UUID institutionId);
 }

@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import {
   cancelInvitation,
   createInstitution,
+  deleteInstitution,
   deleteUser,
   getUserCounts,
   getPendingInvitationCount,
@@ -248,6 +249,33 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
   function handleBackToList() {
     setSelectedInstitution(null)
     setManagementError('')
+  }
+
+  function handleDeleteInstitution(inst: InstitutionWithStats) {
+    setConfirmDialog({
+      title: 'Delete Institution',
+      message: `Permanently delete "${inst.name}"? This cannot be undone. The institution must have no users and no submissions.`,
+      confirmLabel: 'Delete',
+      dangerous: true,
+      onConfirm: () => {
+        setConfirmDialog(null)
+        void executeDeleteInstitution(inst)
+      },
+    })
+  }
+
+  async function executeDeleteInstitution(inst: InstitutionWithStats) {
+    try {
+      await deleteInstitution(inst.id)
+      setInstitutions((current) => current.filter((i) => i.id !== inst.id))
+      if (selectedInstitution?.id === inst.id) {
+        setSelectedInstitution(null)
+        setManagementError('')
+      }
+      toast.success(`"${inst.name}" has been deleted.`)
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Unable to delete institution.'))
+    }
   }
 
   async function handleAddInstitution(e: FormEvent) {
@@ -697,6 +725,15 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
                 </span>
                 <span className="im-detail-stat-lbl">Pending Invites</span>
               </div>
+              <button
+                type="button"
+                className="im-delete-inst-btn"
+                onClick={() => handleDeleteInstitution(selectedInstitution)}
+                aria-label={`Delete ${selectedInstitution.name}`}
+              >
+                <i className="ti ti-trash" aria-hidden="true" />
+                Delete
+              </button>
             </div>
           </div>
 
@@ -985,6 +1022,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
                 key={inst.id}
                 institution={inst}
                 onManage={() => handleSelectInstitution(inst)}
+                onDelete={() => handleDeleteInstitution(inst)}
               />
             ))}
           </div>
@@ -1002,9 +1040,10 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
 interface InstitutionCardProps {
   institution: InstitutionWithStats
   onManage: () => void
+  onDelete: () => void
 }
 
-function InstitutionCard({ institution, onManage }: InstitutionCardProps) {
+function InstitutionCard({ institution, onManage, onDelete }: InstitutionCardProps) {
   const totalUsers = institution.contributors + institution.validators
   return (
     <div className="im-inst-card">
@@ -1070,6 +1109,14 @@ function InstitutionCard({ institution, onManage }: InstitutionCardProps) {
         <button type="button" className="im-manage-btn" onClick={onManage}>
           <i className="ti ti-settings" aria-hidden="true"></i>
           Manage Users
+        </button>
+        <button
+          type="button"
+          className="im-delete-btn"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          aria-label={`Delete ${institution.name}`}
+        >
+          <i className="ti ti-trash" aria-hidden="true"></i>
         </button>
       </div>
     </div>
