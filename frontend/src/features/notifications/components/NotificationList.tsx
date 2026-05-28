@@ -9,6 +9,8 @@ interface Props {
   latestIncomingId?: string;
   loading?: boolean;
   error?: string | null;
+  emptyTitle?: string;
+  emptyMessage?: string;
 }
 
 const SKELETON_KEYS = ["sk-a", "sk-b", "sk-c", "sk-d", "sk-e"];
@@ -19,6 +21,8 @@ export default function NotificationList({
   latestIncomingId,
   loading,
   error,
+  emptyTitle = "Nothing here yet",
+  emptyMessage = "No notifications in this category.",
 }: Readonly<Props>) {
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -62,7 +66,8 @@ export default function NotificationList({
     return (
       <div className="notif-empty">
         <i className="ti ti-bell-off" style={{ fontSize: 32 }} />
-        <p>No notifications in this category.</p>
+        <strong>{emptyTitle}</strong>
+        <p>{emptyMessage}</p>
       </div>
     );
   }

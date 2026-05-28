@@ -20,13 +20,13 @@
 
 .dc-select.mlt-select {
   flex: 0 0 auto;
-  min-width: 150px;
-  width: 150px;
+  min-width: 164px;
+  width: 164px;
 }
 
 .dc-select.med-sort-select {
   flex: 0 0 auto;
-  width: 132px;
+  width: 168px;
 }
 
 .dc-select.um-inst-select {
@@ -94,7 +94,7 @@
   left: 0;
   z-index: 370;
   width: 100%;
-  min-width: min(100%, 260px);
+  min-width: 100%;
   border: 1px solid var(--sub-blue-bdr, #a9ccff);
   border-radius: var(--sub-r, 12px);
   background: var(--sub-surface, #fff);
@@ -103,6 +103,35 @@
   overscroll-behavior: contain;
   padding: 6px;
   animation: dc-select-pop 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.dc-select.mlt-select .dc-select-popover {
+  left: 0;
+  right: auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(280px, calc(100vw - 32px));
+}
+.dc-select.med-sort-select.is-open {
+  z-index: 3000;
+}
+.dc-select.med-sort-select .dc-select-trigger {
+  min-height: 44px;
+  border-radius: 10px;
+  background: var(--sub-surface, #fff);
+}
+.dc-select.med-sort-select .dc-select-popover {
+  z-index: 3001;
+  width: 100%;
+  min-width: 100%;
+  max-height: 228px;
+  padding: 5px;
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(12, 29, 61, 0.16);
+}
+.dc-select.med-sort-select .dc-select-option {
+  min-height: 38px;
+  padding: 8px 10px;
+  font-size: 13px;
 }
 
 .dc-select.drop-up .dc-select-popover {

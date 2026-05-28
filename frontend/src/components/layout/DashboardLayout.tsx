@@ -52,10 +52,12 @@ export default function DashboardLayout({
         .catch(() => {})
     }
     fetchCount()
+    const intervalId = window.setInterval(fetchCount, 30000)
     const onFocus = () => fetchCount()
     window.addEventListener('focus', onFocus)
     return () => {
       active = false
+      window.clearInterval(intervalId)
       window.removeEventListener('focus', onFocus)
     }
   }, [])

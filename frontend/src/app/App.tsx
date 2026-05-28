@@ -732,7 +732,7 @@ function App() {
             path="/notifications"
             element={
               <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
-                <NotificationsScreen />
+                <NotificationsScreen user={currentUser!} />
               </ProtectedRoute>
             }
           />

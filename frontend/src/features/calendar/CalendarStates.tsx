@@ -5,9 +5,30 @@ interface CalendarErrorStateProps {
 
 export function CalendarLoadingState() {
   return (
-    <div className="screen-state-center" aria-live="polite">
-      <div className="spinner-ring" />
-      <span>Loading calendar...</span>
+    <div className="cal-loading-shell" aria-live="polite" aria-label="Loading calendar events">
+      <div className="cal-loading-top">
+        <div className="cal-skeleton cal-skeleton-title" />
+        <div className="cal-skeleton cal-skeleton-action" />
+      </div>
+      <div className="cal-skeleton-grid">
+        {Array.from({ length: 35 }).map((_, index) => (
+          <div className="cal-skeleton-cell" key={index}>
+            {index % 4 === 0 && <div className="cal-skeleton cal-skeleton-event" />}
+            {index % 7 === 0 && <div className="cal-skeleton cal-skeleton-event small" />}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function CalendarLoadingOverlay() {
+  return (
+    <div className="cal-loading-overlay" aria-live="polite" aria-label="Updating calendar view">
+      <div className="cal-loading-overlay-card">
+        <div className="cal-skeleton cal-loading-overlay-title" />
+        <div className="cal-skeleton cal-loading-overlay-sub" />
+      </div>
     </div>
   );
 }
@@ -29,9 +50,9 @@ export function CalendarErrorState({
 
 export function CalendarEmptyOverlay() {
   return (
-    <div className="cal-empty-overlay">
+    <div className="cal-empty-overlay cal-empty-overlay-visible">
       <i className="ti ti-calendar-off state-icon" aria-hidden="true" />
-      <p>No scheduled content yet.</p>
+      <p>No publishing items match this view.</p>
     </div>
   );
 }

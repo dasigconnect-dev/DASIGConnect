@@ -121,6 +121,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [form, setForm] = useState<FormState>(initialForm);
   const [pickerItems, setPickerItems] = useState<SubmissionMediaItem[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [isDirty, setIsDirty] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
   const [centerMode, setCenterMode] = useState<CenterMode>("edit");
   const [previewTab, setPreviewTab] = useState<PreviewTab>("preview");
@@ -267,6 +268,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     return () => window.clearTimeout(timer);
   }, [scheduledAt]);
 
+  useEffect(() => {
+    if (saveState === "saved") {
+      setIsDirty(false);
+    }
+  }, [saveState]);
+
   // Consume ?assetIds= from the Media Library "New Post" action exactly once.
   useEffect(() => {
     if (prefilledRef.current) return;
@@ -306,6 +313,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         pendingAssetIds: assets.map((asset) => asset.id),
       }));
       setPickerItems(assets.map(savedAssetToPickerItem));
+      setIsDirty(true);
 
       if (assets.length < ids.length) {
         toast.warning("Some selected assets could not be loaded.");
@@ -343,6 +351,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
     setSaveState("idle");
+    setIsDirty(true);
   }
 
   function resetComposer() {
@@ -354,6 +363,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setGuardRails(null);
     setGuardRailError("");
     setSaveState("idle");
+    setIsDirty(false);
     setFilter("drafts");
     setActiveStep("media");
     clearAssetIdParam();
@@ -391,7 +401,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function handleBack() {
-    if (!isReadOnlySubmission && isDirtyDraft(form)) {
+    if (!isReadOnlySubmission && isDirty) {
       setModal("draft-exit");
       return;
     }
@@ -441,6 +451,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setCenterMode("edit");
       setPreviewTab("preview");
       setSaveState("saved");
+      setIsDirty(false);
     } catch {
       toast.error("Could not load submission detail.");
     } finally {
@@ -496,6 +507,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       );
       clearAssetIdParam();
       setSaveState("saved");
+      setIsDirty(false);
       toast.success("Draft saved.");
       return true;
     } catch (err: unknown) {
@@ -655,6 +667,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       mediaOrder: newMediaOrder,
     }));
     setSaveState("idle");
+    setIsDirty(true);
   }
 
   async function handleReorderMedia(orderedIds: string[]) {
@@ -667,6 +680,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       mediaOrder: orderedIds,
     }));
     setSaveState("idle");
+    setIsDirty(true);
 
     // Sync picker items to match the new order
     const orderMap = new Map(orderedIds.map((id, i) => [id, i]));
@@ -697,6 +711,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setPickerItems(nextAssets.map(savedAssetToPickerItem));
       setSubmissions((current) => upsertSubmission(current, data));
       toast.success("Media order updated.");
+      setIsDirty(false);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err, "Media order could not be saved."));
     } finally {
@@ -725,6 +740,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             onClick={handleBack}
           >
             <i className="ti ti-arrow-left"></i>
+            <span>Back</span>
           </button>
           <div className="sub-nav-brand">
             <div className="sub-nav-brand-icon">
@@ -878,7 +894,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               onClick={handleNewSubmission}
               disabled={busy || Boolean(hydratingId)}
             >
-              <i className="ti ti-plus"></i> New Submission
+              New Submission
             </button>
           </div>
         </aside>

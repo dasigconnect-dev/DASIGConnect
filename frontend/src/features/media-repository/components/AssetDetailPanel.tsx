@@ -144,7 +144,7 @@ export default function AssetDetailPanel({
               <div className="med-panel-preview-inner" style={{ background: previewBackground(asset) }}>
                 {asset.storageUrl ? (
                   isVideoType(asset.fileType) ? (
-                    <video src={asset.storageUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} controls={false} muted />
+                    <video src={asset.storageUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} controls muted playsInline preload="metadata" />
                   ) : (
                     <img src={asset.storageUrl} alt={asset.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   )
@@ -311,11 +311,7 @@ export default function AssetDetailPanel({
           type="button"
           style={{ width: "100%", justifyContent: "center" }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          + New Submission ({newPostCount})
+          New Submission ({newPostCount})
         </button>
       </div>
       )}

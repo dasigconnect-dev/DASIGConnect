@@ -80,7 +80,10 @@ export default function DashboardShell({
           </div>
 
           <div className="sidebar-nav">
-            {navItems.filter((item) => item.visible).map((item) => (
+            {groupDashboardNavItems(navItems.filter((item) => item.visible)).map((group) => (
+              <div className="sidebar-nav-group" key={group.label}>
+                <div className="sidebar-nav-label">{group.label}</div>
+                {group.items.map((item) => (
               <button
                 className={`sidebar-link${activeNav === item.id ? ' active' : ''}`}
                 type="button"
@@ -94,11 +97,14 @@ export default function DashboardShell({
                 <i className={item.icon}></i>
                 <span>{item.label}</span>
                 {item.id === 'notifications' && notificationBadge > 0 && (
-                  <span className="sidebar-notif-badge">
+                  <span className="sidebar-notif-badge" aria-label={`${notificationBadge} unread notifications`}>
                     {notificationBadge > 99 ? '99+' : notificationBadge}
+                    <span className="sidebar-notif-badge-label">new</span>
                   </span>
                 )}
               </button>
+                ))}
+              </div>
             ))}
           </div>
         </aside>
@@ -119,8 +125,23 @@ export default function DashboardShell({
               <div className={`role-chip ${roleChip(user).className}`} id="role-chip">
                 {roleChip(user).label}
               </div>
-              <div className="dash-avatar" id="dash-avatar" onClick={onToggleDropdown}>
+              <div
+                className={`dash-avatar${showDropdown ? ' open' : ''}`}
+                id="dash-avatar"
+                onClick={onToggleDropdown}
+                role="button"
+                tabIndex={0}
+                aria-haspopup="menu"
+                aria-expanded={showDropdown}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    onToggleDropdown()
+                  }
+                }}
+              >
                 <span id="dash-initials">{user.initials}</span>
+                <i className="ti ti-chevron-down dash-avatar-caret" aria-hidden="true"></i>
                 <div className={`user-dropdown${showDropdown ? '' : ' hidden'}`} id="user-dropdown">
                   <div className="udrop-header">
                     <div className="udrop-name" id="dd-name">
@@ -229,6 +250,19 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       visible: true,
     },
   ]
+}
+
+function groupDashboardNavItems(items: DashboardNavItem[]) {
+  return [
+    {
+      label: 'Workspace',
+      items: items.filter((item) => ['home', 'submit', 'media-repository', 'notifications'].includes(item.id)),
+    },
+    {
+      label: 'Operations',
+      items: items.filter((item) => ['institution-management', 'user-management', 'scheduler', 'resolution', 'analytics'].includes(item.id)),
+    },
+  ].filter((group) => group.items.length > 0)
 }
 
 function roleChip(user: User) {

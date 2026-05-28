@@ -32,7 +32,7 @@
   background: var(--med-surface-1);
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 18px;
   padding: 32px;
   min-height: calc(100vh - 56px);
   overflow-y: auto;
@@ -110,9 +110,9 @@
   color: var(--med-text-2);
 }
 .med-btn-ghost:hover {
-  background: var(--med-surface-2);
-  color: var(--med-text);
-  border-color: #b5c0d8;
+  background: var(--med-blue-light);
+  color: var(--med-blue);
+  border-color: #93C5FD;
 }
 
 .med-btn-danger {
@@ -199,22 +199,27 @@
 
 /* ===== FILTER BAR ===== */
 .med-filter-bar {
-  background: var(--med-surface-0);
-  border: 1px solid var(--med-border);
-  border-radius: var(--med-radius-md);
-  padding: 16px 20px;
+  position: relative;
+  z-index: 80;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 8px 0 4px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   animation: med-fade-up 0.4s 0.08s ease both;
-  box-shadow: 0 1px 3px rgba(10, 22, 40, 0.05);
+  box-shadow: none;
 }
 
 .med-filter-row1 {
+  position: relative;
+  z-index: 81;
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  overflow: visible;
 }
 
 .med-search-wrap {
@@ -234,13 +239,13 @@
 
 .med-search-input {
   width: 100%;
-  background: var(--med-surface-2);
+  background: var(--med-surface-0);
   border: 1.5px solid var(--med-border);
-  border-radius: var(--med-radius-sm);
-  padding: 10px 14px 10px 38px;
+  border-radius: 10px;
+  padding: 12px 14px 12px 38px;
   font: 400 14px var(--med-ff-body);
   color: var(--med-text);
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .med-search-input:focus {
@@ -275,18 +280,19 @@
 .med-view-toggle {
   display: flex;
   border: 1.5px solid var(--med-border);
-  border-radius: var(--med-radius-sm);
+  border-radius: 10px;
   overflow: hidden;
   flex-shrink: 0;
+  background: var(--med-surface-0);
 }
 
 .med-view-btn {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--med-surface-2);
+  background: transparent;
   border: none;
   cursor: pointer;
   color: var(--med-muted);
@@ -296,7 +302,7 @@
 .med-view-btn:first-child { border-right: 1px solid var(--med-border); }
 
 .med-view-btn.active {
-  background: var(--med-navy-deep);
+  background: var(--med-blue);
   color: white;
 }
 
@@ -411,6 +417,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-top: -2px;
   animation: med-fade-up 0.4s 0.14s ease both;
 }
 
@@ -455,6 +462,8 @@
 
 /* ===== MEDIA GRID ===== */
 .med-grid {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 16px;
@@ -766,10 +775,12 @@
   justify-content: center;
 }
 
-.med-panel-preview img {
+.med-panel-preview img,
+.med-panel-preview video {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
 /* Panel section */
@@ -1322,12 +1333,12 @@
   height: 26px;
   border-radius: 7px;
   border: 2px solid rgba(255, 255, 255, 0.9);
-  background: rgba(10, 22, 40, 0.45);
+  background: rgba(37, 99, 235, 0.18);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: transparent;
+  color: var(--med-blue);
   opacity: 0;
   transition: background 0.15s, border-color 0.15s, transform 0.1s, opacity 0.15s;
 }

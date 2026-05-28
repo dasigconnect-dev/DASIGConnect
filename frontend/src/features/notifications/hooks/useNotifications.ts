@@ -52,16 +52,16 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     icon: "ti ti-circle-check",
     iconClass: "icon-success",
     sender: "Validation",
-    linkLabel: "View in Calendar",
+    linkLabel: "Open Submission",
     badgeClass: "badge-approved",
   },
   submission_needs_revision: {
     trigger: "T3",
     category: "submissions",
     icon: "ti ti-pencil",
-    iconClass: "icon-info",
+    iconClass: "icon-warning",
     sender: "Validation",
-    linkLabel: "Open Submission to Revise",
+    linkLabel: "View Feedback",
     badgeClass: "badge-revision",
   },
   submission_rejected: {
@@ -70,7 +70,7 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     icon: "ti ti-circle-x",
     iconClass: "icon-error",
     sender: "Validation",
-    linkLabel: "View Rejection Details",
+    linkLabel: "View Feedback",
     badgeClass: "badge-rejected",
   },
   submission_scheduled: {
@@ -79,7 +79,7 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     icon: "ti ti-calendar",
     iconClass: "icon-info",
     sender: "Scheduler",
-    linkLabel: "View in Calendar",
+    linkLabel: "View Schedule",
     badgeClass: "badge-approved",
   },
   submission_publish_failed: {
@@ -88,7 +88,7 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     icon: "ti ti-circle-x",
     iconClass: "icon-error",
     sender: "Publishing Engine",
-    linkLabel: "Go to Resolution Center",
+    linkLabel: "Open Submission",
     badgeClass: "badge-failed",
     critical: true,
   },
@@ -98,7 +98,7 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     icon: "ti ti-circle-check",
     iconClass: "icon-success",
     sender: "Publishing Engine",
-    linkLabel: "View Live Post",
+    linkLabel: "View Published Post",
     badgeClass: "badge-published",
   },
   submission_published_manual: {
@@ -107,7 +107,7 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     icon: "ti ti-send",
     iconClass: "icon-success",
     sender: "Admin - Manual Publish",
-    linkLabel: "View Live Post",
+    linkLabel: "View Published Post",
     badgeClass: "badge-published",
   },
   validation_timeout: {
@@ -116,7 +116,7 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     icon: "ti ti-clock",
     iconClass: "icon-warning",
     sender: "Deadline Watch",
-    linkLabel: "Review Submission",
+    linkLabel: "Open Submission",
     badgeClass: "badge-pending",
     warning: true,
   },
@@ -126,7 +126,7 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     icon: "ti ti-shield",
     iconClass: "icon-purple",
     sender: "Override Decision - Admin",
-    linkLabel: "Confirm Slot",
+    linkLabel: "Open Submission",
     badgeClass: "badge-approved",
   },
   override_denied: {
@@ -135,7 +135,7 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     icon: "ti ti-shield-off",
     iconClass: "icon-error",
     sender: "Override Decision - Admin",
-    linkLabel: "Request New Override",
+    linkLabel: "View Feedback",
     badgeClass: "badge-rejected",
   },
   override_slot_suggested: {
@@ -144,7 +144,7 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     icon: "ti ti-calendar-check",
     iconClass: "icon-purple",
     sender: "Override Suggestion - Admin",
-    linkLabel: "Review Slot Options",
+    linkLabel: "Review Schedule",
     badgeClass: "badge-revision",
   },
   admin_direct_post: {
@@ -181,7 +181,7 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     icon: "ti ti-calendar",
     iconClass: "icon-info",
     sender: "Admin - Rescheduled Post",
-    linkLabel: "View Calendar Entry",
+    linkLabel: "View Schedule",
     badgeClass: "badge-revision",
   },
   token_expiring: {
@@ -239,6 +239,7 @@ function mapDto(dto: NotificationDto): Notification {
   const meta = EVENT_META[dto.eventType] ?? EVENT_META.generic;
   return {
     id: dto.id,
+    eventType: dto.eventType,
     trigger: meta.trigger,
     category: meta.category,
     unread: dto.readAt === null,
@@ -357,6 +358,7 @@ export function useNotifications() {
 
   return {
     notifications: filteredNotifications,
+    allNotifications: notifications,
     auditLog,
     loading,
     fetchError,

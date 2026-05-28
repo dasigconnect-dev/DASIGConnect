@@ -16,6 +16,7 @@ export interface NotificationTag {
 
 export interface Notification {
   id: string;
+  eventType: string;
   trigger: string;
   category: NotificationCategory;
   unread: boolean;
@@ -42,7 +43,7 @@ export interface AuditEntry {
 export const FILTER_LABELS: Record<NotificationFilter, string> = {
   all: "All",
   unread: "Unread",
-  submissions: "Submissions",
+  submissions: "Submission Updates",
   publishing: "Publishing",
   system: "System",
   overrides: "Overrides",

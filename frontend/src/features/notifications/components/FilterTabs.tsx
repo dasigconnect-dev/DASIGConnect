@@ -6,12 +6,13 @@ interface Props {
   activeFilter: NotificationFilter;
   counts: NotificationCounts;
   onChange: (filter: NotificationFilter) => void;
+  filters?: NotificationFilter[];
 }
 
-export default function FilterTabs({ activeFilter, counts, onChange }: Props) {
+export default function FilterTabs({ activeFilter, counts, onChange, filters = FILTER_ORDER }: Props) {
   return (
     <div className="notif-filter-tabs">
-      {FILTER_ORDER.map((filter) => (
+      {filters.map((filter) => (
         <button
           key={filter}
           type="button"

@@ -40,12 +40,23 @@ export default function AssetCard({
           </svg>
         </span>
         {asset.storageUrl ? (
+          isVideo ? (
+            <video
+              className="med-card-thumb-img"
+              src={asset.storageUrl}
+              muted
+              playsInline
+              preload="metadata"
+              aria-label={asset.title}
+            />
+          ) : (
           <img
             className="med-card-thumb-img"
             src={asset.storageUrl}
             alt={asset.title}
             loading="lazy"
           />
+          )
         ) : (
           <div
             className="med-card-thumb-placeholder"
