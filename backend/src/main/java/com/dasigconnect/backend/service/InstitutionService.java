@@ -69,6 +69,16 @@ public class InstitutionService {
         this.auditLogService = auditLogService;
     }
 
+    private String sanitizeForLog(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value
+                .replace('\n', '_')
+                .replace('\r', '_')
+                .replaceAll("\\p{Cntrl}", "?");
+    }
+
     /**
      * Creates a new institution with status INACTIVE and provisions its RLS workspace.
      */
@@ -100,7 +110,9 @@ public class InstitutionService {
                 Map.of("name", institution.getName(), "code", institution.getCode())
         );
 
-        log.info("Institution created: {} ({}), status=INACTIVE", institution.getName(), institution.getId());
+        log.info("Institution created: {} ({}), status=INACTIVE",
+                sanitizeForLog(institution.getName()),
+                institution.getId());
         return InstitutionDto.from(institution);
     }
 
