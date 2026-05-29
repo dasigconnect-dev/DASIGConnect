@@ -71,7 +71,7 @@ public class ResolutionController {
     /** Returns the full post-content detail needed for the manual publishing panel. */
     @GetMapping("/{id}")
     public ResponseEntity<ManualPublishDetailDto> getDetail(@PathVariable UUID id) {
-        Submission s = submissionRepository.findById(id)
+        Submission s = submissionRepository.findByIdWithInstitution(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found."));
 
         if (s.getStatus() != SubmissionStatus.publish_failed
