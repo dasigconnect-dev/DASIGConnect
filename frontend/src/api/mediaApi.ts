@@ -237,6 +237,24 @@ export function bulkDeleteMediaAssets(assetIds: string[], force = false) {
   });
 }
 
+export interface BulkOperationResult {
+  affected: number;
+}
+
+/** Bulk-assign assets to a folder, or unfile them by passing null (UC-4.1). */
+export function bulkMoveAssets(assetIds: string[], folderId: string | null) {
+  return api
+    .post<BulkOperationResult>("/media-assets/bulk-move", { assetIds, folderId })
+    .then((res) => res.data);
+}
+
+/** Bulk-add a single manual tag to many assets (UC-4.1). */
+export function bulkTagAssets(assetIds: string[], label: string) {
+  return api
+    .post<BulkOperationResult>("/media-assets/bulk-tag", { assetIds, label })
+    .then((res) => res.data);
+}
+
 export function getMediaAssetUploadUrl(payload: MediaAssetUploadUrlRequest) {
   return api.post<MediaAssetUploadUrlResponse>("/media-assets/upload-url", payload);
 }
