@@ -167,8 +167,12 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
     List<Submission> findMissedScheduledSubmissions(@Param("cutoff") Instant cutoff);
 
     /** Resolution Center: PUBLISH_FAILED and DIRECT_POST_FAILED submissions sorted newest-scheduled first. */
+    @Query("SELECT s FROM Submission s JOIN FETCH s.institution JOIN FETCH s.contributor WHERE s.id = :id")
+    java.util.Optional<Submission> findByIdWithInstitution(@Param("id") UUID id);
+
     @Query("""
         SELECT s FROM Submission s
+        JOIN FETCH s.institution
         WHERE s.status IN (
             com.dasigconnect.backend.model.entity.SubmissionStatus.publish_failed,
             com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_failed

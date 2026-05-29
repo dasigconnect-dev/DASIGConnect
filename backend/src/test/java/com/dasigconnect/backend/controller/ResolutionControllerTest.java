@@ -104,7 +104,7 @@ class ResolutionControllerTest {
         UUID id = UUID.randomUUID();
         Submission s = publishFailedSubmission(id);
         SubmissionMediaAsset sma = mediaAssetJunction(s, mediaAsset(UUID.randomUUID()));
-        when(submissionRepository.findById(id)).thenReturn(Optional.of(s));
+        when(submissionRepository.findByIdWithInstitution(id)).thenReturn(Optional.of(s));
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(id))
                 .thenReturn(List.of(sma));
 
@@ -121,7 +121,7 @@ class ResolutionControllerTest {
     @WithMockUser(roles = "ADMINISTRATOR")
     void getDetail_notFound_returns404() throws Exception {
         UUID id = UUID.randomUUID();
-        when(submissionRepository.findById(id)).thenReturn(Optional.empty());
+        when(submissionRepository.findByIdWithInstitution(id)).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/api/v1/resolution/{id}", id))
                 .andExpect(status().isNotFound());
@@ -133,7 +133,7 @@ class ResolutionControllerTest {
         UUID id = UUID.randomUUID();
         Submission s = publishFailedSubmission(id);
         s.setStatus(SubmissionStatus.pending);
-        when(submissionRepository.findById(id)).thenReturn(Optional.of(s));
+        when(submissionRepository.findByIdWithInstitution(id)).thenReturn(Optional.of(s));
 
         mockMvc.perform(get("/api/v1/resolution/{id}", id))
                 .andExpect(status().isConflict());

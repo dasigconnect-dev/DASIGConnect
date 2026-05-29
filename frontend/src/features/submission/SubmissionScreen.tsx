@@ -4,6 +4,7 @@ import {
   attachAsset,
   createDraft,
   deleteDraft,
+  detachAsset,
   getSubmission,
   reorderSubmissionMedia,
   submitForReview,
@@ -59,6 +60,7 @@ interface FormState {
   savedAssets: SavedMediaAsset[];
   mediaOrder: string[];
   pendingAssetIds: string[];
+  removedAssetIds: string[];
 }
 
 type QueueFilter = "drafts" | "submitted" | "all";
@@ -90,6 +92,7 @@ const initialForm: FormState = {
   savedAssets: [],
   mediaOrder: [],
   pendingAssetIds: [],
+  removedAssetIds: [],
 };
 
 const statusLabels: Record<SubmissionStatus, string> = {
@@ -250,11 +253,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         "Complete Post Details — title, event date, and caption — before setting a schedule.",
       );
       setActiveStep("details");
-      return;
-    }
-    if (step === "schedule" && !hasMedia && form.pendingAssetIds.length === 0) {
-      toast.warning("Add at least one media file before setting a schedule.");
-      setActiveStep("media");
       return;
     }
     setActiveStep(step);
@@ -578,6 +576,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           savedMediaKey(asset.id),
         ),
         pendingAssetIds: [],
+        removedAssetIds: [],
       };
       setForm(nextForm);
       setPickerItems((submission.mediaAssets ?? []).map(savedAssetToPickerItem));
@@ -605,6 +604,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         ? await updateDraft(form.id, payload)
         : await createDraft(payload);
       let finalResponse = response;
+      for (const assetId of form.removedAssetIds) {
+        await detachAsset(response.data.id, assetId).catch(() => undefined);
+      }
       if (form.pendingAssetIds.length > 0) {
         const attached = await attachPendingAssets(
           response.data.id,
@@ -645,6 +647,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         savedAssets: orderedSavedAssets,
         mediaOrder: orderedSavedAssets.map((asset) => savedMediaKey(asset.id)),
         pendingAssetIds: [],
+        removedAssetIds: [],
       }));
       setPickerItems(orderedSavedAssets.map(savedAssetToPickerItem));
       setSubmissions((current) =>
@@ -686,14 +689,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (!form.eventTitle.trim()) missing.push("an event title");
     if (!form.eventDate) missing.push("an event date");
     if (!form.caption.trim()) missing.push("a caption");
-    if (!hasMedia && form.pendingAssetIds.length === 0) missing.push("at least one media file");
     if (!scheduledAt) missing.push("a preferred schedule");
     if (missing.length > 0) {
       toast.error(`Add ${missing.join(", ")} before submitting.`);
       if (!form.eventTitle.trim() || !form.eventDate || !form.caption.trim()) {
         setActiveStep("details");
-      } else if (!hasMedia && form.pendingAssetIds.length === 0) {
-        setActiveStep("media");
       } else {
         setActiveStep("schedule");
       }
@@ -748,6 +748,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         savedAssets: submittedAssets,
         mediaOrder: submittedAssets.map((asset) => savedMediaKey(asset.id)),
         pendingAssetIds: [],
+        removedAssetIds: [],
       }));
       setPickerItems(submittedAssets.map(savedAssetToPickerItem));
       clearAssetIdParam();
@@ -818,6 +819,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           fileSizeBytes: 0,
         };
       });
+    const newSavedIds = new Set(newSavedAssets.map((a) => a.id));
+    const justRemoved = form.savedAssets
+      .filter((a) => currentSavedIds.has(a.id) && !newSavedIds.has(a.id))
+      .map((a) => a.id);
     const newPendingAssetIds = items
       .filter((i) => i.assetId && !currentSavedIds.has(i.assetId))
       .map((i) => i.assetId!);
@@ -829,6 +834,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       files: newFiles,
       savedAssets: newSavedAssets,
       pendingAssetIds: newPendingAssetIds,
+      removedAssetIds: [...new Set([...current.removedAssetIds, ...justRemoved])],
       mediaOrder: newMediaOrder,
     }));
     setSaveState("idle");
@@ -1187,7 +1193,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               steps={progressSteps}
               activeStep={activeStep}
               isDetailsComplete={isDetailsComplete}
-              hasMediaComplete={hasMedia || form.pendingAssetIds.length > 0}
               onStepClick={handleStepNav}
             />
           )}
@@ -1365,7 +1370,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               icon="ti-calendar-event"
               tone="purple"
               title="Preferred Schedule"
-              subtitle="Testing mode allows draft save and submit while guardrails are being tuned."
+              subtitle="Choose a future date and a publish time between 8:00 AM and 8:00 PM."
             />
             <div className="sub-field-row">
               <Field label="Preferred Date">
@@ -1373,6 +1378,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   value={form.scheduledDate}
                   readOnly={isReadOnlySubmission}
                   placeholder="Select preferred date"
+                  minValue={dateToInputValue(new Date())}
                   onChange={(value) => updateField("scheduledDate", value)}
                 />
               </Field>
@@ -1871,7 +1877,6 @@ function StepProgress({
   steps,
   activeStep,
   isDetailsComplete,
-  hasMediaComplete,
   onStepClick,
 }: {
   steps: Array<{
@@ -1881,21 +1886,10 @@ function StepProgress({
   }>;
   activeStep: ProgressStep;
   isDetailsComplete: boolean;
-  hasMediaComplete: boolean;
   onStepClick: (step: ProgressStep) => void;
 }) {
   function isLocked(id: ProgressStep) {
-    if (id !== "schedule") return false;
-    if (!isDetailsComplete) return true;
-    if (!hasMediaComplete) return true;
-    return false;
-  }
-
-  function lockedTitle(id: ProgressStep) {
-    if (id !== "schedule") return undefined;
-    if (!isDetailsComplete) return "Complete Post Details first — title, event date, and caption are required.";
-    if (!hasMediaComplete) return "Add at least one media file before setting a schedule.";
-    return undefined;
+    return id === "schedule" && !isDetailsComplete;
   }
 
   return (
@@ -1908,7 +1902,7 @@ function StepProgress({
             key={step.id}
             className={`sub-step ${active ? "active" : ""} ${step.complete ? "complete" : ""} ${locked ? "locked" : ""}`}
             type="button"
-            title={lockedTitle(step.id)}
+            title={locked ? "Complete Post Details first — title, event date, and caption are required." : undefined}
             onClick={() => onStepClick(step.id)}
           >
             <span className="sub-step-circle">
@@ -1990,11 +1984,13 @@ function CalendarDateField({
   value,
   placeholder,
   readOnly,
+  minValue,
   onChange,
 }: {
   value: string;
   placeholder: string;
   readOnly?: boolean;
+  minValue?: string;
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -2109,21 +2105,26 @@ function CalendarDateField({
           </div>
 
           <div className="sub-date-grid">
-            {days.map((day) => (
-              <button
-                key={day.value}
-                className={[
-                  "sub-date-day",
-                  day.inMonth ? "" : "muted",
-                  day.value === value ? "selected" : "",
-                  day.value === todayValue ? "today" : "",
-                ].join(" ")}
-                type="button"
-                onClick={() => selectDate(day.value)}
-              >
-                {day.date.getDate()}
-              </button>
-            ))}
+            {days.map((day) => {
+              const isPast = minValue ? day.value < minValue : false;
+              return (
+                <button
+                  key={day.value}
+                  className={[
+                    "sub-date-day",
+                    day.inMonth ? "" : "muted",
+                    day.value === value ? "selected" : "",
+                    day.value === todayValue ? "today" : "",
+                    isPast ? "past" : "",
+                  ].join(" ")}
+                  type="button"
+                  disabled={isPast}
+                  onClick={() => selectDate(day.value)}
+                >
+                  {day.date.getDate()}
+                </button>
+              );
+            })}
           </div>
 
           <div className="sub-date-actions">
@@ -2183,6 +2184,16 @@ function TimePickerField({
     };
   }, [open, rootRef]);
 
+  function draftToMinutes(parts: { hour: number; minute: number; period: "AM" | "PM" }) {
+    let h = parts.hour;
+    if (parts.period === "PM" && h !== 12) h += 12;
+    if (parts.period === "AM" && h === 12) h = 0;
+    return h * 60 + parts.minute;
+  }
+
+  const draftMinutes = draftToMinutes(draft);
+  const isOutOfRange = draftMinutes < 8 * 60 || draftMinutes > 20 * 60;
+
   function adjust(part: "hour" | "minute", offset: number) {
     setDraft((current) => {
       if (part === "hour") {
@@ -2193,6 +2204,7 @@ function TimePickerField({
   }
 
   function applyTime() {
+    if (isOutOfRange) return;
     onChange(timePartsToValue(draft));
     setOpen(false);
   }
@@ -2276,6 +2288,13 @@ function TimePickerField({
             ))}
           </div>
 
+          {isOutOfRange && (
+            <div className="sub-time-range-error">
+              <i className="ti ti-alert-triangle"></i>
+              Time must be between 8:00 AM and 8:00 PM.
+            </div>
+          )}
+
           <div className="sub-time-actions">
             <button
               type="button"
@@ -2286,7 +2305,7 @@ function TimePickerField({
             >
               Clear
             </button>
-            <button type="button" onClick={applyTime}>
+            <button type="button" onClick={applyTime} disabled={isOutOfRange}>
               Apply Time
             </button>
           </div>
@@ -2775,16 +2794,21 @@ function getPreviewValidation(
     (file) => !isAllowedFile(file, lookups.allowedFileTypes),
   );
 
-  const noMedia =
-    form.files.length === 0 &&
-    form.savedAssets.length === 0 &&
-    form.pendingAssetIds.length === 0;
-
   if (!form.eventTitle.trim()) missingItems.push("Add an event title.");
   if (!form.eventDate) missingItems.push("Select the event date.");
   if (!form.caption.trim()) missingItems.push("Write a caption.");
-  if (noMedia) missingItems.push("Upload at least one media file.");
   if (!scheduledAt) missingItems.push("Choose a preferred schedule.");
+  if (scheduledAt && new Date(scheduledAt) <= new Date()) {
+    missingItems.push("Schedule must be set in the future.");
+  }
+  if (form.scheduledTime) {
+    const [h] = form.scheduledTime.split(":").map(Number);
+    const m = Number(form.scheduledTime.split(":")[1]) || 0;
+    const totalMin = h * 60 + m;
+    if (totalMin < 8 * 60 || totalMin > 20 * 60) {
+      missingItems.push("Publish time must be between 8:00 AM and 8:00 PM.");
+    }
+  }
   if (oversizedFile) {
     missingItems.push(
       `${oversizedFile.name} is larger than ${lookups.maxFileSizeMb} MB.`,
@@ -2800,8 +2824,18 @@ function getPreviewValidation(
   if (!form.eventTitle.trim()) blockingErrors.push("Event title is required.");
   if (!form.eventDate) blockingErrors.push("Event date is required.");
   if (!form.caption.trim()) blockingErrors.push("Caption is required.");
-  if (noMedia) blockingErrors.push("At least one media file is required.");
   if (!scheduledAt) blockingErrors.push("Preferred schedule is required.");
+  if (scheduledAt && new Date(scheduledAt) <= new Date()) {
+    blockingErrors.push("Preferred schedule must be set in the future.");
+  }
+  if (form.scheduledTime) {
+    const [h] = form.scheduledTime.split(":").map(Number);
+    const m = Number(form.scheduledTime.split(":")[1]) || 0;
+    const totalMin = h * 60 + m;
+    if (totalMin < 8 * 60 || totalMin > 20 * 60) {
+      blockingErrors.push("Publish time must be between 8:00 AM and 8:00 PM.");
+    }
+  }
   if (oversizedFile) {
     blockingErrors.push(
       `File size must stay within ${lookups.maxFileSizeMb} MB per file.`,
@@ -2809,9 +2843,6 @@ function getPreviewValidation(
   }
   if (unsupportedFile) {
     blockingErrors.push("Only accepted image and video formats can be submitted.");
-  }
-  if (guardRails?.blocked) {
-    blockingErrors.push("The preferred slot is blocked by guardrails.");
   }
 
   return { missingItems, blockingErrors };

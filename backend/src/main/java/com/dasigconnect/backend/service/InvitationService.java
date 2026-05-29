@@ -82,9 +82,6 @@ public class InvitationService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Institution not found");
         }
         validateInviterScope(dto, inviter);
-        if (isValidator(inviter)) {
-            validateInstitutionEmailDomain(recipientEmail, institution);
-        }
 
         // Enforce provisioning rules based on institution status
         if (dto.assignedRole() == UserRole.contributor) {

@@ -1543,6 +1543,29 @@ textarea.sub-finput {
 .sub-date-day.selected::after {
   background: white;
 }
+.sub-date-day.past {
+  color: var(--sub-muted-2);
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.sub-time-range-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--sub-red-dim, #fef2f2);
+  color: var(--sub-red, #dc2626);
+  font-size: 12px;
+  font-weight: 600;
+}
+.sub-time-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 .sub-date-actions,
 .sub-time-actions {
   margin-top: 10px;

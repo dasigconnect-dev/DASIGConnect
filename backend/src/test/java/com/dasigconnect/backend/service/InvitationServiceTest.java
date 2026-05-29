@@ -33,6 +33,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -249,15 +250,19 @@ class InvitationServiceTest {
     }
 
     @Test
-    void createInvitation_validatorWithWrongInstitutionDomain_throws400() {
+    void createInvitation_validatorWithDifferentDomain_succeeds() {
         when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
+        when(invitationTokenRepository.save(any())).thenAnswer(inv -> {
+            InvitationToken t = inv.getArgument(0);
+            t.setId(UUID.randomUUID());
+            return t;
+        });
+        when(emailService.buildInvitationLink(any())).thenReturn("http://localhost:5173/invite?token=token");
         CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
                 "user@other.edu.ph", institutionId, UserRole.contributor);
 
-        assertThatThrownBy(() -> invitationService.createInvitation(dto, validatorPrincipal))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
-                .isEqualTo(400);
+        assertThatCode(() -> invitationService.createInvitation(dto, validatorPrincipal))
+                .doesNotThrowAnyException();
     }
 
     // ── validateToken ─────────────────────────────────────────────────────
