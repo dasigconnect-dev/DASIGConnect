@@ -97,11 +97,26 @@ is safe and so a future document submission is a formality rather than a rewrite
 - **RLS** on every new institution-scoped table, in the same migration that creates it.
 - **No DB connection held across an external API call** (Claude/Voyage/Facebook).
 - **Tests alongside features** — keep the suite green (currently 273 passing).
+- **Frontend componentization (no spaghetti):** before adding UI to a page, ask *"is this
+  feature, container, or repeated block worth extracting as a reusable component?"* If a
+  block has its own state/logic, is reused, or makes the page hard to scan — extract it.
+  - Keep **screens/pages as thin orchestrators**: data wiring + composition, not deep markup.
+  - Put reusable pieces in `components/` (shared) or the feature's `components/` folder;
+    one component = one responsibility; props in, callbacks out (no business logic buried
+    in JSX).
+  - **No hardcoded/duplicated UI blocks** copy-pasted across pages — lift them into a
+    component. No giant single-file screens doing everything.
+  - Reuse the existing design tokens/CSS classes; don't re-style ad hoc per page.
+  - *Refactor debt to revisit:* `AlbumsScreen.tsx` works but is on the large side — its
+    album card, asset tile, create modal, and asset picker should be split into
+    `features/albums/components/` when next touched.
 - **ADRs** for non-obvious decisions in `docs/adr/` (append-only; supersede, don't edit).
 
 ## 5. Definition of Done (per card)
 
 - Started from the correct skill (`/dasigconnect-backend` and/or `/ui-ux-pro-max`).
+- Frontend: reusable blocks extracted into components; the page stays a thin orchestrator
+  (no spaghetti, no hardcoded/duplicated UI blocks).
 - Code + tests merged via PR; suite green.
 - Migration applied cleanly on the dev project; RLS verified.
 - Metric instrumented where the UC has a §9 target.
