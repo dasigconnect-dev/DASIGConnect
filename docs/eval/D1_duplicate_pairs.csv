@@ -1,0 +1,7 @@
+pair_id,asset_a_code,asset_b_code,label,hamming_distance,notes
+# label = exact | near | distinct_same_event | unrelated
+# hamming_distance = leave blank until pHash computed; fill during threshold tuning
+# include hard negatives (distinct_same_event) to prove pHash != embeddings
+1,,,,,
+2,,,,,
+3,,,,,

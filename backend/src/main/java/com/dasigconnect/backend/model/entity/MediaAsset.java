@@ -99,6 +99,12 @@ public class MediaAsset {
     @Column(name = "status", nullable = false, length = 20)
     private MediaAssetStatus status;
 
+    @Column(name = "folder_id")
+    private UUID folderId;
+
+    @Column(name = "import_batch_id")
+    private UUID importBatchId;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
@@ -192,6 +198,12 @@ public class MediaAsset {
 
     public MediaAssetStatus getStatus() { return status; }
     public void setStatus(MediaAssetStatus status) { this.status = status; }
+
+    public UUID getFolderId() { return folderId; }
+    public void setFolderId(UUID folderId) { this.folderId = folderId; }
+
+    public UUID getImportBatchId() { return importBatchId; }
+    public void setImportBatchId(UUID importBatchId) { this.importBatchId = importBatchId; }
 
     public Instant getDeletedAt() { return deletedAt; }
     public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }

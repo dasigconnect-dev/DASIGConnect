@@ -1,0 +1,8 @@
+query_id,query_text,query_type,relevant_asset_codes,notes
+# query_type = semantic | keyword | temporal
+# relevant_asset_codes = pipe-separated list, e.g. AST-0001|AST-0042
+# aim for ~20 queries spread across the three types
+1,"people at a hackathon",semantic,,
+2,"a person holding a glass discussing with students",semantic,,
+3,,keyword,,
+4,"photos uploaded last Monday 3-5pm",temporal,,
