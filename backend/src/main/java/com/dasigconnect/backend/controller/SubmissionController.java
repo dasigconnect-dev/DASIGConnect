@@ -199,4 +199,14 @@ public class SubmissionController {
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.status(HttpStatus.CREATED).body(submissionService.attachAsset(id, dto, user));
     }
+
+    @DeleteMapping("/{id}/assets/{assetId}")
+    @PreAuthorize("hasRole('CONTRIBUTOR')")
+    public ResponseEntity<Void> detachAsset(
+            @PathVariable UUID id,
+            @PathVariable UUID assetId,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        submissionService.detachAsset(id, assetId, user);
+        return ResponseEntity.noContent().build();
+    }
 }

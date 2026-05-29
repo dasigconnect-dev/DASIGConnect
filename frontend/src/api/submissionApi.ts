@@ -116,6 +116,10 @@ export function attachAsset(id: string, mediaAssetId: string) {
   });
 }
 
+export function detachAsset(id: string, mediaAssetId: string) {
+  return api.delete(`/submissions/${id}/assets/${mediaAssetId}`);
+}
+
 export async function uploadSubmissionMedia(id: string, files: File[]) {
   const responses = [];
   for (const file of files) {

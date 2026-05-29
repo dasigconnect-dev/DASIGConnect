@@ -303,9 +303,6 @@ public class SubmissionService {
         if (submission.getCaption() == null || submission.getCaption().isBlank()) {
             missing.add("a caption");
         }
-        if (submissionMediaAssetRepository.countBySubmissionId(submission.getId()) == 0) {
-            missing.add("at least one media file");
-        }
         if (!missing.isEmpty()) {
             throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Submission is incomplete — add " + String.join(", ", missing) + " before submitting.");
@@ -429,6 +426,19 @@ public class SubmissionService {
 
         log.info("Existing asset {} attached to submission {} by contributor {}", asset.getId(), submissionId, user.userId());
         return buildResponse(submissionRepository.findById(submissionId).orElseThrow());
+    }
+
+    public void detachAsset(UUID submissionId, UUID mediaAssetId, JwtUserDetails user) {
+        Submission submission = loadForContributor(submissionId, user);
+        assertEditableStatus(submission);
+
+        SubmissionMediaAsset link = submissionMediaAssetRepository
+                .findBySubmissionIdAndMediaAssetId(submissionId, mediaAssetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Media asset is not attached to this submission."));
+
+        submissionMediaAssetRepository.delete(link);
+        log.info("Asset {} detached from submission {} by contributor {}", mediaAssetId, submissionId, user.userId());
     }
 
     /**

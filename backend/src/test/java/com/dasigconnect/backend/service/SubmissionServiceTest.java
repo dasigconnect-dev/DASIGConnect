@@ -245,23 +245,6 @@ class SubmissionServiceTest {
     }
 
     @Test
-    void submit_withoutMedia_returns422() {
-        UUID submissionId = UUID.randomUUID();
-        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
-        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
-        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
-        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
-        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
-
-        assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .extracting(status -> status.value())
-                .isEqualTo(422);
-        verify(submissionRepository, never()).save(submission);
-    }
-
-    @Test
     void submit_withoutCaption_returns422() {
         UUID submissionId = UUID.randomUUID();
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
