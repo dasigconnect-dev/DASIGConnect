@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaAssetStatus;
+import com.dasigconnect.backend.model.entity.MediaFileType;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class MediaIngestionQueueServiceTest {
 
     @Mock private AIClassificationService aiClassificationService;
+    @Mock private MediaQualityAnalysisService mediaQualityAnalysisService;
     @Mock private MediaAssetRepository mediaAssetRepository;
 
     private MediaIngestionQueueService service;
@@ -33,13 +35,14 @@ class MediaIngestionQueueServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MediaIngestionQueueService(SYNCHRONOUS, aiClassificationService, mediaAssetRepository);
+        service = new MediaIngestionQueueService(SYNCHRONOUS, aiClassificationService, mediaQualityAnalysisService, mediaAssetRepository);
     }
 
     private MediaAsset asset(UUID id, MediaAssetStatus status) {
         MediaAsset a = new MediaAsset();
         a.setId(id);
         a.setStatus(status);
+        a.setFileType(MediaFileType.jpeg);
         return a;
     }
 
@@ -51,6 +54,18 @@ class MediaIngestionQueueServiceTest {
         service.enqueue(id, "https://storage/x.jpg");
 
         verify(aiClassificationService).classifyAndEmbed(id, "https://storage/x.jpg");
+    }
+
+    @Test
+    void enqueue_processingImage_runsQualityAnalysisBeforeClassification() {
+        UUID id = UUID.randomUUID();
+        when(mediaAssetRepository.findActiveById(id)).thenReturn(Optional.of(asset(id, MediaAssetStatus.PROCESSING)));
+
+        service.enqueue(id, "https://storage/x.jpg");
+
+        var ordered = org.mockito.Mockito.inOrder(mediaQualityAnalysisService, aiClassificationService);
+        ordered.verify(mediaQualityAnalysisService).analyzeImage(id, "https://storage/x.jpg");
+        ordered.verify(aiClassificationService).classifyAndEmbed(id, "https://storage/x.jpg");
     }
 
     @Test

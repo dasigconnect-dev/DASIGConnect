@@ -11,18 +11,17 @@ interface AssetPickerModalProps {
   onConfirm: () => void;
 }
 
-/** Multi-select grid for adding existing assets to an album (controlled, presentational). */
 export default function AssetPickerModal({
   assets, loading, selected, adding, onToggle, onClose, onConfirm,
 }: AssetPickerModalProps) {
   return (
-    <div className="alb-modal-overlay" role="dialog" aria-modal="true" aria-label="Add assets to album" onClick={onClose}>
+    <div className="alb-modal-overlay" role="dialog" aria-modal="true" aria-label="Add media to collection" onClick={onClose}>
       <div className="alb-modal alb-modal-wide" onClick={(e) => e.stopPropagation()}>
-        <h2 className="alb-modal-title">Add assets</h2>
+        <h2 className="alb-modal-title">Add media</h2>
         {loading ? (
-          <div className="alb-picker-empty">Loading assets…</div>
+          <div className="alb-picker-empty">Loading media...</div>
         ) : assets.length === 0 ? (
-          <div className="alb-picker-empty">No assets available to add.</div>
+          <div className="alb-picker-empty">No media available to add.</div>
         ) : (
           <div className="alb-picker-grid">
             {assets.map((asset) => {
@@ -40,7 +39,7 @@ export default function AssetPickerModal({
                   ) : (
                     <span className="alb-asset-file">{asset.fileType.toUpperCase()}</span>
                   )}
-                  {checked && <span className="alb-picker-check" aria-hidden="true">✓</span>}
+                  {checked && <span className="alb-picker-check" aria-hidden="true">OK</span>}
                 </button>
               );
             })}
@@ -56,7 +55,7 @@ export default function AssetPickerModal({
             disabled={adding || selected.size === 0}
             onClick={onConfirm}
           >
-            {adding ? "Adding…" : `Add ${selected.size > 0 ? selected.size : ""}`.trim()}
+            {adding ? "Adding..." : `Add ${selected.size > 0 ? selected.size : ""}`.trim()}
           </button>
         </div>
       </div>

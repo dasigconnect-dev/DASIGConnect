@@ -6,7 +6,7 @@ interface AlbumCardProps {
   onDelete: (album: Album) => void;
 }
 
-/** A single album in the list grid (presentational). */
+/** A single collection in the list grid (presentational). */
 export default function AlbumCard({ album, onOpen, onDelete }: AlbumCardProps) {
   return (
     <article className="alb-card" onClick={() => onOpen(album.id)}>
@@ -23,14 +23,14 @@ export default function AlbumCard({ album, onOpen, onDelete }: AlbumCardProps) {
           {album.source === "ai_suggested" && <span className="alb-ai-badge">AI</span>}
         </div>
         <div className="alb-card-meta">
-          {album.assetCount} {album.assetCount === 1 ? "asset" : "assets"}
+          {album.assetCount} {album.assetCount === 1 ? "item" : "items"}
         </div>
         {album.description && <p className="alb-card-desc">{album.description}</p>}
       </div>
       <button
         className="alb-card-delete"
         type="button"
-        aria-label={`Delete album ${album.name}`}
+        aria-label={`Delete collection ${album.name}`}
         onClick={(e) => {
           e.stopPropagation();
           onDelete(album);

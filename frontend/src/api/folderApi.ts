@@ -14,10 +14,16 @@ export interface Folder {
 export interface CreateFolderRequest {
   name: string;
   parentFolderId?: string | null;
+  institutionId?: string | null;
 }
 
-export function listFolders(signal?: AbortSignal) {
-  return api.get<Folder[]>("/media-folders", { signal }).then((res) => res.data);
+export function listFolders(institutionId?: string | null, signal?: AbortSignal) {
+  return api
+    .get<Folder[]>("/media-folders", {
+      params: institutionId ? { institutionId } : undefined,
+      signal,
+    })
+    .then((res) => res.data);
 }
 
 export function getFolder(id: string, signal?: AbortSignal) {
@@ -29,6 +35,7 @@ export function createFolder(payload: CreateFolderRequest) {
     .post<Folder>("/media-folders", {
       name: payload.name,
       parentFolderId: payload.parentFolderId ?? null,
+      institutionId: payload.institutionId ?? null,
     })
     .then((res) => res.data);
 }

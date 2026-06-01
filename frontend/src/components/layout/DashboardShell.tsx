@@ -217,7 +217,7 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
     {
       id: 'media-repository',
       icon: 'ti ti-photo',
-      label: 'Media Repository',
+      label: 'Media Library',
       path: '/media-repository',
       visible: true,
     },

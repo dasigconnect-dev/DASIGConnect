@@ -52,7 +52,7 @@ public class MediaFolderService {
 
     @Transactional
     public FolderResponseDto create(FolderCreateRequestDto dto, JwtUserDetails user) {
-        UUID institutionId = requireInstitution(user);
+        UUID institutionId = resolveTargetInstitution(user, dto.getInstitutionId());
         User actor = loadActor(user);
 
         MediaFolder parent = null;
@@ -79,9 +79,8 @@ public class MediaFolderService {
 
     @Transactional
     public FolderResponseDto rename(UUID id, FolderRenameRequestDto dto, JwtUserDetails user) {
-        UUID institutionId = requireInstitution(user);
         User actor = loadActor(user);
-        MediaFolder folder = requireFolder(id, institutionId);
+        MediaFolder folder = requireFolder(id, user);
         folder.setName(dto.getName().trim());
         folder = folderRepository.save(folder);
         audit(actor, "FOLDER_RENAMED", folder, Map.of("name", folder.getName()));
@@ -90,9 +89,9 @@ public class MediaFolderService {
 
     @Transactional
     public FolderResponseDto move(UUID id, FolderMoveRequestDto dto, JwtUserDetails user) {
-        UUID institutionId = requireInstitution(user);
         User actor = loadActor(user);
-        MediaFolder folder = requireFolder(id, institutionId);
+        MediaFolder folder = requireFolder(id, user);
+        UUID institutionId = operationInstitution(folder, user);
 
         MediaFolder newParent = null;
         if (dto.getParentFolderId() != null) {
@@ -130,34 +129,47 @@ public class MediaFolderService {
      */
     @Transactional
     public void delete(UUID id, JwtUserDetails user) {
-        UUID institutionId = requireInstitution(user);
         User actor = loadActor(user);
-        MediaFolder folder = requireFolder(id, institutionId);
+        MediaFolder folder = requireFolder(id, user);
         String name = folder.getName();
         folderRepository.delete(folder);
         audit(actor, "FOLDER_DELETED", folder, Map.of("name", name));
     }
 
     @Transactional(readOnly = true)
-    public List<FolderResponseDto> list(JwtUserDetails user) {
-        UUID institutionId = requireInstitution(user);
+    public List<FolderResponseDto> list(UUID requestedInstitutionId, JwtUserDetails user) {
+        UUID institutionId = resolveTargetInstitution(user, requestedInstitutionId);
         return folderRepository.findByInstitution(institutionId).stream().map(this::toDto).toList();
     }
 
     @Transactional(readOnly = true)
     public FolderResponseDto get(UUID id, JwtUserDetails user) {
-        UUID institutionId = requireInstitution(user);
-        return toDto(requireFolder(id, institutionId));
+        return toDto(requireFolder(id, user));
     }
 
     // ── helpers ────────────────────────────────────────────────────────────────
 
-    private UUID requireInstitution(JwtUserDetails user) {
+    private UUID resolveTargetInstitution(JwtUserDetails user, UUID requestedInstitutionId) {
+        if (isAdmin(user)) {
+            if (requestedInstitutionId == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Select an institution before managing folders.");
+            }
+            return requestedInstitutionId;
+        }
         if (user.institutionId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Folder operations require an institution-scoped user.");
         }
+        if (requestedInstitutionId != null && !requestedInstitutionId.equals(user.institutionId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You cannot manage folders for another institution.");
+        }
         return user.institutionId();
+    }
+
+    private boolean isAdmin(JwtUserDetails user) {
+        return user.role() != null && user.role().toLowerCase().contains("admin");
     }
 
     private User loadActor(JwtUserDetails user) {
@@ -169,6 +181,25 @@ public class MediaFolderService {
     private MediaFolder requireFolder(UUID id, UUID institutionId) {
         return folderRepository.findByIdAndInstitution(id, institutionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Folder not found."));
+    }
+
+    private MediaFolder requireFolder(UUID id, JwtUserDetails user) {
+        if (isAdmin(user)) {
+            return folderRepository.findById(id)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Folder not found."));
+        }
+        return requireFolder(id, resolveTargetInstitution(user, null));
+    }
+
+    private UUID operationInstitution(MediaFolder folder, JwtUserDetails user) {
+        if (!isAdmin(user)) {
+            return resolveTargetInstitution(user, null);
+        }
+        if (folder.getInstitution() == null || folder.getInstitution().getId() == null) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Folder has no institution.");
+        }
+        return folder.getInstitution().getId();
     }
 
     private int depthOf(MediaFolder folder) {

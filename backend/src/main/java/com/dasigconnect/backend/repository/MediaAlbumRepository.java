@@ -16,4 +16,14 @@ public interface MediaAlbumRepository extends JpaRepository<MediaAlbum, UUID> {
 
     @Query("SELECT a FROM MediaAlbum a WHERE a.institution.id = :institutionId ORDER BY a.updatedAt DESC")
     List<MediaAlbum> findByInstitution(@Param("institutionId") UUID institutionId);
+
+    @Query("""
+        SELECT COUNT(a) > 0 FROM MediaAlbum a
+        WHERE a.institution.id = :institutionId
+          AND a.source = :source
+          AND a.name = :name
+        """)
+    boolean existsByInstitutionAndSourceAndName(@Param("institutionId") UUID institutionId,
+                                                @Param("source") String source,
+                                                @Param("name") String name);
 }

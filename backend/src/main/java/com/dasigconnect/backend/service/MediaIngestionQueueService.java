@@ -29,14 +29,17 @@ public class MediaIngestionQueueService {
 
     private final Executor executor;
     private final AIClassificationService aiClassificationService;
+    private final MediaQualityAnalysisService mediaQualityAnalysisService;
     private final MediaAssetRepository mediaAssetRepository;
 
     public MediaIngestionQueueService(
             @Qualifier(IngestionExecutorConfig.INGESTION_EXECUTOR) Executor executor,
             AIClassificationService aiClassificationService,
+            MediaQualityAnalysisService mediaQualityAnalysisService,
             MediaAssetRepository mediaAssetRepository) {
         this.executor = executor;
         this.aiClassificationService = aiClassificationService;
+        this.mediaQualityAnalysisService = mediaQualityAnalysisService;
         this.mediaAssetRepository = mediaAssetRepository;
     }
 
@@ -56,6 +59,9 @@ public class MediaIngestionQueueService {
             if (asset.getStatus() == MediaAssetStatus.READY) {
                 log.debug("Ingestion skipped: asset {} already READY", assetId);
                 return;
+            }
+            if (asset.getFileType() != null && asset.getFileType().isImage()) {
+                mediaQualityAnalysisService.analyzeImage(assetId, storageUrl);
             }
             aiClassificationService.classifyAndEmbed(assetId, storageUrl);
         } catch (Exception e) {

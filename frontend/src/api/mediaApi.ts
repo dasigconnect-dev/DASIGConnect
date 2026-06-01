@@ -35,6 +35,13 @@ export interface MediaAsset {
   widthPx?: number;
   heightPx?: number;
   durationSeconds?: number;
+  importBatchId?: string | null;
+  duplicateOfId?: string | null;
+  aiDescription?: string | null;
+  blurScore?: number | null;
+  curatedAt?: string | null;
+  aiClassifiedAt?: string | null;
+  embeddingGeneratedAt?: string | null;
 }
 
 export interface DeleteCheckResult {
@@ -46,6 +53,7 @@ export interface DeleteCheckResult {
 export interface MediaAssetUploadUrlRequest {
   fileName: string;
   fileType: string;
+  institutionId?: string | null;
 }
 
 export interface MediaAssetUploadUrlResponse {
@@ -59,6 +67,21 @@ export interface MediaAssetRegisterRequest {
   fileName: string;
   fileType: string;
   fileSizeBytes: number;
+  institutionId?: string | null;
+  importBatchId?: string | null;
+}
+
+export interface MediaImportBatchRequest {
+  assetCount: number;
+  institutionId?: string | null;
+}
+
+export interface MediaImportBatch {
+  id: string;
+  institutionId: string;
+  uploadedBy: string;
+  assetCount: number;
+  createdAt: string;
 }
 
 interface MediaAssetPageResponse {
@@ -76,6 +99,9 @@ interface MediaAssetPageResponse {
     uploaderId?: string | null;
     uploaderEmail?: string | null;
     folderId?: string | null;
+    title?: string | null;
+    importBatchId?: string | null;
+    duplicateOfId?: string | null;
   }>;
   totalCount: number;
   page: number;
@@ -103,7 +129,7 @@ function rawToAsset(raw: MediaAssetPageResponse["items"][0]): MediaAsset {
   return {
     id: raw.id,
     code: raw.assetCode,
-    title: raw.fileName,
+    title: raw.title || raw.fileName,
     fileName: raw.fileName,
     fileType: raw.fileType,
     fileSizeBytes: raw.fileSizeBytes,
@@ -116,6 +142,8 @@ function rawToAsset(raw: MediaAssetPageResponse["items"][0]): MediaAsset {
     status: "ready" as const,
     aiTags: raw.aiCategory ? [{ label: raw.aiCategory, confidence: 100 }] : [],
     folderId: raw.folderId ?? null,
+    importBatchId: raw.importBatchId ?? null,
+    duplicateOfId: raw.duplicateOfId ?? null,
   };
 }
 
@@ -161,20 +189,29 @@ export async function searchMediaAssets(
   };
 }
 
-interface MediaAssetDetailResponse {
+export interface MediaAssetDetailResponse {
   id: string;
   assetCode: string;
   storageUrl: string;
   fileName: string;
   fileType: string;
   fileSizeBytes: number;
+  status?: string | null;
   aiCategory?: string | null;
   aiConfidence?: number | null;
+  aiDescription?: string | null;
+  blurScore?: number | null;
+  curatedAt?: string | null;
+  aiClassifiedAt?: string | null;
+  embeddingGeneratedAt?: string | null;
   createdAt: string;
   institutionId?: string | null;
   institutionName?: string | null;
   uploaderId?: string | null;
   uploaderEmail?: string | null;
+  title?: string | null;
+  importBatchId?: string | null;
+  duplicateOfId?: string | null;
   usedIn?: Array<{
     submissionId: string;
     eventTitle: string;
@@ -201,7 +238,7 @@ function mapDetailToAsset(raw: MediaAssetDetailResponse): MediaAsset {
   return {
     id: raw.id,
     code: raw.assetCode,
-    title: raw.fileName,
+    title: raw.title || raw.fileName,
     fileName: raw.fileName,
     fileType: raw.fileType,
     fileSizeBytes: raw.fileSizeBytes,
@@ -211,7 +248,11 @@ function mapDetailToAsset(raw: MediaAssetDetailResponse): MediaAsset {
     uploaderId: raw.uploaderId ?? undefined,
     uploaderName: raw.uploaderEmail ?? undefined,
     uploadedAt: raw.createdAt,
-    status: "ready",
+    status: raw.status?.toLowerCase() === "failed"
+      ? "error"
+      : raw.status?.toLowerCase() === "processing"
+        ? "processing"
+        : "ready",
     aiTags: aiTags.length > 0 ? aiTags : undefined,
     usedIn: (raw.usedIn ?? []).map((u) => ({
       submissionId: u.submissionId,
@@ -220,6 +261,13 @@ function mapDetailToAsset(raw: MediaAssetDetailResponse): MediaAsset {
       submissionStatus: u.status,
       deepLink: u.deepLink,
     })),
+    importBatchId: raw.importBatchId ?? null,
+    duplicateOfId: raw.duplicateOfId ?? null,
+    aiDescription: raw.aiDescription ?? null,
+    blurScore: raw.blurScore ?? null,
+    curatedAt: raw.curatedAt ?? null,
+    aiClassifiedAt: raw.aiClassifiedAt ?? null,
+    embeddingGeneratedAt: raw.embeddingGeneratedAt ?? null,
   };
 }
 
@@ -264,4 +312,26 @@ export function getMediaAssetUploadUrl(payload: MediaAssetUploadUrlRequest) {
 
 export function registerMediaAsset(payload: MediaAssetRegisterRequest) {
   return api.post<MediaAsset>("/media-assets/upload", payload);
+}
+
+export function createMediaImportBatch(payload: MediaImportBatchRequest) {
+  return api.post<MediaImportBatch>("/media-assets/import-batches", payload);
+}
+
+export function listImportBatchAssets(importBatchId: string, institutionId?: string | null) {
+  return api
+    .get<MediaAssetDetailResponse[]>(`/media-assets/import-batches/${importBatchId}/assets`, {
+      params: institutionId ? { institutionId } : undefined,
+    })
+    .then((res) => res.data);
+}
+
+export function markImportBatchCurated(importBatchId: string, institutionId?: string | null) {
+  return api
+    .post<{ curatedCount: number }>(
+      `/media-assets/import-batches/${importBatchId}/curate`,
+      null,
+      { params: institutionId ? { institutionId } : undefined },
+    )
+    .then((res) => res.data);
 }

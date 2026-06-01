@@ -17,12 +17,15 @@ import com.dasigconnect.backend.model.dto.media.AssetTagDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetAddToDraftRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaBatchCurationResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUsageDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUseInNewPostRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaImportBatchCreateRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaImportBatchResponseDto;
 import com.dasigconnect.backend.model.dto.submission.AttachAssetDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionCreateDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
@@ -31,12 +34,14 @@ import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
 import com.dasigconnect.backend.model.entity.MediaAssetStatus;
+import com.dasigconnect.backend.model.entity.MediaImportBatch;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlResponseDto;
 import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.MediaImportBatchRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -54,6 +59,7 @@ public class MediaAssetService {
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
     private final AssetTagRepository assetTagRepository;
     private final MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
+    private final MediaImportBatchRepository mediaImportBatchRepository;
     private final SubmissionService submissionService;
     private final SupabaseStorageService supabaseStorageService;
     private final MediaIngestionQueueService mediaIngestionQueueService;
@@ -67,6 +73,7 @@ public class MediaAssetService {
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
             AssetTagRepository assetTagRepository,
             MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
+            MediaImportBatchRepository mediaImportBatchRepository,
             SubmissionService submissionService,
             SupabaseStorageService supabaseStorageService,
             MediaIngestionQueueService mediaIngestionQueueService) {
@@ -75,6 +82,7 @@ public class MediaAssetService {
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.assetTagRepository = assetTagRepository;
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
+        this.mediaImportBatchRepository = mediaImportBatchRepository;
         this.submissionService = submissionService;
         this.supabaseStorageService = supabaseStorageService;
         this.mediaIngestionQueueService = mediaIngestionQueueService;
@@ -236,6 +244,8 @@ public class MediaAssetService {
     }
 
     public MediaAssetDetailDto upload(MediaAssetUploadRequestDto dto, JwtUserDetails user) {
+        UUID institutionId = resolveTargetInstitution(user, dto.getInstitutionId(), "upload assets");
+        validateImportBatchScope(dto.getImportBatchId(), institutionId);
         MediaFileType fileType;
         try {
             fileType = MediaFileType.valueOf(dto.getFileType().toLowerCase());
@@ -244,13 +254,14 @@ public class MediaAssetService {
         }
 
         MediaAsset asset = new MediaAsset();
-        asset.setInstitution(entityManager.getReference(Institution.class, user.institutionId()));
+        asset.setInstitution(entityManager.getReference(Institution.class, institutionId));
         asset.setUploader(entityManager.getReference(User.class, user.userId()));
         asset.setAssetCode(generateAssetCode());
         asset.setStorageUrl(dto.getStorageUrl());
         asset.setFileName(dto.getFileName());
         asset.setFileType(fileType);
         asset.setFileSizeBytes(dto.getFileSizeBytes());
+        asset.setImportBatchId(dto.getImportBatchId());
         asset.setStatus(MediaAssetStatus.PROCESSING);
         asset = mediaAssetRepository.save(asset);
 
@@ -268,6 +279,43 @@ public class MediaAssetService {
         }
 
         return MediaAssetDetailDto.from(asset, List.of(), List.of());
+    }
+
+    public MediaImportBatchResponseDto createImportBatch(MediaImportBatchCreateRequestDto dto, JwtUserDetails user) {
+        UUID institutionId = resolveTargetInstitution(user, dto.getInstitutionId(), "create import batches");
+        MediaImportBatch batch = new MediaImportBatch();
+        batch.setInstitution(entityManager.getReference(Institution.class, institutionId));
+        batch.setUploadedBy(entityManager.getReference(User.class, user.userId()));
+        batch.setAssetCount(dto.getAssetCount());
+        return MediaImportBatchResponseDto.from(mediaImportBatchRepository.save(batch));
+    }
+
+    @Transactional(readOnly = true)
+    public List<MediaAssetDetailDto> listImportBatchAssets(UUID importBatchId, UUID requestedInstitutionId, JwtUserDetails user) {
+        UUID institutionId = resolveTargetInstitution(user, requestedInstitutionId, "review import batches");
+        mediaImportBatchRepository.findByIdAndInstitution(importBatchId, institutionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Import batch not found."));
+
+        return mediaAssetRepository.findActiveByImportBatch(importBatchId, institutionId)
+                .stream()
+                .map(asset -> MediaAssetDetailDto.from(asset, List.of(), tagsForAsset(asset.getId())))
+                .toList();
+    }
+
+    public MediaBatchCurationResponseDto markImportBatchCurated(UUID importBatchId, UUID requestedInstitutionId, JwtUserDetails user) {
+        UUID institutionId = resolveTargetInstitution(user, requestedInstitutionId, "curate import batches");
+        mediaImportBatchRepository.findByIdAndInstitution(importBatchId, institutionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Import batch not found."));
+        List<MediaAsset> assets = mediaAssetRepository.findActiveByImportBatch(importBatchId, institutionId);
+        Instant curatedAt = Instant.now();
+        for (MediaAsset asset : assets) {
+            if (asset.getTitle() == null || asset.getTitle().isBlank()) {
+                asset.setTitle(titleFromFileName(asset.getFileName()));
+            }
+            asset.setCuratedAt(curatedAt);
+        }
+        mediaAssetRepository.saveAll(assets);
+        return new MediaBatchCurationResponseDto(assets.size());
     }
 
     public AssetTagDto addTag(UUID assetId, AddAssetTagRequestDto dto, JwtUserDetails user) {
@@ -296,8 +344,9 @@ public class MediaAssetService {
     }
 
     public MediaAssetUploadUrlResponseDto createUploadUrl(MediaAssetUploadUrlRequestDto dto, JwtUserDetails user) {
+        UUID institutionId = resolveTargetInstitution(user, dto.getInstitutionId(), "upload assets");
         String safeFileName = dto.getFileName().replaceAll("[^a-zA-Z0-9._-]", "-");
-        String objectPath = user.institutionId() + "/" + UUID.randomUUID() + "-" + safeFileName;
+        String objectPath = institutionId + "/" + UUID.randomUUID() + "-" + safeFileName;
         String signedUrl = supabaseStorageService.createSignedUploadUrl(objectPath);
         String publicUrl = supabaseStorageService.getPublicUrl(objectPath);
         return new MediaAssetUploadUrlResponseDto(signedUrl, publicUrl, objectPath);
@@ -321,6 +370,52 @@ public class MediaAssetService {
 
     private boolean isContributor(JwtUserDetails user) {
         return user.role() != null && user.role().toLowerCase().contains("contributor");
+    }
+
+    private UUID resolveTargetInstitution(JwtUserDetails user, UUID requestedInstitutionId, String action) {
+        if (isAdmin(user)) {
+            if (requestedInstitutionId == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Select an institution before you " + action + ".");
+            }
+            return requestedInstitutionId;
+        }
+        if (user.institutionId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Institution-scoped user required to " + action + ".");
+        }
+        if (requestedInstitutionId != null && !requestedInstitutionId.equals(user.institutionId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You cannot " + action + " for another institution.");
+        }
+        return user.institutionId();
+    }
+
+    private void validateImportBatchScope(UUID importBatchId, UUID institutionId) {
+        if (importBatchId == null) {
+            return;
+        }
+        mediaImportBatchRepository.findByIdAndInstitution(importBatchId, institutionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Import batch does not belong to the selected institution."));
+    }
+
+    private List<AssetTagDto> tagsForAsset(UUID assetId) {
+        return assetTagRepository
+                .findByMediaAssetIdOrderByCreatedAtAsc(assetId)
+                .stream()
+                .map(AssetTagDto::from)
+                .toList();
+    }
+
+    private String titleFromFileName(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return "Untitled media";
+        }
+        int dot = fileName.lastIndexOf('.');
+        String base = dot > 0 ? fileName.substring(0, dot) : fileName;
+        String cleaned = base.replace('_', ' ').replace('-', ' ').replaceAll("\\s+", " ").trim();
+        return cleaned.isBlank() ? fileName : cleaned;
     }
 
     private MediaAsset loadAsset(UUID assetId, JwtUserDetails user) {

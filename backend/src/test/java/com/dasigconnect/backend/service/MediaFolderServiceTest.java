@@ -79,6 +79,30 @@ class MediaFolderServiceTest {
     }
 
     @Test
+    void create_adminWithInstitution_savesAndAudits() {
+        JwtUserDetails admin = new JwtUserDetails(userId, "a@x.edu", "ADMINISTRATOR", null);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(actor));
+        when(institutionRepository.getReferenceById(institutionId)).thenReturn(mock(Institution.class));
+        when(folderRepository.save(any(MediaFolder.class))).thenAnswer(inv -> {
+            MediaFolder f = inv.getArgument(0);
+            f.setId(UUID.randomUUID());
+            return f;
+        });
+        when(mediaAssetRepository.countByFolderIdAndDeletedAtIsNull(any())).thenReturn(0L);
+        when(folderRepository.countByParentFolderId(any())).thenReturn(0L);
+
+        FolderCreateRequestDto dto = new FolderCreateRequestDto();
+        dto.setName("Events");
+        dto.setInstitutionId(institutionId);
+
+        FolderResponseDto result = service.create(dto, admin);
+
+        assertEquals("Events", result.getName());
+        verify(folderRepository).save(any(MediaFolder.class));
+        verify(auditLogService).record(eq(actor), eq("FOLDER_CREATED"), any(), any(), any(), any());
+    }
+
+    @Test
     void create_missingParent_returns404() {
         UUID parentId = UUID.randomUUID();
         when(userRepository.findById(userId)).thenReturn(Optional.of(actor));

@@ -5,10 +5,14 @@ import type { MediaAsset, MediaUsage } from "../../api/mediaApi";
 import {
   bulkDeleteMediaAssets,
   bulkMoveAssets,
+  createMediaImportBatch,
   deleteMediaAsset,
   getMediaAsset,
   getMediaAssetUploadUrl,
+  listImportBatchAssets,
+  markImportBatchCurated,
   registerMediaAsset,
+  type MediaAssetDetailResponse,
 } from "../../api/mediaApi";
 import {
   listFolders,
@@ -17,6 +21,7 @@ import {
   deleteFolder,
   type Folder,
 } from "../../api/folderApi";
+import { generateSuggestedAlbumsFromImportBatch } from "../../api/albumApi";
 import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
 import FolderSidebar, { type FolderFilterMode } from "./components/FolderSidebar";
 import {
@@ -30,10 +35,12 @@ import { useMediaAssets } from "./hooks/useMediaAssets";
 import type { SortOption, ViewMode, DeleteTier } from "./types";
 import AssetCard from "./components/AssetCard";
 import FilterBar from "./components/FilterBar";
+import LibraryScopeSelector from "./components/LibraryScopeSelector";
 import AssetDetailPanel from "./components/AssetDetailPanel";
 import UploadModal from "./components/UploadModal";
 import DeleteModal from "./components/DeleteModal";
 import AddToDraftModal from "./components/AddToDraftModal";
+import BatchCurationModal from "./components/BatchCurationModal";
 import "../../styles/media-repository.css";
 import "../../styles/folders.css";
 
@@ -92,10 +99,17 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const navigate = useNavigate();
   const isAdmin = user.role === "admin";
 
-  const [networkView, setNetworkView] = useState(isAdmin);
+  const [networkView, setNetworkView] = useState(false);
   const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
+  const [institutionsLoading, setInstitutionsLoading] = useState(isAdmin);
   const [selectedInstitutionId, setSelectedInstitutionId] = useState<string | null>(null);
-  const { assets, setAssets, loading, error, refresh } = useMediaAssets(networkView, selectedInstitutionId);
+  const mediaScopeReady = !isAdmin || networkView || Boolean(selectedInstitutionId);
+  const mediaInstitutionId = isAdmin && networkView ? null : selectedInstitutionId;
+  const { assets, setAssets, loading, error, refresh } = useMediaAssets(
+    networkView,
+    mediaInstitutionId,
+    mediaScopeReady,
+  );
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("newest");
@@ -130,6 +144,12 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [busyDraftId, setBusyDraftId] = useState<string | null>(null);
 
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [latestUploadBatchId, setLatestUploadBatchId] = useState<string | null>(null);
+  const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
+  const [batchReviewOpen, setBatchReviewOpen] = useState(false);
+  const [batchAssets, setBatchAssets] = useState<MediaAssetDetailResponse[]>([]);
+  const [batchReviewLoading, setBatchReviewLoading] = useState(false);
+  const [batchCurating, setBatchCurating] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTier, setDeleteTier] = useState<DeleteTier | null>(null);
@@ -154,19 +174,44 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   useEffect(() => {
     if (!isAdmin) return;
     listInstitutions()
-      .then((res) => setInstitutions(res.data))
-      .catch(() => toast.error("Could not load institution filters."));
+      .then((res) => {
+        setInstitutions(res.data);
+        setSelectedInstitutionId((current) => current ?? res.data[0]?.id ?? null);
+      })
+      .catch(() => toast.error("Could not load institution filters."))
+      .finally(() => setInstitutionsLoading(false));
   }, [isAdmin, toast]);
 
+  function changeInstitutionScope(institutionId: string | null) {
+    setSelectedInstitutionId(institutionId);
+    selectAllFolders();
+    clearSelection();
+    closePanel();
+  }
+
   function refreshFolders() {
-    listFolders()
+    if (isAdmin && (networkView || !selectedInstitutionId)) {
+      setFolders([]);
+      setFoldersLoading(false);
+      return;
+    }
+    setFoldersLoading(true);
+    listFolders(isAdmin ? selectedInstitutionId : undefined)
       .then(setFolders)
       .catch(() => { /* sidebar shows empty state on error */ })
       .finally(() => setFoldersLoading(false));
   }
 
   useEffect(() => {
-    refreshFolders();
+    let active = true;
+
+    queueMicrotask(() => {
+      if (active) refreshFolders();
+    });
+
+    return () => {
+      active = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [networkView, selectedInstitutionId]);
 
@@ -177,10 +222,17 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   function selectFolder(id: string) { setFilterMode("folder"); setSelectedFolderId(id); }
 
   async function handleCreateFolder() {
+    if (isAdmin && (networkView || !selectedInstitutionId)) {
+      toast.error("Select an institution before creating a folder.");
+      return;
+    }
     const name = window.prompt("New folder name:");
     if (!name || !name.trim()) return;
     try {
-      await createFolder({ name: name.trim() });
+      await createFolder({
+        name: name.trim(),
+        institutionId: isAdmin ? selectedInstitutionId : undefined,
+      });
       refreshFolders();
       toast.success("Folder created.");
     } catch {
@@ -215,6 +267,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   async function handleMoveSelected(folderId: string | null) {
     const ids = [...checkedIds];
     if (ids.length === 0) return;
+    if (isAdmin && networkView) {
+      toast.error("Select one institution before moving media.");
+      return;
+    }
     try {
       const res = await bulkMoveAssets(ids, folderId);
       toast.success(`Moved ${res.affected} ${res.affected === 1 ? "asset" : "assets"}.`);
@@ -259,6 +315,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   );
   const selectionMode = checkedIds.size > 0;
   const canBulkDelete = selectedAssets.length > 0 && selectedAssets.every(canDeleteAsset);
+  const reviewBatchId = latestUploadBatchId
+    ?? [...assets]
+      .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
+      .find((asset) => Boolean(asset.importBatchId))?.importBatchId
+    ?? null;
 
   function openAsset(asset: MediaAsset) {
     setSelectedAsset(asset);
@@ -335,6 +396,14 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     }
   }
 
+  function openUploadModal() {
+    if (isAdmin && (networkView || !selectedInstitutionId)) {
+      toast.error("Select an institution before uploading media.");
+      return;
+    }
+    setUploadOpen(true);
+  }
+
   function openAddToDraft() {
     if (activeAssetIds().length === 0) return;
     setAddToDraftOpen(true);
@@ -393,10 +462,102 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     });
   }
 
-  async function handleUpload(file: File, onProgress?: (pct: number) => void) {
+  async function createUploadBatch(assetCount: number) {
+    if (isAdmin && (networkView || !selectedInstitutionId)) {
+      throw new Error("Select an institution before uploading media.");
+    }
+    try {
+      const { data } = await createMediaImportBatch({
+        assetCount,
+        institutionId: isAdmin ? selectedInstitutionId : undefined,
+      });
+      return data.id;
+    } catch {
+      toast.error("Batch grouping is unavailable right now. Uploading files without AI collection grouping.");
+      return null;
+    }
+  }
+
+  async function handleGenerateSuggestedCollections() {
+    if (!reviewBatchId) return;
+    if (isAdmin && (networkView || !selectedInstitutionId)) {
+      toast.error("Select the same institution before generating suggested collections.");
+      return;
+    }
+
+    setGeneratingSuggestions(true);
+    try {
+      const response = await generateSuggestedAlbumsFromImportBatch({
+        importBatchId: reviewBatchId,
+        institutionId: isAdmin ? selectedInstitutionId : undefined,
+        minGroupSize: 2,
+      });
+      if (response.albumsCreated > 0) {
+        toast.success(`Created ${response.albumsCreated} AI-suggested ${response.albumsCreated === 1 ? "collection" : "collections"}.`);
+        navigate("/media-albums");
+      } else {
+        toast.error("No suggested collections yet. Wait until AI tags finish, then try again.");
+      }
+    } catch {
+      toast.error("Could not generate suggested collections for this batch.");
+    } finally {
+      setGeneratingSuggestions(false);
+    }
+  }
+
+  async function loadBatchReview() {
+    if (!reviewBatchId) return;
+    setBatchReviewLoading(true);
+    try {
+      const response = await listImportBatchAssets(
+        reviewBatchId,
+        isAdmin ? selectedInstitutionId : undefined,
+      );
+      setBatchAssets(response);
+    } catch {
+      toast.error("Could not load the latest upload batch.");
+    } finally {
+      setBatchReviewLoading(false);
+    }
+  }
+
+  function openBatchReview() {
+    setBatchReviewOpen(true);
+    void loadBatchReview();
+  }
+
+  async function handleConfirmBatchCuration() {
+    if (!reviewBatchId) return;
+    setBatchCurating(true);
+    try {
+      const response = await markImportBatchCurated(
+        reviewBatchId,
+        isAdmin ? selectedInstitutionId : undefined,
+      );
+      toast.success(`Confirmed ${response.curatedCount} ${response.curatedCount === 1 ? "asset" : "assets"} as curated.`);
+      setBatchReviewOpen(false);
+      setLatestUploadBatchId(null);
+      void refresh();
+    } catch {
+      toast.error("Could not confirm this batch.");
+    } finally {
+      setBatchCurating(false);
+    }
+  }
+
+  async function handleUpload(
+    file: File,
+    onProgress?: (pct: number) => void,
+    options?: { silent?: boolean; importBatchId?: string | null },
+  ) {
+    if (isAdmin && (networkView || !selectedInstitutionId)) {
+      const message = "Select an institution before uploading media.";
+      if (!options?.silent) toast.error(message);
+      throw new Error(message);
+    }
     if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
       const message = `${file.name} is ${(file.size / (1024 * 1024)).toFixed(1)} MB — over the ${MAX_UPLOAD_MB} MB limit.`;
-      toast.error(message);
+      if (!options?.silent) toast.error(message);
       throw new Error(message);
     }
 
@@ -405,6 +566,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       const { data: urlData } = await getMediaAssetUploadUrl({
         fileName: safeFileName(file.name),
         fileType: fileTypeFromFile(file),
+        institutionId: isAdmin ? selectedInstitutionId : undefined,
       });
 
       // Reserve the last 10% for the metadata-register call below.
@@ -417,14 +579,18 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         fileName: file.name,
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
+        institutionId: isAdmin ? selectedInstitutionId : undefined,
+        importBatchId: options?.importBatchId ?? undefined,
       });
       onProgress?.(100);
 
-      toast.success("Asset uploaded! AI classification in progress…");
-      void refresh();
+      if (!options?.silent) {
+        toast.success("Media uploaded. AI classification in progress...");
+        void refresh();
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Upload failed.";
-      toast.error(message);
+      if (!options?.silent) toast.error(message);
       throw err;
     }
   }
@@ -545,8 +711,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       {/* Page Header */}
       <div className="med-header">
         <div>
-          <h1 className="med-title">Media Repository</h1>
-          <p className="med-subtitle">Institution assets · AI-classified</p>
+          <h1 className="med-title">Media Library</h1>
+          <p className="med-subtitle">Find, file, and reuse institution media</p>
         </div>
         <div className="med-header-actions">
           <button
@@ -559,11 +725,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
               <circle cx="8.5" cy="8.5" r="1.5" />
               <polyline points="21,15 16,10 5,21" />
             </svg>
-            Albums
+            Collections
           </button>
           <button
             className="med-btn med-btn-ghost med-btn-sm"
-            onClick={() => setUploadOpen(true)}
+            onClick={openUploadModal}
             type="button"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -571,7 +737,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
               <line x1="12" y1="12" x2="12" y2="21" />
               <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
             </svg>
-            Upload Asset
+            Upload media
           </button>
           <button
             className="med-btn med-btn-primary med-btn-sm"
@@ -583,40 +749,19 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         </div>
       </div>
 
-      {/* Network View bar */}
       {isAdmin && (
-        <div className={`med-network-bar${networkView ? " visible" : ""}`}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="2" y1="12" x2="22" y2="12" />
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-          </svg>
-          <span>
-            <strong>Network View active</strong> — Showing assets across all DASIG member institutions. This session is being logged in the access audit log (BR-MED-01).
-          </span>
-        </div>
-      )}
-
-      {isAdmin && (
-        <div className="med-institution-filter" role="tablist" aria-label="Institution media categories">
-          <button
-            className={`med-inst-filter-btn${selectedInstitutionId === null ? " active" : ""}`}
-            type="button"
-            onClick={() => setSelectedInstitutionId(null)}
-          >
-            All institutions
-          </button>
-          {institutions.map((institution) => (
-            <button
-              key={institution.id}
-              className={`med-inst-filter-btn${selectedInstitutionId === institution.id ? " active" : ""}`}
-              type="button"
-              onClick={() => setSelectedInstitutionId(institution.id)}
-            >
-              {institution.name}
-            </button>
-          ))}
-        </div>
+        <LibraryScopeSelector
+          institutions={institutions}
+          selectedInstitutionId={selectedInstitutionId}
+          networkScope={networkView}
+          allowNetworkScope
+          loading={institutionsLoading}
+          onInstitutionChange={changeInstitutionScope}
+          onNetworkScopeChange={(enabled) => {
+            setNetworkView(enabled);
+            if (enabled) selectAllFolders();
+          }}
+        />
       )}
 
       {/* Filter Bar */}
@@ -624,16 +769,39 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         search={search}
         sort={sort}
         viewMode={viewMode}
-        networkView={networkView}
-        isAdmin={isAdmin}
         activeTags={activeTags}
         tagChips={tagChips}
         onSearchChange={setSearch}
         onSortChange={setSort}
         onViewModeChange={setViewMode}
-        onNetworkViewToggle={() => setNetworkView((v) => !v)}
         onTagToggle={toggleTag}
       />
+
+      {reviewBatchId && (
+        <div className="med-result-strip">
+          <p className="med-result-count">
+            Latest upload batch is ready for review and suggested Collections.
+          </p>
+          <div className="med-active-filters">
+            <button
+              className="med-btn med-btn-ghost med-btn-sm"
+              type="button"
+              onClick={openBatchReview}
+              disabled={batchReviewLoading}
+            >
+              Review batch
+            </button>
+            <button
+              className="med-btn med-btn-ghost med-btn-sm"
+              type="button"
+              onClick={() => void handleGenerateSuggestedCollections()}
+              disabled={generatingSuggestions}
+            >
+              Generate AI Collections
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Folders sidebar + main column */}
       <div className="med-layout">
@@ -645,9 +813,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         allCount={assets.length}
         unfiledCount={unfiledCount}
         selectionCount={checkedIds.size}
+        disabledReason={isAdmin && networkView ? "Select one institution to organize storage folders." : null}
         onSelectAll={selectAllFolders}
         onSelectUnfiled={selectUnfiled}
         onSelectFolder={selectFolder}
+        onOpenCollections={() => navigate("/media-albums")}
         onCreate={() => void handleCreateFolder()}
         onRename={(f) => void handleRenameFolder(f)}
         onDelete={(f) => void handleDeleteFolder(f)}
@@ -682,7 +852,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       ) : error ? (
         <ErrorState message={error} onRetry={() => void refresh()} />
       ) : filteredAssets.length === 0 ? (
-        <EmptyState hasSearch={search.length > 0 || activeTags.size > 0} onUpload={() => setUploadOpen(true)} />
+        <EmptyState hasSearch={search.length > 0 || activeTags.size > 0} onUpload={openUploadModal} />
       ) : (
         <div className={`med-grid${viewMode === "list" ? " list-view" : ""}${checkedIds.size > 0 ? " selecting" : ""}`}>
           {filteredAssets.map((asset, idx) => (
@@ -731,9 +901,18 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       {/* Upload Modal (portal) */}
       <UploadModal
         open={uploadOpen}
-        institutionName={user.inst}
+        institutionName={
+          isAdmin
+            ? institutions.find((institution) => institution.id === selectedInstitutionId)?.name ?? "selected institution"
+            : user.inst
+        }
         onClose={() => setUploadOpen(false)}
         onUpload={handleUpload}
+        onCreateBatch={createUploadBatch}
+        onBatchComplete={(importBatchId) => {
+          setLatestUploadBatchId(importBatchId);
+          void refresh();
+        }}
       />
 
       {/* Delete Modal (portal) */}
@@ -759,6 +938,16 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onClose={() => { if (busyDraftId === null) setAddToDraftOpen(false); }}
         onSelectDraft={(id) => void handleSelectDraft(id)}
         onNewPostInstead={() => { setAddToDraftOpen(false); handleNewPost(); }}
+      />
+
+      <BatchCurationModal
+        open={batchReviewOpen}
+        loading={batchReviewLoading}
+        saving={batchCurating}
+        assets={batchAssets}
+        onClose={() => { if (!batchCurating) setBatchReviewOpen(false); }}
+        onRefresh={() => void loadBatchReview()}
+        onConfirmAll={() => void handleConfirmBatchCuration()}
       />
 
     </div>
@@ -801,10 +990,10 @@ function EmptyState({ hasSearch, onUpload }: { hasSearch: boolean; onUpload: () 
         </>
       ) : (
         <>
-          <div className="med-empty-title">No media assets yet</div>
-          <p className="med-empty-sub">Upload your first asset to start building the institutional media library.</p>
+          <div className="med-empty-title">No media yet</div>
+          <p className="med-empty-sub">Upload the first file for this library scope.</p>
           <button className="med-btn med-btn-primary" onClick={onUpload} type="button" style={{ marginTop: 20 }}>
-            Upload Asset
+            Upload media
           </button>
         </>
       )}

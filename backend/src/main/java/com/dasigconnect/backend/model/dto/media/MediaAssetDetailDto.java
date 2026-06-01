@@ -13,11 +13,18 @@ public class MediaAssetDetailDto {
     private String assetCode;
     private String storageUrl;
     private String fileName;
+    private String title;
     private String fileType;
     private long fileSizeBytes;
+    private String status;
     private String aiCategory;
     private BigDecimal aiConfidence;
     private String aiDescription;
+    private Instant curatedAt;
+    private BigDecimal blurScore;
+    private Long perceptualHash;
+    private UUID duplicateOfId;
+    private UUID importBatchId;
     private Instant aiClassifiedAt;
     private String aiClassificationModel;
     private Instant embeddingGeneratedAt;
@@ -36,11 +43,18 @@ public class MediaAssetDetailDto {
         dto.assetCode = asset.getAssetCode();
         dto.storageUrl = asset.getStorageUrl();
         dto.fileName = asset.getFileName();
+        dto.title = asset.getTitle();
         dto.fileType = asset.getFileType().name();
         dto.fileSizeBytes = asset.getFileSizeBytes();
+        dto.status = asset.getStatus() == null ? null : asset.getStatus().name();
         dto.aiCategory = asset.getAiCategory();
         dto.aiConfidence = asset.getAiConfidence();
         dto.aiDescription = asset.getAiDescription();
+        dto.curatedAt = asset.getCuratedAt();
+        dto.blurScore = asset.getBlurScore();
+        dto.perceptualHash = asset.getPerceptualHash();
+        dto.duplicateOfId = asset.getDuplicateOfId();
+        dto.importBatchId = asset.getImportBatchId();
         dto.aiClassifiedAt = asset.getAiClassifiedAt();
         dto.aiClassificationModel = asset.getAiClassificationModel();
         dto.embeddingGeneratedAt = asset.getEmbeddingGeneratedAt();
@@ -71,12 +85,20 @@ public class MediaAssetDetailDto {
         return fileName;
     }
 
+    public String getTitle() {
+        return title;
+    }
+
     public String getFileType() {
         return fileType;
     }
 
     public long getFileSizeBytes() {
         return fileSizeBytes;
+    }
+
+    public String getStatus() {
+        return status;
     }
 
     public String getAiCategory() {
@@ -89,6 +111,26 @@ public class MediaAssetDetailDto {
 
     public String getAiDescription() {
         return aiDescription;
+    }
+
+    public Instant getCuratedAt() {
+        return curatedAt;
+    }
+
+    public BigDecimal getBlurScore() {
+        return blurScore;
+    }
+
+    public Long getPerceptualHash() {
+        return perceptualHash;
+    }
+
+    public UUID getDuplicateOfId() {
+        return duplicateOfId;
+    }
+
+    public UUID getImportBatchId() {
+        return importBatchId;
     }
 
     public Instant getAiClassifiedAt() {

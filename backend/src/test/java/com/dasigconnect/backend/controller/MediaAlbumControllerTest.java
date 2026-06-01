@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.model.dto.media.AlbumDetailDto;
+import com.dasigconnect.backend.model.dto.media.AlbumGenerateSuggestionsResponseDto;
 import com.dasigconnect.backend.model.dto.media.AlbumResponseDto;
 import com.dasigconnect.backend.model.entity.MediaAlbum;
 import com.dasigconnect.backend.service.JWTService;
@@ -66,11 +67,44 @@ class MediaAlbumControllerTest {
 
     @Test
     @WithMockUser
+    void list_withInstitutionParam_delegatesToService() throws Exception {
+        UUID institutionId = UUID.randomUUID();
+        when(mediaAlbumService.list(any(), any())).thenReturn(List.of(AlbumResponseDto.from(album("Trip"), 0)));
+
+        mockMvc.perform(get("/api/v1/media-albums").param("institutionId", institutionId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("Trip"));
+
+        verify(mediaAlbumService).list(eq(institutionId), any());
+    }
+
+    @Test
+    @WithMockUser
     void create_blankName_returns400() throws Exception {
         mockMvc.perform(post("/api/v1/media-albums")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser
+    void generateSuggestedFromImportBatch_authenticated_returns201() throws Exception {
+        UUID batchId = UUID.randomUUID();
+        MediaAlbum suggested = album("Awarding - AI suggestion");
+        suggested.setSource(MediaAlbum.SOURCE_AI_SUGGESTED);
+        when(mediaAlbumService.generateSuggestedFromImportBatch(any(), any()))
+                .thenReturn(new AlbumGenerateSuggestionsResponseDto(
+                        batchId,
+                        1,
+                        List.of(AlbumResponseDto.from(suggested, 2))));
+
+        mockMvc.perform(post("/api/v1/media-albums/suggestions/import-batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"importBatchId\":\"" + batchId + "\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.albumsCreated").value(1))
+                .andExpect(jsonPath("$.albums[0].source").value("ai_suggested"));
     }
 
     @Test

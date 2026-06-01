@@ -54,7 +54,7 @@ class MediaFolderControllerTest {
     @Test
     @WithMockUser
     void list_authenticated_returnsFolders() throws Exception {
-        when(mediaFolderService.list(any())).thenReturn(List.of(folderDto("Events")));
+        when(mediaFolderService.list(any(), any())).thenReturn(List.of(folderDto("Events")));
         mockMvc.perform(get("/api/v1/media-folders"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("Events"))

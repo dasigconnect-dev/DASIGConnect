@@ -10,18 +10,25 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.dasigconnect.backend.external.ClaudeVisionClient;
 import com.dasigconnect.backend.model.dto.media.AlbumAddAssetsRequestDto;
 import com.dasigconnect.backend.model.dto.media.AlbumCreateRequestDto;
+import com.dasigconnect.backend.model.dto.media.AlbumGenerateSuggestionsRequestDto;
 import com.dasigconnect.backend.model.dto.media.AlbumResponseDto;
 import com.dasigconnect.backend.model.entity.AlbumAsset;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAlbum;
 import com.dasigconnect.backend.model.entity.MediaAsset;
+import com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType;
+import com.dasigconnect.backend.model.entity.MediaFileType;
+import com.dasigconnect.backend.model.entity.MediaImportBatch;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.AlbumAssetRepository;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.MediaAlbumRepository;
+import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.MediaImportBatchRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import java.util.List;
@@ -40,8 +47,11 @@ class MediaAlbumServiceTest {
     @Mock private MediaAlbumRepository albumRepository;
     @Mock private AlbumAssetRepository albumAssetRepository;
     @Mock private MediaAssetRepository mediaAssetRepository;
+    @Mock private MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
+    @Mock private MediaImportBatchRepository mediaImportBatchRepository;
     @Mock private UserRepository userRepository;
     @Mock private InstitutionRepository institutionRepository;
+    @Mock private ClaudeVisionClient claudeVisionClient;
     @Mock private AuditLogService auditLogService;
 
     private MediaAlbumService service;
@@ -54,7 +64,8 @@ class MediaAlbumServiceTest {
     @BeforeEach
     void setUp() {
         service = new MediaAlbumService(albumRepository, albumAssetRepository, mediaAssetRepository,
-                userRepository, institutionRepository, auditLogService);
+                mediaAssetEmbeddingRepository, mediaImportBatchRepository, userRepository,
+                institutionRepository, claudeVisionClient, auditLogService);
         user = new JwtUserDetails(userId, "c@x.edu", "CONTRIBUTOR", institutionId);
         actor = mock(User.class);
     }
@@ -64,15 +75,19 @@ class MediaAlbumServiceTest {
         a.setId(id);
         a.setName("Album");
         a.setSource(MediaAlbum.SOURCE_MANUAL);
+        Institution inst = new Institution();
+        inst.setId(institutionId);
+        a.setInstitution(inst);
         return a;
     }
 
     private MediaAsset assetInInstitution(UUID id, UUID instId) {
-        Institution inst = mock(Institution.class);
-        when(inst.getId()).thenReturn(instId);
+        Institution inst = new Institution();
+        inst.setId(instId);
         MediaAsset asset = new MediaAsset();
         asset.setId(id);
         asset.setInstitution(inst);
+        asset.setFileType(MediaFileType.jpeg);
         return asset;
     }
 
@@ -93,6 +108,27 @@ class MediaAlbumServiceTest {
     }
 
     @Test
+    void create_adminWithInstitution_savesAndAudits() {
+        JwtUserDetails admin = new JwtUserDetails(userId, "a@x.edu", "ADMINISTRATOR", null);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(actor));
+        when(institutionRepository.getReferenceById(institutionId)).thenReturn(mock(Institution.class));
+        when(albumRepository.save(any(MediaAlbum.class))).thenAnswer(inv -> {
+            MediaAlbum a = inv.getArgument(0);
+            a.setId(UUID.randomUUID());
+            return a;
+        });
+
+        AlbumCreateRequestDto dto = new AlbumCreateRequestDto();
+        dto.setName("Trip");
+        dto.setInstitutionId(institutionId);
+
+        AlbumResponseDto result = service.create(dto, admin);
+
+        assertEquals("Trip", result.getName());
+        verify(auditLogService).record(eq(actor), eq("ALBUM_CREATED"), any(), any(), any(), any());
+    }
+
+    @Test
     void create_valid_savesAndAudits() {
         when(userRepository.findById(userId)).thenReturn(Optional.of(actor));
         when(institutionRepository.getReferenceById(institutionId)).thenReturn(mock(Institution.class));
@@ -109,6 +145,97 @@ class MediaAlbumServiceTest {
 
         assertEquals("Trip 2026", result.getName());
         verify(auditLogService).record(eq(actor), eq("ALBUM_CREATED"), any(), any(), any(), any());
+    }
+
+    @Test
+    void generateSuggestedFromImportBatch_groupsByAiCategory() {
+        UUID batchId = UUID.randomUUID();
+        MediaImportBatch batch = new MediaImportBatch();
+        batch.setId(batchId);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(actor));
+        when(mediaImportBatchRepository.findByIdAndInstitution(batchId, institutionId)).thenReturn(Optional.of(batch));
+        when(institutionRepository.getReferenceById(institutionId)).thenReturn(mock(Institution.class));
+        when(albumRepository.existsByInstitutionAndSourceAndName(eq(institutionId), eq(MediaAlbum.SOURCE_AI_SUGGESTED), any()))
+                .thenReturn(false);
+        when(albumRepository.save(any(MediaAlbum.class))).thenAnswer(inv -> {
+            MediaAlbum a = inv.getArgument(0);
+            a.setId(UUID.randomUUID());
+            return a;
+        });
+
+        MediaAsset first = assetInInstitution(UUID.randomUUID(), institutionId);
+        first.setAiCategory("Awarding");
+        MediaAsset second = assetInInstitution(UUID.randomUUID(), institutionId);
+        second.setAiCategory("Awarding");
+        MediaAsset single = assetInInstitution(UUID.randomUUID(), institutionId);
+        single.setAiCategory("Seminar");
+        when(mediaAssetRepository.findActiveByImportBatch(batchId, institutionId))
+                .thenReturn(List.of(first, second, single));
+
+        AlbumGenerateSuggestionsRequestDto dto = new AlbumGenerateSuggestionsRequestDto();
+        dto.setImportBatchId(batchId);
+
+        var response = service.generateSuggestedFromImportBatch(dto, user);
+
+        assertEquals(2, response.getGroupsEvaluated());
+        assertEquals(1, response.getAlbumsCreated());
+        assertEquals("Awarding - AI suggestion " + batchId.toString().substring(0, 8), response.getAlbums().get(0).getName());
+        verify(albumAssetRepository, times(2)).save(any(AlbumAsset.class));
+        verify(auditLogService).record(eq(actor), eq("AI_ALBUM_SUGGESTED"), any(), any(), any(), any());
+    }
+
+    @Test
+    void generateSuggestedFromImportBatch_clustersByImageEmbeddingAndNamesWithClaude() {
+        UUID batchId = UUID.randomUUID();
+        MediaImportBatch batch = new MediaImportBatch();
+        batch.setId(batchId);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(actor));
+        when(mediaImportBatchRepository.findByIdAndInstitution(batchId, institutionId)).thenReturn(Optional.of(batch));
+        when(institutionRepository.getReferenceById(institutionId)).thenReturn(mock(Institution.class));
+        when(albumRepository.existsByInstitutionAndSourceAndName(eq(institutionId), eq(MediaAlbum.SOURCE_AI_SUGGESTED), any()))
+                .thenReturn(false);
+        when(albumRepository.save(any(MediaAlbum.class))).thenAnswer(inv -> {
+            MediaAlbum a = inv.getArgument(0);
+            a.setId(UUID.randomUUID());
+            return a;
+        });
+
+        // Two near-identical image vectors (cosine ~1) cluster together; the third is orthogonal.
+        MediaAsset a = assetInInstitution(UUID.randomUUID(), institutionId);
+        MediaAsset b = assetInInstitution(UUID.randomUUID(), institutionId);
+        MediaAsset c = assetInInstitution(UUID.randomUUID(), institutionId);
+        when(mediaAssetRepository.findActiveByImportBatch(batchId, institutionId)).thenReturn(List.of(a, b, c));
+        when(mediaAssetEmbeddingRepository.findEmbedding(a.getId(), MediaAssetEmbeddingType.IMAGE))
+                .thenReturn(Optional.of("[1,0,0]"));
+        when(mediaAssetEmbeddingRepository.findEmbedding(b.getId(), MediaAssetEmbeddingType.IMAGE))
+                .thenReturn(Optional.of("[0.99,0.02,0]"));
+        when(mediaAssetEmbeddingRepository.findEmbedding(c.getId(), MediaAssetEmbeddingType.IMAGE))
+                .thenReturn(Optional.of("[0,1,0]"));
+        when(claudeVisionClient.suggestAlbumName(any())).thenReturn("Awarding Ceremony");
+
+        AlbumGenerateSuggestionsRequestDto dto = new AlbumGenerateSuggestionsRequestDto();
+        dto.setImportBatchId(batchId);
+
+        var response = service.generateSuggestedFromImportBatch(dto, user);
+
+        assertEquals(1, response.getAlbumsCreated());
+        assertEquals("Awarding Ceremony", response.getAlbums().get(0).getName());
+        // Only the 2-photo similarity cluster becomes an album; the orthogonal singleton is skipped.
+        verify(albumAssetRepository, times(2)).save(any(AlbumAsset.class));
+    }
+
+    @Test
+    void generateSuggestedFromImportBatch_missingBatch_returns404() {
+        UUID batchId = UUID.randomUUID();
+        when(mediaImportBatchRepository.findByIdAndInstitution(batchId, institutionId)).thenReturn(Optional.empty());
+        AlbumGenerateSuggestionsRequestDto dto = new AlbumGenerateSuggestionsRequestDto();
+        dto.setImportBatchId(batchId);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> service.generateSuggestedFromImportBatch(dto, user));
+
+        assertEquals(404, statusOf(ex));
+        verify(albumRepository, never()).save(any());
     }
 
     @Test

@@ -10,6 +10,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -52,6 +53,21 @@ public class MediaAsset {
 
     @Column(name = "ai_description", columnDefinition = "text")
     private String aiDescription;
+
+    @Column(name = "title", columnDefinition = "text")
+    private String title;
+
+    @Column(name = "curated_at")
+    private Instant curatedAt;
+
+    @Column(name = "blur_score")
+    private BigDecimal blurScore;
+
+    @Column(name = "perceptual_hash")
+    private Long perceptualHash;
+
+    @Column(name = "duplicate_of_id")
+    private UUID duplicateOfId;
 
     @Column(name = "asset_type")
     private String assetType;
@@ -156,6 +172,21 @@ public class MediaAsset {
 
     public String getAiDescription() { return aiDescription; }
     public void setAiDescription(String aiDescription) { this.aiDescription = aiDescription; }
+
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+
+    public Instant getCuratedAt() { return curatedAt; }
+    public void setCuratedAt(Instant curatedAt) { this.curatedAt = curatedAt; }
+
+    public BigDecimal getBlurScore() { return blurScore; }
+    public void setBlurScore(BigDecimal blurScore) { this.blurScore = blurScore; }
+
+    public Long getPerceptualHash() { return perceptualHash; }
+    public void setPerceptualHash(Long perceptualHash) { this.perceptualHash = perceptualHash; }
+
+    public UUID getDuplicateOfId() { return duplicateOfId; }
+    public void setDuplicateOfId(UUID duplicateOfId) { this.duplicateOfId = duplicateOfId; }
 
     public String getAssetType() { return assetType; }
     public void setAssetType(String assetType) { this.assetType = assetType; }

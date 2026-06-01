@@ -1,7 +1,9 @@
 package com.dasigconnect.backend.service;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,21 +15,30 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaImportBatchCreateRequestDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
+import com.dasigconnect.backend.model.entity.MediaImportBatch;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.MediaImportBatchRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
+
+import jakarta.persistence.EntityManager;
 
 @ExtendWith(MockitoExtension.class)
 class MediaAssetServiceTest {
@@ -41,6 +52,8 @@ class MediaAssetServiceTest {
     @Mock
     private MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     @Mock
+    private MediaImportBatchRepository mediaImportBatchRepository;
+    @Mock
     private AssetTagRepository assetTagRepository;
     @Mock
     private SubmissionService submissionService;
@@ -48,6 +61,8 @@ class MediaAssetServiceTest {
     private SupabaseStorageService supabaseStorageService;
     @Mock
     private MediaIngestionQueueService mediaIngestionQueueService;
+    @Mock
+    private EntityManager entityManager;
 
     private MediaAssetService mediaAssetService;
 
@@ -59,9 +74,11 @@ class MediaAssetServiceTest {
                 submissionMediaAssetRepository,
                 assetTagRepository,
                 mediaAssetEmbeddingRepository,
+                mediaImportBatchRepository,
                 submissionService,
                 supabaseStorageService,
                 mediaIngestionQueueService);
+        ReflectionTestUtils.setField(mediaAssetService, "entityManager", entityManager);
     }
 
     @Test
@@ -119,6 +136,149 @@ class MediaAssetServiceTest {
         verify(mediaAssetRepository).saveAll(List.of(first, second));
     }
 
+    @Test
+    void createUploadUrl_adminWithoutInstitution_returns400() {
+        MediaAssetUploadUrlRequestDto dto = new MediaAssetUploadUrlRequestDto();
+        dto.setFileName("photo.jpg");
+        dto.setFileType("jpeg");
+
+        assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.createUploadUrl(dto, user(UUID.randomUUID(), "admin", null)));
+
+        verify(supabaseStorageService, never()).createSignedUploadUrl(any());
+    }
+
+    @Test
+    void createUploadUrl_adminWithInstitution_usesSelectedInstitutionPath() {
+        UUID institutionId = UUID.randomUUID();
+        MediaAssetUploadUrlRequestDto dto = new MediaAssetUploadUrlRequestDto();
+        dto.setFileName("photo.jpg");
+        dto.setFileType("jpeg");
+        dto.setInstitutionId(institutionId);
+        when(supabaseStorageService.createSignedUploadUrl(any())).thenReturn("signed");
+        when(supabaseStorageService.getPublicUrl(any())).thenReturn("public");
+
+        var response = mediaAssetService.createUploadUrl(dto, user(UUID.randomUUID(), "admin", null));
+
+        assertTrue(response.getPath().startsWith(institutionId + "/"));
+        verify(supabaseStorageService).createSignedUploadUrl(any());
+    }
+
+    @Test
+    void createImportBatch_adminWithoutInstitution_returns400() {
+        MediaImportBatchCreateRequestDto dto = new MediaImportBatchCreateRequestDto();
+        dto.setAssetCount(80);
+
+        assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.createImportBatch(dto, user(UUID.randomUUID(), "admin", null)));
+
+        verify(mediaImportBatchRepository, never()).save(any());
+    }
+
+    @Test
+    void createImportBatch_adminWithInstitution_savesBatch() {
+        UUID institutionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Institution institution = institution(institutionId);
+        User uploader = uploader(userId);
+        MediaImportBatchCreateRequestDto dto = new MediaImportBatchCreateRequestDto();
+        dto.setAssetCount(80);
+        dto.setInstitutionId(institutionId);
+        when(entityManager.getReference(Institution.class, institutionId)).thenReturn(institution);
+        when(entityManager.getReference(User.class, userId)).thenReturn(uploader);
+        when(mediaImportBatchRepository.save(any())).thenAnswer(invocation -> {
+            MediaImportBatch batch = invocation.getArgument(0);
+            batch.setId(UUID.randomUUID());
+            return batch;
+        });
+
+        mediaAssetService.createImportBatch(dto, user(userId, "admin", null));
+
+        ArgumentCaptor<MediaImportBatch> captor = ArgumentCaptor.forClass(MediaImportBatch.class);
+        verify(mediaImportBatchRepository).save(captor.capture());
+        org.junit.jupiter.api.Assertions.assertEquals(institutionId, captor.getValue().getInstitution().getId());
+        org.junit.jupiter.api.Assertions.assertEquals(userId, captor.getValue().getUploadedBy().getId());
+        org.junit.jupiter.api.Assertions.assertEquals(80, captor.getValue().getAssetCount());
+    }
+
+    @Test
+    void upload_withImportBatch_setsImportBatchId() {
+        UUID institutionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID batchId = UUID.randomUUID();
+        MediaImportBatch batch = importBatch(batchId, institutionId, userId, 2);
+        MediaAssetUploadRequestDto dto = uploadRequest();
+        dto.setImportBatchId(batchId);
+        when(mediaImportBatchRepository.findByIdAndInstitution(batchId, institutionId)).thenReturn(Optional.of(batch));
+        when(entityManager.getReference(Institution.class, institutionId)).thenReturn(institution(institutionId));
+        when(entityManager.getReference(User.class, userId)).thenReturn(uploader(userId));
+        when(mediaAssetRepository.existsByAssetCode(any())).thenReturn(false);
+        when(mediaAssetRepository.save(any())).thenAnswer(invocation -> {
+            MediaAsset asset = invocation.getArgument(0);
+            asset.setId(UUID.randomUUID());
+            return asset;
+        });
+
+        mediaAssetService.upload(dto, user(userId, "contributor", institutionId));
+
+        ArgumentCaptor<MediaAsset> captor = ArgumentCaptor.forClass(MediaAsset.class);
+        verify(mediaAssetRepository).save(captor.capture());
+        org.junit.jupiter.api.Assertions.assertEquals(batchId, captor.getValue().getImportBatchId());
+        verify(mediaIngestionQueueService).enqueue(any(), eq("https://storage.example/photo.jpg"));
+    }
+
+    @Test
+    void upload_withImportBatchFromOtherInstitution_returns400() {
+        UUID institutionId = UUID.randomUUID();
+        UUID batchId = UUID.randomUUID();
+        MediaAssetUploadRequestDto dto = uploadRequest();
+        dto.setImportBatchId(batchId);
+        when(mediaImportBatchRepository.findByIdAndInstitution(batchId, institutionId)).thenReturn(Optional.empty());
+
+        assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.upload(dto, user(UUID.randomUUID(), "contributor", institutionId)));
+
+        verify(mediaAssetRepository, never()).save(any());
+    }
+
+    @Test
+    void listImportBatchAssets_validBatch_returnsDetails() {
+        UUID institutionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID batchId = UUID.randomUUID();
+        MediaImportBatch batch = importBatch(batchId, institutionId, userId, 1);
+        MediaAsset asset = asset(UUID.randomUUID(), institutionId, userId);
+        asset.setImportBatchId(batchId);
+        when(mediaImportBatchRepository.findByIdAndInstitution(batchId, institutionId)).thenReturn(Optional.of(batch));
+        when(mediaAssetRepository.findActiveByImportBatch(batchId, institutionId)).thenReturn(List.of(asset));
+        when(assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(asset.getId())).thenReturn(List.of());
+
+        var response = mediaAssetService.listImportBatchAssets(batchId, null, user(userId, "contributor", institutionId));
+
+        org.junit.jupiter.api.Assertions.assertEquals(1, response.size());
+        org.junit.jupiter.api.Assertions.assertEquals(asset.getId(), response.get(0).getId());
+    }
+
+    @Test
+    void markImportBatchCurated_setsCuratedAtAndTitleFallback() {
+        UUID institutionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID batchId = UUID.randomUUID();
+        MediaImportBatch batch = importBatch(batchId, institutionId, userId, 1);
+        MediaAsset asset = asset(UUID.randomUUID(), institutionId, userId);
+        asset.setFileName("event-photo.jpg");
+        asset.setTitle(null);
+        when(mediaImportBatchRepository.findByIdAndInstitution(batchId, institutionId)).thenReturn(Optional.of(batch));
+        when(mediaAssetRepository.findActiveByImportBatch(batchId, institutionId)).thenReturn(List.of(asset));
+
+        var response = mediaAssetService.markImportBatchCurated(batchId, null, user(userId, "contributor", institutionId));
+
+        org.junit.jupiter.api.Assertions.assertEquals(1, response.getCuratedCount());
+        org.junit.jupiter.api.Assertions.assertEquals("event photo", asset.getTitle());
+        org.junit.jupiter.api.Assertions.assertNotNull(asset.getCuratedAt());
+        verify(mediaAssetRepository).saveAll(List.of(asset));
+    }
+
     private static JwtUserDetails user(UUID userId, String role, UUID institutionId) {
         return new JwtUserDetails(userId, role + "@example.edu", role, institutionId);
     }
@@ -149,5 +309,23 @@ class MediaAssetServiceTest {
         user.setId(id);
         user.setEmail("uploader@example.edu");
         return user;
+    }
+
+    private static MediaAssetUploadRequestDto uploadRequest() {
+        MediaAssetUploadRequestDto dto = new MediaAssetUploadRequestDto();
+        dto.setStorageUrl("https://storage.example/photo.jpg");
+        dto.setFileName("photo.jpg");
+        dto.setFileType("jpeg");
+        dto.setFileSizeBytes(2048L);
+        return dto;
+    }
+
+    private static MediaImportBatch importBatch(UUID id, UUID institutionId, UUID uploadedBy, int assetCount) {
+        MediaImportBatch batch = new MediaImportBatch();
+        batch.setId(id);
+        batch.setInstitution(institution(institutionId));
+        batch.setUploadedBy(uploader(uploadedBy));
+        batch.setAssetCount(assetCount);
+        return batch;
     }
 }

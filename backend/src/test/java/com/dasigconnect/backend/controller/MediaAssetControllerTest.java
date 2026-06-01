@@ -19,10 +19,13 @@ import com.dasigconnect.backend.model.dto.media.AssetTagDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
+import com.dasigconnect.backend.model.dto.media.MediaBatchCurationResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaImportBatchResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
+import com.dasigconnect.backend.model.entity.MediaImportBatch;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
@@ -164,6 +167,51 @@ class MediaAssetControllerTest {
 
     @Test
     @WithMockUser
+    void createImportBatch_authenticated_returns201() throws Exception {
+        UUID batchId = UUID.randomUUID();
+        UUID institutionId = UUID.randomUUID();
+        MediaImportBatch batch = importBatch(batchId, institutionId, UUID.randomUUID(), 80);
+        when(mediaAssetService.createImportBatch(any(), any()))
+                .thenReturn(MediaImportBatchResponseDto.from(batch));
+
+        mockMvc.perform(post("/api/v1/media-assets/import-batches")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"assetCount":80,"institutionId":"%s"}
+                        """.formatted(institutionId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(batchId.toString()))
+                .andExpect(jsonPath("$.assetCount").value(80));
+    }
+
+    @Test
+    @WithMockUser
+    void listImportBatchAssets_authenticated_returnsAssets() throws Exception {
+        UUID batchId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = mediaAsset(assetId);
+        when(mediaAssetService.listImportBatchAssets(eq(batchId), any(), any()))
+                .thenReturn(List.of(MediaAssetDetailDto.from(asset, List.of(), List.of())));
+
+        mockMvc.perform(get("/api/v1/media-assets/import-batches/{id}/assets", batchId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(assetId.toString()));
+    }
+
+    @Test
+    @WithMockUser
+    void markImportBatchCurated_authenticated_returnsCount() throws Exception {
+        UUID batchId = UUID.randomUUID();
+        when(mediaAssetService.markImportBatchCurated(eq(batchId), any(), any()))
+                .thenReturn(new MediaBatchCurationResponseDto(6));
+
+        mockMvc.perform(post("/api/v1/media-assets/import-batches/{id}/curate", batchId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.curatedCount").value(6));
+    }
+
+    @Test
+    @WithMockUser
     void addTag_authenticated_returns201() throws Exception {
         UUID assetId = UUID.randomUUID();
         UUID tagId = UUID.randomUUID();
@@ -262,5 +310,14 @@ class MediaAssetControllerTest {
         user.setId(id);
         user.setEmail("contributor@cit.edu.ph");
         return user;
+    }
+
+    private static MediaImportBatch importBatch(UUID id, UUID institutionId, UUID uploadedBy, int assetCount) {
+        MediaImportBatch batch = new MediaImportBatch();
+        batch.setId(id);
+        batch.setInstitution(institution(institutionId));
+        batch.setUploadedBy(user(uploadedBy));
+        batch.setAssetCount(assetCount);
+        return batch;
     }
 }

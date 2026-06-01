@@ -400,6 +400,66 @@ public class ClaudeVisionClient {
         return model;
     }
 
+    /**
+     * Best-effort: name a cluster of related photos from their <em>already-extracted</em>
+     * metadata (text only — no image re-scan, respecting the scan-once pipeline). Used by
+     * UC-4.2 auto-grouping. Returns {@code null} on any failure so the caller falls back to a
+     * deterministic name; never throws.
+     */
+    public String suggestAlbumName(String context) {
+        if (apiKey == null || apiKey.isBlank() || context == null || context.isBlank()) {
+            return null;
+        }
+        try {
+            var textBlock = objectMapper.createObjectNode();
+            textBlock.put("type", "text");
+            textBlock.put("text", """
+                You name a photo album from metadata about a cluster of related photos.
+                Reply with ONLY a short, specific album title of 2 to 5 words.
+                No surrounding quotes, no trailing punctuation, no explanation.
+
+                Cluster metadata:
+                """ + context);
+
+            var contentArray = objectMapper.createArrayNode();
+            contentArray.add(textBlock);
+            var message = objectMapper.createObjectNode();
+            message.put("role", "user");
+            message.set("content", contentArray);
+            var messagesArray = objectMapper.createArrayNode();
+            messagesArray.add(message);
+            var root = objectMapper.createObjectNode();
+            root.put("model", model);
+            root.put("max_tokens", 32);
+            root.set("messages", messagesArray);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(API_URL))
+                    .header("x-api-key", apiKey)
+                    .header("anthropic-version", ANTHROPIC_VERSION)
+                    .header("content-type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(root)))
+                    .timeout(Duration.ofSeconds(15))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                log.warn("Claude album-name returned status {}", response.statusCode());
+                return null;
+            }
+            String text = objectMapper.readTree(response.body())
+                    .path("content").get(0).path("text").asText("").strip();
+            String name = text.replace("\"", "").replace("\n", " ").trim();
+            if (name.isBlank()) {
+                return null;
+            }
+            return name.length() > 80 ? name.substring(0, 80).trim() : name;
+        } catch (Exception e) {
+            log.warn("Claude album-name request failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
     private String buildClassificationPayload(List<String> imageUrls) {
         try {
             var contentArray = objectMapper.createArrayNode();

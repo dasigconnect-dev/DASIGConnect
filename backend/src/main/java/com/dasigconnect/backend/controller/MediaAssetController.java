@@ -25,6 +25,9 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUseInNewPostRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaBatchCurationResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaImportBatchCreateRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaImportBatchResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.MediaAssetService;
@@ -93,6 +96,32 @@ public class MediaAssetController {
             @Valid @RequestBody MediaAssetUploadUrlRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(mediaAssetService.createUploadUrl(dto, user));
+    }
+
+    @PostMapping("/import-batches")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MediaImportBatchResponseDto> createImportBatch(
+            @Valid @RequestBody MediaImportBatchCreateRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.status(201).body(mediaAssetService.createImportBatch(dto, user));
+    }
+
+    @GetMapping("/import-batches/{id}/assets")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<java.util.List<MediaAssetDetailDto>> listImportBatchAssets(
+            @PathVariable UUID id,
+            @RequestParam(required = false) UUID institutionId,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaAssetService.listImportBatchAssets(id, institutionId, user));
+    }
+
+    @PostMapping("/import-batches/{id}/curate")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MediaBatchCurationResponseDto> markImportBatchCurated(
+            @PathVariable UUID id,
+            @RequestParam(required = false) UUID institutionId,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaAssetService.markImportBatchCurated(id, institutionId, user));
     }
 
     @PostMapping("/upload")

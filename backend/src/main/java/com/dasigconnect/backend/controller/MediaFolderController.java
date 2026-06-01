@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -37,8 +38,9 @@ public class MediaFolderController {
 
     @GetMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<List<FolderResponseDto>> list(@AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(mediaFolderService.list(user));
+    public ResponseEntity<List<FolderResponseDto>> list(@RequestParam(required = false) UUID institutionId,
+                                                        @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaFolderService.list(institutionId, user));
     }
 
     @GetMapping("/{id}")

@@ -39,10 +39,29 @@ export interface AlbumDetail extends Omit<Album, "assetCount"> {
 export interface CreateAlbumRequest {
   name: string;
   description?: string | null;
+  institutionId?: string | null;
 }
 
-export function listAlbums(signal?: AbortSignal) {
-  return api.get<Album[]>("/media-albums", { signal }).then((res) => res.data);
+export interface GenerateSuggestedAlbumsRequest {
+  importBatchId: string;
+  institutionId?: string | null;
+  minGroupSize?: number;
+}
+
+export interface GenerateSuggestedAlbumsResponse {
+  importBatchId: string;
+  groupsEvaluated: number;
+  albumsCreated: number;
+  albums: Album[];
+}
+
+export function listAlbums(institutionId?: string | null, signal?: AbortSignal) {
+  return api
+    .get<Album[]>("/media-albums", {
+      params: institutionId ? { institutionId } : undefined,
+      signal,
+    })
+    .then((res) => res.data);
 }
 
 export function getAlbum(id: string, signal?: AbortSignal) {
@@ -54,6 +73,17 @@ export function createAlbum(payload: CreateAlbumRequest) {
     .post<Album>("/media-albums", {
       name: payload.name,
       description: payload.description ?? null,
+      institutionId: payload.institutionId ?? null,
+    })
+    .then((res) => res.data);
+}
+
+export function generateSuggestedAlbumsFromImportBatch(payload: GenerateSuggestedAlbumsRequest) {
+  return api
+    .post<GenerateSuggestedAlbumsResponse>("/media-albums/suggestions/import-batch", {
+      importBatchId: payload.importBatchId,
+      institutionId: payload.institutionId ?? null,
+      minGroupSize: payload.minGroupSize ?? 2,
     })
     .then((res) => res.data);
 }

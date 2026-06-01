@@ -34,6 +34,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     List<MediaAsset> findAllActive();
 
     boolean existsByAssetCode(String assetCode);
+    Optional<MediaAsset> findByAssetCode(String assetCode);
     boolean existsByUploaderId(UUID uploaderId);
     long countByFolderIdAndDeletedAtIsNull(UUID folderId);
 
@@ -106,6 +107,26 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     @Query("SELECT m FROM MediaAsset m WHERE m.id IN :ids AND m.deletedAt IS NULL")
     List<MediaAsset> findActiveByIds(@Param("ids") List<UUID> ids);
+
+    @Query("""
+        SELECT m FROM MediaAsset m
+        WHERE m.importBatchId = :importBatchId
+          AND m.institution.id = :institutionId
+          AND m.deletedAt IS NULL
+        ORDER BY m.createdAt ASC
+        """)
+    List<MediaAsset> findActiveByImportBatch(@Param("importBatchId") UUID importBatchId,
+                                             @Param("institutionId") UUID institutionId);
+
+    @Query("""
+        SELECT m FROM MediaAsset m
+        WHERE m.institution.id = :institutionId
+          AND m.id <> :assetId
+          AND m.deletedAt IS NULL
+          AND m.perceptualHash IS NOT NULL
+        """)
+    List<MediaAsset> findDuplicateHashCandidates(@Param("institutionId") UUID institutionId,
+                                                 @Param("assetId") UUID assetId);
 
     @Modifying
     @Transactional

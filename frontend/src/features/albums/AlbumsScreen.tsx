@@ -12,12 +12,14 @@ import {
   type Album,
   type AlbumDetail,
 } from "../../api/albumApi";
+import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
 import { searchMediaAssets, type MediaAsset } from "../../api/mediaApi";
 import { useToast } from "../../context/ToastContext";
 import AlbumCard from "./components/AlbumCard";
 import AlbumAssetTile from "./components/AlbumAssetTile";
 import CreateAlbumModal from "./components/CreateAlbumModal";
 import AssetPickerModal from "./components/AssetPickerModal";
+import LibraryScopeSelector from "../media-repository/components/LibraryScopeSelector";
 import "../../styles/media-repository.css";
 import "../../styles/albums.css";
 
@@ -26,13 +28,16 @@ interface AlbumsScreenProps {
 }
 
 export default function AlbumsScreen({ user }: AlbumsScreenProps) {
-  void user; // albums are scoped server-side by the caller's institution
   const toast = useToast();
   const navigate = useNavigate();
+  const isAdmin = user.role === "admin";
 
   const [albums, setAlbums] = useState<Album[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
+  const [institutionsLoading, setInstitutionsLoading] = useState(isAdmin);
+  const [selectedInstitutionId, setSelectedInstitutionId] = useState<string | null>(null);
 
   const [openAlbum, setOpenAlbum] = useState<AlbumDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -47,32 +52,56 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
   const [adding, setAdding] = useState(false);
 
   function fetchAlbums(signal?: AbortSignal) {
-    listAlbums(signal)
+    setLoading(true);
+    setError(null);
+    if (isAdmin && !selectedInstitutionId) {
+      setAlbums([]);
+      setLoading(false);
+      return;
+    }
+    listAlbums(isAdmin ? selectedInstitutionId : undefined, signal)
       .then(setAlbums)
-      .catch(() => setError("Could not load albums."))
+      .catch(() => setError("Could not load collections."))
       .finally(() => setLoading(false));
   }
 
   // Event-handler reload (sets loading/error then fetches) — kept out of the effect body.
   function reload() {
-    setLoading(true);
-    setError(null);
     fetchAlbums();
   }
 
   useEffect(() => {
+    if (!isAdmin) return;
+    listInstitutions()
+      .then((res) => {
+        setInstitutions(res.data);
+        setSelectedInstitutionId((current) => current ?? res.data[0]?.id ?? null);
+      })
+      .catch(() => toast.error("Could not load institution filters."))
+      .finally(() => setInstitutionsLoading(false));
+  }, [isAdmin, toast]);
+
+  useEffect(() => {
     const controller = new AbortController();
-    fetchAlbums(controller.signal);
-    return () => controller.abort();
+    let active = true;
+
+    queueMicrotask(() => {
+      if (active) fetchAlbums(controller.signal);
+    });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isAdmin, selectedInstitutionId]);
 
   async function openDetail(id: string) {
     setDetailLoading(true);
     try {
       setOpenAlbum(await getAlbum(id));
     } catch {
-      toast.error("Could not open that album.");
+      toast.error("Could not open that collection.");
     } finally {
       setDetailLoading(false);
     }
@@ -88,39 +117,54 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
   }
 
   async function handleCreate(name: string, description: string) {
+    if (isAdmin && !selectedInstitutionId) {
+      toast.error("Select an institution before creating a collection.");
+      return;
+    }
     if (!name.trim()) return;
     setCreating(true);
     try {
-      const album = await createAlbum({ name: name.trim(), description: description.trim() || null });
+      const album = await createAlbum({
+        name: name.trim(),
+        description: description.trim() || null,
+        institutionId: isAdmin ? selectedInstitutionId : undefined,
+      });
       setCreateOpen(false);
       setAlbums((prev) => [album, ...prev]);
-      toast.success(`Album "${album.name}" created.`);
+      toast.success(`Collection "${album.name}" created.`);
     } catch {
-      toast.error("Could not create the album.");
+      toast.error("Could not create the collection.");
     } finally {
       setCreating(false);
     }
   }
 
   async function handleDeleteAlbum(album: Album) {
-    if (!window.confirm(`Delete album "${album.name}"? The assets themselves are not deleted.`)) return;
+    if (!window.confirm(`Delete collection "${album.name}"? The media files themselves are not deleted.`)) return;
     try {
       await deleteAlbum(album.id);
       setAlbums((prev) => prev.filter((a) => a.id !== album.id));
       if (openAlbum?.id === album.id) setOpenAlbum(null);
-      toast.success("Album deleted.");
+      toast.success("Collection deleted.");
     } catch {
-      toast.error("Could not delete the album.");
+      toast.error("Could not delete the collection.");
     }
   }
 
   function openPicker() {
+    if (isAdmin && !selectedInstitutionId) {
+      toast.error("Select an institution before adding media.");
+      return;
+    }
     setPickerOpen(true);
     setPickerSelected(new Set());
     setPickerLoading(true);
-    searchMediaAssets({ pageSize: 100 })
+    searchMediaAssets({
+      pageSize: 100,
+      institutionId: isAdmin ? selectedInstitutionId : undefined,
+    })
       .then((page) => setPickerAssets(page.items))
-      .catch(() => toast.error("Could not load assets."))
+      .catch(() => toast.error("Could not load media."))
       .finally(() => setPickerLoading(false));
   }
 
@@ -141,9 +185,9 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
       setOpenAlbum(detail);
       setAlbums((prev) => prev.map((a) => (a.id === detail.id ? { ...a, assetCount: detail.assetCount } : a)));
       setPickerOpen(false);
-      toast.success(`Added ${pickerSelected.size} ${pickerSelected.size === 1 ? "asset" : "assets"}.`);
+      toast.success(`Added ${pickerSelected.size} ${pickerSelected.size === 1 ? "item" : "items"}.`);
     } catch {
-      toast.error("Could not add assets to the album.");
+      toast.error("Could not add media to the collection.");
     } finally {
       setAdding(false);
     }
@@ -185,26 +229,26 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
                 <line x1="19" y1="12" x2="5" y2="12" />
                 <polyline points="12,19 5,12 12,5" />
               </svg>
-              All albums
+              All collections
             </button>
             <h1 className="med-title">{openAlbum.name}</h1>
             <p className="med-subtitle">
-              {openAlbum.assetCount} {openAlbum.assetCount === 1 ? "asset" : "assets"}
-              {openAlbum.source === "ai_suggested" ? " · AI-suggested" : ""}
-              {openAlbum.description ? ` · ${openAlbum.description}` : ""}
+              {openAlbum.assetCount} {openAlbum.assetCount === 1 ? "item" : "items"}
+              {openAlbum.source === "ai_suggested" ? " - AI-suggested" : ""}
+              {openAlbum.description ? ` - ${openAlbum.description}` : ""}
             </p>
           </div>
           <div className="med-header-actions">
             <button className="med-btn med-btn-primary med-btn-sm" type="button" onClick={openPicker}>
-              Add assets
+              Add media
             </button>
           </div>
         </div>
 
         {openAlbum.assets.length === 0 ? (
           <div className="med-empty">
-            <div className="med-empty-title">This album is empty</div>
-            <p className="med-empty-sub">Use “Add assets” to put media into this album.</p>
+            <div className="med-empty-title">This collection is empty</div>
+            <p className="med-empty-sub">Add media when this collection is ready to reuse.</p>
           </div>
         ) : (
           <div className="alb-grid">
@@ -245,31 +289,48 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
               <line x1="19" y1="12" x2="5" y2="12" />
               <polyline points="12,19 5,12 12,5" />
             </svg>
-            Media Repository
+            Media Library
           </button>
-          <h1 className="med-title">Albums</h1>
-          <p className="med-subtitle">Curated collections · an asset can live in many albums</p>
+          <h1 className="med-title">Collections</h1>
+          <p className="med-subtitle">Reusable media sets for campaigns and events</p>
         </div>
         <div className="med-header-actions">
           <button className="med-btn med-btn-primary med-btn-sm" type="button" onClick={() => setCreateOpen(true)}>
-            New Album
+            New Collection
           </button>
         </div>
       </div>
 
+      {isAdmin && (
+        <LibraryScopeSelector
+          institutions={institutions}
+          selectedInstitutionId={selectedInstitutionId}
+          loading={institutionsLoading}
+          onInstitutionChange={(institutionId) => {
+            setOpenAlbum(null);
+            setSelectedInstitutionId(institutionId);
+          }}
+        />
+      )}
+
       {loading ? (
-        <div className="med-empty"><div className="med-empty-title">Loading albums…</div></div>
+        <div className="med-empty"><div className="med-empty-title">Loading collections...</div></div>
+      ) : isAdmin && !selectedInstitutionId ? (
+        <div className="med-empty">
+          <div className="med-empty-title">Select an institution</div>
+          <p className="med-empty-sub">Choose an institution to view its collections.</p>
+        </div>
       ) : error ? (
         <div className="med-empty">
-          <div className="med-empty-title">Failed to load albums</div>
+          <div className="med-empty-title">Failed to load collections</div>
           <p className="med-empty-sub">{error}</p>
           <button className="med-btn med-btn-ghost" type="button" style={{ marginTop: 20 }} onClick={reload}>Try again</button>
         </div>
       ) : albums.length === 0 ? (
         <div className="med-empty">
-          <div className="med-empty-title">No albums yet</div>
-          <p className="med-empty-sub">Create an album to group related media into a curated collection.</p>
-          <button className="med-btn med-btn-primary" type="button" style={{ marginTop: 20 }} onClick={() => setCreateOpen(true)}>New Album</button>
+          <div className="med-empty-title">No collections yet</div>
+          <p className="med-empty-sub">Create a reusable set for related media.</p>
+          <button className="med-btn med-btn-primary" type="button" style={{ marginTop: 20 }} onClick={() => setCreateOpen(true)}>New Collection</button>
         </div>
       ) : (
         <div className="alb-list">
@@ -292,7 +353,7 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
         />
       )}
 
-      {detailLoading && <div className="alb-loading-veil">Opening album…</div>}
+      {detailLoading && <div className="alb-loading-veil">Opening collection...</div>}
     </div>
   );
 }

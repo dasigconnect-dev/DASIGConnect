@@ -1,4 +1,4 @@
-/* Folder sidebar for the Media Repository (UC-4.1) */
+/* Organization sidebar for the Media Library (UC-4.1) */
 
 .med-layout {
   display: flex;
@@ -30,17 +30,21 @@
   color: #64748b;
 }
 .fld-add {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
-  border: none;
+  border: 1px solid #bfdbfe;
   border-radius: 7px;
   background: #eff6ff;
   color: #2563eb;
   cursor: pointer;
 }
 .fld-add:hover { background: #dbeafe; }
+.fld-add:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 
 .fld-move-hint {
   font-size: 11.5px;
@@ -54,6 +58,21 @@
 .fld-nav { display: flex; flex-direction: column; gap: 2px; }
 .fld-row { display: flex; align-items: center; gap: 4px; }
 .fld-row .fld-item { flex: 1; min-width: 0; }
+
+.fld-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px 6px;
+}
+
+.fld-section-head span {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
 
 .fld-item {
   flex: 1;
@@ -73,6 +92,13 @@
 }
 .fld-item:hover { background: #f1f5f9; }
 .fld-item.active { background: #eff6ff; color: #1d4ed8; font-weight: 600; }
+.fld-collection-link {
+  color: #0f766e;
+}
+.fld-collection-link:hover {
+  background: #ecfdf5;
+  color: #0f766e;
+}
 .fld-icon { flex: 0 0 auto; color: #94a3b8; }
 .fld-item.active .fld-icon { color: #2563eb; }
 .fld-item-label {

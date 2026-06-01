@@ -10,14 +10,11 @@ interface FilterBarProps {
   search: string;
   sort: SortOption;
   viewMode: ViewMode;
-  networkView: boolean;
-  isAdmin: boolean;
   activeTags: Set<string>;
   tagChips: AiTagChip[];
   onSearchChange: (value: string) => void;
   onSortChange: (value: SortOption) => void;
   onViewModeChange: (mode: ViewMode) => void;
-  onNetworkViewToggle: () => void;
   onTagToggle: (tag: string) => void;
 }
 
@@ -25,14 +22,11 @@ export default function FilterBar({
   search,
   sort,
   viewMode,
-  networkView,
-  isAdmin,
   activeTags,
   tagChips,
   onSearchChange,
   onSortChange,
   onViewModeChange,
-  onNetworkViewToggle,
   onTagToggle,
 }: FilterBarProps) {
   return (
@@ -46,7 +40,7 @@ export default function FilterBar({
           <input
             type="text"
             className="med-search-input"
-            placeholder="Search by filename, AI tag, event name, or uploader…"
+            placeholder="Search filenames, tags, events, or uploaders..."
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
           />
@@ -94,25 +88,6 @@ export default function FilterBar({
             </svg>
           </button>
         </div>
-
-        {isAdmin && (
-          <button
-            className="med-network-toggle"
-            onClick={onNetworkViewToggle}
-            title="Toggle Network View"
-            type="button"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#92400E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="2" y1="12" x2="22" y2="12" />
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-            </svg>
-            <span className="med-network-toggle-label">Network View</span>
-            <div className={`med-toggle-switch${networkView ? " on" : ""}`}>
-              <div className="med-toggle-knob" />
-            </div>
-          </button>
-        )}
       </div>
 
       {tagChips.length > 0 && (

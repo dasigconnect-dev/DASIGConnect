@@ -30,13 +30,19 @@ function isCanceledError(error: unknown) {
   return isApiError(error) && error.name === "CanceledError";
 }
 
-export function useMediaAssets(networkView = false, institutionId?: string | null) {
+export function useMediaAssets(networkView = false, institutionId?: string | null, enabled = true) {
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const refresh = useCallback(
     (signal?: AbortSignal) => {
+      if (!enabled) {
+        setAssets([]);
+        setLoading(false);
+        setError("");
+        return Promise.resolve();
+      }
       setLoading(true);
       setError("");
       return listMediaAssets({ networkView, institutionId }, signal)
@@ -47,7 +53,7 @@ export function useMediaAssets(networkView = false, institutionId?: string | nul
         })
         .finally(() => setLoading(false));
     },
-    [networkView, institutionId],
+    [networkView, institutionId, enabled],
   );
 
   useEffect(() => {

@@ -3,6 +3,8 @@ package com.dasigconnect.backend.controller;
 import com.dasigconnect.backend.model.dto.media.AlbumAddAssetsRequestDto;
 import com.dasigconnect.backend.model.dto.media.AlbumCreateRequestDto;
 import com.dasigconnect.backend.model.dto.media.AlbumDetailDto;
+import com.dasigconnect.backend.model.dto.media.AlbumGenerateSuggestionsRequestDto;
+import com.dasigconnect.backend.model.dto.media.AlbumGenerateSuggestionsResponseDto;
 import com.dasigconnect.backend.model.dto.media.AlbumResponseDto;
 import com.dasigconnect.backend.model.dto.media.AlbumSetCoverRequestDto;
 import com.dasigconnect.backend.model.dto.media.AlbumUpdateRequestDto;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -39,8 +42,9 @@ public class MediaAlbumController {
 
     @GetMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<List<AlbumResponseDto>> list(@AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(mediaAlbumService.list(user));
+    public ResponseEntity<List<AlbumResponseDto>> list(@RequestParam(required = false) UUID institutionId,
+                                                       @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaAlbumService.list(institutionId, user));
     }
 
     @GetMapping("/{id}")
@@ -55,6 +59,14 @@ public class MediaAlbumController {
     public ResponseEntity<AlbumResponseDto> create(@Valid @RequestBody AlbumCreateRequestDto dto,
                                                    @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.status(201).body(mediaAlbumService.create(dto, user));
+    }
+
+    @PostMapping("/suggestions/import-batch")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<AlbumGenerateSuggestionsResponseDto> generateSuggestedFromImportBatch(
+            @Valid @RequestBody AlbumGenerateSuggestionsRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.status(201).body(mediaAlbumService.generateSuggestedFromImportBatch(dto, user));
     }
 
     @PatchMapping("/{id}")

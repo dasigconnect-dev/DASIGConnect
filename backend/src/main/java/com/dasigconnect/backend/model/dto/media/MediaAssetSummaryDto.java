@@ -10,6 +10,7 @@ public class MediaAssetSummaryDto {
     private String assetCode;
     private String storageUrl;
     private String fileName;
+    private String title;
     private String fileType;
     private long fileSizeBytes;
     private String aiCategory;
@@ -19,6 +20,8 @@ public class MediaAssetSummaryDto {
     private UUID uploaderId;
     private String uploaderEmail;
     private UUID folderId;
+    private UUID importBatchId;
+    private UUID duplicateOfId;
 
     public static MediaAssetSummaryDto from(MediaAsset asset) {
         MediaAssetSummaryDto dto = new MediaAssetSummaryDto();
@@ -26,6 +29,7 @@ public class MediaAssetSummaryDto {
         dto.assetCode = asset.getAssetCode();
         dto.storageUrl = asset.getStorageUrl();
         dto.fileName = asset.getFileName();
+        dto.title = asset.getTitle();
         dto.fileType = asset.getFileType().name();
         dto.fileSizeBytes = asset.getFileSizeBytes();
         dto.aiCategory = asset.getAiCategory();
@@ -35,6 +39,8 @@ public class MediaAssetSummaryDto {
         dto.uploaderId = asset.getUploader().getId();
         dto.uploaderEmail = asset.getUploader().getEmail();
         dto.folderId = asset.getFolderId();
+        dto.importBatchId = asset.getImportBatchId();
+        dto.duplicateOfId = asset.getDuplicateOfId();
         return dto;
     }
 
@@ -42,6 +48,7 @@ public class MediaAssetSummaryDto {
     public String getAssetCode() { return assetCode; }
     public String getStorageUrl() { return storageUrl; }
     public String getFileName() { return fileName; }
+    public String getTitle() { return title; }
     public String getFileType() { return fileType; }
     public long getFileSizeBytes() { return fileSizeBytes; }
     public String getAiCategory() { return aiCategory; }
@@ -51,4 +58,6 @@ public class MediaAssetSummaryDto {
     public UUID getUploaderId() { return uploaderId; }
     public String getUploaderEmail() { return uploaderEmail; }
     public UUID getFolderId() { return folderId; }
+    public UUID getImportBatchId() { return importBatchId; }
+    public UUID getDuplicateOfId() { return duplicateOfId; }
 }
