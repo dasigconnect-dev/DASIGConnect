@@ -141,6 +141,22 @@ a `Semaphore`/`RateLimiter`.
 - `mediaApi.ts` additions for folder + album CRUD, assign, add/remove, bulk endpoints.
 - Loading/empty/error states; foldered list + album grid views.
 
+### 4.1 UX terminology update (2026-05-30)
+
+The implementation keeps the accepted backend model from ADR-0004, but the UI language was
+adjusted after first-use review:
+
+- Route/API/schema terms remain **folders** and **albums** for stability.
+- The user-facing main screen is now **Media Library** instead of Media Repository.
+- User-facing albums are labeled **Collections** because the word describes reuse and
+  curation more clearly than a photo-only "album" mental model.
+- The admin institution selector is a reusable scope component shared by Media Library and
+  Collections. Admins choose one institution as the working scope before upload, folder
+  creation, or collection creation; network-wide browsing is explicit.
+- The left organization rail separates **All media**, **Needs organization**, **Collections**,
+  and **Storage folders** so users see folders as storage location and collections as reuse
+  groups without needing a tutorial.
+
 ## 5. Task breakdown (vertical slices, dependency order)
 
 Each is one card / one branch (`feat/uc41-...`, `feat/uc42-queue`):
@@ -150,11 +166,14 @@ Each is one card / one branch (`feat/uc41-...`, `feat/uc42-queue`):
 3. ✅ **Folder UI slice** (done 2026-05-30; `FolderSidebar` component in Media Repository: All/Unfiled/folders nav, create/rename/delete, click-to-filter, and **move selected → folder/Unfiled** via `bulkMoveAssets`). Backend: added `folderId` to `MediaAssetSummaryDto` so filtering is client-side (consistent with existing search/tag filtering) — no new query param needed. Build + ESLint clean; media backend tests green.
 4. ✅ **Assign + bulk move/tag slice** (backend; done 2026-05-30; `MediaOrganizationService`/`Controller`: bulk-move/unfile + bulk-tag, institution-guarded + audited; bulk-delete already existed; 10 tests; full suite 320 green). UI deferred to slices 3/6.
 5. ✅ **Album backend slice** (done 2026-05-30; `MediaAlbumService`/`Controller` + DTOs: CRUD, add/remove assets, set cover; audited; 15 tests pass; full suite 310 green).
-6. ✅ **Album UI slice** (done 2026-05-30; `AlbumsScreen` at `/media-albums`: list/create/open/delete albums, add assets via picker, remove asset, set cover; reached from a Media Repository header link; `folderApi`/`albumApi` clients + `mediaApi` bulk fns; frontend build + targeted ESLint clean).
+6. ✅ **Album UI slice** (done 2026-05-30; `AlbumsScreen` at `/media-albums`: list/create/open/delete albums, add assets via picker, remove asset, set cover; reached from the Media Library header/organization rail; user-facing label changed to **Collections** while route/API names remain album-based; shared admin institution scope selector added; `folderApi`/`albumApi` clients + `mediaApi` bulk fns; frontend build + targeted ESLint clean).
 7. ✅ **Ingestion-queue infra** (done 2026-05-30; `IngestionExecutorConfig` bounded 2-worker pool + `MediaIngestionQueueService.enqueue` with skip-if-READY idempotency; `classifyAndEmbed` de-`@Async`'d; upload + reconciliation repointed to the queue; 4 tests; full suite 324 green; context boots clean). Import-batch *grouping* deferred to a follow-up.
-8. **Spike — 200-asset dump** (D5): measure wall-clock to all-`READY`, max concurrent
-   Hikari connections (must stay ≤5, 0 timeouts), `FAILED` count. Record the throughput
-   number in `docs/eval/`.
+8. ✅ **Spike — 200-asset dump** (D5): **PASS** (2026-06-01). 200 assets to `READY` in
+   ~94 s (127.7/min), pool capped at 5 → peak **4** concurrent Hikari connections,
+   **0** threads awaiting, **0** FAILED. Run via gated `MediaIngestionSpikeD5Test`
+   (`-Dspike.d5=true`, real dev Supabase, stubbed externals, self-cleaning). Numbers
+   recorded in `docs/eval/D5_results.md`. Confirms the bounded ingestion queue respects
+   the HikariCP-5 limit under an event-dump load (scope §9.4 anchor #1).
 
 ## 6. Tests & Definition of Done
 

@@ -69,6 +69,12 @@ Written in the measurable-objective style of the Capstone 1 proposal so they can
 **UC-4.1 — Folders & Albums.**
 Manual organization layer. A nested folder/album structure per institution (`media_folders`, nullable `parent_folder_id`), with assets assignable to a folder, plus bulk move/tag/delete operations. Target: a contributor can organize 100 assets into albums in ≤2 minutes; retrieval of a foldered asset in ≤2 s.
 
+**UX language note (2026-05-30):** The backend and schema continue to use the terms
+`media_folders`, `media_albums`, and `album_assets`, but the frontend presents the feature
+as **Media Library** with **Storage folders** and **Collections**. This keeps the data model
+stable while making the first-use mental model clearer: folders are the storage location;
+collections are reusable curated sets.
+
 **UC-4.2 — Bulk Ingestion & AI Auto-Grouping.**
 Handle a single contributor uploading many assets at once ("event dump") without degrading the system, and auto-suggest album groupings. On bulk upload, assets are recorded as one **import batch**, enqueued to a bounded processing queue, and — once embedded — clustered by image-embedding similarity into suggested albums, each named by a single Claude call on a representative image. Target: ingest and enrich **200 assets in one batch** with zero dropped DB connections (HikariCP ≤5 respected), and ≥70% of contributors agree the auto-suggested groupings are "useful."
 
@@ -84,16 +90,16 @@ Two *independent* mechanisms — they solve different problems, do not conflate 
 Target: ≥90% precision **and** recall on exact-and-near duplicates over a labeled set of ≥50 image pairs (see §9).
 
 **UC-4.5 — Natural-Language / Hybrid Media Search.**
-A **two-stage retrieve-then-rank** design (candidate generation → ranking), driven by a search box. Two query paths:
-- **Semantic / cross-modal** ("a person holding a glass discussing with students", "photos related to hackathon"). Embed the prompt with the model that matches the target space — `voyage-multimodal-3.5` (text input) to search `image` vectors, `voyage-4-lite` to search `semantic` vectors. **Never compare a `voyage-4-lite` text vector to multimodal `image` vectors** (different spaces). Retrieval is **hybrid**: Postgres lexical search **+** pgvector dense search, fused with **Reciprocal Rank Fusion** so exact keywords (asset codes, proper nouns) and paraphrase both work. **Note:** V16 provides only `pg_trgm` trigram GIN indexes on `file_name`/`asset_code` (substring ILIKE) — there is *no* `tsvector` column yet. The lexical stage is therefore **new V28+ work**: either add a `tsvector` generated column + GIN index over title/tags/description for ranked full-text (`ts_rank`), or extend the existing `pg_trgm` path. Do not assume tsvector already exists.
-- **Temporal / structured** ("photos uploaded last Monday 3–5 pm") → one Claude call parses the prompt into `{ semantic_text, date_range, time_of_day, category, media_type }`. Filters are applied with **over-fetch + post-filter** (retrieve a wide candidate set, then filter) to avoid pgvector's filtered-ANN recall collapse. Time-of-day is converted from Philippine local (UTC+8) to the UTC `created_at`.
+A **retrieve-then-rank** design (candidate generation → ranking), driven by a search box, fronted by a **deterministic Stage-0 intent router that escalates to Claude only for complex multi-condition queries** — simple date/keyword/phrase queries are parsed in code (§5.3). The richer upload-time scan fields (`people_count`, `actions`, `text_visible`, `search_keywords` — §5.1) feed both the lexical stage and the structured filters. Two query paths:
+- **Semantic / cross-modal** ("a person holding a glass discussing with students", "photos related to hackathon"). Embed the prompt with the model that matches the target space — `voyage-multimodal-3.5` (text input) to search `image` vectors, `voyage-4-lite` to search `semantic` vectors. **Never compare a `voyage-4-lite` text vector to multimodal `image` vectors** (different spaces). Retrieval is **hybrid**: Postgres lexical search **+** pgvector dense search, fused with **Reciprocal Rank Fusion** so exact keywords (asset codes, proper nouns) and paraphrase both work. **Note:** V16 provides only `pg_trgm` trigram GIN indexes on `file_name`/`asset_code` (substring ILIKE) — there is *no* `tsvector` column yet. The lexical stage is therefore **new V29+ work**: either add a `tsvector` generated column + GIN index over title/tags/description/`search_keywords` for ranked full-text (`ts_rank`), or extend the existing `pg_trgm` path. Do not assume tsvector already exists.
+- **Temporal / structured** ("photos uploaded last Monday 3–5 pm") → parsed in code where the pattern is clear (ISO dates, relative dates, `posted`/`unposted`, filetype, category words); **only genuinely complex multi-condition prompts** fall back to one Claude call that parses into `{ semantic_text, date_range, time_of_day, category, media_type, people_count, actions }`. Filters are applied with **over-fetch + post-filter** (retrieve a wide candidate set, then filter) to avoid pgvector's filtered-ANN recall collapse. Time-of-day is converted from Philippine local (UTC+8) to the UTC `created_at`.
 
 Target: relevant result in the top 3 for ≥70% of queries on a 20-query golden set (§9).
 
 ### AI
 
 **UC-4.6 — AI Feedback & Accuracy Loop.**
-Thumbs up/down (and "applied / dismissed") on suggestions, search results, and captions, surfaced as precision metrics in analytics. This is what lets the defense report *numbers* ("top-3 search relevance: X%"). **Schema reality:** the existing `ai_interaction_log` (V18) has `submission_id NOT NULL` and only `interaction_type` / `action_taken` / `tone_selected` — it cannot record *search* feedback (search is not tied to a submission) and has no rating/target columns. UC-4.6 therefore requires a V28+ migration to (a) make `submission_id` nullable, (b) add a nullable target reference (e.g. `target_asset_id` / `result_rank`), and (c) optionally a `rating` field — *then* reuse the entity. Target: instrument all four AI surfaces (search, media suggestion, caption, advisor) and report measured precision/acceptance.
+Thumbs up/down (and "applied / dismissed") on suggestions, search results, and captions, surfaced as precision metrics in analytics. This is what lets the defense report *numbers* ("top-3 search relevance: X%"). **Schema reality:** the existing `ai_interaction_log` (V18) has `submission_id NOT NULL` and only `interaction_type` / `action_taken` / `tone_selected` — it cannot record *search* feedback (search is not tied to a submission) and has no rating/target columns. UC-4.6 therefore requires a V29+ migration to (a) make `submission_id` nullable, (b) add a nullable target reference (e.g. `target_asset_id` / `result_rank`), and (c) optionally a `rating` field — *then* reuse the entity. Target: instrument all four AI surfaces (search, media suggestion, caption, advisor) and report measured precision/acceptance.
 
 **UC-4.7 — Caption Prompt Mode + Best-N image selection.**
 Expose an explicit "prompt mode" toggle (the intent-detection path already exists in `ClaudeVisionClient.buildPrompt()`), and pre-rank attached images by quality (UC-4.4) so Claude receives the most informative shots rather than the first 4. Target: maintain the existing ≥60% caption acceptance while supporting >4 attached images via pre-selection.
@@ -137,9 +143,9 @@ Target: ≥60% of contributors rate advisor suggestions "useful."
 
 ## 5. Architecture Additions
 
-All aligned to the backend guide: Controller→Service→Repository, DTOs only at the boundary, Flyway (next free version is **V28** — V27 `institution_status_refactor` already exists on disk), RLS on every institution-scoped table, short transactions, **no DB connection held across an external API call**, `@Async` / bounded executor for enrichment, audit log on state changes.
+All aligned to the backend guide: Controller→Service→Repository, DTOs only at the boundary, Flyway (next free version is **V29** — V28 `media_folders_albums_import_batches` is already applied to the dev DB), RLS on every institution-scoped table, short transactions, **no DB connection held across an external API call**, `@Async` / bounded executor for enrichment, audit log on state changes.
 
-### 5.1 Schema (new Flyway migrations, V28+)
+### 5.1 Schema (new Flyway migrations, V29+)
 
 ```sql
 -- Folders / albums (UC-4.1)
@@ -172,9 +178,18 @@ ALTER TABLE media_assets ADD COLUMN visibility     TEXT DEFAULT 'internal_only';
 ALTER TABLE media_assets ADD COLUMN safety_verdict TEXT;             -- ok | review | blocked
 
 -- Quality / duplicate (UC-4.4)
-ALTER TABLE media_assets ADD COLUMN blur_score      NUMERIC;
+ALTER TABLE media_assets ADD COLUMN blur_score      NUMERIC;            -- DETERMINISTIC quality (Laplacian variance) — the hard gate
 ALTER TABLE media_assets ADD COLUMN perceptual_hash BIGINT;            -- pHash/dHash for near-dup (NOT embeddings)
 ALTER TABLE media_assets ADD COLUMN duplicate_of_id UUID REFERENCES media_assets(id) ON DELETE SET NULL;
+
+-- Recommendation & search signals — richer Claude scan fields (UC-4.3 enrich → feed UC-4.5 search/UC-3.3 ranking)
+-- All nullable, populated by the existing single upload-time Claude call (no extra AI calls); see §5.6.
+ALTER TABLE media_assets ADD COLUMN people_count              INT;     -- 0 = no people; enables "with people / awardees" queries
+ALTER TABLE media_assets ADD COLUMN actions                   TEXT[];  -- riding | speaking | cutting_ribbon | receiving_certificate ...
+ALTER TABLE media_assets ADD COLUMN mood                      TEXT[];  -- SOFT signal only; low ranking weight, never a gate
+ALTER TABLE media_assets ADD COLUMN text_visible              BOOLEAN; -- poster/screenshot (text in image) vs. plain photo
+ALTER TABLE media_assets ADD COLUMN search_keywords           TEXT[];  -- Claude search terms → indexed into the UC-4.5 tsvector lexical stage
+ALTER TABLE media_assets ADD COLUMN posting_suitability_score NUMERIC; -- SOFT Claude advisory ONLY (5% tie-breaker). HARD quality = blur_score above
 
 -- Engagement time-series (UC-4.8)
 CREATE TABLE facebook_post_metrics (
@@ -207,23 +222,42 @@ Today each upload fires `@Async` and makes 3 external calls (Claude + 2× Voyage
 
 This is an evolution of the existing status model, not a new subsystem — and it's the headline "how we handle scale" result (report measured throughput).
 
-### 5.3 Hybrid Search — two-stage retrieve-then-rank (UC-4.5)
+### 5.3 Hybrid Search — Stage-0 intent router → retrieve → rank (UC-4.5)
+
+**Refined 2026-05-31:** an explicit **deterministic intent router runs first**, and **Claude is invoked only for genuinely complex queries** — not on every search. Most queries (a date, a keyword, a short phrase) never touch Claude. This is the cost-correct evolution of the earlier "one Claude call parses every prompt" design.
 
 ```
 prompt
   │
-  ├─ Stage 1: RETRIEVE (cheap, wide — ~100 candidates)
-  │     ├─ lexical:  Postgres tsvector full-text  ──┐
-  │     ├─ dense:    pgvector ANN (correct space)  ─┤── Reciprocal Rank Fusion ─► candidate set
-  │     └─ if temporal/structured: Claude parses {date_range, time_of_day (UTC+8→UTC), category, type}
-  │                                 applied as over-fetch + post-filter (NOT a pre-filter into the ANN)
+  ├─ Stage 0: ROUTE (pure code — classify the query, decide if Claude is needed)
+  │     ├─ ISO date / "last Monday" / "posted|unposted" / filetype / category word  → parse in code
+  │     ├─ single token / short keyword                                              → lexical + semantic, no Claude
+  │     ├─ natural phrase ("person riding a horse")                                  → embed (Voyage), no Claude
+  │     └─ long / multi-condition instruction                                        → Claude parses → {filters}
   │
-  └─ Stage 2: RANK (rich features on the small set)
-        transparent scoring fn (semantic + category + tags + recency + light performance_score) ─► top 8
+  ├─ Stage 1: RETRIEVE (cheap, wide — ~100 candidates)
+  │     ├─ lexical:  Postgres tsvector full-text (title + tags + description + search_keywords) ──┐
+  │     ├─ dense:    pgvector ANN (correct space)                                    ─┤── Reciprocal Rank Fusion ─► candidates
+  │     └─ structured filters {date_range, time_of_day (UTC+8→UTC), category, type, people_count>0, actions}
+  │                            applied as over-fetch + post-filter (NOT a pre-filter into the ANN)
+  │
+  └─ Stage 2: RANK (rich features on the small set — the SEARCH ranking profile, see §5.6)
+        transparent scoring fn (semantic + lexical + category + tags + recency + light performance_score) ─► top 8
 ```
+
+**Stage-0 routing table (Claude budget control):**
+
+| Query example | Route | Claude? | Voyage embed? |
+|---|---|---|---|
+| `2026-05-28` | date filter only | no | no |
+| `horse` | lexical + semantic | no | yes (semantic) |
+| `pictures posted last Monday` | relative-date parser + posted filter | no | no |
+| `person riding a horse` | semantic + metadata (`actions`) | no | yes |
+| `unposted awarding photos from last Monday with people holding certificates` | multi-condition parse | **yes** (fallback) | yes |
 
 Correctness rules:
 - **Match the embedding space:** text query → `voyage-multimodal-3.5` to search `image` vectors, `voyage-4-lite` to search `semantic` vectors. Never cross spaces.
+- **Claude is a fallback, not the default** — the router uses regex/relative-date parsing for clear patterns and only escalates to Claude when multiple conditions are entangled. Budget impact: ~0 Claude calls for the common case (see lifecycle accounting).
 - **Don't pre-filter into the ANN index** — pgvector's filtered-ANN recall collapses. Over-fetch a wide candidate set, then apply SQL filters; or use pgvector ≥0.8 iterative scan / partial indexes if recall is still short.
 - **Role/tenant filter** applied during retrieval (administrator = network, validator = institution, contributor = own), consistent with RLS and the permission filter pattern in `ai-media-library-upgrade.md`.
 
@@ -235,6 +269,31 @@ Correctness rules:
 ### 5.5 Pre-Submit Advisor (UC-4.10)
 
 `SubmissionAdvisorService.advise(submissionId)`: read aggregated `facebook_post_metrics` for the institution/category → build a stats blob → one Claude call combining stats + draft → return structured suggestions DTO. Heuristic-only when data is sparse. Read-only, best-effort, never blocks submit.
+
+### 5.6 Two Ranking Profiles — suggestion (image-anchored) vs. search (text-anchored)
+
+**Added 2026-05-31.** Recommendation and search share the scan-once vectors but rank **differently** because their *query* is different. Do not use one weight set for both.
+
+**Profile A — Media Suggestion (UC-3.3, image-anchored).** Triggered when the user **selects ≥1 photo** ("find more like these"). A combined profile is built from the selected assets' **image + semantic vectors + metadata**, and candidates are scored by a normalized weighted sum:
+
+```
+final_score =                          (image term is available because there IS a source image)
+   0.45 · image_similarity            -- cosine over the `image` vectors
+ + 0.30 · semantic_similarity         -- cosine over the `semantic` vectors
+ + 0.10 · category / use_case match
+ + 0.05 · subject / tag overlap       -- manual tags weighted above ai_tags
+ + 0.05 · visual_style match
+ + 0.05 · posting_suitability         -- SOFT Claude advisory only; blur_score is the hard quality gate
+```
+
+This is the planned **upgrade** of today's `AIRecommendationService.rankAsset()`, which is an **additive-boost, text-anchored** model (`score = semanticScore` then `+0.10` category, `+0.18` manual tags, …) that **does not use the image vector**. Migration discipline:
+- **Normalize every signal to [0,1]** before weighting — raw cosine and tag-overlap counts are not on the same scale; a naive sum is dominated by whichever signal has the largest range.
+- **Weights are a starting hypothesis, tuned against the D2 golden set (§9)** — not fixed constants. Report the tuned weights with the result.
+- Keep the existing **explainable match reasons** output.
+
+**Profile B — NL Search (UC-4.5, text-anchored).** There is **no source image**, so the 0.45 image term is **N/A**. Re-weight to: `semantic_similarity + lexical(RRF) + category/keyword match + recency + light performance_score`, applied in Stage 2 of §5.3. Image-vector search is only used here when the router explicitly does cross-modal text→`image` retrieval (`voyage-multimodal-3.5`).
+
+**Why a weighted sum over pure vector search:** control. A food-promo selection must not surface a random event photo just because the dominant colors are visually close — category/use-case and tag terms keep meaning in the loop. (See §4 "What to avoid": only-tags, only-Claude-metadata, and only-image-vector each fail in isolation.)
 
 ---
 
@@ -303,7 +362,7 @@ Every `Target:` in §4 is only defensible if it is measured against a fixed, pre
 | 4.2/4.3 | ≥70% find groupings useful; ≥80% assets carry a human tag | survey % ; `COUNT(assets with ≥1 manual/edited tag) / COUNT(assets)` | D3 |
 | 4.4 | ≥90% **precision and recall** on exact+near dup | precision = TP/(TP+FP), recall = TP/(TP+FN) over D1 at the chosen Hamming threshold; report the precision-recall curve across thresholds (start ≤6) | D1 |
 | 4.5 | relevant result in **top-3 for ≥70%** of queries | Recall@3 = (queries with ≥1 relevant in top 3) / 20; also report MRR and Recall@8 | D2 |
-| 4.6 | instrument all 4 AI surfaces; report precision/acceptance | per surface: acceptance = `applied / (applied+dismissed)`; thumbs = `up/(up+down)` | `ai_interaction_log` (post-V28 schema) |
+| 4.6 | instrument all 4 AI surfaces; report precision/acceptance | per surface: acceptance = `applied / (applied+dismissed)`; thumbs = `up/(up+down)` | `ai_interaction_log` (post-V29 schema) |
 | 4.7 | maintain ≥60% caption acceptance with >4 images | acceptance on the >4-image subset vs. baseline | D4 |
 | 4.8 | metrics for ≥95% of published posts refreshed in-window | `COUNT(posts with a metrics row newer than window) / COUNT(published posts with platform_post_id)` | `facebook_post_metrics` join `submissions` |
 | 4.9 | boosted assets rise in rank; score shrinkage-stable | A/B the same query with/without `performance_score`; show rank delta; plot score vs. sample size to show shrinkage damps low-n volatility | seeded library + `AssetPerformanceJob` output |
@@ -342,7 +401,7 @@ A single results table: dataset version, the §4 target, the measured number, an
 |---|---|---|
 | Persistent identity | ✅ | `asset_code` `VARCHAR(50) UNIQUE`, generated + collision-checked (`generateAssetCode()`) |
 | Descriptive metadata (AI) | ✅ | `ai_category`, `ai_description`, `ai_tags[]`, `asset_type`, `visible_objects[]`, `specific_subjects[]`, `visual_style[]`, `dominant_colors[]`, `possible_use_cases[]`, `ai_confidence` |
-| Descriptive metadata (manual) | 🟡 | Manual **tags** only (`asset_tags`, `source` manual/ai). No human-confirmable **title** (no `title` column); no editable description/category |
+| Descriptive metadata (manual) | 🟡 | Manual **tags** exist (`asset_tags`, `source` manual/ai). Phase 2 foundation adds human-confirmable `title`; editable description/category UI remains pending |
 | Technical / administrative metadata | ✅ | `file_type`, `file_size_bytes`, `storage_url`, `uploader_id`, `institution_id`, `created_at` |
 | Discoverability (semantic) | ✅ | `media_asset_embeddings` dual image/semantic 1024-dim, pgvector HNSW, AI suggestions; trigram filename/code search (V16) |
 | Discoverability (NL / temporal / hybrid) | 🟡 | UC-4.5 — tsvector lexical + RRF + Claude temporal parse all unbuilt |
@@ -350,9 +409,9 @@ A single results table: dataset version, the §4 target, the measured number, an
 | Preservation / disposal | ✅ | soft-delete (`deleted_at`, `deleted_by_user_id`), retention purge (`purged_at`, `MediaAssetRetentionService`, `MediaAssetRetentionPurgeJob`, 30-day) |
 | AI provenance | ✅ | `ai_classified_at`, `ai_classification_model`, `embedding_generated_at`, `embedding_model`, `reclassified_at`, `asset_tags.source` |
 | Tenant governance (RLS) | ✅ | RLS on `media_assets`, `asset_tags`, `media_asset_embeddings`, institution-scoped |
-| Curation review (human-confirmed) | 🟡 | UC-4.3 — no `curated_at`, no "human reviewed" flag, no title/description edit. Today: add/remove tags only |
-| Organization (folders / albums / batches) | 🟡 | UC-4.1/4.2 — no `folder_id`, `media_folders`, `import_batch_id`. Library is a flat list |
-| Quality / duplicate management | 🟡 | UC-4.4 — no `perceptual_hash`, `blur_score`, `duplicate_of_id` |
+| Curation review (human-confirmed) | 🟡 | UC-4.3 — Phase 2 foundation adds `curated_at` and `title`; review/edit UI and confirmation workflow remain pending |
+| Organization (folders / albums / batches) | ✅ | UC-4.1/4.2 foundation — folders, albums/collections, `folder_id`, `media_import_batches`, and upload-time `import_batch_id` wiring exist; AI grouping into suggested albums remains Phase 2 work |
+| Quality / duplicate management | 🟡 | UC-4.4 — Phase 2 foundation adds `perceptual_hash`, `blur_score`, `duplicate_of_id`; deterministic computation now runs in the ingestion queue; D1 threshold tuning and duplicate review UI remain pending |
 | Rights / consent governance | 🟡 | UC-4.x — no `visibility` (internal_only/cleared_for_public), no `safety_verdict`. **Highest-value gap for a government system holding minors' photos** |
 | **Media audit trail** | 🟡 | **Now scoped as UC-4.11.** `AuditLogService` is **not yet** called by `MediaAssetService`/`MediaAssetRetentionService`; UC-4.11 wires it into upload/edit/tag/delete/restore/purge/visibility/reclassify. Reuses existing `AuditLog`, no new table |
 | **Versioning / lineage** | 🔴 | No version chain or derived-asset lineage (e.g., collage → child asset). Not planned — decide whether to scope a lightweight lineage story |
@@ -366,7 +425,8 @@ The system already sits well past plain storage (persistent IDs, rich AI metadat
 2. **Media events in the audit log** (🟡 now UC-4.11) — wire `AuditLogService` into upload/delete/purge/tag/reclassify. Low effort, closes the provenance gap, reuses existing infrastructure.
 3. **Human-confirmable `title` + `curated_at` flag** (🟡 UC-4.3) — lets the repository show *human-reviewed* metadata, not just AI guesses; directly supports the UC-4.3 ≥80% curated-tag target.
 
-Optional defense polish (low/no code): name the feature "Digital Media Repository" in the UI, and state the Dublin Core mapping (`title`/`creator`/`date`/`subject`/`rights` ↔ `title`/`uploader`/`created_at`/`ai_tags`/`visibility`).
+Optional defense polish (low/no code): describe the **Media Library** as the user-facing
+digital media repository, and state the Dublin Core mapping (`title`/`creator`/`date`/`subject`/`rights` ↔ `title`/`uploader`/`created_at`/`ai_tags`/`visibility`).
 
 ---
 

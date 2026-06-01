@@ -40,3 +40,11 @@ Model **two distinct concepts**:
 - Two structures to build (folder CRUD + album CRUD) instead of one — accepted; both are
   simple and serve genuinely different jobs.
 - `suggested_album_id` from scope §5.1 is dropped in favor of the junction + `source` flag.
+
+## UI language follow-up
+- Backend/API/schema terms stay **folders** and **albums** to preserve the accepted model.
+- The frontend uses **Media Library** for the main feature and **Collections** for
+  user-facing albums. This reduces first-time-user confusion while keeping albums as the
+  many-to-many curation model internally.
+- The UI should show folders as **Storage folders** and albums as **Collections**, especially
+  in the organization rail and media actions.
