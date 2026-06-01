@@ -1,7 +1,21 @@
 pair_id,asset_a_code,asset_b_code,label,hamming_distance,notes
 # label = exact | near | distinct_same_event | unrelated
-# hamming_distance = leave blank until pHash computed; fill during threshold tuning
-# include hard negatives (distinct_same_event) to prove pHash != embeddings
-1,,,,,
-2,,,,,
-3,,,,,
+# AI-INSPECTED labels (2026-06-02) — VERIFY before defense. Source = dev-library product
+# graphics + stock photos, NOT a real event dump; "distinct_same_event" here = same studio
+# composition, different subject (the hard negative that proves pHash != embeddings).
+# hamming_distance left blank — computed by DuplicateThresholdTuningD1Test.
+1,ASSET-55AA5B5A,ASSET-64E872B0,exact,,identical choc-chip cookie re-upload (byte-identical)
+2,ASSET-55AA5B5A,ASSET-D4C1CC6B,distinct_same_event,,different cookie / same overhead studio composition
+3,ASSET-55AA5B5A,ASSET-084044D8,distinct_same_event,,different cookie / same composition
+4,ASSET-64E872B0,ASSET-D4C1CC6B,distinct_same_event,,
+5,ASSET-64E872B0,ASSET-084044D8,distinct_same_event,,
+6,ASSET-D4C1CC6B,ASSET-084044D8,distinct_same_event,,
+7,ASSET-55AA5B5A,ASSET-6498B163,unrelated,,cookie vs kids soccer
+8,ASSET-55AA5B5A,ASSET-4DE95CFA,unrelated,,
+9,ASSET-64E872B0,ASSET-6498B163,unrelated,,
+10,ASSET-64E872B0,ASSET-4DE95CFA,unrelated,,
+11,ASSET-D4C1CC6B,ASSET-6498B163,unrelated,,
+12,ASSET-D4C1CC6B,ASSET-4DE95CFA,unrelated,,
+13,ASSET-084044D8,ASSET-6498B163,unrelated,,
+14,ASSET-084044D8,ASSET-4DE95CFA,unrelated,,
+15,ASSET-6498B163,ASSET-4DE95CFA,unrelated,,both soccer / different scenes

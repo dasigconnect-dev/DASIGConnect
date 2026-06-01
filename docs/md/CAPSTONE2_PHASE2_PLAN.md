@@ -80,10 +80,14 @@ Turn a bulk upload into a managed import batch:
   naming, category fallback). `MediaAlbumService.clusterAssets`/`similarityClusters` +
   `ClaudeVisionClient.suggestAlbumName`. Remaining: tune the 0.82 cosine threshold against a
   labelled grouping set for the ≥70%-useful (D3) target.
-- 🟡 **Duplicate threshold (Hamming ≤6) is un-tuned — harness ready.** `DuplicateThresholdTuningD1Test`
-  (gated `-Dtune.d1=true`, real Supabase, self-skipping) fetches each pair's image, computes the
-  production dHash + Hamming, sweeps the threshold, and writes the precision/recall curve to
-  `docs/eval/D1_tuning_results.md`. **Blocked only on labelling D1** (real event-dump image pairs +
-  exact/near/distinct_same_event/unrelated labels) — eval §9.1 forbids inventing pairs to fake a number.
+- 🟡 **Duplicate threshold (Hamming ≤6) — PRELIMINARY tuning done; needs a real dataset before changing.**
+  `DuplicateCandidateMiningD1Test` mined **266 real candidate pairs from 83 dev-library images**; 15 were
+  AI-inspected (`docs/eval/D1_duplicate_pairs.csv`) and `DuplicateThresholdTuningD1Test` produced the curve
+  (`docs/eval/D1_tuning_results.md`): **best F1 = 1.0 at Hamming ≤1; precision collapses to 0.20 at the
+  current ≤6** because same-composition studio shots (different cookies) sit at Hamming 2–5 — a genuine
+  pHash precision limit. ⚠️ **Do NOT change `DUPLICATE_HAMMING_THRESHOLD` off this**: n = 1 true duplicate
+  and the dev library is product graphics + stock, not a real event dump. Rebuild D1 from a real ≥50-pair
+  event set (multiple true dupes + real distinct_same_event negatives), re-run, then set the threshold.
+  Labels in D1 are AI-inspected — verify before defense.
 - ✅ **Blur analysis is resolution-capped** (`MAX_BLUR_ANALYSIS_DIM = 512`) so the Laplacian pass
   cannot OOM on large photos during the 200-asset dump.
