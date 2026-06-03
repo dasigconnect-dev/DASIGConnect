@@ -51,6 +51,17 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
         return findTopSimilarWithScore(institutionId, type.dbValue(), queryVectorJson, limit);
     }
 
+    default List<Object[]> findTopSimilarWithScoreScoped(UUID institutionId,
+                                                         boolean networkScope,
+                                                         MediaAssetEmbeddingType type,
+                                                         String queryVectorJson,
+                                                         String mediaType,
+                                                         int limit) {
+        UUID boundInstitutionId = institutionId == null ? new UUID(0L, 0L) : institutionId;
+        return findTopSimilarWithScoreScoped(boundInstitutionId, networkScope, type.dbValue(),
+                queryVectorJson, mediaType, limit);
+    }
+
     @Query(value = """
         SELECT CAST(mae.asset_id AS text), 1 - (mae.embedding <=> CAST(:queryVector AS vector)) AS score
         FROM media_asset_embeddings mae
@@ -66,6 +77,29 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
                                            @Param("embeddingType") String embeddingType,
                                            @Param("queryVector") String queryVectorJson,
                                            @Param("limit") int limit);
+
+    @Query(value = """
+        SELECT CAST(mae.asset_id AS text), 1 - (mae.embedding <=> CAST(:queryVector AS vector)) AS score
+        FROM media_asset_embeddings mae
+        JOIN media_assets ma ON ma.id = mae.asset_id
+        WHERE (:networkScope = TRUE OR ma.institution_id = :institutionId)
+          AND ma.deleted_at IS NULL
+          AND ma.status = 'READY'
+          AND mae.embedding_type = :embeddingType
+          AND (
+              CAST(:mediaType AS text) IS NULL
+              OR (CAST(:mediaType AS text) = 'image' AND ma.file_type IN ('jpeg', 'png', 'webp', 'gif'))
+              OR (CAST(:mediaType AS text) = 'video' AND ma.file_type IN ('mp4', 'mov', 'webm'))
+          )
+        ORDER BY mae.embedding <=> CAST(:queryVector AS vector)
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<Object[]> findTopSimilarWithScoreScoped(@Param("institutionId") UUID institutionId,
+                                                 @Param("networkScope") boolean networkScope,
+                                                 @Param("embeddingType") String embeddingType,
+                                                 @Param("queryVector") String queryVectorJson,
+                                                 @Param("mediaType") String mediaType,
+                                                 @Param("limit") int limit);
 
     @Modifying
     @Transactional

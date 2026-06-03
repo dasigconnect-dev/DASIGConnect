@@ -21,6 +21,7 @@ export interface AlbumAssetSummary {
   assetCode: string;
   storageUrl: string;
   fileName: string;
+  title?: string | null;
   fileType: string;
   fileSizeBytes: number;
   aiCategory?: string | null;
@@ -55,6 +56,26 @@ export interface GenerateSuggestedAlbumsResponse {
   albums: Album[];
 }
 
+export interface PromptCollectionSuggestionCandidate {
+  asset: AlbumAssetSummary;
+  score: number;
+  confidence: "high" | "medium" | "low";
+  matchReasons: string[];
+}
+
+export interface PromptCollectionSuggestionResponse {
+  prompt: string;
+  suggestedName: string;
+  totalCandidates: number;
+  candidates: PromptCollectionSuggestionCandidate[];
+}
+
+export interface PromptCollectionSuggestionRequest {
+  prompt: string;
+  institutionId?: string | null;
+  limit?: number;
+}
+
 export function listAlbums(institutionId?: string | null, signal?: AbortSignal) {
   return api
     .get<Album[]>("/media-albums", {
@@ -84,6 +105,16 @@ export function generateSuggestedAlbumsFromImportBatch(payload: GenerateSuggeste
       importBatchId: payload.importBatchId,
       institutionId: payload.institutionId ?? null,
       minGroupSize: payload.minGroupSize ?? 2,
+    })
+    .then((res) => res.data);
+}
+
+export function suggestCollectionFromPrompt(payload: PromptCollectionSuggestionRequest) {
+  return api
+    .post<PromptCollectionSuggestionResponse>("/media-albums/suggestions/prompt", {
+      prompt: payload.prompt,
+      institutionId: payload.institutionId ?? null,
+      limit: payload.limit ?? 30,
     })
     .then((res) => res.data);
 }

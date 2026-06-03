@@ -94,6 +94,12 @@ A **retrieve-then-rank** design (candidate generation → ranking), driven by a 
 - **Semantic / cross-modal** ("a person holding a glass discussing with students", "photos related to hackathon"). Embed the prompt with the model that matches the target space — `voyage-multimodal-3.5` (text input) to search `image` vectors, `voyage-4-lite` to search `semantic` vectors. **Never compare a `voyage-4-lite` text vector to multimodal `image` vectors** (different spaces). Retrieval is **hybrid**: Postgres lexical search **+** pgvector dense search, fused with **Reciprocal Rank Fusion** so exact keywords (asset codes, proper nouns) and paraphrase both work. **Note:** V16 provides only `pg_trgm` trigram GIN indexes on `file_name`/`asset_code` (substring ILIKE) — there is *no* `tsvector` column yet. The lexical stage is therefore **new V29+ work**: either add a `tsvector` generated column + GIN index over title/tags/description/`search_keywords` for ranked full-text (`ts_rank`), or extend the existing `pg_trgm` path. Do not assume tsvector already exists.
 - **Temporal / structured** ("photos uploaded last Monday 3–5 pm") → parsed in code where the pattern is clear (ISO dates, relative dates, `posted`/`unposted`, filetype, category words); **only genuinely complex multi-condition prompts** fall back to one Claude call that parses into `{ semantic_text, date_range, time_of_day, category, media_type, people_count, actions }`. Filters are applied with **over-fetch + post-filter** (retrieve a wide candidate set, then filter) to avoid pgvector's filtered-ANN recall collapse. Time-of-day is converted from Philippine local (UTC+8) to the UTC `created_at`.
 
+**Source check 2026-06-03:** external primary docs still support this architecture: Voyage
+multimodal embeddings for text/photo retrieval, PostgreSQL `tsvector`/`ts_rank` for lexical
+ranking, pgvector HNSW/cosine search for dense retrieval, and RRF for fusing incompatible
+rank lists. Implementation sequencing and citations are now captured in
+`CAPSTONE2_PHASE3_PLAN.md`.
+
 Target: relevant result in the top 3 for ≥70% of queries on a 20-query golden set (§9).
 
 ### AI
@@ -348,7 +354,7 @@ Every `Target:` in §4 is only defensible if it is measured against a fixed, pre
 | ID | Dataset | Size | Used by | How built |
 |----|---------|------|---------|-----------|
 | **D1** | Labeled duplicate-pair set | ≥50 image pairs, each labeled `exact` / `near` / `distinct-same-event` / `unrelated` | UC-4.4 | Hand-label from a real event dump; deliberately include hard negatives (different shots of the same scene) to prove pHash ≠ embeddings |
-| **D2** | Search golden set | 20 queries, each with a hand-marked relevant-asset list | UC-4.5 | Mix of semantic ("people at a hackathon"), keyword (asset code / proper noun), and temporal ("uploaded last Monday 3–5pm") queries over a fixed seeded library |
+| **D2** | Search golden set | 20 queries, each with a hand-marked relevant-asset list | UC-4.5 | Mix of semantic/cross-modal ("people at a hackathon"), keyword (asset code / proper noun), temporal ("uploaded last Monday 3–5pm"), and mixed queries over a fixed seeded library |
 | **D3** | Grouping-usefulness survey | ≥10 contributors, the 200-asset batch (D5) | UC-4.2, UC-4.3 | Show auto-suggested albums; record % who rate them "useful"; record % of assets that end up with a human-confirmed/edited tag |
 | **D4** | Caption acceptance log | rolling, from `ai_interaction_log` | UC-4.7 | Measured live: `action_taken='applied'` over total caption suggestions, on >4-image submissions |
 | **D5** | 200-asset load batch | exactly 200 assets | UC-4.2 (§5.2) | A single real-or-synthetic event dump used for the throughput + zero-dropped-connection run |

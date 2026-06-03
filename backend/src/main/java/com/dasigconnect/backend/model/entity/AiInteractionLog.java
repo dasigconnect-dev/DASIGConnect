@@ -11,7 +11,8 @@ public class AiInteractionLog {
     @Id
     private UUID id;
 
-    @Column(name = "submission_id", nullable = false)
+    // Nullable since UC-4.6: search feedback is not tied to a submission.
+    @Column(name = "submission_id")
     private UUID submissionId;
 
     @Column(name = "institution_id", nullable = false)
@@ -25,6 +26,19 @@ public class AiInteractionLog {
 
     @Column(name = "tone_selected", length = 30)
     private String toneSelected;
+
+    // UC-4.6 feedback target (e.g. the asset a search-result thumbs-up refers to).
+    @Column(name = "target_asset_id")
+    private UUID targetAssetId;
+
+    @Column(name = "result_rank")
+    private Integer resultRank;
+
+    @Column(name = "rating")
+    private Short rating;
+
+    @Column(name = "query_text")
+    private String queryText;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -46,5 +60,13 @@ public class AiInteractionLog {
     public void setActionTaken(String actionTaken) { this.actionTaken = actionTaken; }
     public String getToneSelected() { return toneSelected; }
     public void setToneSelected(String toneSelected) { this.toneSelected = toneSelected; }
+    public UUID getTargetAssetId() { return targetAssetId; }
+    public void setTargetAssetId(UUID targetAssetId) { this.targetAssetId = targetAssetId; }
+    public Integer getResultRank() { return resultRank; }
+    public void setResultRank(Integer resultRank) { this.resultRank = resultRank; }
+    public Short getRating() { return rating; }
+    public void setRating(Short rating) { this.rating = rating; }
+    public String getQueryText() { return queryText; }
+    public void setQueryText(String queryText) { this.queryText = queryText; }
     public Instant getCreatedAt() { return createdAt; }
 }

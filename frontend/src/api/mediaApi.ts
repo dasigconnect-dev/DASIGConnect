@@ -81,6 +81,9 @@ export interface MediaImportBatch {
   institutionId: string;
   uploadedBy: string;
   assetCount: number;
+  registeredAssetCount?: number;
+  readyAssetCount?: number;
+  curatedAssetCount?: number;
   createdAt: string;
 }
 
@@ -102,6 +105,7 @@ interface MediaAssetPageResponse {
     title?: string | null;
     importBatchId?: string | null;
     duplicateOfId?: string | null;
+    curatedAt?: string | null;
   }>;
   totalCount: number;
   page: number;
@@ -144,6 +148,7 @@ function rawToAsset(raw: MediaAssetPageResponse["items"][0]): MediaAsset {
     folderId: raw.folderId ?? null,
     importBatchId: raw.importBatchId ?? null,
     duplicateOfId: raw.duplicateOfId ?? null,
+    curatedAt: raw.curatedAt ?? null,
   };
 }
 
@@ -189,6 +194,114 @@ export async function searchMediaAssets(
   };
 }
 
+/* ===== UC-4.5 Hybrid (natural-language) search ===== */
+
+export interface MediaSearchHit {
+  asset: MediaAsset;
+  /** Fused relevance score (RRF + deterministic re-rank). */
+  score: number;
+  /** Human-readable reasons the asset matched, for UI transparency. */
+  matchReasons: string[];
+  lexicalRank: number | null;
+  semanticRank: number | null;
+  imageRank: number | null;
+}
+
+export interface MediaSearchResult {
+  query: string;
+  hits: MediaSearchHit[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  /** True when results are ordered chronologically (date-only browse), not by relevance. */
+  chronological: boolean;
+}
+
+export interface HybridSearchParams {
+  query: string;
+  networkView?: boolean;
+  institutionId?: string | null;
+  mediaType?: "image" | "video";
+  page?: number;
+  pageSize?: number;
+}
+
+interface MediaAssetSearchRawResponse {
+  query: string;
+  items: Array<{
+    asset: MediaAssetPageResponse["items"][0];
+    score: number;
+    lexicalRank?: number | null;
+    semanticRank?: number | null;
+    imageRank?: number | null;
+    matchReasons?: string[];
+  }>;
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  chronological?: boolean;
+}
+
+/**
+ * UC-4.5 hybrid search: lexical (tsvector) + semantic + cross-modal vectors fused
+ * with RRF and deterministically re-ranked on the backend. Returns ranked hits
+ * each carrying explainable match reasons. POST so the natural-language query is
+ * never logged in a URL or proxy.
+ */
+export async function hybridSearchMediaAssets(
+  params: HybridSearchParams,
+  signal?: AbortSignal,
+): Promise<MediaSearchResult> {
+  const body: Record<string, unknown> = { query: params.query };
+  if (params.networkView) body.scope = "network";
+  else if (params.institutionId) body.institutionId = params.institutionId;
+  if (params.mediaType) body.mediaType = params.mediaType;
+  if (params.page) body.page = params.page;
+  if (params.pageSize) body.pageSize = params.pageSize;
+
+  const res = await api.post<MediaAssetSearchRawResponse>("/media-assets/search", body, { signal });
+  return {
+    query: res.data.query,
+    hits: (res.data.items ?? []).map((it) => ({
+      asset: rawToAsset(it.asset),
+      score: it.score,
+      matchReasons: it.matchReasons ?? [],
+      lexicalRank: it.lexicalRank ?? null,
+      semanticRank: it.semanticRank ?? null,
+      imageRank: it.imageRank ?? null,
+    })),
+    totalCount: res.data.totalCount ?? 0,
+    page: res.data.page ?? 1,
+    pageSize: res.data.pageSize ?? 24,
+    chronological: res.data.chronological ?? false,
+  };
+}
+
+/* ===== UC-4.6 search feedback ===== */
+
+export type SearchFeedbackAction =
+  | "thumbs_up"
+  | "thumbs_down"
+  | "selected"
+  | "applied"
+  | "dismissed";
+
+/**
+ * Records feedback on a media-search result (UC-4.6). Best-effort by design — a logging
+ * failure must never disrupt the user's search experience, so errors are swallowed.
+ */
+export function recordSearchFeedback(input: {
+  assetId: string;
+  action: SearchFeedbackAction;
+  query?: string;
+  rank?: number;
+}): Promise<void> {
+  return api
+    .post<void>("/ai/feedback/search", input)
+    .then(() => undefined)
+    .catch(() => undefined);
+}
+
 export interface MediaAssetDetailResponse {
   id: string;
   assetCode: string;
@@ -220,6 +333,12 @@ export interface MediaAssetDetailResponse {
     deepLink?: string;
   }>;
   tags?: Array<{ id: string; label: string }>;
+}
+
+export interface MediaAssetCurationEdit {
+  assetId: string;
+  title: string;
+  tags: string[];
 }
 
 function mapDetailToAsset(raw: MediaAssetDetailResponse): MediaAsset {
@@ -318,6 +437,14 @@ export function createMediaImportBatch(payload: MediaImportBatchRequest) {
   return api.post<MediaImportBatch>("/media-assets/import-batches", payload);
 }
 
+export function listMediaImportBatches(institutionId?: string | null) {
+  return api
+    .get<MediaImportBatch[]>("/media-assets/import-batches", {
+      params: institutionId ? { institutionId } : undefined,
+    })
+    .then((res) => res.data);
+}
+
 export function listImportBatchAssets(importBatchId: string, institutionId?: string | null) {
   return api
     .get<MediaAssetDetailResponse[]>(`/media-assets/import-batches/${importBatchId}/assets`, {
@@ -326,11 +453,15 @@ export function listImportBatchAssets(importBatchId: string, institutionId?: str
     .then((res) => res.data);
 }
 
-export function markImportBatchCurated(importBatchId: string, institutionId?: string | null) {
+export function markImportBatchCurated(
+  importBatchId: string,
+  institutionId?: string | null,
+  edits?: MediaAssetCurationEdit[],
+) {
   return api
     .post<{ curatedCount: number }>(
       `/media-assets/import-batches/${importBatchId}/curate`,
-      null,
+      edits ? { edits } : null,
       { params: institutionId ? { institutionId } : undefined },
     )
     .then((res) => res.data);

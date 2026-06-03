@@ -6,6 +6,9 @@ import com.dasigconnect.backend.model.dto.media.AlbumCreateRequestDto;
 import com.dasigconnect.backend.model.dto.media.AlbumDetailDto;
 import com.dasigconnect.backend.model.dto.media.AlbumGenerateSuggestionsRequestDto;
 import com.dasigconnect.backend.model.dto.media.AlbumGenerateSuggestionsResponseDto;
+import com.dasigconnect.backend.model.dto.media.AlbumPromptSuggestionAssetDto;
+import com.dasigconnect.backend.model.dto.media.AlbumPromptSuggestionRequestDto;
+import com.dasigconnect.backend.model.dto.media.AlbumPromptSuggestionResponseDto;
 import com.dasigconnect.backend.model.dto.media.AlbumResponseDto;
 import com.dasigconnect.backend.model.dto.media.AlbumSetCoverRequestDto;
 import com.dasigconnect.backend.model.dto.media.AlbumUpdateRequestDto;
@@ -29,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -150,6 +154,41 @@ public class MediaAlbumService {
         }
 
         return new AlbumGenerateSuggestionsResponseDto(dto.getImportBatchId(), clusters.size(), createdAlbums);
+    }
+
+    @Transactional(readOnly = true)
+    public AlbumPromptSuggestionResponseDto suggestFromPrompt(AlbumPromptSuggestionRequestDto dto,
+                                                              JwtUserDetails user) {
+        UUID institutionId = resolveTargetInstitution(user, dto.getInstitutionId());
+        String prompt = dto.getPrompt() == null ? "" : dto.getPrompt().trim();
+        if (prompt.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Prompt is required.");
+        }
+
+        List<String> promptTokens = promptTokens(prompt);
+        int limit = dto.getLimit() == null ? 30 : Math.max(1, Math.min(60, dto.getLimit()));
+        List<PromptCandidate> scored = mediaAssetRepository.findActiveByInstitution(institutionId).stream()
+                .map(asset -> scorePromptCandidate(asset, prompt, promptTokens))
+                .filter(candidate -> candidate.score() > 0)
+                .sorted(Comparator.comparingDouble(PromptCandidate::score).reversed()
+                        .thenComparing(candidate -> candidate.asset().getCreatedAt(),
+                                Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
+
+        List<AlbumPromptSuggestionAssetDto> candidates = scored.stream()
+                .limit(limit)
+                .map(candidate -> AlbumPromptSuggestionAssetDto.from(
+                        candidate.asset(),
+                        roundScore(candidate.score()),
+                        confidence(candidate.score()),
+                        candidate.reasons()))
+                .toList();
+
+        return new AlbumPromptSuggestionResponseDto(
+                prompt,
+                suggestedPromptAlbumName(prompt),
+                scored.size(),
+                candidates);
     }
 
     @Transactional
@@ -313,6 +352,100 @@ public class MediaAlbumService {
             return asset.getFileType().isImage() ? "Photos" : "Videos";
         }
         return "Media";
+    }
+
+    private PromptCandidate scorePromptCandidate(MediaAsset asset, String prompt, List<String> tokens) {
+        double score = 0.0;
+        List<String> reasons = new ArrayList<>();
+        String normalizedPrompt = normalize(prompt);
+
+        score += scoreText(asset.getTitle(), tokens, normalizedPrompt, 5.0, "Title match", reasons);
+        score += scoreText(asset.getAiDescription(), tokens, normalizedPrompt, 4.0, "Description match", reasons);
+        score += scoreText(asset.getAiCategory(), tokens, normalizedPrompt, 3.0, "Category match", reasons);
+        score += scoreText(asset.getAssetType(), tokens, normalizedPrompt, 3.0, "Asset type match", reasons);
+        score += scoreArray(asset.getAiTags(), tokens, normalizedPrompt, 4.0, "AI tags", reasons);
+        score += scoreArray(asset.getSpecificSubjects(), tokens, normalizedPrompt, 3.5, "Subjects", reasons);
+        score += scoreArray(asset.getVisibleObjects(), tokens, normalizedPrompt, 3.0, "Objects", reasons);
+        score += scoreArray(asset.getPossibleUseCases(), tokens, normalizedPrompt, 2.5, "Use cases", reasons);
+        score += scoreText(asset.getFileName(), tokens, normalizedPrompt, 1.5, "Filename match", reasons);
+
+        return new PromptCandidate(asset, score, reasons.stream().distinct().limit(4).toList());
+    }
+
+    private double scoreText(String value, List<String> tokens, String normalizedPrompt, double weight,
+                             String reason, List<String> reasons) {
+        String normalized = normalize(value);
+        if (normalized.isBlank()) {
+            return 0.0;
+        }
+        double score = 0.0;
+        if (!normalizedPrompt.isBlank() && normalized.contains(normalizedPrompt)) {
+            score += weight * 1.5;
+        }
+        long matches = tokens.stream().filter(normalized::contains).count();
+        if (matches > 0) {
+            score += matches * weight;
+            reasons.add(reason);
+        }
+        return score;
+    }
+
+    private double scoreArray(String[] values, List<String> tokens, String normalizedPrompt, double weight,
+                              String reason, List<String> reasons) {
+        if (values == null || values.length == 0) {
+            return 0.0;
+        }
+        String joined = java.util.Arrays.stream(values)
+                .filter(Objects::nonNull)
+                .collect(Collectors.joining(" "));
+        return scoreText(joined, tokens, normalizedPrompt, weight, reason, reasons);
+    }
+
+    private List<String> promptTokens(String prompt) {
+        Set<String> stopWords = Set.of(
+                "a", "an", "and", "are", "at", "by", "find", "for", "from", "image", "images",
+                "in", "into", "me", "media", "of", "on", "or", "photo", "photos", "picture",
+                "pictures", "show", "the", "to", "video", "videos", "with");
+        return java.util.Arrays.stream(normalize(prompt).split("\\s+"))
+                .filter(token -> token.length() >= 2)
+                .filter(token -> !stopWords.contains(token))
+                .distinct()
+                .toList();
+    }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", " ")
+                .trim()
+                .replaceAll("\\s+", " ");
+    }
+
+    private String confidence(double score) {
+        if (score >= 14.0) {
+            return "high";
+        }
+        if (score >= 7.0) {
+            return "medium";
+        }
+        return "low";
+    }
+
+    private double roundScore(double score) {
+        return Math.round(score * 100.0) / 100.0;
+    }
+
+    private String suggestedPromptAlbumName(String prompt) {
+        List<String> words = promptTokens(prompt).stream().limit(5).toList();
+        if (words.isEmpty()) {
+            return "Prompt Collection";
+        }
+        String title = words.stream()
+                .map(word -> word.substring(0, 1).toUpperCase(Locale.ROOT) + word.substring(1))
+                .collect(Collectors.joining(" "));
+        return title + " Collection";
     }
 
     /**
@@ -492,4 +625,6 @@ public class MediaAlbumService {
     private void audit(User actor, String action, UUID resourceId, Map<String, ?> metadata) {
         auditLogService.record(actor, action, null, null, resourceId, metadata);
     }
+
+    private record PromptCandidate(MediaAsset asset, double score, List<String> reasons) {}
 }

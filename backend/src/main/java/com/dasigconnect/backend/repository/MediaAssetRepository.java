@@ -110,6 +110,15 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     @Query("""
         SELECT m FROM MediaAsset m
+        JOIN FETCH m.institution
+        JOIN FETCH m.uploader
+        WHERE m.id IN :ids
+          AND m.deletedAt IS NULL
+        """)
+    List<MediaAsset> findActiveByIdsWithInstitutionAndUploader(@Param("ids") List<UUID> ids);
+
+    @Query("""
+        SELECT m FROM MediaAsset m
         WHERE m.importBatchId = :importBatchId
           AND m.institution.id = :institutionId
           AND m.deletedAt IS NULL

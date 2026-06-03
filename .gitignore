@@ -13,3 +13,9 @@ target/
 # Generated document extraction outputs
 docs/pdf/*_text.txt
 
+# Local dev run logs / scratch API responses
+backend-run.log
+/login.json
+/lib.json
+/resp.json
+

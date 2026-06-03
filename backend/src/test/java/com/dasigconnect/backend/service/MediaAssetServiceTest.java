@@ -22,8 +22,10 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetCurationEditDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaBatchCurationRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaImportBatchCreateRequestDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAsset;
@@ -202,6 +204,28 @@ class MediaAssetServiceTest {
     }
 
     @Test
+    void listImportBatches_returnsRecentBatchesWithCounts() {
+        UUID institutionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID batchId = UUID.randomUUID();
+        MediaImportBatch batch = importBatch(batchId, institutionId, userId, 3);
+        MediaAsset readyCurated = asset(UUID.randomUUID(), institutionId, userId);
+        readyCurated.setStatus(com.dasigconnect.backend.model.entity.MediaAssetStatus.READY);
+        readyCurated.setCuratedAt(java.time.Instant.now());
+        MediaAsset processing = asset(UUID.randomUUID(), institutionId, userId);
+        processing.setStatus(com.dasigconnect.backend.model.entity.MediaAssetStatus.PROCESSING);
+        when(mediaImportBatchRepository.findByInstitution(institutionId)).thenReturn(List.of(batch));
+        when(mediaAssetRepository.findActiveByImportBatch(batchId, institutionId)).thenReturn(List.of(readyCurated, processing));
+
+        var response = mediaAssetService.listImportBatches(null, user(userId, "contributor", institutionId));
+
+        org.junit.jupiter.api.Assertions.assertEquals(1, response.size());
+        org.junit.jupiter.api.Assertions.assertEquals(2, response.get(0).getRegisteredAssetCount());
+        org.junit.jupiter.api.Assertions.assertEquals(1, response.get(0).getReadyAssetCount());
+        org.junit.jupiter.api.Assertions.assertEquals(1, response.get(0).getCuratedAssetCount());
+    }
+
+    @Test
     void upload_withImportBatch_setsImportBatchId() {
         UUID institutionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -277,6 +301,55 @@ class MediaAssetServiceTest {
         org.junit.jupiter.api.Assertions.assertEquals("event photo", asset.getTitle());
         org.junit.jupiter.api.Assertions.assertNotNull(asset.getCuratedAt());
         verify(mediaAssetRepository).saveAll(List.of(asset));
+    }
+
+    @Test
+    void markImportBatchCurated_appliesTitleAndManualTagEdits() {
+        UUID institutionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID batchId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaImportBatch batch = importBatch(batchId, institutionId, userId, 1);
+        MediaAsset asset = asset(assetId, institutionId, userId);
+        asset.setFileName("event-photo.jpg");
+        when(mediaImportBatchRepository.findByIdAndInstitution(batchId, institutionId)).thenReturn(Optional.of(batch));
+        when(mediaAssetRepository.findActiveByImportBatch(batchId, institutionId)).thenReturn(List.of(asset));
+
+        MediaAssetCurationEditDto edit = new MediaAssetCurationEditDto();
+        edit.setAssetId(assetId);
+        edit.setTitle("  Research awarding  ");
+        edit.setTags(List.of(" students ", "award", "students", ""));
+        MediaBatchCurationRequestDto request = new MediaBatchCurationRequestDto();
+        request.setEdits(List.of(edit));
+
+        mediaAssetService.markImportBatchCurated(batchId, null, request, user(userId, "contributor", institutionId));
+
+        org.junit.jupiter.api.Assertions.assertEquals("Research awarding", asset.getTitle());
+        verify(assetTagRepository).deleteByMediaAssetId(assetId);
+        verify(assetTagRepository, org.mockito.Mockito.times(2)).save(any());
+        verify(mediaAssetRepository).saveAll(List.of(asset));
+    }
+
+    @Test
+    void markImportBatchCurated_editOutsideBatchReturns400() {
+        UUID institutionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID batchId = UUID.randomUUID();
+        MediaImportBatch batch = importBatch(batchId, institutionId, userId, 1);
+        MediaAsset asset = asset(UUID.randomUUID(), institutionId, userId);
+        when(mediaImportBatchRepository.findByIdAndInstitution(batchId, institutionId)).thenReturn(Optional.of(batch));
+        when(mediaAssetRepository.findActiveByImportBatch(batchId, institutionId)).thenReturn(List.of(asset));
+
+        MediaAssetCurationEditDto edit = new MediaAssetCurationEditDto();
+        edit.setAssetId(UUID.randomUUID());
+        edit.setTitle("Outside asset");
+        MediaBatchCurationRequestDto request = new MediaBatchCurationRequestDto();
+        request.setEdits(List.of(edit));
+
+        assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.markImportBatchCurated(batchId, null, request, user(userId, "contributor", institutionId)));
+
+        verify(mediaAssetRepository, never()).saveAll(any());
     }
 
     private static JwtUserDetails user(UUID userId, String role, UUID institutionId) {

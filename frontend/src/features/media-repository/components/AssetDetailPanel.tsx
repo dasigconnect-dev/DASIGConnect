@@ -21,6 +21,7 @@ interface AssetDetailPanelProps {
   onRequestDelete: () => void;
   canBulkDelete?: boolean;
   onRequestBulkDelete?: () => void;
+  renderMode?: "portal" | "inline";
 }
 
 const submissionStatusLabel: Record<string, string> = {
@@ -62,10 +63,16 @@ export default function AssetDetailPanel({
   onRequestDelete,
   canBulkDelete = false,
   onRequestBulkDelete,
+  renderMode = "portal",
 }: AssetDetailPanelProps) {
   const newPostCount = selectionMode ? selectedAssets.length : asset ? 1 : 0;
   const panel = (
-    <div className={`med-panel${open ? " open" : ""}`} role="dialog" aria-modal="true" aria-label="Asset Detail">
+    <div
+      className={`med-panel${open ? " open" : ""}${renderMode === "inline" ? " inline" : ""}`}
+      role={renderMode === "inline" ? "complementary" : "dialog"}
+      aria-modal={renderMode === "portal" ? "true" : undefined}
+      aria-label="Asset Detail"
+    >
       <div className="med-panel-header">
         <span className="med-panel-title">{selectionMode ? "Selected Assets" : "Asset Detail"}</span>
         <button className="med-panel-close" onClick={onClose} type="button" aria-label="Close panel">
@@ -323,7 +330,7 @@ export default function AssetDetailPanel({
     </div>
   );
 
-  return createPortal(panel, document.body);
+  return renderMode === "inline" ? panel : createPortal(panel, document.body);
 }
 
 function TrashIcon() {

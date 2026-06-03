@@ -18,6 +18,8 @@ import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.model.dto.media.AssetTagDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetSearchResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetSearchResultDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
 import com.dasigconnect.backend.model.dto.media.MediaBatchCurationResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaImportBatchResponseDto;
@@ -31,6 +33,7 @@ import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.MediaAssetService;
+import com.dasigconnect.backend.service.MediaAssetSearchService;
 import com.dasigconnect.backend.service.TenantScopeService;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -52,6 +55,9 @@ class MediaAssetControllerTest {
 
     @MockitoBean
     private MediaAssetService mediaAssetService;
+
+    @MockitoBean
+    private MediaAssetSearchService mediaAssetSearchService;
 
     @MockitoBean
     private JWTService jwtService;
@@ -113,6 +119,46 @@ class MediaAssetControllerTest {
                 eq(10),
                 any(),
                 any());
+    }
+
+    @Test
+    @WithMockUser
+    void search_authenticated_returnsRankedAssets() throws Exception {
+        MediaAsset asset = mediaAsset(UUID.randomUUID());
+        when(mediaAssetSearchService.search(any(), any()))
+                .thenReturn(new MediaAssetSearchResponseDto(
+                        "robotics",
+                        List.of(new MediaAssetSearchResultDto(
+                                MediaAssetSummaryDto.from(asset),
+                                0.82,
+                                1,
+                                0.82,
+                                List.of("Title match"))),
+                        1,
+                        1,
+                        24));
+
+        mockMvc.perform(post("/api/v1/media-assets/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"query":"robotics","page":1,"pageSize":24}
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.query").value("robotics"))
+                .andExpect(jsonPath("$.items[0].asset.id").value(asset.getId().toString()))
+                .andExpect(jsonPath("$.items[0].lexicalRank").value(1))
+                .andExpect(jsonPath("$.items[0].matchReasons[0]").value("Title match"));
+    }
+
+    @Test
+    @WithMockUser
+    void search_blankQuery_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/media-assets/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"query":""}
+                        """))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -186,6 +232,23 @@ class MediaAssetControllerTest {
 
     @Test
     @WithMockUser
+    void listImportBatches_authenticated_returnsBatches() throws Exception {
+        UUID batchId = UUID.randomUUID();
+        UUID institutionId = UUID.randomUUID();
+        MediaImportBatch batch = importBatch(batchId, institutionId, UUID.randomUUID(), 5);
+        when(mediaAssetService.listImportBatches(any(), any()))
+                .thenReturn(List.of(MediaImportBatchResponseDto.from(batch, 4, 3, 2)));
+
+        mockMvc.perform(get("/api/v1/media-assets/import-batches").param("institutionId", institutionId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(batchId.toString()))
+                .andExpect(jsonPath("$[0].registeredAssetCount").value(4))
+                .andExpect(jsonPath("$[0].readyAssetCount").value(3))
+                .andExpect(jsonPath("$[0].curatedAssetCount").value(2));
+    }
+
+    @Test
+    @WithMockUser
     void listImportBatchAssets_authenticated_returnsAssets() throws Exception {
         UUID batchId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
@@ -202,12 +265,31 @@ class MediaAssetControllerTest {
     @WithMockUser
     void markImportBatchCurated_authenticated_returnsCount() throws Exception {
         UUID batchId = UUID.randomUUID();
-        when(mediaAssetService.markImportBatchCurated(eq(batchId), any(), any()))
+        when(mediaAssetService.markImportBatchCurated(eq(batchId), any(), any(), any()))
                 .thenReturn(new MediaBatchCurationResponseDto(6));
 
         mockMvc.perform(post("/api/v1/media-assets/import-batches/{id}/curate", batchId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.curatedCount").value(6));
+    }
+
+    @Test
+    @WithMockUser
+    void markImportBatchCurated_withEdits_delegatesRequestBody() throws Exception {
+        UUID batchId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        when(mediaAssetService.markImportBatchCurated(eq(batchId), any(), any(), any()))
+                .thenReturn(new MediaBatchCurationResponseDto(1));
+
+        mockMvc.perform(post("/api/v1/media-assets/import-batches/{id}/curate", batchId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"edits":[{"assetId":"%s","title":"Edited title","tags":["award","students"]}]}
+                        """.formatted(assetId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.curatedCount").value(1));
+
+        verify(mediaAssetService).markImportBatchCurated(eq(batchId), any(), any(), any());
     }
 
     @Test

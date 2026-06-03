@@ -14,6 +14,7 @@ import com.dasigconnect.backend.external.ClaudeVisionClient;
 import com.dasigconnect.backend.model.dto.media.AlbumAddAssetsRequestDto;
 import com.dasigconnect.backend.model.dto.media.AlbumCreateRequestDto;
 import com.dasigconnect.backend.model.dto.media.AlbumGenerateSuggestionsRequestDto;
+import com.dasigconnect.backend.model.dto.media.AlbumPromptSuggestionRequestDto;
 import com.dasigconnect.backend.model.dto.media.AlbumResponseDto;
 import com.dasigconnect.backend.model.entity.AlbumAsset;
 import com.dasigconnect.backend.model.entity.Institution;
@@ -84,10 +85,19 @@ class MediaAlbumServiceTest {
     private MediaAsset assetInInstitution(UUID id, UUID instId) {
         Institution inst = new Institution();
         inst.setId(instId);
+        inst.setName("Institution");
+        User uploader = new User();
+        uploader.setId(UUID.randomUUID());
+        uploader.setEmail("uploader@x.edu");
         MediaAsset asset = new MediaAsset();
         asset.setId(id);
         asset.setInstitution(inst);
+        asset.setUploader(uploader);
+        asset.setAssetCode("ASSET-" + id.toString().substring(0, 8));
+        asset.setStorageUrl("https://example.test/" + id + ".jpg");
+        asset.setFileName(id + ".jpg");
         asset.setFileType(MediaFileType.jpeg);
+        asset.setFileSizeBytes(1024L);
         return asset;
     }
 
@@ -236,6 +246,33 @@ class MediaAlbumServiceTest {
 
         assertEquals(404, statusOf(ex));
         verify(albumRepository, never()).save(any());
+    }
+
+    @Test
+    void suggestFromPrompt_returnsRankedCandidatesWithoutCreatingAlbum() {
+        MediaAsset robotics = assetInInstitution(UUID.randomUUID(), institutionId);
+        robotics.setTitle("Robotics Seminar Speakers");
+        robotics.setAiDescription("Students listening to guest speakers during a robotics seminar.");
+        robotics.setAiTags(new String[] {"robotics", "seminar", "students"});
+
+        MediaAsset sports = assetInInstitution(UUID.randomUUID(), institutionId);
+        sports.setTitle("Sports Festival");
+        sports.setAiDescription("Outdoor games and team activities.");
+        sports.setAiTags(new String[] {"sports", "festival"});
+
+        when(mediaAssetRepository.findActiveByInstitution(institutionId)).thenReturn(List.of(sports, robotics));
+
+        AlbumPromptSuggestionRequestDto dto = new AlbumPromptSuggestionRequestDto();
+        dto.setPrompt("robotics seminar with students and speakers");
+
+        var response = service.suggestFromPrompt(dto, user);
+
+        assertEquals("Robotics Seminar Students Speakers Collection", response.getSuggestedName());
+        assertEquals(1, response.getTotalCandidates());
+        assertEquals(robotics.getId(), response.getCandidates().get(0).getAsset().getId());
+        assertEquals("high", response.getCandidates().get(0).getConfidence());
+        verify(albumRepository, never()).save(any());
+        verify(albumAssetRepository, never()).save(any());
     }
 
     @Test

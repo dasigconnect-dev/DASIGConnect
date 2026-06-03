@@ -3,8 +3,10 @@ package com.dasigconnect.backend.service;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -17,7 +19,9 @@ import com.dasigconnect.backend.model.dto.media.AssetTagDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetAddToDraftRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetCurationEditDto;
 import com.dasigconnect.backend.model.dto.media.MediaBatchCurationResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaBatchCurationRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
@@ -291,6 +295,24 @@ public class MediaAssetService {
     }
 
     @Transactional(readOnly = true)
+    public List<MediaImportBatchResponseDto> listImportBatches(UUID requestedInstitutionId, JwtUserDetails user) {
+        UUID institutionId = resolveTargetInstitution(user, requestedInstitutionId, "review import batches");
+        return mediaImportBatchRepository.findByInstitution(institutionId)
+                .stream()
+                .map(batch -> {
+                    List<MediaAsset> assets = mediaAssetRepository.findActiveByImportBatch(batch.getId(), institutionId);
+                    int readyCount = (int) assets.stream()
+                            .filter(asset -> asset.getStatus() == MediaAssetStatus.READY)
+                            .count();
+                    int curatedCount = (int) assets.stream()
+                            .filter(asset -> asset.getCuratedAt() != null)
+                            .count();
+                    return MediaImportBatchResponseDto.from(batch, assets.size(), readyCount, curatedCount);
+                })
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<MediaAssetDetailDto> listImportBatchAssets(UUID importBatchId, UUID requestedInstitutionId, JwtUserDetails user) {
         UUID institutionId = resolveTargetInstitution(user, requestedInstitutionId, "review import batches");
         mediaImportBatchRepository.findByIdAndInstitution(importBatchId, institutionId)
@@ -302,11 +324,16 @@ public class MediaAssetService {
                 .toList();
     }
 
-    public MediaBatchCurationResponseDto markImportBatchCurated(UUID importBatchId, UUID requestedInstitutionId, JwtUserDetails user) {
+    public MediaBatchCurationResponseDto markImportBatchCurated(
+            UUID importBatchId,
+            UUID requestedInstitutionId,
+            MediaBatchCurationRequestDto dto,
+            JwtUserDetails user) {
         UUID institutionId = resolveTargetInstitution(user, requestedInstitutionId, "curate import batches");
         mediaImportBatchRepository.findByIdAndInstitution(importBatchId, institutionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Import batch not found."));
         List<MediaAsset> assets = mediaAssetRepository.findActiveByImportBatch(importBatchId, institutionId);
+        applyCurationEdits(assets, dto);
         Instant curatedAt = Instant.now();
         for (MediaAsset asset : assets) {
             if (asset.getTitle() == null || asset.getTitle().isBlank()) {
@@ -316,6 +343,13 @@ public class MediaAssetService {
         }
         mediaAssetRepository.saveAll(assets);
         return new MediaBatchCurationResponseDto(assets.size());
+    }
+
+    public MediaBatchCurationResponseDto markImportBatchCurated(
+            UUID importBatchId,
+            UUID requestedInstitutionId,
+            JwtUserDetails user) {
+        return markImportBatchCurated(importBatchId, requestedInstitutionId, null, user);
     }
 
     public AssetTagDto addTag(UUID assetId, AddAssetTagRequestDto dto, JwtUserDetails user) {
@@ -406,6 +440,56 @@ public class MediaAssetService {
                 .stream()
                 .map(AssetTagDto::from)
                 .toList();
+    }
+
+    private void applyCurationEdits(List<MediaAsset> assets, MediaBatchCurationRequestDto dto) {
+        if (dto == null || dto.getEdits() == null || dto.getEdits().isEmpty()) {
+            return;
+        }
+
+        Map<UUID, MediaAsset> assetsById = new HashMap<>();
+        for (MediaAsset asset : assets) {
+            assetsById.put(asset.getId(), asset);
+        }
+
+        for (MediaAssetCurationEditDto edit : dto.getEdits()) {
+            MediaAsset asset = assetsById.get(edit.getAssetId());
+            if (asset == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Curation edit contains an asset outside this import batch.");
+            }
+            String title = trimToNull(edit.getTitle());
+            if (title != null) {
+                asset.setTitle(title);
+            }
+            if (edit.getTags() != null) {
+                replaceTagsWithManualCuration(asset, edit.getTags());
+            }
+        }
+    }
+
+    private void replaceTagsWithManualCuration(MediaAsset asset, List<String> tags) {
+        assetTagRepository.deleteByMediaAssetId(asset.getId());
+        tags.stream()
+                .map(this::trimToNull)
+                .filter(tag -> tag != null)
+                .distinct()
+                .limit(20)
+                .forEach(label -> {
+                    AssetTag tag = new AssetTag();
+                    tag.setMediaAsset(asset);
+                    tag.setLabel(label);
+                    tag.setSource("manual");
+                    assetTagRepository.save(tag);
+                });
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim().replaceAll("\\s+", " ");
+        return trimmed.isBlank() ? null : trimmed;
     }
 
     private String titleFromFileName(String fileName) {

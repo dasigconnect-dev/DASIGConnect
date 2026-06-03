@@ -22,6 +22,7 @@ public class MediaAssetSummaryDto {
     private UUID folderId;
     private UUID importBatchId;
     private UUID duplicateOfId;
+    private Instant curatedAt;
 
     public static MediaAssetSummaryDto from(MediaAsset asset) {
         MediaAssetSummaryDto dto = new MediaAssetSummaryDto();
@@ -41,6 +42,7 @@ public class MediaAssetSummaryDto {
         dto.folderId = asset.getFolderId();
         dto.importBatchId = asset.getImportBatchId();
         dto.duplicateOfId = asset.getDuplicateOfId();
+        dto.curatedAt = asset.getCuratedAt();
         return dto;
     }
 
@@ -60,4 +62,5 @@ public class MediaAssetSummaryDto {
     public UUID getFolderId() { return folderId; }
     public UUID getImportBatchId() { return importBatchId; }
     public UUID getDuplicateOfId() { return duplicateOfId; }
+    public Instant getCuratedAt() { return curatedAt; }
 }

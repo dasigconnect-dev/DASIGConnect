@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.model.dto.media.AlbumDetailDto;
 import com.dasigconnect.backend.model.dto.media.AlbumGenerateSuggestionsResponseDto;
+import com.dasigconnect.backend.model.dto.media.AlbumPromptSuggestionResponseDto;
 import com.dasigconnect.backend.model.dto.media.AlbumResponseDto;
 import com.dasigconnect.backend.model.entity.MediaAlbum;
 import com.dasigconnect.backend.service.JWTService;
@@ -105,6 +106,33 @@ class MediaAlbumControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.albumsCreated").value(1))
                 .andExpect(jsonPath("$.albums[0].source").value("ai_suggested"));
+    }
+
+    @Test
+    @WithMockUser
+    void suggestFromPrompt_authenticated_returns200() throws Exception {
+        when(mediaAlbumService.suggestFromPrompt(any(), any()))
+                .thenReturn(new AlbumPromptSuggestionResponseDto(
+                        "robotics seminar",
+                        "Robotics Seminar Collection",
+                        0,
+                        List.of()));
+
+        mockMvc.perform(post("/api/v1/media-albums/suggestions/prompt")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"prompt\":\"robotics seminar\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.suggestedName").value("Robotics Seminar Collection"))
+                .andExpect(jsonPath("$.candidates").isArray());
+    }
+
+    @Test
+    @WithMockUser
+    void suggestFromPrompt_blankPrompt_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/media-albums/suggestions/prompt")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"prompt\":\"\"}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

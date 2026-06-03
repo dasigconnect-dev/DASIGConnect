@@ -5,6 +5,8 @@ import com.dasigconnect.backend.model.dto.media.AlbumCreateRequestDto;
 import com.dasigconnect.backend.model.dto.media.AlbumDetailDto;
 import com.dasigconnect.backend.model.dto.media.AlbumGenerateSuggestionsRequestDto;
 import com.dasigconnect.backend.model.dto.media.AlbumGenerateSuggestionsResponseDto;
+import com.dasigconnect.backend.model.dto.media.AlbumPromptSuggestionRequestDto;
+import com.dasigconnect.backend.model.dto.media.AlbumPromptSuggestionResponseDto;
 import com.dasigconnect.backend.model.dto.media.AlbumResponseDto;
 import com.dasigconnect.backend.model.dto.media.AlbumSetCoverRequestDto;
 import com.dasigconnect.backend.model.dto.media.AlbumUpdateRequestDto;
@@ -67,6 +69,14 @@ public class MediaAlbumController {
             @Valid @RequestBody AlbumGenerateSuggestionsRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.status(201).body(mediaAlbumService.generateSuggestedFromImportBatch(dto, user));
+    }
+
+    @PostMapping("/suggestions/prompt")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<AlbumPromptSuggestionResponseDto> suggestFromPrompt(
+            @Valid @RequestBody AlbumPromptSuggestionRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaAlbumService.suggestFromPrompt(dto, user));
     }
 
     @PatchMapping("/{id}")

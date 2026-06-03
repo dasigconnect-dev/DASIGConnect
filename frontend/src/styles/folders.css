@@ -8,14 +8,36 @@
 .med-main { flex: 1; min-width: 0; }
 
 .fld-sidebar {
-  flex: 0 0 232px;
   position: sticky;
-  top: 16px;
+  top: var(--med-nav-h, 56px);
+  align-self: start;
+  height: calc(100vh - var(--med-nav-h, 56px));
+  min-height: calc(100vh - var(--med-nav-h, 56px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: #fff;
+  border-right: 1px solid #dde3ee;
+  border-radius: 0;
+  padding: 16px 14px;
+}
+
+.med-layout .fld-sidebar {
+  flex: 0 0 232px;
+  top: 16px;
+  height: auto;
+  max-height: none;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 12px;
 }
+
+.med-workspace > .fld-sidebar {
+  width: 100%;
+}
+
+.fld-sidebar::-webkit-scrollbar { width: 8px; }
+.fld-sidebar::-webkit-scrollbar-track { background: transparent; }
+.fld-sidebar::-webkit-scrollbar-thumb { background: #d1d9ec; border-radius: 4px; }
+.fld-sidebar::-webkit-scrollbar-thumb:hover { background: #b5c0d8; }
 .fld-head {
   display: flex;
   align-items: center;
@@ -154,7 +176,17 @@
 }
 .fld-move-btn:hover { background: #dbeafe; }
 
+@media (max-width: 1024px) {
+  .med-workspace > .fld-sidebar {
+    position: static;
+    height: auto;
+    min-height: 0;
+    border-right: 0;
+    border-bottom: 1px solid #dde3ee;
+  }
+}
+
 @media (max-width: 860px) {
   .med-layout { flex-direction: column; }
-  .fld-sidebar { position: static; width: 100%; flex-basis: auto; }
+  .fld-sidebar { position: static; width: 100%; flex-basis: auto; height: auto; border-right: 0; border-bottom: 1px solid #dde3ee; }
 }

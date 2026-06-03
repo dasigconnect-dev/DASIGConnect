@@ -12,7 +12,11 @@ interface FilterBarProps {
   viewMode: ViewMode;
   activeTags: Set<string>;
   tagChips: AiTagChip[];
+  searching: boolean;
+  searchActive: boolean;
   onSearchChange: (value: string) => void;
+  onSearchSubmit: () => void;
+  onSearchClear: () => void;
   onSortChange: (value: SortOption) => void;
   onViewModeChange: (mode: ViewMode) => void;
   onTagToggle: (tag: string) => void;
@@ -24,27 +28,65 @@ export default function FilterBar({
   viewMode,
   activeTags,
   tagChips,
+  searching,
+  searchActive,
   onSearchChange,
+  onSearchSubmit,
+  onSearchClear,
   onSortChange,
   onViewModeChange,
   onTagToggle,
 }: FilterBarProps) {
+  const showClear = searchActive || search.trim().length > 0;
   return (
     <div className="med-filter-bar">
       <div className="med-filter-row1">
-        <div className="med-search-wrap">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
+        <form
+          className={`med-search-wrap${searchActive ? " is-active" : ""}`}
+          role="search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSearchSubmit();
+          }}
+        >
+          <button
+            type="submit"
+            className="med-search-icon"
+            aria-label="Search media"
+            disabled={searching || search.trim().length === 0}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </button>
           <input
-            type="text"
+            type="search"
             className="med-search-input"
-            placeholder="Search filenames, tags, events, or uploaders..."
+            placeholder="Describe what you're looking for — e.g. students holding certificates"
+            aria-label="Search media by natural-language description"
             value={search}
+            enterKeyHint="search"
             onChange={(e) => onSearchChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && searchActive) onSearchClear();
+            }}
           />
-        </div>
+          {searching && <span className="med-search-spinner" role="status" aria-label="Searching" />}
+          {showClear && !searching && (
+            <button
+              type="button"
+              className="med-search-clear"
+              aria-label="Clear search"
+              onClick={onSearchClear}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
+        </form>
 
         <BrandedSelect
           className="med-sort-select"

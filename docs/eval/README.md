@@ -39,6 +39,15 @@ Surveys (D3, D6) are run live; record their results in a dated results file when
 ## How to fill D2 (search golden set)
 
 1. Seed a fixed library (record which seed/commit).
-2. Write 20 queries spread across `semantic`, `keyword`, and `temporal` types.
+2. Write 20 queries spread across `semantic`, `keyword`, `temporal`, and `mixed` types.
 3. For each, hand-mark the asset codes that are genuinely relevant.
 4. Report Recall@3 (primary), plus MRR and Recall@8.
+
+Suggested mix for Phase 3:
+
+- 8 semantic/cross-modal queries, e.g. "students presenting a robotics prototype".
+- 6 keyword/exact queries, e.g. asset code, event name, organization acronym, uploader name.
+- 4 temporal queries, e.g. "photos uploaded last Monday 3-5pm".
+- 2 mixed queries, e.g. "unposted awarding photos from last Monday with people holding certificates".
+
+Freeze D2 before tuning RRF weights or re-ranker boosts.

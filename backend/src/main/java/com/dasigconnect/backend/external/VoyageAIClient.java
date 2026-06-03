@@ -68,6 +68,10 @@ public class VoyageAIClient {
         return embedImage(imageBytes, mediaType, "query");
     }
 
+    public String embedMultimodalTextQuery(String text) {
+        return embedMultimodalText(text, "query");
+    }
+
     private String embedText(String text, String inputType) {
         if (apiKey == null || apiKey.isBlank()) {
             throw new VoyageApiException("Voyage AI API key is not configured.");
@@ -139,6 +143,41 @@ public class VoyageAIClient {
         return parseEmbedding(response.body());
     }
 
+    private String embedMultimodalText(String text, String inputType) {
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new VoyageApiException("Voyage AI API key is not configured.");
+        }
+        if (text == null || text.isBlank()) {
+            throw new VoyageApiException("Embedding text must not be blank.");
+        }
+
+        String payload = buildMultimodalTextPayload(text, inputType);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(MULTIMODAL_API_URL))
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(payload))
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> response;
+        try {
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (java.net.http.HttpTimeoutException e) {
+            throw new VoyageApiException("Voyage AI multimodal request timed out.");
+        } catch (Exception e) {
+            throw new VoyageApiException("Voyage AI multimodal request failed: " + e.getMessage());
+        }
+
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            log.warn("Voyage AI multimodal returned status {}: {}", response.statusCode(), response.body());
+            throw new VoyageApiException("Voyage AI multimodal error (HTTP " + response.statusCode() + ").");
+        }
+
+        return parseEmbedding(response.body());
+    }
+
     public String modelName() {
         return TEXT_MODEL;
     }
@@ -176,6 +215,29 @@ public class VoyageAIClient {
             image.put("image_base64", "data:" + mediaType + ";base64,"
                     + Base64.getEncoder().encodeToString(imageBytes));
             content.add(image);
+            input.set("content", content);
+            inputs.add(input);
+            root.set("inputs", inputs);
+
+            return objectMapper.writeValueAsString(root);
+        } catch (Exception e) {
+            throw new VoyageApiException("Failed to build Voyage AI multimodal payload: " + e.getMessage());
+        }
+    }
+
+    private String buildMultimodalTextPayload(String text, String inputType) {
+        try {
+            var root = objectMapper.createObjectNode();
+            root.put("model", MULTIMODAL_MODEL);
+            root.put("input_type", inputType);
+
+            var inputs = objectMapper.createArrayNode();
+            var input = objectMapper.createObjectNode();
+            var content = objectMapper.createArrayNode();
+            var textNode = objectMapper.createObjectNode();
+            textNode.put("type", "text");
+            textNode.put("text", text);
+            content.add(textNode);
             input.set("content", content);
             inputs.add(input);
             root.set("inputs", inputs);

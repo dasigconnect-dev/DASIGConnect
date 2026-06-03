@@ -21,15 +21,19 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetSearchRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetSearchResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUseInNewPostRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaBatchCurationRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaBatchCurationResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaImportBatchCreateRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaImportBatchResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
+import com.dasigconnect.backend.service.MediaAssetSearchService;
 import com.dasigconnect.backend.service.MediaAssetService;
 
 import jakarta.validation.Valid;
@@ -43,9 +47,12 @@ import jakarta.validation.Valid;
 public class MediaAssetController {
 
     private final MediaAssetService mediaAssetService;
+    private final MediaAssetSearchService mediaAssetSearchService;
 
-    public MediaAssetController(MediaAssetService mediaAssetService) {
+    public MediaAssetController(MediaAssetService mediaAssetService,
+                                MediaAssetSearchService mediaAssetSearchService) {
         this.mediaAssetService = mediaAssetService;
+        this.mediaAssetSearchService = mediaAssetSearchService;
     }
 
     @GetMapping
@@ -64,7 +71,15 @@ public class MediaAssetController {
         return ResponseEntity.ok(mediaAssetService.list(query, aiCategory, mediaType, uploaderId, institutionId, sort, page, pageSize, scope, user));
     }
 
-    @GetMapping("/{id}")
+    @PostMapping("/search")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MediaAssetSearchResponseDto> search(
+            @Valid @RequestBody MediaAssetSearchRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaAssetSearchService.search(dto, user));
+    }
+
+    @GetMapping("/{id:[0-9a-fA-F\\-]{36}}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<MediaAssetDetailDto> get(
             @PathVariable UUID id,
@@ -106,6 +121,14 @@ public class MediaAssetController {
         return ResponseEntity.status(201).body(mediaAssetService.createImportBatch(dto, user));
     }
 
+    @GetMapping("/import-batches")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<java.util.List<MediaImportBatchResponseDto>> listImportBatches(
+            @RequestParam(required = false) UUID institutionId,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaAssetService.listImportBatches(institutionId, user));
+    }
+
     @GetMapping("/import-batches/{id}/assets")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<java.util.List<MediaAssetDetailDto>> listImportBatchAssets(
@@ -120,8 +143,9 @@ public class MediaAssetController {
     public ResponseEntity<MediaBatchCurationResponseDto> markImportBatchCurated(
             @PathVariable UUID id,
             @RequestParam(required = false) UUID institutionId,
+            @Valid @RequestBody(required = false) MediaBatchCurationRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(mediaAssetService.markImportBatchCurated(id, institutionId, user));
+        return ResponseEntity.ok(mediaAssetService.markImportBatchCurated(id, institutionId, dto, user));
     }
 
     @PostMapping("/upload")

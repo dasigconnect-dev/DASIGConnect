@@ -46,6 +46,22 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
 | Phase 5 | Facebook insights sync + engagement analytics (UC-4.8) | **App-Review gated** |
 | Phase 6 | Engagement→media ranking (UC-4.9) + pre-submit advisor (UC-4.10) | — |
 
+### Current handoff - 2026-06-03
+
+- Phase 1 is user-tested and treated as good.
+- Phase 2 local implementation currently includes import-batch upload wiring, deterministic
+  quality/duplicate analysis, AI-suggested collections, and batch curation edit-before-confirm.
+- Latest fix: `Review batch` now opens recent upload batch groups first, then drills into the
+  selected batch's uploaded photos for title/tag review and confirmation.
+- Latest UX correction: the old Media Library "Generate AI Collections" auto-create path has
+  been replaced with a prompt-based AI Collection Builder. The user describes what they want,
+  reviews candidate assets, and creates the collection only after selecting assets.
+- Last verification: focused album backend tests passed (`MediaAlbumControllerTest`,
+  `MediaAlbumServiceTest`, 24 tests) and frontend `npm.cmd run build` passed.
+- Next development slice: Phase 3 natural-language/hybrid media search. Architecture is captured
+  in `CAPSTONE2_PHASE3_PLAN.md`: full-text + semantic vector + multimodal photo retrieval fused
+  with RRF, then deterministic re-ranking and feedback logging.
+
 ## 2. Standing — sanctioned advance development
 
 Capstone 1 is **presented and submitted**; its system is the frozen production deliverable.

@@ -722,22 +722,6 @@ function App() {
             }
           />
           <Route
-            path="/media-repository"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
-                <MediaRepositoryScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/media-albums"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
-                <AlbumsScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/notifications"
             element={
               <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
@@ -768,6 +752,22 @@ function App() {
           element={
             <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
               <SubmissionScreen user={currentUser!} />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/media-repository"
+          element={
+            <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <MediaRepositoryScreen user={currentUser!} />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/media-albums"
+          element={
+            <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <AlbumsScreen user={currentUser!} />
             </ProtectedRoute>
           }
         />

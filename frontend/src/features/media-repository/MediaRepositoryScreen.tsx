@@ -10,9 +10,13 @@ import {
   getMediaAsset,
   getMediaAssetUploadUrl,
   listImportBatchAssets,
+  listMediaImportBatches,
   markImportBatchCurated,
+  recordSearchFeedback,
   registerMediaAsset,
   type MediaAssetDetailResponse,
+  type MediaAssetCurationEdit,
+  type MediaImportBatch,
 } from "../../api/mediaApi";
 import {
   listFolders,
@@ -21,7 +25,6 @@ import {
   deleteFolder,
   type Folder,
 } from "../../api/folderApi";
-import { generateSuggestedAlbumsFromImportBatch } from "../../api/albumApi";
 import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
 import FolderSidebar, { type FolderFilterMode } from "./components/FolderSidebar";
 import {
@@ -32,6 +35,7 @@ import {
 import { useToast } from "../../context/ToastContext";
 import { usePersistentSelection } from "../../hooks/usePersistentSelection";
 import { useMediaAssets } from "./hooks/useMediaAssets";
+import { useMediaSearch } from "./hooks/useMediaSearch";
 import type { SortOption, ViewMode, DeleteTier } from "./types";
 import AssetCard from "./components/AssetCard";
 import FilterBar from "./components/FilterBar";
@@ -116,6 +120,50 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
 
+  // UC-4.5 natural-language hybrid search (server-side). Distinct from the
+  // browse list above: results are ranked by relevance with match reasons.
+  const mediaSearch = useMediaSearch();
+  const searchActive = mediaSearch.active;
+  // UC-4.6: per-result thumbs feedback, keyed by asset id; reset each new search.
+  const [searchFeedback, setSearchFeedback] = useState<Map<string, "up" | "down">>(new Map());
+
+  function runSmartSearch() {
+    const q = search.trim();
+    if (!q) {
+      mediaSearch.clear();
+      return;
+    }
+    if (!mediaScopeReady) {
+      toast.error("Select an institution or network scope before searching.");
+      return;
+    }
+    setSearchFeedback(new Map());
+    void mediaSearch.run({ query: q, networkView, institutionId: mediaInstitutionId });
+  }
+
+  function clearSmartSearch() {
+    setSearch("");
+    setSearchFeedback(new Map());
+    mediaSearch.clear();
+  }
+
+  function handleSearchFeedback(asset: MediaAsset, rank: number, action: "thumbs_up" | "thumbs_down") {
+    const dir = action === "thumbs_up" ? "up" : "down";
+    setSearchFeedback((prev) => {
+      const next = new Map(prev);
+      next.set(asset.id, dir);
+      return next;
+    });
+    void recordSearchFeedback({ assetId: asset.id, action, query: mediaSearch.activeQuery, rank });
+    toast.success("Thanks — your feedback improves future search.");
+  }
+
+  // UC-4.6: a result the user opens is an implicit "selected" signal.
+  function logSearchSelection(asset: MediaAsset, rank: number) {
+    if (!searchActive || checkedIds.has(asset.id)) return;
+    void recordSearchFeedback({ assetId: asset.id, action: "selected", query: mediaSearch.activeQuery, rank });
+  }
+
   const [folders, setFolders] = useState<Folder[]>([]);
   const [foldersLoading, setFoldersLoading] = useState(true);
   const [filterMode, setFilterMode] = useState<FolderFilterMode>("all");
@@ -145,8 +193,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [latestUploadBatchId, setLatestUploadBatchId] = useState<string | null>(null);
-  const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
   const [batchReviewOpen, setBatchReviewOpen] = useState(false);
+  const [batchGroups, setBatchGroups] = useState<MediaImportBatch[]>([]);
+  const [batchListLoading, setBatchListLoading] = useState(false);
+  const [selectedReviewBatchId, setSelectedReviewBatchId] = useState<string | null>(null);
   const [batchAssets, setBatchAssets] = useState<MediaAssetDetailResponse[]>([]);
   const [batchReviewLoading, setBatchReviewLoading] = useState(false);
   const [batchCurating, setBatchCurating] = useState(false);
@@ -187,6 +237,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     selectAllFolders();
     clearSelection();
     closePanel();
+    clearSmartSearch(); // search results are scope-bound; reset on scope change
   }
 
   function refreshFolders() {
@@ -282,8 +333,9 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     }
   }
 
+  // Browse mode: folder + tag + sort filtering. Free-text narrowing now happens
+  // through the server-side hybrid search (mediaSearch) rather than substring match.
   const filteredAssets = useMemo(() => {
-    const term = search.trim().toLowerCase();
     let result = assets.filter((a) => {
       if (filterMode === "unfiled" && a.folderId) return false;
       if (filterMode === "folder" && selectedFolderId && a.folderId !== selectedFolderId) return false;
@@ -292,10 +344,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         const selectedTags = [...activeTags].map((tag) => tag.toLowerCase());
         if (!selectedTags.some((tag) => assetTagLabels.has(tag))) return false;
       }
-      if (!term) return true;
-      return [a.title, a.fileName, a.uploaderName, a.institutionName, ...(a.aiTags ?? []).map((t) => t.label)]
-        .filter(Boolean)
-        .some((val) => val!.toLowerCase().includes(term));
+      return true;
     });
 
     result = [...result].sort((a, b) => {
@@ -307,18 +356,35 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     });
 
     return result;
-  }, [assets, search, sort, activeTags, filterMode, selectedFolderId]);
+  }, [assets, sort, activeTags, filterMode, selectedFolderId]);
 
-  const selectedAssets = useMemo(
-    () => assets.filter((a) => checkedIds.has(a.id)),
-    [assets, checkedIds],
-  );
+  // Search results keep the backend relevance order; reasons are keyed by asset id.
+  const searchHitAssets = useMemo(() => mediaSearch.hits.map((h) => h.asset), [mediaSearch.hits]);
+  const reasonsByAssetId = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const hit of mediaSearch.hits) map.set(hit.asset.id, hit.matchReasons);
+    return map;
+  }, [mediaSearch.hits]);
+  const gridAssets = searchActive ? searchHitAssets : filteredAssets;
+
+  // Selection lookups must resolve assets that exist only in search results, not
+  // just the browse list, so bulk actions on a searched-then-checked asset work.
+  const assetPool = useMemo(() => {
+    if (!searchActive) return assets;
+    const byId = new Map(assets.map((a) => [a.id, a] as const));
+    for (const a of searchHitAssets) if (!byId.has(a.id)) byId.set(a.id, a);
+    return [...byId.values()];
+  }, [assets, searchHitAssets, searchActive]);
+
+  // Not manually memoized: checkedIds is a Set the selection hook mutates, which the React
+  // Compiler can't prove stable — let it auto-memoize rather than a manual useMemo it rejects.
+  const selectedAssets = assetPool.filter((a) => checkedIds.has(a.id));
   const selectionMode = checkedIds.size > 0;
   const canBulkDelete = selectedAssets.length > 0 && selectedAssets.every(canDeleteAsset);
-  const reviewBatchId = latestUploadBatchId
+  const latestReviewBatchId = latestUploadBatchId
     ?? [...assets]
       .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
-      .find((asset) => Boolean(asset.importBatchId))?.importBatchId
+      .find((asset) => Boolean(asset.importBatchId) && !asset.curatedAt)?.importBatchId
     ?? null;
 
   function openAsset(asset: MediaAsset) {
@@ -354,7 +420,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     if (remainingIds.size === 0) {
       closePanel();
     } else if (selectedAsset?.id === id) {
-      const nextAsset = assets.find((a) => remainingIds.has(a.id));
+      const nextAsset = assetPool.find((a) => remainingIds.has(a.id));
       if (nextAsset) openAsset(nextAsset);
       else closePanel();
     }
@@ -478,39 +544,41 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     }
   }
 
-  async function handleGenerateSuggestedCollections() {
-    if (!reviewBatchId) return;
+  function openAiCollectionBuilder() {
     if (isAdmin && (networkView || !selectedInstitutionId)) {
-      toast.error("Select the same institution before generating suggested collections.");
+      toast.error("Select one institution before using AI Builder.");
       return;
     }
+    navigate("/media-albums", {
+      state: {
+        openAiBuilder: true,
+        institutionId: isAdmin ? selectedInstitutionId : null,
+      },
+    });
+  }
 
-    setGeneratingSuggestions(true);
+  async function loadBatchGroups() {
+    setBatchListLoading(true);
     try {
-      const response = await generateSuggestedAlbumsFromImportBatch({
-        importBatchId: reviewBatchId,
-        institutionId: isAdmin ? selectedInstitutionId : undefined,
-        minGroupSize: 2,
-      });
-      if (response.albumsCreated > 0) {
-        toast.success(`Created ${response.albumsCreated} AI-suggested ${response.albumsCreated === 1 ? "collection" : "collections"}.`);
-        navigate("/media-albums");
-      } else {
-        toast.error("No suggested collections yet. Wait until AI tags finish, then try again.");
-      }
+      const response = await listMediaImportBatches(isAdmin ? selectedInstitutionId : undefined);
+      setBatchGroups(response);
     } catch {
-      toast.error("Could not generate suggested collections for this batch.");
+      const fallback = batchGroupsFromLoadedAssets(assets);
+      setBatchGroups(fallback);
+      if (fallback.length === 0) {
+        toast.error("Could not load upload batch groups.");
+      }
     } finally {
-      setGeneratingSuggestions(false);
+      setBatchListLoading(false);
     }
   }
 
-  async function loadBatchReview() {
-    if (!reviewBatchId) return;
+  async function loadBatchReview(batchId = selectedReviewBatchId) {
+    if (!batchId) return;
     setBatchReviewLoading(true);
     try {
       const response = await listImportBatchAssets(
-        reviewBatchId,
+        batchId,
         isAdmin ? selectedInstitutionId : undefined,
       );
       setBatchAssets(response);
@@ -522,21 +590,39 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   }
 
   function openBatchReview() {
+    setSelectedReviewBatchId(null);
+    setBatchAssets([]);
     setBatchReviewOpen(true);
-    void loadBatchReview();
+    void loadBatchGroups();
   }
 
-  async function handleConfirmBatchCuration() {
-    if (!reviewBatchId) return;
+  function selectReviewBatch(batchId: string) {
+    setSelectedReviewBatchId(batchId);
+    void loadBatchReview(batchId);
+  }
+
+  function refreshBatchReviewModal() {
+    if (selectedReviewBatchId) {
+      void loadBatchReview(selectedReviewBatchId);
+    } else {
+      void loadBatchGroups();
+    }
+  }
+
+  async function handleConfirmBatchCuration(edits: MediaAssetCurationEdit[]) {
+    if (!selectedReviewBatchId) return;
     setBatchCurating(true);
     try {
       const response = await markImportBatchCurated(
-        reviewBatchId,
+        selectedReviewBatchId,
         isAdmin ? selectedInstitutionId : undefined,
+        edits,
       );
       toast.success(`Confirmed ${response.curatedCount} ${response.curatedCount === 1 ? "asset" : "assets"} as curated.`);
-      setBatchReviewOpen(false);
+      setSelectedReviewBatchId(null);
+      setBatchAssets([]);
       setLatestUploadBatchId(null);
+      void loadBatchGroups();
       void refresh();
     } catch {
       toast.error("Could not confirm this batch.");
@@ -676,6 +762,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     setDeleteOpen(true);
   }
 
+  function handleBack() {
+    navigate("/dashboard", { replace: true });
+  }
+
   async function handleConfirmDelete() {
     if (!deleteAsset) return;
     setDeleting(true);
@@ -708,195 +798,262 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   return (
     <div className={`med-page${panelOpen ? " panel-open" : ""}`}>
-      {/* Page Header */}
-      <div className="med-header">
-        <div>
-          <h1 className="med-title">Media Library</h1>
-          <p className="med-subtitle">Find, file, and reuse institution media</p>
-        </div>
-        <div className="med-header-actions">
-          <button
-            className="med-btn med-btn-ghost med-btn-sm"
-            onClick={() => navigate("/media-albums")}
-            type="button"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <polyline points="21,15 16,10 5,21" />
-            </svg>
-            Collections
+      <nav className="med-topnav">
+        <div className="med-nav-left">
+          <button className="med-back-btn" type="button" onClick={handleBack}>
+            <i className="ti ti-arrow-left"></i>
+            <span>Back</span>
           </button>
-          <button
-            className="med-btn med-btn-ghost med-btn-sm"
-            onClick={openUploadModal}
-            type="button"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="16,16 12,12 8,16" />
-              <line x1="12" y1="12" x2="12" y2="21" />
-              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
-            </svg>
-            Upload media
-          </button>
-          <button
-            className="med-btn med-btn-primary med-btn-sm"
-            onClick={() => isAdmin ? navigate("/admin/resolution?tab=direct-post") : navigate("/submissions/new")}
-            type="button"
-          >
-            {isAdmin ? "Direct Post" : "New Submission"}
-          </button>
-        </div>
-      </div>
-
-      {isAdmin && (
-        <LibraryScopeSelector
-          institutions={institutions}
-          selectedInstitutionId={selectedInstitutionId}
-          networkScope={networkView}
-          allowNetworkScope
-          loading={institutionsLoading}
-          onInstitutionChange={changeInstitutionScope}
-          onNetworkScopeChange={(enabled) => {
-            setNetworkView(enabled);
-            if (enabled) selectAllFolders();
-          }}
-        />
-      )}
-
-      {/* Filter Bar */}
-      <FilterBar
-        search={search}
-        sort={sort}
-        viewMode={viewMode}
-        activeTags={activeTags}
-        tagChips={tagChips}
-        onSearchChange={setSearch}
-        onSortChange={setSort}
-        onViewModeChange={setViewMode}
-        onTagToggle={toggleTag}
-      />
-
-      {reviewBatchId && (
-        <div className="med-result-strip">
-          <p className="med-result-count">
-            Latest upload batch is ready for review and suggested Collections.
-          </p>
-          <div className="med-active-filters">
-            <button
-              className="med-btn med-btn-ghost med-btn-sm"
-              type="button"
-              onClick={openBatchReview}
-              disabled={batchReviewLoading}
-            >
-              Review batch
-            </button>
-            <button
-              className="med-btn med-btn-ghost med-btn-sm"
-              type="button"
-              onClick={() => void handleGenerateSuggestedCollections()}
-              disabled={generatingSuggestions}
-            >
-              Generate AI Collections
-            </button>
+          <div className="med-nav-brand">
+            <div className="med-nav-brand-icon">
+              <BrandMark />
+            </div>
+            <div className="med-nav-brand-name">
+              DASIG<em>Connect</em>
+            </div>
+          </div>
+          <div className="med-nav-breadcrumb" aria-label="Breadcrumb">
+            <span className="med-nav-chevron">&gt;</span>
+            <span>Media Library</span>
           </div>
         </div>
-      )}
+        <div className="med-nav-right">
+          <div className="med-nav-chip">{formatRole(user.role)}</div>
+          <div className="med-nav-avatar" aria-label={user.email}>
+            {user.initials}
+          </div>
+        </div>
+      </nav>
 
-      {/* Folders sidebar + main column */}
-      <div className="med-layout">
-      <FolderSidebar
-        folders={folders}
-        loading={foldersLoading}
-        filterMode={filterMode}
-        selectedFolderId={selectedFolderId}
-        allCount={assets.length}
-        unfiledCount={unfiledCount}
-        selectionCount={checkedIds.size}
-        disabledReason={isAdmin && networkView ? "Select one institution to organize storage folders." : null}
-        onSelectAll={selectAllFolders}
-        onSelectUnfiled={selectUnfiled}
-        onSelectFolder={selectFolder}
-        onOpenCollections={() => navigate("/media-albums")}
-        onCreate={() => void handleCreateFolder()}
-        onRename={(f) => void handleRenameFolder(f)}
-        onDelete={(f) => void handleDeleteFolder(f)}
-        onMoveSelected={(id) => void handleMoveSelected(id)}
-      />
-      <div className="med-main">
-      {/* Result strip */}
-      <div className="med-result-strip">
-        <p className="med-result-count">
-          <strong>{filteredAssets.length}</strong> of {assets.length} assets
-        </p>
-        {activeTags.size > 0 && (
-          <div className="med-active-filters">
-            {[...activeTags].map((tag) => (
-              <div key={tag} className="med-filter-tag">
-                {tag}
-                <button onClick={() => clearTag(tag)} type="button" aria-label={`Remove ${tag} filter`}>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
+      <div className="med-workspace">
+        <FolderSidebar
+          folders={folders}
+          loading={foldersLoading}
+          filterMode={filterMode}
+          selectedFolderId={selectedFolderId}
+          allCount={assets.length}
+          unfiledCount={unfiledCount}
+          selectionCount={checkedIds.size}
+          disabledReason={isAdmin && networkView ? "Select one institution to organize storage folders." : null}
+          onSelectAll={selectAllFolders}
+          onSelectUnfiled={selectUnfiled}
+          onSelectFolder={selectFolder}
+          onOpenCollections={() => navigate("/media-albums")}
+          onCreate={() => void handleCreateFolder()}
+          onRename={(f) => void handleRenameFolder(f)}
+          onDelete={(f) => void handleDeleteFolder(f)}
+          onMoveSelected={(id) => void handleMoveSelected(id)}
+        />
+
+        <main className="med-content-canvas">
+          <div className="med-header">
+            <div>
+              <h1 className="med-title">Media Library</h1>
+              <p className="med-subtitle">Find, file, and reuse institution media</p>
+            </div>
+            <div className="med-header-actions">
+              <button
+                className="med-btn med-btn-ghost med-btn-sm"
+                onClick={() => navigate("/media-albums")}
+                type="button"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21,15 16,10 5,21" />
+                </svg>
+                Collections
+              </button>
+              <button
+                className="med-btn med-btn-ghost med-btn-sm"
+                onClick={openUploadModal}
+                type="button"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="16,16 12,12 8,16" />
+                  <line x1="12" y1="12" x2="12" y2="21" />
+                  <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+                </svg>
+                Upload media
+              </button>
+              <button
+                className="med-btn med-btn-primary med-btn-sm"
+                onClick={() => isAdmin ? navigate("/admin/resolution?tab=direct-post") : navigate("/submissions/new")}
+                type="button"
+              >
+                {isAdmin ? "Direct Post" : "New Submission"}
+              </button>
+            </div>
+          </div>
+
+          {isAdmin && (
+            <LibraryScopeSelector
+              institutions={institutions}
+              selectedInstitutionId={selectedInstitutionId}
+              networkScope={networkView}
+              allowNetworkScope
+              loading={institutionsLoading}
+              onInstitutionChange={changeInstitutionScope}
+              onNetworkScopeChange={(enabled) => {
+                setNetworkView(enabled);
+                if (enabled) selectAllFolders();
+                clearSmartSearch();
+              }}
+            />
+          )}
+
+          <FilterBar
+            search={search}
+            sort={sort}
+            viewMode={viewMode}
+            activeTags={activeTags}
+            tagChips={tagChips}
+            searching={mediaSearch.loading}
+            searchActive={searchActive}
+            onSearchChange={setSearch}
+            onSearchSubmit={runSmartSearch}
+            onSearchClear={clearSmartSearch}
+            onSortChange={setSort}
+            onViewModeChange={setViewMode}
+            onTagToggle={toggleTag}
+          />
+
+          {latestReviewBatchId && (
+            <div className="med-result-strip med-batch-strip">
+              <p className="med-result-count">
+                Upload batches are ready for review and suggested Collections.
+              </p>
+              <div className="med-active-filters">
+                <button
+                  className="med-btn med-btn-ghost med-btn-sm"
+                  type="button"
+                  onClick={openBatchReview}
+                  disabled={batchReviewLoading}
+                >
+                  Review batch
+                </button>
+                <button
+                  className="med-btn med-btn-ghost med-btn-sm"
+                  type="button"
+                  onClick={openAiCollectionBuilder}
+                >
+                  AI Builder
                 </button>
               </div>
-            ))}
+            </div>
+          )}
+
+          <div className="med-main">
+            <div className="med-result-strip">
+              {searchActive ? (
+                <>
+                  <p className="med-result-count">
+                    {mediaSearch.loading ? (
+                      <>Searching the library…</>
+                    ) : (
+                      <>
+                        <strong>{mediaSearch.hits.length}</strong>{" "}
+                        {mediaSearch.hits.length === 1 ? "result" : "results"} for{" "}
+                        <span className="med-result-query">“{mediaSearch.activeQuery}”</span>
+                        <span className="med-result-hint">
+                          {mediaSearch.chronological ? " · newest first" : " · ranked by relevance"}
+                        </span>
+                      </>
+                    )}
+                  </p>
+                  <button
+                    className="med-btn med-btn-ghost med-btn-sm"
+                    type="button"
+                    onClick={clearSmartSearch}
+                  >
+                    Clear search
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="med-result-count">
+                    <strong>{filteredAssets.length}</strong> of {assets.length} assets
+                  </p>
+                  {activeTags.size > 0 && (
+                    <div className="med-active-filters">
+                      {[...activeTags].map((tag) => (
+                        <div key={tag} className="med-filter-tag">
+                          {tag}
+                          <button onClick={() => clearTag(tag)} type="button" aria-label={`Remove ${tag} filter`}>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              <line x1="18" y1="6" x2="6" y2="18" />
+                              <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {(searchActive ? mediaSearch.loading : loading) ? (
+              <SkeletonGrid viewMode={viewMode} />
+            ) : (searchActive ? mediaSearch.error : error) ? (
+              <ErrorState
+                message={searchActive ? mediaSearch.error : error}
+                onRetry={searchActive ? runSmartSearch : () => void refresh()}
+              />
+            ) : gridAssets.length === 0 ? (
+              <EmptyState
+                hasSearch={searchActive || activeTags.size > 0}
+                searchQuery={searchActive ? mediaSearch.activeQuery : null}
+                onUpload={openUploadModal}
+              />
+            ) : (
+              <div className={`med-grid${viewMode === "list" ? " list-view" : ""}${checkedIds.size > 0 ? " selecting" : ""}`}>
+                {gridAssets.map((asset, idx) => (
+                  <AssetCard
+                    key={asset.id}
+                    asset={asset}
+                    selected={selectedAsset?.id === asset.id}
+                    checked={checkedIds.has(asset.id)}
+                    listView={viewMode === "list"}
+                    animationDelay={Math.min(idx * 40, 480)}
+                    showInstitutionChip={networkView && isAdmin}
+                    matchReasons={searchActive ? reasonsByAssetId.get(asset.id) : undefined}
+                    feedback={searchActive ? (searchFeedback.get(asset.id) ?? null) : undefined}
+                    onFeedback={searchActive ? (action) => handleSearchFeedback(asset, idx + 1, action) : undefined}
+                    onClick={() => { logSearchSelection(asset, idx + 1); handleToggleCheck(asset); }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        </main>
+
+        <AssetDetailPanel
+          renderMode="inline"
+          asset={selectedAsset}
+          open={panelOpen}
+          isAdmin={isAdmin}
+          selectionMode={selectionMode}
+          selectedAssets={selectedAssets}
+          onViewAsset={(a) => openAsset(a)}
+          onViewSubmission={(submissionId) =>
+            navigate(`/submissions/${encodeURIComponent(submissionId)}`, {
+              state: { returnTo: "/media-repository" },
+            })
+          }
+          onDeselectAsset={(id) => handleDeselect(id)}
+          onNewPost={handleNewPost}
+          onClearSelection={clearChecked}
+          onClose={closePanel}
+          canAddToDraft={user.role === "contributor"}
+          onAddToDraft={openAddToDraft}
+          onDownload={() => void handleDownload()}
+          canDelete={selectedAsset ? canDeleteAsset(selectedAsset) : false}
+          onRequestDelete={openSingleDeleteModal}
+          canBulkDelete={canBulkDelete}
+          onRequestBulkDelete={openBulkDeleteModal}
+        />
       </div>
-
-      {/* Media Grid / States */}
-      {loading ? (
-        <SkeletonGrid viewMode={viewMode} />
-      ) : error ? (
-        <ErrorState message={error} onRetry={() => void refresh()} />
-      ) : filteredAssets.length === 0 ? (
-        <EmptyState hasSearch={search.length > 0 || activeTags.size > 0} onUpload={openUploadModal} />
-      ) : (
-        <div className={`med-grid${viewMode === "list" ? " list-view" : ""}${checkedIds.size > 0 ? " selecting" : ""}`}>
-          {filteredAssets.map((asset, idx) => (
-            <AssetCard
-              key={asset.id}
-              asset={asset}
-              selected={selectedAsset?.id === asset.id}
-              checked={checkedIds.has(asset.id)}
-              listView={viewMode === "list"}
-              animationDelay={Math.min(idx * 40, 480)}
-              showInstitutionChip={networkView && isAdmin}
-              onClick={() => handleToggleCheck(asset)}
-            />
-          ))}
-        </div>
-      )}
-      </div>{/* /med-main */}
-      </div>{/* /med-layout */}
-
-      {/* Detail Panel (portal) */}
-      <AssetDetailPanel
-        asset={selectedAsset}
-        open={panelOpen}
-        isAdmin={isAdmin}
-        selectionMode={selectionMode}
-        selectedAssets={selectedAssets}
-        onViewAsset={(a) => openAsset(a)}
-        onViewSubmission={(submissionId) =>
-          navigate(`/submissions/${encodeURIComponent(submissionId)}`, {
-            state: { returnTo: "/media-repository" },
-          })
-        }
-        onDeselectAsset={(id) => handleDeselect(id)}
-        onNewPost={handleNewPost}
-        onClearSelection={clearChecked}
-        onClose={closePanel}
-        canAddToDraft={user.role === "contributor"}
-        onAddToDraft={openAddToDraft}
-        onDownload={() => void handleDownload()}
-        canDelete={selectedAsset ? canDeleteAsset(selectedAsset) : false}
-        onRequestDelete={openSingleDeleteModal}
-        canBulkDelete={canBulkDelete}
-        onRequestBulkDelete={openBulkDeleteModal}
-      />
 
       {/* Upload Modal (portal) */}
       <UploadModal
@@ -942,12 +1099,20 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
       <BatchCurationModal
         open={batchReviewOpen}
+        batches={batchGroups}
+        batchesLoading={batchListLoading}
+        selectedBatchId={selectedReviewBatchId}
         loading={batchReviewLoading}
         saving={batchCurating}
         assets={batchAssets}
         onClose={() => { if (!batchCurating) setBatchReviewOpen(false); }}
-        onRefresh={() => void loadBatchReview()}
-        onConfirmAll={() => void handleConfirmBatchCuration()}
+        onRefresh={refreshBatchReviewModal}
+        onSelectBatch={selectReviewBatch}
+        onBackToBatches={() => {
+          setSelectedReviewBatchId(null);
+          setBatchAssets([]);
+        }}
+        onConfirmAll={(edits) => void handleConfirmBatchCuration(edits)}
       />
 
     </div>
@@ -973,7 +1138,15 @@ function SkeletonGrid({ viewMode }: { viewMode: ViewMode }) {
 }
 
 /* ===== Empty State ===== */
-function EmptyState({ hasSearch, onUpload }: { hasSearch: boolean; onUpload: () => void }) {
+function EmptyState({
+  hasSearch,
+  searchQuery,
+  onUpload,
+}: {
+  hasSearch: boolean;
+  searchQuery?: string | null;
+  onUpload: () => void;
+}) {
   return (
     <div className="med-empty">
       <div className="med-empty-icon">
@@ -983,7 +1156,12 @@ function EmptyState({ hasSearch, onUpload }: { hasSearch: boolean; onUpload: () 
           <polyline points="21,15 16,10 5,21" />
         </svg>
       </div>
-      {hasSearch ? (
+      {searchQuery ? (
+        <>
+          <div className="med-empty-title">No results for “{searchQuery}”</div>
+          <p className="med-empty-sub">Try fewer or different words, or describe the photo's subject, people, or event.</p>
+        </>
+      ) : hasSearch ? (
         <>
           <div className="med-empty-title">No assets match your filters</div>
           <p className="med-empty-sub">Try adjusting your search term or removing an active tag filter.</p>
@@ -1019,4 +1197,45 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
       </button>
     </div>
   );
+}
+
+function batchGroupsFromLoadedAssets(assets: MediaAsset[]): MediaImportBatch[] {
+  const groups = new Map<string, MediaAsset[]>();
+  for (const asset of assets) {
+    if (!asset.importBatchId) continue;
+    groups.set(asset.importBatchId, [...(groups.get(asset.importBatchId) ?? []), asset]);
+  }
+
+  return Array.from(groups.entries())
+    .map(([id, groupAssets]) => {
+      const sorted = [...groupAssets].sort(
+        (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime(),
+      );
+      const registered = groupAssets.length;
+      const curated = groupAssets.filter((asset) => Boolean(asset.curatedAt)).length;
+      return {
+        id,
+        institutionId: sorted[0]?.institutionId ?? "",
+        uploadedBy: sorted[0]?.uploaderId ?? "",
+        assetCount: registered,
+        registeredAssetCount: registered,
+        readyAssetCount: registered,
+        curatedAssetCount: curated,
+        createdAt: sorted[0]?.uploadedAt ?? new Date().toISOString(),
+      };
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+function BrandMark() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2L22 7V17L12 22L2 17V7L12 2Z" />
+    </svg>
+  );
+}
+
+function formatRole(role: User["role"]) {
+  if (role === "admin") return "Administrator";
+  return role.charAt(0).toUpperCase() + role.slice(1);
 }
