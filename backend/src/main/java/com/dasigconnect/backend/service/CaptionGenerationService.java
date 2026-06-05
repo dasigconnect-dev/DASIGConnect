@@ -4,6 +4,7 @@ import com.dasigconnect.backend.external.ClaudeVisionClient;
 import com.dasigconnect.backend.model.dto.ai.CaptionResponseDto;
 import com.dasigconnect.backend.model.dto.ai.CaptionVariantDto;
 import com.dasigconnect.backend.model.entity.AiInteractionLog;
+import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.repository.AiInteractionLogRepository;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -48,13 +50,13 @@ public class CaptionGenerationService {
      * Validates that the submission belongs to the caller's institution and has at least one image.
      */
     public CaptionResponseDto generateCaptions(UUID submissionId, UUID userId, UUID institutionId,
-                                               String existingCaption) {
+                                               String existingCaption, boolean promptMode) {
         // Step 1: Fetch submission data in a short read-only transaction
         SubmissionContext ctx = loadSubmissionContext(submissionId, institutionId);
 
         // Step 2: Call Claude outside any transaction (timeout enforced by client)
         List<CaptionVariantDto> variants = claudeVisionClient.generateCaptions(
-                ctx.imageUrls(), ctx.eventTitle(), existingCaption);
+                ctx.imageUrls(), ctx.eventTitle(), existingCaption, promptMode);
 
         // Step 3: Log generation event in a new transaction
         logInteraction(submissionId, ctx.institutionId(), "re_generate", null);
@@ -99,9 +101,15 @@ public class CaptionGenerationService {
         List<SubmissionMediaAsset> junctionRows =
                 submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId);
 
+        // UC-4.7 best-N selection: when a submission has >4 images, send Claude the highest-quality
+        // shots, not just the first 4. blur_score is Laplacian variance (higher = sharper);
+        // unanalyzed assets (null) sort last so analyzed-sharp images win.
         List<String> imageUrls = junctionRows.stream()
-                .filter(sma -> sma.getMediaAsset().getFileType().isImage())
-                .map(sma -> sma.getMediaAsset().getStorageUrl())
+                .map(SubmissionMediaAsset::getMediaAsset)
+                .filter(asset -> asset.getFileType().isImage())
+                .sorted(Comparator.comparing(MediaAsset::getBlurScore,
+                        Comparator.nullsLast(Comparator.reverseOrder())))
+                .map(MediaAsset::getStorageUrl)
                 .limit(4)
                 .toList();
 

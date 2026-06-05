@@ -120,7 +120,8 @@ export type CaptionAction =
 
 export async function suggestCaption(
   submissionId: string,
-  existingCaption?: string
+  existingCaption?: string,
+  promptMode?: boolean
 ): Promise<CaptionResponse> {
   const res = await api.post<{ submissionId: string; variants: CaptionVariant[] }>(
     "/ai/caption",
@@ -128,6 +129,8 @@ export async function suggestCaption(
       submissionId,
       // Only send if non-empty — backend treats null/absent as "generate from scratch"
       ...(existingCaption?.trim() ? { existingCaption: existingCaption.trim() } : {}),
+      // UC-4.7: treat the caption field as an explicit instruction rather than auto-detecting.
+      ...(promptMode ? { promptMode: true } : {}),
     },
     { validateStatus: () => true }
   );

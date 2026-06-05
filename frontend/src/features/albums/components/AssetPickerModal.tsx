@@ -7,17 +7,43 @@ interface AssetPickerModalProps {
   selected: Set<string>;
   adding: boolean;
   onToggle: (id: string) => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
   onClose: () => void;
   onConfirm: () => void;
 }
 
 export default function AssetPickerModal({
-  assets, loading, selected, adding, onToggle, onClose, onConfirm,
+  assets, loading, selected, adding, onToggle, onSelectAll, onClearSelection, onClose, onConfirm,
 }: AssetPickerModalProps) {
+  const allSelected = assets.length > 0 && selected.size >= assets.length;
   return (
     <div className="alb-modal-overlay" role="dialog" aria-modal="true" aria-label="Add media to collection" onClick={onClose}>
       <div className="alb-modal alb-modal-wide" onClick={(e) => e.stopPropagation()}>
         <h2 className="alb-modal-title">Add media</h2>
+        {!loading && assets.length > 0 && (
+          <div className="alb-picker-toolbar">
+            <span className="alb-picker-count">{selected.size} of {assets.length} selected</span>
+            <div className="alb-picker-toolbar-actions">
+              <button
+                className="alb-text-btn"
+                type="button"
+                disabled={adding || allSelected}
+                onClick={onSelectAll}
+              >
+                Select all
+              </button>
+              <button
+                className="alb-text-btn"
+                type="button"
+                disabled={adding || selected.size === 0}
+                onClick={onClearSelection}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="alb-picker-empty">Loading media...</div>
         ) : assets.length === 0 ? (

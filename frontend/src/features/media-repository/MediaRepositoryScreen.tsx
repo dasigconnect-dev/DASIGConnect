@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { MediaAsset, MediaUsage } from "../../api/mediaApi";
@@ -8,6 +8,8 @@ import {
   changeAssetVisibility,
   createMediaImportBatch,
   deleteMediaAsset,
+  deleteMediaImportBatch,
+  fetchMediaSearchSuggestions,
   getAssetHistory,
   getMediaAsset,
   getMediaAssetUploadUrl,
@@ -31,6 +33,7 @@ import {
 } from "../../api/folderApi";
 import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
 import FolderSidebar, { type FolderFilterMode } from "./components/FolderSidebar";
+import FolderFormModal from "./components/FolderFormModal";
 import {
   attachAsset,
   listSubmissions,
@@ -49,6 +52,16 @@ import UploadModal from "./components/UploadModal";
 import DeleteModal from "./components/DeleteModal";
 import AddToDraftModal from "./components/AddToDraftModal";
 import BatchCurationModal from "./components/BatchCurationModal";
+import PromptCollectionBuilderContainer from "../albums/components/PromptCollectionBuilderContainer";
+import ConfirmDialog from "../user-management/components/ConfirmDialog";
+
+interface ConfirmState {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  dangerous?: boolean;
+  onConfirm: () => void;
+}
 import "../../styles/media-repository.css";
 import "../../styles/folders.css";
 
@@ -131,8 +144,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   // UC-4.6: per-result thumbs feedback, keyed by asset id; reset each new search.
   const [searchFeedback, setSearchFeedback] = useState<Map<string, "up" | "down">>(new Map());
 
-  function runSmartSearch() {
-    const q = search.trim();
+  function runSmartSearch(queryOverride?: string) {
+    const q = (queryOverride ?? search).trim();
     if (!q) {
       mediaSearch.clear();
       return;
@@ -172,6 +185,9 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [foldersLoading, setFoldersLoading] = useState(true);
   const [filterMode, setFilterMode] = useState<FolderFilterMode>("all");
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  // Folder create/rename modal (delete uses the shared ConfirmDialog).
+  const [folderModal, setFolderModal] = useState<{ mode: "create" | "rename"; folder: Folder | null } | null>(null);
+  const [folderSaving, setFolderSaving] = useState(false);
 
   const [selectedAsset, setSelectedAsset] = useState<MediaAsset | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -199,6 +215,9 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [busyDraftId, setBusyDraftId] = useState<string | null>(null);
 
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [aiBuilderOpen, setAiBuilderOpen] = useState(false);
+  // Shared confirmation dialog for folder / batch deletion.
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [latestUploadBatchId, setLatestUploadBatchId] = useState<string | null>(null);
   const [batchReviewOpen, setBatchReviewOpen] = useState(false);
   const [batchGroups, setBatchGroups] = useState<MediaImportBatch[]>([]);
@@ -227,6 +246,19 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       .sort((a, b) => b[1] - a[1])
       .map(([label, count]) => ({ label, count }));
   }, [assets]);
+
+  // Whole-library related-search autocomplete (UC-4.5): backend suggestions across all tags,
+  // filenames, uploaders, collections, and folders — not just the loaded page.
+  const fetchSuggestions = useCallback(
+    (q: string, signal?: AbortSignal) => {
+      if (!mediaScopeReady) return Promise.resolve([]);
+      return fetchMediaSearchSuggestions(
+        { query: q, networkView, institutionId: mediaInstitutionId },
+        signal,
+      );
+    },
+    [mediaScopeReady, networkView, mediaInstitutionId],
+  );
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -279,38 +311,52 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   function selectUnfiled() { setFilterMode("unfiled"); setSelectedFolderId(null); }
   function selectFolder(id: string) { setFilterMode("folder"); setSelectedFolderId(id); }
 
-  async function handleCreateFolder() {
+  function openCreateFolder() {
     if (isAdmin && (networkView || !selectedInstitutionId)) {
       toast.error("Select an institution before creating a folder.");
       return;
     }
-    const name = window.prompt("New folder name:");
-    if (!name || !name.trim()) return;
+    setFolderModal({ mode: "create", folder: null });
+  }
+
+  function openRenameFolder(folder: Folder) {
+    setFolderModal({ mode: "rename", folder });
+  }
+
+  async function submitFolderForm(name: string) {
+    if (!folderModal) return;
+    setFolderSaving(true);
     try {
-      await createFolder({
-        name: name.trim(),
-        institutionId: isAdmin ? selectedInstitutionId : undefined,
-      });
+      if (folderModal.mode === "create") {
+        await createFolder({
+          name,
+          institutionId: isAdmin ? selectedInstitutionId : undefined,
+        });
+        toast.success("Folder created.");
+      } else if (folderModal.folder) {
+        await renameFolder(folderModal.folder.id, name);
+        toast.success("Folder renamed.");
+      }
       refreshFolders();
-      toast.success("Folder created.");
+      setFolderModal(null);
     } catch {
-      toast.error("Could not create the folder.");
+      toast.error(folderModal.mode === "create" ? "Could not create the folder." : "Could not rename the folder.");
+    } finally {
+      setFolderSaving(false);
     }
   }
 
-  async function handleRenameFolder(folder: Folder) {
-    const name = window.prompt("Rename folder:", folder.name);
-    if (!name || !name.trim() || name.trim() === folder.name) return;
-    try {
-      await renameFolder(folder.id, name.trim());
-      refreshFolders();
-    } catch {
-      toast.error("Could not rename the folder.");
-    }
+  function handleDeleteFolder(folder: Folder) {
+    setConfirm({
+      title: "Delete folder",
+      message: `Delete folder "${folder.name}"? Assets inside are moved to Unfiled, not deleted.`,
+      confirmLabel: "Delete",
+      dangerous: true,
+      onConfirm: () => void performDeleteFolder(folder),
+    });
   }
 
-  async function handleDeleteFolder(folder: Folder) {
-    if (!window.confirm(`Delete folder "${folder.name}"? Assets inside are moved to Unfiled, not deleted.`)) return;
+  async function performDeleteFolder(folder: Folder) {
     try {
       await deleteFolder(folder.id);
       if (selectedFolderId === folder.id) selectAllFolders();
@@ -564,12 +610,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       toast.error("Select one institution before using AI Builder.");
       return;
     }
-    navigate("/media-albums", {
-      state: {
-        openAiBuilder: true,
-        institutionId: isAdmin ? selectedInstitutionId : null,
-      },
-    });
+    setAiBuilderOpen(true);
   }
 
   async function loadBatchGroups() {
@@ -621,6 +662,33 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       void loadBatchReview(selectedReviewBatchId);
     } else {
       void loadBatchGroups();
+    }
+  }
+
+  function handleDeleteBatch(batch: MediaImportBatch) {
+    const count = batch.registeredAssetCount ?? batch.assetCount;
+    setConfirm({
+      title: "Delete upload batch",
+      message: `Delete this upload batch? The ${count} ${count === 1 ? "photo" : "photos"} stay in the library — only the batch grouping is removed.`,
+      confirmLabel: "Delete batch",
+      dangerous: true,
+      onConfirm: () => void performDeleteBatch(batch),
+    });
+  }
+
+  async function performDeleteBatch(batch: MediaImportBatch) {
+    try {
+      await deleteMediaImportBatch(batch.id, isAdmin ? selectedInstitutionId : undefined);
+      if (selectedReviewBatchId === batch.id) {
+        setSelectedReviewBatchId(null);
+        setBatchAssets([]);
+      }
+      setLatestUploadBatchId((current) => (current === batch.id ? null : current));
+      void loadBatchGroups();
+      void refresh();
+      toast.success("Batch removed. The photos remain in the library.");
+    } catch {
+      toast.error("Could not delete the batch.");
     }
   }
 
@@ -871,8 +939,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           onSelectUnfiled={selectUnfiled}
           onSelectFolder={selectFolder}
           onOpenCollections={() => navigate("/media-albums")}
-          onCreate={() => void handleCreateFolder()}
-          onRename={(f) => void handleRenameFolder(f)}
+          onCreate={openCreateFolder}
+          onRename={openRenameFolder}
           onDelete={(f) => void handleDeleteFolder(f)}
           onMoveSelected={(id) => void handleMoveSelected(id)}
         />
@@ -948,6 +1016,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
             onSortChange={setSort}
             onViewModeChange={setViewMode}
             onTagToggle={toggleTag}
+            fetchSuggestions={fetchSuggestions}
           />
 
           {latestReviewBatchId && (
@@ -1030,7 +1099,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
             ) : (searchActive ? mediaSearch.error : error) ? (
               <ErrorState
                 message={searchActive ? mediaSearch.error : error}
-                onRetry={searchActive ? runSmartSearch : () => void refresh()}
+                onRetry={searchActive ? () => runSmartSearch() : () => void refresh()}
               />
             ) : gridAssets.length === 0 ? (
               <EmptyState
@@ -1149,7 +1218,38 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           setBatchAssets([]);
         }}
         onConfirmAll={(edits) => void handleConfirmBatchCuration(edits)}
+        onDeleteBatch={(batch) => void handleDeleteBatch(batch)}
       />
+
+      <PromptCollectionBuilderContainer
+        open={aiBuilderOpen}
+        isAdmin={isAdmin}
+        institutionId={isAdmin ? selectedInstitutionId : null}
+        onClose={() => setAiBuilderOpen(false)}
+      />
+
+      {folderModal && (
+        <FolderFormModal
+          key={`${folderModal.mode}-${folderModal.folder?.id ?? "new"}`}
+          open
+          mode={folderModal.mode}
+          busy={folderSaving}
+          initialName={folderModal.folder?.name ?? ""}
+          onCancel={() => { if (!folderSaving) setFolderModal(null); }}
+          onSubmit={(name) => void submitFolderForm(name)}
+        />
+      )}
+
+      {confirm && (
+        <ConfirmDialog
+          title={confirm.title}
+          message={confirm.message}
+          confirmLabel={confirm.confirmLabel}
+          dangerous={confirm.dangerous}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => { const run = confirm.onConfirm; setConfirm(null); run(); }}
+        />
+      )}
 
     </div>
   );

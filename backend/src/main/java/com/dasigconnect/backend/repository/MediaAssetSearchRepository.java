@@ -156,6 +156,86 @@ public class MediaAssetSearchRepository {
         return ((Number) query.getSingleResult()).intValue();
     }
 
+    /**
+     * UC-4.5 autocomplete: distinct related-search candidates across real, tenant-scoped data
+     * (AI/manual tags, AI category, filenames, uploader emails, collection and folder names).
+     * Returns rows of {text, type, rank} where rank is 0 = exact, 1 = starts-with, 2 = contains.
+     * Final de-duplication across types is done in the service.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Object[]> suggest(String normalizedQuery, UUID institutionId, boolean networkScope, int limit) {
+        Query query = entityManager.createNativeQuery("""
+            SELECT text, type, MIN(rank) AS rank
+            FROM (
+                SELECT t.label AS text, 'tag' AS type,
+                       CASE WHEN lower(t.label) = :q THEN 0 WHEN lower(t.label) LIKE :prefix THEN 1 ELSE 2 END AS rank
+                FROM asset_tags t
+                JOIN media_assets ma ON ma.id = t.media_asset_id
+                WHERE ma.deleted_at IS NULL
+                  AND (:networkScope = TRUE OR ma.institution_id = :institutionId)
+                  AND lower(t.label) LIKE :like
+
+                UNION ALL
+                SELECT ma.ai_category AS text, 'tag' AS type,
+                       CASE WHEN lower(ma.ai_category) = :q THEN 0 WHEN lower(ma.ai_category) LIKE :prefix THEN 1 ELSE 2 END
+                FROM media_assets ma
+                WHERE ma.deleted_at IS NULL AND ma.ai_category IS NOT NULL
+                  AND (:networkScope = TRUE OR ma.institution_id = :institutionId)
+                  AND lower(ma.ai_category) LIKE :like
+
+                UNION ALL
+                SELECT ma.file_name AS text, 'file' AS type,
+                       CASE WHEN lower(ma.file_name) = :q THEN 0 WHEN lower(ma.file_name) LIKE :prefix THEN 1 ELSE 2 END
+                FROM media_assets ma
+                WHERE ma.deleted_at IS NULL AND ma.file_name IS NOT NULL
+                  AND (:networkScope = TRUE OR ma.institution_id = :institutionId)
+                  AND lower(ma.file_name) LIKE :like
+
+                UNION ALL
+                SELECT u.email AS text, 'uploader' AS type,
+                       CASE WHEN lower(u.email) = :q THEN 0 WHEN lower(u.email) LIKE :prefix THEN 1 ELSE 2 END
+                FROM media_assets ma
+                JOIN users u ON u.id = ma.uploader_id
+                WHERE ma.deleted_at IS NULL
+                  AND (:networkScope = TRUE OR ma.institution_id = :institutionId)
+                  AND lower(u.email) LIKE :like
+
+                UNION ALL
+                SELECT al.name AS text, 'collection' AS type,
+                       CASE WHEN lower(al.name) = :q THEN 0 WHEN lower(al.name) LIKE :prefix THEN 1 ELSE 2 END
+                FROM media_albums al
+                WHERE (:networkScope = TRUE OR al.institution_id = :institutionId)
+                  AND lower(al.name) LIKE :like
+
+                UNION ALL
+                SELECT f.name AS text, 'folder' AS type,
+                       CASE WHEN lower(f.name) = :q THEN 0 WHEN lower(f.name) LIKE :prefix THEN 1 ELSE 2 END
+                FROM media_folders f
+                WHERE (:networkScope = TRUE OR f.institution_id = :institutionId)
+                  AND lower(f.name) LIKE :like
+            ) candidates
+            GROUP BY text, type
+            ORDER BY rank ASC,
+                     CASE type
+                         WHEN 'tag' THEN 0
+                         WHEN 'collection' THEN 1
+                         WHEN 'folder' THEN 2
+                         WHEN 'file' THEN 3
+                         WHEN 'uploader' THEN 4
+                         ELSE 5
+                     END,
+                     text ASC
+            LIMIT :limit
+            """);
+        query.setParameter("q", normalizedQuery);
+        query.setParameter("prefix", normalizedQuery + "%");
+        query.setParameter("like", "%" + normalizedQuery + "%");
+        query.setParameter("institutionId", institutionId == null ? NETWORK_SCOPE_SENTINEL : institutionId);
+        query.setParameter("networkScope", networkScope);
+        query.setParameter("limit", limit);
+        return (List<Object[]>) query.getResultList();
+    }
+
     private void bindDateRange(Query query, UUID institutionId, boolean networkScope, String mediaType,
                                OffsetDateTime from, OffsetDateTime to) {
         query.setParameter("institutionId", institutionId == null ? NETWORK_SCOPE_SENTINEL : institutionId);

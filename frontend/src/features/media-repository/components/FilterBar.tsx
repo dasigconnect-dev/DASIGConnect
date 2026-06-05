@@ -1,5 +1,12 @@
+import { useEffect, useId, useRef, useState } from "react";
 import BrandedSelect from "../../../components/ui/BrandedSelect";
 import type { SortOption, ViewMode } from "../types";
+import { useSearchSuggestions } from "../hooks/useSearchSuggestions";
+import { useRemoteSearchSuggestions } from "../hooks/useRemoteSearchSuggestions";
+import { addRecentSearch, clearRecentSearches, getRecentSearches } from "../recentSearches";
+import { type Suggestion, type SuggestionCorpus } from "../searchSuggestions";
+import type { RemoteSuggestion } from "../../../api/mediaApi";
+import SearchSuggestionsDropdown from "./SearchSuggestionsDropdown";
 
 interface AiTagChip {
   label: string;
@@ -15,12 +22,19 @@ interface FilterBarProps {
   searching: boolean;
   searchActive: boolean;
   onSearchChange: (value: string) => void;
-  onSearchSubmit: () => void;
+  /** Executes the search. The optional override is the exact query to run (e.g. a picked suggestion). */
+  onSearchSubmit: (query?: string) => void;
   onSearchClear: () => void;
   onSortChange: (value: SortOption) => void;
   onViewModeChange: (mode: ViewMode) => void;
   onTagToggle: (tag: string) => void;
+  /** Real data the related-search dropdown is drawn from (client-side). Omit to disable. */
+  suggestionCorpus?: SuggestionCorpus;
+  /** Backend autocomplete fetcher (whole library). Takes precedence over suggestionCorpus. */
+  fetchSuggestions?: (query: string, signal?: AbortSignal) => Promise<RemoteSuggestion[]>;
 }
+
+const EMPTY_CORPUS: SuggestionCorpus = {};
 
 export default function FilterBar({
   search,
@@ -36,17 +50,98 @@ export default function FilterBar({
   onSortChange,
   onViewModeChange,
   onTagToggle,
+  suggestionCorpus,
+  fetchSuggestions,
 }: FilterBarProps) {
   const showClear = searchActive || search.trim().length > 0;
+
+  const suggestionsEnabled = suggestionCorpus !== undefined || fetchSuggestions !== undefined;
+  const listboxId = useId();
+  const wrapRef = useRef<HTMLFormElement>(null);
+  const [recents, setRecents] = useState<string[]>(() => getRecentSearches());
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+
+  // Backend autocomplete (whole library) takes precedence; otherwise rank the local corpus.
+  const localSuggestions = useSearchSuggestions(search, suggestionCorpus ?? EMPTY_CORPUS, recents);
+  const remoteSuggestions = useRemoteSearchSuggestions(search, fetchSuggestions, recents);
+  const suggestions = fetchSuggestions ? remoteSuggestions : localSuggestions;
+  const isEmptyQuery = search.trim().length === 0;
+  const showRecentHeader = isEmptyQuery && recents.length > 0;
+  const dropdownOpen = suggestionsEnabled && open && suggestions.length > 0;
+  const safeActive = activeIndex >= 0 && activeIndex < suggestions.length ? activeIndex : -1;
+
+  // Close on outside click.
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    function onDocMouseDown(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setActiveIndex(-1);
+      }
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [dropdownOpen]);
+
+  function executeSearch(query: string) {
+    const term = query.trim();
+    if (!term) return;
+    setRecents(addRecentSearch(term));
+    setOpen(false);
+    setActiveIndex(-1);
+    onSearchSubmit(term);
+  }
+
+  function selectSuggestion(suggestion: Suggestion) {
+    onSearchChange(suggestion.text);
+    executeSearch(suggestion.text);
+  }
+
+  function handleClear() {
+    setActiveIndex(-1);
+    onSearchClear();
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!suggestionsEnabled) {
+      if (e.key === "Escape" && searchActive) onSearchClear();
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!open) { setOpen(true); return; }
+      setActiveIndex((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(i - 1, -1));
+    } else if (e.key === "Enter") {
+      if (dropdownOpen && safeActive >= 0) {
+        e.preventDefault();
+        selectSuggestion(suggestions[safeActive]);
+      }
+      // otherwise: let the form submit (executeSearch on typed query) proceed
+    } else if (e.key === "Escape") {
+      if (open) {
+        e.preventDefault();
+        setOpen(false);
+        setActiveIndex(-1);
+      } else if (searchActive) {
+        onSearchClear();
+      }
+    }
+  }
+
   return (
     <div className="med-filter-bar">
       <div className="med-filter-row1">
         <form
+          ref={wrapRef}
           className={`med-search-wrap${searchActive ? " is-active" : ""}`}
           role="search"
           onSubmit={(e) => {
             e.preventDefault();
-            onSearchSubmit();
+            executeSearch(search);
           }}
         >
           <button
@@ -67,10 +162,17 @@ export default function FilterBar({
             aria-label="Search media by natural-language description"
             value={search}
             enterKeyHint="search"
-            onChange={(e) => onSearchChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape" && searchActive) onSearchClear();
+            role={suggestionsEnabled ? "combobox" : undefined}
+            aria-expanded={suggestionsEnabled ? dropdownOpen : undefined}
+            aria-controls={suggestionsEnabled ? listboxId : undefined}
+            aria-autocomplete={suggestionsEnabled ? "list" : undefined}
+            aria-activedescendant={dropdownOpen && safeActive >= 0 ? `${listboxId}-opt-${safeActive}` : undefined}
+            onChange={(e) => {
+              onSearchChange(e.target.value);
+              if (suggestionsEnabled) { setOpen(true); setActiveIndex(-1); }
             }}
+            onFocus={() => { if (suggestionsEnabled) setOpen(true); }}
+            onKeyDown={handleKeyDown}
           />
           {searching && <span className="med-search-spinner" role="status" aria-label="Searching" />}
           {showClear && !searching && (
@@ -78,13 +180,26 @@ export default function FilterBar({
               type="button"
               className="med-search-clear"
               aria-label="Clear search"
-              onClick={onSearchClear}
+              onClick={handleClear}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
+          )}
+
+          {dropdownOpen && (
+            <SearchSuggestionsDropdown
+              suggestions={suggestions}
+              activeIndex={safeActive}
+              query={search}
+              listboxId={listboxId}
+              showRecentHeader={showRecentHeader}
+              onHover={setActiveIndex}
+              onSelect={selectSuggestion}
+              onClearRecent={() => setRecents(clearRecentSearches())}
+            />
           )}
         </form>
 

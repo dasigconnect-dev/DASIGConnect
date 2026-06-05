@@ -4,22 +4,38 @@ interface CreateAlbumModalProps {
   creating: boolean;
   onCancel: () => void;
   onCreate: (name: string, description: string) => void;
+  /** Edit mode: prefill + relabel. Omit for create. */
+  initialName?: string;
+  initialDescription?: string;
+  title?: string;
+  submitLabel?: string;
+  busyLabel?: string;
 }
 
-export default function CreateAlbumModal({ creating, onCancel, onCreate }: CreateAlbumModalProps) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+/** Create or edit a collection (reused for both via optional initial values). */
+export default function CreateAlbumModal({
+  creating,
+  onCancel,
+  onCreate,
+  initialName = "",
+  initialDescription = "",
+  title = "New Collection",
+  submitLabel = "Create",
+  busyLabel = "Creating...",
+}: CreateAlbumModalProps) {
+  const [name, setName] = useState(initialName);
+  const [description, setDescription] = useState(initialDescription);
 
   return (
     <div
       className="alb-modal-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Create collection"
+      aria-label={title}
       onClick={() => { if (!creating) onCancel(); }}
     >
       <div className="alb-modal" onClick={(e) => e.stopPropagation()}>
-        <h2 className="alb-modal-title">New Collection</h2>
+        <h2 className="alb-modal-title">{title}</h2>
         <label className="alb-field">
           <span>Name</span>
           <input
@@ -44,7 +60,7 @@ export default function CreateAlbumModal({ creating, onCancel, onCreate }: Creat
             disabled={creating || !name.trim()}
             onClick={() => onCreate(name, description)}
           >
-            {creating ? "Creating..." : "Create"}
+            {creating ? busyLabel : submitLabel}
           </button>
         </div>
       </div>

@@ -5,6 +5,8 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetSearchRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSearchResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSearchResultDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
+import com.dasigconnect.backend.model.dto.media.MediaSearchSuggestionDto;
+import com.dasigconnect.backend.model.dto.media.MediaSearchSuggestionsResponseDto;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
@@ -41,6 +43,8 @@ public class MediaAssetSearchService {
     private static final int RRF_K = 60;
     private static final int MIN_RETRIEVAL_LIMIT = 60;
     private static final int MAX_RETRIEVAL_LIMIT = 200;
+    private static final int DEFAULT_SUGGESTION_LIMIT = 8;
+    private static final int MAX_SUGGESTION_LIMIT = 12;
 
     private final MediaAssetSearchRepository searchRepository;
     private final MediaAssetRepository mediaAssetRepository;
@@ -148,6 +152,47 @@ public class MediaAssetSearchService {
                         rankedItems.size());
 
         return new MediaAssetSearchResponseDto(query, items, totalCount, page, pageSize);
+    }
+
+    /**
+     * UC-4.5 autocomplete: Google-style related-search suggestions spanning the whole
+     * tenant-scoped library (tags, filenames, uploaders, collections, folders). Read-only,
+     * DB-only — no external API calls, so a short read transaction is safe.
+     */
+    @Transactional(readOnly = true)
+    public MediaSearchSuggestionsResponseDto suggest(String rawQuery, String scopeParam,
+                                                     UUID institutionId, Integer limitParam,
+                                                     JwtUserDetails user) {
+        String q = rawQuery == null ? "" : rawQuery.trim();
+        if (q.isEmpty()) {
+            return new MediaSearchSuggestionsResponseDto(q, List.of());
+        }
+        SearchScope scope = resolveScope(scopeParam, institutionId, user);
+        int limit = limitParam == null
+                ? DEFAULT_SUGGESTION_LIMIT
+                : Math.min(Math.max(1, limitParam), MAX_SUGGESTION_LIMIT);
+
+        // Over-fetch so cross-type de-duplication still fills the requested limit.
+        List<Object[]> rows = searchRepository.suggest(
+                q.toLowerCase(Locale.ROOT), scope.institutionId(), scope.networkScope(), limit + 8);
+
+        List<MediaSearchSuggestionDto> suggestions = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Object[] row : rows) {
+            String text = row[0] == null ? null : row[0].toString();
+            String type = row[1] == null ? null : row[1].toString();
+            if (text == null || text.isBlank() || type == null) {
+                continue;
+            }
+            if (!seen.add(text.toLowerCase(Locale.ROOT))) {
+                continue; // de-dupe the same text appearing under multiple types
+            }
+            suggestions.add(new MediaSearchSuggestionDto(text, type));
+            if (suggestions.size() >= limit) {
+                break;
+            }
+        }
+        return new MediaSearchSuggestionsResponseDto(q, suggestions);
     }
 
     /**
@@ -295,21 +340,25 @@ public class MediaAssetSearchService {
     }
 
     private SearchScope resolveScope(MediaAssetSearchRequestDto dto, JwtUserDetails user) {
+        return resolveScope(dto.getScope(), dto.getInstitutionId(), user);
+    }
+
+    private SearchScope resolveScope(String scopeParam, UUID institutionId, JwtUserDetails user) {
         if (isAdmin(user)) {
-            if ("network".equalsIgnoreCase(dto.getScope())) {
+            if ("network".equalsIgnoreCase(scopeParam)) {
                 return new SearchScope(null, true);
             }
-            if (dto.getInstitutionId() == null) {
+            if (institutionId == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Select an institution or network scope before searching media.");
             }
-            return new SearchScope(dto.getInstitutionId(), false);
+            return new SearchScope(institutionId, false);
         }
         if (user.institutionId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Media search requires an institution-scoped user.");
         }
-        if (dto.getInstitutionId() != null && !dto.getInstitutionId().equals(user.institutionId())) {
+        if (institutionId != null && !institutionId.equals(user.institutionId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "You cannot search media for another institution.");
         }

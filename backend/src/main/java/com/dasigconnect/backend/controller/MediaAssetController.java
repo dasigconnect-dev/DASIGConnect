@@ -27,6 +27,7 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetSearchRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetVisibilityRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAuditEntryDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSearchResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaSearchSuggestionsResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlResponseDto;
@@ -81,6 +82,17 @@ public class MediaAssetController {
             @Valid @RequestBody MediaAssetSearchRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(mediaAssetSearchService.search(dto, user));
+    }
+
+    @GetMapping("/search/suggestions")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MediaSearchSuggestionsResponseDto> suggest(
+            @RequestParam("q") String q,
+            @RequestParam(required = false) String scope,
+            @RequestParam(required = false) UUID institutionId,
+            @RequestParam(required = false) Integer limit,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaAssetSearchService.suggest(q, scope, institutionId, limit, user));
     }
 
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}")
@@ -169,6 +181,17 @@ public class MediaAssetController {
             @Valid @RequestBody(required = false) MediaBatchCurationRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(mediaAssetService.markImportBatchCurated(id, institutionId, dto, user));
+    }
+
+    /** UC-4.2: delete a batch grouping (un-groups its assets; the media itself is kept). */
+    @DeleteMapping("/import-batches/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> deleteImportBatch(
+            @PathVariable UUID id,
+            @RequestParam(required = false) UUID institutionId,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        mediaAssetService.deleteImportBatch(id, institutionId, user);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/upload")

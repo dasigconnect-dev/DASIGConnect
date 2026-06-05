@@ -54,7 +54,7 @@ public class CaptionController {
         try {
             CaptionResponseDto response = captionGenerationService.generateCaptions(
                     dto.getSubmissionId(), userId, user.institutionId(),
-                    dto.getExistingCaption());
+                    dto.getExistingCaption(), dto.isPromptMode());
 
             int remaining = RATE_LIMIT_PER_HOUR - countRecentRequests(userId);
             return ResponseEntity.ok()

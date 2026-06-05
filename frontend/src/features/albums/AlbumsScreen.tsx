@@ -1,28 +1,50 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import {
   listAlbums,
   getAlbum,
   createAlbum,
+  updateAlbum,
   deleteAlbum,
   addAlbumAssets,
   removeAlbumAsset,
   setAlbumCover,
-  suggestCollectionFromPrompt,
   type Album,
+  type AlbumAssetSummary,
   type AlbumDetail,
-  type PromptCollectionSuggestionResponse,
 } from "../../api/albumApi";
 import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
-import { searchMediaAssets, type MediaAsset } from "../../api/mediaApi";
+import {
+  searchMediaAssets,
+  getMediaAsset,
+  getAssetHistory,
+  changeAssetVisibility,
+  recordSearchFeedback,
+  type MediaAsset,
+  type MediaAuditEntry,
+  type MediaVisibility,
+} from "../../api/mediaApi";
 import { useToast } from "../../context/ToastContext";
+import { useMediaSearch } from "../media-repository/hooks/useMediaSearch";
 import AlbumCard from "./components/AlbumCard";
 import AlbumAssetTile from "./components/AlbumAssetTile";
 import CreateAlbumModal from "./components/CreateAlbumModal";
 import AssetPickerModal from "./components/AssetPickerModal";
-import PromptCollectionBuilderModal from "./components/PromptCollectionBuilderModal";
+import PromptCollectionBuilderContainer from "./components/PromptCollectionBuilderContainer";
+import AssetDetailPanel from "../media-repository/components/AssetDetailPanel";
+import FilterBar from "../media-repository/components/FilterBar";
 import LibraryScopeSelector from "../media-repository/components/LibraryScopeSelector";
+import ConfirmDialog from "../user-management/components/ConfirmDialog";
+import type { SortOption, ViewMode } from "../media-repository/types";
+
+interface ConfirmState {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  dangerous?: boolean;
+  onConfirm: () => void;
+}
 import "../../styles/media-repository.css";
 import "../../styles/albums.css";
 
@@ -48,9 +70,53 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
 
   const [openAlbum, setOpenAlbum] = useState<AlbumDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  // Within-collection FilterBar state (reuses the Media Library filter component).
+  const [collectionSearch, setCollectionSearch] = useState("");
+  const [collectionSort, setCollectionSort] = useState<SortOption>("newest");
+  const [collectionView, setCollectionView] = useState<ViewMode>("grid");
+  const [collectionTags, setCollectionTags] = useState<Set<string>>(new Set());
+  // Reuses the Media Library NL/hybrid search lifecycle (UC-4.5), scoped to this collection's assets.
+  const colSearch = useMediaSearch();
+  const searchActive = colSearch.active;
+  const [searchFeedback, setSearchFeedback] = useState<Map<string, "up" | "down">>(new Map());
+
+  // Real-data corpus for the related-search dropdown, drawn from the open collection's assets.
+  const collectionCorpus = useMemo(() => {
+    const assetsList = openAlbum?.assets ?? [];
+    const tags = new Set<string>();
+    const filenames = new Set<string>();
+    const uploaders = new Set<string>();
+    for (const a of assetsList) {
+      if (a.aiCategory) tags.add(a.aiCategory);
+      if (a.fileName) filenames.add(a.fileName);
+      if (a.uploaderEmail) uploaders.add(a.uploaderEmail);
+    }
+    return {
+      tags: [...tags],
+      filenames: [...filenames],
+      uploaders: [...uploaders],
+      collections: openAlbum ? [openAlbum.name] : [],
+    };
+  }, [openAlbum]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+
+  // Edit (rename / description) — the "U" in collection CRUD.
+  const [editOpen, setEditOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  // Shared confirmation dialog for destructive actions (delete collection / remove item).
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+
+  // Reused asset detail panel (photo click inside a collection).
+  const [selectedAsset, setSelectedAsset] = useState<MediaAsset | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  // Multi-select inside a collection (mirrors the Media Library card selection logic).
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [assetHistory, setAssetHistory] = useState<MediaAuditEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerAssets, setPickerAssets] = useState<MediaAsset[]>([]);
@@ -59,13 +125,6 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
   const [adding, setAdding] = useState(false);
 
   const [builderOpen, setBuilderOpen] = useState(false);
-  const [builderPrompt, setBuilderPrompt] = useState("");
-  const [builderName, setBuilderName] = useState("");
-  const [builderDescription, setBuilderDescription] = useState("");
-  const [builderResult, setBuilderResult] = useState<PromptCollectionSuggestionResponse | null>(null);
-  const [builderSelected, setBuilderSelected] = useState<Set<string>>(new Set());
-  const [builderLoading, setBuilderLoading] = useState(false);
-  const [builderCreating, setBuilderCreating] = useState(false);
 
   function fetchAlbums(signal?: AbortSignal) {
     setLoading(true);
@@ -100,6 +159,8 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
   useEffect(() => {
     if (!routeState?.openAiBuilder) return;
     if (isAdmin && !selectedInstitutionId) return;
+    // Route-driven modal open (navigated from Media Library "AI Builder").
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBuilderOpen(true);
     navigate(location.pathname, { replace: true, state: null });
   }, [isAdmin, location.pathname, navigate, routeState, selectedInstitutionId]);
@@ -118,6 +179,64 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, selectedInstitutionId]);
+
+  function exitCollection() {
+    setOpenAlbum(null);
+    setCollectionSearch("");
+    setCollectionTags(new Set());
+    setCollectionSort("newest");
+    setCollectionView("grid");
+    setCheckedIds(new Set());
+    setSearchFeedback(new Map());
+    colSearch.clear();
+    closePanel();
+  }
+
+  // ----- Within-collection smart search (reuses the Media Library search logic) -----
+  function runCollectionSearch(queryOverride?: string) {
+    const q = (queryOverride ?? collectionSearch).trim();
+    if (!q) {
+      colSearch.clear();
+      return;
+    }
+    if (isAdmin && !selectedInstitutionId) {
+      toast.error("Select an institution before searching.");
+      return;
+    }
+    setSearchFeedback(new Map());
+    void colSearch.run({ query: q, institutionId: isAdmin ? selectedInstitutionId : undefined });
+  }
+
+  function clearCollectionSearch() {
+    setCollectionSearch("");
+    setSearchFeedback(new Map());
+    colSearch.clear();
+  }
+
+  function handleSearchFeedback(asset: AlbumAssetSummary, rank: number, action: "thumbs_up" | "thumbs_down") {
+    const dir = action === "thumbs_up" ? "up" : "down";
+    setSearchFeedback((prev) => {
+      const next = new Map(prev);
+      next.set(asset.id, dir);
+      return next;
+    });
+    void recordSearchFeedback({ assetId: asset.id, action, query: colSearch.activeQuery, rank });
+    toast.success("Thanks — your feedback improves future search.");
+  }
+
+  function logSearchSelection(asset: AlbumAssetSummary, rank: number) {
+    if (!searchActive || checkedIds.has(asset.id)) return;
+    void recordSearchFeedback({ assetId: asset.id, action: "selected", query: colSearch.activeQuery, rank });
+  }
+
+  function toggleCollectionTag(tag: string) {
+    setCollectionTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
+    });
+  }
 
   async function openDetail(id: string) {
     setDetailLoading(true);
@@ -170,135 +289,21 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
     setBuilderOpen(true);
   }
 
-  async function handleFindPromptMatches() {
-    const prompt = builderPrompt.trim();
-    if (!prompt) return;
-    setBuilderLoading(true);
-    try {
-      const result = await suggestCollectionFromPrompt({
-        prompt,
-        institutionId: isAdmin ? selectedInstitutionId : undefined,
-        limit: 40,
-      });
-      setBuilderResult(result);
-      setBuilderName(result.suggestedName);
-      setBuilderDescription(`Created from prompt: ${result.prompt}`);
-      setBuilderSelected(new Set(
-        result.candidates
-          .filter((candidate) => candidate.confidence !== "low")
-          .map((candidate) => candidate.asset.id),
-      ));
-      if (result.candidates.length === 0) {
-        toast.info("No matching media found for that prompt.");
-      }
-    } catch (error) {
-      const fallback = await buildLocalPromptSuggestions(prompt);
-      setBuilderResult(fallback);
-      setBuilderName(fallback.suggestedName);
-      setBuilderDescription(`Created from prompt: ${fallback.prompt}`);
-      setBuilderSelected(new Set(
-        fallback.candidates
-          .filter((candidate) => candidate.confidence !== "low")
-          .map((candidate) => candidate.asset.id),
-      ));
-      if (fallback.candidates.length === 0) {
-        toast.error(errorMessage(error) || "No matching media found.");
-      } else {
-        toast.warning("AI suggestions are unavailable, so matches were built from the media library.");
-      }
-    } finally {
-      setBuilderLoading(false);
-    }
-  }
-
-  async function buildLocalPromptSuggestions(prompt: string): Promise<PromptCollectionSuggestionResponse> {
-    const page = await searchMediaAssets({
-      pageSize: 100,
-      institutionId: isAdmin ? selectedInstitutionId : undefined,
-    });
-    const tokens = promptTokens(prompt);
-    const candidates = page.items
-      .map((asset) => ({
-        asset,
-        score: scoreLocalAsset(asset, tokens),
-      }))
-      .filter((candidate) => candidate.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 40)
-      .map((candidate) => ({
-        asset: {
-          id: candidate.asset.id,
-          assetCode: candidate.asset.code,
-          storageUrl: candidate.asset.storageUrl,
-          fileName: candidate.asset.fileName,
-          title: candidate.asset.title,
-          fileType: candidate.asset.fileType,
-          fileSizeBytes: candidate.asset.fileSizeBytes,
-          aiCategory: candidate.asset.aiTags?.[0]?.label ?? null,
-          createdAt: candidate.asset.uploadedAt,
-          institutionId: candidate.asset.institutionId,
-          institutionName: candidate.asset.institutionName ?? null,
-          uploaderId: candidate.asset.uploaderId ?? null,
-          uploaderEmail: candidate.asset.uploaderName ?? null,
-        },
-        score: candidate.score,
-        confidence: candidate.score >= 6 ? "high" as const : candidate.score >= 3 ? "medium" as const : "low" as const,
-        matchReasons: ["Media library match"],
-      }));
-
-    return {
-      prompt,
-      suggestedName: suggestedNameFromPrompt(prompt),
-      totalCandidates: candidates.length,
-      candidates,
-    };
-  }
-
-  function toggleBuilderAsset(assetId: string) {
-    setBuilderSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(assetId)) next.delete(assetId);
-      else next.add(assetId);
-      return next;
+  function handleDeleteAlbum(album: Album) {
+    setConfirm({
+      title: "Delete collection",
+      message: `Delete collection "${album.name}"? The media files themselves are not deleted.`,
+      confirmLabel: "Delete",
+      dangerous: true,
+      onConfirm: () => void performDeleteAlbum(album),
     });
   }
 
-  async function handleCreateFromPrompt() {
-    if (!builderResult || builderSelected.size === 0 || !builderName.trim()) return;
-    if (isAdmin && !selectedInstitutionId) {
-      toast.error("Select an institution before creating a collection.");
-      return;
-    }
-
-    const assetIds = builderResult.candidates
-      .filter((candidate) => builderSelected.has(candidate.asset.id))
-      .map((candidate) => candidate.asset.id);
-
-    setBuilderCreating(true);
-    try {
-      const album = await createAlbum({
-        name: builderName.trim(),
-        description: builderDescription.trim() || null,
-        institutionId: isAdmin ? selectedInstitutionId : undefined,
-      });
-      const detail = await addAlbumAssets(album.id, assetIds);
-      setAlbums((prev) => [{ ...album, assetCount: detail.assetCount }, ...prev]);
-      setOpenAlbum(detail);
-      setBuilderOpen(false);
-      toast.success(`Collection "${album.name}" created with ${detail.assetCount} items.`);
-    } catch {
-      toast.error("Could not create the AI-assisted collection.");
-    } finally {
-      setBuilderCreating(false);
-    }
-  }
-
-  async function handleDeleteAlbum(album: Album) {
-    if (!window.confirm(`Delete collection "${album.name}"? The media files themselves are not deleted.`)) return;
+  async function performDeleteAlbum(album: Album) {
     try {
       await deleteAlbum(album.id);
       setAlbums((prev) => prev.filter((a) => a.id !== album.id));
-      if (openAlbum?.id === album.id) setOpenAlbum(null);
+      if (openAlbum?.id === album.id) exitCollection();
       toast.success("Collection deleted.");
     } catch {
       toast.error("Could not delete the collection.");
@@ -331,6 +336,14 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
     });
   }
 
+  function selectAllPicker() {
+    setPickerSelected(new Set(pickerAssets.map((a) => a.id)));
+  }
+
+  function clearPicker() {
+    setPickerSelected(new Set());
+  }
+
   async function handleAddSelected() {
     if (!openAlbum || pickerSelected.size === 0) return;
     setAdding(true);
@@ -347,17 +360,45 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
     }
   }
 
-  async function handleRemoveAsset(assetId: string) {
+  // Single-tile remove (hover ×) delegates to the shared multi-aware remover.
+  function requestRemoveAsset(assetId: string) {
+    requestRemoveFromCollection([assetId]);
+  }
+
+  // Confirm + remove one or many assets from the open collection (media files stay in the library).
+  function requestRemoveFromCollection(ids: string[]) {
+    if (ids.length === 0) return;
+    const multi = ids.length > 1;
+    setConfirm({
+      title: multi ? `Remove ${ids.length} items` : "Remove from collection",
+      message: multi
+        ? `Remove these ${ids.length} items from the collection? The media files stay in the library.`
+        : "Remove this item from the collection? The media file stays in the library.",
+      confirmLabel: "Remove",
+      dangerous: true,
+      onConfirm: () => void handleRemoveFromCollection(ids),
+    });
+  }
+
+  async function handleRemoveFromCollection(ids: string[]) {
     if (!openAlbum) return;
     const albumId = openAlbum.id;
     try {
-      await removeAlbumAsset(albumId, assetId);
+      for (const id of ids) {
+        await removeAlbumAsset(albumId, id);
+      }
       await refreshDetail();
       setAlbums((prev) =>
-        prev.map((a) => (a.id === albumId ? { ...a, assetCount: Math.max(0, a.assetCount - 1) } : a)),
+        prev.map((a) => (a.id === albumId ? { ...a, assetCount: Math.max(0, a.assetCount - ids.length) } : a)),
       );
+      setCheckedIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+      if (selectedAsset && ids.includes(selectedAsset.id)) closePanel();
     } catch {
-      toast.error("Could not remove the asset.");
+      toast.error(ids.length > 1 ? "Could not remove the selected assets." : "Could not remove the asset.");
     }
   }
 
@@ -372,54 +413,244 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
     }
   }
 
-  const focusedTopNav = (
-    <nav className="med-topnav">
-      <div className="med-nav-left">
-        <button className="med-back-btn" type="button" onClick={() => navigate("/media-repository")}>
-          <i className="ti ti-arrow-left"></i>
-          <span>Back</span>
-        </button>
-        <div className="med-nav-brand">
-          <div className="med-nav-brand-icon">
-            <BrandMark />
-          </div>
-          <div className="med-nav-brand-name">
-            DASIG<em>Connect</em>
-          </div>
-        </div>
-        <div className="med-nav-breadcrumb" aria-label="Breadcrumb">
-          <span className="med-nav-chevron">&gt;</span>
-          <button className="alb-crumb-link" type="button" onClick={() => navigate("/media-repository")}>
-            Media Library
+  async function handleUpdateAlbum(name: string, description: string) {
+    if (!openAlbum || !name.trim()) return;
+    setEditing(true);
+    try {
+      const updated = await updateAlbum(openAlbum.id, {
+        name: name.trim(),
+        description: description.trim() || null,
+      });
+      setOpenAlbum((current) => (current ? { ...current, name: updated.name, description: updated.description } : current));
+      setAlbums((prev) => prev.map((a) => (a.id === updated.id ? { ...a, name: updated.name, description: updated.description } : a)));
+      setEditOpen(false);
+      toast.success("Collection updated.");
+    } catch {
+      toast.error("Could not update the collection.");
+    } finally {
+      setEditing(false);
+    }
+  }
+
+  // Open the shared asset detail panel for a photo inside a collection (reuses MediaLibrary panel).
+  function openAssetDetail(asset: AlbumAssetSummary) {
+    setSelectedAsset(summaryToMediaAsset(asset));
+    setPanelOpen(true);
+    getMediaAsset(asset.id)
+      .then((res) => setSelectedAsset(res.data))
+      .catch(() => { /* keep summary view on fetch error */ });
+    setAssetHistory([]);
+    setHistoryLoading(true);
+    getAssetHistory(asset.id)
+      .then(setAssetHistory)
+      .catch(() => setAssetHistory([]))
+      .finally(() => setHistoryLoading(false));
+  }
+
+  function closePanel() {
+    setPanelOpen(false);
+  }
+
+  // ----- Multi-select (mirrors Media Library: click toggles selection + opens the panel) -----
+  function toggleCheck(id: string) {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearChecked() {
+    setCheckedIds(new Set());
+    closePanel();
+  }
+
+  function viewAssetById(id: string) {
+    const summary = openAlbum?.assets.find((a) => a.id === id);
+    if (summary) openAssetDetail(summary);
+  }
+
+  function handleDeselect(id: string) {
+    const remaining = new Set(checkedIds);
+    remaining.delete(id);
+    toggleCheck(id);
+    if (remaining.size === 0) {
+      closePanel();
+    } else if (selectedAsset?.id === id) {
+      const nextId = [...remaining][0];
+      if (nextId) viewAssetById(nextId);
+      else closePanel();
+    }
+  }
+
+  function handleToggleCheck(asset: AlbumAssetSummary) {
+    if (checkedIds.has(asset.id)) {
+      handleDeselect(asset.id);
+    } else {
+      toggleCheck(asset.id);
+      openAssetDetail(asset);
+    }
+  }
+
+  function activeAssetIds(): string[] {
+    if (checkedIds.size > 0) return [...checkedIds];
+    return selectedAsset ? [selectedAsset.id] : [];
+  }
+
+  function handleNewPost() {
+    const ids = activeAssetIds();
+    if (isAdmin) {
+      const base = "/admin/resolution?tab=direct-post";
+      navigate(ids.length > 0 ? `${base}&assetIds=${encodeURIComponent(ids.join(","))}` : base);
+    } else {
+      navigate(ids.length > 0 ? `/submissions/new?assetIds=${encodeURIComponent(ids.join(","))}` : "/submissions/new");
+    }
+  }
+
+  async function handlePanelDownload() {
+    if (!selectedAsset?.storageUrl) {
+      toast.error("No file URL available.");
+      return;
+    }
+    const { storageUrl, fileName } = selectedAsset;
+    try {
+      const response = await fetch(storageUrl);
+      if (!response.ok) throw new Error(`Status ${response.status}`);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = fileName || "asset";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      window.open(storageUrl, "_blank");
+    }
+  }
+
+  async function handlePanelVisibility(visibility: MediaVisibility) {
+    if (!selectedAsset) return;
+    setVisibilityBusy(true);
+    try {
+      const updated = await changeAssetVisibility(selectedAsset.id, visibility);
+      setSelectedAsset(updated);
+      toast.success(
+        visibility === "cleared_for_public" ? "Asset cleared for public use." : "Asset marked internal only.",
+      );
+    } catch {
+      toast.error("Could not update visibility.");
+    } finally {
+      setVisibilityBusy(false);
+    }
+  }
+
+  function renderTopNav(collectionName?: string | null) {
+    return (
+      <nav className="med-topnav">
+        <div className="med-nav-left">
+          <button
+            className="med-back-btn"
+            type="button"
+            onClick={() => { if (collectionName) exitCollection(); else navigate("/media-repository"); }}
+          >
+            <i className="ti ti-arrow-left"></i>
+            <span>Back</span>
           </button>
-          <span className="med-nav-chevron">&gt;</span>
-          <span>Collections</span>
+          <div className="med-nav-brand">
+            <div className="med-nav-brand-icon">
+              <BrandMark />
+            </div>
+            <div className="med-nav-brand-name">
+              DASIG<em>Connect</em>
+            </div>
+          </div>
+          <div className="med-nav-breadcrumb" aria-label="Breadcrumb">
+            <span className="med-nav-chevron">&gt;</span>
+            <button className="alb-crumb-link" type="button" onClick={() => navigate("/media-repository")}>
+              Media Library
+            </button>
+            <span className="med-nav-chevron">&gt;</span>
+            {collectionName ? (
+              <button className="alb-crumb-link" type="button" onClick={exitCollection}>
+                Collections
+              </button>
+            ) : (
+              <span>Collections</span>
+            )}
+            {collectionName && (
+              <>
+                <span className="med-nav-chevron">&gt;</span>
+                <span className="med-nav-crumb-current" title={collectionName}>{collectionName}</span>
+              </>
+            )}
+          </div>
         </div>
-      </div>
-      <div className="med-nav-right">
-        <div className="med-nav-chip">{formatRole(user.role)}</div>
-        <div className="med-nav-avatar" aria-label={user.email}>
-          {user.initials}
+        <div className="med-nav-right">
+          <div className="med-nav-chip">{formatRole(user.role)}</div>
+          <div className="med-nav-avatar" aria-label={user.email}>
+            {user.initials}
+          </div>
         </div>
-      </div>
-    </nav>
-  );
+      </nav>
+    );
+  }
+
+  const confirmDialog = confirm ? (
+    <ConfirmDialog
+      title={confirm.title}
+      message={confirm.message}
+      confirmLabel={confirm.confirmLabel}
+      dangerous={confirm.dangerous}
+      onCancel={() => setConfirm(null)}
+      onConfirm={() => { const run = confirm.onConfirm; setConfirm(null); run(); }}
+    />
+  ) : null;
 
   // ── Detail view ───────────────────────────────────────────────────────────
   if (openAlbum) {
+    // Tag chips from the collection's AI categories — reuses FilterBar's chip UI.
+    const tagCounts = new Map<string, number>();
+    for (const a of openAlbum.assets) {
+      if (a.aiCategory) tagCounts.set(a.aiCategory, (tagCounts.get(a.aiCategory) ?? 0) + 1);
+    }
+    const tagChips = Array.from(tagCounts.entries())
+      .sort((x, y) => y[1] - x[1])
+      .map(([label, count]) => ({ label, count }));
+
+    // Match reasons keyed by asset id, from the hybrid search hits.
+    const reasonsByAssetId = new Map<string, string[]>();
+    for (const hit of colSearch.hits) reasonsByAssetId.set(hit.asset.id, hit.matchReasons);
+
+    // When searching, reuse the Media Library hybrid results but scope them to this
+    // collection's assets, preserving the backend relevance order. Otherwise fall back
+    // to the local tag filter + sort browse.
+    const albumById = new Map(openAlbum.assets.map((a) => [a.id, a] as const));
+    const visibleAssets = searchActive
+      ? colSearch.hits
+          .map((hit) => albumById.get(hit.asset.id))
+          .filter((a): a is AlbumAssetSummary => Boolean(a))
+      : openAlbum.assets
+          .filter((a) => {
+            if (collectionTags.size > 0 && !(a.aiCategory && collectionTags.has(a.aiCategory))) return false;
+            return true;
+          })
+          .sort((a, b) => {
+            if (collectionSort === "newest") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            if (collectionSort === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+            if (collectionSort === "name") return (a.title || a.fileName).localeCompare(b.title || b.fileName);
+            if (collectionSort === "size") return b.fileSizeBytes - a.fileSizeBytes;
+            return 0;
+          });
+
     return (
-      <div className="med-page alb-page">
-        {focusedTopNav}
+      <div className={`med-page alb-page${panelOpen ? " panel-open" : ""}`}>
+        {renderTopNav(openAlbum.name)}
         <div className="alb-page-canvas">
           <div className="med-header">
             <div>
-              <button className="alb-back" type="button" onClick={() => setOpenAlbum(null)}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="19" y1="12" x2="5" y2="12" />
-                  <polyline points="12,19 5,12 12,5" />
-                </svg>
-                All collections
-              </button>
               <h1 className="med-title">{openAlbum.name}</h1>
               <p className="med-subtitle">
                 {openAlbum.assetCount} {openAlbum.assetCount === 1 ? "item" : "items"}
@@ -428,31 +659,137 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
               </p>
             </div>
             <div className="med-header-actions">
+              <button className="med-btn med-btn-ghost med-btn-sm" type="button" onClick={() => setEditOpen(true)}>
+                Edit
+              </button>
               <button className="med-btn med-btn-primary med-btn-sm" type="button" onClick={openPicker}>
                 Add media
               </button>
             </div>
           </div>
 
-          {openAlbum.assets.length === 0 ? (
+          <FilterBar
+            search={collectionSearch}
+            sort={collectionSort}
+            viewMode={collectionView}
+            activeTags={collectionTags}
+            tagChips={tagChips}
+            searching={colSearch.loading}
+            searchActive={searchActive}
+            onSearchChange={setCollectionSearch}
+            onSearchSubmit={runCollectionSearch}
+            onSearchClear={clearCollectionSearch}
+            onSortChange={setCollectionSort}
+            onViewModeChange={setCollectionView}
+            onTagToggle={toggleCollectionTag}
+            suggestionCorpus={collectionCorpus}
+          />
+
+          {searchActive && (
+            <div className="med-result-strip">
+              <p className="med-result-count">
+                {colSearch.loading ? (
+                  <>Searching this collection…</>
+                ) : (
+                  <>
+                    <strong>{visibleAssets.length}</strong>{" "}
+                    {visibleAssets.length === 1 ? "result" : "results"} for{" "}
+                    <span className="med-result-query">“{colSearch.activeQuery}”</span>
+                    <span className="med-result-hint">
+                      {colSearch.chronological ? " · newest first" : " · ranked by relevance"}
+                    </span>
+                  </>
+                )}
+              </p>
+              <button className="med-btn med-btn-ghost med-btn-sm" type="button" onClick={clearCollectionSearch}>
+                Clear search
+              </button>
+            </div>
+          )}
+
+          {searchActive && colSearch.loading ? (
+            <div className="med-empty">
+              <div className="med-empty-title">Searching this collection…</div>
+            </div>
+          ) : searchActive && colSearch.error ? (
+            <div className="med-empty">
+              <div className="med-empty-title">Search is unavailable</div>
+              <p className="med-empty-sub">{colSearch.error}</p>
+              <button className="med-btn med-btn-ghost med-btn-sm" type="button" onClick={() => runCollectionSearch()} style={{ marginTop: 12 }}>
+                Try again
+              </button>
+            </div>
+          ) : openAlbum.assets.length === 0 ? (
             <div className="med-empty">
               <div className="med-empty-title">This collection is empty</div>
               <p className="med-empty-sub">Add media when this collection is ready to reuse.</p>
             </div>
+          ) : visibleAssets.length === 0 ? (
+            <div className="med-empty">
+              <div className="med-empty-title">
+                {searchActive ? `No results for “${colSearch.activeQuery}”` : "No items match your filters"}
+              </div>
+              <p className="med-empty-sub">
+                {searchActive ? "Try a different prompt, or clear the search." : "Try a different tag, or clear the filters."}
+              </p>
+            </div>
           ) : (
-            <div className="alb-grid">
-              {openAlbum.assets.map((asset) => (
+            <div className={`alb-grid${collectionView === "list" ? " list-view" : ""}`}>
+              {visibleAssets.map((asset, idx) => (
                 <AlbumAssetTile
                   key={asset.id}
                   asset={asset}
                   isCover={openAlbum.coverAssetId === asset.id}
+                  checked={checkedIds.has(asset.id)}
+                  listView={collectionView === "list"}
+                  matchReasons={searchActive ? reasonsByAssetId.get(asset.id) : undefined}
+                  feedback={searchActive ? (searchFeedback.get(asset.id) ?? null) : undefined}
+                  onFeedback={searchActive ? (action) => handleSearchFeedback(asset, idx + 1, action) : undefined}
                   onSetCover={(id) => void handleSetCover(id)}
-                  onRemove={(id) => void handleRemoveAsset(id)}
+                  onRemove={requestRemoveAsset}
+                  onOpen={(a) => { logSearchSelection(a, idx + 1); handleToggleCheck(a); }}
                 />
               ))}
             </div>
           )}
         </div>
+
+        <AssetDetailPanel
+          renderMode="inline"
+          asset={selectedAsset}
+          open={panelOpen}
+          isAdmin={isAdmin}
+          selectionMode={checkedIds.size > 0}
+          selectedAssets={openAlbum.assets.filter((a) => checkedIds.has(a.id)).map(summaryToMediaAsset)}
+          onViewAsset={(a) => viewAssetById(a.id)}
+          onDeselectAsset={handleDeselect}
+          onClearSelection={clearChecked}
+          onNewPost={handleNewPost}
+          onClose={closePanel}
+          onAddToDraft={() => {}}
+          onDownload={() => void handlePanelDownload()}
+          canDelete={Boolean(selectedAsset)}
+          onRequestDelete={() => { if (selectedAsset) requestRemoveFromCollection([selectedAsset.id]); }}
+          canBulkDelete={checkedIds.size > 0}
+          onRequestBulkDelete={() => requestRemoveFromCollection(activeAssetIds())}
+          history={assetHistory}
+          historyLoading={historyLoading}
+          onChangeVisibility={(v) => void handlePanelVisibility(v)}
+          visibilityBusy={visibilityBusy}
+        />
+
+        {editOpen && (
+          <CreateAlbumModal
+            creating={editing}
+            initialName={openAlbum.name}
+            initialDescription={openAlbum.description ?? ""}
+            title="Edit Collection"
+            submitLabel="Save"
+            busyLabel="Saving..."
+            onCancel={() => { if (!editing) setEditOpen(false); }}
+            onCreate={(name, description) => void handleUpdateAlbum(name, description)}
+          />
+        )}
 
         {pickerOpen && (
           <AssetPickerModal
@@ -461,10 +798,14 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
             selected={pickerSelected}
             adding={adding}
             onToggle={togglePick}
+            onSelectAll={selectAllPicker}
+            onClearSelection={clearPicker}
             onClose={() => { if (!adding) setPickerOpen(false); }}
             onConfirm={() => void handleAddSelected()}
           />
         )}
+
+        {confirmDialog}
       </div>
     );
   }
@@ -472,7 +813,7 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
   // ── List view ─────────────────────────────────────────────────────────────
   return (
     <div className="med-page alb-page">
-      {focusedTopNav}
+      {renderTopNav()}
       <div className="alb-page-canvas">
         <div className="med-header">
           <div>
@@ -542,26 +883,20 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
         />
       )}
 
-      {builderOpen && (
-        <PromptCollectionBuilderModal
-          prompt={builderPrompt}
-          name={builderName}
-          description={builderDescription}
-          loading={builderLoading}
-          creating={builderCreating}
-          result={builderResult}
-          selected={builderSelected}
-          onPromptChange={setBuilderPrompt}
-          onNameChange={setBuilderName}
-          onDescriptionChange={setBuilderDescription}
-          onFind={() => void handleFindPromptMatches()}
-          onToggle={toggleBuilderAsset}
-          onClose={() => { if (!builderCreating) setBuilderOpen(false); }}
-          onCreate={() => void handleCreateFromPrompt()}
-        />
-      )}
+      <PromptCollectionBuilderContainer
+        open={builderOpen}
+        isAdmin={isAdmin}
+        institutionId={isAdmin ? selectedInstitutionId : null}
+        onClose={() => setBuilderOpen(false)}
+        onCreated={(album, detail) => {
+          setAlbums((prev) => [{ ...album, assetCount: detail.assetCount }, ...prev]);
+          setOpenAlbum(detail);
+        }}
+      />
 
       {detailLoading && <div className="alb-loading-veil">Opening collection...</div>}
+
+      {confirmDialog}
     </div>
   );
 }
@@ -574,45 +909,28 @@ function BrandMark() {
   );
 }
 
-function promptTokens(prompt: string) {
-  const stopWords = new Set([
-    "a", "an", "and", "are", "at", "by", "find", "for", "from", "image", "images",
-    "in", "into", "me", "media", "of", "on", "or", "photo", "photos", "picture",
-    "pictures", "show", "the", "to", "video", "videos", "with",
-  ]);
-  return normalizePrompt(prompt)
-    .split(/\s+/)
-    .filter((token) => token.length >= 2 && !stopWords.has(token));
-}
-
-function scoreLocalAsset(asset: MediaAsset, tokens: string[]) {
-  const haystack = normalizePrompt([
-    asset.title,
-    asset.fileName,
-    asset.institutionName,
-    asset.uploaderName,
-    ...(asset.aiTags ?? []).map((tag) => tag.label),
-  ].filter(Boolean).join(" "));
-  return tokens.reduce((score, token) => score + (haystack.includes(token) ? 3 : 0), 0);
-}
-
-function suggestedNameFromPrompt(prompt: string) {
-  const words = promptTokens(prompt).slice(0, 5);
-  if (words.length === 0) return "Prompt Collection";
-  return `${words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")} Collection`;
-}
-
-function normalizePrompt(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
-}
-
-function errorMessage(error: unknown) {
-  if (typeof error !== "object" || error === null) return null;
-  const response = (error as { response?: { data?: { error?: string; message?: string }; status?: number } }).response;
-  return response?.data?.error ?? response?.data?.message ?? null;
-}
-
 function formatRole(role: User["role"]) {
   if (role === "admin") return "Administrator";
   return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+/** Map a collection asset summary to the MediaAsset shape the shared detail panel expects,
+ *  for instant display before the full detail fetch resolves. */
+function summaryToMediaAsset(a: AlbumAssetSummary): MediaAsset {
+  return {
+    id: a.id,
+    code: a.assetCode,
+    title: a.title || a.fileName,
+    fileName: a.fileName,
+    fileType: a.fileType,
+    fileSizeBytes: a.fileSizeBytes,
+    storageUrl: a.storageUrl,
+    institutionId: a.institutionId ?? "",
+    institutionName: a.institutionName ?? undefined,
+    uploaderId: a.uploaderId ?? undefined,
+    uploaderName: a.uploaderEmail ?? undefined,
+    uploadedAt: a.createdAt,
+    status: "ready",
+    aiTags: a.aiCategory ? [{ label: a.aiCategory, confidence: 100 }] : [],
+  };
 }

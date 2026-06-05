@@ -19,6 +19,8 @@ interface BatchCurationModalProps {
   onSelectBatch: (batchId: string) => void;
   onBackToBatches: () => void;
   onConfirmAll: (edits: MediaAssetCurationEdit[]) => void;
+  /** UC-4.2: delete a batch grouping (un-groups its assets; media is kept). */
+  onDeleteBatch: (batch: MediaImportBatch) => void;
 }
 
 interface DraftEdit {
@@ -39,11 +41,14 @@ export default function BatchCurationModal({
   onSelectBatch,
   onBackToBatches,
   onConfirmAll,
+  onDeleteBatch,
 }: BatchCurationModalProps) {
   const [drafts, setDrafts] = useState<Record<string, DraftEdit>>({});
 
   useEffect(() => {
     if (!open) return;
+    // Sync editable drafts from the batch assets each time they load / the modal opens.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDrafts(Object.fromEntries(assets.map((asset) => [
       asset.id,
       {
@@ -123,6 +128,8 @@ export default function BatchCurationModal({
               batches={batches}
               loading={batchesLoading}
               onSelectBatch={onSelectBatch}
+              onDeleteBatch={onDeleteBatch}
+              busy={saving}
             />
           ) : (
             <>
@@ -132,6 +139,14 @@ export default function BatchCurationModal({
                 Back to batches
               </button>
               <span>{formatBatchDate(selectedBatch.createdAt)} · {selectedBatch.registeredAssetCount ?? selectedBatch.assetCount} photos</span>
+              <button
+                className="med-batch-delete-link"
+                type="button"
+                disabled={saving}
+                onClick={() => onDeleteBatch(selectedBatch)}
+              >
+                Delete batch
+              </button>
             </div>
           )}
           {hasPending && (
@@ -205,10 +220,14 @@ function BatchGroupList({
   batches,
   loading,
   onSelectBatch,
+  onDeleteBatch,
+  busy,
 }: {
   batches: MediaImportBatch[];
   loading: boolean;
   onSelectBatch: (batchId: string) => void;
+  onDeleteBatch: (batch: MediaImportBatch) => void;
+  busy: boolean;
 }) {
   if (loading) {
     return (
@@ -234,15 +253,33 @@ function BatchGroupList({
         const curated = batch.curatedAssetCount ?? 0;
         const complete = registered > 0 && curated === registered;
         return (
-          <button className="med-batch-group-row" type="button" key={batch.id} onClick={() => onSelectBatch(batch.id)}>
-            <div>
-              <strong>{formatBatchDate(batch.createdAt)}</strong>
-              <span>{registered} uploaded · {ready} ready · {curated} curated</span>
-            </div>
-            <span className={`med-upload-status-pill status-${complete ? "success" : "uploading"}`}>
-              {complete ? "Curated" : "Review"}
-            </span>
-          </button>
+          <div className="med-batch-group-row" key={batch.id}>
+            <button className="med-batch-group-open" type="button" onClick={() => onSelectBatch(batch.id)}>
+              <div>
+                <strong>{formatBatchDate(batch.createdAt)}</strong>
+                <span>{registered} uploaded · {ready} ready · {curated} curated</span>
+              </div>
+              <span className={`med-upload-status-pill status-${complete ? "success" : "uploading"}`}>
+                {complete ? "Curated" : "Review"}
+              </span>
+            </button>
+            <button
+              className="med-batch-group-delete"
+              type="button"
+              disabled={busy}
+              aria-label={`Delete batch from ${formatBatchDate(batch.createdAt)}`}
+              title="Delete batch (keeps the photos)"
+              onClick={() => onDeleteBatch(batch)}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3,6 5,6 21,6" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6" />
+                <path d="M14 11v6" />
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+            </button>
+          </div>
         );
       })}
     </div>

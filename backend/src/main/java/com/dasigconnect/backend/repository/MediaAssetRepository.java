@@ -156,6 +156,13 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             + "WHERE m.id IN :ids AND m.institution.id = :institutionId AND m.deletedAt IS NULL")
     int unfileAssets(@Param("ids") List<UUID> ids, @Param("institutionId") UUID institutionId);
 
+    /** UC-4.2: un-group a batch — clear import_batch_id on its assets (keeps the assets). */
+    @Modifying
+    @Transactional
+    @Query("UPDATE MediaAsset m SET m.importBatchId = NULL "
+            + "WHERE m.importBatchId = :batchId AND m.institution.id = :institutionId")
+    int clearImportBatch(@Param("batchId") UUID batchId, @Param("institutionId") UUID institutionId);
+
     @Query(value = """
         SELECT * FROM media_assets
         WHERE deleted_at IS NOT NULL

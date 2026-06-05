@@ -121,11 +121,23 @@ Top results + feedback controls
    - If Voyage is unavailable or unconfigured, the endpoint falls back to lexical search instead
      of returning "no matching media."
 
-5. **Phase 3E - Frontend search experience**
+5. **Phase 3E - Frontend search experience** - implemented locally
    - Search box in Media Library that supports natural-language prompts.
    - Keep filters visible and predictable: institution, media type, date, category/tags.
    - Results should remain asset-grid based, with search explanations and feedback controls.
    - Reuse the existing right-side asset detail panel; do not introduce another takeover layout.
+   - **Related-search autocomplete (Google-style):** typing the search bar shows a ranked
+     dropdown of real suggestions (recent searches, AI tags, filenames, uploaders, collections,
+     folders) plus real NL "smart phrases". Keyboard nav (↑/↓/Enter/Esc), outside-click close,
+     250 ms debounce, ≤8 deduped results. Reusable `FilterBar` owns it; shared
+     `SearchSuggestionsDropdown`, `useSearchSuggestions`/`useRemoteSearchSuggestions`,
+     `useDebouncedValue`, and `recentSearches` (localStorage). The Collection reuses the same
+     dropdown over its own assets (client-side corpus).
+   - **Backend autocomplete endpoint:** `GET /api/v1/media-assets/search/suggestions?q=&scope=&institutionId=&limit=`
+     returns whole-library, tenant-scoped suggestions (tags/filenames/uploaders/collections/folders)
+     via one read-only `MediaAssetSearchRepository.suggest` UNION query; ranked exact→starts-with→contains,
+     de-duped in `MediaAssetSearchService.suggest`. No external calls, no migration. The Media Library
+     uses this endpoint; the Collection uses the client-side corpus.
 
 6. **Phase 3F - Feedback logging**
    - Extend `ai_interaction_log` or add a scoped feedback table so search is not tied to a

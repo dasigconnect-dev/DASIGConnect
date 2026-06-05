@@ -78,14 +78,18 @@
 }
 
 .fld-nav { display: flex; flex-direction: column; gap: 2px; }
-.fld-row { display: flex; align-items: center; gap: 4px; }
+/* overflow-hidden clips the edit/delete actions off the right edge until hover,
+   so they slide in beside the folder container within the same row. */
+.fld-row { display: flex; align-items: center; overflow: hidden; }
 .fld-row .fld-item { flex: 1; min-width: 0; }
 
 .fld-section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 6px 6px;
+  /* right padding matches the folder count inset so the + button lines up
+     with the folder container's right edge below it. */
+  padding: 0 10px 6px 6px;
 }
 
 .fld-section-head span {
@@ -141,13 +145,29 @@
 .fld-divider { height: 1px; background: #eef2f7; margin: 8px 4px; }
 .fld-empty { font-size: 12px; color: #94a3b8; padding: 6px 10px; }
 
+/* Edit/delete actions: collapsed (hidden) by default, slide in from the right on
+   hover/focus. As they expand they push the folder container — and its count —
+   to the left, all within the same row. */
 .fld-actions {
   display: flex;
   gap: 2px;
+  flex: 0 0 auto;
+  max-width: 0;
+  margin-left: 0;
   opacity: 0;
-  transition: opacity 120ms ease;
+  overflow: hidden;
+  transform: translateX(10px);
+  pointer-events: none;
+  transition: max-width 180ms ease, margin-left 180ms ease, opacity 150ms ease, transform 180ms ease;
 }
-.fld-row:hover .fld-actions { opacity: 1; }
+.fld-row:hover .fld-actions,
+.fld-row:focus-within .fld-actions {
+  max-width: 60px;
+  margin-left: 4px;
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
 .fld-actions button {
   width: 26px;
   height: 26px;
@@ -175,6 +195,63 @@
   white-space: nowrap;
 }
 .fld-move-btn:hover { background: #dbeafe; }
+
+/* ── Folder create/rename modal (FolderFormModal) ── */
+.fld-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+}
+.fld-modal {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 24px 60px rgba(10, 22, 40, 0.25);
+  padding: 22px;
+}
+.fld-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.fld-modal-title svg { color: #2563eb; }
+.fld-field { display: flex; flex-direction: column; gap: 6px; }
+.fld-field > span {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+.fld-field input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 13.5px;
+  color: #0f172a;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.fld-field input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+.fld-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
 
 @media (max-width: 1024px) {
   .med-workspace > .fld-sidebar {

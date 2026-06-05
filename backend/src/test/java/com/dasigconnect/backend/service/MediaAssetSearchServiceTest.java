@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -187,6 +188,52 @@ class MediaAssetSearchServiceTest {
         assertEquals(assetId, response.getItems().get(0).getAsset().getId());
         verify(embeddingRepository, never()).findTopSimilarWithScoreScoped(
                 any(), anyBoolean(), any(MediaAssetEmbeddingType.class), anyString(), any(), anyInt());
+    }
+
+    @Test
+    void suggest_blankQuery_returnsEmptyWithoutHittingRepository() {
+        var response = service.suggest("   ", null, null, null, user);
+
+        assertEquals(0, response.suggestions().size());
+        verify(searchRepository, never()).suggest(anyString(), any(), anyBoolean(), anyInt());
+    }
+
+    @Test
+    void suggest_contributorScoped_dedupesAcrossTypesAndPreservesOrder() {
+        when(searchRepository.suggest(eq("food"), eq(institutionId), eq(false), anyInt()))
+                .thenReturn(List.of(
+                        new Object[] {"food", "tag", 0},
+                        new Object[] {"food", "file", 2},            // duplicate text → dropped
+                        new Object[] {"food outreach", "collection", 1}));
+
+        var response = service.suggest("food", null, null, null, user);
+
+        assertEquals(2, response.suggestions().size());
+        assertEquals("food", response.suggestions().get(0).text());
+        assertEquals("tag", response.suggestions().get(0).type());
+        assertEquals("food outreach", response.suggestions().get(1).text());
+        verify(searchRepository).suggest(eq("food"), eq(institutionId), eq(false), anyInt());
+    }
+
+    @Test
+    void suggest_respectsRequestedLimit() {
+        when(searchRepository.suggest(eq("a"), eq(institutionId), eq(false), anyInt()))
+                .thenReturn(List.of(
+                        new Object[] {"alpha", "tag", 1},
+                        new Object[] {"beta", "file", 1},
+                        new Object[] {"gamma", "uploader", 1},
+                        new Object[] {"delta", "folder", 1}));
+
+        var response = service.suggest("a", null, null, 2, user);
+
+        assertEquals(2, response.suggestions().size());
+    }
+
+    @Test
+    void suggest_adminWithoutInstitutionOrScope_throws() {
+        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@dasig.gov", "ADMINISTRATOR", null);
+
+        assertThrows(ResponseStatusException.class, () -> service.suggest("food", null, null, null, admin));
     }
 
     private static MediaAsset mediaAsset(UUID id, UUID institutionId) {

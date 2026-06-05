@@ -283,6 +283,40 @@ export async function hybridSearchMediaAssets(
   };
 }
 
+/* ===== UC-4.5 related-search autocomplete ===== */
+
+export interface RemoteSuggestion {
+  text: string;
+  /** tag | file | uploader | collection | folder */
+  type: string;
+}
+
+interface MediaSuggestionsRawResponse {
+  query: string;
+  suggestions?: RemoteSuggestion[];
+}
+
+/**
+ * Fetches Google-style related-search suggestions spanning the whole tenant-scoped
+ * media library (tags, filenames, uploaders, collections, folders).
+ */
+export async function fetchMediaSearchSuggestions(
+  params: { query: string; networkView?: boolean; institutionId?: string | null; limit?: number },
+  signal?: AbortSignal,
+): Promise<RemoteSuggestion[]> {
+  const search = new URLSearchParams();
+  search.set("q", params.query);
+  if (params.networkView) search.set("scope", "network");
+  else if (params.institutionId) search.set("institutionId", params.institutionId);
+  if (params.limit) search.set("limit", String(params.limit));
+
+  const res = await api.get<MediaSuggestionsRawResponse>(
+    `/media-assets/search/suggestions?${search.toString()}`,
+    { signal },
+  );
+  return res.data.suggestions ?? [];
+}
+
 /* ===== UC-4.6 search feedback ===== */
 
 export type SearchFeedbackAction =
@@ -483,6 +517,13 @@ export function listImportBatchAssets(importBatchId: string, institutionId?: str
       params: institutionId ? { institutionId } : undefined,
     })
     .then((res) => res.data);
+}
+
+/** UC-4.2: delete a batch grouping. Un-groups the batch's assets — the media itself is kept. */
+export function deleteMediaImportBatch(importBatchId: string, institutionId?: string | null) {
+  return api.delete<void>(`/media-assets/import-batches/${importBatchId}`, {
+    params: institutionId ? { institutionId } : undefined,
+  });
 }
 
 export function markImportBatchCurated(

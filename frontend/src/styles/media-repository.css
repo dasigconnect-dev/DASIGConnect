@@ -520,6 +520,102 @@
   .med-search-spinner { animation-duration: 1.4s; }
 }
 
+/* ===== Related-search suggestions dropdown (Google-style) ===== */
+.med-suggest {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: #fff;
+  border: 1px solid var(--med-border);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(10, 22, 40, 0.16);
+  overflow: hidden;
+  animation: med-fade-up 0.14s ease both;
+}
+.med-suggest-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--med-muted);
+}
+.med-suggest-clear {
+  border: none;
+  background: none;
+  color: var(--med-blue);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.med-suggest-clear:hover { text-decoration: underline; }
+.med-suggest-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.med-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--med-text);
+}
+.med-suggest-item.active,
+.med-suggest-item:hover { background: #f1f5f9; }
+/* Reset the absolute-positioned search-wrap svg rule for icons inside the dropdown. */
+.med-suggest svg {
+  position: static;
+  left: auto;
+  top: auto;
+  transform: none;
+  pointer-events: auto;
+}
+.med-suggest-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: #8a96a8;
+}
+.med-suggest-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #334155;
+}
+.med-suggest-text strong { font-weight: 700; color: #0f172a; }
+.med-suggest-tag {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 1px 7px;
+}
+.med-suggest-tag-tag { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
+.med-suggest-tag-collection { color: #0f766e; background: #ecfdf5; border-color: #99f6e4; }
+.med-suggest-tag-folder { color: #0f766e; background: #ecfdf5; border-color: #99f6e4; }
+.med-suggest-tag-recent { color: #92400e; background: #fffbeb; border-color: #fde68a; }
+.med-suggest-tag-phrase { color: #7c3aed; background: #f5f3ff; border-color: #ddd6fe; }
+
 .med-sort-select {
   background: var(--med-surface-2);
   border: 1.5px solid var(--med-border);
@@ -980,6 +1076,40 @@
   padding-right: 16px;
 }
 
+/* ===== REUSABLE LIST-VIEW META COLUMNS (Date · Size · Type · Category) ===== */
+/* Shared by Media Library (AssetCard) and Collections (AlbumAssetTile) list views. */
+.asset-meta-cols {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(74px, 132px));
+  gap: 18px;
+  align-items: center;
+  padding: 0 18px;
+}
+
+.asset-meta-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.asset-meta-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8a96a8;
+}
+
+.asset-meta-val {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2b3d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Card thumbnail */
 .med-card-thumb {
   width: 100%;
@@ -1197,6 +1327,23 @@
   transition-delay: 0s;
   border-left: 1px solid var(--med-border);
   box-shadow: -4px 0 24px rgba(10, 22, 40, 0.08);
+}
+
+/* Collections page has no med-workspace grid, so render the reused detail panel as a
+   fixed right-side drawer there (UC reuse of AssetDetailPanel inside a collection). */
+.alb-page .med-panel {
+  position: fixed;
+  top: var(--med-nav-h, 56px);
+  right: 0;
+  width: min(400px, 92vw);
+  height: calc(100vh - var(--med-nav-h, 56px));
+  z-index: 200; /* above the filter bar (z-index 80/81) so the drawer sits in front */
+  transform: translateX(100%);
+  box-shadow: none;
+}
+.alb-page .med-panel.open {
+  transform: translateX(0);
+  box-shadow: -4px 0 28px rgba(10, 22, 40, 0.14);
 }
 
 .med-panel-header {
@@ -1711,22 +1858,61 @@
   width: 100%;
   min-height: 72px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
+  align-items: stretch;
   border: 1px solid var(--med-border);
   border-radius: var(--med-radius-sm);
   background: var(--med-surface-0);
-  color: inherit;
-  cursor: pointer;
-  padding: 14px;
-  text-align: left;
+  overflow: hidden;
 }
 
 .med-batch-group-row:hover {
   border-color: #BFDBFE;
-  background: var(--med-blue-dim);
 }
+
+.med-batch-group-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.med-batch-group-open:hover { background: var(--med-blue-dim); }
+
+.med-batch-group-delete {
+  flex-shrink: 0;
+  width: 44px;
+  border: none;
+  border-left: 1px solid var(--med-border);
+  background: transparent;
+  color: var(--med-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.med-batch-group-delete:hover:not(:disabled) { background: #FEE2E2; color: var(--med-error); }
+.med-batch-group-delete:disabled { opacity: 0.5; cursor: default; }
+
+.med-batch-delete-link {
+  border: none;
+  background: transparent;
+  color: var(--med-error);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--med-radius-sm);
+}
+.med-batch-delete-link:hover:not(:disabled) { background: #FEE2E2; }
+.med-batch-delete-link:disabled { opacity: 0.5; cursor: default; }
 
 .med-batch-group-row strong {
   display: block;
@@ -2219,7 +2405,9 @@
     grid-template-columns: 88px 1fr;
   }
 
-  .med-grid.list-view .med-card-meta {
+  .med-grid.list-view .med-card-meta,
+  .med-grid.list-view .asset-meta-cols,
+  .alb-grid.list-view .asset-meta-cols {
     display: none;
   }
 

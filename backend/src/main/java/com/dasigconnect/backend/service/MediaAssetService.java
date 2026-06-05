@@ -412,6 +412,21 @@ public class MediaAssetService {
         return markImportBatchCurated(importBatchId, requestedInstitutionId, null, user);
     }
 
+    /**
+     * UC-4.2: delete an import batch grouping. Un-groups the batch's assets (clears
+     * import_batch_id) and removes the batch row — the actual media assets are NOT deleted.
+     */
+    public void deleteImportBatch(UUID importBatchId, UUID requestedInstitutionId, JwtUserDetails user) {
+        UUID institutionId = resolveTargetInstitution(user, requestedInstitutionId, "delete import batches");
+        MediaImportBatch batch = mediaImportBatchRepository.findByIdAndInstitution(importBatchId, institutionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Import batch not found."));
+        int cleared = mediaAssetRepository.clearImportBatch(importBatchId, institutionId);
+        mediaImportBatchRepository.delete(batch);
+        auditMedia(user, "MEDIA_IMPORT_BATCH_DELETED", importBatchId, Map.of(
+                "institutionId", String.valueOf(institutionId),
+                "ungroupedAssets", String.valueOf(cleared)));
+    }
+
     public AssetTagDto addTag(UUID assetId, AddAssetTagRequestDto dto, JwtUserDetails user) {
         MediaAsset asset = loadAsset(assetId, user);
         String trimmedLabel = dto.getLabel().trim();

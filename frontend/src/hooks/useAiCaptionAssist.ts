@@ -19,6 +19,9 @@ export interface UseAiCaptionAssistReturn {
   variants: CaptionVariant[] | null;
   rateLimitReset: number | null;
   canSuggest: boolean;
+  /** UC-4.7: treat the caption field as an explicit instruction/prompt. */
+  promptMode: boolean;
+  setPromptMode: (value: boolean) => void;
   suggest: () => void;
   dismissAll: () => void;
   regenerate: () => void;
@@ -34,6 +37,7 @@ export function useAiCaptionAssist(
   const [state, setState] = useState<AiCaptionState>("idle");
   const [variants, setVariants] = useState<CaptionVariant[] | null>(null);
   const [rateLimitReset, setRateLimitReset] = useState<number | null>(null);
+  const [promptMode, setPromptMode] = useState(false);
   const cooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const canSuggest = !!submissionId && hasImageAssets;
@@ -44,7 +48,7 @@ export function useAiCaptionAssist(
     setState("loading");
 
     try {
-      const response = await suggestCaption(submissionId!, existingCaption);
+      const response = await suggestCaption(submissionId!, existingCaption, promptMode);
       setVariants(response.variants);
       setState("idle");
     } catch (err) {
@@ -93,6 +97,8 @@ export function useAiCaptionAssist(
     variants,
     rateLimitReset,
     canSuggest,
+    promptMode,
+    setPromptMode,
     suggest,
     dismissAll,
     regenerate,

@@ -21,6 +21,8 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSearchResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSearchResultDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
+import com.dasigconnect.backend.model.dto.media.MediaSearchSuggestionDto;
+import com.dasigconnect.backend.model.dto.media.MediaSearchSuggestionsResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaBatchCurationResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaImportBatchResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
@@ -159,6 +161,21 @@ class MediaAssetControllerTest {
                         {"query":""}
                         """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser
+    void suggestions_authenticated_returnsRelatedSearches() throws Exception {
+        when(mediaAssetSearchService.suggest(eq("food"), any(), any(), any(), any()))
+                .thenReturn(new MediaSearchSuggestionsResponseDto(
+                        "food",
+                        List.of(new MediaSearchSuggestionDto("food outreach", "tag"))));
+
+        mockMvc.perform(get("/api/v1/media-assets/search/suggestions").param("q", "food"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.query").value("food"))
+                .andExpect(jsonPath("$.suggestions[0].text").value("food outreach"))
+                .andExpect(jsonPath("$.suggestions[0].type").value("tag"));
     }
 
     @Test

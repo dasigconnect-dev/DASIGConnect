@@ -183,6 +183,64 @@
 }
 .alb-asset-actions button:hover { background: rgba(15, 23, 42, 0.92); }
 
+/* Multi-select (mirrors the Media Library card selection affordance) */
+.alb-asset.selected .alb-asset-thumb {
+  outline: 2px solid var(--med-blue, #2563eb);
+  outline-offset: 2px;
+}
+.alb-asset-check {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background: rgba(15, 23, 42, 0.35);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  opacity: 0;
+  transition: opacity 150ms ease, background 150ms ease;
+  pointer-events: none;
+}
+.alb-asset-thumb:hover .alb-asset-check { opacity: 1; }
+.alb-asset-check.checked {
+  opacity: 1;
+  background: var(--med-blue, #2563eb);
+  border-color: var(--med-blue, #2563eb);
+}
+/* The selection check takes the top-left corner, so hide the cover badge while selected. */
+.alb-asset.selected .alb-cover-badge { display: none; }
+
+/* List view for the collection grid (parity with the Media Library view toggle) */
+.alb-grid.list-view {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.alb-grid.list-view .alb-asset {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 6px 12px;
+}
+.alb-grid.list-view .alb-asset.selected {
+  border-color: var(--med-blue, #2563eb);
+  box-shadow: 0 0 0 1px var(--med-blue, #2563eb);
+}
+.alb-grid.list-view .alb-asset-thumb {
+  aspect-ratio: auto;
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+}
+.alb-grid.list-view .alb-asset-name { margin-top: 0; font-size: 13px; }
+.alb-grid.list-view .alb-asset-actions { top: 4px; right: 4px; gap: 4px; }
+.alb-grid.list-view .alb-asset-actions button { width: 24px; height: 24px; }
+
 /* ── Modals ── */
 .alb-modal-overlay {
   position: fixed;
@@ -347,6 +405,29 @@
 }
 
 .alb-picker-empty { padding: 40px; text-align: center; color: #64748b; font-size: 14px; }
+
+/* Select-all / clear toolbar in the asset picker */
+.alb-picker-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 0 12px;
+}
+.alb-picker-count { font-size: 12px; color: #4b5563; font-weight: 600; }
+.alb-picker-toolbar-actions { display: flex; align-items: center; gap: 14px; }
+.alb-text-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+  cursor: pointer;
+}
+.alb-text-btn:hover:not(:disabled) { text-decoration: underline; }
+.alb-text-btn:disabled { color: #9ca3af; cursor: default; }
+
 .alb-picker-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));

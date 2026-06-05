@@ -31,6 +31,7 @@ import com.dasigconnect.backend.repository.SubmissionRepository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -67,10 +68,10 @@ class CaptionGenerationServiceTest {
                 new CaptionVariantDto("community", "Community caption #DASIG"),
                 new CaptionVariantDto("energetic", "Energetic caption! #DASIG")
         );
-        when(claudeVisionClient.generateCaptions(any(), any(), any())).thenReturn(variants);
+        when(claudeVisionClient.generateCaptions(any(), any(), any(), anyBoolean())).thenReturn(variants);
         when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        CaptionResponseDto result = service.generateCaptions(submissionId, userId, institutionId, null);
+        CaptionResponseDto result = service.generateCaptions(submissionId, userId, institutionId, null, false);
 
         assertThat(result.getSubmissionId()).isEqualTo(submissionId);
         assertThat(result.getVariants()).hasSize(3);
@@ -90,12 +91,12 @@ class CaptionGenerationServiceTest {
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(List.of(videoSma));
 
-        assertThatThrownBy(() -> service.generateCaptions(submissionId, userId, institutionId, null))
+        assertThatThrownBy(() -> service.generateCaptions(submissionId, userId, institutionId, null, false))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode().value())
                         .isEqualTo(422));
 
-        verify(claudeVisionClient, never()).generateCaptions(any(), any(), any());
+        verify(claudeVisionClient, never()).generateCaptions(any(), any(), any(), anyBoolean());
     }
 
     @Test
@@ -109,7 +110,7 @@ class CaptionGenerationServiceTest {
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(List.of());
 
-        assertThatThrownBy(() -> service.generateCaptions(submissionId, UUID.randomUUID(), institutionId, null))
+        assertThatThrownBy(() -> service.generateCaptions(submissionId, UUID.randomUUID(), institutionId, null, false))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode().value())
                         .isEqualTo(422));
@@ -125,7 +126,7 @@ class CaptionGenerationServiceTest {
 
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
 
-        assertThatThrownBy(() -> service.generateCaptions(submissionId, UUID.randomUUID(), differentInstitutionId, null))
+        assertThatThrownBy(() -> service.generateCaptions(submissionId, UUID.randomUUID(), differentInstitutionId, null, false))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                         .isEqualTo(HttpStatus.FORBIDDEN));
@@ -142,13 +143,13 @@ class CaptionGenerationServiceTest {
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(List.of(sma));
-        when(claudeVisionClient.generateCaptions(any(), any(), any())).thenReturn(List.of(
+        when(claudeVisionClient.generateCaptions(any(), any(), any(), anyBoolean())).thenReturn(List.of(
                 new CaptionVariantDto("professional", "Caption #DASIG")
         ));
         when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         // null institutionId = administrator bypasses institution check
-        CaptionResponseDto result = service.generateCaptions(submissionId, UUID.randomUUID(), null, null);
+        CaptionResponseDto result = service.generateCaptions(submissionId, UUID.randomUUID(), null, null, false);
 
         assertThat(result.getSubmissionId()).isEqualTo(submissionId);
     }
@@ -158,7 +159,7 @@ class CaptionGenerationServiceTest {
         UUID submissionId = UUID.randomUUID();
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.generateCaptions(submissionId, UUID.randomUUID(), UUID.randomUUID(), null))
+        assertThatThrownBy(() -> service.generateCaptions(submissionId, UUID.randomUUID(), UUID.randomUUID(), null, false))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                         .isEqualTo(HttpStatus.NOT_FOUND));
@@ -181,12 +182,12 @@ class CaptionGenerationServiceTest {
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(fiveImages);
-        when(claudeVisionClient.generateCaptions(any(), any(), any())).thenReturn(List.of(
+        when(claudeVisionClient.generateCaptions(any(), any(), any(), anyBoolean())).thenReturn(List.of(
                 new CaptionVariantDto("professional", "Caption #DASIG")
         ));
         when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        service.generateCaptions(submissionId, UUID.randomUUID(), institutionId, null);
+        service.generateCaptions(submissionId, UUID.randomUUID(), institutionId, null, false);
 
         // Claude client must receive at most 4 URLs
         verify(claudeVisionClient).generateCaptions(
@@ -195,7 +196,8 @@ class CaptionGenerationServiceTest {
                         .limit(4)
                         .toList()),
                 any(),
-                any());
+                any(),
+                anyBoolean());
     }
 
     // ── logInteraction() ─────────────────────────────────────────────────────

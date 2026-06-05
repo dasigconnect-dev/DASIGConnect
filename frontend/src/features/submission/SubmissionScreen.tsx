@@ -1197,12 +1197,27 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               label="Caption"
               action={
                 canUseAiCaption ? (
-                  <AiCaptionButton
-                    state={aiCaption.state}
-                    canSuggest={aiCaption.canSuggest}
-                    rateLimitReset={aiCaption.rateLimitReset}
-                    onSuggest={aiCaption.suggest}
-                  />
+                  <div className="ai-caption-actions">
+                    {aiCaption.canSuggest && form.caption.trim().length > 0 && (
+                      <label
+                        className="ai-promptmode-toggle"
+                        title="Prompt mode: treat your caption text as an instruction (e.g. 'focus on the awardees') rather than a draft to refine."
+                      >
+                        <input
+                          type="checkbox"
+                          checked={aiCaption.promptMode}
+                          onChange={(event) => aiCaption.setPromptMode(event.target.checked)}
+                        />
+                        Prompt mode
+                      </label>
+                    )}
+                    <AiCaptionButton
+                      state={aiCaption.state}
+                      canSuggest={aiCaption.canSuggest}
+                      rateLimitReset={aiCaption.rateLimitReset}
+                      onSuggest={aiCaption.suggest}
+                    />
+                  </div>
                 ) : undefined
               }
             >

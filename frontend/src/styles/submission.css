@@ -3484,6 +3484,32 @@ textarea.sub-finput {
   white-space: nowrap;
   line-height: 1.5;
 }
+
+/* UC-4.7: AI caption action row + prompt-mode toggle */
+.ai-caption-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.ai-promptmode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--sub-text-2, #4b5563);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.ai-promptmode-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--sub-blue, #2563eb);
+}
+
 .ai-caption-btn:hover:not(:disabled) {
   background: var(--sub-blue-dim, #eff6ff);
 }
