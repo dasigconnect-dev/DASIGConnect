@@ -130,6 +130,10 @@ public class MediaAsset {
     @Column(name = "purged_at")
     private Instant purgedAt;
 
+    // UC-4.x consent/visibility gate: internal_only | cleared_for_public.
+    @Column(name = "visibility", nullable = false)
+    private String visibility;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -137,11 +141,14 @@ public class MediaAsset {
     void onCreate() {
         if (id == null) id = UUID.randomUUID();
         if (status == null) status = MediaAssetStatus.PROCESSING;
+        if (visibility == null) visibility = "internal_only";
         createdAt = Instant.now();
     }
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
+    public String getVisibility() { return visibility; }
+    public void setVisibility(String visibility) { this.visibility = visibility; }
 
     public Institution getInstitution() { return institution; }
     public void setInstitution(Institution institution) { this.institution = institution; }

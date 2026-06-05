@@ -22,6 +22,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetVisibilityRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetCurationEditDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
@@ -153,6 +154,41 @@ class MediaAssetServiceTest {
 
         org.junit.jupiter.api.Assertions.assertEquals(1, history.size());
         org.junit.jupiter.api.Assertions.assertEquals("MEDIA_ASSET_UPLOADED", history.get(0).action());
+    }
+
+    @Test
+    void changeVisibility_updatesAndAudits() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        asset.setVisibility("internal_only");
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+
+        MediaAssetVisibilityRequestDto dto = new MediaAssetVisibilityRequestDto();
+        dto.setVisibility("cleared_for_public");
+
+        var result = mediaAssetService.changeVisibility(assetId, dto, user(UUID.randomUUID(), "validator", institutionId));
+
+        org.junit.jupiter.api.Assertions.assertEquals("cleared_for_public", asset.getVisibility());
+        org.junit.jupiter.api.Assertions.assertEquals("cleared_for_public", result.getVisibility());
+        verify(mediaAssetRepository).save(asset);
+        verify(auditLogService).record(any(), org.mockito.ArgumentMatchers.eq("MEDIA_ASSET_VISIBILITY_CHANGED"),
+                any(), any(), org.mockito.ArgumentMatchers.eq(assetId), any());
+    }
+
+    @Test
+    void changeVisibility_rejectsInvalidValue() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        when(mediaAssetRepository.findActiveById(assetId))
+                .thenReturn(Optional.of(asset(assetId, institutionId, UUID.randomUUID())));
+
+        MediaAssetVisibilityRequestDto dto = new MediaAssetVisibilityRequestDto();
+        dto.setVisibility("public");
+
+        assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.changeVisibility(assetId, dto, user(UUID.randomUUID(), "validator", institutionId)));
+        verify(mediaAssetRepository, never()).save(any());
     }
 
     @Test

@@ -5,6 +5,7 @@ import type { MediaAsset, MediaUsage } from "../../api/mediaApi";
 import {
   bulkDeleteMediaAssets,
   bulkMoveAssets,
+  changeAssetVisibility,
   createMediaImportBatch,
   deleteMediaAsset,
   getAssetHistory,
@@ -19,6 +20,7 @@ import {
   type MediaAssetCurationEdit,
   type MediaAuditEntry,
   type MediaImportBatch,
+  type MediaVisibility,
 } from "../../api/mediaApi";
 import {
   listFolders,
@@ -175,6 +177,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [panelOpen, setPanelOpen] = useState(false);
   const [assetHistory, setAssetHistory] = useState<MediaAuditEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
 
   const {
     selected: checkedIds,
@@ -693,6 +696,23 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     }
   }
 
+  async function handleChangeVisibility(visibility: MediaVisibility) {
+    if (!selectedAsset) return;
+    setVisibilityBusy(true);
+    try {
+      const updated = await changeAssetVisibility(selectedAsset.id, visibility);
+      setSelectedAsset(updated);
+      setAssets((prev) => prev.map((a) => (a.id === updated.id ? { ...a, visibility: updated.visibility } : a)));
+      toast.success(
+        visibility === "cleared_for_public" ? "Asset cleared for public use." : "Asset marked internal only.",
+      );
+    } catch {
+      toast.error("Could not update visibility.");
+    } finally {
+      setVisibilityBusy(false);
+    }
+  }
+
   async function handleDownload() {
     if (!selectedAsset?.storageUrl) {
       toast.error("No file URL available.");
@@ -1066,6 +1086,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           onRequestBulkDelete={openBulkDeleteModal}
           history={assetHistory}
           historyLoading={historyLoading}
+          onChangeVisibility={(v) => void handleChangeVisibility(v)}
+          visibilityBusy={visibilityBusy}
         />
       </div>
 

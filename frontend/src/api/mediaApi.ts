@@ -42,7 +42,11 @@ export interface MediaAsset {
   curatedAt?: string | null;
   aiClassifiedAt?: string | null;
   embeddingGeneratedAt?: string | null;
+  /** UC-4.x consent/visibility: "internal_only" | "cleared_for_public". */
+  visibility?: string | null;
 }
+
+export type MediaVisibility = "internal_only" | "cleared_for_public";
 
 export interface DeleteCheckResult {
   tier: "blocked" | "warning" | "free";
@@ -106,6 +110,7 @@ interface MediaAssetPageResponse {
     importBatchId?: string | null;
     duplicateOfId?: string | null;
     curatedAt?: string | null;
+    visibility?: string | null;
   }>;
   totalCount: number;
   page: number;
@@ -149,6 +154,7 @@ function rawToAsset(raw: MediaAssetPageResponse["items"][0]): MediaAsset {
     importBatchId: raw.importBatchId ?? null,
     duplicateOfId: raw.duplicateOfId ?? null,
     curatedAt: raw.curatedAt ?? null,
+    visibility: raw.visibility ?? null,
   };
 }
 
@@ -315,6 +321,7 @@ export interface MediaAssetDetailResponse {
   aiDescription?: string | null;
   blurScore?: number | null;
   curatedAt?: string | null;
+  visibility?: string | null;
   aiClassifiedAt?: string | null;
   embeddingGeneratedAt?: string | null;
   createdAt: string;
@@ -385,6 +392,7 @@ function mapDetailToAsset(raw: MediaAssetDetailResponse): MediaAsset {
     aiDescription: raw.aiDescription ?? null,
     blurScore: raw.blurScore ?? null,
     curatedAt: raw.curatedAt ?? null,
+    visibility: raw.visibility ?? null,
     aiClassifiedAt: raw.aiClassifiedAt ?? null,
     embeddingGeneratedAt: raw.embeddingGeneratedAt ?? null,
   };
@@ -411,6 +419,13 @@ export function getAssetHistory(id: string, signal?: AbortSignal) {
   return api
     .get<MediaAuditEntry[]>(`/media-assets/${id}/history`, { signal })
     .then((res) => res.data);
+}
+
+/** UC-4.x: change an asset's consent/visibility. Returns the updated detail asset. */
+export function changeAssetVisibility(id: string, visibility: MediaVisibility) {
+  return api
+    .patch<MediaAssetDetailResponse>(`/media-assets/${id}/visibility`, { visibility })
+    .then((res) => mapDetailToAsset(res.data));
 }
 
 export function deleteMediaAsset(id: string, force = false) {

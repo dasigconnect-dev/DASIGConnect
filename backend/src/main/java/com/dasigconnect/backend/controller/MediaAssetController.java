@@ -8,6 +8,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -23,6 +24,7 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSearchRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetVisibilityRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAuditEntryDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSearchResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
@@ -96,6 +98,16 @@ public class MediaAssetController {
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(mediaAssetService.getHistory(id, user));
+    }
+
+    /** UC-4.x: change an asset's consent/visibility (internal_only | cleared_for_public). */
+    @PatchMapping("/{id:[0-9a-fA-F\\-]{36}}/visibility")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MediaAssetDetailDto> changeVisibility(
+            @PathVariable UUID id,
+            @Valid @RequestBody MediaAssetVisibilityRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaAssetService.changeVisibility(id, dto, user));
     }
 
     @PostMapping("/{id}/use-in-new-post")

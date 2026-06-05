@@ -27,6 +27,7 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
 import com.dasigconnect.backend.model.dto.media.MediaAuditEntryDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetVisibilityRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUsageDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUseInNewPostRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaImportBatchCreateRequestDto;
@@ -444,6 +445,28 @@ public class MediaAssetService {
         auditMedia(user, "MEDIA_ASSET_TAG_REMOVED", assetId, Map.of(
                 "label", String.valueOf(removedLabel),
                 "tagId", String.valueOf(tagId)));
+    }
+
+    /**
+     * UC-4.x: change an asset's consent/visibility (internal_only | cleared_for_public).
+     * Institution-scoped like the other asset mutations; the change is audited (UC-4.11).
+     */
+    public MediaAssetDetailDto changeVisibility(UUID assetId, MediaAssetVisibilityRequestDto dto, JwtUserDetails user) {
+        MediaAsset asset = loadAsset(assetId, user);
+        String newVisibility = dto.getVisibility() == null ? "" : dto.getVisibility().trim();
+        if (!newVisibility.equals("internal_only") && !newVisibility.equals("cleared_for_public")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "visibility must be internal_only or cleared_for_public.");
+        }
+
+        String previous = asset.getVisibility();
+        asset.setVisibility(newVisibility);
+        mediaAssetRepository.save(asset);
+
+        auditMedia(user, "MEDIA_ASSET_VISIBILITY_CHANGED", assetId, Map.of(
+                "from", String.valueOf(previous),
+                "to", newVisibility));
+        return get(assetId, user);
     }
 
     public MediaAssetUploadUrlResponseDto createUploadUrl(MediaAssetUploadUrlRequestDto dto, JwtUserDetails user) {

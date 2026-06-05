@@ -21,6 +21,7 @@ public class MediaAssetDetailDto {
     private BigDecimal aiConfidence;
     private String aiDescription;
     private Instant curatedAt;
+    private String visibility;
     private BigDecimal blurScore;
     private Long perceptualHash;
     private UUID duplicateOfId;
@@ -51,6 +52,7 @@ public class MediaAssetDetailDto {
         dto.aiConfidence = asset.getAiConfidence();
         dto.aiDescription = asset.getAiDescription();
         dto.curatedAt = asset.getCuratedAt();
+        dto.visibility = asset.getVisibility();
         dto.blurScore = asset.getBlurScore();
         dto.perceptualHash = asset.getPerceptualHash();
         dto.duplicateOfId = asset.getDuplicateOfId();
@@ -87,6 +89,10 @@ public class MediaAssetDetailDto {
 
     public String getTitle() {
         return title;
+    }
+
+    public String getVisibility() {
+        return visibility;
     }
 
     public String getFileType() {

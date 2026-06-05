@@ -23,6 +23,7 @@ public class MediaAssetSummaryDto {
     private UUID importBatchId;
     private UUID duplicateOfId;
     private Instant curatedAt;
+    private String visibility;
 
     public static MediaAssetSummaryDto from(MediaAsset asset) {
         MediaAssetSummaryDto dto = new MediaAssetSummaryDto();
@@ -43,6 +44,7 @@ public class MediaAssetSummaryDto {
         dto.importBatchId = asset.getImportBatchId();
         dto.duplicateOfId = asset.getDuplicateOfId();
         dto.curatedAt = asset.getCuratedAt();
+        dto.visibility = asset.getVisibility();
         return dto;
     }
 
@@ -54,6 +56,7 @@ public class MediaAssetSummaryDto {
     public String getFileType() { return fileType; }
     public long getFileSizeBytes() { return fileSizeBytes; }
     public String getAiCategory() { return aiCategory; }
+    public String getVisibility() { return visibility; }
     public Instant getCreatedAt() { return createdAt; }
     public UUID getInstitutionId() { return institutionId; }
     public String getInstitutionName() { return institutionName; }
