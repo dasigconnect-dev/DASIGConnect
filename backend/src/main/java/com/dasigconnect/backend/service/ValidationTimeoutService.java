@@ -171,11 +171,11 @@ public class ValidationTimeoutService {
 
     private void validateRejectionCode(String reasonCode, String notes) {
         if (reasonCode == null || !VALID_REJECTION_CODES.contains(reasonCode)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Invalid rejection reason code. Valid codes: " + String.join(", ", VALID_REJECTION_CODES));
         }
         if ("OTHER".equals(reasonCode) && (notes == null || notes.trim().isEmpty())) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Notes are required when rejection reason is OTHER.");
         }
     }
