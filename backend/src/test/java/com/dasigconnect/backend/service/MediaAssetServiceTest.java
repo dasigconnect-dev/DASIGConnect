@@ -27,12 +27,14 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaBatchCurationRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaImportBatchCreateRequestDto;
+import com.dasigconnect.backend.model.entity.AuditLog;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
 import com.dasigconnect.backend.model.entity.MediaImportBatch;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.AssetTagRepository;
+import com.dasigconnect.backend.repository.AuditLogRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.MediaImportBatchRepository;
@@ -69,6 +71,8 @@ class MediaAssetServiceTest {
     @Mock
     private AuditLogService auditLogService;
     @Mock
+    private AuditLogRepository auditLogRepository;
+    @Mock
     private EntityManager entityManager;
 
     private MediaAssetService mediaAssetService;
@@ -86,7 +90,8 @@ class MediaAssetServiceTest {
                 supabaseStorageService,
                 mediaIngestionQueueService,
                 userRepository,
-                auditLogService);
+                auditLogService,
+                auditLogRepository);
         ReflectionTestUtils.setField(mediaAssetService, "entityManager", entityManager);
     }
 
@@ -130,6 +135,24 @@ class MediaAssetServiceTest {
         mediaAssetService.delete(assetId, false, user(UUID.randomUUID(), "validator", institutionId));
 
         verify(mediaAssetRepository).save(asset);
+    }
+
+    @Test
+    void getHistory_returnsAuditTrailForViewableAsset() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+
+        AuditLog log = new AuditLog();
+        log.setAction("MEDIA_ASSET_UPLOADED");
+        log.setResourceId(assetId);
+        when(auditLogRepository.findByResourceIdWithActor(assetId)).thenReturn(List.of(log));
+
+        var history = mediaAssetService.getHistory(assetId, user(UUID.randomUUID(), "validator", institutionId));
+
+        org.junit.jupiter.api.Assertions.assertEquals(1, history.size());
+        org.junit.jupiter.api.Assertions.assertEquals("MEDIA_ASSET_UPLOADED", history.get(0).action());
     }
 
     @Test

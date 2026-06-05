@@ -25,6 +25,7 @@ import com.dasigconnect.backend.model.dto.media.MediaBatchCurationRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
+import com.dasigconnect.backend.model.dto.media.MediaAuditEntryDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUsageDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUseInNewPostRequestDto;
@@ -43,6 +44,7 @@ import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlResponseDto;
 import com.dasigconnect.backend.repository.AssetTagRepository;
+import com.dasigconnect.backend.repository.AuditLogRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.MediaImportBatchRepository;
@@ -70,6 +72,7 @@ public class MediaAssetService {
     private final MediaIngestionQueueService mediaIngestionQueueService;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
+    private final AuditLogRepository auditLogRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -85,7 +88,8 @@ public class MediaAssetService {
             SupabaseStorageService supabaseStorageService,
             MediaIngestionQueueService mediaIngestionQueueService,
             UserRepository userRepository,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            AuditLogRepository auditLogRepository) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
@@ -97,6 +101,19 @@ public class MediaAssetService {
         this.mediaIngestionQueueService = mediaIngestionQueueService;
         this.userRepository = userRepository;
         this.auditLogService = auditLogService;
+        this.auditLogRepository = auditLogRepository;
+    }
+
+    /**
+     * UC-4.11: the provenance trail for an asset (newest first). Visibility mirrors the asset
+     * detail endpoint — {@link #loadAsset} enforces admin/institution scope and 404s otherwise.
+     */
+    @Transactional(readOnly = true)
+    public List<MediaAuditEntryDto> getHistory(UUID assetId, JwtUserDetails user) {
+        loadAsset(assetId, user);
+        return auditLogRepository.findByResourceIdWithActor(assetId).stream()
+                .map(MediaAuditEntryDto::from)
+                .toList();
     }
 
     /**

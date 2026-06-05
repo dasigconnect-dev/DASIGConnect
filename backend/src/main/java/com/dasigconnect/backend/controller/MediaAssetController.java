@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.controller;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
@@ -22,6 +23,7 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSearchRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAuditEntryDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSearchResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
@@ -85,6 +87,15 @@ public class MediaAssetController {
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(mediaAssetService.get(id, user));
+    }
+
+    /** UC-4.11: the asset's provenance/audit trail (newest first). */
+    @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/history")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<MediaAuditEntryDto>> history(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaAssetService.getHistory(id, user));
     }
 
     @PostMapping("/{id}/use-in-new-post")

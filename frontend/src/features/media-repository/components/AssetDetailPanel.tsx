@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
-import type { MediaAsset } from "../../../api/mediaApi";
+import type { MediaAsset, MediaAuditEntry } from "../../../api/mediaApi";
 import { formatFileSize, formatUploadDate, formatResolution, formatFileTypeName, isVideoType } from "../utils";
+import AssetActivityLog from "./AssetActivityLog";
 
 interface AssetDetailPanelProps {
   asset: MediaAsset | null;
@@ -21,6 +22,8 @@ interface AssetDetailPanelProps {
   onRequestDelete: () => void;
   canBulkDelete?: boolean;
   onRequestBulkDelete?: () => void;
+  history?: MediaAuditEntry[];
+  historyLoading?: boolean;
   renderMode?: "portal" | "inline";
 }
 
@@ -63,6 +66,8 @@ export default function AssetDetailPanel({
   onRequestDelete,
   canBulkDelete = false,
   onRequestBulkDelete,
+  history = [],
+  historyLoading = false,
   renderMode = "portal",
 }: AssetDetailPanelProps) {
   const newPostCount = selectionMode ? selectedAssets.length : asset ? 1 : 0;
@@ -277,6 +282,12 @@ export default function AssetDetailPanel({
                 </div>
               </div>
             )}
+
+            {/* Activity / provenance (UC-4.11) */}
+            <div>
+              <div className="med-panel-section-label">Activity</div>
+              <AssetActivityLog entries={history} loading={historyLoading} />
+            </div>
           </>
         )}
       </div>

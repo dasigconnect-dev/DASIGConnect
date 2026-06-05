@@ -396,6 +396,23 @@ export function getMediaAsset(id: string, signal?: AbortSignal) {
     .then((res) => ({ ...res, data: mapDetailToAsset(res.data) }));
 }
 
+/* ===== UC-4.11 provenance / audit trail ===== */
+
+export interface MediaAuditEntry {
+  action: string;
+  actorName: string | null;
+  actorEmail: string | null;
+  createdAt: string;
+  metadata: string | null;
+}
+
+/** UC-4.11: an asset's provenance trail (newest first). */
+export function getAssetHistory(id: string, signal?: AbortSignal) {
+  return api
+    .get<MediaAuditEntry[]>(`/media-assets/${id}/history`, { signal })
+    .then((res) => res.data);
+}
+
 export function deleteMediaAsset(id: string, force = false) {
   return api.delete<void>(`/media-assets/${id}`, { params: force ? { force: true } : undefined });
 }

@@ -7,6 +7,7 @@ import {
   bulkMoveAssets,
   createMediaImportBatch,
   deleteMediaAsset,
+  getAssetHistory,
   getMediaAsset,
   getMediaAssetUploadUrl,
   listImportBatchAssets,
@@ -16,6 +17,7 @@ import {
   registerMediaAsset,
   type MediaAssetDetailResponse,
   type MediaAssetCurationEdit,
+  type MediaAuditEntry,
   type MediaImportBatch,
 } from "../../api/mediaApi";
 import {
@@ -171,6 +173,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   const [selectedAsset, setSelectedAsset] = useState<MediaAsset | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [assetHistory, setAssetHistory] = useState<MediaAuditEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const {
     selected: checkedIds,
@@ -393,6 +397,14 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     getMediaAsset(asset.id)
       .then((res) => setSelectedAsset(res.data))
       .catch(() => { /* panel stays with summary data on fetch error */ });
+
+    // UC-4.11: load the provenance trail for this asset.
+    setAssetHistory([]);
+    setHistoryLoading(true);
+    getAssetHistory(asset.id)
+      .then(setAssetHistory)
+      .catch(() => setAssetHistory([]))
+      .finally(() => setHistoryLoading(false));
   }
 
   function closePanel() {
@@ -1052,6 +1064,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           onRequestDelete={openSingleDeleteModal}
           canBulkDelete={canBulkDelete}
           onRequestBulkDelete={openBulkDeleteModal}
+          history={assetHistory}
+          historyLoading={historyLoading}
         />
       </div>
 
