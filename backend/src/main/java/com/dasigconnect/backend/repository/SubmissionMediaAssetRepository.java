@@ -63,4 +63,14 @@ public interface SubmissionMediaAssetRepository extends JpaRepository<Submission
         ORDER BY sma.displayOrder ASC
         """)
     List<MediaAsset> findMediaAssetsBySubmissionId(@Param("submissionId") UUID submissionId);
+
+    /** UC-4.x consent gate: asset codes attached to a submission that are NOT cleared for public. */
+    @Query("""
+        SELECT sma.mediaAsset.assetCode FROM SubmissionMediaAsset sma
+        WHERE sma.submission.id = :submissionId
+          AND sma.mediaAsset.deletedAt IS NULL
+          AND (sma.mediaAsset.visibility IS NULL OR sma.mediaAsset.visibility <> 'cleared_for_public')
+        ORDER BY sma.displayOrder ASC
+        """)
+    List<String> findUnclearedAssetCodes(@Param("submissionId") UUID submissionId);
 }

@@ -247,6 +247,8 @@ public class SubmissionService {
         // Content completeness is a data-integrity invariant, not a scheduling
         // guard rail — enforce it on every submit regardless of guardRailsEnforced.
         assertContentComplete(submission);
+        // UC-4.x consent gate: every attached asset must be cleared for public use.
+        assertAssetsCleared(submission);
 
         submission.setStatus(SubmissionStatus.pending);
         submission.setSubmittedAt(Instant.now());
@@ -309,6 +311,20 @@ public class SubmissionService {
         if (!missing.isEmpty()) {
             throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "Submission is incomplete — add " + String.join(", ", missing) + " before submitting.");
+        }
+    }
+
+    /**
+     * UC-4.x consent gate: reject submit if any attached asset is not cleared for public use.
+     * Existing assets are grandfathered to cleared_for_public, so this only blocks newly uploaded
+     * (internal_only) media until a user clears it in the Media Library.
+     */
+    private void assertAssetsCleared(Submission submission) {
+        List<String> uncleared = submissionMediaAssetRepository.findUnclearedAssetCodes(submission.getId());
+        if (!uncleared.isEmpty()) {
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
+                    "These media assets are not cleared for public use: " + String.join(", ", uncleared)
+                            + ". Mark them \"Cleared for public\" in the Media Library before submitting.");
         }
     }
 
