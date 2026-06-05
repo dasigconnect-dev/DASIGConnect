@@ -2,6 +2,7 @@ package com.dasigconnect.backend.service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -25,6 +26,7 @@ public class MediaAssetRetentionService {
     private final MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     private final AssetTagRepository assetTagRepository;
     private final SupabaseStorageService supabaseStorageService;
+    private final AuditLogService auditLogService;
     private final TransactionTemplate txTemplate;
     private final int retentionDays;
     private final int batchSize;
@@ -34,6 +36,7 @@ public class MediaAssetRetentionService {
             MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
             AssetTagRepository assetTagRepository,
             SupabaseStorageService supabaseStorageService,
+            AuditLogService auditLogService,
             PlatformTransactionManager transactionManager,
             @Value("${app.media-assets.deleted-retention-days:30}") int retentionDays,
             @Value("${app.media-assets.purge-batch-size:25}") int batchSize) {
@@ -41,6 +44,7 @@ public class MediaAssetRetentionService {
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
         this.assetTagRepository = assetTagRepository;
         this.supabaseStorageService = supabaseStorageService;
+        this.auditLogService = auditLogService;
         this.txTemplate = new TransactionTemplate(transactionManager);
         this.retentionDays = Math.max(retentionDays, 1);
         this.batchSize = Math.min(Math.max(batchSize, 1), 100);
@@ -69,6 +73,14 @@ public class MediaAssetRetentionService {
                 mediaAssetRepository.purgeAiProfile(assetId);
                 return null;
             });
+
+            // UC-4.11 provenance: record the disposal. Best-effort, system actor (no user).
+            try {
+                auditLogService.recordSystemAction("MEDIA_ASSET_PURGED", assetId,
+                        Map.of("storageDeleted", String.valueOf(storageDeleted)));
+            } catch (Exception e) {
+                log.warn("Failed to write purge audit for {}: {}", assetId, e.getMessage());
+            }
 
             log.info("Purged deleted media asset {} after retention. storageDeleted={}", assetId, storageDeleted);
             purged++;

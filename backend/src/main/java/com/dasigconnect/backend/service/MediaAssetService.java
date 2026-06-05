@@ -48,6 +48,7 @@ import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.MediaImportBatchRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
+import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -67,6 +68,8 @@ public class MediaAssetService {
     private final SubmissionService submissionService;
     private final SupabaseStorageService supabaseStorageService;
     private final MediaIngestionQueueService mediaIngestionQueueService;
+    private final UserRepository userRepository;
+    private final AuditLogService auditLogService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -80,7 +83,9 @@ public class MediaAssetService {
             MediaImportBatchRepository mediaImportBatchRepository,
             SubmissionService submissionService,
             SupabaseStorageService supabaseStorageService,
-            MediaIngestionQueueService mediaIngestionQueueService) {
+            MediaIngestionQueueService mediaIngestionQueueService,
+            UserRepository userRepository,
+            AuditLogService auditLogService) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
@@ -90,6 +95,23 @@ public class MediaAssetService {
         this.submissionService = submissionService;
         this.supabaseStorageService = supabaseStorageService;
         this.mediaIngestionQueueService = mediaIngestionQueueService;
+        this.userRepository = userRepository;
+        this.auditLogService = auditLogService;
+    }
+
+    /**
+     * UC-4.11 provenance: write an immutable audit row for a state-changing media operation.
+     * Best-effort — a logging failure must never roll back the business action (same discipline
+     * as the T1 notification block). {@code AuditLogService.record} is REQUIRES_NEW, so the row
+     * commits independently of the caller's transaction.
+     */
+    private void auditMedia(JwtUserDetails user, String action, UUID resourceId, Map<String, ?> metadata) {
+        try {
+            User actor = user == null ? null : userRepository.findById(user.userId()).orElse(null);
+            auditLogService.record(actor, action, null, null, resourceId, metadata);
+        } catch (Exception e) {
+            log.warn("Failed to write media audit [{}] for {}: {}", action, resourceId, e.getMessage());
+        }
     }
 
     @Transactional(readOnly = true)
@@ -203,6 +225,11 @@ public class MediaAssetService {
         asset.setStatus(MediaAssetStatus.DELETED);
         mediaAssetEmbeddingRepository.deleteByAssetId(assetId);
         mediaAssetRepository.save(asset);
+
+        auditMedia(user, "MEDIA_ASSET_DELETED", assetId, Map.of(
+                "assetCode", String.valueOf(asset.getAssetCode()),
+                "institutionId", String.valueOf(asset.getInstitution().getId()),
+                "force", String.valueOf(force)));
     }
 
     public MediaAssetBulkDeleteResponseDto bulkDelete(MediaAssetBulkDeleteRequestDto dto, JwtUserDetails user) {
@@ -230,6 +257,11 @@ public class MediaAssetService {
             mediaAssetEmbeddingRepository.deleteByAssetId(asset.getId());
         }
         mediaAssetRepository.saveAll(assets);
+
+        auditMedia(user, "MEDIA_ASSETS_BULK_DELETED", null, Map.of(
+                "count", String.valueOf(assets.size()),
+                "force", String.valueOf(dto.isForce()),
+                "assetIds", String.join(",", assetIds.stream().map(UUID::toString).toList())));
         return new MediaAssetBulkDeleteResponseDto(assetIds);
     }
 
@@ -281,6 +313,12 @@ public class MediaAssetService {
         } catch (Exception e) {
             log.warn("Failed to enqueue AI classification for asset {}: {}", savedId, e.getMessage());
         }
+
+        auditMedia(user, "MEDIA_ASSET_UPLOADED", savedId, Map.of(
+                "assetCode", String.valueOf(asset.getAssetCode()),
+                "institutionId", String.valueOf(institutionId),
+                "fileType", fileType.name(),
+                "fileName", String.valueOf(dto.getFileName())));
 
         return MediaAssetDetailDto.from(asset, List.of(), List.of());
     }
@@ -342,6 +380,10 @@ public class MediaAssetService {
             asset.setCuratedAt(curatedAt);
         }
         mediaAssetRepository.saveAll(assets);
+
+        auditMedia(user, "MEDIA_BATCH_CURATED", importBatchId, Map.of(
+                "institutionId", String.valueOf(institutionId),
+                "curatedCount", String.valueOf(assets.size())));
         return new MediaBatchCurationResponseDto(assets.size());
     }
 
@@ -364,7 +406,12 @@ public class MediaAssetService {
         tag.setMediaAsset(asset);
         tag.setLabel(trimmedLabel);
         tag.setSource("manual");
-        return AssetTagDto.from(assetTagRepository.save(tag));
+        AssetTag saved = assetTagRepository.save(tag);
+
+        auditMedia(user, "MEDIA_ASSET_TAG_ADDED", assetId, Map.of(
+                "label", trimmedLabel,
+                "tagId", String.valueOf(saved.getId())));
+        return AssetTagDto.from(saved);
     }
 
     public void removeTag(UUID assetId, UUID tagId, JwtUserDetails user) {
@@ -374,7 +421,12 @@ public class MediaAssetService {
         if (!tag.getMediaAsset().getId().equals(assetId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tag not found.");
         }
+        String removedLabel = tag.getLabel();
         assetTagRepository.delete(tag);
+
+        auditMedia(user, "MEDIA_ASSET_TAG_REMOVED", assetId, Map.of(
+                "label", String.valueOf(removedLabel),
+                "tagId", String.valueOf(tagId)));
     }
 
     public MediaAssetUploadUrlResponseDto createUploadUrl(MediaAssetUploadUrlRequestDto dto, JwtUserDetails user) {

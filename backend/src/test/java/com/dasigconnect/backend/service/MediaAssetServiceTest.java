@@ -38,6 +38,7 @@ import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.MediaImportBatchRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
+import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 
 import jakarta.persistence.EntityManager;
@@ -64,6 +65,10 @@ class MediaAssetServiceTest {
     @Mock
     private MediaIngestionQueueService mediaIngestionQueueService;
     @Mock
+    private UserRepository userRepository;
+    @Mock
+    private AuditLogService auditLogService;
+    @Mock
     private EntityManager entityManager;
 
     private MediaAssetService mediaAssetService;
@@ -79,7 +84,9 @@ class MediaAssetServiceTest {
                 mediaImportBatchRepository,
                 submissionService,
                 supabaseStorageService,
-                mediaIngestionQueueService);
+                mediaIngestionQueueService,
+                userRepository,
+                auditLogService);
         ReflectionTestUtils.setField(mediaAssetService, "entityManager", entityManager);
     }
 
@@ -95,6 +102,9 @@ class MediaAssetServiceTest {
 
         verify(mediaAssetRepository).save(asset);
         org.junit.jupiter.api.Assertions.assertEquals(userId, asset.getDeletedByUserId());
+        // UC-4.11: deletion is audited.
+        verify(auditLogService).record(any(), org.mockito.ArgumentMatchers.eq("MEDIA_ASSET_DELETED"),
+                any(), any(), org.mockito.ArgumentMatchers.eq(assetId), any());
     }
 
     @Test

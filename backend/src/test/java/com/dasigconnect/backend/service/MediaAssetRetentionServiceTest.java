@@ -28,6 +28,7 @@ class MediaAssetRetentionServiceTest {
         MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository = mock(MediaAssetEmbeddingRepository.class);
         AssetTagRepository assetTagRepository = mock(AssetTagRepository.class);
         SupabaseStorageService storageService = mock(SupabaseStorageService.class);
+        AuditLogService auditLogService = mock(AuditLogService.class);
         PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
         TransactionStatus txStatus = mock(TransactionStatus.class);
         when(txManager.getTransaction(any())).thenReturn(txStatus);
@@ -43,6 +44,7 @@ class MediaAssetRetentionServiceTest {
                 mediaAssetEmbeddingRepository,
                 assetTagRepository,
                 storageService,
+                auditLogService,
                 txManager,
                 30,
                 25);
@@ -54,5 +56,6 @@ class MediaAssetRetentionServiceTest {
         verify(mediaAssetEmbeddingRepository).deleteByAssetId(asset.getId());
         verify(assetTagRepository).deleteByMediaAssetId(asset.getId());
         verify(mediaAssetRepository).purgeAiProfile(asset.getId());
+        verify(auditLogService).recordSystemAction(eq("MEDIA_ASSET_PURGED"), eq(asset.getId()), any());
     }
 }
