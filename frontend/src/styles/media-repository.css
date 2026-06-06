@@ -2779,3 +2779,115 @@
 .med-health-filter-clear:hover {
   text-decoration: underline;
 }
+
+/* UC-4.12 Phase 7D — Rights & consent section in the asset detail panel */
+.med-rights-muted {
+  font-size: 12.5px;
+  color: var(--med-muted);
+  margin: 4px 0 10px;
+}
+
+.med-rights-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.med-rights-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.med-rights-badge.good { background: #DCFCE7; color: #166534; }
+.med-rights-badge.warn { background: #FEF3C7; color: #92400E; }
+.med-rights-badge.danger { background: #FEE2E2; color: #991B1B; }
+.med-rights-badge.muted { background: var(--med-surface-1); color: var(--med-text-2); }
+
+.med-rights-eligible {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--med-success);
+}
+
+.med-rights-list {
+  margin: 0 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.med-rights-list > div {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.med-rights-list dt {
+  color: var(--med-muted);
+  font-weight: 600;
+  margin: 0;
+}
+
+.med-rights-list dd {
+  margin: 0;
+  color: var(--med-text);
+}
+
+.med-rights-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.med-rights-row {
+  display: flex;
+  gap: 10px;
+}
+
+.med-rights-row .med-rights-field {
+  flex: 1;
+}
+
+.med-rights-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.med-rights-field > span {
+  font-weight: 600;
+  color: var(--med-text-2);
+}
+
+.med-rights-field input,
+.med-rights-field select,
+.med-rights-field textarea {
+  font-family: var(--med-ff-body);
+  font-size: 13px;
+  padding: 7px 9px;
+  border: 1.5px solid var(--med-border);
+  border-radius: var(--med-radius-sm);
+  background: var(--med-surface-0);
+  color: var(--med-text);
+}
+
+.med-rights-field input:focus,
+.med-rights-field select:focus,
+.med-rights-field textarea:focus {
+  outline: none;
+  border-color: var(--med-blue);
+}
+
+.med-rights-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

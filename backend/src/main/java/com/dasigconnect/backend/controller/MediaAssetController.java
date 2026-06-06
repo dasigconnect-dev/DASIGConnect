@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -36,6 +37,8 @@ import com.dasigconnect.backend.model.dto.media.MediaBatchCurationRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaBatchCurationResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaImportBatchCreateRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaImportBatchResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetRightsDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetRightsUpdateRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaIntegrityCheckDto;
 import com.dasigconnect.backend.model.dto.media.MediaIntegrityResultDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
@@ -43,6 +46,7 @@ import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.MediaIntegrityService;
 import com.dasigconnect.backend.service.MediaAssetSearchService;
 import com.dasigconnect.backend.service.MediaAssetService;
+import com.dasigconnect.backend.service.MediaRightsService;
 
 import jakarta.validation.Valid;
 
@@ -57,13 +61,16 @@ public class MediaAssetController {
     private final MediaAssetService mediaAssetService;
     private final MediaAssetSearchService mediaAssetSearchService;
     private final MediaIntegrityService mediaIntegrityService;
+    private final MediaRightsService mediaRightsService;
 
     public MediaAssetController(MediaAssetService mediaAssetService,
                                 MediaAssetSearchService mediaAssetSearchService,
-                                MediaIntegrityService mediaIntegrityService) {
+                                MediaIntegrityService mediaIntegrityService,
+                                MediaRightsService mediaRightsService) {
         this.mediaAssetService = mediaAssetService;
         this.mediaAssetSearchService = mediaAssetSearchService;
         this.mediaIntegrityService = mediaIntegrityService;
+        this.mediaRightsService = mediaRightsService;
     }
 
     @GetMapping
@@ -154,6 +161,25 @@ public class MediaAssetController {
             @Valid @RequestBody MediaAssetVisibilityRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(mediaAssetService.changeVisibility(id, dto, user));
+    }
+
+    /** UC-4.12 Phase 7D: the asset's current rights/consent record and derived governance state. */
+    @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/rights")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MediaAssetRightsDto> getRights(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaRightsService.getRights(id, user));
+    }
+
+    /** UC-4.12 Phase 7D: upsert the asset's rights/consent record (audited). */
+    @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/rights")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MediaAssetRightsDto> updateRights(
+            @PathVariable UUID id,
+            @Valid @RequestBody MediaAssetRightsUpdateRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaRightsService.updateRights(id, dto, user));
     }
 
     @PostMapping("/{id}/use-in-new-post")

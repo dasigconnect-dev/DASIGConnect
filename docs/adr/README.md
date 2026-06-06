@@ -31,3 +31,4 @@ Trade-offs accepted, what gets easier/harder, follow-ups.
 | [0003](0003-separate-supabase-project-for-capstone2-dev.md) | Separate Supabase project for Capstone 2 development | Accepted |
 | [0004](0004-folders-vs-albums-modeling.md) | Folders (single-parent) and Albums (many-to-many) are distinct | Accepted |
 | [0005](0005-sha256-fixity-separate-from-perceptual-hash.md) | SHA-256 file fixity is separate from perceptual hash; bounded verification never overwrites the baseline | Accepted |
+| [0006](0006-rights-clearance-gate-on-visibility-transition.md) | Rights-clearance gate fires on the visibility transition, grandfathering by construction | Accepted |

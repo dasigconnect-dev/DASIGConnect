@@ -4,6 +4,7 @@ import type { MediaAsset, MediaAuditEntry, MediaIntegrityCheck, MediaVisibility 
 import { formatFileSize, formatUploadDate, formatResolution, formatFileTypeName, isVideoType } from "../utils";
 import AssetActivityLog from "./AssetActivityLog";
 import AssetIntegrityHistory from "./AssetIntegrityHistory";
+import AssetRightsSection from "./AssetRightsSection";
 
 interface AssetDetailPanelProps {
   asset: MediaAsset | null;
@@ -248,6 +249,9 @@ export default function AssetDetailPanel({
                   : "Restricted — clear for public before using in published posts."}
               </p>
             </div>
+
+            {/* Rights & consent (UC-4.12 Phase 7D) */}
+            {asset && <AssetRightsSection assetId={asset.id} key={asset.id} />}
 
             {/* File integrity / fixity (UC-4.12) */}
             <div>

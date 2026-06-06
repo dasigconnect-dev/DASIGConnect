@@ -590,6 +590,50 @@ export function acknowledgeMediaAssetIntegrityReview(id: string): Promise<MediaI
     }));
 }
 
+/* ===== UC-4.12 Phase 7D: Rights & consent records ===== */
+
+export type RightsBasis = "owned" | "consent" | "licensed" | "public_domain" | "unknown";
+export type RightsState = "incomplete" | "expired" | "expiring_soon" | "cleared";
+
+export interface MediaAssetRights {
+  assetId: string;
+  present: boolean;
+  rightsHolder: string | null;
+  rightsBasis: RightsBasis;
+  licenseUri: string | null;
+  consentReference: string | null;
+  clearanceDate: string | null;
+  expiresAt: string | null;
+  permittedChannels: string[];
+  restrictions: string | null;
+  supportingDocumentUrl: string | null;
+  verifiedBy: string | null;
+  verifiedAt: string | null;
+  derivedState: RightsState;
+  permitsPublicClearance: boolean;
+  updatedAt: string | null;
+}
+
+export interface MediaAssetRightsUpdate {
+  rightsHolder?: string | null;
+  rightsBasis: RightsBasis;
+  licenseUri?: string | null;
+  consentReference?: string | null;
+  clearanceDate?: string | null;
+  expiresAt?: string | null;
+  permittedChannels?: string[];
+  restrictions?: string | null;
+  supportingDocumentUrl?: string | null;
+}
+
+export function getAssetRights(id: string): Promise<MediaAssetRights> {
+  return api.get<MediaAssetRights>(`/media-assets/${id}/rights`).then((res) => res.data);
+}
+
+export function putAssetRights(id: string, payload: MediaAssetRightsUpdate): Promise<MediaAssetRights> {
+  return api.put<MediaAssetRights>(`/media-assets/${id}/rights`, payload).then((res) => res.data);
+}
+
 /* ===== UC-4.12 Phase 7C: Repository Health ===== */
 
 export interface RepositoryHealth {

@@ -161,7 +161,7 @@ zero silent checksum replacement, and zero cross-tenant health/history/export re
 ## 5. Architecture Additions
 
 All aligned to the backend guide: Controller→Service→Repository, DTOs only at the boundary,
-Flyway (next free version is **V36** after V35 `media_integrity_review_workflow`), RLS on every
+Flyway (next free version is **V37** after V36 `media_asset_rights`), RLS on every
 institution-scoped table, short transactions, **no DB connection held across an external API
 or Supabase Storage call**, `@Async` / bounded executor for enrichment and fixity checks, and
 audit logging on state changes.
@@ -345,7 +345,7 @@ This is the planned **upgrade** of today's `AIRecommendationService.rankAsset()`
 | 4 | Caption prompt mode + best-N (UC-4.7); consent/safety flags; media audit trail (UC-4.11) | Low | Low | ✅ done (UC-4.7, visibility + submit gate, UC-4.11); `safety_verdict` flag optional/pending |
 | 5 | Facebook insights sync + engagement analytics (UC-4.8) | Med | **Med (App Review)** | ⬜ not started — next |
 | 6 | Engagement→media ranking (UC-4.9) + pre-submit advisor (UC-4.10) | Med | Med (cold-start) | ⬜ not started (depends on UC-4.8 data) |
-| 7 | Digital preservation + Repository Health (UC-4.12): fixity, rights, lineage, duplicate review, standards export | Med-High | Low-Med | Phase 7A-7C done (fixity, monitoring, Repository Health); 7D rights records next |
+| 7 | Digital preservation + Repository Health (UC-4.12): fixity, rights, lineage, duplicate review, standards export | Med-High | Low-Med | Phase 7A-7D done (fixity, monitoring, Repository Health, rights records); 7E versioning/lineage next |
 | — | Collage builder (client-side canvas) | Low–Med | Low — slot anywhere | ⬜ optional |
 
 ---
@@ -445,7 +445,7 @@ A single results table: dataset version, the §4 target, the measured number, an
 | **Media audit trail** | ✅ | **UC-4.11 implemented (2026-06-05).** `AuditLogService` now wired into `MediaAssetService` (`MEDIA_ASSET_UPLOADED`, `MEDIA_ASSET_DELETED`, `MEDIA_ASSETS_BULK_DELETED`, `MEDIA_BATCH_CURATED`, `MEDIA_ASSET_TAG_ADDED`/`_REMOVED`) and `MediaAssetRetentionService` (`MEDIA_ASSET_PURGED`, system actor). Bulk move/tag already audited via `MediaOrganizationService`. Best-effort (never rolls back the action); reuses existing `AuditLog`, no new table. Read surface shipped: `GET /api/v1/media-assets/{id}/history` + an Activity section in the asset detail panel. Remaining: visibility/reclassify audited when those features land |
 | File fixity / integrity monitoring | 🟡 | **Phase 7A-7B implemented (2026-06-06).** V34 adds SHA-256 baselines and append-only history. V35 adds review ownership. New uploads queue checks after commit; a configurable job processes at most 25 due assets, prioritizes pending/failing records, and alerts validators/admins only on new or changed failures. The shared sidebar provides history, recheck, acknowledgement, and replacement-upload handoff. **Phase 7C added (2026-06-06):** tenant-scoped Repository Health dashboard at `GET /api/v1/media-repository/health` — one filtered aggregate query + short cache, metric tiles drilling into the Media Library via `?health=<key>`. Distinct from `perceptual_hash`. |
 | **Versioning / lineage** | 🟡 | **Planned in UC-4.12 / Phase 7E.** Immutable originals plus explicit new-version, derived-from, replacement, and component relationships. |
-| Rights metadata | 🟡 | **Planned in UC-4.12 / Phase 7D.** Structured holder, basis, license/consent reference, permitted channels, restrictions, verification, and expiry; complements the existing visibility gate. |
+| Rights metadata | ✅ | **Phase 7D implemented (2026-06-06).** V36 `media_asset_rights` (one record/asset, RLS); `GET\|PUT /api/v1/media-assets/{id}/rights` (`MediaRightsService`, audited); structured holder, basis, license/consent reference, permitted channels, restrictions, verification, and expiry, with derived `incomplete/expired/expiring_soon/cleared` states surfaced in an editable Asset Detail section. **Clearance gate enforced:** a new asset cannot transition to `cleared_for_public` without a complete, non-expired record (422); already-cleared assets grandfathered (ADR-0006). |
 | Duplicate adjudication | 🟡 | **Planned in UC-4.12 / Phase 7F.** Side-by-side human review, canonical selection, keep-both/not-duplicate decisions, optional metadata merge, no automatic deletion. |
 | Metadata-standard mapping (Dublin Core/PREMIS) | 🟡 | **Planned in UC-4.12 / Phase 7G.** Dublin Core-aligned CSV/JSON inventory export; PREMIS concepts limited honestly to fixity and preservation-event history. |
 

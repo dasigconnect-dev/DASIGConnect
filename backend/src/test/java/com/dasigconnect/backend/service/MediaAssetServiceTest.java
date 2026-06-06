@@ -76,6 +76,8 @@ class MediaAssetServiceTest {
     @Mock
     private AuditLogRepository auditLogRepository;
     @Mock
+    private com.dasigconnect.backend.repository.MediaAssetRightsRepository mediaAssetRightsRepository;
+    @Mock
     private EntityManager entityManager;
 
     private MediaAssetService mediaAssetService;
@@ -95,7 +97,8 @@ class MediaAssetServiceTest {
                 mediaIntegrityQueueService,
                 userRepository,
                 auditLogService,
-                auditLogRepository);
+                auditLogRepository,
+                mediaAssetRightsRepository);
         ReflectionTestUtils.setField(mediaAssetService, "entityManager", entityManager);
     }
 
@@ -166,6 +169,8 @@ class MediaAssetServiceTest {
         MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
         asset.setVisibility("internal_only");
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(mediaAssetRightsRepository.findByAssetIdAndInstitutionId(assetId, institutionId))
+                .thenReturn(Optional.of(clearedRights(assetId, institutionId)));
 
         MediaAssetVisibilityRequestDto dto = new MediaAssetVisibilityRequestDto();
         dto.setVisibility("cleared_for_public");
@@ -177,6 +182,26 @@ class MediaAssetServiceTest {
         verify(mediaAssetRepository).save(asset);
         verify(auditLogService).record(any(), org.mockito.ArgumentMatchers.eq("MEDIA_ASSET_VISIBILITY_CHANGED"),
                 any(), any(), org.mockito.ArgumentMatchers.eq(assetId), any());
+    }
+
+    @Test
+    void changeVisibility_toCleared_withoutValidRights_returns422() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        asset.setVisibility("internal_only");
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(mediaAssetRightsRepository.findByAssetIdAndInstitutionId(assetId, institutionId))
+                .thenReturn(Optional.empty());
+
+        MediaAssetVisibilityRequestDto dto = new MediaAssetVisibilityRequestDto();
+        dto.setVisibility("cleared_for_public");
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.changeVisibility(assetId, dto, user(UUID.randomUUID(), "validator", institutionId)));
+        org.junit.jupiter.api.Assertions.assertEquals(422, ex.getStatusCode().value());
+        org.junit.jupiter.api.Assertions.assertEquals("internal_only", asset.getVisibility());
+        verify(mediaAssetRepository, never()).save(any());
     }
 
     @Test
@@ -427,6 +452,16 @@ class MediaAssetServiceTest {
 
     private static JwtUserDetails user(UUID userId, String role, UUID institutionId) {
         return new JwtUserDetails(userId, role + "@example.edu", role, institutionId);
+    }
+
+    private static com.dasigconnect.backend.model.entity.MediaAssetRights clearedRights(
+            UUID assetId, UUID institutionId) {
+        var rights = new com.dasigconnect.backend.model.entity.MediaAssetRights();
+        rights.setAssetId(assetId);
+        rights.setInstitutionId(institutionId);
+        rights.setRightsHolder("DOST Region 7");
+        rights.setRightsBasis("owned");
+        return rights;
     }
 
     private static MediaAsset asset(UUID assetId, UUID institutionId, UUID uploaderId) {

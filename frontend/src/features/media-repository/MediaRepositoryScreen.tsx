@@ -820,8 +820,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       toast.success(
         visibility === "cleared_for_public" ? "Asset cleared for public use." : "Asset marked internal only.",
       );
-    } catch {
-      toast.error("Could not update visibility.");
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data
+          ?.error ?? "Could not update visibility.";
+      toast.error(message);
     } finally {
       setVisibilityBusy(false);
     }

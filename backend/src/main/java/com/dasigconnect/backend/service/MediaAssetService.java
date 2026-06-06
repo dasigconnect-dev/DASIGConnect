@@ -50,6 +50,7 @@ import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.AuditLogRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.MediaAssetRightsRepository;
 import com.dasigconnect.backend.repository.MediaImportBatchRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
@@ -77,6 +78,7 @@ public class MediaAssetService {
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
     private final AuditLogRepository auditLogRepository;
+    private final MediaAssetRightsRepository mediaAssetRightsRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -94,7 +96,8 @@ public class MediaAssetService {
             MediaIntegrityQueueService mediaIntegrityQueueService,
             UserRepository userRepository,
             AuditLogService auditLogService,
-            AuditLogRepository auditLogRepository) {
+            AuditLogRepository auditLogRepository,
+            MediaAssetRightsRepository mediaAssetRightsRepository) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
@@ -108,6 +111,7 @@ public class MediaAssetService {
         this.userRepository = userRepository;
         this.auditLogService = auditLogService;
         this.auditLogRepository = auditLogRepository;
+        this.mediaAssetRightsRepository = mediaAssetRightsRepository;
     }
 
     /**
@@ -489,6 +493,20 @@ public class MediaAssetService {
         }
 
         String previous = asset.getVisibility();
+        // UC-4.12 Phase 7D: a NEW clearance into cleared_for_public requires a complete,
+        // non-expired rights record. Already-cleared assets are grandfathered — the gate only
+        // fires on the transition, so re-saving an already-cleared asset never re-checks.
+        if (newVisibility.equals("cleared_for_public") && !"cleared_for_public".equals(previous)) {
+            boolean permitted = mediaAssetRightsRepository
+                    .findByAssetIdAndInstitutionId(assetId, asset.getInstitution().getId())
+                    .map(r -> r.permitsPublicClearance(java.time.LocalDate.now()))
+                    .orElse(false);
+            if (!permitted) {
+                throw new ResponseStatusException(org.springframework.http.HttpStatusCode.valueOf(422),
+                        "Asset " + asset.getAssetCode() + " needs a complete, non-expired rights "
+                        + "record before it can be cleared for public use.");
+            }
+        }
         asset.setVisibility(newVisibility);
         mediaAssetRepository.save(asset);
 

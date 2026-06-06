@@ -6,10 +6,10 @@
 > **Delivery method:** Feature-driven Kanban flow using vertical slices.
 > **Priority:** Phase 7A-7C may proceed while Phase 5 waits for Meta App Review because
 > integrity monitoring has no dependency on Facebook insights.
-> **Implementation status (2026-06-06):** Phase 7A-7C implemented; V34-V35 are applied to the
-> development database. Phase 7C (Repository Health dashboard) added no migration. Phase 7D
-> (rights and consent records) is next.
-> **Next Flyway version:** V36. Never reuse an applied migration version.
+> **Implementation status (2026-06-06):** Phase 7A-7D implemented; V34-V36 cover fixity,
+> review workflow, and rights records. Phase 7C added no migration. Phase 7E (versioning and
+> lineage) is next.
+> **Next Flyway version:** V37. Never reuse an applied migration version.
 
 ---
 
@@ -247,15 +247,34 @@ scope. ✅ met.
 
 ### Phase 7D - Rights and consent records
 
-- V36 migration for `media_asset_rights`.
-- Add editable rights metadata to Asset Detail.
-- Add `expiring soon`, `expired`, and `incomplete` states.
-- Audit all rights changes.
-- Block new clearance when required rights information is missing or expired; retain the
-  existing grandfathering rule for old assets.
+- [x] V36 migration for `media_asset_rights` (one current record per asset, RLS, expiry index).
+- [x] Editable rights metadata in the shared Asset Detail sidebar (`AssetRightsSection`).
+- [x] Derived `incomplete`, `expired`, `expiring_soon`, and `cleared` states.
+- [x] Audit every rights change (`MEDIA_ASSET_RIGHTS_UPDATED`).
+- [x] Block changing a NEW asset to `cleared_for_public` when its rights record is missing,
+  incomplete, or expired (422); already-cleared assets are grandfathered.
+
+Endpoints: `GET|PUT /api/v1/media-assets/{id}/rights` (`MediaRightsService`, tenant-scoped).
+The clearance gate lives in `MediaAssetService.changeVisibility` and fires only on the
+`→ cleared_for_public` transition — see **ADR-0006** (grandfathering by construction, no dated
+cutoff). Validity is a pure function on the entity (`permitsPublicClearance`), shared by the gate
+and the rights DTO.
 
 **Acceptance:** a user can explain who owns an asset, why it may be used, where it may be
-published, and when permission expires.
+published, and when permission expires. ✅ met.
+
+**Verification (2026-06-06):**
+
+- V36 added; next free Flyway version is now **V37**. (V36 is validated at app boot against
+  Supabase like the other migrations.)
+- Backend `MediaRightsServiceTest` (6) covers empty/present reads, upsert + audit, derived
+  states, cross-tenant hiding, and basis/expiry validation; `MediaAssetServiceTest` adds the
+  422-on-clearance-without-valid-rights gate test. Full suite green: **415 tests, 0 failures,
+  7 skips**.
+- Frontend production build + scoped ESLint clean; the Asset Detail sidebar gains a
+  self-contained `AssetRightsSection` (loads/saves its own data by assetId — no prop threading
+  through either host screen); visibility-change handlers now surface the backend 422 gate
+  message.
 
 ### Phase 7E - Versioning and lineage
 
@@ -350,13 +369,13 @@ Recommended pull order:
 1. Phase 7A - fixity foundation. Complete.
 2. Phase 7B - monitoring and repair. Complete.
 3. Phase 7C - Repository Health. Complete.
-4. **Phase 7D - rights records (next).**
-5. Phase 7E - versioning and lineage.
+4. Phase 7D - rights records. Complete.
+5. **Phase 7E - versioning and lineage (next).**
 6. Phase 7F - duplicate review.
 7. Phase 7G - standards export.
 
-Maintain a WIP limit of two. Phase 7A-7C form the first demoable release and are complete;
-later governance slices (7D-7G) may now be pulled.
+Maintain a WIP limit of two. Phase 7A-7C formed the first demoable release; 7D adds rights
+governance. Remaining governance slices (7E-7G) may now be pulled.
 
 ## 8. Explicit Boundaries
 
