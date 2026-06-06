@@ -52,6 +52,16 @@ public class MediaAssetSearchService {
     private final VoyageAIClient voyageAIClient;
     private final SearchQueryParser queryParser;
 
+    /**
+     * Minimum cosine similarity for a vector hit to count as relevant. Tunable via properties
+     * (defaults set against the dev library); semantic (text↔text) sits higher than cross-modal
+     * (text↔image), which scores lower by nature. Raise for stricter results, lower for more recall.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.search.semantic-min-similarity:0.45}")
+    private double semanticMinSimilarity;
+    @org.springframework.beans.factory.annotation.Value("${app.search.image-min-similarity:0.22}")
+    private double imageMinSimilarity;
+
     public MediaAssetSearchService(MediaAssetSearchRepository searchRepository,
                                    MediaAssetRepository mediaAssetRepository,
                                    MediaAssetEmbeddingRepository embeddingRepository,
@@ -101,6 +111,9 @@ public class MediaAssetSearchService {
                 retrievalLimit,
                 0);
 
+        // Strict relevance: drop weak nearest-neighbors below the similarity floor so unrelated
+        // photos never pad the results. Only genuine lexical matches and sufficiently-similar
+        // vector matches survive — if nothing clears the bar, the search returns no results.
         List<MediaAssetVectorHit> semanticHits = semanticVector == null
                 ? List.of()
                 : vectorHits(embeddingRepository.findTopSimilarWithScoreScoped(
@@ -109,7 +122,7 @@ public class MediaAssetSearchService {
                         MediaAssetEmbeddingType.SEMANTIC,
                         semanticVector,
                         mediaType,
-                        retrievalLimit));
+                        retrievalLimit), semanticMinSimilarity);
         List<MediaAssetVectorHit> imageHits = imageVector == null
                 ? List.of()
                 : vectorHits(embeddingRepository.findTopSimilarWithScoreScoped(
@@ -118,7 +131,7 @@ public class MediaAssetSearchService {
                         MediaAssetEmbeddingType.IMAGE,
                         imageVector,
                         mediaType,
-                        retrievalLimit));
+                        retrievalLimit), imageMinSimilarity);
 
         List<Candidate> candidates = fuse(hits, semanticHits, imageHits);
         if (candidates.isEmpty()) {
@@ -257,10 +270,19 @@ public class MediaAssetSearchService {
         }
     }
 
-    private List<MediaAssetVectorHit> vectorHits(List<Object[]> rows) {
+    /**
+     * Builds ranked vector hits, dropping any whose cosine similarity is below the floor.
+     * Rows arrive most-similar-first, so once one is below the floor the rest are too.
+     */
+    private List<MediaAssetVectorHit> vectorHits(List<Object[]> rows, double minSimilarity) {
         List<MediaAssetVectorHit> hits = new ArrayList<>();
-        for (int i = 0; i < rows.size(); i++) {
-            hits.add(MediaAssetVectorHit.from(rows.get(i), i + 1));
+        int rank = 0;
+        for (Object[] row : rows) {
+            double score = ((Number) row[1]).doubleValue();
+            if (score < minSimilarity) {
+                break;
+            }
+            hits.add(new MediaAssetVectorHit(UUID.fromString((String) row[0]), score, ++rank));
         }
         return hits;
     }
