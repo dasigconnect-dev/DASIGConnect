@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import MediaSubNav from "../components/MediaSubNav";
 import { listInstitutions, type InstitutionResponse } from "../../../api/authApi";
 import { exportRepository } from "../../../api/mediaApi";
 import { useToast } from "../../../context/ToastContext";
@@ -90,10 +90,11 @@ export default function RepositoryHealthScreen({ user }: RepositoryHealthScreenP
     : "";
 
   return (
-    <div className="rh-screen">
+    <>
+      <MediaSubNav user={user} page="Repository Health" />
+      <div className="rh-screen">
       <header className="rh-header">
         <div className="rh-header-main">
-          <Link to="/media-repository" className="rh-back">&larr; Media Library</Link>
           <h1 className="rh-title">Repository Health</h1>
           <p className="rh-subtitle">
             Preservation, curation, and governance signals across the managed media repository.
@@ -305,6 +306,7 @@ export default function RepositoryHealthScreen({ user }: RepositoryHealthScreenP
           )}
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 }

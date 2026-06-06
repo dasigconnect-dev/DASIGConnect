@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import MediaSubNav from "../components/MediaSubNav";
 import { listInstitutions, type InstitutionResponse } from "../../../api/authApi";
 import type { User } from "../../../types/auth.types";
 import "../../../styles/duplicate-review.css";
@@ -35,10 +35,11 @@ export default function DuplicateReviewScreen({ user }: DuplicateReviewScreenPro
   }
 
   return (
-    <div className="dup-screen">
+    <>
+      <MediaSubNav user={user} page="Duplicate Review" />
+      <div className="dup-screen">
       <header className="dup-header">
         <div>
-          <Link to="/media-repository" className="dup-back">&larr; Media Library</Link>
           <h1 className="dup-title">Duplicate Review</h1>
           <p className="dup-subtitle">
             Adjudicate perceptual-hash duplicate candidates. Decisions are recorded and reversible —
@@ -93,6 +94,7 @@ export default function DuplicateReviewScreen({ user }: DuplicateReviewScreenPro
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

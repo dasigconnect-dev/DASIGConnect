@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
+import MediaSubNav from "../components/MediaSubNav";
 import { listInstitutions, type InstitutionResponse } from "../../../api/authApi";
 import type { User } from "../../../types/auth.types";
 import "../../../styles/trash.css";
@@ -38,12 +38,9 @@ export default function TrashScreen({ user }: TrashScreenProps) {
   const showSkeleton = loading && items.length === 0;
 
   return (
-    <div className="trash-screen">
-      <Link to="/media-repository" className="trash-back">
-        <ArrowLeft size={15} aria-hidden="true" />
-        Media Library
-      </Link>
-
+    <>
+      <MediaSubNav user={user} page="Trash" />
+      <div className="trash-screen">
       <header className="trash-header">
         <div className="trash-heading">
           <h1 className="trash-title">
@@ -120,6 +117,7 @@ export default function TrashScreen({ user }: TrashScreenProps) {
           ))}
         </ul>
       )}
-    </div>
+      </div>
+    </>
   );
 }
