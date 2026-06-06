@@ -2,10 +2,13 @@ package com.dasigconnect.backend.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,6 +23,9 @@ public class SupabaseStorageService {
     private final String serviceRoleKey;
     private final String bucket;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
 
     public SupabaseStorageService(
             @Value("${app.supabase.url:}") String supabaseUrl,
@@ -40,7 +46,6 @@ public class SupabaseStorageService {
         }
         try {
             String endpoint = supabaseUrl + "/storage/v1/object/upload/sign/" + bucket + "/" + objectPath;
-            HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
                     .header("Authorization", "Bearer " + serviceRoleKey)
@@ -48,7 +53,7 @@ public class SupabaseStorageService {
                     .POST(HttpRequest.BodyPublishers.ofString("{\"upsert\":false}"))
                     .build();
 
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 log.error("Supabase signed URL request failed {}: {}", response.statusCode(), response.body());
                 throw new IllegalStateException("Supabase Storage returned " + response.statusCode());
@@ -80,14 +85,13 @@ public class SupabaseStorageService {
         }
         try {
             String endpoint = supabaseUrl + "/storage/v1/object/" + bucket + "/" + objectPath;
-            HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
                     .header("Authorization", "Bearer " + serviceRoleKey)
                     .DELETE()
                     .build();
 
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 return true;
             }
@@ -103,7 +107,50 @@ public class SupabaseStorageService {
         }
     }
 
-    private String objectPathFromPublicUrl(String publicUrl) {
+    /**
+     * Opens a configured Supabase object as a stream. The caller must close the stream.
+     * Rebuilding the endpoint from configured values prevents arbitrary URL fetching.
+     */
+    public InputStream openObject(String publicUrl) {
+        if (!isConfigured()) {
+            throw new StorageObjectAccessException("Supabase storage is not configured.");
+        }
+        String objectPath = objectPathFromPublicUrl(publicUrl);
+        if (objectPath == null || objectPath.isBlank()) {
+            throw new StorageObjectAccessException("Storage URL is outside the configured Supabase bucket.");
+        }
+        try {
+            String endpoint = supabaseUrl + "/storage/v1/object/" + bucket + "/" + objectPath;
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(endpoint))
+                    .header("Authorization", "Bearer " + serviceRoleKey)
+                    .timeout(Duration.ofSeconds(60))
+                    .GET()
+                    .build();
+            HttpResponse<InputStream> response = httpClient.send(
+                    request, HttpResponse.BodyHandlers.ofInputStream());
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                return response.body();
+            }
+            response.body().close();
+            if (response.statusCode() == 404) {
+                throw new StorageObjectNotFoundException("Stored media object was not found.");
+            }
+            throw new StorageObjectAccessException(
+                    "Supabase Storage returned HTTP " + response.statusCode() + ".");
+        } catch (StorageObjectAccessException ex) {
+            throw ex;
+        } catch (IOException ex) {
+            throw new StorageObjectAccessException("Failed to close storage response.", ex);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new StorageObjectAccessException("Storage download was interrupted.", ex);
+        } catch (Exception ex) {
+            throw new StorageObjectAccessException("Storage download failed: " + ex.getMessage(), ex);
+        }
+    }
+
+    String objectPathFromPublicUrl(String publicUrl) {
         if (publicUrl == null || publicUrl.isBlank()) {
             return null;
         }
@@ -113,5 +160,21 @@ public class SupabaseStorageService {
             return null;
         }
         return publicUrl.substring(index + marker.length());
+    }
+
+    public static class StorageObjectAccessException extends RuntimeException {
+        public StorageObjectAccessException(String message) {
+            super(message);
+        }
+
+        public StorageObjectAccessException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    public static class StorageObjectNotFoundException extends StorageObjectAccessException {
+        public StorageObjectNotFoundException(String message) {
+            super(message);
+        }
     }
 }

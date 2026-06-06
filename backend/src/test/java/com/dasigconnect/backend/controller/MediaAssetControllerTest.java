@@ -25,17 +25,20 @@ import com.dasigconnect.backend.model.dto.media.MediaSearchSuggestionDto;
 import com.dasigconnect.backend.model.dto.media.MediaSearchSuggestionsResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaBatchCurationResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaImportBatchResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaIntegrityResultDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
 import com.dasigconnect.backend.model.entity.MediaImportBatch;
+import com.dasigconnect.backend.model.entity.MediaIntegrityStatus;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.MediaAssetService;
 import com.dasigconnect.backend.service.MediaAssetSearchService;
+import com.dasigconnect.backend.service.MediaIntegrityService;
 import com.dasigconnect.backend.service.TenantScopeService;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -60,6 +63,9 @@ class MediaAssetControllerTest {
 
     @MockitoBean
     private MediaAssetSearchService mediaAssetSearchService;
+
+    @MockitoBean
+    private MediaIntegrityService mediaIntegrityService;
 
     @MockitoBean
     private JWTService jwtService;
@@ -226,6 +232,44 @@ class MediaAssetControllerTest {
                         """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(assetId.toString()));
+    }
+
+    @Test
+    @WithMockUser
+    void verifyIntegrity_authenticated_returnsCurrentFixityState() throws Exception {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = mediaAsset(assetId);
+        asset.setContentSha256("a".repeat(64));
+        asset.setIntegrityStatus(MediaIntegrityStatus.VERIFIED);
+        asset.setChecksumGeneratedAt(Instant.parse("2026-06-06T02:00:00Z"));
+        asset.setIntegrityCheckedAt(Instant.parse("2026-06-06T02:00:01Z"));
+        MediaIntegrityResultDto result = MediaIntegrityResultDto.from(asset);
+        when(mediaIntegrityService.verifyManual(eq(assetId), any())).thenReturn(result);
+
+        mockMvc.perform(post("/api/v1/media-assets/{id}/integrity-check", assetId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assetId").value(assetId.toString()))
+                .andExpect(jsonPath("$.integrityStatus").value("VERIFIED"))
+                .andExpect(jsonPath("$.contentSha256").value("a".repeat(64)));
+    }
+
+    @Test
+    @WithMockUser(roles = "VALIDATOR")
+    void acknowledgeIntegrityReview_asValidator_returnsReviewState() throws Exception {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = mediaAsset(assetId);
+        asset.setIntegrityStatus(MediaIntegrityStatus.MISSING);
+        asset.setIntegrityReviewStatus(
+                com.dasigconnect.backend.model.entity.MediaIntegrityReviewStatus.ACKNOWLEDGED);
+        MediaIntegrityResultDto result = MediaIntegrityResultDto.from(asset);
+        when(mediaIntegrityService.acknowledgeReview(eq(assetId), any())).thenReturn(result);
+
+        mockMvc.perform(post(
+                        "/api/v1/media-assets/{id}/integrity-review/acknowledge",
+                        assetId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assetId").value(assetId.toString()))
+                .andExpect(jsonPath("$.integrityReviewStatus").value("ACKNOWLEDGED"));
     }
 
     @Test

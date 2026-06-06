@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { MediaAsset, MediaUsage } from "../../api/mediaApi";
 import {
@@ -11,6 +11,7 @@ import {
   deleteMediaImportBatch,
   fetchMediaSearchSuggestions,
   getAssetHistory,
+  getMediaAssetIntegrityHistory,
   getMediaAsset,
   getMediaAssetUploadUrl,
   listImportBatchAssets,
@@ -18,10 +19,14 @@ import {
   markImportBatchCurated,
   recordSearchFeedback,
   registerMediaAsset,
+  verifyMediaAssetIntegrity,
+  acknowledgeMediaAssetIntegrityReview,
   type MediaAssetDetailResponse,
   type MediaAssetCurationEdit,
   type MediaAuditEntry,
   type MediaImportBatch,
+  type MediaIntegrityCheck,
+  type MediaIntegrityResult,
   type MediaVisibility,
 } from "../../api/mediaApi";
 import {
@@ -194,6 +199,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [assetHistory, setAssetHistory] = useState<MediaAuditEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const [integrityBusy, setIntegrityBusy] = useState(false);
+  const [integrityHistory, setIntegrityHistory] = useState<MediaIntegrityCheck[]>([]);
+  const [integrityHistoryLoading, setIntegrityHistoryLoading] = useState(false);
+  const [integrityReviewBusy, setIntegrityReviewBusy] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const {
     selected: checkedIds,
@@ -454,7 +464,39 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       .then(setAssetHistory)
       .catch(() => setAssetHistory([]))
       .finally(() => setHistoryLoading(false));
+
+    setIntegrityHistory([]);
+    setIntegrityHistoryLoading(true);
+    getMediaAssetIntegrityHistory(asset.id)
+      .then(setIntegrityHistory)
+      .catch(() => setIntegrityHistory([]))
+      .finally(() => setIntegrityHistoryLoading(false));
   }
+
+  const replacementAssetId = searchParams.get("replaceAssetId");
+  const deepLinkedAssetId = searchParams.get("assetId") ?? replacementAssetId;
+  useEffect(() => {
+    if (!deepLinkedAssetId) return;
+    getMediaAsset(deepLinkedAssetId)
+      .then((response) => {
+        openAsset(response.data);
+        if (replacementAssetId) {
+          if (isAdmin) {
+            setNetworkView(false);
+            setSelectedInstitutionId(response.data.institutionId);
+          }
+          setUploadOpen(true);
+          toast.info("Upload the replacement as a new asset. The original remains preserved.");
+        }
+        const next = new URLSearchParams(searchParams);
+        next.delete("assetId");
+        next.delete("replaceAssetId");
+        setSearchParams(next, { replace: true });
+      })
+      .catch(() => toast.error("The integrity alert asset could not be opened."));
+    // The asset ID is the one-shot deep-link trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkedAssetId, replacementAssetId]);
 
   function closePanel() {
     setPanelOpen(false);
@@ -779,6 +821,68 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     } finally {
       setVisibilityBusy(false);
     }
+  }
+
+  async function handleVerifyIntegrity() {
+    if (!selectedAsset) return;
+    setIntegrityBusy(true);
+    try {
+      const result = await verifyMediaAssetIntegrity(selectedAsset.id);
+      applyIntegrityResult(result);
+      getMediaAssetIntegrityHistory(result.assetId)
+        .then(setIntegrityHistory)
+        .catch(() => undefined);
+      if (result.integrityStatus === "verified") {
+        toast.success("File integrity verified.");
+      } else {
+        toast.error(result.integrityFailureReason || "File integrity could not be verified.");
+      }
+    } catch {
+      toast.error("Could not verify file integrity.");
+    } finally {
+      setIntegrityBusy(false);
+    }
+  }
+
+  async function handleAcknowledgeIntegrity() {
+    if (!selectedAsset) return;
+    setIntegrityReviewBusy(true);
+    try {
+      const result = await acknowledgeMediaAssetIntegrityReview(selectedAsset.id);
+      applyIntegrityResult(result);
+      toast.success("Integrity review acknowledged.");
+    } catch {
+      toast.error("Could not acknowledge this integrity review.");
+    } finally {
+      setIntegrityReviewBusy(false);
+    }
+  }
+
+  function applyIntegrityResult(result: MediaIntegrityResult) {
+    const integrityUpdate = {
+      contentSha256: result.contentSha256,
+      checksumGeneratedAt: result.checksumGeneratedAt,
+      integrityStatus: result.integrityStatus,
+      integrityCheckedAt: result.integrityCheckedAt,
+      integrityFailureReason: result.integrityFailureReason,
+      integrityReviewStatus: result.integrityReviewStatus,
+      integrityReviewAcknowledgedAt: result.integrityReviewAcknowledgedAt,
+      integrityReviewAcknowledgedBy: result.integrityReviewAcknowledgedBy,
+    };
+    setSelectedAsset((current) => current ? { ...current, ...integrityUpdate } : current);
+    setAssets((prev) => prev.map((asset) => (
+      asset.id === result.assetId ? { ...asset, ...integrityUpdate } : asset
+    )));
+  }
+
+  function handleUploadReplacement() {
+    if (!selectedAsset) return;
+    if (isAdmin) {
+      setNetworkView(false);
+      setSelectedInstitutionId(selectedAsset.institutionId);
+    }
+    setUploadOpen(true);
+    toast.info("Upload the replacement as a new asset. The original remains preserved.");
   }
 
   async function handleDownload() {
@@ -1157,6 +1261,14 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           historyLoading={historyLoading}
           onChangeVisibility={(v) => void handleChangeVisibility(v)}
           visibilityBusy={visibilityBusy}
+          onVerifyIntegrity={() => void handleVerifyIntegrity()}
+          integrityBusy={integrityBusy}
+          integrityHistory={integrityHistory}
+          integrityHistoryLoading={integrityHistoryLoading}
+          canAcknowledgeIntegrity={user.role === "validator" || user.role === "admin"}
+          onAcknowledgeIntegrity={() => void handleAcknowledgeIntegrity()}
+          integrityReviewBusy={integrityReviewBusy}
+          onUploadReplacement={handleUploadReplacement}
         />
       </div>
 

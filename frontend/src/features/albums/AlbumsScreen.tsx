@@ -19,10 +19,15 @@ import {
   searchMediaAssets,
   getMediaAsset,
   getAssetHistory,
+  getMediaAssetIntegrityHistory,
   changeAssetVisibility,
   recordSearchFeedback,
+  verifyMediaAssetIntegrity,
+  acknowledgeMediaAssetIntegrityReview,
   type MediaAsset,
   type MediaAuditEntry,
+  type MediaIntegrityCheck,
+  type MediaIntegrityResult,
   type MediaVisibility,
 } from "../../api/mediaApi";
 import { useToast } from "../../context/ToastContext";
@@ -117,6 +122,10 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
   const [assetHistory, setAssetHistory] = useState<MediaAuditEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const [integrityBusy, setIntegrityBusy] = useState(false);
+  const [integrityHistory, setIntegrityHistory] = useState<MediaIntegrityCheck[]>([]);
+  const [integrityHistoryLoading, setIntegrityHistoryLoading] = useState(false);
+  const [integrityReviewBusy, setIntegrityReviewBusy] = useState(false);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerAssets, setPickerAssets] = useState<MediaAsset[]>([]);
@@ -445,6 +454,12 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
       .then(setAssetHistory)
       .catch(() => setAssetHistory([]))
       .finally(() => setHistoryLoading(false));
+    setIntegrityHistory([]);
+    setIntegrityHistoryLoading(true);
+    getMediaAssetIntegrityHistory(asset.id)
+      .then(setIntegrityHistory)
+      .catch(() => setIntegrityHistory([]))
+      .finally(() => setIntegrityHistoryLoading(false));
   }
 
   function closePanel() {
@@ -545,6 +560,55 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
     } finally {
       setVisibilityBusy(false);
     }
+  }
+
+  async function handlePanelIntegrity() {
+    if (!selectedAsset) return;
+    setIntegrityBusy(true);
+    try {
+      const result = await verifyMediaAssetIntegrity(selectedAsset.id);
+      applyIntegrityResult(result);
+      getMediaAssetIntegrityHistory(result.assetId)
+        .then(setIntegrityHistory)
+        .catch(() => undefined);
+      if (result.integrityStatus === "verified") {
+        toast.success("File integrity verified.");
+      } else {
+        toast.error(result.integrityFailureReason || "File integrity could not be verified.");
+      }
+    } catch {
+      toast.error("Could not verify file integrity.");
+    } finally {
+      setIntegrityBusy(false);
+    }
+  }
+
+  async function handlePanelIntegrityAcknowledge() {
+    if (!selectedAsset) return;
+    setIntegrityReviewBusy(true);
+    try {
+      const result = await acknowledgeMediaAssetIntegrityReview(selectedAsset.id);
+      applyIntegrityResult(result);
+      toast.success("Integrity review acknowledged.");
+    } catch {
+      toast.error("Could not acknowledge this integrity review.");
+    } finally {
+      setIntegrityReviewBusy(false);
+    }
+  }
+
+  function applyIntegrityResult(result: MediaIntegrityResult) {
+    setSelectedAsset((current) => current ? {
+      ...current,
+      contentSha256: result.contentSha256,
+      checksumGeneratedAt: result.checksumGeneratedAt,
+      integrityStatus: result.integrityStatus,
+      integrityCheckedAt: result.integrityCheckedAt,
+      integrityFailureReason: result.integrityFailureReason,
+      integrityReviewStatus: result.integrityReviewStatus,
+      integrityReviewAcknowledgedAt: result.integrityReviewAcknowledgedAt,
+      integrityReviewAcknowledgedBy: result.integrityReviewAcknowledgedBy,
+    } : current);
   }
 
   function renderTopNav(collectionName?: string | null) {
@@ -776,6 +840,18 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
           historyLoading={historyLoading}
           onChangeVisibility={(v) => void handlePanelVisibility(v)}
           visibilityBusy={visibilityBusy}
+          onVerifyIntegrity={() => void handlePanelIntegrity()}
+          integrityBusy={integrityBusy}
+          integrityHistory={integrityHistory}
+          integrityHistoryLoading={integrityHistoryLoading}
+          canAcknowledgeIntegrity={user.role === "validator" || user.role === "admin"}
+          onAcknowledgeIntegrity={() => void handlePanelIntegrityAcknowledge()}
+          integrityReviewBusy={integrityReviewBusy}
+          onUploadReplacement={() => {
+            if (selectedAsset) {
+              navigate(`/media-repository?replaceAssetId=${encodeURIComponent(selectedAsset.id)}`);
+            }
+          }}
         />
 
         {editOpen && (

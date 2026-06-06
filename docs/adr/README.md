@@ -30,3 +30,4 @@ Trade-offs accepted, what gets easier/harder, follow-ups.
 | [0002](0002-bounded-ingestion-queue.md) | Bounded ingestion queue over fire-and-forget @Async | Accepted |
 | [0003](0003-separate-supabase-project-for-capstone2-dev.md) | Separate Supabase project for Capstone 2 development | Accepted |
 | [0004](0004-folders-vs-albums-modeling.md) | Folders (single-parent) and Albums (many-to-many) are distinct | Accepted |
+| [0005](0005-sha256-fixity-separate-from-perceptual-hash.md) | SHA-256 file fixity is separate from perceptual hash; bounded verification never overwrites the baseline | Accepted |

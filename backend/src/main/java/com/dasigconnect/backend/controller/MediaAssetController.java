@@ -36,8 +36,11 @@ import com.dasigconnect.backend.model.dto.media.MediaBatchCurationRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaBatchCurationResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaImportBatchCreateRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaImportBatchResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaIntegrityCheckDto;
+import com.dasigconnect.backend.model.dto.media.MediaIntegrityResultDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
+import com.dasigconnect.backend.service.MediaIntegrityService;
 import com.dasigconnect.backend.service.MediaAssetSearchService;
 import com.dasigconnect.backend.service.MediaAssetService;
 
@@ -53,11 +56,14 @@ public class MediaAssetController {
 
     private final MediaAssetService mediaAssetService;
     private final MediaAssetSearchService mediaAssetSearchService;
+    private final MediaIntegrityService mediaIntegrityService;
 
     public MediaAssetController(MediaAssetService mediaAssetService,
-                                MediaAssetSearchService mediaAssetSearchService) {
+                                MediaAssetSearchService mediaAssetSearchService,
+                                MediaIntegrityService mediaIntegrityService) {
         this.mediaAssetService = mediaAssetService;
         this.mediaAssetSearchService = mediaAssetSearchService;
+        this.mediaIntegrityService = mediaIntegrityService;
     }
 
     @GetMapping
@@ -110,6 +116,33 @@ public class MediaAssetController {
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(mediaAssetService.getHistory(id, user));
+    }
+
+    /** UC-4.12 Phase 7A: manually verify the stored object's SHA-256 fixity. */
+    @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/integrity-check")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MediaIntegrityResultDto> verifyIntegrity(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaIntegrityService.verifyManual(id, user));
+    }
+
+    /** UC-4.12 Phase 7A: append-only integrity verification history. */
+    @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/integrity-history")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<MediaIntegrityCheckDto>> integrityHistory(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaIntegrityService.history(id, user));
+    }
+
+    /** UC-4.12 Phase 7B: acknowledge an active mismatch, missing object, or check error. */
+    @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/integrity-review/acknowledge")
+    @PreAuthorize("hasAnyRole('VALIDATOR', 'ADMINISTRATOR')")
+    public ResponseEntity<MediaIntegrityResultDto> acknowledgeIntegrityReview(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaIntegrityService.acknowledgeReview(id, user));
     }
 
     /** UC-4.x: change an asset's consent/visibility (internal_only | cleared_for_public). */

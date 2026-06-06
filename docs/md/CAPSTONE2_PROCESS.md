@@ -16,7 +16,7 @@ equal calendar boxes.
 
 Instead we use **Feature-Driven incremental delivery, pulled through a Kanban flow** — the
 unit of progress is a **feature/phase**, not a date. We've already done the hard part of
-FDD: an overall model + a decomposed feature list (UC-4.1–4.11) + a plan-by-feature (§7).
+FDD: an overall model + a decomposed feature list (UC-4.1–4.12) + a plan-by-feature (§7).
 
 - **Milestone = a §7 phase, treated as a demoable release.** Each phase ends with something
   we can show the adviser; that is our defense-progress evidence.
@@ -45,22 +45,25 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
 | Phase 4 | Caption prompt mode + best-N (UC-4.7); consent/safety flags; media audit trail (UC-4.11) | — |
 | Phase 5 | Facebook insights sync + engagement analytics (UC-4.8) | **App-Review gated** |
 | Phase 6 | Engagement→media ranking (UC-4.9) + pre-submit advisor (UC-4.10) | — |
+| Phase 7 | Digital preservation + Repository Health (UC-4.12) | 7A-7C may proceed while Phase 5 is App-Review gated |
 
-### Current handoff - 2026-06-03
+### Current handoff - 2026-06-06
 
-- Phase 1 is user-tested and treated as good.
-- Phase 2 local implementation currently includes import-batch upload wiring, deterministic
-  quality/duplicate analysis, AI-suggested collections, and batch curation edit-before-confirm.
-- Latest fix: `Review batch` now opens recent upload batch groups first, then drills into the
-  selected batch's uploaded photos for title/tag review and confirmation.
-- Latest UX correction: the old Media Library "Generate AI Collections" auto-create path has
-  been replaced with a prompt-based AI Collection Builder. The user describes what they want,
-  reviews candidate assets, and creates the collection only after selecting assets.
-- Last verification: focused album backend tests passed (`MediaAlbumControllerTest`,
-  `MediaAlbumServiceTest`, 24 tests) and frontend `npm.cmd run build` passed.
-- Next development slice: Phase 3 natural-language/hybrid media search. Architecture is captured
-  in `CAPSTONE2_PHASE3_PLAN.md`: full-text + semantic vector + multimodal photo retrieval fused
-  with RRF, then deterministic re-ranking and feedback logging.
+- Phases 1-4 are implemented locally on the Capstone 2 dev project.
+- Phase 3 delivers hybrid search, strict relevance filtering, related-search autocomplete,
+  and search feedback; D2 Recall@3 is recorded as 1.0.
+- Phase 4 delivers best-N caption support, visibility/consent gating, submission enforcement,
+  and the media audit-history surface. `safety_verdict` remains optional.
+- Phase 5 Facebook insights remains the next dependency-ordered phase and is gated by Meta
+  App Review for `read_insights`.
+- Phase 6 depends on the engagement data produced by Phase 5.
+- Phase 7A-7B are implemented and V34-V35 are applied to the development database. New
+  uploads receive asynchronous SHA-256 verification; a bounded daily job backfills and
+  rechecks due assets; new/changed failures notify validators and administrators.
+- The shared Asset Detail sidebar now includes recent check history, manual recheck,
+  validator/admin acknowledgement, and replacement-upload handoff.
+- Pull Phase 7C next while waiting on Meta: the tenant-scoped Repository Health dashboard
+  with drill-down filters. The full plan is in `CAPSTONE2_PHASE7_PLAN.md`.
 
 ## 2. Standing — sanctioned advance development
 
@@ -88,6 +91,9 @@ is safe and so a future document submission is a formality rather than a rewrite
    the two architecturally risky pieces; the 200-asset queue run is the D5 throughput proof.
 3. **External lead time:** if reach/impressions are wanted, start the **Meta App Review for
    `read_insights` early** — its latency is outside our control.
+4. **Preservation lane:** Phase 7A-7C may run while Meta review is pending because fixity and
+   Repository Health depend only on the existing media/storage lifecycle. Build and freeze D7
+   before tuning dashboard thresholds or reporting preservation metrics.
 
 ## 3. Environments
 
@@ -107,7 +113,8 @@ is safe and so a future document submission is a formality rather than a rewrite
 >   for the screen slice). This is part of every vertical slice.
 
 - **Branch per UC**, PR into the integration branch; keep the mainline releasable.
-- **Migrations:** Flyway only, **V28+**, never reuse a version number. Add columns
+- **Migrations:** Flyway only; the next free version is currently **V36**. Never reuse a
+  version number. Add columns
   nullable-then-backfill; never a default that hides existing READY assets. Watch the
   `visibility` backfill landmine (grandfather existing assets to `cleared_for_public`).
 - **RLS** on every new institution-scoped table, in the same migration that creates it.

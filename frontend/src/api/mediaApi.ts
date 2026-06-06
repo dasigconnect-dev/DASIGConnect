@@ -44,9 +44,20 @@ export interface MediaAsset {
   embeddingGeneratedAt?: string | null;
   /** UC-4.x consent/visibility: "internal_only" | "cleared_for_public". */
   visibility?: string | null;
+  /** UC-4.12 bit-level file integrity, separate from duplicate perceptual hashes. */
+  contentSha256?: string | null;
+  checksumGeneratedAt?: string | null;
+  integrityStatus?: MediaIntegrityStatus | null;
+  integrityCheckedAt?: string | null;
+  integrityFailureReason?: string | null;
+  integrityReviewStatus?: MediaIntegrityReviewStatus | null;
+  integrityReviewAcknowledgedAt?: string | null;
+  integrityReviewAcknowledgedBy?: string | null;
 }
 
 export type MediaVisibility = "internal_only" | "cleared_for_public";
+export type MediaIntegrityStatus = "pending" | "verified" | "mismatch" | "missing" | "error";
+export type MediaIntegrityReviewStatus = "none" | "open" | "acknowledged" | "resolved";
 
 export interface DeleteCheckResult {
   tier: "blocked" | "warning" | "free";
@@ -358,6 +369,14 @@ export interface MediaAssetDetailResponse {
   visibility?: string | null;
   aiClassifiedAt?: string | null;
   embeddingGeneratedAt?: string | null;
+  contentSha256?: string | null;
+  checksumGeneratedAt?: string | null;
+  integrityStatus?: string | null;
+  integrityCheckedAt?: string | null;
+  integrityFailureReason?: string | null;
+  integrityReviewStatus?: string | null;
+  integrityReviewAcknowledgedAt?: string | null;
+  integrityReviewAcknowledgedBy?: string | null;
   createdAt: string;
   institutionId?: string | null;
   institutionName?: string | null;
@@ -429,7 +448,42 @@ function mapDetailToAsset(raw: MediaAssetDetailResponse): MediaAsset {
     visibility: raw.visibility ?? null,
     aiClassifiedAt: raw.aiClassifiedAt ?? null,
     embeddingGeneratedAt: raw.embeddingGeneratedAt ?? null,
+    contentSha256: raw.contentSha256 ?? null,
+    checksumGeneratedAt: raw.checksumGeneratedAt ?? null,
+    integrityStatus: normalizeIntegrityStatus(raw.integrityStatus),
+    integrityCheckedAt: raw.integrityCheckedAt ?? null,
+    integrityFailureReason: raw.integrityFailureReason ?? null,
+    integrityReviewStatus: normalizeIntegrityReviewStatus(raw.integrityReviewStatus),
+    integrityReviewAcknowledgedAt: raw.integrityReviewAcknowledgedAt ?? null,
+    integrityReviewAcknowledgedBy: raw.integrityReviewAcknowledgedBy ?? null,
   };
+}
+
+function normalizeIntegrityStatus(value?: string | null): MediaIntegrityStatus | null {
+  const normalized = value?.toLowerCase();
+  if (
+    normalized === "pending"
+    || normalized === "verified"
+    || normalized === "mismatch"
+    || normalized === "missing"
+    || normalized === "error"
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeIntegrityReviewStatus(value?: string | null): MediaIntegrityReviewStatus | null {
+  const normalized = value?.toLowerCase();
+  if (
+    normalized === "none"
+    || normalized === "open"
+    || normalized === "acknowledged"
+    || normalized === "resolved"
+  ) {
+    return normalized;
+  }
+  return null;
 }
 
 export function getMediaAsset(id: string, signal?: AbortSignal) {
@@ -460,6 +514,72 @@ export function changeAssetVisibility(id: string, visibility: MediaVisibility) {
   return api
     .patch<MediaAssetDetailResponse>(`/media-assets/${id}/visibility`, { visibility })
     .then((res) => mapDetailToAsset(res.data));
+}
+
+export interface MediaIntegrityResult {
+  assetId: string;
+  contentSha256: string | null;
+  integrityStatus: MediaIntegrityStatus | null;
+  checksumGeneratedAt: string | null;
+  integrityCheckedAt: string | null;
+  integrityFailureReason: string | null;
+  integrityReviewStatus: MediaIntegrityReviewStatus | null;
+  integrityReviewAcknowledgedAt: string | null;
+  integrityReviewAcknowledgedBy: string | null;
+}
+
+/** UC-4.12 Phase 7A: verify stored bytes against the immutable ingest SHA-256. */
+export function verifyMediaAssetIntegrity(id: string): Promise<MediaIntegrityResult> {
+  return api
+    .post<Omit<MediaIntegrityResult, "integrityStatus" | "integrityReviewStatus"> & {
+      integrityStatus: string | null;
+      integrityReviewStatus: string | null;
+    }>(
+      `/media-assets/${id}/integrity-check`,
+    )
+    .then((res) => ({
+      ...res.data,
+      integrityStatus: normalizeIntegrityStatus(res.data.integrityStatus),
+      integrityReviewStatus: normalizeIntegrityReviewStatus(res.data.integrityReviewStatus),
+    }));
+}
+
+export interface MediaIntegrityCheck {
+  id: string;
+  expectedSha256: string | null;
+  observedSha256: string | null;
+  status: MediaIntegrityStatus | null;
+  trigger: "ingest" | "manual" | "scheduled" | "repair_verification";
+  failureReason: string | null;
+  checkedAt: string;
+}
+
+/** UC-4.12 Phase 7B: append-only preservation check history. */
+export function getMediaAssetIntegrityHistory(id: string): Promise<MediaIntegrityCheck[]> {
+  return api
+    .get<Array<Omit<MediaIntegrityCheck, "status" | "trigger"> & {
+      status: string | null;
+      trigger: string;
+    }>>(`/media-assets/${id}/integrity-history`)
+    .then((res) => res.data.map((check) => ({
+      ...check,
+      status: normalizeIntegrityStatus(check.status),
+      trigger: check.trigger.toLowerCase() as MediaIntegrityCheck["trigger"],
+    })));
+}
+
+/** UC-4.12 Phase 7B: mark an active failure as owned by a reviewer. */
+export function acknowledgeMediaAssetIntegrityReview(id: string): Promise<MediaIntegrityResult> {
+  return api
+    .post<Omit<MediaIntegrityResult, "integrityStatus" | "integrityReviewStatus"> & {
+      integrityStatus: string | null;
+      integrityReviewStatus: string | null;
+    }>(`/media-assets/${id}/integrity-review/acknowledge`)
+    .then((res) => ({
+      ...res.data,
+      integrityStatus: normalizeIntegrityStatus(res.data.integrityStatus),
+      integrityReviewStatus: normalizeIntegrityReviewStatus(res.data.integrityReviewStatus),
+    }));
 }
 
 export function deleteMediaAsset(id: string, force = false) {

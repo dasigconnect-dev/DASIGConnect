@@ -130,6 +130,32 @@ public class MediaAsset {
     @Column(name = "purged_at")
     private Instant purgedAt;
 
+    @Column(name = "content_sha256", length = 64)
+    private String contentSha256;
+
+    @Column(name = "checksum_generated_at")
+    private Instant checksumGeneratedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "integrity_status", nullable = false, length = 20)
+    private MediaIntegrityStatus integrityStatus;
+
+    @Column(name = "integrity_checked_at")
+    private Instant integrityCheckedAt;
+
+    @Column(name = "integrity_failure_reason", columnDefinition = "text")
+    private String integrityFailureReason;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "integrity_review_status", nullable = false, length = 20)
+    private MediaIntegrityReviewStatus integrityReviewStatus;
+
+    @Column(name = "integrity_review_acknowledged_at")
+    private Instant integrityReviewAcknowledgedAt;
+
+    @Column(name = "integrity_review_acknowledged_by")
+    private UUID integrityReviewAcknowledgedBy;
+
     // UC-4.x consent/visibility gate: internal_only | cleared_for_public.
     @Column(name = "visibility", nullable = false)
     private String visibility;
@@ -141,6 +167,8 @@ public class MediaAsset {
     void onCreate() {
         if (id == null) id = UUID.randomUUID();
         if (status == null) status = MediaAssetStatus.PROCESSING;
+        if (integrityStatus == null) integrityStatus = MediaIntegrityStatus.PENDING;
+        if (integrityReviewStatus == null) integrityReviewStatus = MediaIntegrityReviewStatus.NONE;
         if (visibility == null) visibility = "internal_only";
         createdAt = Instant.now();
     }
@@ -251,6 +279,30 @@ public class MediaAsset {
 
     public Instant getPurgedAt() { return purgedAt; }
     public void setPurgedAt(Instant purgedAt) { this.purgedAt = purgedAt; }
+
+    public String getContentSha256() { return contentSha256; }
+    public void setContentSha256(String contentSha256) { this.contentSha256 = contentSha256; }
+
+    public Instant getChecksumGeneratedAt() { return checksumGeneratedAt; }
+    public void setChecksumGeneratedAt(Instant checksumGeneratedAt) { this.checksumGeneratedAt = checksumGeneratedAt; }
+
+    public MediaIntegrityStatus getIntegrityStatus() { return integrityStatus; }
+    public void setIntegrityStatus(MediaIntegrityStatus integrityStatus) { this.integrityStatus = integrityStatus; }
+
+    public Instant getIntegrityCheckedAt() { return integrityCheckedAt; }
+    public void setIntegrityCheckedAt(Instant integrityCheckedAt) { this.integrityCheckedAt = integrityCheckedAt; }
+
+    public String getIntegrityFailureReason() { return integrityFailureReason; }
+    public void setIntegrityFailureReason(String integrityFailureReason) { this.integrityFailureReason = integrityFailureReason; }
+
+    public MediaIntegrityReviewStatus getIntegrityReviewStatus() { return integrityReviewStatus; }
+    public void setIntegrityReviewStatus(MediaIntegrityReviewStatus integrityReviewStatus) { this.integrityReviewStatus = integrityReviewStatus; }
+
+    public Instant getIntegrityReviewAcknowledgedAt() { return integrityReviewAcknowledgedAt; }
+    public void setIntegrityReviewAcknowledgedAt(Instant integrityReviewAcknowledgedAt) { this.integrityReviewAcknowledgedAt = integrityReviewAcknowledgedAt; }
+
+    public UUID getIntegrityReviewAcknowledgedBy() { return integrityReviewAcknowledgedBy; }
+    public void setIntegrityReviewAcknowledgedBy(UUID integrityReviewAcknowledgedBy) { this.integrityReviewAcknowledgedBy = integrityReviewAcknowledgedBy; }
 
     public Instant getCreatedAt() { return createdAt; }
 

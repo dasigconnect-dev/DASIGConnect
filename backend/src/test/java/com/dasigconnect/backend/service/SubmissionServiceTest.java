@@ -77,6 +77,9 @@ class SubmissionServiceTest {
     private NotificationService notificationService;
 
     @Mock
+    private MediaIntegrityQueueService mediaIntegrityQueueService;
+
+    @Mock
     private UserRepository userRepository;
 
     @Mock
@@ -358,6 +361,7 @@ class SubmissionServiceTest {
         assertThat(result.getId()).isEqualTo(submissionId);
         verify(mediaAssetRepository).save(any(MediaAsset.class));
         verify(submissionMediaAssetRepository).save(any(SubmissionMediaAsset.class));
+        verify(mediaIntegrityQueueService).enqueueIngestCheck(any(UUID.class));
     }
 
     @Test

@@ -18,6 +18,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     List<User> findByInstitutionIdAndRoleOrderByCreatedAtDesc(UUID institutionId, UserRole role);
 
+    List<User> findByInstitutionIdAndRoleAndAccountStateOrderByCreatedAtDesc(
+            UUID institutionId,
+            UserRole role,
+            UserStatus accountState);
+
     boolean existsByInstitutionId(UUID institutionId);
 
     long countByInstitutionIdAndRole(UUID institutionId, UserRole role);
@@ -25,4 +30,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     long countByInstitutionIdAndRoleAndAccountState(UUID institutionId, UserRole role, UserStatus accountState);
 
     List<User> findByRole(UserRole role);
+
+    List<User> findByRoleAndAccountState(UserRole role, UserStatus accountState);
 }

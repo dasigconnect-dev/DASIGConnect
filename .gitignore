@@ -15,6 +15,7 @@ docs/pdf/*_text.txt
 
 # Local dev run logs / scratch API responses
 backend-run.log
+backend/backend-phase7.*.log
 /login.json
 /lib.json
 /resp.json

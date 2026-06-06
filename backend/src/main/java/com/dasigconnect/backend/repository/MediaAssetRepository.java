@@ -2,10 +2,13 @@ package com.dasigconnect.backend.repository;
 
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -14,6 +17,67 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     @Query("SELECT m FROM MediaAsset m WHERE m.id = :id AND m.deletedAt IS NULL")
     Optional<MediaAsset> findActiveById(@Param("id") UUID id);
+
+    @Query("""
+        SELECT new com.dasigconnect.backend.repository.MediaIntegrityTarget(
+            m.id, m.institution.id, m.storageUrl, m.assetCode
+        )
+        FROM MediaAsset m
+        WHERE m.id = :id
+          AND m.deletedAt IS NULL
+        """)
+    Optional<MediaIntegrityTarget> findIntegrityTargetById(@Param("id") UUID id);
+
+    /**
+     * System-job query. It is intentionally network-wide and returns only the bounded
+     * projection needed for storage verification; user-facing reads remain tenant-scoped.
+     */
+    @Query("""
+        SELECT new com.dasigconnect.backend.repository.MediaIntegrityTarget(
+            m.id, m.institution.id, m.storageUrl, m.assetCode
+        )
+        FROM MediaAsset m
+        WHERE m.deletedAt IS NULL
+          AND (
+              m.contentSha256 IS NULL
+              OR m.integrityStatus = com.dasigconnect.backend.model.entity.MediaIntegrityStatus.PENDING
+              OR m.integrityCheckedAt IS NULL
+              OR (
+                  m.integrityStatus IN (
+                      com.dasigconnect.backend.model.entity.MediaIntegrityStatus.MISMATCH,
+                      com.dasigconnect.backend.model.entity.MediaIntegrityStatus.MISSING,
+                      com.dasigconnect.backend.model.entity.MediaIntegrityStatus.ERROR
+                  )
+                  AND m.integrityCheckedAt <= :failureCutoff
+              )
+              OR (
+                  m.integrityStatus = com.dasigconnect.backend.model.entity.MediaIntegrityStatus.VERIFIED
+                  AND m.integrityCheckedAt <= :verifiedCutoff
+              )
+          )
+        ORDER BY
+          CASE
+              WHEN m.contentSha256 IS NULL
+                OR m.integrityStatus = com.dasigconnect.backend.model.entity.MediaIntegrityStatus.PENDING
+                OR m.integrityCheckedAt IS NULL THEN 0
+              WHEN m.integrityStatus IN (
+                  com.dasigconnect.backend.model.entity.MediaIntegrityStatus.MISMATCH,
+                  com.dasigconnect.backend.model.entity.MediaIntegrityStatus.MISSING,
+                  com.dasigconnect.backend.model.entity.MediaIntegrityStatus.ERROR
+              ) THEN 1
+              ELSE 2
+          END,
+          m.integrityCheckedAt ASC,
+          m.createdAt ASC
+        """)
+    List<MediaIntegrityTarget> findDueIntegrityTargets(
+            @Param("verifiedCutoff") java.time.Instant verifiedCutoff,
+            @Param("failureCutoff") java.time.Instant failureCutoff,
+            Pageable pageable);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT m FROM MediaAsset m WHERE m.id = :id AND m.deletedAt IS NULL")
+    Optional<MediaAsset> findActiveByIdForIntegrityUpdate(@Param("id") UUID id);
 
     @Query("SELECT COUNT(m) > 0 FROM MediaAsset m WHERE m.institution.id = :institutionId AND m.deletedAt IS NULL")
     boolean existsActiveByInstitutionId(@Param("institutionId") UUID institutionId);

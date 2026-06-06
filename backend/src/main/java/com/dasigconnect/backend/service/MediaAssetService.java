@@ -12,6 +12,8 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.model.dto.media.AddAssetTagRequestDto;
@@ -71,6 +73,7 @@ public class MediaAssetService {
     private final SubmissionService submissionService;
     private final SupabaseStorageService supabaseStorageService;
     private final MediaIngestionQueueService mediaIngestionQueueService;
+    private final MediaIntegrityQueueService mediaIntegrityQueueService;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
     private final AuditLogRepository auditLogRepository;
@@ -88,6 +91,7 @@ public class MediaAssetService {
             SubmissionService submissionService,
             SupabaseStorageService supabaseStorageService,
             MediaIngestionQueueService mediaIngestionQueueService,
+            MediaIntegrityQueueService mediaIntegrityQueueService,
             UserRepository userRepository,
             AuditLogService auditLogService,
             AuditLogRepository auditLogRepository) {
@@ -100,6 +104,7 @@ public class MediaAssetService {
         this.submissionService = submissionService;
         this.supabaseStorageService = supabaseStorageService;
         this.mediaIngestionQueueService = mediaIngestionQueueService;
+        this.mediaIntegrityQueueService = mediaIntegrityQueueService;
         this.userRepository = userRepository;
         this.auditLogService = auditLogService;
         this.auditLogRepository = auditLogRepository;
@@ -324,13 +329,20 @@ public class MediaAssetService {
         final UUID savedId = asset.getId();
         final String savedUrl = asset.getStorageUrl();
         final MediaFileType savedType = asset.getFileType();
-        try {
-            if (savedType.isImage()) {
-                mediaIngestionQueueService.enqueue(savedId, savedUrl);
+        afterCommit(() -> {
+            try {
+                mediaIntegrityQueueService.enqueueIngestCheck(savedId);
+            } catch (Exception e) {
+                log.warn("Failed to enqueue integrity check for asset {}: {}", savedId, e.getMessage());
             }
-        } catch (Exception e) {
-            log.warn("Failed to enqueue AI classification for asset {}: {}", savedId, e.getMessage());
-        }
+            try {
+                if (savedType.isImage()) {
+                    mediaIngestionQueueService.enqueue(savedId, savedUrl);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to enqueue AI classification for asset {}: {}", savedId, e.getMessage());
+            }
+        });
 
         auditMedia(user, "MEDIA_ASSET_UPLOADED", savedId, Map.of(
                 "assetCode", String.valueOf(asset.getAssetCode()),
@@ -607,6 +619,19 @@ public class MediaAssetService {
         String base = dot > 0 ? fileName.substring(0, dot) : fileName;
         String cleaned = base.replace('_', ' ').replace('-', ' ').replaceAll("\\s+", " ").trim();
         return cleaned.isBlank() ? fileName : cleaned;
+    }
+
+    private void afterCommit(Runnable task) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            task.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                task.run();
+            }
+        });
     }
 
     private MediaAsset loadAsset(UUID assetId, JwtUserDetails user) {

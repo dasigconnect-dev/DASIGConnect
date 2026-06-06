@@ -1,7 +1,9 @@
 import { createPortal } from "react-dom";
-import type { MediaAsset, MediaAuditEntry, MediaVisibility } from "../../../api/mediaApi";
+import { CircleAlert, CircleCheck, Clock3, RefreshCw, ShieldQuestion, Upload } from "lucide-react";
+import type { MediaAsset, MediaAuditEntry, MediaIntegrityCheck, MediaVisibility } from "../../../api/mediaApi";
 import { formatFileSize, formatUploadDate, formatResolution, formatFileTypeName, isVideoType } from "../utils";
 import AssetActivityLog from "./AssetActivityLog";
+import AssetIntegrityHistory from "./AssetIntegrityHistory";
 
 interface AssetDetailPanelProps {
   asset: MediaAsset | null;
@@ -26,6 +28,14 @@ interface AssetDetailPanelProps {
   historyLoading?: boolean;
   onChangeVisibility?: (visibility: MediaVisibility) => void;
   visibilityBusy?: boolean;
+  onVerifyIntegrity?: () => void;
+  integrityBusy?: boolean;
+  integrityHistory?: MediaIntegrityCheck[];
+  integrityHistoryLoading?: boolean;
+  canAcknowledgeIntegrity?: boolean;
+  onAcknowledgeIntegrity?: () => void;
+  integrityReviewBusy?: boolean;
+  onUploadReplacement?: () => void;
   renderMode?: "portal" | "inline";
 }
 
@@ -72,10 +82,23 @@ export default function AssetDetailPanel({
   historyLoading = false,
   onChangeVisibility,
   visibilityBusy = false,
+  onVerifyIntegrity,
+  integrityBusy = false,
+  integrityHistory = [],
+  integrityHistoryLoading = false,
+  canAcknowledgeIntegrity = false,
+  onAcknowledgeIntegrity,
+  integrityReviewBusy = false,
+  onUploadReplacement,
   renderMode = "portal",
 }: AssetDetailPanelProps) {
   const newPostCount = selectionMode ? selectedAssets.length : asset ? 1 : 0;
   const visibilityCleared = asset?.visibility === "cleared_for_public";
+  const integrity = integrityPresentation(asset?.integrityStatus);
+  const integrityFailed = asset?.integrityStatus === "mismatch"
+    || asset?.integrityStatus === "missing"
+    || asset?.integrityStatus === "error";
+  const IntegrityIcon = integrity.Icon;
   const panel = (
     <div
       className={`med-panel${open ? " open" : ""}${renderMode === "inline" ? " inline" : ""}`}
@@ -224,6 +247,90 @@ export default function AssetDetailPanel({
                   ? "Approved for use in public posts."
                   : "Restricted — clear for public before using in published posts."}
               </p>
+            </div>
+
+            {/* File integrity / fixity (UC-4.12) */}
+            <div>
+              <div className="med-panel-section-label">File Integrity</div>
+              <div className={`med-integrity med-integrity-${integrity.tone}`}>
+                <div className="med-integrity-head">
+                  <span className="med-integrity-status">
+                    <IntegrityIcon size={15} aria-hidden="true" />
+                    {integrity.label}
+                  </span>
+                  {onVerifyIntegrity && (
+                    <button
+                      className="med-btn med-btn-ghost med-btn-sm med-integrity-action"
+                      type="button"
+                      disabled={integrityBusy}
+                      onClick={onVerifyIntegrity}
+                    >
+                      <RefreshCw size={13} aria-hidden="true" className={integrityBusy ? "med-spin" : undefined} />
+                      {integrityBusy ? "Verifying..." : "Verify"}
+                    </button>
+                  )}
+                </div>
+                <p className="med-integrity-copy">
+                  {asset.integrityFailureReason || integrity.description}
+                </p>
+                <div className="med-integrity-meta">
+                  <span>
+                    Last checked
+                    <strong>
+                      {asset.integrityCheckedAt ? formatUploadDate(asset.integrityCheckedAt) : "Not checked"}
+                    </strong>
+                  </span>
+                  <span>
+                    SHA-256
+                    <code title={asset.contentSha256 || "Checksum pending"}>
+                      {shortChecksum(asset.contentSha256)}
+                    </code>
+                  </span>
+                </div>
+                {integrityFailed && (
+                  <div className="med-integrity-review">
+                    <span className={`med-review-state ${asset.integrityReviewStatus ?? "open"}`}>
+                      {asset.integrityReviewStatus === "acknowledged"
+                        ? `Acknowledged${asset.integrityReviewAcknowledgedAt
+                          ? ` · ${formatUploadDate(asset.integrityReviewAcknowledgedAt)}`
+                          : ""}`
+                        : "Review required"}
+                    </span>
+                    <div className="med-integrity-review-actions">
+                      {canAcknowledgeIntegrity
+                        && asset.integrityReviewStatus !== "acknowledged"
+                        && onAcknowledgeIntegrity && (
+                          <button
+                            className="med-btn med-btn-ghost med-btn-sm"
+                            type="button"
+                            disabled={integrityReviewBusy}
+                            onClick={onAcknowledgeIntegrity}
+                          >
+                            <CircleCheck size={13} aria-hidden="true" />
+                            {integrityReviewBusy ? "Saving..." : "Acknowledge"}
+                          </button>
+                        )}
+                      {onUploadReplacement && (
+                        <button
+                          className="med-btn med-btn-ghost med-btn-sm"
+                          type="button"
+                          onClick={onUploadReplacement}
+                        >
+                          <Upload size={13} aria-hidden="true" />
+                          Upload replacement
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div className="med-integrity-history-wrap">
+                  <span className="med-integrity-history-title">Recent checks</span>
+                  <AssetIntegrityHistory
+                    entries={integrityHistory}
+                    loading={integrityHistoryLoading}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Metadata */}
@@ -382,6 +489,58 @@ export default function AssetDetailPanel({
   );
 
   return renderMode === "inline" ? panel : createPortal(panel, document.body);
+}
+
+function integrityPresentation(status?: MediaAsset["integrityStatus"]) {
+  switch (status) {
+    case "verified":
+      return {
+        label: "Verified",
+        tone: "verified",
+        description: "Stored bytes match the ingest checksum.",
+        Icon: CircleCheck,
+      };
+    case "mismatch":
+      return {
+        label: "Checksum mismatch",
+        tone: "danger",
+        description: "The stored file differs from its ingest checksum.",
+        Icon: CircleAlert,
+      };
+    case "missing":
+      return {
+        label: "File missing",
+        tone: "danger",
+        description: "The storage object could not be found.",
+        Icon: CircleAlert,
+      };
+    case "error":
+      return {
+        label: "Verification error",
+        tone: "warning",
+        description: "The file could not be verified. Try again.",
+        Icon: CircleAlert,
+      };
+    case "pending":
+      return {
+        label: "Pending",
+        tone: "pending",
+        description: "The initial checksum has not finished yet.",
+        Icon: Clock3,
+      };
+    default:
+      return {
+        label: "Not checked",
+        tone: "pending",
+        description: "Run verification to establish file integrity.",
+        Icon: ShieldQuestion,
+      };
+  }
+}
+
+function shortChecksum(value?: string | null) {
+  if (!value) return "Pending";
+  return `${value.slice(0, 10)}...${value.slice(-8)}`;
 }
 
 function TrashIcon() {

@@ -68,6 +68,8 @@ class MediaAssetServiceTest {
     @Mock
     private MediaIngestionQueueService mediaIngestionQueueService;
     @Mock
+    private MediaIntegrityQueueService mediaIntegrityQueueService;
+    @Mock
     private UserRepository userRepository;
     @Mock
     private AuditLogService auditLogService;
@@ -90,6 +92,7 @@ class MediaAssetServiceTest {
                 submissionService,
                 supabaseStorageService,
                 mediaIngestionQueueService,
+                mediaIntegrityQueueService,
                 userRepository,
                 auditLogService,
                 auditLogRepository);
@@ -317,6 +320,7 @@ class MediaAssetServiceTest {
         ArgumentCaptor<MediaAsset> captor = ArgumentCaptor.forClass(MediaAsset.class);
         verify(mediaAssetRepository).save(captor.capture());
         org.junit.jupiter.api.Assertions.assertEquals(batchId, captor.getValue().getImportBatchId());
+        verify(mediaIntegrityQueueService).enqueueIngestCheck(captor.getValue().getId());
         verify(mediaIngestionQueueService).enqueue(any(), eq("https://storage.example/photo.jpg"));
     }
 

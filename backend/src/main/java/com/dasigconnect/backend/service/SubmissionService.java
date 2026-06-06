@@ -15,6 +15,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import org.springframework.context.ApplicationEventPublisher;
@@ -81,6 +83,7 @@ public class SubmissionService {
     private final NotificationService notificationService;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final MediaIntegrityQueueService mediaIntegrityQueueService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -98,7 +101,8 @@ public class SubmissionService {
             SupabaseStorageService supabaseStorageService,
             NotificationService notificationService,
             UserRepository userRepository,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            MediaIntegrityQueueService mediaIntegrityQueueService) {
         this.submissionRepository = submissionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
@@ -109,6 +113,7 @@ public class SubmissionService {
         this.notificationService = notificationService;
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
+        this.mediaIntegrityQueueService = mediaIntegrityQueueService;
     }
 
     @Transactional(readOnly = true)
@@ -409,9 +414,24 @@ public class SubmissionService {
         asset = mediaAssetRepository.save(asset);
 
         linkAssetToSubmission(submission, asset, (int) currentCount);
+        UUID savedAssetId = asset.getId();
+        afterCommit(() -> mediaIntegrityQueueService.enqueueIngestCheck(savedAssetId));
 
         log.info("Media asset {} attached to submission {} by contributor {}", asset.getId(), submissionId, user.userId());
         return buildResponse(submission);
+    }
+
+    private void afterCommit(Runnable task) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            task.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                task.run();
+            }
+        });
     }
 
     /**

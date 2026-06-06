@@ -204,6 +204,16 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     badgeClass: "badge-critical",
     critical: true,
   },
+  media_integrity_failed: {
+    trigger: "DRM",
+    category: "system",
+    icon: "ti ti-file-alert",
+    iconClass: "icon-error",
+    sender: "Repository Monitor",
+    linkLabel: "Review Asset",
+    badgeClass: "badge-critical",
+    critical: true,
+  },
   generic: {
     trigger: "SYS",
     category: "system",

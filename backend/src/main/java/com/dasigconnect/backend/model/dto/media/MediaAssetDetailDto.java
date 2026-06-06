@@ -30,6 +30,14 @@ public class MediaAssetDetailDto {
     private String aiClassificationModel;
     private Instant embeddingGeneratedAt;
     private String embeddingModel;
+    private String contentSha256;
+    private Instant checksumGeneratedAt;
+    private String integrityStatus;
+    private Instant integrityCheckedAt;
+    private String integrityFailureReason;
+    private String integrityReviewStatus;
+    private Instant integrityReviewAcknowledgedAt;
+    private UUID integrityReviewAcknowledgedBy;
     private Instant createdAt;
     private UUID institutionId;
     private String institutionName;
@@ -61,6 +69,15 @@ public class MediaAssetDetailDto {
         dto.aiClassificationModel = asset.getAiClassificationModel();
         dto.embeddingGeneratedAt = asset.getEmbeddingGeneratedAt();
         dto.embeddingModel = asset.getEmbeddingModel();
+        dto.contentSha256 = asset.getContentSha256();
+        dto.checksumGeneratedAt = asset.getChecksumGeneratedAt();
+        dto.integrityStatus = asset.getIntegrityStatus() == null ? null : asset.getIntegrityStatus().name();
+        dto.integrityCheckedAt = asset.getIntegrityCheckedAt();
+        dto.integrityFailureReason = asset.getIntegrityFailureReason();
+        dto.integrityReviewStatus = asset.getIntegrityReviewStatus() == null
+                ? null : asset.getIntegrityReviewStatus().name();
+        dto.integrityReviewAcknowledgedAt = asset.getIntegrityReviewAcknowledgedAt();
+        dto.integrityReviewAcknowledgedBy = asset.getIntegrityReviewAcknowledgedBy();
         dto.createdAt = asset.getCreatedAt();
         dto.institutionId = asset.getInstitution().getId();
         dto.institutionName = asset.getInstitution().getName();
@@ -153,6 +170,38 @@ public class MediaAssetDetailDto {
 
     public String getEmbeddingModel() {
         return embeddingModel;
+    }
+
+    public String getContentSha256() {
+        return contentSha256;
+    }
+
+    public Instant getChecksumGeneratedAt() {
+        return checksumGeneratedAt;
+    }
+
+    public String getIntegrityStatus() {
+        return integrityStatus;
+    }
+
+    public Instant getIntegrityCheckedAt() {
+        return integrityCheckedAt;
+    }
+
+    public String getIntegrityFailureReason() {
+        return integrityFailureReason;
+    }
+
+    public String getIntegrityReviewStatus() {
+        return integrityReviewStatus;
+    }
+
+    public Instant getIntegrityReviewAcknowledgedAt() {
+        return integrityReviewAcknowledgedAt;
+    }
+
+    public UUID getIntegrityReviewAcknowledgedBy() {
+        return integrityReviewAcknowledgedBy;
     }
 
     public Instant getCreatedAt() {

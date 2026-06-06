@@ -19,5 +19,6 @@ public enum NotificationEventType {
     submission_rescheduled,
     token_expiring,
     token_invalid,
+    media_integrity_failed,
     generic
 }

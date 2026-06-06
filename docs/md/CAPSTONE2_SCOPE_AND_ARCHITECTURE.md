@@ -138,6 +138,17 @@ Target: ≥60% of contributors rate advisor suggestions "useful."
 **UC-4.11 — Media Provenance & Audit Trail.**
 *Verified gap (see §10): media operations are currently **not** recorded in the immutable `AuditLog` — `AuditLogService` is wired into 10 other services but not `MediaAssetService`/`MediaAssetRetentionService`.* This UC closes the provenance pillar that makes the repository "digital, not just storage." Wire `AuditLogService` into every state-changing media operation — **upload, metadata edit/curation, tag add/remove, soft-delete, restore, retention purge, visibility/consent change, and reclassification** — each writing an immutable audit row with actor, asset, action, and before/after where applicable. Reuses the existing `AuditLog` entity/service and audit-on-state-change pattern; no new table. Calls stay outside the external-API critical path and never roll back the business action (same try-catch discipline as the T1 notification block). Target: 100% of state-changing media operations produce an audit record; every asset's full history is reconstructable from `audit_log`.
 
+**UC-4.12 — Digital Preservation & Repository Health.**
+Extend the Media Library from governed storage into a preservation-aware digital resource
+management system. Generate SHA-256 file fixity separately from perceptual duplicate hashes,
+verify stored objects on a bounded schedule, retain append-only integrity-check events, and
+surface missing/mismatched resources through an institution-scoped Repository Health dashboard.
+Add structured rights records, immutable original/version lineage, human duplicate adjudication,
+and portable Dublin Core-aligned metadata export. Integrity checks download storage objects
+outside database transactions and persist results in separate short transactions. Target:
+100% checksum coverage on the D7 set, 100% detection of controlled missing/mismatch cases,
+zero silent checksum replacement, and zero cross-tenant health/history/export results.
+
 ### Cross-cutting
 
 - **Consent / visibility flag (UC-4.x):** per-asset `visibility` (`internal_only` / `cleared_for_public`); submission to publishing blocked unless cleared.
@@ -149,7 +160,11 @@ Target: ≥60% of contributors rate advisor suggestions "useful."
 
 ## 5. Architecture Additions
 
-All aligned to the backend guide: Controller→Service→Repository, DTOs only at the boundary, Flyway (next free version is **V29** — V28 `media_folders_albums_import_batches` is already applied to the dev DB), RLS on every institution-scoped table, short transactions, **no DB connection held across an external API call**, `@Async` / bounded executor for enrichment, audit log on state changes.
+All aligned to the backend guide: Controller→Service→Repository, DTOs only at the boundary,
+Flyway (next free version is **V36** after V35 `media_integrity_review_workflow`), RLS on every
+institution-scoped table, short transactions, **no DB connection held across an external API
+or Supabase Storage call**, `@Async` / bounded executor for enrichment and fixity checks, and
+audit logging on state changes.
 
 ### 5.1 Schema (new Flyway migrations, V29+)
 
@@ -317,9 +332,10 @@ This is the planned **upgrade** of today's `AIRecommendationService.rankAsset()`
 
 ## 7. Suggested Phasing
 
-> **Status (2026-06-06):** Phases 1-4 implemented locally on the dev project. Phase 3 (search +
-> suggestions + strict relevance) is the most recently completed work. **Next unstarted phase: 5
-> (UC-4.8 Facebook insights)** — start its Meta App Review for `read_insights` in parallel.
+> **Status (2026-06-06):** Phases 1-4 are implemented locally on the dev project.
+> **Next dependency-ordered phase: 5 (UC-4.8 Facebook insights)** — start Meta App Review for
+> `read_insights`. Phase 7A-7B are complete; Phase 7C preservation work may proceed while
+> that external review is pending.
 
 | Phase | Items | Effort | Risk | Status |
 |---|---|---|---|---|
@@ -329,6 +345,7 @@ This is the planned **upgrade** of today's `AIRecommendationService.rankAsset()`
 | 4 | Caption prompt mode + best-N (UC-4.7); consent/safety flags; media audit trail (UC-4.11) | Low | Low | ✅ done (UC-4.7, visibility + submit gate, UC-4.11); `safety_verdict` flag optional/pending |
 | 5 | Facebook insights sync + engagement analytics (UC-4.8) | Med | **Med (App Review)** | ⬜ not started — next |
 | 6 | Engagement→media ranking (UC-4.9) + pre-submit advisor (UC-4.10) | Med | Med (cold-start) | ⬜ not started (depends on UC-4.8 data) |
+| 7 | Digital preservation + Repository Health (UC-4.12): fixity, rights, lineage, duplicate review, standards export | Med-High | Low-Med | Phase 7A-7B done; 7C Repository Health next |
 | — | Collage builder (client-side canvas) | Low–Med | Low — slot anywhere | ⬜ optional |
 
 ---
@@ -363,6 +380,7 @@ Every `Target:` in §4 is only defensible if it is measured against a fixed, pre
 | **D4** | Caption acceptance log | rolling, from `ai_interaction_log` | UC-4.7 | Measured live: `action_taken='applied'` over total caption suggestions, on >4-image submissions |
 | **D5** | 200-asset load batch | exactly 200 assets | UC-4.2 (§5.2) | A single real-or-synthetic event dump used for the throughput + zero-dropped-connection run |
 | **D6** | Advisor usefulness survey | ≥10 contributors | UC-4.10 | Post-submit thumbs-rating of advisor suggestions |
+| **D7** | Preservation and governance verification set | ≥30 assets plus controlled missing/mismatch, rights, lineage, and duplicate cases | UC-4.12 | Disposable dev-bucket fixtures used to verify checksum coverage, corruption detection, tenant isolation, governance completeness, and export portability |
 
 ### 9.3 Per-target methodology
 
@@ -378,6 +396,7 @@ Every `Target:` in §4 is only defensible if it is measured against a fixed, pre
 | 4.9 | boosted assets rise in rank; score shrinkage-stable | A/B the same query with/without `performance_score`; show rank delta; plot score vs. sample size to show shrinkage damps low-n volatility | seeded library + `AssetPerformanceJob` output |
 | 4.10 | ≥60% rate advisor "useful" | survey % ; separately report what fraction of advisor claims were heuristic vs. statistically-backed (sample-size gated) | D6 |
 | 4.11 | 100% of state-changing media ops audited; history reconstructable | `COUNT(media ops with an audit_log row) / COUNT(media ops)` = 1.0; spot-check that an asset's full lifecycle replays from `audit_log` | `audit_log` filtered to media entity types |
+| 4.12 | 100% checksum coverage and controlled integrity failures detected | checksum coverage over active D7 assets; detected missing/mismatch fixtures / total controlled failures; expected-checksum overwrite count must be 0; verify health/export tenant isolation | D7 + integrity-check history + Repository Health API |
 
 ### 9.4 What "good" looks like at defense
 
@@ -424,20 +443,31 @@ A single results table: dataset version, the §4 target, the measured number, an
 | Quality / duplicate management | 🟡 | UC-4.4 — Phase 2 foundation adds `perceptual_hash`, `blur_score`, `duplicate_of_id`; deterministic computation now runs in the ingestion queue; D1 threshold tuning and duplicate review UI remain pending |
 | Rights / consent governance | 🟡 | **Foundation built (2026-06-05):** per-asset `visibility` (`internal_only`/`cleared_for_public`), V33 grandfathers existing assets to `cleared_for_public` and defaults new uploads to `internal_only`; `PATCH /media-assets/{id}/visibility` (audited `MEDIA_ASSET_VISIBILITY_CHANGED`); badge + toggle in the asset detail panel. **Publish/submit hard gate enforced** — `SubmissionService.assertAssetsCleared()` blocks submit with 422 + offending asset codes when any attached asset is still `internal_only` (existing assets grandfathered cleared). **Remaining:** `safety_verdict` content-safety flag |
 | **Media audit trail** | ✅ | **UC-4.11 implemented (2026-06-05).** `AuditLogService` now wired into `MediaAssetService` (`MEDIA_ASSET_UPLOADED`, `MEDIA_ASSET_DELETED`, `MEDIA_ASSETS_BULK_DELETED`, `MEDIA_BATCH_CURATED`, `MEDIA_ASSET_TAG_ADDED`/`_REMOVED`) and `MediaAssetRetentionService` (`MEDIA_ASSET_PURGED`, system actor). Bulk move/tag already audited via `MediaOrganizationService`. Best-effort (never rolls back the action); reuses existing `AuditLog`, no new table. Read surface shipped: `GET /api/v1/media-assets/{id}/history` + an Activity section in the asset detail panel. Remaining: visibility/reclassify audited when those features land |
-| **Versioning / lineage** | 🔴 | No version chain or derived-asset lineage (e.g., collage → child asset). Not planned — decide whether to scope a lightweight lineage story |
-| Metadata-standard mapping (Dublin Core/PREMIS) | 🔴 | Purely conceptual; nothing maps fields to a recognized schema. Cheap to *articulate* even if not enforced |
+| File fixity / integrity monitoring | 🟡 | **Phase 7A-7B implemented (2026-06-06).** V34 adds SHA-256 baselines and append-only history. V35 adds review ownership. New uploads queue checks after commit; a configurable job processes at most 25 due assets, prioritizes pending/failing records, and alerts validators/admins only on new or changed failures. The shared sidebar provides history, recheck, acknowledgement, and replacement-upload handoff. **Remaining in 7C:** Repository Health aggregates and drill-down. Distinct from `perceptual_hash`. |
+| **Versioning / lineage** | 🟡 | **Planned in UC-4.12 / Phase 7E.** Immutable originals plus explicit new-version, derived-from, replacement, and component relationships. |
+| Rights metadata | 🟡 | **Planned in UC-4.12 / Phase 7D.** Structured holder, basis, license/consent reference, permitted channels, restrictions, verification, and expiry; complements the existing visibility gate. |
+| Duplicate adjudication | 🟡 | **Planned in UC-4.12 / Phase 7F.** Side-by-side human review, canonical selection, keep-both/not-duplicate decisions, optional metadata merge, no automatic deletion. |
+| Metadata-standard mapping (Dublin Core/PREMIS) | 🟡 | **Planned in UC-4.12 / Phase 7G.** Dublin Core-aligned CSV/JSON inventory export; PREMIS concepts limited honestly to fixity and preservation-event history. |
 
 ### 10.3 Shortest path to defensibly "digital"
 
-The system already sits well past plain storage (persistent IDs, rich AI metadata, semantic search, lifecycle + retention, RLS) but the **governance** and **human-curation** pillars are mostly unbuilt. Three changes convert it from "managed storage" to "governed digital repository" — prioritize these:
+The system is already beyond plain storage: persistent identity, rich metadata, human
+curation, semantic discovery, lifecycle/retention controls, consent gating, RLS, and media
+audit history are implemented. The remaining maturity gap is **preservation evidence and
+portable governance**: proving files remain unchanged, recording detailed rights, preserving
+lineage, resolving duplicates through human decisions, and exporting standards-aligned records.
 
-1. **Per-asset `visibility` / consent gate** (🟡 UC-4.x) — the single most panel-relevant feature for a government page. Backfill existing assets to `cleared_for_public` (see §5.1 backfill note); new uploads default `internal_only`.
-2. **Media events in the audit log** (🟡 now UC-4.11) — wire `AuditLogService` into upload/delete/purge/tag/reclassify. Low effort, closes the provenance gap, reuses existing infrastructure.
-3. **Human-confirmable `title` + `curated_at` flag** (🟡 UC-4.3) — lets the repository show *human-reviewed* metadata, not just AI guesses; directly supports the UC-4.3 ≥80% curated-tag target.
-
-Optional defense polish (low/no code): describe the **Media Library** as the user-facing
-digital media repository, and state the Dublin Core mapping (`title`/`creator`/`date`/`subject`/`rights` ↔ `title`/`uploader`/`created_at`/`ai_tags`/`visibility`).
+The next maturity step is UC-4.12 Phase 7C: tenant-scoped Repository Health aggregates,
+failure queues, and drill-down into affected Media Library assets. Phase 7A-7B fixity,
+scheduled backfill, alerts, and review ownership are complete. These slices produce the strongest
+new proof that the system preserves and governs digital resources rather than merely storing
+and finding them. Rights, lineage, duplicate adjudication, and standards export follow as
+smaller vertical slices in `CAPSTONE2_PHASE7_PLAN.md`.
 
 ---
 
-*Foundations reused: `media_asset_embeddings` (image + semantic, 1024-dim), `ClaudeVisionClient` classification, `VoyageAIClient` (`voyage-4-lite` text + `voyage-multimodal-3.5` image), `AiInteractionLog`, `publication_attempts`, the `PROCESSING→READY→FAILED` status model, and `EmbeddingReconciliationJob`. The published Facebook post ID is `submissions.platform_post_id` (V1), and lexical search currently relies on `pg_trgm` (V16), not `tsvector`. Media operations are **not** currently written to `AuditLog` — UC-4.11 closes this gap by reusing the existing audit infrastructure (see §10.2).*
+*Foundations reused: `media_asset_embeddings` (image + semantic, 1024-dim),
+`ClaudeVisionClient` classification, `VoyageAIClient` text/image embeddings,
+`AiInteractionLog`, `publication_attempts`, the `PROCESSING→READY→FAILED` status model,
+`EmbeddingReconciliationJob`, retention services, visibility gating, and the implemented
+media audit trail. Phase 7 adds preservation evidence without replacing these foundations.*
