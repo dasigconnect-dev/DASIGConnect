@@ -380,7 +380,7 @@ Every `Target:` in §4 is only defensible if it is measured against a fixed, pre
 | **D4** | Caption acceptance log | rolling, from `ai_interaction_log` | UC-4.7 | Measured live: `action_taken='applied'` over total caption suggestions, on >4-image submissions |
 | **D5** | 200-asset load batch | exactly 200 assets | UC-4.2 (§5.2) | A single real-or-synthetic event dump used for the throughput + zero-dropped-connection run |
 | **D6** | Advisor usefulness survey | ≥10 contributors | UC-4.10 | Post-submit thumbs-rating of advisor suggestions |
-| **D7** | Preservation and governance verification set | ≥30 assets plus controlled missing/mismatch, rights, lineage, and duplicate cases | UC-4.12 | Disposable dev-bucket fixtures used to verify checksum coverage, corruption detection, tenant isolation, governance completeness, and export portability |
+| **D7** | Preservation and governance verification set | ≥30 assets plus controlled missing/mismatch, rights, lineage, and duplicate cases | UC-4.12 | **Phase 7A-7B portion frozen + measured (2026-06-06):** `docs/eval/D7_preservation_set.csv` (32 assets, 2 tenants) drives `MediaIntegrityVerificationD7Test`, the repeatable regression gate — 100% checksum coverage, 100% missing/mismatch/error detection, 0 silent baseline overwrites, alert dedup, no cross-tenant rows (`D7_results.md`). A complementary live disposable-dev-bucket spot-check verifies the Supabase Storage path. Rights/lineage/duplicate/export fixtures extend D7 as Phases 7D-7G land |
 
 ### 9.3 Per-target methodology
 

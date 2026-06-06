@@ -295,6 +295,14 @@ Controllers remain thin, services own business rules, repositories take explicit
 
 ## 6. Evaluation
 
+**Status (2026-06-06):** the Phase 7A-7B (fixity/integrity) portion of D7 is frozen and
+measured — `docs/eval/D7_preservation_set.csv` (32 assets, 2 tenants) drives
+`MediaIntegrityVerificationD7Test`, which asserts the fixity targets and emits
+`docs/eval/D7_results.md` (PASS: 100% coverage, 100% missing/mismatch/error detection, 0 silent
+baseline overwrites, alert dedup, no cross-tenant rows). The rights/lineage/duplicate/export
+fixtures below are added as Phases 7D-7G land. A complementary live disposable-dev-bucket
+spot-check is recommended before defense to exercise the Supabase Storage path end-to-end.
+
 Add dataset **D7 - Preservation and Governance Verification Set**:
 
 - at least 30 active assets across supported file types;

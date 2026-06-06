@@ -24,6 +24,7 @@ numbers reported at defense.
 | D4 | `ai_interaction_log` (live) | UC-4.7 | caption acceptance on >4-image submissions |
 | D5 | the 200-asset load batch | UC-4.2 (§5.2) | throughput + zero dropped DB connections |
 | D6 | survey (not a file) | UC-4.10 | % who rate advisor suggestions useful |
+| D7 | `D7_preservation_set.csv` | UC-4.12 | checksum coverage, corruption detection, immutable baseline, tenant isolation |
 
 Surveys (D3, D6) are run live; record their results in a dated results file when collected.
 
@@ -51,3 +52,21 @@ Suggested mix for Phase 3:
 - 2 mixed queries, e.g. "unposted awarding photos from last Monday with people holding certificates".
 
 Freeze D2 before tuning RRF weights or re-ranker boosts.
+
+## How to fill D7 (preservation & governance set)
+
+1. The frozen scenario matrix lives in `D7_preservation_set.csv`: ≥30 assets across two
+   institutions and multiple file types, each tagged with a `scenario`
+   (`verified` / `mismatch` / `missing` / `error` / `recover` / `repeat_failure`) and its
+   `expected_final_status`. **Freeze the matrix before tuning** any integrity cadence/threshold.
+2. `MediaIntegrityVerificationD7Test` reads that CSV as the authoritative set, drives the real
+   `MediaIntegrityService` + `MediaIntegrityRecordService` against controllable storage, asserts
+   the §9.3 (4.12) targets, and writes `D7_results.md`. It is the repeatable regression gate
+   (externals stubbed, in the same spirit as the D5 spike).
+3. Targets proven: 100% checksum coverage on active assets; 100% detection of controlled
+   missing/byte-mismatch/read-error fixtures; **0 expected checksums overwritten after a
+   mismatch**; alert dedup on repeated identical failures; and no cross-tenant integrity rows.
+4. **Complementary live spot-check (recommended before defense):** plant one genuinely missing
+   object and one byte-mutated object in a *disposable* dev bucket, run a manual recheck, and
+   confirm detection end-to-end through Supabase Storage. The harness proves the engine logic;
+   the live run proves the storage path. Record the live run as a dated note in `D7_results.md`.

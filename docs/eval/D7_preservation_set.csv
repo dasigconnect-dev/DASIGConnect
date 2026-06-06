@@ -1,0 +1,33 @@
+fixture_id,asset_code,institution,media_type,scenario,expected_final_status,expected_detected,baseline_must_be_preserved,notes
+A01,AST-A001,cit-u,image/jpeg,verified,VERIFIED,na,na,intact object; bytes unchanged at recheck
+A02,AST-A002,cit-u,image/png,verified,VERIFIED,na,na,intact object
+A03,AST-A003,cit-u,image/webp,verified,VERIFIED,na,na,intact object
+A04,AST-A004,cit-u,video/mp4,verified,VERIFIED,na,na,intact large object (video)
+A05,AST-A005,cit-u,application/pdf,verified,VERIFIED,na,na,intact non-image resource
+A06,AST-A006,cit-u,image/jpeg,verified,VERIFIED,na,na,intact object
+A07,AST-A007,cit-u,image/png,verified,VERIFIED,na,na,intact object
+A08,AST-A008,cit-u,image/gif,verified,VERIFIED,na,na,intact object
+A09,AST-A009,cit-u,image/jpeg,verified,VERIFIED,na,na,intact object
+A10,AST-A010,cit-u,video/mp4,verified,VERIFIED,na,na,intact object
+A11,AST-A011,cit-u,image/jpeg,verified,VERIFIED,na,na,intact object
+A12,AST-A012,cit-u,image/png,verified,VERIFIED,na,na,intact object
+A13,AST-A013,cit-u,image/jpeg,verified,VERIFIED,na,na,intact object
+A14,AST-A014,cit-u,image/webp,verified,VERIFIED,na,na,intact object
+A15,AST-A015,cit-u,image/jpeg,mismatch,MISMATCH,yes,yes,controlled byte-mismatch; stored bytes altered after ingest
+A16,AST-A016,cit-u,image/png,mismatch,MISMATCH,yes,yes,controlled byte-mismatch
+A17,AST-A017,cit-u,video/mp4,missing,MISSING,yes,na,controlled missing object; storage returns not-found
+A18,AST-A018,cit-u,image/jpeg,error,ERROR,yes,na,controlled storage read error
+A19,AST-A019,cit-u,image/jpeg,recover,VERIFIED,yes,yes,fails once (alert) then recovers; review resolves
+A20,AST-A020,cit-u,image/png,repeat_failure,MISMATCH,yes,yes,fails twice with same status; second alert suppressed (24h dedup)
+B01,AST-B001,usc,image/jpeg,verified,VERIFIED,na,na,second-tenant intact object
+B02,AST-B002,usc,image/png,verified,VERIFIED,na,na,second-tenant intact object
+B03,AST-B003,usc,image/webp,verified,VERIFIED,na,na,second-tenant intact object
+B04,AST-B004,usc,video/mp4,verified,VERIFIED,na,na,second-tenant intact object
+B05,AST-B005,usc,application/pdf,verified,VERIFIED,na,na,second-tenant intact object
+B06,AST-B006,usc,image/jpeg,verified,VERIFIED,na,na,second-tenant intact object
+B07,AST-B007,usc,image/png,verified,VERIFIED,na,na,second-tenant intact object
+B08,AST-B008,usc,image/jpeg,verified,VERIFIED,na,na,second-tenant intact object
+B09,AST-B009,usc,image/jpeg,verified,VERIFIED,na,na,second-tenant intact object
+B10,AST-B010,usc,image/jpeg,mismatch,MISMATCH,yes,yes,second-tenant controlled byte-mismatch
+B11,AST-B011,usc,video/mp4,missing,MISSING,yes,na,second-tenant controlled missing object
+B12,AST-B012,usc,image/jpeg,error,ERROR,yes,na,second-tenant controlled storage read error
