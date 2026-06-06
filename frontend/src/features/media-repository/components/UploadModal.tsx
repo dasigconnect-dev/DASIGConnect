@@ -48,7 +48,7 @@ export default function UploadModal({ open, institutionName, onClose, onUpload, 
 
   function handleFilesSelect(files: File[]) {
     setActiveBatchId(null);
-    setUploadItems(files.map((file, index) => {
+    const items: UploadItem[] = files.map((file, index) => {
       const existing = findExistingByName?.(file.name);
       return {
         id: `${file.name}-${file.lastModified}-${file.size}-${index}`,
@@ -57,7 +57,14 @@ export default function UploadModal({ open, institutionName, onClose, onUpload, 
         progress: 0,
         duplicateOf: existing ? { id: existing.id, assetCode: existing.assetCode } : null,
       };
-    }));
+    });
+    setUploadItems(items);
+    // Check the moment files are picked (the earliest a browser can see them): if any name
+    // already exists here, surface the Upload options prompt right away rather than waiting
+    // for the Upload click.
+    if (items.some((item) => item.duplicateOf)) {
+      void startUpload(items);
+    }
   }
 
   function handleDrop(e: React.DragEvent) {
