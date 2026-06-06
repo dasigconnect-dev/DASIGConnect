@@ -1,0 +1,193 @@
+/* UC-2.2 Trash — reuses the --med-* token system. */
+
+.trash-screen {
+  font-family: var(--med-ff-body);
+  color: var(--med-text);
+  background: var(--med-surface-1);
+  min-height: calc(100vh - var(--med-nav-h));
+  padding: 28px clamp(16px, 4vw, 48px) 64px;
+  box-sizing: border-box;
+}
+
+.trash-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+
+.trash-back {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--med-blue);
+  text-decoration: none;
+  margin-bottom: 8px;
+}
+
+.trash-back:hover { text-decoration: underline; }
+
+.trash-title {
+  font-family: var(--med-ff-display);
+  font-size: 26px;
+  line-height: 1.2;
+  margin: 0;
+  color: var(--med-navy-deep);
+}
+
+.trash-subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--med-text-2);
+  max-width: 64ch;
+}
+
+.trash-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.trash-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trash-scope-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--med-muted);
+}
+
+.trash-scope-select {
+  font-family: var(--med-ff-body);
+  font-size: 14px;
+  padding: 8px 10px;
+  min-height: 40px;
+  border: 1.5px solid var(--med-border);
+  border-radius: var(--med-radius-sm);
+  background: var(--med-surface-0);
+  color: var(--med-text);
+}
+
+.trash-state {
+  padding: 28px;
+  border: 1px solid var(--med-border);
+  border-radius: 12px;
+  background: var(--med-surface-0);
+  color: var(--med-text-2);
+  font-size: 14px;
+}
+
+.trash-state--error {
+  border-color: var(--med-error);
+  color: var(--med-error);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.trash-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.trash-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: var(--med-surface-0);
+  border: 1px solid var(--med-border);
+  border-radius: 12px;
+}
+
+.trash-thumb {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--med-surface-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trash-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.trash-thumb-fallback {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--med-muted);
+}
+
+.trash-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.trash-code {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--med-text);
+}
+
+.trash-name {
+  font-size: 13px;
+  color: var(--med-text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trash-days {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--med-warning);
+}
+
+.trash-actions,
+.trash-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.trash-confirm span {
+  font-size: 12.5px;
+  color: var(--med-error);
+  font-weight: 600;
+}
+
+/* Danger button variant (codebase ships primary/ghost only) */
+.med-btn-danger {
+  background: var(--med-error);
+  color: #fff;
+  border: 1.5px solid var(--med-error);
+}
+
+.med-btn-danger:hover:not(:disabled) {
+  background: #DC2626;
+  border-color: #DC2626;
+}
+
+.med-btn-danger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

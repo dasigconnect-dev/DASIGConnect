@@ -34,6 +34,7 @@ import ResolutionCenterScreen from "../features/resolution/ResolutionCenterScree
 import MediaRepositoryScreen from "../features/media-repository/MediaRepositoryScreen";
 import RepositoryHealthScreen from "../features/media-repository/health/RepositoryHealthScreen";
 import DuplicateReviewScreen from "../features/media-repository/duplicates/DuplicateReviewScreen";
+import TrashScreen from "../features/media-repository/trash/TrashScreen";
 import AlbumsScreen from "../features/albums/AlbumsScreen";
 import NotificationsScreen from "../features/notifications/NotificationsScreen";
 import AnalyticsDashboardPage from "../features/analytics/AnalyticsDashboardPage";
@@ -784,6 +785,14 @@ function App() {
           element={
             <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator"]}>
               <DuplicateReviewScreen user={currentUser!} />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/media-repository/trash"
+          element={
+            <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <TrashScreen user={currentUser!} />
             </ProtectedRoute>
           }
         />

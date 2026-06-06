@@ -767,6 +767,42 @@ export function createAssetRelation(
   return api.post<MediaAssetLineage>(`/media-assets/${id}/relations`, payload).then((res) => res.data);
 }
 
+/* ===== UC-2.2 Trash (soft-deleted media) ===== */
+
+export interface TrashItem {
+  asset: {
+    id: string;
+    assetCode: string;
+    fileName: string;
+    title?: string | null;
+    storageUrl: string;
+    fileType: string;
+  };
+  deletedAt: string;
+  deletedByUserId: string | null;
+  purgeDueAt: string | null;
+  daysUntilPurge: number;
+}
+
+export function getTrash(institutionId?: string | null, signal?: AbortSignal): Promise<TrashItem[]> {
+  return api
+    .get<TrashItem[]>("/media-assets/trash", {
+      params: { ...(institutionId ? { institutionId } : {}) },
+      signal,
+    })
+    .then((res) => res.data);
+}
+
+/** Restore a soft-deleted asset within the retention window (lossless). */
+export function restoreMediaAsset(id: string): Promise<void> {
+  return api.post(`/media-assets/${id}/restore`).then(() => undefined);
+}
+
+/** "Delete forever" — purge the asset's content/derived data immediately. */
+export function purgeMediaAsset(id: string): Promise<void> {
+  return api.post(`/media-assets/${id}/purge`).then(() => undefined);
+}
+
 /* ===== UC-4.12 Phase 7C: Repository Health ===== */
 
 export interface RepositoryHealth {

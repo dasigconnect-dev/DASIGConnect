@@ -119,6 +119,37 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Query("SELECT m FROM MediaAsset m WHERE m.institution.id = :institutionId AND m.deletedAt IS NULL ORDER BY m.createdAt DESC")
     List<MediaAsset> findActiveByInstitution(@Param("institutionId") UUID institutionId);
 
+    /* ===== Trash (soft-deleted, not yet purged) ===== */
+
+    /** Trash for an institution, or network-wide when institutionId is null (admin). */
+    @Query("""
+        SELECT m FROM MediaAsset m
+        WHERE m.deletedAt IS NOT NULL AND m.purgedAt IS NULL
+          AND (:institutionId IS NULL OR m.institution.id = :institutionId)
+        ORDER BY m.deletedAt DESC
+        """)
+    List<MediaAsset> findTrash(@Param("institutionId") UUID institutionId);
+
+    /** A contributor's own trashed uploads. */
+    @Query("""
+        SELECT m FROM MediaAsset m
+        WHERE m.deletedAt IS NOT NULL AND m.purgedAt IS NULL AND m.uploader.id = :uploaderId
+        ORDER BY m.deletedAt DESC
+        """)
+    List<MediaAsset> findTrashByUploader(@Param("uploaderId") UUID uploaderId);
+
+    /**
+     * A single trashed (soft-deleted, not purged) asset for restore / purge-now, with institution
+     * and uploader fetch-joined so scope checks and audit run safely outside an open session.
+     */
+    @Query("""
+        SELECT m FROM MediaAsset m
+        JOIN FETCH m.institution
+        LEFT JOIN FETCH m.uploader
+        WHERE m.id = :id AND m.deletedAt IS NOT NULL AND m.purgedAt IS NULL
+        """)
+    Optional<MediaAsset> findTrashedById(@Param("id") UUID id);
+
     /**
      * Upload-time exact-duplicate check: active assets in the institution whose stored bytes
      * (SHA-256 fixity baseline) match one of the supplied hashes.

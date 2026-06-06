@@ -61,18 +61,7 @@ public class MediaAssetRetentionService {
         int purged = 0;
         for (MediaAsset asset : assets) {
             UUID assetId = asset.getId();
-            String storageUrl = asset.getStorageUrl();
-
-            // Storage deletion runs with no DB connection held
-            boolean storageDeleted = supabaseStorageService.deletePublicObject(storageUrl);
-
-            // Short write transaction for DB cleanup only
-            txTemplate.execute(status -> {
-                mediaAssetEmbeddingRepository.deleteByAssetId(assetId);
-                assetTagRepository.deleteByMediaAssetId(assetId);
-                mediaAssetRepository.purgeAiProfile(assetId);
-                return null;
-            });
+            boolean storageDeleted = purgeAssetData(asset);
 
             // UC-4.11 provenance: record the disposal. Best-effort, system actor (no user).
             try {
@@ -86,5 +75,28 @@ public class MediaAssetRetentionService {
             purged++;
         }
         return purged;
+    }
+
+    /**
+     * Permanently erases one asset's content and derived data: the Supabase object (outside any DB
+     * transaction), then embeddings, tags, AI profile, and {@code purged_at} in a short write
+     * transaction. The tombstone row, audit log, and integrity history are intentionally kept.
+     * Reused by both the scheduled job and the on-demand "Delete forever" trash action — callers
+     * write their own audit entry (system vs. user actor).
+     */
+    public boolean purgeAssetData(MediaAsset asset) {
+        UUID assetId = asset.getId();
+        boolean storageDeleted = supabaseStorageService.deletePublicObject(asset.getStorageUrl());
+        txTemplate.execute(status -> {
+            mediaAssetEmbeddingRepository.deleteByAssetId(assetId);
+            assetTagRepository.deleteByMediaAssetId(assetId);
+            mediaAssetRepository.purgeAiProfile(assetId);
+            return null;
+        });
+        return storageDeleted;
+    }
+
+    public int getRetentionDays() {
+        return retentionDays;
     }
 }

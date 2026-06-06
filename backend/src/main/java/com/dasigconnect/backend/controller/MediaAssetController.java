@@ -66,17 +66,48 @@ public class MediaAssetController {
     private final MediaIntegrityService mediaIntegrityService;
     private final MediaRightsService mediaRightsService;
     private final MediaLineageService mediaLineageService;
+    private final com.dasigconnect.backend.service.MediaTrashService mediaTrashService;
 
     public MediaAssetController(MediaAssetService mediaAssetService,
                                 MediaAssetSearchService mediaAssetSearchService,
                                 MediaIntegrityService mediaIntegrityService,
                                 MediaRightsService mediaRightsService,
-                                MediaLineageService mediaLineageService) {
+                                MediaLineageService mediaLineageService,
+                                com.dasigconnect.backend.service.MediaTrashService mediaTrashService) {
         this.mediaAssetService = mediaAssetService;
         this.mediaAssetSearchService = mediaAssetSearchService;
         this.mediaIntegrityService = mediaIntegrityService;
         this.mediaRightsService = mediaRightsService;
         this.mediaLineageService = mediaLineageService;
+        this.mediaTrashService = mediaTrashService;
+    }
+
+    /** UC-2.2 Trash: soft-deleted (not yet purged) assets, scoped by role. */
+    @GetMapping("/trash")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<java.util.List<com.dasigconnect.backend.model.dto.media.TrashItemDto>> trash(
+            @RequestParam(required = false) UUID institutionId,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaTrashService.listTrash(institutionId, user));
+    }
+
+    /** UC-2.2 Trash: restore a soft-deleted asset (lossless within the retention window). */
+    @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/restore")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto> restore(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaTrashService.restore(id, user));
+    }
+
+    /** UC-2.2 Trash: "Delete forever" — purge the asset's content/derived data immediately. */
+    @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/purge")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> purge(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        mediaTrashService.purgeNow(id, user);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping

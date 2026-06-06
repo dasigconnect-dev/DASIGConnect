@@ -252,7 +252,9 @@ public class MediaAssetService {
         asset.setDeletedAt(Instant.now());
         asset.setDeletedByUserId(user.userId());
         asset.setStatus(MediaAssetStatus.DELETED);
-        mediaAssetEmbeddingRepository.deleteByAssetId(assetId);
+        // Embeddings are retained through the trash window so Restore is lossless; they are
+        // removed only at purge (retention job or on-demand "Delete forever"). Search/recommend
+        // queries already exclude soft-deleted assets via the deleted_at filter.
         mediaAssetRepository.save(asset);
 
         auditMedia(user, "MEDIA_ASSET_DELETED", assetId, Map.of(
@@ -283,7 +285,7 @@ public class MediaAssetService {
             asset.setDeletedAt(deletedAt);
             asset.setDeletedByUserId(user.userId());
             asset.setStatus(MediaAssetStatus.DELETED);
-            mediaAssetEmbeddingRepository.deleteByAssetId(asset.getId());
+            // Embeddings retained through the trash window (see delete()); removed at purge.
         }
         mediaAssetRepository.saveAll(assets);
 
