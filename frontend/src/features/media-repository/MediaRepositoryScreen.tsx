@@ -125,6 +125,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const navigate = useNavigate();
   const isAdmin = user.role === "admin";
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  // UC-4.12 Phase 7C drill-down: Repository Health tiles deep-link here with ?health=<key>.
+  const healthFilter = searchParams.get("health");
+
   const [networkView, setNetworkView] = useState(false);
   const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
   const [institutionsLoading, setInstitutionsLoading] = useState(isAdmin);
@@ -135,6 +139,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     networkView,
     mediaInstitutionId,
     mediaScopeReady,
+    healthFilter,
   );
 
   const [search, setSearch] = useState("");
@@ -203,7 +208,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [integrityHistory, setIntegrityHistory] = useState<MediaIntegrityCheck[]>([]);
   const [integrityHistoryLoading, setIntegrityHistoryLoading] = useState(false);
   const [integrityReviewBusy, setIntegrityReviewBusy] = useState(false);
-  const [searchParams, setSearchParams] = useSearchParams();
 
   const {
     selected: checkedIds,
@@ -1056,6 +1060,18 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
               <p className="med-subtitle">Find, file, and reuse institution media</p>
             </div>
             <div className="med-header-actions">
+              {user.role !== "contributor" && (
+                <button
+                  className="med-btn med-btn-ghost med-btn-sm"
+                  onClick={() => navigate("/media-repository/health")}
+                  type="button"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                  </svg>
+                  Repository Health
+                </button>
+              )}
               <button
                 className="med-btn med-btn-ghost med-btn-sm"
                 onClick={() => navigate("/media-albums")}
@@ -1089,6 +1105,25 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
               </button>
             </div>
           </div>
+
+          {healthFilter && (
+            <div className="med-health-filter" role="status">
+              <span className="med-health-filter-label">
+                Repository Health: <strong>{healthFilterLabel(healthFilter)}</strong>
+              </span>
+              <button
+                type="button"
+                className="med-health-filter-clear"
+                onClick={() => {
+                  const next = new URLSearchParams(searchParams);
+                  next.delete("health");
+                  setSearchParams(next, { replace: true });
+                }}
+              >
+                Clear filter &times;
+              </button>
+            </div>
+          )}
 
           {isAdmin && (
             <LibraryScopeSelector
@@ -1486,4 +1521,18 @@ function BrandMark() {
 function formatRole(role: User["role"]) {
   if (role === "admin") return "Administrator";
   return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+/** Human label for a UC-4.12 Phase 7C Repository Health drill-down filter key. */
+function healthFilterLabel(key: string): string {
+  const labels: Record<string, string> = {
+    integrity_failures: "Integrity failures",
+    review_open: "Open integrity reviews",
+    processing_failed: "Processing failures",
+    uncurated: "Uncurated assets",
+    unorganized: "Unorganized assets",
+    internal_only: "Internal-only assets",
+    duplicates: "Duplicate candidates",
+  };
+  return labels[key] ?? key;
 }

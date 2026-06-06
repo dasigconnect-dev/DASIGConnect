@@ -148,6 +148,7 @@ public class MediaAssetService {
             int page,
             int pageSize,
             String scope,
+            String health,
             JwtUserDetails user) {
         int safePage = Math.max(page, 1);
         int safePageSize = Math.min(Math.max(pageSize, 1), 100);
@@ -177,6 +178,7 @@ public class MediaAssetService {
                 || ("image".equals(trimmedMediaType) ? asset.getFileType().isImage() : asset.getFileType().isVideo()))
                 .filter(asset -> uploaderId == null
                 || (asset.getUploader() != null && uploaderId.equals(asset.getUploader().getId())))
+                .filter(asset -> matchesHealthFilter(asset, health))
                 .sorted(resolveSort(sort))
                 .toList();
 
@@ -515,6 +517,30 @@ public class MediaAssetService {
 
     private boolean isAdmin(JwtUserDetails user) {
         return user.role() != null && user.role().toLowerCase().contains("admin");
+    }
+
+    /**
+     * UC-4.12 Phase 7C drill-down: each Repository Health tile links to the affected asset set
+     * via {@code ?health=...}. Unknown/blank values are a no-op so existing list calls are
+     * unaffected.
+     */
+    private boolean matchesHealthFilter(MediaAsset asset, String health) {
+        if (health == null || health.isBlank()) {
+            return true;
+        }
+        return switch (health.trim().toLowerCase()) {
+            case "integrity_failures" -> asset.getIntegrityStatus() == com.dasigconnect.backend.model.entity.MediaIntegrityStatus.MISMATCH
+                    || asset.getIntegrityStatus() == com.dasigconnect.backend.model.entity.MediaIntegrityStatus.MISSING
+                    || asset.getIntegrityStatus() == com.dasigconnect.backend.model.entity.MediaIntegrityStatus.ERROR;
+            case "review_open" -> asset.getIntegrityReviewStatus() == com.dasigconnect.backend.model.entity.MediaIntegrityReviewStatus.OPEN;
+            case "unorganized" -> asset.getFolderId() == null;
+            case "uncurated" -> asset.getStatus() == com.dasigconnect.backend.model.entity.MediaAssetStatus.READY
+                    && asset.getCuratedAt() == null;
+            case "internal_only" -> "internal_only".equalsIgnoreCase(asset.getVisibility());
+            case "duplicates" -> asset.getDuplicateOfId() != null;
+            case "processing_failed" -> asset.getStatus() == com.dasigconnect.backend.model.entity.MediaAssetStatus.FAILED;
+            default -> true;
+        };
     }
 
     private boolean isValidator(JwtUserDetails user) {

@@ -78,8 +78,9 @@ public class MediaAssetController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "25") int pageSize,
             @RequestParam(required = false) String scope,
+            @RequestParam(required = false) String health,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(mediaAssetService.list(query, aiCategory, mediaType, uploaderId, institutionId, sort, page, pageSize, scope, user));
+        return ResponseEntity.ok(mediaAssetService.list(query, aiCategory, mediaType, uploaderId, institutionId, sort, page, pageSize, scope, health, user));
     }
 
     @PostMapping("/search")

@@ -169,12 +169,20 @@ function rawToAsset(raw: MediaAssetPageResponse["items"][0]): MediaAsset {
   };
 }
 
-export function listMediaAssets(params?: { networkView?: boolean; institutionId?: string | null }, signal?: AbortSignal) {
+export function listMediaAssets(
+  params?: { networkView?: boolean; institutionId?: string | null; health?: string | null },
+  signal?: AbortSignal,
+) {
   const scope = params?.networkView ? "network" : undefined;
   const institutionId = params?.institutionId ?? undefined;
+  const health = params?.health ?? undefined;
   return api
     .get<MediaAssetPageResponse>("/media-assets", {
-      params: { ...(scope ? { scope } : {}), ...(institutionId ? { institutionId } : {}) },
+      params: {
+        ...(scope ? { scope } : {}),
+        ...(institutionId ? { institutionId } : {}),
+        ...(health ? { health } : {}),
+      },
       signal,
     })
     .then((response) => ({
@@ -580,6 +588,48 @@ export function acknowledgeMediaAssetIntegrityReview(id: string): Promise<MediaI
       integrityStatus: normalizeIntegrityStatus(res.data.integrityStatus),
       integrityReviewStatus: normalizeIntegrityReviewStatus(res.data.integrityReviewStatus),
     }));
+}
+
+/* ===== UC-4.12 Phase 7C: Repository Health ===== */
+
+export interface RepositoryHealth {
+  scope: "institution" | "network";
+  institutionId: string | null;
+  generatedAt: string;
+  totals: { activeAssets: number; storageBytes: number; readyAssets: number };
+  integrity: {
+    checksumCovered: number;
+    checksumCoveragePct: number;
+    verified: number;
+    pending: number;
+    mismatch: number;
+    missing: number;
+    error: number;
+    failuresTotal: number;
+    reviewOpen: number;
+    reviewAcknowledged: number;
+  };
+  processing: { failed: number; processing: number };
+  curation: { curated: number; uncurated: number; completenessPct: number; unorganized: number };
+  governance: { internalOnly: number; duplicateCandidates: number };
+  retention: { pendingPurge: number; approachingPurge: number };
+}
+
+/**
+ * Tenant-scoped Repository Health aggregates. Validators get their own institution;
+ * admins get the network, or one institution when institutionId is supplied.
+ */
+export function getRepositoryHealth(
+  params?: { institutionId?: string | null },
+  signal?: AbortSignal,
+): Promise<RepositoryHealth> {
+  const institutionId = params?.institutionId ?? undefined;
+  return api
+    .get<RepositoryHealth>("/media-repository/health", {
+      params: { ...(institutionId ? { institutionId } : {}) },
+      signal,
+    })
+    .then((res) => res.data);
 }
 
 export function deleteMediaAsset(id: string, force = false) {

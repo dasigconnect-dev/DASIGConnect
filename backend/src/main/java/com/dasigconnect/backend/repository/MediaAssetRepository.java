@@ -82,6 +82,40 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Query("SELECT COUNT(m) > 0 FROM MediaAsset m WHERE m.institution.id = :institutionId AND m.deletedAt IS NULL")
     boolean existsActiveByInstitutionId(@Param("institutionId") UUID institutionId);
 
+    /**
+     * UC-4.12 Phase 7C: one filtered aggregate scan for the Repository Health dashboard.
+     * A null {@code institutionId} aggregates network-wide (administrator scope); otherwise
+     * the scan is tenant-scoped. Aliases are quoted to preserve camelCase for the
+     * {@link RepositoryHealthCounts} interface projection.
+     */
+    @Query(value = """
+        SELECT
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND purged_at IS NULL)                                   AS "activeAssets",
+          COALESCE(SUM(file_size_bytes) FILTER (WHERE deleted_at IS NULL AND purged_at IS NULL), 0)::bigint  AS "storageBytes",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND status = 'READY')                                    AS "readyAssets",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND content_sha256 IS NOT NULL)                          AS "checksumCovered",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND integrity_status = 'VERIFIED')                       AS "integrityVerified",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND integrity_status = 'PENDING')                        AS "integrityPending",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND integrity_status = 'MISMATCH')                       AS "integrityMismatch",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND integrity_status = 'MISSING')                        AS "integrityMissing",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND integrity_status = 'ERROR')                          AS "integrityError",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND integrity_review_status = 'OPEN')                    AS "reviewOpen",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND integrity_review_status = 'ACKNOWLEDGED')            AS "reviewAcknowledged",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND status = 'FAILED')                                   AS "processingFailed",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND status = 'PROCESSING')                               AS "processingPending",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND status = 'READY' AND curated_at IS NOT NULL)         AS "metadataCurated",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND folder_id IS NULL)                                   AS "unorganized",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND visibility = 'internal_only')                        AS "internalOnly",
+          COUNT(*) FILTER (WHERE deleted_at IS NULL AND duplicate_of_id IS NOT NULL)                         AS "duplicateCandidates",
+          COUNT(*) FILTER (WHERE deleted_at IS NOT NULL AND purged_at IS NULL)                               AS "deletedPendingPurge",
+          COUNT(*) FILTER (WHERE deleted_at IS NOT NULL AND purged_at IS NULL AND deleted_at <= :purgeSoonCutoff) AS "deletedApproachingPurge"
+        FROM media_assets
+        WHERE (CAST(:institutionId AS uuid) IS NULL OR institution_id = CAST(:institutionId AS uuid))
+        """, nativeQuery = true)
+    RepositoryHealthCounts aggregateRepositoryHealth(
+            @Param("institutionId") UUID institutionId,
+            @Param("purgeSoonCutoff") java.time.Instant purgeSoonCutoff);
+
     @Query("SELECT m FROM MediaAsset m WHERE m.institution.id = :institutionId AND m.deletedAt IS NULL ORDER BY m.createdAt DESC")
     List<MediaAsset> findActiveByInstitution(@Param("institutionId") UUID institutionId);
 

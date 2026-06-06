@@ -1,0 +1,277 @@
+/* UC-4.12 Phase 7C — Repository Health dashboard. Reuses the --med-* token system. */
+
+.rh-screen {
+  font-family: var(--med-ff-body);
+  color: var(--med-text);
+  background: var(--med-surface-1);
+  min-height: calc(100vh - var(--med-nav-h));
+  padding: 28px clamp(16px, 4vw, 48px) 64px;
+  box-sizing: border-box;
+}
+
+.rh-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.rh-back {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--med-blue);
+  text-decoration: none;
+  margin-bottom: 8px;
+}
+
+.rh-back:hover {
+  text-decoration: underline;
+}
+
+.rh-title {
+  font-family: var(--med-ff-display);
+  font-size: 26px;
+  line-height: 1.2;
+  margin: 0;
+  color: var(--med-navy-deep);
+}
+
+.rh-subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--med-text-2);
+  max-width: 60ch;
+}
+
+.rh-header-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.rh-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rh-scope-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--med-muted);
+}
+
+.rh-scope-select {
+  font-family: var(--med-ff-body);
+  font-size: 14px;
+  padding: 8px 10px;
+  min-height: 40px;
+  border: 1.5px solid var(--med-border);
+  border-radius: var(--med-radius-sm);
+  background: var(--med-surface-0);
+  color: var(--med-text);
+}
+
+.rh-refresh {
+  font-family: var(--med-ff-body);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 16px;
+  min-height: 40px;
+  border: 1.5px solid var(--med-border);
+  border-radius: var(--med-radius-sm);
+  background: var(--med-surface-0);
+  color: var(--med-text);
+  cursor: pointer;
+}
+
+.rh-refresh:hover:not(:disabled) {
+  border-color: var(--med-blue);
+  color: var(--med-blue);
+}
+
+.rh-refresh:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.rh-scope-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.rh-scope-chip {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--med-blue);
+  background: var(--med-blue-dim);
+  padding: 5px 12px;
+  border-radius: 999px;
+}
+
+.rh-generated {
+  font-size: 12px;
+  color: var(--med-muted);
+}
+
+.rh-state {
+  padding: 28px;
+  border: 1px solid var(--med-border);
+  border-radius: 12px;
+  background: var(--med-surface-0);
+  color: var(--med-text-2);
+  font-size: 14px;
+}
+
+.rh-state--error {
+  border-color: var(--med-error);
+  color: var(--med-error);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.rh-section {
+  margin-bottom: 28px;
+}
+
+.rh-section-head {
+  margin-bottom: 12px;
+}
+
+.rh-section-title {
+  font-family: var(--med-ff-display);
+  font-size: 16px;
+  margin: 0;
+  color: var(--med-text);
+}
+
+.rh-section-subtitle {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--med-muted);
+  max-width: 70ch;
+}
+
+.rh-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.rh-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  background: var(--med-surface-0);
+  border: 1px solid var(--med-border);
+  border-left: 4px solid var(--med-border);
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.rh-card--link {
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.rh-card--link:hover {
+  box-shadow: 0 6px 18px rgba(10, 22, 40, 0.1);
+  transform: translateY(-2px);
+}
+
+.rh-card--link:focus-visible {
+  outline: 3px solid var(--med-blue);
+  outline-offset: 2px;
+}
+
+.rh-card--good { border-left-color: var(--med-success); }
+.rh-card--warn { border-left-color: var(--med-warning); }
+.rh-card--danger { border-left-color: var(--med-error); }
+
+.rh-card-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--med-muted);
+}
+
+.rh-card-value {
+  font-family: var(--med-ff-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--med-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.rh-card--danger .rh-card-value { color: var(--med-error); }
+.rh-card--warn .rh-card-value { color: #B45309; }
+
+.rh-card-caption {
+  font-size: 12.5px;
+  color: var(--med-text-2);
+}
+
+.rh-card-drill {
+  margin-top: 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--med-blue);
+}
+
+/* Coverage meter */
+.rh-meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+}
+
+.rh-meter-track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  background: var(--med-surface-1);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.rh-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--med-muted);
+}
+
+.rh-meter--good .rh-meter-fill { background: var(--med-success); }
+.rh-meter--warn .rh-meter-fill { background: var(--med-warning); }
+.rh-meter--danger .rh-meter-fill { background: var(--med-error); }
+
+.rh-meter-value {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--med-text);
+  min-width: 48px;
+  text-align: right;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rh-card--link {
+    transition: none;
+  }
+  .rh-card--link:hover {
+    transform: none;
+  }
+}

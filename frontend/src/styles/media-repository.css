@@ -2745,3 +2745,37 @@
 .med-panel-body::-webkit-scrollbar-thumb { background: var(--med-border); border-radius: 3px; }
 .med-page::-webkit-scrollbar-thumb:hover,
 .med-panel-body::-webkit-scrollbar-thumb:hover { background: #b5c0d8; }
+
+/* UC-4.12 Phase 7C — Repository Health drill-down filter chip */
+.med-health-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 9px 14px;
+  background: var(--med-blue-dim);
+  border: 1px solid var(--med-blue);
+  border-radius: var(--med-radius-sm);
+  font-size: 13px;
+  color: var(--med-text);
+}
+
+.med-health-filter-label strong {
+  color: var(--med-blue);
+}
+
+.med-health-filter-clear {
+  font-family: var(--med-ff-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--med-blue);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.med-health-filter-clear:hover {
+  text-decoration: underline;
+}

@@ -57,13 +57,17 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
 - Phase 5 Facebook insights remains the next dependency-ordered phase and is gated by Meta
   App Review for `read_insights`.
 - Phase 6 depends on the engagement data produced by Phase 5.
-- Phase 7A-7B are implemented and V34-V35 are applied to the development database. New
-  uploads receive asynchronous SHA-256 verification; a bounded daily job backfills and
-  rechecks due assets; new/changed failures notify validators and administrators.
-- The shared Asset Detail sidebar now includes recent check history, manual recheck,
+- Phase 7A-7C are implemented; V34-V35 are applied to the development database (7C added no
+  migration). New uploads receive asynchronous SHA-256 verification; a bounded daily job
+  backfills and rechecks due assets; new/changed failures notify validators and administrators.
+- The shared Asset Detail sidebar includes recent check history, manual recheck,
   validator/admin acknowledgement, and replacement-upload handoff.
-- Pull Phase 7C next while waiting on Meta: the tenant-scoped Repository Health dashboard
-  with drill-down filters. The full plan is in `CAPSTONE2_PHASE7_PLAN.md`.
+- Phase 7C ships the tenant-scoped **Repository Health dashboard** at
+  `GET /api/v1/media-repository/health` (one aggregate query + short cache) with metric tiles
+  that drill into the Media Library via a `?health=<key>` filter. Eval D7's fixity portion is
+  frozen and measured (`D7_results.md`).
+- Pull Phase 7D next while waiting on Meta: rights and consent records (V36). The full plan is
+  in `CAPSTONE2_PHASE7_PLAN.md`.
 
 ## 2. Standing — sanctioned advance development
 

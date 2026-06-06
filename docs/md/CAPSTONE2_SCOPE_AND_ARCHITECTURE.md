@@ -345,7 +345,7 @@ This is the planned **upgrade** of today's `AIRecommendationService.rankAsset()`
 | 4 | Caption prompt mode + best-N (UC-4.7); consent/safety flags; media audit trail (UC-4.11) | Low | Low | ✅ done (UC-4.7, visibility + submit gate, UC-4.11); `safety_verdict` flag optional/pending |
 | 5 | Facebook insights sync + engagement analytics (UC-4.8) | Med | **Med (App Review)** | ⬜ not started — next |
 | 6 | Engagement→media ranking (UC-4.9) + pre-submit advisor (UC-4.10) | Med | Med (cold-start) | ⬜ not started (depends on UC-4.8 data) |
-| 7 | Digital preservation + Repository Health (UC-4.12): fixity, rights, lineage, duplicate review, standards export | Med-High | Low-Med | Phase 7A-7B done; 7C Repository Health next |
+| 7 | Digital preservation + Repository Health (UC-4.12): fixity, rights, lineage, duplicate review, standards export | Med-High | Low-Med | Phase 7A-7C done (fixity, monitoring, Repository Health); 7D rights records next |
 | — | Collage builder (client-side canvas) | Low–Med | Low — slot anywhere | ⬜ optional |
 
 ---
@@ -443,7 +443,7 @@ A single results table: dataset version, the §4 target, the measured number, an
 | Quality / duplicate management | 🟡 | UC-4.4 — Phase 2 foundation adds `perceptual_hash`, `blur_score`, `duplicate_of_id`; deterministic computation now runs in the ingestion queue; D1 threshold tuning and duplicate review UI remain pending |
 | Rights / consent governance | 🟡 | **Foundation built (2026-06-05):** per-asset `visibility` (`internal_only`/`cleared_for_public`), V33 grandfathers existing assets to `cleared_for_public` and defaults new uploads to `internal_only`; `PATCH /media-assets/{id}/visibility` (audited `MEDIA_ASSET_VISIBILITY_CHANGED`); badge + toggle in the asset detail panel. **Publish/submit hard gate enforced** — `SubmissionService.assertAssetsCleared()` blocks submit with 422 + offending asset codes when any attached asset is still `internal_only` (existing assets grandfathered cleared). **Remaining:** `safety_verdict` content-safety flag |
 | **Media audit trail** | ✅ | **UC-4.11 implemented (2026-06-05).** `AuditLogService` now wired into `MediaAssetService` (`MEDIA_ASSET_UPLOADED`, `MEDIA_ASSET_DELETED`, `MEDIA_ASSETS_BULK_DELETED`, `MEDIA_BATCH_CURATED`, `MEDIA_ASSET_TAG_ADDED`/`_REMOVED`) and `MediaAssetRetentionService` (`MEDIA_ASSET_PURGED`, system actor). Bulk move/tag already audited via `MediaOrganizationService`. Best-effort (never rolls back the action); reuses existing `AuditLog`, no new table. Read surface shipped: `GET /api/v1/media-assets/{id}/history` + an Activity section in the asset detail panel. Remaining: visibility/reclassify audited when those features land |
-| File fixity / integrity monitoring | 🟡 | **Phase 7A-7B implemented (2026-06-06).** V34 adds SHA-256 baselines and append-only history. V35 adds review ownership. New uploads queue checks after commit; a configurable job processes at most 25 due assets, prioritizes pending/failing records, and alerts validators/admins only on new or changed failures. The shared sidebar provides history, recheck, acknowledgement, and replacement-upload handoff. **Remaining in 7C:** Repository Health aggregates and drill-down. Distinct from `perceptual_hash`. |
+| File fixity / integrity monitoring | 🟡 | **Phase 7A-7B implemented (2026-06-06).** V34 adds SHA-256 baselines and append-only history. V35 adds review ownership. New uploads queue checks after commit; a configurable job processes at most 25 due assets, prioritizes pending/failing records, and alerts validators/admins only on new or changed failures. The shared sidebar provides history, recheck, acknowledgement, and replacement-upload handoff. **Phase 7C added (2026-06-06):** tenant-scoped Repository Health dashboard at `GET /api/v1/media-repository/health` — one filtered aggregate query + short cache, metric tiles drilling into the Media Library via `?health=<key>`. Distinct from `perceptual_hash`. |
 | **Versioning / lineage** | 🟡 | **Planned in UC-4.12 / Phase 7E.** Immutable originals plus explicit new-version, derived-from, replacement, and component relationships. |
 | Rights metadata | 🟡 | **Planned in UC-4.12 / Phase 7D.** Structured holder, basis, license/consent reference, permitted channels, restrictions, verification, and expiry; complements the existing visibility gate. |
 | Duplicate adjudication | 🟡 | **Planned in UC-4.12 / Phase 7F.** Side-by-side human review, canonical selection, keep-both/not-duplicate decisions, optional metadata merge, no automatic deletion. |
@@ -457,12 +457,13 @@ audit history are implemented. The remaining maturity gap is **preservation evid
 portable governance**: proving files remain unchanged, recording detailed rights, preserving
 lineage, resolving duplicates through human decisions, and exporting standards-aligned records.
 
-The next maturity step is UC-4.12 Phase 7C: tenant-scoped Repository Health aggregates,
-failure queues, and drill-down into affected Media Library assets. Phase 7A-7B fixity,
-scheduled backfill, alerts, and review ownership are complete. These slices produce the strongest
-new proof that the system preserves and governs digital resources rather than merely storing
-and finding them. Rights, lineage, duplicate adjudication, and standards export follow as
-smaller vertical slices in `CAPSTONE2_PHASE7_PLAN.md`.
+Phase 7A-7C are complete: SHA-256 fixity, scheduled monitoring, review ownership, and the
+tenant-scoped Repository Health dashboard (aggregates + drill-down into affected Media Library
+assets). Together they form the first demoable preservation release and are the strongest new
+proof that the system preserves and governs digital resources rather than merely storing and
+finding them. The next maturity step is UC-4.12 Phase 7D: rights and consent records. Lineage,
+duplicate adjudication, and standards export follow as smaller vertical slices in
+`CAPSTONE2_PHASE7_PLAN.md`.
 
 ---
 

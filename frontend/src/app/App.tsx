@@ -32,6 +32,7 @@ import InstitutionManagementScreen from "../features/institution-management/Inst
 import CalendarScreen from "../features/calendar/CalendarScreen";
 import ResolutionCenterScreen from "../features/resolution/ResolutionCenterScreen";
 import MediaRepositoryScreen from "../features/media-repository/MediaRepositoryScreen";
+import RepositoryHealthScreen from "../features/media-repository/health/RepositoryHealthScreen";
 import AlbumsScreen from "../features/albums/AlbumsScreen";
 import NotificationsScreen from "../features/notifications/NotificationsScreen";
 import AnalyticsDashboardPage from "../features/analytics/AnalyticsDashboardPage";
@@ -760,6 +761,14 @@ function App() {
           element={
             <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
               <MediaRepositoryScreen user={currentUser!} />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/media-repository/health"
+          element={
+            <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator"]}>
+              <RepositoryHealthScreen user={currentUser!} />
             </ProtectedRoute>
           }
         />

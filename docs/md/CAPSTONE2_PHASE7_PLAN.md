@@ -6,8 +6,9 @@
 > **Delivery method:** Feature-driven Kanban flow using vertical slices.
 > **Priority:** Phase 7A-7C may proceed while Phase 5 waits for Meta App Review because
 > integrity monitoring has no dependency on Facebook insights.
-> **Implementation status (2026-06-06):** Phase 7A and 7B implemented; V34-V35 are
-> applied to the development database. Phase 7C Repository Health is next.
+> **Implementation status (2026-06-06):** Phase 7A-7C implemented; V34-V35 are applied to the
+> development database. Phase 7C (Repository Health dashboard) added no migration. Phase 7D
+> (rights and consent records) is next.
 > **Next Flyway version:** V36. Never reuse an applied migration version.
 
 ---
@@ -209,21 +210,40 @@ modifying the expected checksum.
 
 ### Phase 7C - Repository Health dashboard
 
-Add institution-scoped and administrator network views showing:
+Institution-scoped and administrator network views showing:
 
-- active assets and storage volume;
-- checksum coverage and integrity failures;
-- processing failures;
-- metadata-completeness percentage;
-- unorganized and uncurated assets;
-- internal-only and expiring-rights assets;
-- duplicate-review backlog;
-- deleted assets approaching purge.
+- [x] active assets and storage volume;
+- [x] checksum coverage and integrity failures (by status and review state);
+- [x] processing failures;
+- [x] metadata-completeness percentage;
+- [x] unorganized and uncurated assets;
+- [x] internal-only assets (expiring-rights deferred to Phase 7D);
+- [x] duplicate candidates (perceptual-hash flagged; human duplicate-review backlog is Phase 7F);
+- [x] deleted assets pending and approaching purge.
 
-Use aggregate repository queries and a short cache. The dashboard must drill into filtered
-Media Library results rather than becoming a disconnected reporting page.
+Implemented with **one filtered aggregate scan** of `media_assets`
+(`MediaAssetRepository.aggregateRepositoryHealth`, `RepositoryHealthCounts` projection) behind a
+short in-process TTL cache (`RepositoryHealthService`), exposed at
+`GET /api/v1/media-repository/health` (validator = own institution; admin = network or a chosen
+institution). Each tile drills into the Media Library via a new `?health=<key>` list filter that
+shows a dismissible filter chip. No migration was required (read-only over existing columns), so
+the next free Flyway version remains **V36**.
 
-**Acceptance:** every health count links to the affected asset set and respects tenant scope.
+**Acceptance:** every actionable health count links to the affected asset set and respects tenant
+scope. ✅ met.
+
+**Verification (2026-06-06):**
+
+- Backend `RepositoryHealthServiceTest` (5) covers scope resolution (admin network / admin
+  institution / validator own-institution / cross-institution 403), percentage math, and TTL
+  caching. Full suite green: **408 tests, 0 failures, 7 intentional skips**.
+- The aggregate is a single native query; its Postgres-specific SQL (`FILTER`, `::bigint`,
+  `CAST(... AS uuid)`) is validated at app boot against Supabase like the other native queries.
+- Frontend production build passed; scoped ESLint clean on the new health feature, the
+  `useMediaAssets` health param, `mediaApi`, and `MediaRepositoryScreen`.
+- Frontend is a thin orchestrator (`RepositoryHealthScreen`) composing reusable
+  `HealthSection`, `HealthMetricCard`, and `CoverageMeter` components; tokens reused from the
+  `--med-*` system.
 
 ### Phase 7D - Rights and consent records
 
@@ -329,14 +349,14 @@ Recommended pull order:
 
 1. Phase 7A - fixity foundation. Complete.
 2. Phase 7B - monitoring and repair. Complete.
-3. **Phase 7C - Repository Health (next).**
-4. Phase 7D - rights records.
+3. Phase 7C - Repository Health. Complete.
+4. **Phase 7D - rights records (next).**
 5. Phase 7E - versioning and lineage.
 6. Phase 7F - duplicate review.
 7. Phase 7G - standards export.
 
-Maintain a WIP limit of two. Phase 7A-7C form the first demoable release and should be
-completed before pulling later governance slices.
+Maintain a WIP limit of two. Phase 7A-7C form the first demoable release and are complete;
+later governance slices (7D-7G) may now be pulled.
 
 ## 8. Explicit Boundaries
 
