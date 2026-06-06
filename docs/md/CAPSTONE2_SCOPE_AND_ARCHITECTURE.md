@@ -317,15 +317,19 @@ This is the planned **upgrade** of today's `AIRecommendationService.rankAsset()`
 
 ## 7. Suggested Phasing
 
-| Phase | Items | Effort | Risk |
-|---|---|---|---|
-| 1 | Folders/albums (UC-4.1) + bounded ingestion queue (UC-4.2 infra) | Med | Low |
-| 2 | AI auto-grouping + quality/dup filtering (UC-4.2/4.4) + curation (UC-4.3) | Med | Low |
-| 3 | NL/hybrid search (UC-4.5) + AI feedback loop (UC-4.6) | Med | Low |
-| 4 | Caption prompt mode + best-N (UC-4.7); consent/safety flags; media audit trail (UC-4.11) | Low | Low |
-| 5 | Facebook insights sync + engagement analytics (UC-4.8) | Med | **Med (App Review)** |
-| 6 | Engagement→media ranking (UC-4.9) + pre-submit advisor (UC-4.10) | Med | Med (cold-start) |
-| — | Collage builder (client-side canvas) | Low–Med | Low — slot anywhere |
+> **Status (2026-06-06):** Phases 1-4 implemented locally on the dev project. Phase 3 (search +
+> suggestions + strict relevance) is the most recently completed work. **Next unstarted phase: 5
+> (UC-4.8 Facebook insights)** — start its Meta App Review for `read_insights` in parallel.
+
+| Phase | Items | Effort | Risk | Status |
+|---|---|---|---|---|
+| 1 | Folders/albums (UC-4.1) + bounded ingestion queue (UC-4.2 infra) | Med | Low | ✅ done |
+| 2 | AI auto-grouping + quality/dup filtering (UC-4.2/4.4) + curation (UC-4.3) | Med | Low | ✅ done (D1 dup threshold tuning pending a real dataset) |
+| 3 | NL/hybrid search (UC-4.5) + AI feedback loop (UC-4.6) | Med | Low | ✅ done — hybrid search + strict cutoff + related-search autocomplete + feedback; D2 Recall@3 1.0 |
+| 4 | Caption prompt mode + best-N (UC-4.7); consent/safety flags; media audit trail (UC-4.11) | Low | Low | ✅ done (UC-4.7, visibility + submit gate, UC-4.11); `safety_verdict` flag optional/pending |
+| 5 | Facebook insights sync + engagement analytics (UC-4.8) | Med | **Med (App Review)** | ⬜ not started — next |
+| 6 | Engagement→media ranking (UC-4.9) + pre-submit advisor (UC-4.10) | Med | Med (cold-start) | ⬜ not started (depends on UC-4.8 data) |
+| — | Collage builder (client-side canvas) | Low–Med | Low — slot anywhere | ⬜ optional |
 
 ---
 
@@ -410,7 +414,7 @@ A single results table: dataset version, the §4 target, the measured number, an
 | Descriptive metadata (manual) | 🟡 | Manual **tags** exist (`asset_tags`, `source` manual/ai). Phase 2 foundation adds human-confirmable `title`; editable description/category UI remains pending |
 | Technical / administrative metadata | ✅ | `file_type`, `file_size_bytes`, `storage_url`, `uploader_id`, `institution_id`, `created_at` |
 | Discoverability (semantic) | ✅ | `media_asset_embeddings` dual image/semantic 1024-dim, pgvector HNSW, AI suggestions; trigram filename/code search (V16) |
-| Discoverability (NL / temporal / hybrid) | 🟡 | UC-4.5 — tsvector lexical + RRF + Claude temporal parse all unbuilt |
+| Discoverability (NL / temporal / hybrid) | ✅ | **UC-4.5 implemented (Phase 3, 2026-06-06).** `POST /media-assets/search`: tsvector lexical + semantic + multimodal vectors fused with RRF, deterministic re-rank + match reasons, temporal intent parse (date browse), and a **strict similarity cutoff** so unrelated photos are excluded. Google-style related-search autocomplete (`/media-assets/search/suggestions`) over tags/category/Claude keywords/description snippets/filenames/uploaders/collections/folders + recent + smart phrases. D2: Recall@3 = MRR = Recall@8 = 1.0 |
 | Lifecycle state | ✅ | `status` PROCESSING/READY/FAILED/DELETED |
 | Preservation / disposal | ✅ | soft-delete (`deleted_at`, `deleted_by_user_id`), retention purge (`purged_at`, `MediaAssetRetentionService`, `MediaAssetRetentionPurgeJob`, 30-day) |
 | AI provenance | ✅ | `ai_classified_at`, `ai_classification_model`, `embedding_generated_at`, `embedding_model`, `reclassified_at`, `asset_tags.source` |
@@ -418,7 +422,7 @@ A single results table: dataset version, the §4 target, the measured number, an
 | Curation review (human-confirmed) | 🟡 | UC-4.3 — Phase 2 foundation adds `curated_at` and `title`; review/edit UI and confirmation workflow remain pending |
 | Organization (folders / albums / batches) | ✅ | UC-4.1/4.2 foundation — folders, albums/collections, `folder_id`, `media_import_batches`, and upload-time `import_batch_id` wiring exist; AI grouping into suggested albums remains Phase 2 work |
 | Quality / duplicate management | 🟡 | UC-4.4 — Phase 2 foundation adds `perceptual_hash`, `blur_score`, `duplicate_of_id`; deterministic computation now runs in the ingestion queue; D1 threshold tuning and duplicate review UI remain pending |
-| Rights / consent governance | 🟡 | **Foundation built (2026-06-05):** per-asset `visibility` (`internal_only`/`cleared_for_public`), V33 grandfathers existing assets to `cleared_for_public` and defaults new uploads to `internal_only`; `PATCH /media-assets/{id}/visibility` (audited `MEDIA_ASSET_VISIBILITY_CHANGED`); badge + toggle in the asset detail panel. **Remaining:** the publish/submit hard gate (block uncleared assets) and `safety_verdict` content-safety flag |
+| Rights / consent governance | 🟡 | **Foundation built (2026-06-05):** per-asset `visibility` (`internal_only`/`cleared_for_public`), V33 grandfathers existing assets to `cleared_for_public` and defaults new uploads to `internal_only`; `PATCH /media-assets/{id}/visibility` (audited `MEDIA_ASSET_VISIBILITY_CHANGED`); badge + toggle in the asset detail panel. **Publish/submit hard gate enforced** — `SubmissionService.assertAssetsCleared()` blocks submit with 422 + offending asset codes when any attached asset is still `internal_only` (existing assets grandfathered cleared). **Remaining:** `safety_verdict` content-safety flag |
 | **Media audit trail** | ✅ | **UC-4.11 implemented (2026-06-05).** `AuditLogService` now wired into `MediaAssetService` (`MEDIA_ASSET_UPLOADED`, `MEDIA_ASSET_DELETED`, `MEDIA_ASSETS_BULK_DELETED`, `MEDIA_BATCH_CURATED`, `MEDIA_ASSET_TAG_ADDED`/`_REMOVED`) and `MediaAssetRetentionService` (`MEDIA_ASSET_PURGED`, system actor). Bulk move/tag already audited via `MediaOrganizationService`. Best-effort (never rolls back the action); reuses existing `AuditLog`, no new table. Read surface shipped: `GET /api/v1/media-assets/{id}/history` + an Activity section in the asset detail panel. Remaining: visibility/reclassify audited when those features land |
 | **Versioning / lineage** | 🔴 | No version chain or derived-asset lineage (e.g., collage → child asset). Not planned — decide whether to scope a lightweight lineage story |
 | Metadata-standard mapping (Dublin Core/PREMIS) | 🔴 | Purely conceptual; nothing maps fields to a recognized schema. Cheap to *articulate* even if not enforced |

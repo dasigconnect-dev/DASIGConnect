@@ -2,7 +2,16 @@
 
 > **Phase 3 scope:** Natural-language / hybrid media search (UC-4.5) + AI feedback loop (UC-4.6).
 > **Builds on:** Phase 1 folders/collections, Phase 2 import batches, curation, dual embeddings, and prompt-based collection review.
-> **Current status:** Architecture researched and selected on 2026-06-03. Phase 3A-3D backend foundation is implemented locally: search-document migration, lexical retrieval, semantic vector retrieval, multimodal text-to-photo retrieval, and RRF fusion behind `/api/v1/media-assets/search`.
+> **Current status (2026-06-06):** Phase 3 implemented locally end-to-end. 3A-3D backend
+> (search-document migration, lexical + semantic + multimodal retrieval, RRF + deterministic
+> re-rank behind `/api/v1/media-assets/search`) plus a **strict relevance cutoff** so unrelated
+> photos no longer pad results. 3E frontend search experience with a **Google-style related-search
+> autocomplete** (recent, AI tags, Claude keywords/description snippets, filenames, uploaders,
+> collections, folders, smart phrases) over a backend autocomplete endpoint; the Collection search
+> reuses the same hybrid lifecycle. 3F search feedback logging is wired (`/ai/feedback/search`).
+> D2 golden-set re-run after the strict cutoff: **Recall@3 = MRR = Recall@8 = 1.000**.
+> **This is the active phase; Phase 4 items (UC-4.7, visibility gate, UC-4.11) are also implemented;
+> the next unstarted phase is Phase 5 (UC-4.8 Facebook insights).**
 
 ---
 
@@ -120,6 +129,13 @@ Top results + feedback controls
      filename, category/tags, and AI description/object/use-case matches.
    - If Voyage is unavailable or unconfigured, the endpoint falls back to lexical search instead
      of returning "no matching media."
+   - **Strict relevance cutoff (2026-06-06):** vector hits below a minimum cosine similarity are
+     dropped before fusion, so cosine nearest-neighbor can no longer pad results with unrelated
+     photos. A result survives only via a genuine lexical match or a sufficiently-similar
+     semantic/visual match; otherwise the search returns no results. Tunable:
+     `app.search.semantic-min-similarity` (0.45), `app.search.image-min-similarity` (0.22).
+     D2 verified Recall@3/MRR/Recall@8 stay 1.0 while low-relevance queries return only their
+     genuine matches.
 
 5. **Phase 3E - Frontend search experience** - implemented locally
    - Search box in Media Library that supports natural-language prompts.
@@ -134,17 +150,49 @@ Top results + feedback controls
      `useDebouncedValue`, and `recentSearches` (localStorage). The Collection reuses the same
      dropdown over its own assets (client-side corpus).
    - **Backend autocomplete endpoint:** `GET /api/v1/media-assets/search/suggestions?q=&scope=&institutionId=&limit=`
-     returns whole-library, tenant-scoped suggestions (tags/filenames/uploaders/collections/folders)
-     via one read-only `MediaAssetSearchRepository.suggest` UNION query; ranked exact→starts-with→contains,
+     returns whole-library, tenant-scoped suggestions via one read-only
+     `MediaAssetSearchRepository.suggest` UNION query; ranked exact→starts-with→contains,
      de-duped in `MediaAssetSearchService.suggest`. No external calls, no migration. The Media Library
      uses this endpoint; the Collection uses the client-side corpus.
+   - **Suggestion sources (all real data, no fabricated rows):** manual/AI tags + `ai_category`
+     (`tag`), Claude-detected subjects/objects/use-cases + `ai_tags` array (`keyword`), short
+     `ai_description` snippets — a ~6-word window around the match, not the whole sentence
+     (`description`), filenames (`file`), uploader emails (`uploader`), collections (`collection`),
+     folders (`folder`), recent searches (`recent`), and NL smart phrases (`phrase`). A gated
+     real-Supabase smoke test (`MediaSearchSuggestionsSmokeTest`, `-Dsmoke.suggest=true`) covers
+     the native query.
 
-6. **Phase 3F - Feedback logging**
+6. **Phase 3F - Feedback logging** - implemented locally
    - Extend `ai_interaction_log` or add a scoped feedback table so search is not tied to a
      submission.
    - Capture query hash/text, asset id, rank, action (`viewed`, `selected`, `thumbs_up`,
      `thumbs_down`, `added_to_collection`, `used_in_post`), and role/institution scope.
    - Feed metrics into D2 Recall@3/MRR reporting and later ranking tuning.
+   - Implemented: `POST /ai/feedback/search` (`AiFeedbackService`); the search-result cards expose
+     thumbs up/down (UC-4.6) and an implicit `selected` signal on open. The shared
+     `SearchResultMeta` component renders these in both the Media Library and Collection.
+
+## Latest handoff - 2026-06-06
+
+- **Search is now strict.** Vector branches gain a minimum-similarity floor; unrelated photos no
+  longer appear when a query is run. D2 re-run: Recall@3 = MRR = Recall@8 = 1.000; low-relevance
+  queries return only genuine matches (e.g. "OWASP Juice Shop" -> 2 results, not a padded page).
+- **Related-search autocomplete shipped** on the media search bar (Media Library via backend
+  endpoint, Collection via client-side corpus), drawing on the full Claude metadata: tags,
+  category, subjects/objects/use-cases, AI tags, and short description snippets, plus filenames,
+  uploaders, collections, folders, recent searches, and smart phrases. Keyboard nav, debounce,
+  dedupe, ≤8 results.
+- **Collections / Media Library UX overhaul** landed alongside: folder CRUD modal + hover
+  slide-in actions, reusable list-view metadata columns, collection multi-select mirroring the
+  Media Library, collection search reusing the hybrid lifecycle, and the AI Collection Builder
+  extracted to a reusable container.
+- **Verification:** focused backend tests green; gated real-Supabase smoke test for the suggestion
+  query passes; frontend build + targeted ESLint clean. Backend running on the dev project.
+- **Commits:** `36864c5` (suggestions slice + overhaul), `0086ea1` (Claude metadata sources),
+  `4e9bfe6` (description snippets), `7a89993` (strict relevance cutoff).
+- **Next:** Phase 5 (UC-4.8 Facebook engagement insights). Note its Meta App Review lead time for
+  `read_insights` — start that in parallel. Optional Phase 3 follow-ups: tune the similarity
+  floors / suggestion limits on real data; verify D2 with human (non-AI) labels before defense.
 
 ## 4. Implementation Rules
 
