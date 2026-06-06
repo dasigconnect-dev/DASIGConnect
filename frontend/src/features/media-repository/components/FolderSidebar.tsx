@@ -16,6 +16,7 @@ interface FolderSidebarProps {
   onSelectUnfiled: () => void;
   onSelectFolder: (id: string) => void;
   onOpenCollections?: () => void;
+  onOpenTrash?: () => void;
   onCreate: () => void;
   onRename: (folder: MediaFolder) => void;
   onDelete: (folder: MediaFolder) => void;
@@ -35,6 +36,7 @@ export default function FolderSidebar({
   onSelectUnfiled,
   onSelectFolder,
   onOpenCollections,
+  onOpenTrash,
   onCreate,
   onRename,
   onDelete,
@@ -79,6 +81,13 @@ export default function FolderSidebar({
           <button type="button" className="fld-item fld-collection-link" onClick={onOpenCollections}>
             <Images size={15} aria-hidden="true" />
             <span className="fld-item-label">Collections</span>
+          </button>
+        )}
+
+        {onOpenTrash && (
+          <button type="button" className="fld-item fld-collection-link" onClick={onOpenTrash}>
+            <Trash2 size={15} aria-hidden="true" />
+            <span className="fld-item-label">Trash</span>
           </button>
         )}
 

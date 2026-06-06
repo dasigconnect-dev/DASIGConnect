@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AlertTriangle, ImageOff, RotateCcw, Trash2 } from "lucide-react";
 import { purgeMediaAsset, restoreMediaAsset, type TrashItem } from "../../../../api/mediaApi";
 import { useToast } from "../../../../context/ToastContext";
 
@@ -25,7 +26,6 @@ export default function TrashItemRow({ item, onRemoved }: TrashItemRowProps) {
       onRemoved(asset.id);
     } catch {
       toast.error("Could not restore this asset.");
-    } finally {
       setBusy(false);
     }
   }
@@ -38,51 +38,77 @@ export default function TrashItemRow({ item, onRemoved }: TrashItemRowProps) {
       onRemoved(asset.id);
     } catch {
       toast.error("Could not delete this asset.");
-    } finally {
       setBusy(false);
     }
   }
 
+  const urgent = item.daysUntilPurge <= 3;
   const daysLabel =
     item.daysUntilPurge <= 0
       ? "Deletes today"
-      : `Auto-deletes in ${item.daysUntilPurge} day${item.daysUntilPurge === 1 ? "" : "s"}`;
+      : `${item.daysUntilPurge} day${item.daysUntilPurge === 1 ? "" : "s"} left`;
 
   return (
-    <div className="trash-row">
+    <li className={`trash-row${busy ? " is-busy" : ""}`}>
       <div className="trash-thumb">
         {isImageType(asset.fileType) ? (
           <img src={asset.storageUrl} alt="" loading="lazy" />
         ) : (
-          <span className="trash-thumb-fallback">{asset.fileType.toUpperCase()}</span>
+          <span className="trash-thumb-fallback">
+            <ImageOff size={18} aria-hidden="true" />
+          </span>
         )}
       </div>
+
       <div className="trash-meta">
-        <span className="trash-code">{asset.assetCode}</span>
-        <span className="trash-name">{asset.title || asset.fileName}</span>
-        <span className="trash-days">{daysLabel}</span>
+        <span className="trash-name" title={asset.title || asset.fileName}>
+          {asset.title || asset.fileName}
+        </span>
+        <span className="trash-sub">
+          <span className="trash-code">{asset.assetCode}</span>
+          <span className={`trash-days ${urgent ? "urgent" : ""}`}>
+            <Trash2 size={11} aria-hidden="true" />
+            Auto-deletes in {daysLabel}
+          </span>
+        </span>
       </div>
 
       {confirmingPurge ? (
-        <div className="trash-confirm">
-          <span>Delete forever? This can’t be undone.</span>
-          <button type="button" className="med-btn med-btn-danger med-btn-sm" disabled={busy} onClick={() => void purge()}>
-            {busy ? "Deleting…" : "Confirm"}
-          </button>
+        <div className="trash-confirm" role="group" aria-label="Confirm permanent deletion">
+          <span className="trash-confirm-msg">
+            <AlertTriangle size={14} aria-hidden="true" />
+            Delete forever? This can’t be undone.
+          </span>
           <button type="button" className="med-btn med-btn-ghost med-btn-sm" disabled={busy} onClick={() => setConfirmingPurge(false)}>
             Cancel
+          </button>
+          <button type="button" className="med-btn med-btn-danger med-btn-sm" disabled={busy} onClick={() => void purge()}>
+            {busy ? "Deleting…" : "Delete forever"}
           </button>
         </div>
       ) : (
         <div className="trash-actions">
-          <button type="button" className="med-btn med-btn-ghost med-btn-sm" disabled={busy} onClick={() => void restore()}>
+          <button
+            type="button"
+            className="med-btn med-btn-ghost med-btn-sm"
+            disabled={busy}
+            onClick={() => void restore()}
+          >
+            <RotateCcw size={14} aria-hidden="true" />
             Restore
           </button>
-          <button type="button" className="med-btn med-btn-danger med-btn-sm" disabled={busy} onClick={() => setConfirmingPurge(true)}>
+          <button
+            type="button"
+            className="trash-danger-link"
+            disabled={busy}
+            aria-label={`Delete ${asset.assetCode} forever`}
+            onClick={() => setConfirmingPurge(true)}
+          >
+            <Trash2 size={14} aria-hidden="true" />
             Delete forever
           </button>
         </div>
       )}
-    </div>
+    </li>
   );
 }
