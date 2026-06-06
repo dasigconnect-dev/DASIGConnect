@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { useMemo, useRef, useState } from "react";
+import type { MediaDuplicateMatch } from "../../../api/mediaApi";
 
 const MAX_PARALLEL_UPLOADS = 3;
 
@@ -16,6 +17,10 @@ interface UploadItem {
   status: UploadStatus;
   progress: number;
   error?: string;
+  /** Exact-duplicate match in the library (same bytes), if any. */
+  duplicateOf?: { assetCode: string; fileName: string } | null;
+  /** User chose to upload anyway despite the duplicate. */
+  includeAnyway?: boolean;
 }
 
 interface UploadModalProps {
@@ -25,23 +30,72 @@ interface UploadModalProps {
   onUpload: (file: File, onProgress?: (pct: number) => void, options?: UploadOptions) => Promise<void>;
   onCreateBatch?: (assetCount: number) => Promise<string | null>;
   onBatchComplete?: (importBatchId: string | null) => void;
+  /** Optional exact-duplicate (SHA-256) check run before upload. */
+  onCheckDuplicates?: (sha256s: string[]) => Promise<MediaDuplicateMatch[]>;
 }
 
-export default function UploadModal({ open, institutionName, onClose, onUpload, onCreateBatch, onBatchComplete }: UploadModalProps) {
+/** Hex SHA-256 of a file's bytes, matching the backend's stored content_sha256. */
+async function sha256Hex(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export default function UploadModal({ open, institutionName, onClose, onUpload, onCreateBatch, onBatchComplete, onCheckDuplicates }: UploadModalProps) {
   const [dragOver, setDragOver] = useState(false);
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function handleFilesSelect(files: File[]) {
     setActiveBatchId(null);
-    setUploadItems(files.map((file, index) => ({
+    const items: UploadItem[] = files.map((file, index) => ({
       id: `${file.name}-${file.lastModified}-${file.size}-${index}`,
       file,
       status: "pending",
       progress: 0,
-    })));
+      duplicateOf: null,
+    }));
+    setUploadItems(items);
+    if (onCheckDuplicates && crypto?.subtle) {
+      void flagDuplicates(items);
+    }
+  }
+
+  async function flagDuplicates(items: UploadItem[]) {
+    setCheckingDuplicates(true);
+    try {
+      const hashed = await Promise.all(
+        items.map(async (it) => ({ id: it.id, sha256: await sha256Hex(it.file) })),
+      );
+      const matches = await onCheckDuplicates!(hashed.map((h) => h.sha256));
+      const existingBySha = new Map(matches.map((m) => [m.sha256, m.existingAsset]));
+      setUploadItems((prev) =>
+        prev.map((it) => {
+          const h = hashed.find((x) => x.id === it.id);
+          const existing = h ? existingBySha.get(h.sha256) : undefined;
+          return existing
+            ? { ...it, duplicateOf: { assetCode: existing.assetCode, fileName: existing.fileName } }
+            : it;
+        }),
+      );
+    } catch {
+      // Best-effort: if the check fails, fall through and allow upload.
+    } finally {
+      setCheckingDuplicates(false);
+    }
+  }
+
+  function uploadAnyway(id: string) {
+    setUploadItems((prev) => prev.map((it) => (it.id === id ? { ...it, includeAnyway: true } : it)));
+  }
+
+  function includeAllDuplicates() {
+    setUploadItems((prev) => prev.map((it) => (it.duplicateOf ? { ...it, includeAnyway: true } : it)));
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -121,8 +175,14 @@ export default function UploadModal({ open, institutionName, onClose, onUpload, 
     }
   }
 
+  function isSkippedDuplicate(item: UploadItem) {
+    return Boolean(item.duplicateOf) && !item.includeAnyway;
+  }
+
   function handleUpload() {
-    const runnable = uploadItems.filter((item) => item.status === "pending" || item.status === "failed");
+    const runnable = uploadItems.filter(
+      (item) => (item.status === "pending" || item.status === "failed") && !isSkippedDuplicate(item),
+    );
     void runUploadBatch(runnable);
   }
 
@@ -143,6 +203,10 @@ export default function UploadModal({ open, institutionName, onClose, onUpload, 
   const failedCount = uploadItems.filter((item) => item.status === "failed").length;
   const uploadingCount = uploadItems.filter((item) => item.status === "uploading").length;
   const pendingCount = uploadItems.filter((item) => item.status === "pending").length;
+  const skippedDuplicateCount = uploadItems.filter(isSkippedDuplicate).length;
+  const uploadableCount = uploadItems.filter(
+    (item) => (item.status === "pending" || item.status === "failed") && !isSkippedDuplicate(item),
+  ).length;
   const progress = useMemo(() => {
     if (uploadItems.length === 0) return 0;
     const total = uploadItems.reduce((sum, item) => {
@@ -152,7 +216,7 @@ export default function UploadModal({ open, institutionName, onClose, onUpload, 
     }, 0);
     return Math.round(total / uploadItems.length);
   }, [uploadItems]);
-  const uploadLabel = selectedCount > 1 ? `Upload ${selectedCount} files` : "Upload file";
+  const uploadLabel = uploadableCount > 1 ? `Upload ${uploadableCount} files` : "Upload file";
   const footerLabel = failedCount > 0
     ? `${successCount} uploaded, ${failedCount} failed`
     : uploading
@@ -213,9 +277,23 @@ export default function UploadModal({ open, institutionName, onClose, onUpload, 
               <div className="med-upload-progress-bar" style={{ marginTop: 12 }}>
                 <div className="med-upload-progress-fill" style={{ width: `${progress}%` }} />
               </div>
+              {checkingDuplicates && (
+                <div className="med-upload-dupe-note">Checking your library for exact duplicates…</div>
+              )}
+              {!checkingDuplicates && skippedDuplicateCount > 0 && (
+                <div className="med-upload-dupe-note warn">
+                  {skippedDuplicateCount} file{skippedDuplicateCount > 1 ? "s are" : " is"} already in your
+                  library and will be skipped.{" "}
+                  <button type="button" className="med-upload-dupe-link" onClick={includeAllDuplicates}>
+                    Upload {skippedDuplicateCount > 1 ? "them" : "it"} anyway
+                  </button>
+                </div>
+              )}
               <div className="med-upload-list">
-                {uploadItems.map((item) => (
-                <div className={`med-upload-file-row status-${item.status}`} key={item.id}>
+                {uploadItems.map((item) => {
+                const skipped = isSkippedDuplicate(item);
+                return (
+                <div className={`med-upload-file-row status-${item.status}${skipped ? " is-duplicate" : ""}`} key={item.id}>
                   <div className="med-upload-file-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -228,13 +306,21 @@ export default function UploadModal({ open, institutionName, onClose, onUpload, 
                     <div style={{ fontSize: 11, color: "var(--med-muted)", marginTop: 2 }}>
                       {(item.file.size / (1024 * 1024)).toFixed(1)} MB
                       {item.error ? ` - ${item.error}` : ""}
+                      {item.duplicateOf ? ` · already in library as ${item.duplicateOf.assetCode}` : ""}
                     </div>
                   </div>
-                  <div className={`med-upload-status-pill status-${item.status}`}>
-                    {statusLabel(item)}
-                  </div>
+                  {skipped ? (
+                    <button type="button" className="med-upload-dupe-link" onClick={() => uploadAnyway(item.id)}>
+                      Upload anyway
+                    </button>
+                  ) : (
+                    <div className={`med-upload-status-pill status-${item.status}`}>
+                      {item.duplicateOf && item.includeAnyway ? "Duplicate" : statusLabel(item)}
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
               </div>
             </div>
           )}
@@ -267,7 +353,7 @@ export default function UploadModal({ open, institutionName, onClose, onUpload, 
             className="med-btn med-btn-primary"
             onClick={failedCount > 0 && pendingCount === 0 && !uploading ? retryFailed : handleUpload}
             type="button"
-            disabled={selectedCount === 0 || uploading || successCount === selectedCount}
+            disabled={uploadableCount === 0 || uploading || checkingDuplicates}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="16,16 12,12 8,16" />

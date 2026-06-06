@@ -2780,6 +2780,36 @@
   text-decoration: underline;
 }
 
+/* Upload-time duplicate detection (SHA-256) */
+.med-upload-dupe-note {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: var(--med-radius-sm);
+  font-size: 12.5px;
+  background: var(--med-surface-1);
+  color: var(--med-text-2);
+}
+
+.med-upload-dupe-note.warn {
+  background: #FEF3C7;
+  color: #92400E;
+}
+
+.med-upload-dupe-link {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--med-blue);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.med-upload-file-row.is-duplicate {
+  opacity: 0.7;
+}
+
 /* UC-4.12 Phase 7D — Rights & consent section in the asset detail panel */
 .med-rights-muted {
   font-size: 12.5px;

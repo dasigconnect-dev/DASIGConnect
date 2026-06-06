@@ -120,6 +120,21 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     List<MediaAsset> findActiveByInstitution(@Param("institutionId") UUID institutionId);
 
     /**
+     * Upload-time exact-duplicate check: active assets in the institution whose stored bytes
+     * (SHA-256 fixity baseline) match one of the supplied hashes.
+     */
+    @Query("""
+        SELECT m FROM MediaAsset m
+        WHERE m.institution.id = :institutionId
+          AND m.deletedAt IS NULL
+          AND m.contentSha256 IN :hashes
+        ORDER BY m.createdAt ASC
+        """)
+    List<MediaAsset> findActiveByInstitutionAndContentSha256In(
+            @Param("institutionId") UUID institutionId,
+            @Param("hashes") java.util.Collection<String> hashes);
+
+    /**
      * UC-4.12 Phase 7F: deterministic duplicate candidates (perceptual-hash flagged). A null
      * institution aggregates network-wide for administrators.
      */

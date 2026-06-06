@@ -225,6 +225,15 @@ public class MediaAssetController {
         return ResponseEntity.ok(mediaAssetService.addToDraft(id, dto, user));
     }
 
+    /** Upload-time exact-duplicate (SHA-256) check; returns existing assets for matching hashes. */
+    @PostMapping("/check-duplicates")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<java.util.List<com.dasigconnect.backend.model.dto.media.MediaDuplicateMatchDto>> checkDuplicates(
+            @Valid @RequestBody com.dasigconnect.backend.model.dto.media.MediaDuplicateCheckRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaAssetService.checkDuplicates(dto, user));
+    }
+
     @PostMapping("/upload-url")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<MediaAssetUploadUrlResponseDto> getUploadUrl(

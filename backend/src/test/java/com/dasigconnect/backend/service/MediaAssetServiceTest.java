@@ -205,6 +205,26 @@ class MediaAssetServiceTest {
     }
 
     @Test
+    void checkDuplicates_returnsExistingAssetForMatchingHash() {
+        UUID institutionId = UUID.randomUUID();
+        String sha = "a".repeat(64);
+        MediaAsset existing = asset(UUID.randomUUID(), institutionId, UUID.randomUUID());
+        existing.setContentSha256(sha);
+        when(mediaAssetRepository.findActiveByInstitutionAndContentSha256In(
+                org.mockito.ArgumentMatchers.eq(institutionId), any()))
+                .thenReturn(java.util.List.of(existing));
+
+        var dto = new com.dasigconnect.backend.model.dto.media.MediaDuplicateCheckRequestDto();
+        dto.setSha256s(java.util.List.of(sha.toUpperCase())); // exercises case normalization
+
+        var matches = mediaAssetService.checkDuplicates(dto, user(UUID.randomUUID(), "contributor", institutionId));
+
+        org.junit.jupiter.api.Assertions.assertEquals(1, matches.size());
+        org.junit.jupiter.api.Assertions.assertEquals(sha, matches.get(0).sha256());
+        org.junit.jupiter.api.Assertions.assertEquals(existing.getId(), matches.get(0).existingAsset().getId());
+    }
+
+    @Test
     void changeVisibility_rejectsInvalidValue() {
         UUID institutionId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();

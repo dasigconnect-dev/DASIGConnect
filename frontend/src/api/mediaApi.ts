@@ -858,6 +858,32 @@ export function bulkTagAssets(assetIds: string[], label: string) {
     .then((res) => res.data);
 }
 
+/** Upload-time exact-duplicate (SHA-256) hit: an existing asset already holds these bytes. */
+export interface MediaDuplicateMatch {
+  sha256: string;
+  existingAsset: {
+    id: string;
+    assetCode: string;
+    fileName: string;
+    title?: string | null;
+    storageUrl: string;
+    fileType: string;
+  };
+}
+
+/** Ask whether any of the supplied file hashes already exist in the target institution. */
+export function checkMediaDuplicates(
+  sha256s: string[],
+  institutionId?: string | null,
+): Promise<MediaDuplicateMatch[]> {
+  return api
+    .post<MediaDuplicateMatch[]>("/media-assets/check-duplicates", {
+      sha256s,
+      ...(institutionId ? { institutionId } : {}),
+    })
+    .then((res) => res.data);
+}
+
 export function getMediaAssetUploadUrl(payload: MediaAssetUploadUrlRequest) {
   return api.post<MediaAssetUploadUrlResponse>("/media-assets/upload-url", payload);
 }

@@ -516,6 +516,34 @@ public class MediaAssetService {
         return get(assetId, user);
     }
 
+    /**
+     * Upload-time exact-duplicate check (SHA-256). Returns, for each supplied hash that already
+     * exists in the target institution, the existing asset — so the uploader can choose to use it,
+     * keep both, or skip. Tenant-scoped via {@link #resolveTargetInstitution}.
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<com.dasigconnect.backend.model.dto.media.MediaDuplicateMatchDto> checkDuplicates(
+            com.dasigconnect.backend.model.dto.media.MediaDuplicateCheckRequestDto dto, JwtUserDetails user) {
+        UUID institutionId = resolveTargetInstitution(user, dto.getInstitutionId(), "check for duplicates");
+        java.util.List<String> hashes = dto.getSha256s().stream()
+                .filter(h -> h != null && !h.isBlank())
+                .map(h -> h.trim().toLowerCase(java.util.Locale.ROOT))
+                .distinct()
+                .toList();
+        if (hashes.isEmpty()) {
+            return java.util.List.of();
+        }
+        java.util.Map<String, com.dasigconnect.backend.model.dto.media.MediaDuplicateMatchDto> firstBySha =
+                new java.util.LinkedHashMap<>();
+        for (MediaAsset asset : mediaAssetRepository.findActiveByInstitutionAndContentSha256In(institutionId, hashes)) {
+            firstBySha.putIfAbsent(asset.getContentSha256(),
+                    new com.dasigconnect.backend.model.dto.media.MediaDuplicateMatchDto(
+                            asset.getContentSha256(),
+                            com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto.from(asset)));
+        }
+        return java.util.List.copyOf(firstBySha.values());
+    }
+
     public MediaAssetUploadUrlResponseDto createUploadUrl(MediaAssetUploadUrlRequestDto dto, JwtUserDetails user) {
         UUID institutionId = resolveTargetInstitution(user, dto.getInstitutionId(), "upload assets");
         String safeFileName = dto.getFileName().replaceAll("[^a-zA-Z0-9._-]", "-");

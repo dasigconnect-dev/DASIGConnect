@@ -6,6 +6,7 @@ import {
   bulkDeleteMediaAssets,
   bulkMoveAssets,
   changeAssetVisibility,
+  checkMediaDuplicates,
   createMediaImportBatch,
   deleteMediaAsset,
   deleteMediaImportBatch,
@@ -1333,6 +1334,9 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         }
         onClose={() => setUploadOpen(false)}
         onUpload={handleUpload}
+        onCheckDuplicates={(sha256s) =>
+          checkMediaDuplicates(sha256s, isAdmin ? selectedInstitutionId : undefined)
+        }
         onCreateBatch={createUploadBatch}
         onBatchComplete={(importBatchId) => {
           setLatestUploadBatchId(importBatchId);
