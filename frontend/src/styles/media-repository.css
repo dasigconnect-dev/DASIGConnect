@@ -2780,6 +2780,66 @@
   text-decoration: underline;
 }
 
+/* Drive-style "Upload options" duplicate modal */
+.med-modal-card--sm {
+  max-width: 460px;
+}
+
+.med-upload-options-msg {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--med-text-2);
+  margin: 0 0 14px;
+}
+
+.med-upload-options-names {
+  margin: 0 0 14px;
+  padding-left: 18px;
+  font-size: 12.5px;
+  color: var(--med-text-2);
+}
+
+.med-upload-options-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.med-upload-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--med-border);
+  border-radius: var(--med-radius-sm);
+  cursor: pointer;
+}
+
+.med-upload-option.selected {
+  border-color: var(--med-blue);
+  background: var(--med-blue-dim);
+}
+
+.med-upload-option input {
+  margin-top: 3px;
+}
+
+.med-upload-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.med-upload-option strong {
+  font-size: 13.5px;
+  color: var(--med-text);
+}
+
+.med-upload-option small {
+  font-size: 12px;
+  color: var(--med-muted);
+}
+
 /* Upload-time duplicate detection (SHA-256) */
 .med-upload-dupe-note {
   margin-top: 10px;

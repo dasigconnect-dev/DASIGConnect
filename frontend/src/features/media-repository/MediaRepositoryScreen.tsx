@@ -6,7 +6,7 @@ import {
   bulkDeleteMediaAssets,
   bulkMoveAssets,
   changeAssetVisibility,
-  checkMediaDuplicates,
+  createAssetRelation,
   createMediaImportBatch,
   deleteMediaAsset,
   deleteMediaImportBatch,
@@ -761,10 +761,22 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     }
   }
 
+  // Drive-style duplicate-filename lookup for the upload flow. Scoped to the current folder when
+  // one is selected, otherwise the whole loaded institution library.
+  function findExistingByName(fileName: string) {
+    const target = fileName.trim().toLowerCase();
+    const match = assets.find(
+      (a) =>
+        (a.fileName ?? "").trim().toLowerCase() === target &&
+        (selectedFolderId ? a.folderId === selectedFolderId : true),
+    );
+    return match ? { id: match.id, assetCode: match.code, fileName: match.fileName } : null;
+  }
+
   async function handleUpload(
     file: File,
     onProgress?: (pct: number) => void,
-    options?: { silent?: boolean; importBatchId?: string | null },
+    options?: { silent?: boolean; importBatchId?: string | null; replaceAssetId?: string | null },
   ) {
     if (isAdmin && (networkView || !selectedInstitutionId)) {
       const message = "Select an institution before uploading media.";
@@ -790,7 +802,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onProgress?.(Math.round(pct * 0.9)),
       );
 
-      await registerMediaAsset({
+      const registered = await registerMediaAsset({
         storageUrl: urlData.publicUrl,
         fileName: file.name,
         fileType: fileTypeFromFile(file),
@@ -798,6 +810,21 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         institutionId: isAdmin ? selectedInstitutionId : undefined,
         importBatchId: options?.importBatchId ?? undefined,
       });
+
+      // Replace chosen in Upload options: link the new asset as the existing one's replacement
+      // (lineage, originals stay immutable) and soft-delete the superseded asset so the new one
+      // takes its place. Best-effort — never fail the upload over this.
+      if (options?.replaceAssetId && registered?.data?.id) {
+        try {
+          await createAssetRelation(options.replaceAssetId, {
+            childAssetId: registered.data.id,
+            relationType: "replacement_for",
+          });
+          await deleteMediaAsset(options.replaceAssetId);
+        } catch {
+          // The new asset is uploaded regardless; the supersede link is non-critical.
+        }
+      }
       onProgress?.(100);
 
       if (!options?.silent) {
@@ -1334,9 +1361,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         }
         onClose={() => setUploadOpen(false)}
         onUpload={handleUpload}
-        onCheckDuplicates={(sha256s) =>
-          checkMediaDuplicates(sha256s, isAdmin ? selectedInstitutionId : undefined)
-        }
+        findExistingByName={findExistingByName}
         onCreateBatch={createUploadBatch}
         onBatchComplete={(importBatchId) => {
           setLatestUploadBatchId(importBatchId);
