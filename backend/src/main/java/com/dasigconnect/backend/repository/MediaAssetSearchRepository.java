@@ -184,6 +184,21 @@ public class MediaAssetSearchRepository {
                   AND lower(ma.ai_category) LIKE :like
 
                 UNION ALL
+                -- Claude-detected descriptive metadata: subjects, objects, actions/use-cases, AI tags.
+                SELECT kw AS text, 'keyword' AS type,
+                       CASE WHEN lower(kw) = :q THEN 0 WHEN lower(kw) LIKE :prefix THEN 1 ELSE 2 END
+                FROM media_assets ma,
+                     unnest(
+                         coalesce(ma.specific_subjects, '{}'::text[])
+                         || coalesce(ma.visible_objects, '{}'::text[])
+                         || coalesce(ma.possible_use_cases, '{}'::text[])
+                         || coalesce(ma.ai_tags, '{}'::text[])
+                     ) AS kw
+                WHERE ma.deleted_at IS NULL AND kw IS NOT NULL
+                  AND (:networkScope = TRUE OR ma.institution_id = :institutionId)
+                  AND lower(kw) LIKE :like
+
+                UNION ALL
                 SELECT ma.file_name AS text, 'file' AS type,
                        CASE WHEN lower(ma.file_name) = :q THEN 0 WHEN lower(ma.file_name) LIKE :prefix THEN 1 ELSE 2 END
                 FROM media_assets ma
@@ -220,9 +235,10 @@ public class MediaAssetSearchRepository {
                          WHEN 'tag' THEN 0
                          WHEN 'collection' THEN 1
                          WHEN 'folder' THEN 2
-                         WHEN 'file' THEN 3
-                         WHEN 'uploader' THEN 4
-                         ELSE 5
+                         WHEN 'keyword' THEN 3
+                         WHEN 'file' THEN 4
+                         WHEN 'uploader' THEN 5
+                         ELSE 6
                      END,
                      text ASC
             LIMIT :limit

@@ -7,7 +7,7 @@
  * already understands — never fake or random results.
  */
 
-export type SuggestionType = "recent" | "tag" | "file" | "uploader" | "collection" | "folder" | "phrase";
+export type SuggestionType = "recent" | "tag" | "keyword" | "file" | "uploader" | "collection" | "folder" | "phrase";
 
 export interface Suggestion {
   /** Stable key for React + de-duplication. */
@@ -59,7 +59,8 @@ const RANK: Record<SuggestionType, [exact: number, starts: number, contains: num
   collection: [1, 12, 21],
   folder: [1, 12, 21],
   recent: [2, 13, 22],
-  file: [3, 10, 23],
+  keyword: [3, 13, 22],
+  file: [4, 10, 23],
   uploader: [5, 14, 24],
   phrase: [99, 99, 99],
 };
@@ -67,6 +68,7 @@ const RANK: Record<SuggestionType, [exact: number, starts: number, contains: num
 const TYPE_LABEL: Record<SuggestionType, string> = {
   recent: "Recent",
   tag: "Tag",
+  keyword: "AI",
   file: "File",
   uploader: "Uploader",
   collection: "Collection",

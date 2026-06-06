@@ -611,6 +611,7 @@
   padding: 1px 7px;
 }
 .med-suggest-tag-tag { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
+.med-suggest-tag-keyword { color: #7c3aed; background: #f5f3ff; border-color: #ddd6fe; }
 .med-suggest-tag-collection { color: #0f766e; background: #ecfdf5; border-color: #99f6e4; }
 .med-suggest-tag-folder { color: #0f766e; background: #ecfdf5; border-color: #99f6e4; }
 .med-suggest-tag-recent { color: #92400e; background: #fffbeb; border-color: #fde68a; }

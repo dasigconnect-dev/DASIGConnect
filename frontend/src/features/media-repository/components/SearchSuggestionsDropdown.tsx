@@ -1,4 +1,4 @@
-import { Search, Tag, Image as ImageIcon, User, Images, FolderClosed, Clock, Sparkles } from "lucide-react";
+import { Search, Tag, Image as ImageIcon, User, Images, FolderClosed, Clock, Sparkles, WandSparkles } from "lucide-react";
 import type { Suggestion, SuggestionType } from "../searchSuggestions";
 
 interface SearchSuggestionsDropdownProps {
@@ -16,11 +16,12 @@ interface SearchSuggestionsDropdownProps {
 const ICONS: Record<SuggestionType, typeof Search> = {
   recent: Clock,
   tag: Tag,
+  keyword: Sparkles,
   file: ImageIcon,
   uploader: User,
   collection: Images,
   folder: FolderClosed,
-  phrase: Sparkles,
+  phrase: WandSparkles,
 };
 
 /** Renders the matched portion of a suggestion in bold (case-insensitive). */
