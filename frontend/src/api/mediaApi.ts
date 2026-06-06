@@ -634,6 +634,43 @@ export function putAssetRights(id: string, payload: MediaAssetRightsUpdate): Pro
   return api.put<MediaAssetRights>(`/media-assets/${id}/rights`, payload).then((res) => res.data);
 }
 
+/* ===== UC-4.12 Phase 7E: Versioning & lineage ===== */
+
+export type RelationType = "new_version" | "derived_from" | "replacement_for" | "component_of";
+
+export interface LineageAssetSummary {
+  id: string;
+  assetCode: string;
+  fileName: string;
+  storageUrl: string;
+  fileType: string;
+  title?: string | null;
+}
+
+export interface LineageEdge {
+  relationId: string;
+  relationType: RelationType;
+  createdAt: string | null;
+  asset: LineageAssetSummary;
+}
+
+export interface MediaAssetLineage {
+  assetId: string;
+  parents: LineageEdge[];
+  children: LineageEdge[];
+}
+
+export function getAssetRelations(id: string): Promise<MediaAssetLineage> {
+  return api.get<MediaAssetLineage>(`/media-assets/${id}/relations`).then((res) => res.data);
+}
+
+export function createAssetRelation(
+  id: string,
+  payload: { childAssetId: string; relationType: RelationType },
+): Promise<MediaAssetLineage> {
+  return api.post<MediaAssetLineage>(`/media-assets/${id}/relations`, payload).then((res) => res.data);
+}
+
 /* ===== UC-4.12 Phase 7C: Repository Health ===== */
 
 export interface RepositoryHealth {

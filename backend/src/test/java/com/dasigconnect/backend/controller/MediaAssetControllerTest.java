@@ -71,6 +71,9 @@ class MediaAssetControllerTest {
     private com.dasigconnect.backend.service.MediaRightsService mediaRightsService;
 
     @MockitoBean
+    private com.dasigconnect.backend.service.MediaLineageService mediaLineageService;
+
+    @MockitoBean
     private JWTService jwtService;
 
     @MockitoBean

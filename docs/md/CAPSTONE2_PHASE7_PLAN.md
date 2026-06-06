@@ -6,10 +6,10 @@
 > **Delivery method:** Feature-driven Kanban flow using vertical slices.
 > **Priority:** Phase 7A-7C may proceed while Phase 5 waits for Meta App Review because
 > integrity monitoring has no dependency on Facebook insights.
-> **Implementation status (2026-06-06):** Phase 7A-7D implemented; V34-V36 cover fixity,
-> review workflow, and rights records. Phase 7C added no migration. Phase 7E (versioning and
-> lineage) is next.
-> **Next Flyway version:** V37. Never reuse an applied migration version.
+> **Implementation status (2026-06-06):** Phase 7A-7E implemented; V34-V37 cover fixity,
+> review workflow, rights records, and lineage. Phase 7C added no migration. Phase 7F
+> (duplicate review) is next.
+> **Next Flyway version:** V38. Never reuse an applied migration version.
 
 ---
 
@@ -278,13 +278,37 @@ published, and when permission expires. ✅ met.
 
 ### Phase 7E - Versioning and lineage
 
-- V37 migration for `media_asset_relations`.
-- Add `Upload new version` and `Create derived asset` workflows.
-- Show original/current/derived relationships in Asset Detail.
-- Preserve the original and prohibit in-place file replacement.
+- [x] V37 migration for `media_asset_relations` (RLS; self-link, type, and uniqueness constraints).
+- [x] Link versions/derivatives via `POST /api/v1/media-assets/{id}/relations`; the workflow
+  uploads a separate asset (existing upload path) and links it — the original is never overwritten.
+- [x] Show original/version/derivative relationships in the Asset Detail sidebar
+  (`AssetLineageSection`, self-contained).
+- [x] Preserve the original and prohibit in-place file replacement (a relation is a link between
+  independent assets, each keeping its own code, fixity, and history).
+
+Endpoints: `GET|POST /api/v1/media-assets/{id}/relations` (`MediaLineageService`). The service
+rejects self-links, cross-institution links, duplicate edges (409), and **cycles** (bounded
+forward BFS from the proposed child; 409 if it reaches the parent). Relation creation is audited
+(`MEDIA_ASSET_RELATION_ADDED`). Relation types: `new_version`, `replacement_for`, `derived_from`,
+`component_of`.
+
+> **Design note:** a one-click "upload-and-auto-link new version" convenience layers on top of the
+> existing direct-to-Supabase upload flow and the Phase 7B replacement handoff; the current slice
+> links an already-uploaded asset, which already satisfies immutable-original + reconstructable
+> lineage. Wiring the replacement handoff to auto-create a `replacement_for` edge is a thin
+> follow-up.
 
 **Acceptance:** a replacement or derivative is independently identifiable and its complete
-lineage is reconstructable.
+lineage is reconstructable. ✅ met.
+
+**Verification (2026-06-06):**
+
+- V37 added; next free Flyway version is now **V38**.
+- Backend `MediaLineageServiceTest` (8) covers lineage read, link + audit, self-link/invalid-type/
+  cross-institution (400), duplicate/cycle (409), and cross-tenant hiding (404). Full suite green:
+  **423 tests, 0 failures, 7 skips**.
+- Frontend production build + scoped ESLint clean; `AssetLineageSection` is self-contained
+  (loads/saves its own data by assetId) and reuses the `--med-*` tokens.
 
 ### Phase 7F - Duplicate Review workspace
 
@@ -370,12 +394,12 @@ Recommended pull order:
 2. Phase 7B - monitoring and repair. Complete.
 3. Phase 7C - Repository Health. Complete.
 4. Phase 7D - rights records. Complete.
-5. **Phase 7E - versioning and lineage (next).**
-6. Phase 7F - duplicate review.
+5. Phase 7E - versioning and lineage. Complete.
+6. **Phase 7F - duplicate review (next).**
 7. Phase 7G - standards export.
 
-Maintain a WIP limit of two. Phase 7A-7C formed the first demoable release; 7D adds rights
-governance. Remaining governance slices (7E-7G) may now be pulled.
+Maintain a WIP limit of two. Phase 7A-7C formed the first demoable release; 7D-7E add rights
+governance and lineage. Remaining governance slices (7F-7G) may now be pulled.
 
 ## 8. Explicit Boundaries
 

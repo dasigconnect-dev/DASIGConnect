@@ -37,6 +37,8 @@ import com.dasigconnect.backend.model.dto.media.MediaBatchCurationRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaBatchCurationResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaImportBatchCreateRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaImportBatchResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetLineageDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetRelationCreateRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetRightsDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetRightsUpdateRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaIntegrityCheckDto;
@@ -46,6 +48,7 @@ import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.MediaIntegrityService;
 import com.dasigconnect.backend.service.MediaAssetSearchService;
 import com.dasigconnect.backend.service.MediaAssetService;
+import com.dasigconnect.backend.service.MediaLineageService;
 import com.dasigconnect.backend.service.MediaRightsService;
 
 import jakarta.validation.Valid;
@@ -62,15 +65,18 @@ public class MediaAssetController {
     private final MediaAssetSearchService mediaAssetSearchService;
     private final MediaIntegrityService mediaIntegrityService;
     private final MediaRightsService mediaRightsService;
+    private final MediaLineageService mediaLineageService;
 
     public MediaAssetController(MediaAssetService mediaAssetService,
                                 MediaAssetSearchService mediaAssetSearchService,
                                 MediaIntegrityService mediaIntegrityService,
-                                MediaRightsService mediaRightsService) {
+                                MediaRightsService mediaRightsService,
+                                MediaLineageService mediaLineageService) {
         this.mediaAssetService = mediaAssetService;
         this.mediaAssetSearchService = mediaAssetSearchService;
         this.mediaIntegrityService = mediaIntegrityService;
         this.mediaRightsService = mediaRightsService;
+        this.mediaLineageService = mediaLineageService;
     }
 
     @GetMapping
@@ -180,6 +186,25 @@ public class MediaAssetController {
             @Valid @RequestBody MediaAssetRightsUpdateRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(mediaRightsService.updateRights(id, dto, user));
+    }
+
+    /** UC-4.12 Phase 7E: the asset's lineage — what it derives from, and its versions/derivatives. */
+    @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/relations")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MediaAssetLineageDto> getRelations(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(mediaLineageService.getLineage(id, user));
+    }
+
+    /** UC-4.12 Phase 7E: link an existing asset as a version/derivative of this one (audited). */
+    @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/relations")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<MediaAssetLineageDto> createRelation(
+            @PathVariable UUID id,
+            @Valid @RequestBody MediaAssetRelationCreateRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.status(201).body(mediaLineageService.createRelation(id, dto, user));
     }
 
     @PostMapping("/{id}/use-in-new-post")

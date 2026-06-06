@@ -5,6 +5,7 @@ import { formatFileSize, formatUploadDate, formatResolution, formatFileTypeName,
 import AssetActivityLog from "./AssetActivityLog";
 import AssetIntegrityHistory from "./AssetIntegrityHistory";
 import AssetRightsSection from "./AssetRightsSection";
+import AssetLineageSection from "./AssetLineageSection";
 
 interface AssetDetailPanelProps {
   asset: MediaAsset | null;
@@ -251,7 +252,16 @@ export default function AssetDetailPanel({
             </div>
 
             {/* Rights & consent (UC-4.12 Phase 7D) */}
-            {asset && <AssetRightsSection assetId={asset.id} key={asset.id} />}
+            {asset && <AssetRightsSection assetId={asset.id} key={`rights-${asset.id}`} />}
+
+            {/* Versions & lineage (UC-4.12 Phase 7E) */}
+            {asset && (
+              <AssetLineageSection
+                assetId={asset.id}
+                institutionId={asset.institutionId}
+                key={`lineage-${asset.id}`}
+              />
+            )}
 
             {/* File integrity / fixity (UC-4.12) */}
             <div>

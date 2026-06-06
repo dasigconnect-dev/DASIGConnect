@@ -57,13 +57,13 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
 - Phase 5 Facebook insights remains the next dependency-ordered phase and is gated by Meta
   App Review for `read_insights`.
 - Phase 6 depends on the engagement data produced by Phase 5.
-- Phase 7A-7D are implemented; V34-V36 cover fixity, the integrity review workflow, and rights
-  records (7C added no migration). New uploads receive asynchronous SHA-256 verification; a
-  bounded daily job backfills and rechecks due assets; new/changed failures notify validators
-  and administrators.
+- Phase 7A-7E are implemented; V34-V37 cover fixity, the integrity review workflow, rights
+  records, and lineage (7C added no migration). New uploads receive asynchronous SHA-256
+  verification; a bounded daily job backfills and rechecks due assets; new/changed failures
+  notify validators and administrators.
 - The shared Asset Detail sidebar includes recent check history, manual recheck,
-  validator/admin acknowledgement, replacement-upload handoff, and an editable rights/consent
-  record (`AssetRightsSection`).
+  validator/admin acknowledgement, replacement-upload handoff, an editable rights/consent
+  record (`AssetRightsSection`), and an asset lineage panel (`AssetLineageSection`).
 - Phase 7C ships the tenant-scoped **Repository Health dashboard** at
   `GET /api/v1/media-repository/health` (one aggregate query + short cache) with metric tiles
   that drill into the Media Library via a `?health=<key>` filter. Eval D7's fixity portion is
@@ -71,7 +71,10 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
 - Phase 7D adds structured rights records (`GET|PUT /api/v1/media-assets/{id}/rights`) with a
   clearance gate: a NEW asset cannot be cleared for public use without a complete, non-expired
   rights record; already-cleared assets are grandfathered (ADR-0006).
-- Pull Phase 7E next while waiting on Meta: versioning and lineage (V37). The full plan is in
+- Phase 7E adds asset lineage (`GET|POST /api/v1/media-assets/{id}/relations`): originals stay
+  immutable and versions/derivatives are separate linked assets; the service rejects self-links,
+  cross-institution links, duplicates, and cycles.
+- Pull Phase 7F next while waiting on Meta: duplicate review workspace. The full plan is in
   `CAPSTONE2_PHASE7_PLAN.md`.
 
 ## 2. Standing — sanctioned advance development
@@ -122,7 +125,7 @@ is safe and so a future document submission is a formality rather than a rewrite
 >   for the screen slice). This is part of every vertical slice.
 
 - **Branch per UC**, PR into the integration branch; keep the mainline releasable.
-- **Migrations:** Flyway only; the next free version is currently **V37**. Never reuse a
+- **Migrations:** Flyway only; the next free version is currently **V38**. Never reuse a
   version number. Add columns
   nullable-then-backfill; never a default that hides existing READY assets. Watch the
   `visibility` backfill landmine (grandfather existing assets to `cleared_for_public`).
