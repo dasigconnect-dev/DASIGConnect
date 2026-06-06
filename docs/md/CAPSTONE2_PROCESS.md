@@ -57,10 +57,10 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
 - Phase 5 Facebook insights remains the next dependency-ordered phase and is gated by Meta
   App Review for `read_insights`.
 - Phase 6 depends on the engagement data produced by Phase 5.
-- Phase 7A-7F are implemented; V34-V38 cover fixity, the integrity review workflow, rights
-  records, lineage, and duplicate review (7C added no migration). New uploads receive asynchronous
-  SHA-256 verification; a bounded daily job backfills and rechecks due assets; new/changed failures
-  notify validators and administrators.
+- Phase 7A-7G are **all implemented** — UC-4.12 is feature complete. V34-V38 cover fixity, the
+  integrity review workflow, rights records, lineage, and duplicate review (7C and 7G added no
+  migration). New uploads receive asynchronous SHA-256 verification; a bounded daily job backfills
+  and rechecks due assets; new/changed failures notify validators and administrators.
 - The shared Asset Detail sidebar includes recent check history, manual recheck,
   validator/admin acknowledgement, replacement-upload handoff, an editable rights/consent
   record (`AssetRightsSection`), and an asset lineage panel (`AssetLineageSection`).
@@ -79,8 +79,13 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
   distance, mark-duplicate/keep-both/not-duplicate, canonical selection, optional tag merge,
   append-only and never auto-deleting. **D1's ≥50-pair human-verified set is still outstanding** —
   this workspace is the tool to produce it; do not fabricate those labels.
-- Pull Phase 7G next while waiting on Meta: Dublin Core standards mapping + CSV/JSON export (the
-  final preservation slice). The full plan is in `CAPSTONE2_PHASE7_PLAN.md`.
+- Phase 7G adds the portable inventory export (`GET /api/v1/media-repository/export?format=csv|json`)
+  with a documented Dublin Core mapping (`docs/md/dublin-core-mapping.md`), fixity/rights/lineage/
+  provenance/lifecycle fields, audited; it omits storage URLs/credentials and is tenant-scoped.
+- **UC-4.12 (Phase 7) is feature complete.** Remaining preservation work is non-code: the D1
+  human-verified duplicate set and browser E2E after V34-V38 are applied to the dev database. With
+  Phase 7 done, the dependency-ordered next code phase is **Phase 5 (UC-4.8 Facebook insights)**,
+  still gated by Meta App Review for `read_insights`.
 
 ## 2. Standing — sanctioned advance development
 

@@ -6,10 +6,10 @@
 > **Delivery method:** Feature-driven Kanban flow using vertical slices.
 > **Priority:** Phase 7A-7C may proceed while Phase 5 waits for Meta App Review because
 > integrity monitoring has no dependency on Facebook insights.
-> **Implementation status (2026-06-06):** Phase 7A-7F implemented; V34-V38 cover fixity, review
-> workflow, rights records, lineage, and duplicate review. Phase 7C added no migration. Phase 7G
-> (standards mapping & export) is the last remaining slice. (D1's ≥50-pair human-verified set is
-> still outstanding — a manual review pass, not an automatable step.)
+> **Implementation status (2026-06-06):** Phase 7A-7G **all implemented** — UC-4.12 is feature
+> complete. V34-V38 cover fixity, review workflow, rights records, lineage, and duplicate review;
+> 7C and 7G added no migration. (The only outstanding item is D1's ≥50-pair human-verified set —
+> a manual review pass using the 7F workspace, not an automatable step.)
 > **Next Flyway version:** V39. Never reuse an applied migration version.
 
 ---
@@ -346,21 +346,30 @@ reversible through a new decision (append-only, latest wins), and never auto-del
 
 ### Phase 7G - Standards mapping and export
 
-- Publish a documented Dublin Core mapping:
-  - identifier -> `asset_code`
-  - title -> human-confirmed `title`
-  - creator -> uploader or rights holder, clearly distinguished
-  - date -> `created_at`
-  - subject -> manual tags plus confirmed category
-  - rights -> rights record and visibility
-  - relation -> lineage links
-  - format -> MIME/file type and size
-- Add institution-scoped CSV and JSON metadata exports.
-- Include fixity, rights, provenance, lineage, and current lifecycle state.
-- Log exports as administrative audit events.
+- [x] Documented Dublin Core mapping published in `docs/md/dublin-core-mapping.md` (identifier ->
+  `asset_code`, title, creator -> uploader **and** rights holder distinguished, date ->
+  `created_at`, subject -> manual tags + category, rights -> rights record + visibility,
+  relation -> lineage, format -> file type + size).
+- [x] Institution-scoped CSV and JSON exports (`GET /api/v1/media-repository/export?format=csv|json`).
+- [x] Includes fixity, rights, provenance, lineage, and lifecycle state (`pres_*` columns).
+- [x] Each export logged as an audited admin event (`MEDIA_REPOSITORY_EXPORTED`).
+
+`MediaRepositoryExportService` aggregates with batched queries (no per-asset fan-out), builds the
+full body in a read-only transaction (no DB connection held while the response streams), and
+**omits `storage_url` and every signed/private URL or credential**. JSON embeds the Dublin Core
+mapping for downstream interpretation. Export buttons live in the Repository Health header.
 
 **Acceptance:** DASIG can export a portable inventory without exposing storage credentials,
-private service URLs, or cross-tenant records.
+private service URLs, or cross-tenant records. ✅ met (the export DTO has no URL/credential field
+and is tenant-scoped; a test asserts the signed URL never appears in the output).
+
+**Verification (2026-06-06):**
+
+- No migration (read-only export); next free Flyway version remains **V39**.
+- Backend `MediaRepositoryExportServiceTest` (4): CSV headers + asset code + **no storage URL**,
+  JSON envelope/mapping/count, invalid-format 400, validator cross-institution 403. Full suite
+  green: **434 tests, 0 failures, 7 skips**.
+- Frontend build + scoped ESLint clean; CSV/JSON download wired from the Repository Health header.
 
 ## 5. API Surface
 
@@ -419,10 +428,11 @@ Recommended pull order:
 4. Phase 7D - rights records. Complete.
 5. Phase 7E - versioning and lineage. Complete.
 6. Phase 7F - duplicate review. Complete (D1 human-labeling pass still outstanding).
-7. **Phase 7G - standards export (next, final slice).**
+7. Phase 7G - standards export. Complete.
 
-Maintain a WIP limit of two. Phase 7A-7C formed the first demoable release; 7D-7F add rights
-governance, lineage, and duplicate adjudication. Only standards mapping/export (7G) remains.
+**All Phase 7 slices are implemented.** Remaining preservation work is non-code: the D1
+human-verified duplicate set (via the 7F workspace) and browser E2E once V34-V38 are applied to
+the dev database.
 
 ## 8. Explicit Boundaries
 

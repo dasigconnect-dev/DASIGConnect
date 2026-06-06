@@ -100,6 +100,25 @@
   cursor: progress;
 }
 
+.rh-export {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rh-export-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--med-muted);
+}
+
+.rh-export-buttons {
+  display: flex;
+  gap: 6px;
+}
+
 .rh-scope-banner {
   display: flex;
   align-items: center;

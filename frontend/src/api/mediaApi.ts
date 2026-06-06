@@ -771,6 +771,26 @@ export function getRepositoryHealth(
     .then((res) => res.data);
 }
 
+/**
+ * UC-4.12 Phase 7G: download a portable Dublin Core-aligned inventory export (csv|json).
+ * Returns the blob plus the server-provided filename.
+ */
+export function exportRepository(
+  format: "csv" | "json",
+  institutionId?: string | null,
+): Promise<{ blob: Blob; filename: string }> {
+  return api
+    .get("/media-repository/export", {
+      params: { format, ...(institutionId ? { institutionId } : {}) },
+      responseType: "blob",
+    })
+    .then((res) => {
+      const disposition = (res.headers as Record<string, string>)["content-disposition"] ?? "";
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      return { blob: res.data as Blob, filename: match?.[1] ?? `media-inventory.${format}` };
+    });
+}
+
 export function deleteMediaAsset(id: string, force = false) {
   return api.delete<void>(`/media-assets/${id}`, { params: force ? { force: true } : undefined });
 }

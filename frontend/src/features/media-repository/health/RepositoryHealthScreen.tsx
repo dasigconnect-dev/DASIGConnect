@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listInstitutions, type InstitutionResponse } from "../../../api/authApi";
+import { exportRepository } from "../../../api/mediaApi";
+import { useToast } from "../../../context/ToastContext";
 import type { User } from "../../../types/auth.types";
 import "../../../styles/repository-health.css";
 import HealthSection from "./components/HealthSection";
@@ -40,11 +42,33 @@ function countTone(n: number, danger = false): MetricTone {
 const mediaLink = (health: string) => `/media-repository?health=${health}`;
 
 export default function RepositoryHealthScreen({ user }: RepositoryHealthScreenProps) {
+  const toast = useToast();
   const isAdmin = user.role === "admin";
   const [institutionId, setInstitutionId] = useState<string | null>(null);
   const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
+  const [exporting, setExporting] = useState(false);
 
   const { data, loading, error, refresh } = useRepositoryHealth(institutionId, true);
+
+  async function handleExport(format: "csv" | "json") {
+    setExporting(true);
+    try {
+      const { blob, filename } = await exportRepository(format, institutionId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast.success(`Inventory exported (${format.toUpperCase()}).`);
+    } catch {
+      toast.error("Could not export the inventory.");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -93,6 +117,17 @@ export default function RepositoryHealthScreen({ user }: RepositoryHealthScreenP
               </select>
             </label>
           )}
+          <div className="rh-export">
+            <span className="rh-export-label">Export</span>
+            <div className="rh-export-buttons">
+              <button type="button" className="rh-refresh" onClick={() => void handleExport("csv")} disabled={exporting}>
+                CSV
+              </button>
+              <button type="button" className="rh-refresh" onClick={() => void handleExport("json")} disabled={exporting}>
+                JSON
+              </button>
+            </div>
+          </div>
           <button
             type="button"
             className="rh-refresh"

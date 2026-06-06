@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.repository;
 
 import com.dasigconnect.backend.model.entity.MediaAssetRights;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,4 +18,7 @@ public interface MediaAssetRightsRepository extends JpaRepository<MediaAssetRigh
     Optional<MediaAssetRights> findByAssetIdAndInstitutionId(
             @Param("assetId") UUID assetId,
             @Param("institutionId") UUID institutionId);
+
+    /** Batch lookup for the UC-4.12 Phase 7G inventory export. */
+    List<MediaAssetRights> findByAssetIdIn(java.util.Collection<UUID> assetIds);
 }

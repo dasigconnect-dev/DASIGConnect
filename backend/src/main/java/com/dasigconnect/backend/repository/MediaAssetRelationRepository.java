@@ -33,4 +33,8 @@ public interface MediaAssetRelationRepository extends JpaRepository<MediaAssetRe
     /** Forward edge targets (children) of a node — used for bounded cycle detection. */
     @Query("SELECT r.childAssetId FROM MediaAssetRelation r WHERE r.parentAssetId = :parentId")
     List<UUID> findChildIds(@Param("parentId") UUID parentId);
+
+    /** All lineage edges in scope (null institution = network) for the Phase 7G export. */
+    @Query("SELECT r FROM MediaAssetRelation r WHERE (:institutionId IS NULL OR r.institutionId = :institutionId)")
+    List<MediaAssetRelation> findForExport(@Param("institutionId") UUID institutionId);
 }
