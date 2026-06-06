@@ -1,0 +1,227 @@
+/* UC-4.12 Phase 7F — Duplicate Review workspace. Reuses the --med-* token system. */
+
+.dup-screen {
+  font-family: var(--med-ff-body);
+  color: var(--med-text);
+  background: var(--med-surface-1);
+  min-height: calc(100vh - var(--med-nav-h));
+  padding: 28px clamp(16px, 4vw, 48px) 64px;
+  box-sizing: border-box;
+}
+
+.dup-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+
+.dup-back {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--med-blue);
+  text-decoration: none;
+  margin-bottom: 8px;
+}
+
+.dup-back:hover { text-decoration: underline; }
+
+.dup-title {
+  font-family: var(--med-ff-display);
+  font-size: 26px;
+  line-height: 1.2;
+  margin: 0;
+  color: var(--med-navy-deep);
+}
+
+.dup-subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--med-text-2);
+  max-width: 64ch;
+}
+
+.dup-header-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.dup-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dup-scope-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--med-muted);
+}
+
+.dup-scope-select {
+  font-family: var(--med-ff-body);
+  font-size: 14px;
+  padding: 8px 10px;
+  min-height: 40px;
+  border: 1.5px solid var(--med-border);
+  border-radius: var(--med-radius-sm);
+  background: var(--med-surface-0);
+  color: var(--med-text);
+}
+
+.dup-state {
+  padding: 28px;
+  border: 1px solid var(--med-border);
+  border-radius: 12px;
+  background: var(--med-surface-0);
+  color: var(--med-text-2);
+  font-size: 14px;
+}
+
+.dup-state--error {
+  border-color: var(--med-error);
+  color: var(--med-error);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dup-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+.dup-card {
+  background: var(--med-surface-0);
+  border: 1px solid var(--med-border);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dup-card-head {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.dup-hamming {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--med-blue);
+  background: var(--med-blue-dim);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.dup-hamming.muted {
+  color: var(--med-muted);
+  background: var(--med-surface-1);
+}
+
+.dup-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.dup-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px;
+  border: 2px solid var(--med-border);
+  border-radius: 12px;
+  background: var(--med-surface-0);
+  cursor: pointer;
+  text-align: center;
+  font-family: var(--med-ff-body);
+}
+
+.dup-tile:disabled {
+  cursor: default;
+}
+
+.dup-tile.selected {
+  border-color: var(--med-blue);
+  background: var(--med-blue-dim);
+}
+
+.dup-tile--missing {
+  align-items: center;
+  justify-content: center;
+  color: var(--med-muted);
+  font-size: 12px;
+  border-style: dashed;
+  cursor: default;
+}
+
+.dup-tile-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--med-surface-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dup-tile-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dup-tile-fallback {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--med-muted);
+}
+
+.dup-tile-code {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--med-text);
+}
+
+.dup-tile-name {
+  font-size: 11px;
+  color: var(--med-text-2);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dup-tile-canonical {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--med-blue);
+}
+
+.dup-merge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--med-text-2);
+}
+
+.dup-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

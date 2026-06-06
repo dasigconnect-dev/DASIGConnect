@@ -119,6 +119,19 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Query("SELECT m FROM MediaAsset m WHERE m.institution.id = :institutionId AND m.deletedAt IS NULL ORDER BY m.createdAt DESC")
     List<MediaAsset> findActiveByInstitution(@Param("institutionId") UUID institutionId);
 
+    /**
+     * UC-4.12 Phase 7F: deterministic duplicate candidates (perceptual-hash flagged). A null
+     * institution aggregates network-wide for administrators.
+     */
+    @Query("""
+        SELECT m FROM MediaAsset m
+        WHERE m.duplicateOfId IS NOT NULL
+          AND m.deletedAt IS NULL
+          AND (:institutionId IS NULL OR m.institution.id = :institutionId)
+        ORDER BY m.createdAt DESC
+        """)
+    List<MediaAsset> findDuplicateCandidates(@Param("institutionId") UUID institutionId);
+
     @Query(value = """
         SELECT * FROM media_assets
         WHERE institution_id = :institutionId

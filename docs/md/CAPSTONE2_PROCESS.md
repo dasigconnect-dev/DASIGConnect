@@ -57,9 +57,9 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
 - Phase 5 Facebook insights remains the next dependency-ordered phase and is gated by Meta
   App Review for `read_insights`.
 - Phase 6 depends on the engagement data produced by Phase 5.
-- Phase 7A-7E are implemented; V34-V37 cover fixity, the integrity review workflow, rights
-  records, and lineage (7C added no migration). New uploads receive asynchronous SHA-256
-  verification; a bounded daily job backfills and rechecks due assets; new/changed failures
+- Phase 7A-7F are implemented; V34-V38 cover fixity, the integrity review workflow, rights
+  records, lineage, and duplicate review (7C added no migration). New uploads receive asynchronous
+  SHA-256 verification; a bounded daily job backfills and rechecks due assets; new/changed failures
   notify validators and administrators.
 - The shared Asset Detail sidebar includes recent check history, manual recheck,
   validator/admin acknowledgement, replacement-upload handoff, an editable rights/consent
@@ -74,8 +74,13 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
 - Phase 7E adds asset lineage (`GET|POST /api/v1/media-assets/{id}/relations`): originals stay
   immutable and versions/derivatives are separate linked assets; the service rejects self-links,
   cross-institution links, duplicates, and cycles.
-- Pull Phase 7F next while waiting on Meta: duplicate review workspace. The full plan is in
-  `CAPSTONE2_PHASE7_PLAN.md`.
+- Phase 7F adds the duplicate review workspace (`GET /api/v1/media-duplicates`,
+  `POST /api/v1/media-duplicates/{candidateId}/decision`): side-by-side candidates with Hamming
+  distance, mark-duplicate/keep-both/not-duplicate, canonical selection, optional tag merge,
+  append-only and never auto-deleting. **D1's ≥50-pair human-verified set is still outstanding** —
+  this workspace is the tool to produce it; do not fabricate those labels.
+- Pull Phase 7G next while waiting on Meta: Dublin Core standards mapping + CSV/JSON export (the
+  final preservation slice). The full plan is in `CAPSTONE2_PHASE7_PLAN.md`.
 
 ## 2. Standing — sanctioned advance development
 
@@ -125,7 +130,7 @@ is safe and so a future document submission is a formality rather than a rewrite
 >   for the screen slice). This is part of every vertical slice.
 
 - **Branch per UC**, PR into the integration branch; keep the mainline releasable.
-- **Migrations:** Flyway only; the next free version is currently **V38**. Never reuse a
+- **Migrations:** Flyway only; the next free version is currently **V39**. Never reuse a
   version number. Add columns
   nullable-then-backfill; never a default that hides existing READY assets. Watch the
   `visibility` backfill landmine (grandfather existing assets to `cleared_for_public`).

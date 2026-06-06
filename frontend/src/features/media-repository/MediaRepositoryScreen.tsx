@@ -1075,6 +1075,19 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
                   Repository Health
                 </button>
               )}
+              {user.role !== "contributor" && (
+                <button
+                  className="med-btn med-btn-ghost med-btn-sm"
+                  onClick={() => navigate("/media-repository/duplicates")}
+                  type="button"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="11" height="11" rx="2" />
+                    <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+                  </svg>
+                  Duplicate Review
+                </button>
+              )}
               <button
                 className="med-btn med-btn-ghost med-btn-sm"
                 onClick={() => navigate("/media-albums")}

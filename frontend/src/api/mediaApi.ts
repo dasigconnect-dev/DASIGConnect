@@ -634,6 +634,64 @@ export function putAssetRights(id: string, payload: MediaAssetRightsUpdate): Pro
   return api.put<MediaAssetRights>(`/media-assets/${id}/rights`, payload).then((res) => res.data);
 }
 
+/* ===== UC-4.12 Phase 7F: Duplicate review ===== */
+
+export type DuplicateDecision = "duplicate" | "keep_both" | "not_duplicate";
+
+export interface DuplicateAssetSummary {
+  id: string;
+  assetCode: string;
+  storageUrl: string;
+  fileName: string;
+  title?: string | null;
+  fileType: string;
+  createdAt?: string;
+}
+
+export interface DuplicateCandidatePair {
+  candidateAssetId: string;
+  candidate: DuplicateAssetSummary;
+  compared: DuplicateAssetSummary | null;
+  hammingDistance: number | null;
+  decision: DuplicateDecision | null;
+  canonicalAssetId: string | null;
+  mergedTags: boolean;
+  reviewedAt: string | null;
+}
+
+export interface DuplicateDecisionResult {
+  reviewId: string;
+  candidateAssetId: string;
+  decision: DuplicateDecision;
+  canonicalAssetId: string | null;
+  mergedTags: boolean;
+  reviewedAt: string | null;
+}
+
+export function getDuplicateCandidates(
+  params?: { status?: "pending" | "reviewed"; institutionId?: string | null },
+  signal?: AbortSignal,
+): Promise<DuplicateCandidatePair[]> {
+  return api
+    .get<DuplicateCandidatePair[]>("/media-duplicates", {
+      params: {
+        status: params?.status ?? "pending",
+        ...(params?.institutionId ? { institutionId: params.institutionId } : {}),
+      },
+      signal,
+    })
+    .then((res) => res.data);
+}
+
+export function decideDuplicate(
+  candidateId: string,
+  payload: { decision: DuplicateDecision; canonicalAssetId?: string | null; mergeTags?: boolean },
+): Promise<DuplicateDecisionResult> {
+  return api
+    .post<DuplicateDecisionResult>(`/media-duplicates/${candidateId}/decision`, payload)
+    .then((res) => res.data);
+}
+
 /* ===== UC-4.12 Phase 7E: Versioning & lineage ===== */
 
 export type RelationType = "new_version" | "derived_from" | "replacement_for" | "component_of";

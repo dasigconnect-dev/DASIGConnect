@@ -33,6 +33,7 @@ import CalendarScreen from "../features/calendar/CalendarScreen";
 import ResolutionCenterScreen from "../features/resolution/ResolutionCenterScreen";
 import MediaRepositoryScreen from "../features/media-repository/MediaRepositoryScreen";
 import RepositoryHealthScreen from "../features/media-repository/health/RepositoryHealthScreen";
+import DuplicateReviewScreen from "../features/media-repository/duplicates/DuplicateReviewScreen";
 import AlbumsScreen from "../features/albums/AlbumsScreen";
 import NotificationsScreen from "../features/notifications/NotificationsScreen";
 import AnalyticsDashboardPage from "../features/analytics/AnalyticsDashboardPage";
@@ -769,6 +770,14 @@ function App() {
           element={
             <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator"]}>
               <RepositoryHealthScreen user={currentUser!} />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/media-repository/duplicates"
+          element={
+            <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator"]}>
+              <DuplicateReviewScreen user={currentUser!} />
             </ProtectedRoute>
           }
         />

@@ -245,7 +245,7 @@ export default function RepositoryHealthScreen({ user }: RepositoryHealthScreenP
                   value={formatNumber(data.governance.duplicateCandidates)}
                   tone={countTone(data.governance.duplicateCandidates)}
                   caption="Flagged by perceptual hash"
-                  to={data.governance.duplicateCandidates > 0 ? mediaLink("duplicates") : undefined}
+                  to={data.governance.duplicateCandidates > 0 ? "/media-repository/duplicates" : undefined}
                   toLabel="Review duplicates"
                 />
               </HealthSection>

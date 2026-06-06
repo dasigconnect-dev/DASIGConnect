@@ -161,7 +161,7 @@ zero silent checksum replacement, and zero cross-tenant health/history/export re
 ## 5. Architecture Additions
 
 All aligned to the backend guide: Controller→Service→Repository, DTOs only at the boundary,
-Flyway (next free version is **V38** after V37 `media_asset_relations`), RLS on every
+Flyway (next free version is **V39** after V38 `media_duplicate_reviews`), RLS on every
 institution-scoped table, short transactions, **no DB connection held across an external API
 or Supabase Storage call**, `@Async` / bounded executor for enrichment and fixity checks, and
 audit logging on state changes.
@@ -345,7 +345,7 @@ This is the planned **upgrade** of today's `AIRecommendationService.rankAsset()`
 | 4 | Caption prompt mode + best-N (UC-4.7); consent/safety flags; media audit trail (UC-4.11) | Low | Low | ✅ done (UC-4.7, visibility + submit gate, UC-4.11); `safety_verdict` flag optional/pending |
 | 5 | Facebook insights sync + engagement analytics (UC-4.8) | Med | **Med (App Review)** | ⬜ not started — next |
 | 6 | Engagement→media ranking (UC-4.9) + pre-submit advisor (UC-4.10) | Med | Med (cold-start) | ⬜ not started (depends on UC-4.8 data) |
-| 7 | Digital preservation + Repository Health (UC-4.12): fixity, rights, lineage, duplicate review, standards export | Med-High | Low-Med | Phase 7A-7E done (fixity, monitoring, Repository Health, rights, lineage); 7F duplicate review next |
+| 7 | Digital preservation + Repository Health (UC-4.12): fixity, rights, lineage, duplicate review, standards export | Med-High | Low-Med | Phase 7A-7F done (fixity, monitoring, Repository Health, rights, lineage, duplicate review); 7G standards export is the last slice (D1 human-labeling still outstanding) |
 | — | Collage builder (client-side canvas) | Low–Med | Low — slot anywhere | ⬜ optional |
 
 ---
@@ -446,7 +446,7 @@ A single results table: dataset version, the §4 target, the measured number, an
 | File fixity / integrity monitoring | 🟡 | **Phase 7A-7B implemented (2026-06-06).** V34 adds SHA-256 baselines and append-only history. V35 adds review ownership. New uploads queue checks after commit; a configurable job processes at most 25 due assets, prioritizes pending/failing records, and alerts validators/admins only on new or changed failures. The shared sidebar provides history, recheck, acknowledgement, and replacement-upload handoff. **Phase 7C added (2026-06-06):** tenant-scoped Repository Health dashboard at `GET /api/v1/media-repository/health` — one filtered aggregate query + short cache, metric tiles drilling into the Media Library via `?health=<key>`. Distinct from `perceptual_hash`. |
 | **Versioning / lineage** | ✅ | **Phase 7E implemented (2026-06-06).** V37 `media_asset_relations` (RLS); `GET\|POST /api/v1/media-assets/{id}/relations` (`MediaLineageService`, audited). Immutable originals — versions/derivatives are separate linked assets (`new_version`, `replacement_for`, `derived_from`, `component_of`), each keeping its own code/fixity/history. Self-links, cross-institution links, duplicate edges (409), and cycles (bounded forward BFS, 409) are rejected; lineage shown in a self-contained Asset Detail section. |
 | Rights metadata | ✅ | **Phase 7D implemented (2026-06-06).** V36 `media_asset_rights` (one record/asset, RLS); `GET\|PUT /api/v1/media-assets/{id}/rights` (`MediaRightsService`, audited); structured holder, basis, license/consent reference, permitted channels, restrictions, verification, and expiry, with derived `incomplete/expired/expiring_soon/cleared` states surfaced in an editable Asset Detail section. **Clearance gate enforced:** a new asset cannot transition to `cleared_for_public` without a complete, non-expired record (422); already-cleared assets grandfathered (ADR-0006). |
-| Duplicate adjudication | 🟡 | **Planned in UC-4.12 / Phase 7F.** Side-by-side human review, canonical selection, keep-both/not-duplicate decisions, optional metadata merge, no automatic deletion. |
+| Duplicate adjudication | ✅ | **Phase 7F implemented (2026-06-06).** V38 `media_duplicate_reviews` (append-only, RLS); `GET /api/v1/media-duplicates` + `POST /{candidateId}/decision` (`MediaDuplicateReviewService`, audited). Side-by-side candidates with explainable Hamming distance, canonical selection, `duplicate`/`keep_both`/`not_duplicate`, optional tag merge, reversible (latest decision wins), never auto-deletes. Dedicated `/media-repository/duplicates` workspace. **Outstanding:** D1's ≥50-pair human-verified labeling pass (a manual task this workspace enables, not fabricated). |
 | Metadata-standard mapping (Dublin Core/PREMIS) | 🟡 | **Planned in UC-4.12 / Phase 7G.** Dublin Core-aligned CSV/JSON inventory export; PREMIS concepts limited honestly to fixity and preservation-event history. |
 
 ### 10.3 Shortest path to defensibly "digital"
