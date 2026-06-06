@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { listMediaAssets, type MediaAsset } from "../../../api/mediaApi";
+import { listAllMediaAssets, type MediaAsset } from "../../../api/mediaApi";
 
 interface ApiError {
   name?: string;
@@ -50,8 +50,8 @@ export function useMediaAssets(
       }
       setLoading(true);
       setError("");
-      return listMediaAssets({ networkView, institutionId, health }, signal)
-        .then((response) => setAssets(Array.isArray(response.data) ? response.data : []))
+      return listAllMediaAssets({ networkView, institutionId, health }, signal)
+        .then((items) => setAssets(Array.isArray(items) ? items : []))
         .catch((err: unknown) => {
           if (isCanceledError(err)) return;
           setError(getErrorMessage(err, "Unable to load media assets."));

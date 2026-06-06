@@ -191,6 +191,44 @@ export function listMediaAssets(
     }));
 }
 
+/**
+ * Loads the FULL active library for the browse grid by paging through the list endpoint
+ * (which caps each page at 100). The grid filters folders/tags client-side, so it needs the
+ * complete set rather than just the first page (otherwise only the first 25 ever show).
+ */
+export async function listAllMediaAssets(
+  params?: { networkView?: boolean; institutionId?: string | null; health?: string | null },
+  signal?: AbortSignal,
+): Promise<MediaAsset[]> {
+  const scope = params?.networkView ? "network" : undefined;
+  const institutionId = params?.institutionId ?? undefined;
+  const health = params?.health ?? undefined;
+  const pageSize = 100;
+  const all: MediaAsset[] = [];
+  let page = 1;
+  // Safety cap: 100 pages = 10k assets — far beyond realistic per-institution libraries.
+  while (page <= 100) {
+    const res = await api.get<MediaAssetPageResponse>("/media-assets", {
+      params: {
+        ...(scope ? { scope } : {}),
+        ...(institutionId ? { institutionId } : {}),
+        ...(health ? { health } : {}),
+        page,
+        pageSize,
+      },
+      signal,
+    });
+    const items = res.data.items ?? [];
+    all.push(...items.map(rawToAsset));
+    const total = res.data.totalCount ?? all.length;
+    if (items.length < pageSize || all.length >= total) {
+      break;
+    }
+    page += 1;
+  }
+  return all;
+}
+
 export async function searchMediaAssets(
   params: MediaAssetSearchParams = {},
   signal?: AbortSignal
