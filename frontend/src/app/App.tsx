@@ -140,7 +140,9 @@ function App() {
     const savedUser = localStorage.getItem("dasigconnect_user");
 
     if (!savedToken || !savedUser) {
-      setAuthReady(true);
+      queueMicrotask(() => {
+        if (active) setAuthReady(true);
+      });
       return () => {
         active = false;
       };
@@ -176,23 +178,27 @@ function App() {
     if (!isPasswordResetPath(location.pathname)) return;
     const params = new URLSearchParams(location.search);
     const token = params.get("token");
-    setResetToken(token);
-    setResetError(token ? "" : "Reset token is missing or invalid.");
-    setResetSuccess(false);
-    setResetPassword("");
-    setResetConfirmPassword("");
+    queueMicrotask(() => {
+      setResetToken(token);
+      setResetError(token ? "" : "Reset token is missing or invalid.");
+      setResetSuccess(false);
+      setResetPassword("");
+      setResetConfirmPassword("");
+    });
   }, [location.pathname, location.search]);
 
   useEffect(() => {
     if (location.pathname !== "/invite") return;
     const params = new URLSearchParams(location.search);
     const token = params.get("token") || params.get("inviteToken");
-    if (token) {
-      setInviteToken(token);
-      void validateInviteToken(token);
-    } else {
-      setInviteState("expired");
-    }
+    queueMicrotask(() => {
+      if (token) {
+        setInviteToken(token);
+        void validateInviteToken(token);
+      } else {
+        setInviteState("expired");
+      }
+    });
   }, [location.pathname, location.search]);
 
   useEffect(() => {
@@ -922,7 +928,7 @@ function isValidProfileName(value: string) {
   return (
     normalized.length >= 1 &&
     normalized.length <= 100 &&
-    /^[\p{L}][\p{L} '\-]*$/u.test(normalized)
+    /^[\p{L}][\p{L} '-]*$/u.test(normalized)
   );
 }
 
