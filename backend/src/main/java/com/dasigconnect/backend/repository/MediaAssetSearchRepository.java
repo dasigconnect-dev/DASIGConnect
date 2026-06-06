@@ -228,6 +228,24 @@ public class MediaAssetSearchRepository {
                 FROM media_folders f
                 WHERE (:networkScope = TRUE OR f.institution_id = :institutionId)
                   AND lower(f.name) LIKE :like
+
+                UNION ALL
+                -- Short snippet from the Claude description: a ~6-word window around the match,
+                -- trimmed to whole words (leading/trailing partial words removed). Always a
+                -- contains-match (rank 2); kept noisiest so it only fills leftover slots.
+                SELECT d.snippet AS text, 'description' AS type, 2 AS rank
+                FROM (
+                    SELECT trim(regexp_replace(
+                               substring(ma.ai_description
+                                   FROM greatest(1, position(:q IN lower(ma.ai_description)) - 12)
+                                   FOR 48),
+                               '^\\S*\\s|\\s\\S*$', '', 'g')) AS snippet
+                    FROM media_assets ma
+                    WHERE ma.deleted_at IS NULL AND ma.ai_description IS NOT NULL
+                      AND (:networkScope = TRUE OR ma.institution_id = :institutionId)
+                      AND lower(ma.ai_description) LIKE :like
+                ) d
+                WHERE d.snippet <> '' AND lower(d.snippet) LIKE :like
             ) candidates
             GROUP BY text, type
             ORDER BY rank ASC,
@@ -238,7 +256,8 @@ public class MediaAssetSearchRepository {
                          WHEN 'keyword' THEN 3
                          WHEN 'file' THEN 4
                          WHEN 'uploader' THEN 5
-                         ELSE 6
+                         WHEN 'description' THEN 6
+                         ELSE 7
                      END,
                      text ASC
             LIMIT :limit

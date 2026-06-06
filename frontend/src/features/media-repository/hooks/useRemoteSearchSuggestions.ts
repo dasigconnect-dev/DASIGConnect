@@ -3,7 +3,7 @@ import { useDebouncedValue } from "./useDebouncedValue";
 import { mergeServerSuggestions, typeLabelFor, type Suggestion, type SuggestionType } from "../searchSuggestions";
 import type { RemoteSuggestion } from "../../../api/mediaApi";
 
-const KNOWN_TYPES: SuggestionType[] = ["tag", "keyword", "file", "uploader", "collection", "folder"];
+const KNOWN_TYPES: SuggestionType[] = ["tag", "keyword", "description", "file", "uploader", "collection", "folder"];
 
 function toSuggestion(raw: RemoteSuggestion): Suggestion {
   const type = (KNOWN_TYPES as string[]).includes(raw.type) ? (raw.type as SuggestionType) : "tag";
