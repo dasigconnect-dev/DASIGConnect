@@ -178,7 +178,7 @@ The AI-assisted features are limited to: (a) on-demand caption suggestion via th
 
 The notification system covers 17 defined trigger events delivered via in-app Server-Sent Events and SMTP email for applicable triggers. The analytics dashboard covers role-scoped KPIs relevant to posting timeliness, content completeness, workflow health, and AI feature adoption.
 
-The system does not include integration with social media platforms other than the DASIG official Facebook page. Facebook API integration uses Page Access Tokens with the permissions `pages_manage_posts`, `pages_read_engagement`, and `pages_show_list`. Full public post visibility is contingent on the completion of Meta Business Verification by the DASIG organization and the transition of the application to Live mode on the Meta Developer Platform, which falls outside the scope of this capstone project. The codebase requires no changes to support this transition.
+The system does not include integration with social media platforms other than the DASIG official Facebook page. Facebook API integration uses Page Access Tokens with the permissions `pages_manage_posts`, `pages_read_engagement`, `pages_show_list`, and `read_insights` for post publishing, engagement reads, managed-page lookup, and Facebook insights. Full public post visibility is contingent on the completion of Meta Business Verification by the DASIG organization and the transition of the application to Live mode on the Meta Developer Platform, which falls outside the scope of this capstone project. The codebase requires no changes to support this transition.
 
 ### Limitations
 

@@ -193,8 +193,9 @@ export default function SystemAuditTab({ refreshSignal, onIssueCount, tokenSecti
           <span>
             Clicking <strong>Re-Authenticate</strong> opens the Meta OAuth flow in a new tab.
             After authorizing, the server automatically exchanges the code for a long-lived
-            Page Access Token. Daily health checks and automated publishing resume immediately
-            upon successful reauthorization.
+            Page Access Token with publishing, engagement, managed-page lookup, and insights
+            scopes. Daily health checks and automated publishing resume immediately upon
+            successful reauthorization.
           </span>
         </div>
       </section>

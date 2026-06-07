@@ -322,7 +322,7 @@ This is the planned **upgrade** of today's `AIRecommendationService.rankAsset()`
 
 | Risk | Reality | Mitigation |
 |---|---|---|
-| **Meta App Review** for `read_insights` (reach/impressions) | `pages_read_engagement` (reactions/comments/shares) is *already* in your permission set. Reach/impressions need `read_insights` + review for public use. | In **Development mode**, admins/devs/testers of the app can read insights for pages they manage — sufficient for the capstone on the DASIG page. Build engagement metrics first; treat reach/impressions as "best effort / future." State the review gate explicitly (consistent with the proposal's existing Dev-mode limitation). |
+| **Meta App Review** for `read_insights` (reach/impressions) | `pages_read_engagement` (reactions/comments/shares) is already available, and `read_insights` has now been added in Facebook Developers. | Re-authorize the Page token through the backend OAuth flow and confirm the refreshed token includes `read_insights`. In Development mode, admins/devs/testers of the app can read insights for pages they manage — sufficient for the capstone on the DASIG page. Build engagement metrics first, then include reach/impressions when token validation confirms the scope. |
 | Insight metric deprecation | Meta periodically deprecates granular insight metrics. | Reactions/comments/shares are stable; degrade gracefully on missing metrics. |
 | AI cost / rate limits | More Claude + Voyage calls. | Bounded queue, batched embeddings, caching, per-institution budget, metadata-only fallback. |
 | Render / Supabase free-tier | Memory + 5-connection pool. | Bounded queue is exactly the fix; never hold connections across external calls. |
@@ -333,8 +333,8 @@ This is the planned **upgrade** of today's `AIRecommendationService.rankAsset()`
 ## 7. Suggested Phasing
 
 > **Status (2026-06-06):** Phases 1-4 are implemented locally on the dev project.
-> **Next dependency-ordered phase: 5 (UC-4.8 Facebook insights)** — start Meta App Review for
-> `read_insights`. Phase 7A-7B are complete; Phase 7C preservation work may proceed while
+> **Next dependency-ordered phase: 5 (UC-4.8 Facebook insights)** — `read_insights` has been added;
+> re-authorize and validate the Page token before syncing reach/impressions. Phase 7A-7B are complete; Phase 7C preservation work may proceed while
 > that external review is pending.
 
 | Phase | Items | Effort | Risk | Status |

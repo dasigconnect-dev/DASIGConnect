@@ -54,8 +54,9 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
   and search feedback; D2 Recall@3 is recorded as 1.0.
 - Phase 4 delivers best-N caption support, visibility/consent gating, submission enforcement,
   and the media audit-history surface. `safety_verdict` remains optional.
-- Phase 5 Facebook insights remains the next dependency-ordered phase and is gated by Meta
-  App Review for `read_insights`.
+- Phase 5 Facebook insights remains the next dependency-ordered phase. `read_insights` has been
+  added in Facebook Developers; the backend OAuth flow now requests it, so the next operational
+  step is re-authorizing the Page token and confirming the refreshed token includes the scope.
 - Phase 6 depends on the engagement data produced by Phase 5.
 - Phase 7A-7G are **all implemented** — UC-4.12 is feature complete. V34-V38 cover fixity, the
   integrity review workflow, rights records, lineage, and duplicate review (7C and 7G added no
@@ -84,8 +85,9 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
   provenance/lifecycle fields, audited; it omits storage URLs/credentials and is tenant-scoped.
 - **UC-4.12 (Phase 7) is feature complete.** Remaining preservation work is non-code: the D1
   human-verified duplicate set and browser E2E after V34-V38 are applied to the dev database. With
-  Phase 7 done, the dependency-ordered next code phase is **Phase 5 (UC-4.8 Facebook insights)**,
-  still gated by Meta App Review for `read_insights`.
+  Phase 7 done, the dependency-ordered next code phase is **Phase 5 (UC-4.8 Facebook insights)**.
+  `read_insights` is now part of the Facebook app setup; implementation should verify the refreshed
+  Page token before syncing reach/impression metrics.
 
 ### Media Library UX hardening - 2026-06-07
 
