@@ -110,6 +110,18 @@ These are UC-2.2 Media Library polish items added on top of Phase 7, all on
   Restore or Delete-forever items in their trash. Restore is lossless — soft-delete no longer drops
   embeddings (removed only at purge). Trash lives in the Media Library **left sidebar**
   (`FolderSidebar`), not the header.
+- **Bulk selection and progress UX.** Any page that supports multi-select now exposes **Select all**
+  after the first selected item: Media Library, Collection contents, Trash, Submit Content's library
+  picker, AI Suggestions, and the prompt Collection Builder. Upload and delete flows show animated
+  busy dots plus live completed/total and remaining counts while files/assets are processed.
+- **Delete-all safety for used media.** Media Library and Collection bulk delete now process assets
+  one at a time. A normal delete still returns 409 when an asset is referenced by draft, pending,
+  in-review, scheduled, or otherwise active submission records. The frontend pauses the queue on that
+  asset and asks **Skip and continue** or **Force delete and continue**. Force retries with
+  `force=true`, writes the force flag to audit metadata, and warns that affected submissions may show
+  missing media, fail validation/publishing, and require replacement. Trash **Delete forever** remains
+  an immediate permanent purge path, not a skip/force path, because the item is already outside the
+  active Media Library.
 - **Shared sub-page top nav.** `MediaSubNav` gives Trash, Duplicate Review, and Repository Health a
   consistent top bar (Back + logo + `Media Library > {page}` breadcrumb + role/avatar); it also
   imports `media-repository.css` so a direct load of a sub-page ships the `--med-*` tokens.

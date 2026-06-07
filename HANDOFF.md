@@ -1,3 +1,23 @@
+# Handoff - 2026-06-07
+
+## Latest Pushed Work
+
+- Commit pushed to `origin/capstone2-advance-development`: `ea18b8e Improve bulk media deletion flows`.
+- Repo was clean and synced after push.
+- Multi-select pages now show **Select all** after one item is selected: Media Library, Collection contents, Trash, Submit Content library picker, AI Suggestions, and prompt Collection Builder.
+- Upload and delete flows show animated dots plus live completed/total and remaining counts.
+- Media Library bulk delete now processes assets one by one. If an asset is used by a draft, pending, in-review, scheduled, or active submission, the UI pauses and asks the user to skip it or force-delete it.
+- Force delete retries with `force=true`, records the force flag in audit metadata, and warns that affected submissions can show missing media or fail validation/publishing until replacement media is attached.
+- Trash delete is different: deleting from Trash is permanent purge. It does not ask skip/force because the asset has already been soft-deleted from the active library.
+
+## Latest Verification
+
+- `npm.cmd run build` in `frontend`: passed.
+- Focused frontend ESLint on changed media/delete files: passed.
+- `.\mvnw.cmd test "-Dtest=MediaAssetServiceTest,MediaAssetControllerTest"`: passed.
+
+---
+
 # Handoff - 2026-05-29 (Session 10)
 
 ## What Was Done This Session

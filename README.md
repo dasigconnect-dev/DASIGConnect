@@ -52,6 +52,7 @@ A web-based **Social Media Content Workflow and Scheduling Management System** t
 ### Module 2 — Validation Workflow, Notifications & Analytics
 - Admin validation interface: Approve / Request Revision (with remarks) / Reject
 - Centralized **media repository** — search by filename, tag, uploader; one-click "Use in new post" reuse
+- Media Library bulk actions with **Select all**, queued upload/delete progress, Trash restore/delete-forever, and a skip-or-force prompt when deleting media still used by draft, pending, or active submissions
 - **Email notifications** within 5 minutes of any submission status change
 - **Real-time in-app notifications** via Server-Sent Events (SSE) within 30 seconds of state change
 - Analytics dashboard: posting frequency, submission-to-publish duration, content completeness rate
