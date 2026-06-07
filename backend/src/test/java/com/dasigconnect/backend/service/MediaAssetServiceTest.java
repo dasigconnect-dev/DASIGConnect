@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.service;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -253,6 +254,61 @@ class MediaAssetServiceTest {
         mediaAssetService.bulkDelete(dto, user(UUID.randomUUID(), "admin", null));
 
         verify(mediaAssetRepository).saveAll(List.of(first, second));
+    }
+
+    @Test
+    void bulkDelete_skipsAssetReferencedByActiveSubmission() {
+        UUID okId = UUID.randomUUID();
+        UUID blockedId = UUID.randomUUID();
+        MediaAsset ok = asset(okId, UUID.randomUUID(), UUID.randomUUID());
+        MediaAsset blocked = asset(blockedId, UUID.randomUUID(), UUID.randomUUID());
+        when(mediaAssetRepository.findActiveById(okId)).thenReturn(Optional.of(ok));
+        when(mediaAssetRepository.findActiveById(blockedId)).thenReturn(Optional.of(blocked));
+        when(submissionMediaAssetRepository.countBlockingSubmissionsByAssetId(okId)).thenReturn(0L);
+        when(submissionMediaAssetRepository.countBlockingSubmissionsByAssetId(blockedId)).thenReturn(1L);
+        MediaAssetBulkDeleteRequestDto dto = new MediaAssetBulkDeleteRequestDto();
+        dto.setAssetIds(List.of(okId, blockedId));
+
+        var response = mediaAssetService.bulkDelete(dto, user(UUID.randomUUID(), "admin", null));
+
+        verify(mediaAssetRepository).saveAll(List.of(ok));
+        assertEquals(List.of(okId), response.getDeletedIds());
+        assertEquals(1, response.getSkippedCount());
+        assertEquals(blockedId, response.getSkipped().get(0).assetId());
+        assertEquals("in_use", response.getSkipped().get(0).reason());
+    }
+
+    @Test
+    void bulkDelete_skipsMissingAsset() {
+        UUID okId = UUID.randomUUID();
+        UUID missingId = UUID.randomUUID();
+        MediaAsset ok = asset(okId, UUID.randomUUID(), UUID.randomUUID());
+        when(mediaAssetRepository.findActiveById(okId)).thenReturn(Optional.of(ok));
+        when(mediaAssetRepository.findActiveById(missingId)).thenReturn(Optional.empty());
+        MediaAssetBulkDeleteRequestDto dto = new MediaAssetBulkDeleteRequestDto();
+        dto.setAssetIds(List.of(okId, missingId));
+
+        var response = mediaAssetService.bulkDelete(dto, user(UUID.randomUUID(), "admin", null));
+
+        verify(mediaAssetRepository).saveAll(List.of(ok));
+        assertEquals(1, response.getSkippedCount());
+        assertEquals("missing", response.getSkipped().get(0).reason());
+    }
+
+    @Test
+    void bulkDelete_allBlocked_deletesNothing() {
+        UUID blockedId = UUID.randomUUID();
+        MediaAsset blocked = asset(blockedId, UUID.randomUUID(), UUID.randomUUID());
+        when(mediaAssetRepository.findActiveById(blockedId)).thenReturn(Optional.of(blocked));
+        when(submissionMediaAssetRepository.countBlockingSubmissionsByAssetId(blockedId)).thenReturn(2L);
+        MediaAssetBulkDeleteRequestDto dto = new MediaAssetBulkDeleteRequestDto();
+        dto.setAssetIds(List.of(blockedId));
+
+        var response = mediaAssetService.bulkDelete(dto, user(UUID.randomUUID(), "admin", null));
+
+        verify(mediaAssetRepository, never()).saveAll(any());
+        assertTrue(response.getDeletedIds().isEmpty());
+        assertEquals(1, response.getSkippedCount());
     }
 
     @Test

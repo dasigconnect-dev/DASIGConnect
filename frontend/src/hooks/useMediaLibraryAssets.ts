@@ -20,6 +20,7 @@ export interface UseMediaLibraryAssetsReturn {
   retry: () => void;
   selectedIds: string[];
   toggleSelect: (id: string) => void;
+  selectMany: (ids: Iterable<string>) => void;
   clearSelection: () => void;
 }
 
@@ -92,6 +93,10 @@ export function useMediaLibraryAssets(): UseMediaLibraryAssetsReturn {
     setSelectedIds([]);
   }
 
+  function selectMany(ids: Iterable<string>) {
+    setSelectedIds((prev) => [...new Set([...prev, ...ids])]);
+  }
+
   return {
     assets,
     loading,
@@ -108,6 +113,7 @@ export function useMediaLibraryAssets(): UseMediaLibraryAssetsReturn {
     retry,
     selectedIds,
     toggleSelect,
+    selectMany,
     clearSelection,
   };
 }

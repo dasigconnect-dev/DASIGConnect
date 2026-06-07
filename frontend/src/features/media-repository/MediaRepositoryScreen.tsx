@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { MediaAsset, MediaUsage } from "../../api/mediaApi";
 import {
-  bulkDeleteMediaAssets,
   bulkMoveAssets,
   changeAssetVisibility,
   createAssetRelation,
@@ -68,6 +67,15 @@ interface ConfirmState {
   dangerous?: boolean;
   onConfirm: () => void;
 }
+
+type UsedMediaDeleteDecision = "skip" | "force";
+
+interface UsedMediaPromptState {
+  asset: MediaAsset;
+  index: number;
+  total: number;
+  resolve: (decision: UsedMediaDeleteDecision) => void;
+}
 import "../../styles/media-repository.css";
 import "../../styles/folders.css";
 
@@ -82,6 +90,10 @@ function isConflict(error: unknown) {
   return (error as { response?: { status?: number } }).response?.status === 409;
 }
 
+function isDeleteConflict(error: unknown) {
+  return errorStatus(error) === 409;
+}
+
 function safeFileName(fileName: string) {
   return fileName.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
@@ -89,6 +101,43 @@ function safeFileName(fileName: string) {
 function fileTypeFromFile(file: File) {
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   return ext === "jpg" ? "jpeg" : ext;
+}
+
+function errorStatus(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  return (error as { response?: { status?: number } }).response?.status;
+}
+
+function backendMessage(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const data = (error as { response?: { data?: unknown } }).response?.data;
+  if (typeof data === "string") return data;
+  if (data && typeof data === "object") {
+    const d = data as { message?: string; error?: string };
+    return d.message || d.error;
+  }
+  return undefined;
+}
+
+// Map a delete failure to an accurate, actionable message instead of always blaming
+// active submissions. `bulk` tweaks the wording for multi-asset deletes.
+function deleteErrorMessage(error: unknown, bulk: boolean): string {
+  const status = errorStatus(error);
+  const subject = bulk ? "One or more selected assets are" : "This asset is";
+  if (status === 409) {
+    return `${subject} referenced by a pending, in-review, or scheduled submission and can't be deleted. Deselect those and try again.`;
+  }
+  if (status === 404) {
+    return bulk
+      ? "Some selected items are no longer in the library — refreshing the list."
+      : "This item is no longer in the library — refreshing the list.";
+  }
+  if (status === 403) {
+    return bulk
+      ? "You don't have permission to delete one or more of the selected assets."
+      : "You don't have permission to delete this asset.";
+  }
+  return backendMessage(error) || "Failed to delete. Please try again.";
 }
 
 // PUT the file straight to Supabase using XHR so we can report real upload
@@ -214,6 +263,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     selected: checkedIds,
     toggle: toggleCheck,
     clear: clearSelection,
+    setSelection,
   } = usePersistentSelection("dasigconnect:media-selection");
 
   // Always start with an empty selection when the page mounts.
@@ -249,6 +299,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [blockingUsages, setBlockingUsages] = useState<MediaUsage[]>([]);
   const [warningUsages, setWarningUsages] = useState<MediaUsage[]>([]);
   const [deleting, setDeleting] = useState(false);
+  const [deleteProgress, setDeleteProgress] = useState({ total: 0, completed: 0 });
+  const [usedMediaPrompt, setUsedMediaPrompt] = useState<UsedMediaPromptState | null>(null);
 
   const tagChips = useMemo(() => {
     const counts = new Map<string, number>();
@@ -448,6 +500,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   // Compiler can't prove stable — let it auto-memoize rather than a manual useMemo it rejects.
   const selectedAssets = assetPool.filter((a) => checkedIds.has(a.id));
   const selectionMode = checkedIds.size > 0;
+  const allVisibleSelected = gridAssets.length > 0 && gridAssets.every((asset) => checkedIds.has(asset.id));
   const canBulkDelete = selectedAssets.length > 0 && selectedAssets.every(canDeleteAsset);
   const latestReviewBatchId = latestUploadBatchId
     ?? [...assets]
@@ -514,6 +567,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   function clearChecked() {
     clearSelection();
     closePanel();
+  }
+
+  function selectAllVisible() {
+    setSelection(new Set([...checkedIds, ...gridAssets.map((asset) => asset.id)]));
   }
 
   // Deselects a single asset by ID and keeps panel state consistent:
@@ -1005,33 +1062,104 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     navigate("/dashboard", { replace: true });
   }
 
+  function askUsedMediaDeleteDecision(asset: MediaAsset, index: number, total: number) {
+    return new Promise<UsedMediaDeleteDecision>((resolve) => {
+      setUsedMediaPrompt({ asset, index, total, resolve });
+    });
+  }
+
+  function resolveUsedMediaPrompt(decision: UsedMediaDeleteDecision) {
+    const prompt = usedMediaPrompt;
+    if (!prompt) return;
+    setUsedMediaPrompt(null);
+    prompt.resolve(decision);
+  }
+
   async function handleConfirmDelete() {
     if (!deleteAsset) return;
-    setDeleting(true);
-    try {
-      const ids = deleteAssets.length > 0 ? deleteAssets.map((asset) => asset.id) : [deleteAsset.id];
-      if (ids.length > 1) {
-        await bulkDeleteMediaAssets(ids, true);
-      } else {
-        await deleteMediaAsset(deleteAsset.id, deleteTier === "warning");
-      }
-      setAssets((prev) => prev.filter((a) => !ids.includes(a.id)));
-      ids.forEach((id) => {
-        if (checkedIds.has(id)) toggleCheck(id);
+    const assetsToDelete = deleteAssets.length > 0 ? deleteAssets : [deleteAsset];
+    const bulk = assetsToDelete.length > 1;
+    const deletedIds: string[] = [];
+    const skippedIds: string[] = [];
+    const failedIds: string[] = [];
+    let refreshAfterDelete = false;
+
+    const markProcessed = () => {
+      setDeleteProgress({
+        total: assetsToDelete.length,
+        completed: deletedIds.length + skippedIds.length + failedIds.length,
       });
-      if (selectedAsset && ids.includes(selectedAsset.id)) closePanel();
+    };
+
+    const markDeleted = (asset: MediaAsset) => {
+      deletedIds.push(asset.id);
+      setAssets((prev) => prev.filter((a) => a.id !== asset.id));
+      if (checkedIds.has(asset.id)) toggleCheck(asset.id);
+      if (selectedAsset && selectedAsset.id === asset.id) closePanel();
+      markProcessed();
+    };
+
+    setDeleting(true);
+    setDeleteProgress({ total: assetsToDelete.length, completed: 0 });
+    try {
+      for (let i = 0; i < assetsToDelete.length; i += 1) {
+        const asset = assetsToDelete[i];
+        try {
+          await deleteMediaAsset(asset.id, false);
+          markDeleted(asset);
+          continue;
+        } catch (err) {
+          if (!isDeleteConflict(err)) {
+            failedIds.push(asset.id);
+            refreshAfterDelete ||= errorStatus(err) === 404;
+            markProcessed();
+            continue;
+          }
+        }
+
+        const decision = await askUsedMediaDeleteDecision(asset, i + 1, assetsToDelete.length);
+        if (decision === "skip") {
+          skippedIds.push(asset.id);
+          markProcessed();
+          continue;
+        }
+
+        try {
+          await deleteMediaAsset(asset.id, true);
+          markDeleted(asset);
+        } catch (err) {
+          failedIds.push(asset.id);
+          refreshAfterDelete ||= errorStatus(err) === 404;
+          markProcessed();
+        }
+      }
+
       setDeleteOpen(false);
-      toast.success(
-        ids.length > 1
-          ? `${ids.length} assets deleted from the media library.`
-          : deleteTier === "warning"
-            ? "Asset deleted. Broken reference flagged in draft."
-            : "Asset deleted. Terminal submission records updated.",
-      );
-    } catch {
-      toast.error("Failed to delete asset. It may be referenced by an active submission or outside your delete scope.");
+      if (deletedIds.length === 0 && skippedIds.length > 0 && failedIds.length === 0) {
+        toast.info(`${skippedIds.length} selected asset${skippedIds.length === 1 ? "" : "s"} skipped.`);
+      } else if (deletedIds.length === 0) {
+        toast.error("No selected assets could be deleted.");
+      } else if (skippedIds.length > 0 || failedIds.length > 0) {
+        toast.warning(`Deleted ${deletedIds.length}; ${skippedIds.length} skipped; ${failedIds.length} failed.`);
+      } else {
+        toast.success(
+          bulk
+            ? `${deletedIds.length} assets deleted from the media library.`
+            : deleteTier === "warning"
+              ? "Asset deleted. Broken reference flagged in draft."
+              : "Asset deleted. Terminal submission records updated.",
+        );
+      }
+    } catch (err) {
+      toast.error(deleteErrorMessage(err, bulk));
+      refreshAfterDelete ||= errorStatus(err) === 404;
     } finally {
       setDeleting(false);
+      setDeleteProgress({ total: 0, completed: 0 });
+      setUsedMediaPrompt(null);
+      setDeleteAssets([]);
+      setDeleteAsset(null);
+      if (refreshAfterDelete) void refresh();
     }
   }
 
@@ -1079,6 +1207,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           onSelectFolder={selectFolder}
           onOpenCollections={() => navigate("/media-albums")}
           onOpenTrash={() => navigate("/media-repository/trash")}
+          onOpenHealth={user.role !== "contributor" ? () => navigate("/media-repository/health") : undefined}
+          onOpenDuplicates={user.role !== "contributor" ? () => navigate("/media-repository/duplicates") : undefined}
           onCreate={openCreateFolder}
           onRename={openRenameFolder}
           onDelete={(f) => void handleDeleteFolder(f)}
@@ -1092,31 +1222,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
               <p className="med-subtitle">Find, file, and reuse institution media</p>
             </div>
             <div className="med-header-actions">
-              {user.role !== "contributor" && (
-                <button
-                  className="med-btn med-btn-ghost med-btn-sm"
-                  onClick={() => navigate("/media-repository/health")}
-                  type="button"
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                  </svg>
-                  Repository Health
-                </button>
-              )}
-              {user.role !== "contributor" && (
-                <button
-                  className="med-btn med-btn-ghost med-btn-sm"
-                  onClick={() => navigate("/media-repository/duplicates")}
-                  type="button"
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="9" y="9" width="11" height="11" rx="2" />
-                    <path d="M5 15V5a2 2 0 0 1 2-2h10" />
-                  </svg>
-                  Duplicate Review
-                </button>
-              )}
               <button
                 className="med-btn med-btn-ghost med-btn-sm"
                 onClick={openUploadModal}
@@ -1217,6 +1322,38 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           )}
 
           <div className="med-main">
+            {selectionMode && (
+              <div className="med-selection-bar" role="region" aria-label="Selection actions">
+                <div className="med-selection-info">
+                  <span className="med-selection-count">{selectedAssets.length}</span>
+                  <span className="med-selection-label">selected</span>
+                  {!allVisibleSelected && gridAssets.length > 0 && (
+                    <button type="button" className="med-selection-link" onClick={selectAllVisible}>
+                      Select all ({gridAssets.length})
+                    </button>
+                  )}
+                </div>
+                <div className="med-selection-actions">
+                  <button type="button" className="med-btn med-btn-ghost med-btn-sm" onClick={clearChecked}>
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    className="med-btn med-btn-danger med-btn-sm"
+                    onClick={openBulkDeleteModal}
+                    disabled={!canBulkDelete}
+                    title={canBulkDelete ? undefined : "Some selected assets can't be deleted by your role."}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                    {selectedAssets.length > 1 ? `Delete (${selectedAssets.length})` : "Delete"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="med-result-strip">
               {searchActive ? (
                 <>
@@ -1316,6 +1453,9 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           }
           onDeselectAsset={(id) => handleDeselect(id)}
           onNewPost={handleNewPost}
+          onSelectAll={selectAllVisible}
+          allVisibleSelected={allVisibleSelected}
+          selectableAssetCount={gridAssets.length}
           onClearSelection={clearChecked}
           onClose={closePanel}
           canAddToDraft={user.role === "contributor"}
@@ -1366,10 +1506,21 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         blockingUsages={blockingUsages}
         warningUsages={warningUsages}
         deleting={deleting}
+        deleteProgress={deleteProgress}
         assetCount={deleteAssets.length || (deleteAsset ? 1 : 0)}
         onClose={() => { if (!deleting) setDeleteOpen(false); }}
         onConfirmDelete={() => void handleConfirmDelete()}
       />
+
+      {usedMediaPrompt && (
+        <UsedMediaDeletePrompt
+          asset={usedMediaPrompt.asset}
+          index={usedMediaPrompt.index}
+          total={usedMediaPrompt.total}
+          onSkip={() => resolveUsedMediaPrompt("skip")}
+          onForce={() => resolveUsedMediaPrompt("force")}
+        />
+      )}
 
       {/* Add to Draft Modal (portal) */}
       <AddToDraftModal
@@ -1432,6 +1583,71 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         />
       )}
 
+    </div>
+  );
+}
+
+function UsedMediaDeletePrompt({
+  asset,
+  index,
+  total,
+  onSkip,
+  onForce,
+}: {
+  asset: MediaAsset;
+  index: number;
+  total: number;
+  onSkip: () => void;
+  onForce: () => void;
+}) {
+  return (
+    <div className="med-modal-overlay open med-used-delete-overlay">
+      <div
+        className="med-modal-card med-used-delete-card"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="med-used-delete-title"
+        aria-describedby="med-used-delete-message"
+      >
+        <div className="med-modal-header">
+          <span className="med-modal-title" id="med-used-delete-title">
+            Media is used in a submission
+          </span>
+          <span className="med-used-delete-position">
+            Item {index} of {total}
+          </span>
+        </div>
+
+        <div className="med-modal-body">
+          <div className="med-delete-warning-banner">
+            <div>
+              <div className="med-banner-title warn">{asset.title || asset.fileName}</div>
+              <div className="med-banner-sub" id="med-used-delete-message">
+                This media is attached to a draft, pending, in-review, or scheduled submission.
+                Choose Skip to keep it and continue deleting the rest.
+              </div>
+            </div>
+          </div>
+
+          <div className="med-force-delete-consequence">
+            <strong>Force-delete consequence</strong>
+            <p>
+              The media will be moved to Trash even though submissions still reference it.
+              Those submissions may show missing media, fail validation or publishing, and require
+              a contributor or administrator to attach a replacement. This action is audited.
+            </p>
+          </div>
+        </div>
+
+        <div className="med-modal-footer">
+          <button className="med-btn med-btn-ghost" type="button" onClick={onSkip}>
+            Skip and continue
+          </button>
+          <button className="med-btn med-btn-danger" type="button" onClick={onForce} autoFocus>
+            Force delete and continue
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

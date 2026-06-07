@@ -118,12 +118,14 @@
 }
 .fld-item:hover { background: #f1f5f9; }
 .fld-item.active { background: #eff6ff; color: #1d4ed8; font-weight: 600; }
+/* Collections / Trash / Repository Health / Duplicate Review use the same
+   slate word color and neutral hover as the rest of the sidebar items. */
 .fld-collection-link {
-  color: #0f766e;
+  color: #334155;
 }
 .fld-collection-link:hover {
-  background: #ecfdf5;
-  color: #0f766e;
+  background: #f1f5f9;
+  color: #334155;
 }
 .fld-icon { flex: 0 0 auto; color: #94a3b8; }
 .fld-item.active .fld-icon { color: #2563eb; }

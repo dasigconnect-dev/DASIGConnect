@@ -185,6 +185,7 @@ export default function UploadModal({ open, institutionName, onClose, onUpload, 
   const failedCount = uploadItems.filter((item) => item.status === "failed").length;
   const uploadingCount = uploadItems.filter((item) => item.status === "uploading").length;
   const pendingCount = uploadItems.filter((item) => item.status === "pending").length;
+  const remainingCount = Math.max(selectedCount - successCount - failedCount, 0);
   const duplicateCount = uploadItems.filter((item) => item.duplicateOf).length;
   const progress = useMemo(() => {
     if (uploadItems.length === 0) return 0;
@@ -248,10 +249,21 @@ export default function UploadModal({ open, institutionName, onClose, onUpload, 
             <div>
               <div className="med-upload-summary">
                 <div>
-                  <strong>{footerLabel}</strong>
+                  <strong>
+                    {uploading ? (
+                      <>
+                        Uploading {remainingCount} of {selectedCount} remaining<BusyDots />
+                      </>
+                    ) : (
+                      footerLabel
+                    )}
+                  </strong>
                   <span>Uploads run {MAX_PARALLEL_UPLOADS} files at a time.</span>
                 </div>
-                <span>{progress}%</span>
+                <div className="med-upload-summary-stats" aria-live="polite">
+                  <b>{progress}%</b>
+                  <small>{successCount}/{selectedCount} done</small>
+                </div>
               </div>
               <div className="med-upload-progress-bar" style={{ marginTop: 12 }}>
                 <div className="med-upload-progress-fill" style={{ width: `${progress}%` }} />
@@ -281,7 +293,13 @@ export default function UploadModal({ open, institutionName, onClose, onUpload, 
                     </div>
                   </div>
                   <div className={`med-upload-status-pill status-${item.status}`}>
-                    {statusLabel(item)}
+                    {item.status === "uploading" ? (
+                      <>
+                        {Math.max(1, item.progress)}%<BusyDots />
+                      </>
+                    ) : (
+                      statusLabel(item)
+                    )}
                   </div>
                 </div>
               ))}
@@ -324,7 +342,7 @@ export default function UploadModal({ open, institutionName, onClose, onUpload, 
               <line x1="12" y1="12" x2="12" y2="21" />
               <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
             </svg>
-            {uploading ? "Uploading..." : failedCount > 0 && pendingCount === 0 ? `Retry ${failedCount} failed` : uploadLabel}
+            {uploading ? <>Uploading<BusyDots /></> : failedCount > 0 && pendingCount === 0 ? `Retry ${failedCount} failed` : uploadLabel}
           </button>
         </div>
       </div>
@@ -344,4 +362,14 @@ function statusLabel(item: UploadItem) {
   if (item.status === "success") return "Uploaded";
   if (item.status === "failed") return "Failed";
   return "Waiting";
+}
+
+function BusyDots() {
+  return (
+    <span className="med-busy-dots" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  );
 }

@@ -481,6 +481,10 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
     closePanel();
   }
 
+  function selectAllVisible(ids: string[]) {
+    setCheckedIds((prev) => new Set([...prev, ...ids]));
+  }
+
   function viewAssetById(id: string) {
     const summary = openAlbum?.assets.find((a) => a.id === id);
     if (summary) openAssetDetail(summary);
@@ -711,6 +715,7 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
             if (collectionSort === "size") return b.fileSizeBytes - a.fileSizeBytes;
             return 0;
           });
+    const allVisibleSelected = visibleAssets.length > 0 && visibleAssets.every((asset) => checkedIds.has(asset.id));
 
     return (
       <div className={`med-page alb-page${panelOpen ? " panel-open" : ""}`}>
@@ -830,6 +835,9 @@ export default function AlbumsScreen({ user }: AlbumsScreenProps) {
           selectedAssets={openAlbum.assets.filter((a) => checkedIds.has(a.id)).map(summaryToMediaAsset)}
           onViewAsset={(a) => viewAssetById(a.id)}
           onDeselectAsset={handleDeselect}
+          onSelectAll={() => selectAllVisible(visibleAssets.map((asset) => asset.id))}
+          allVisibleSelected={allVisibleSelected}
+          selectableAssetCount={visibleAssets.length}
           onClearSelection={clearChecked}
           onNewPost={handleNewPost}
           onClose={closePanel}

@@ -47,12 +47,15 @@ export default function MediaLibraryTab({
     retry,
     selectedIds,
     toggleSelect,
+    selectMany,
     clearSelection,
   } = useMediaLibraryAssets();
 
   const searchRef = useRef<HTMLInputElement>(null);
 
   const pendingSelected = [...selectedIds].filter((id) => !alreadyAddedIds.has(id));
+  const selectableIds = assets.filter((asset) => !alreadyAddedIds.has(asset.id)).map((asset) => asset.id);
+  const allLoadedSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.includes(id));
 
   function handleAdd() {
     if (disabled || pendingSelected.length === 0) return;
@@ -170,6 +173,16 @@ export default function MediaLibraryTab({
           <span className="mlt-action-count">
             {pendingSelected.length} selected
           </span>
+          {!allLoadedSelected && (
+            <button
+              type="button"
+              className="mlt-action-clear"
+              disabled={disabled}
+              onClick={() => selectMany(selectableIds)}
+            >
+              Select all loaded ({selectableIds.length})
+            </button>
+          )}
           <button
             type="button"
             className="mlt-action-clear"

@@ -122,6 +122,8 @@ export default function PromptCollectionBuilderContainer({ open, isAdmin, instit
       onDescriptionChange={setDescription}
       onFind={() => void handleFind()}
       onToggle={toggle}
+      onSelectAll={() => setSelected(new Set(result?.candidates.map((candidate) => candidate.asset.id) ?? []))}
+      onClearSelection={() => setSelected(new Set())}
       onClose={() => { if (!creating) { reset(); onClose(); } }}
       onCreate={() => void handleCreate()}
     />

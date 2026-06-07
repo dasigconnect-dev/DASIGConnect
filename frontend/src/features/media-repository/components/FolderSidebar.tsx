@@ -1,4 +1,4 @@
-import { Folder, Images, Plus, Pencil, Trash2 } from "lucide-react";
+import { Folder, Images, Plus, Pencil, Trash2, Activity, Copy } from "lucide-react";
 import type { Folder as MediaFolder } from "../../../api/folderApi";
 
 export type FolderFilterMode = "all" | "unfiled" | "folder";
@@ -17,6 +17,8 @@ interface FolderSidebarProps {
   onSelectFolder: (id: string) => void;
   onOpenCollections?: () => void;
   onOpenTrash?: () => void;
+  onOpenHealth?: () => void;
+  onOpenDuplicates?: () => void;
   onCreate: () => void;
   onRename: (folder: MediaFolder) => void;
   onDelete: (folder: MediaFolder) => void;
@@ -37,6 +39,8 @@ export default function FolderSidebar({
   onSelectFolder,
   onOpenCollections,
   onOpenTrash,
+  onOpenHealth,
+  onOpenDuplicates,
   onCreate,
   onRename,
   onDelete,
@@ -88,6 +92,20 @@ export default function FolderSidebar({
           <button type="button" className="fld-item fld-collection-link" onClick={onOpenTrash}>
             <Trash2 size={15} aria-hidden="true" />
             <span className="fld-item-label">Trash</span>
+          </button>
+        )}
+
+        {onOpenHealth && (
+          <button type="button" className="fld-item fld-collection-link" onClick={onOpenHealth}>
+            <Activity size={15} aria-hidden="true" />
+            <span className="fld-item-label">Repository Health</span>
+          </button>
+        )}
+
+        {onOpenDuplicates && (
+          <button type="button" className="fld-item fld-collection-link" onClick={onOpenDuplicates}>
+            <Copy size={15} aria-hidden="true" />
+            <span className="fld-item-label">Duplicate Review</span>
           </button>
         )}
 

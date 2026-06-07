@@ -19,6 +19,9 @@ interface AssetDetailPanelProps {
   onViewSubmission?: (submissionId: string) => void;
   onDeselectAsset?: (id: string) => void;
   onNewPost?: () => void;
+  onSelectAll?: () => void;
+  allVisibleSelected?: boolean;
+  selectableAssetCount?: number;
   onClearSelection?: () => void;
   onAddToDraft: () => void;
   onDownload: () => void;
@@ -73,6 +76,9 @@ export default function AssetDetailPanel({
   onViewSubmission,
   onDeselectAsset,
   onNewPost,
+  onSelectAll,
+  allVisibleSelected = false,
+  selectableAssetCount = 0,
   onClearSelection,
   onAddToDraft,
   onDownload,
@@ -125,11 +131,18 @@ export default function AssetDetailPanel({
               <div className="med-panel-section-label" style={{ marginBottom: 0 }}>
                 Selected for New Post · {selectedAssets.length}
               </div>
-              {onClearSelection && (
-                <button className="med-sel-clear" onClick={onClearSelection} type="button">
-                  Clear all
-                </button>
-              )}
+              <div className="med-sel-actions">
+                {onSelectAll && selectableAssetCount > 0 && !allVisibleSelected && (
+                  <button className="med-sel-clear" onClick={onSelectAll} type="button">
+                    Select all ({selectableAssetCount})
+                  </button>
+                )}
+                {onClearSelection && (
+                  <button className="med-sel-clear" onClick={onClearSelection} type="button">
+                    Clear all
+                  </button>
+                )}
+              </div>
             </div>
             <div className="med-sel-list">
               {selectedAssets.map((sel) => (

@@ -263,6 +263,14 @@ public class MediaAssetService {
                 "force", String.valueOf(force)));
     }
 
+    /**
+     * Resilient bulk soft-delete. Instead of failing the whole batch when one asset is
+     * blocked, it deletes every asset it can and reports the rest in
+     * {@link MediaAssetBulkDeleteResponseDto#getSkipped()}. An asset is skipped when it is
+     * referenced by an active (pending/in-review/scheduled) submission, already gone, or
+     * outside the caller's delete scope. Only a malformed request (empty / over the cap)
+     * fails outright.
+     */
     public MediaAssetBulkDeleteResponseDto bulkDelete(MediaAssetBulkDeleteRequestDto dto, JwtUserDetails user) {
         List<UUID> assetIds = new ArrayList<>(new LinkedHashSet<>(dto.getAssetIds()));
         if (assetIds.isEmpty()) {
@@ -272,35 +280,53 @@ public class MediaAssetService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You can delete up to 100 assets at once.");
         }
 
-        List<MediaAsset> assets = assetIds.stream()
-                .map(id -> loadAssetForDelete(id, user))
-                .toList();
+        List<MediaAsset> toDelete = new ArrayList<>();
+        List<MediaAssetBulkDeleteResponseDto.SkippedAsset> skipped = new ArrayList<>();
 
         for (UUID assetId : assetIds) {
-            validateDeleteReferences(assetId, dto.isForce());
+            MediaAsset asset;
+            try {
+                asset = loadAssetForDelete(assetId, user);
+            } catch (ResponseStatusException ex) {
+                skipped.add(skip(assetId, null, scopeSkipReason(ex.getStatusCode().value())));
+                continue;
+            }
+
+            String blockReason = deletionBlockReason(assetId, dto.isForce());
+            if (blockReason != null) {
+                skipped.add(skip(assetId, asset.getAssetCode(), blockReason));
+                continue;
+            }
+            toDelete.add(asset);
         }
 
-        Instant deletedAt = Instant.now();
-        for (MediaAsset asset : assets) {
-            asset.setDeletedAt(deletedAt);
-            asset.setDeletedByUserId(user.userId());
-            asset.setStatus(MediaAssetStatus.DELETED);
-            // Embeddings retained through the trash window (see delete()); removed at purge.
-        }
-        mediaAssetRepository.saveAll(assets);
+        if (!toDelete.isEmpty()) {
+            Instant deletedAt = Instant.now();
+            for (MediaAsset asset : toDelete) {
+                asset.setDeletedAt(deletedAt);
+                asset.setDeletedByUserId(user.userId());
+                asset.setStatus(MediaAssetStatus.DELETED);
+                // Embeddings retained through the trash window (see delete()); removed at purge.
+            }
+            mediaAssetRepository.saveAll(toDelete);
 
-        auditMedia(user, "MEDIA_ASSETS_BULK_DELETED", null, Map.of(
-                "count", String.valueOf(assets.size()),
-                "force", String.valueOf(dto.isForce()),
-                "assetIds", String.join(",", assetIds.stream().map(UUID::toString).toList())));
-        return new MediaAssetBulkDeleteResponseDto(assetIds);
+            List<UUID> deletedIds = toDelete.stream().map(MediaAsset::getId).toList();
+            auditMedia(user, "MEDIA_ASSETS_BULK_DELETED", null, Map.of(
+                    "count", String.valueOf(deletedIds.size()),
+                    "force", String.valueOf(dto.isForce()),
+                    "skippedCount", String.valueOf(skipped.size()),
+                    "assetIds", String.join(",", deletedIds.stream().map(UUID::toString).toList())));
+        }
+
+        return new MediaAssetBulkDeleteResponseDto(
+                toDelete.stream().map(MediaAsset::getId).toList(), skipped);
     }
 
     private void validateDeleteReferences(UUID assetId, boolean force) {
         long blockingCount = submissionMediaAssetRepository.countBlockingSubmissionsByAssetId(assetId);
-        if (blockingCount > 0) {
+        if (blockingCount > 0 && !force) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Asset is referenced by active submissions and cannot be deleted.");
+                    "Asset is referenced by active submissions. Use force=true to delete.");
         }
 
         long warningCount = submissionMediaAssetRepository.countDraftSubmissionsByAssetId(assetId);
@@ -308,6 +334,41 @@ public class MediaAssetService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Asset is referenced by drafts. Use force=true to delete.");
         }
+    }
+
+    /** Non-throwing variant of {@link #validateDeleteReferences} for the bulk path. */
+    private String deletionBlockReason(UUID assetId, boolean force) {
+        if (!force && submissionMediaAssetRepository.countBlockingSubmissionsByAssetId(assetId) > 0) {
+            return "in_use";
+        }
+        if (!force && submissionMediaAssetRepository.countDraftSubmissionsByAssetId(assetId) > 0) {
+            return "has_drafts";
+        }
+        return null;
+    }
+
+    private static String scopeSkipReason(int status) {
+        if (status == HttpStatus.NOT_FOUND.value()) {
+            return "missing";
+        }
+        if (status == HttpStatus.FORBIDDEN.value()) {
+            return "not_allowed";
+        }
+        return "error";
+    }
+
+    private static MediaAssetBulkDeleteResponseDto.SkippedAsset skip(UUID assetId, String assetCode, String reason) {
+        return new MediaAssetBulkDeleteResponseDto.SkippedAsset(assetId, assetCode, reason, skipMessage(reason));
+    }
+
+    private static String skipMessage(String reason) {
+        return switch (reason) {
+            case "in_use" -> "Referenced by a pending, in-review, or scheduled submission.";
+            case "has_drafts" -> "Referenced by a draft submission.";
+            case "missing" -> "No longer in the library.";
+            case "not_allowed" -> "Outside your delete scope.";
+            default -> "Could not be deleted.";
+        };
     }
 
     public MediaAssetDetailDto upload(MediaAssetUploadRequestDto dto, JwtUserDetails user) {

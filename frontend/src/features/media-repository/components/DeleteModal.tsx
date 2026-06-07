@@ -11,6 +11,7 @@ interface DeleteModalProps {
   blockingUsages: MediaUsage[];
   warningUsages: MediaUsage[];
   deleting: boolean;
+  deleteProgress?: { total: number; completed: number };
   assetCount?: number;
   onClose: () => void;
   onConfirmDelete: () => void;
@@ -43,10 +44,15 @@ export default function DeleteModal({
   blockingUsages,
   warningUsages,
   deleting,
+  deleteProgress,
   assetCount = asset ? 1 : 0,
   onClose,
   onConfirmDelete,
 }: DeleteModalProps) {
+  const total = deleteProgress?.total || assetCount || 1;
+  const completed = Math.min(deleteProgress?.completed ?? 0, total);
+  const remaining = Math.max(total - completed, 0);
+  const progressPct = total > 0 ? Math.round((completed / total) * 100) : 0;
   const modal = (
     <div
       className={`med-modal-overlay${open ? " open" : ""}`}
@@ -76,6 +82,19 @@ export default function DeleteModal({
           {tier === "free" && asset && (
             <FreeBody asset={asset} />
           )}
+          {deleting && (
+            <div className="med-operation-progress" role="status" aria-live="polite">
+              <div className="med-operation-progress-head">
+                <strong>
+                  Deleting {remaining} of {total} remaining<BusyDots />
+                </strong>
+                <span>{completed}/{total} done</span>
+              </div>
+              <div className="med-upload-progress-bar" aria-hidden="true">
+                <div className="med-upload-progress-fill danger" style={{ width: `${progressPct}%` }} />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="med-modal-footer">
@@ -85,14 +104,14 @@ export default function DeleteModal({
             <>
               <button className="med-btn med-btn-ghost" onClick={onClose} type="button" disabled={deleting}>Cancel</button>
               <button className="med-btn med-btn-warn-confirm" onClick={onConfirmDelete} type="button" disabled={deleting}>
-                {deleting ? "Deleting..." : assetCount > 1 ? `Delete ${assetCount} Assets` : "Delete & Flag Reference"}
+                {deleting ? <>Deleting<BusyDots /></> : assetCount > 1 ? `Delete ${assetCount} Assets` : "Delete & Flag Reference"}
               </button>
             </>
           ) : (
             <>
               <button className="med-btn med-btn-ghost" onClick={onClose} type="button" disabled={deleting}>Cancel</button>
               <button className="med-btn med-btn-danger" onClick={onConfirmDelete} type="button" disabled={deleting}>
-                {deleting ? "Deleting..." : "Delete Asset"}
+                {deleting ? <>Deleting<BusyDots /></> : "Delete Asset"}
               </button>
             </>
           )}
@@ -102,6 +121,16 @@ export default function DeleteModal({
   );
 
   return createPortal(modal, document.body);
+}
+
+function BusyDots() {
+  return (
+    <span className="med-busy-dots" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  );
 }
 
 function BlockedBody({ usage }: { usage: MediaUsage | null }) {

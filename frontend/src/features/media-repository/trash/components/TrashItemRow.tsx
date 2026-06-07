@@ -1,46 +1,21 @@
-import { useState } from "react";
-import { AlertTriangle, ImageOff, RotateCcw, Trash2 } from "lucide-react";
-import { purgeMediaAsset, restoreMediaAsset, type TrashItem } from "../../../../api/mediaApi";
-import { useToast } from "../../../../context/ToastContext";
+import { ImageOff, RotateCcw, Trash2 } from "lucide-react";
+import type { TrashItem } from "../../../../api/mediaApi";
 
 interface TrashItemRowProps {
   item: TrashItem;
-  onRemoved: (assetId: string) => void;
+  busy: boolean;
+  selected: boolean;
+  onToggleSelect: (assetId: string) => void;
+  onRestore: (assetId: string) => void;
+  onRequestDelete: (item: TrashItem) => void;
 }
 
 function isImageType(fileType: string) {
   return ["jpeg", "jpg", "png", "webp", "gif"].includes(fileType.toLowerCase());
 }
 
-export default function TrashItemRow({ item, onRemoved }: TrashItemRowProps) {
-  const toast = useToast();
+export default function TrashItemRow({ item, busy, selected, onToggleSelect, onRestore, onRequestDelete }: TrashItemRowProps) {
   const { asset } = item;
-  const [busy, setBusy] = useState(false);
-  const [confirmingPurge, setConfirmingPurge] = useState(false);
-
-  async function restore() {
-    setBusy(true);
-    try {
-      await restoreMediaAsset(asset.id);
-      toast.success("Asset restored to the library.");
-      onRemoved(asset.id);
-    } catch {
-      toast.error("Could not restore this asset.");
-      setBusy(false);
-    }
-  }
-
-  async function purge() {
-    setBusy(true);
-    try {
-      await purgeMediaAsset(asset.id);
-      toast.success("Asset permanently deleted.");
-      onRemoved(asset.id);
-    } catch {
-      toast.error("Could not delete this asset.");
-      setBusy(false);
-    }
-  }
 
   const urgent = item.daysUntilPurge <= 3;
   const daysLabel =
@@ -49,7 +24,17 @@ export default function TrashItemRow({ item, onRemoved }: TrashItemRowProps) {
       : `${item.daysUntilPurge} day${item.daysUntilPurge === 1 ? "" : "s"} left`;
 
   return (
-    <li className={`trash-row${busy ? " is-busy" : ""}`}>
+    <li className={`trash-row${busy ? " is-busy" : ""}${selected ? " is-selected" : ""}`}>
+      <label className="trash-select" title="Select">
+        <input
+          type="checkbox"
+          checked={selected}
+          disabled={busy}
+          onChange={() => onToggleSelect(asset.id)}
+          aria-label={`Select ${asset.assetCode}`}
+        />
+      </label>
+
       <div className="trash-thumb">
         {isImageType(asset.fileType) ? (
           <img src={asset.storageUrl} alt="" loading="lazy" />
@@ -73,42 +58,27 @@ export default function TrashItemRow({ item, onRemoved }: TrashItemRowProps) {
         </span>
       </div>
 
-      {confirmingPurge ? (
-        <div className="trash-confirm" role="group" aria-label="Confirm permanent deletion">
-          <span className="trash-confirm-msg">
-            <AlertTriangle size={14} aria-hidden="true" />
-            Delete forever? This can’t be undone.
-          </span>
-          <button type="button" className="med-btn med-btn-ghost med-btn-sm" disabled={busy} onClick={() => setConfirmingPurge(false)}>
-            Cancel
-          </button>
-          <button type="button" className="med-btn med-btn-danger med-btn-sm" disabled={busy} onClick={() => void purge()}>
-            {busy ? "Deleting…" : "Delete forever"}
-          </button>
-        </div>
-      ) : (
-        <div className="trash-actions">
-          <button
-            type="button"
-            className="med-btn med-btn-ghost med-btn-sm"
-            disabled={busy}
-            onClick={() => void restore()}
-          >
-            <RotateCcw size={14} aria-hidden="true" />
-            Restore
-          </button>
-          <button
-            type="button"
-            className="trash-danger-link"
-            disabled={busy}
-            aria-label={`Delete ${asset.assetCode} forever`}
-            onClick={() => setConfirmingPurge(true)}
-          >
-            <Trash2 size={14} aria-hidden="true" />
-            Delete forever
-          </button>
-        </div>
-      )}
+      <div className="trash-actions">
+        <button
+          type="button"
+          className="med-btn med-btn-ghost med-btn-sm"
+          disabled={busy}
+          onClick={() => onRestore(asset.id)}
+        >
+          <RotateCcw size={14} aria-hidden="true" />
+          Restore
+        </button>
+        <button
+          type="button"
+          className="trash-danger-link"
+          disabled={busy}
+          aria-label={`Delete ${asset.assetCode}`}
+          onClick={() => onRequestDelete(item)}
+        >
+          <Trash2 size={14} aria-hidden="true" />
+          Delete
+        </button>
+      </div>
     </li>
   );
 }

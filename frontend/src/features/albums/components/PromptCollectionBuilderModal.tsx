@@ -17,6 +17,8 @@ interface PromptCollectionBuilderModalProps {
   onDescriptionChange: (value: string) => void;
   onFind: () => void;
   onToggle: (assetId: string) => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
   onClose: () => void;
   onCreate: () => void;
 }
@@ -34,6 +36,8 @@ export default function PromptCollectionBuilderModal({
   onDescriptionChange,
   onFind,
   onToggle,
+  onSelectAll,
+  onClearSelection,
   onClose,
   onCreate,
 }: PromptCollectionBuilderModalProps) {
@@ -94,17 +98,36 @@ export default function PromptCollectionBuilderModal({
             </div>
 
             {hasResults ? (
-              <div className="alb-ai-results" aria-label="Suggested media assets">
-                {result.candidates.map((candidate) => (
-                  <CandidateItem
-                    key={candidate.asset.id}
-                    candidate={candidate}
-                    checked={selected.has(candidate.asset.id)}
-                    disabled={creating}
-                    onToggle={onToggle}
-                  />
-                ))}
-              </div>
+              <>
+                {selected.size > 0 && (
+                  <div className="alb-picker-toolbar">
+                    <span className="alb-picker-count">
+                      {selected.size} of {result.candidates.length} selected
+                    </span>
+                    <div className="alb-picker-toolbar-actions">
+                      {selected.size < result.candidates.length && (
+                        <button className="alb-text-btn" type="button" disabled={creating} onClick={onSelectAll}>
+                          Select all
+                        </button>
+                      )}
+                      <button className="alb-text-btn" type="button" disabled={creating} onClick={onClearSelection}>
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className="alb-ai-results" aria-label="Suggested media assets">
+                  {result.candidates.map((candidate) => (
+                    <CandidateItem
+                      key={candidate.asset.id}
+                      candidate={candidate}
+                      checked={selected.has(candidate.asset.id)}
+                      disabled={creating}
+                      onToggle={onToggle}
+                    />
+                  ))}
+                </div>
+              </>
             ) : (
               <div className="alb-picker-empty">No matching media found.</div>
             )}

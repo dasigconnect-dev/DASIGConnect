@@ -531,6 +531,7 @@
   bottom: 0;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 10px 12px;
   background: var(--mp-surface);
@@ -561,6 +562,12 @@
 .mlt-action-clear:hover,
 .ast-action-clear:hover {
   background: var(--mp-border);
+}
+
+.mlt-action-clear:disabled,
+.ast-action-clear:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .mlt-action-add,

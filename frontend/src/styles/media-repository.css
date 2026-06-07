@@ -813,6 +813,77 @@
   color: var(--med-muted);
 }
 
+/* ===== Grid-level selection action bar =====
+   Always-reachable bulk actions (delete/clear) for a multi-select, independent of
+   the Asset Detail panel. Sticks to the top of the scrolling grid so it stays in
+   reach on long libraries. */
+.med-selection-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+  padding: 9px 14px;
+  background: var(--med-blue-dim);
+  border: 1px solid #BFD3FF;
+  border-radius: var(--med-radius-md);
+  box-shadow: 0 2px 10px rgba(10, 22, 40, 0.06);
+  animation: med-fade-up 0.3s ease both;
+}
+
+.med-selection-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.med-selection-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--med-radius-full);
+  background: var(--med-blue);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.med-selection-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--med-blue);
+}
+
+.med-selection-link {
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--med-blue);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.med-selection-link:hover {
+  color: #1D4ED8;
+}
+
+.med-selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 /* ===== UC-4.5 search match-reason chips (asset card) ===== */
 .med-card-reasons {
   display: flex;
@@ -1147,7 +1218,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .med-spin { animation: none; }
+  .med-spin,
+  .med-busy-dots span { animation: none; }
 }
 
 .med-active-filters {
@@ -2308,6 +2380,26 @@
   color: var(--med-blue);
 }
 
+.med-upload-summary-stats {
+  flex: 0 0 auto;
+  min-width: 84px;
+  text-align: right;
+}
+
+.med-upload-summary-stats b {
+  display: block;
+  font-size: 15px;
+  color: var(--med-blue);
+}
+
+.med-upload-summary-stats small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--med-muted);
+}
+
 .med-upload-status-pill {
   flex: 0 0 auto;
   min-width: 72px;
@@ -2348,6 +2440,102 @@
   background: var(--med-blue);
   border-radius: var(--med-radius-full);
   transition: width 0.3s ease;
+}
+
+.med-upload-progress-fill.danger {
+  background: #DC2626;
+}
+
+.med-operation-progress {
+  padding: 12px 14px;
+  border: 1px solid #FECACA;
+  border-radius: var(--med-radius-sm);
+  background: #FEF2F2;
+  margin-top: 14px;
+}
+
+.med-operation-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.med-operation-progress-head strong {
+  display: inline-flex;
+  align-items: center;
+  color: #991B1B;
+  font-size: 13px;
+}
+
+.med-operation-progress-head span {
+  color: #B91C1C;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.med-used-delete-overlay {
+  z-index: 3200;
+}
+
+.med-used-delete-card {
+  max-width: 520px;
+}
+
+.med-used-delete-position {
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  border-radius: var(--med-radius-full);
+  background: #FEF3C7;
+  color: #92400E;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.med-force-delete-consequence {
+  padding: 12px 14px;
+  border: 1px solid #FECACA;
+  border-radius: var(--med-radius-sm);
+  background: #FEF2F2;
+  color: #7F1D1D;
+}
+
+.med-force-delete-consequence strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.med-force-delete-consequence p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.med-busy-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+.med-busy-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+  animation: med-busy-dot 0.9s infinite ease-in-out;
+}
+
+.med-busy-dots span:nth-child(2) { animation-delay: 0.15s; }
+.med-busy-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes med-busy-dot {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
+  40% { transform: translateY(-3px); opacity: 1; }
 }
 
 /* Delete banners */
@@ -2645,7 +2833,16 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
   margin-bottom: 12px;
+}
+.med-sel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .med-sel-clear {
   background: transparent;

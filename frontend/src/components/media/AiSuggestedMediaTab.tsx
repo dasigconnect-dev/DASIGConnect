@@ -63,6 +63,8 @@ export default function AiSuggestedMediaTab({
   }
 
   const pendingSelected = [...selectedIds].filter((id) => !alreadyAddedIds.has(id));
+  const selectableIds = results.filter((result) => !alreadyAddedIds.has(result.id)).map((result) => result.id);
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
 
   function handleAdd() {
     if (disabled || pendingSelected.length === 0) return;
@@ -178,6 +180,16 @@ export default function AiSuggestedMediaTab({
       {pendingSelected.length > 0 && (
         <div className="ast-action-bar" role="status" aria-live="polite">
           <span className="ast-action-count">{pendingSelected.length} selected</span>
+          {!allSelected && (
+            <button
+              type="button"
+              className="ast-action-clear"
+              disabled={disabled}
+              onClick={() => setSelectedIds(new Set(selectableIds))}
+            >
+              Select all ({selectableIds.length})
+            </button>
+          )}
           <button
             type="button"
             className="ast-action-clear"

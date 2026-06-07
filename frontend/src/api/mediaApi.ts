@@ -869,11 +869,26 @@ export function deleteMediaAsset(id: string, force = false) {
   return api.delete<void>(`/media-assets/${id}`, { params: force ? { force: true } : undefined });
 }
 
+export interface BulkDeleteSkippedAsset {
+  assetId: string;
+  assetCode: string | null;
+  reason: string;
+  message: string;
+}
+
+export interface BulkDeleteResult {
+  deletedIds: string[];
+  deletedCount: number;
+  skipped: BulkDeleteSkippedAsset[];
+  skippedCount: number;
+}
+
+/**
+ * Resilient bulk delete: the server deletes what it can and reports the rest in `skipped`
+ * (e.g. referenced by an active submission). A partial result is still a 200.
+ */
 export function bulkDeleteMediaAssets(assetIds: string[], force = false) {
-  return api.post<{ deletedIds: string[]; deletedCount: number }>("/media-assets/bulk-delete", {
-    assetIds,
-    force,
-  });
+  return api.post<BulkDeleteResult>("/media-assets/bulk-delete", { assetIds, force });
 }
 
 export interface BulkOperationResult {

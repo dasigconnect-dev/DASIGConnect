@@ -1,0 +1,133 @@
+/* Reusable hook-driven confirm modal (useConfirmModal). Self-contained — no feature tokens. */
+
+.cfm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(2px);
+  animation: cfm-fade 140ms ease;
+}
+
+.cfm-card {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(10, 22, 40, 0.28);
+  padding: 22px;
+  animation: cfm-pop 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cfm-title {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.cfm-message {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #475569;
+}
+
+.cfm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.cfm-btn {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.cfm-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.cfm-cancel {
+  background: #fff;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.cfm-cancel:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.cfm-ok {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.cfm-ok:hover:not(:disabled) {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.cfm-ok.is-danger {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+.cfm-ok.is-danger:hover:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.cfm-busy-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 5px;
+}
+
+.cfm-busy-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
+  animation: cfm-busy-dot 0.9s infinite ease-in-out;
+}
+
+.cfm-busy-dots span:nth-child(2) { animation-delay: 0.15s; }
+.cfm-busy-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes cfm-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes cfm-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes cfm-busy-dot {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-3px); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cfm-overlay,
+  .cfm-card,
+  .cfm-busy-dots span {
+    animation: none;
+  }
+}
