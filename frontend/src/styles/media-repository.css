@@ -2,7 +2,15 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
-.med-page {
+/*
+ * Media design tokens live at :root (not scoped to .med-page) so every media
+ * surface resolves them — including the Media Library sub-pages (Trash, Duplicate
+ * Review, Repository Health) and the shared MediaSubNav, which render outside any
+ * .med-page wrapper. When these were scoped to .med-page, undefined var() lookups
+ * on the sub-pages collapsed to transparent backgrounds + inherited dark text,
+ * producing dark-on-dark, unreadable pages.
+ */
+:root {
   --med-navy-deep:    #0A1628;
   --med-navy-mid:     #1A3A6B;
   --med-blue:         #2563EB;
@@ -29,7 +37,9 @@
   --med-nav-h:         56px;
   --med-local-sidebar-w: 260px;
   --med-detail-panel-w: 400px;
+}
 
+.med-page {
   font-family: var(--med-ff-body);
   color: var(--med-text);
   background: var(--med-surface-1);

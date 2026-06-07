@@ -1,6 +1,10 @@
 import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import type { User } from "../../../types/auth.types";
+// Owns the .med-topnav/.med-back-btn chrome and the :root --med-* tokens the
+// sub-pages render against; import here so a direct load of a sub-page (Trash,
+// Duplicates, Health) ships the stylesheet even without visiting the library first.
+import "../../../styles/media-repository.css";
 
 interface MediaSubNavProps {
   user: User;

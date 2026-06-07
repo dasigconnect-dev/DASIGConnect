@@ -47,7 +47,7 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
 | Phase 6 | Engagement→media ranking (UC-4.9) + pre-submit advisor (UC-4.10) | — |
 | Phase 7 | Digital preservation + Repository Health (UC-4.12) | 7A-7C may proceed while Phase 5 is App-Review gated |
 
-### Current handoff - 2026-06-06
+### Current handoff - 2026-06-07
 
 - Phases 1-4 are implemented locally on the Capstone 2 dev project.
 - Phase 3 delivers hybrid search, strict relevance filtering, related-search autocomplete,
@@ -86,6 +86,39 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
   human-verified duplicate set and browser E2E after V34-V38 are applied to the dev database. With
   Phase 7 done, the dependency-ordered next code phase is **Phase 5 (UC-4.8 Facebook insights)**,
   still gated by Meta App Review for `read_insights`.
+
+### Media Library UX hardening - 2026-06-07
+
+These are UC-2.2 Media Library polish items added on top of Phase 7, all on
+`capstone2-advance-development` and pushed to origin:
+
+- **Full-library browse fix.** The grid only ever showed the first 25 assets (unpaginated fetch
+  hitting the list default). `listAllMediaAssets` now pages the endpoint (100/page) so the whole
+  library loads; client-side folder/tag filters need the full set. Thousand-scale libraries would
+  still want server-side pagination (future).
+- **Upload-time duplicate handling.** Drive-style: when a selected filename already exists in the
+  current location, an **Upload options** modal (`useUploadOptions` hook + `UploadOptionsModal`)
+  asks **Replace** (upload as a `replacement_for` linked new version + soft-delete the superseded
+  asset; originals immutable) or **Keep both**. It fires on selection (earliest a browser can see
+  files — the OS picker can't be intercepted). A complementary byte-level
+  `POST /media-assets/check-duplicates` (SHA-256) endpoint also exists; it depends on the Phase 7A
+  `content_sha256` baseline being populated. Near-duplicate (different bytes) still routes through
+  perceptual-hash flagging + the 7F workspace.
+- **Trash / recovery (UC-2.2).** Soft-delete → 30-day retention → auto-purge is now surfaced as a
+  Trash: `GET /media-assets/trash`, `POST /{id}/restore`, `POST /{id}/purge` (`MediaTrashService`).
+  Role-scoped (contributor=own, validator=institution, admin=All + per-institution). Any user can
+  Restore or Delete-forever items in their trash. Restore is lossless — soft-delete no longer drops
+  embeddings (removed only at purge). Trash lives in the Media Library **left sidebar**
+  (`FolderSidebar`), not the header.
+- **Shared sub-page top nav.** `MediaSubNav` gives Trash, Duplicate Review, and Repository Health a
+  consistent top bar (Back + logo + `Media Library > {page}` breadcrumb + role/avatar); it also
+  imports `media-repository.css` so a direct load of a sub-page ships the `--med-*` tokens.
+- **App.tsx lint cleanup:** route-driven/auth-bootstrap `setState`-in-effect deferred via
+  `queueMicrotask`; useless regex escape removed. 0 errors.
+
+> **Action required before browser testing any of the above:** restart the backend
+> (`./mvnw.cmd spring-boot:run`) so Flyway applies **V34-V38** on the dev DB. Until then the new
+> endpoints 404 and the three sub-pages show empty/error states inside their (now correct) chrome.
 
 ## 2. Standing — sanctioned advance development
 
