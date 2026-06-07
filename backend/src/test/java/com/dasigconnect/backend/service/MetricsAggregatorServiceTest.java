@@ -23,6 +23,7 @@ import com.dasigconnect.backend.repository.AnalyticsRepository;
 import com.dasigconnect.backend.repository.AnalyticsRepository.AiStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.AnalyticsScope;
 import com.dasigconnect.backend.repository.AnalyticsRepository.CompletenessStats;
+import com.dasigconnect.backend.repository.AnalyticsRepository.FacebookEngagementStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.PostingDelayStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.PublishedPostStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.ValidatorStats;
@@ -67,6 +68,9 @@ class MetricsAggregatorServiceTest {
                 .thenReturn(List.of(2.0, 3.0, 4.0));
         when(analyticsRepository.aiPerformance(any(), any(), any()))
                 .thenReturn(new AiStats(10, 7, 4, 1, 8, 6));
+        when(analyticsRepository.facebookEngagement(any(), any(), any()))
+                .thenReturn(new FacebookEngagementStats(3, 20, 5, 2, 3, 150.0, 240.0,
+                        Instant.parse("2026-05-31T00:00:00Z")));
 
         var summary = service.summary("30d", null, validator);
 
@@ -78,6 +82,8 @@ class MetricsAggregatorServiceTest {
         assertThat(summary.totalPostsPublished().sparkline()).containsExactly(2.0, 3.0, 4.0);
         assertThat(summary.aiPerformance().captionAcceptanceRate()).isEqualTo(70.0);
         assertThat(summary.aiPerformance().insufficientData()).isFalse();
+        assertThat(summary.facebookEngagement().syncedPosts()).isEqualTo(3);
+        assertThat(summary.facebookEngagement().averageReach()).isEqualTo(150.0);
         assertThat(summary.adminView()).isFalse();
         assertThat(summary.operationalHealth()).isNull();
         assertThat(summary.contributorBreakdown()).hasSize(1);

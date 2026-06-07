@@ -402,6 +402,45 @@ public class AnalyticsRepository {
                         rs.getLong("media_relevant")));
     }
 
+    public FacebookEngagementStats facebookEngagement(Instant start, Instant end, AnalyticsScope scope) {
+        String sql = """
+            WITH latest_metrics AS (
+                SELECT DISTINCT ON (m.submission_id)
+                    m.submission_id,
+                    m.reactions,
+                    m.comments,
+                    m.shares,
+                    m.reach,
+                    m.impressions,
+                    m.fetched_at
+                FROM facebook_post_metrics m
+                JOIN submissions s ON s.id = m.submission_id
+                WHERE s.published_at >= :start
+                  AND s.published_at < :end
+                  %s
+                ORDER BY m.submission_id, m.fetched_at DESC
+            )
+            SELECT COUNT(*) AS synced_posts,
+                   COALESCE(SUM(reactions), 0) AS reactions,
+                   COALESCE(SUM(comments), 0) AS comments,
+                   COALESCE(SUM(shares), 0) AS shares,
+                   COUNT(reach) AS reach_sample_size,
+                   COALESCE(AVG(reach), 0) AS average_reach,
+                   COALESCE(AVG(impressions), 0) AS average_impressions,
+                   MAX(fetched_at) AS latest_fetched_at
+            FROM latest_metrics
+            """.formatted(scope.submissionFilter("s"));
+        return jdbc.queryForObject(sql, params(start, end, scope), (rs, rowNum) -> new FacebookEngagementStats(
+                rs.getLong("synced_posts"),
+                rs.getLong("reactions"),
+                rs.getLong("comments"),
+                rs.getLong("shares"),
+                rs.getLong("reach_sample_size"),
+                round(rs.getDouble("average_reach")),
+                round(rs.getDouble("average_impressions")),
+                instantOrNull(rs.getTimestamp("latest_fetched_at"))));
+    }
+
     public OperationalStats operationalHealth(Instant start, Instant end, Instant now, AnalyticsScope scope) {
         MapSqlParameterSource params = params(start, end, scope).addValue("deadlineCutoff", Timestamp.from(now.plusSeconds(1800)));
         String sql = """
@@ -785,6 +824,9 @@ public class AnalyticsRepository {
     public record OperationalStats(long workflowCount, long deadlineRiskCount, long overrideCount,
                                    long attemptCount, long successCount, long onTimeCount,
                                    long adminActionCount) {}
+    public record FacebookEngagementStats(long syncedPosts, long reactions, long comments, long shares,
+                                          long reachSampleSize, double averageReach,
+                                          double averageImpressions, Instant latestFetchedAt) {}
     public record ContributorStats(long submittedCount, long publishedCount, long revisionRequestCount,
                                    long rejectedOrRevisionCount) {}
     public record ValidatorStats(long submissionVolume, long pendingCount, long inReviewCount,

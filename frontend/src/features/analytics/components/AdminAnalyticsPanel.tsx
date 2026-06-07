@@ -11,6 +11,13 @@ export default function AdminAnalyticsPanel({ summary }: { summary: AnalyticsSum
         ["Facebook/API failures", formatNumber(summary.adminAnalytics.facebookApiFailureCount)],
         ["Admin workload", formatNumber(summary.adminAnalytics.administratorActions)],
         ["Admin direct posts", formatNumber(summary.adminAnalytics.adminDirectPosts)],
+        ["Posts with insights", formatNumber(summary.facebookEngagement.syncedPosts)],
+        ["Engagements", formatNumber(
+          summary.facebookEngagement.reactions
+          + summary.facebookEngagement.comments
+          + summary.facebookEngagement.shares,
+        )],
+        ["Avg reach", formatNumber(summary.facebookEngagement.averageReach)],
         [
           "Publishing success",
           summary.operationalHealth

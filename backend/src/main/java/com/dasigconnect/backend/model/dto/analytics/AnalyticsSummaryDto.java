@@ -24,6 +24,7 @@ public record AnalyticsSummaryDto(
         ContributorAnalyticsDto contributorAnalytics,
         ValidatorAnalyticsDto validatorAnalytics,
         AiPerformanceDto aiPerformance,
+        FacebookEngagementDto facebookEngagement,
         AdminAnalyticsDto adminAnalytics,
         OperationalHealthDto operationalHealth) {
 }

@@ -99,6 +99,7 @@ class AnalyticsControllerTest {
                 null,
                 null,
                 new AiPerformanceDto(0, 0, 0, 0, 0, 0, 0, 0, 0, true),
+                new com.dasigconnect.backend.model.dto.analytics.FacebookEngagementDto(0, 0, 0, 0, 0, 0, 0, null),
                 new AdminAnalyticsDto(1, 4, 1),
                 new OperationalHealthDto(12, 0, 0, 0, 0, 20, 19, 95.0, 19, 100.0, 4));
     }

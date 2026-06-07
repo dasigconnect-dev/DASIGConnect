@@ -22,6 +22,7 @@ import com.dasigconnect.backend.model.dto.analytics.AnalyticsReportDto;
 import com.dasigconnect.backend.model.dto.analytics.AnalyticsSummaryDto;
 import com.dasigconnect.backend.model.dto.analytics.ContributorBreakdownDto;
 import com.dasigconnect.backend.model.dto.analytics.ContributorAnalyticsDto;
+import com.dasigconnect.backend.model.dto.analytics.FacebookEngagementDto;
 import com.dasigconnect.backend.model.dto.analytics.KpiMetricDto;
 import com.dasigconnect.backend.model.dto.analytics.OperationalHealthDto;
 import com.dasigconnect.backend.model.dto.analytics.ValidatorAnalyticsDto;
@@ -30,6 +31,7 @@ import com.dasigconnect.backend.repository.AnalyticsRepository.AiStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.AnalyticsScope;
 import com.dasigconnect.backend.repository.AnalyticsRepository.CompletenessStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.ContributorStats;
+import com.dasigconnect.backend.repository.AnalyticsRepository.FacebookEngagementStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.OperationalStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.PostingDelayStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.PublishedPostStats;
@@ -70,6 +72,8 @@ public class MetricsAggregatorService {
         PublishedPostStats previousPosts = analyticsRepository.publishedPostStats(
                 previousPeriod.start(), previousPeriod.end(), scope);
         AiStats ai = analyticsRepository.aiPerformance(period.start(), period.end(), scope);
+        FacebookEngagementStats facebookEngagement = analyticsRepository.facebookEngagement(
+                period.start(), period.end(), scope);
 
         double completenessRate = percent(completeness.completeCount(), completeness.totalCount());
         double previousCompletenessRate = percent(
@@ -176,6 +180,7 @@ public class MetricsAggregatorService {
                 contributorAnalytics,
                 validatorAnalytics,
                 aiPerformance(ai),
+                facebookEngagement(facebookEngagement),
                 adminAnalytics,
                 operationalHealth);
     }
@@ -221,6 +226,18 @@ public class MetricsAggregatorService {
                 ai.mediaRelevant(),
                 round(percent(ai.mediaRelevant(), ai.mediaTotal())),
                 totalEvents < 20);
+    }
+
+    private FacebookEngagementDto facebookEngagement(FacebookEngagementStats stats) {
+        return new FacebookEngagementDto(
+                stats.syncedPosts(),
+                stats.reactions(),
+                stats.comments(),
+                stats.shares(),
+                stats.reachSampleSize(),
+                stats.averageReach(),
+                stats.averageImpressions(),
+                stats.latestFetchedAt());
     }
 
     private AnalyticsScope scopeFor(JwtUserDetails user, UUID institutionId) {

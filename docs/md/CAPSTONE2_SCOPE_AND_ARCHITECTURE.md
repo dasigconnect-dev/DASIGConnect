@@ -284,7 +284,7 @@ Correctness rules:
 
 ### 5.4 Insights Sync + Feedback Loop (UC-4.8 / UC-4.9)
 
-- `FacebookInsightsSyncJob` (`@Scheduled`, idempotent): for each published submission with a non-null `submissions.platform_post_id`, GET `/{post-id}?fields=reactions.summary(true),comments.summary(true),shares` (+ `/insights` if `read_insights` granted) → insert a `facebook_post_metrics` row. Commit before/after the external call — never hold a connection across it.
+- `FacebookInsightsSyncJob` (`@Scheduled`, idempotent): for each published submission with a non-null `submissions.platform_post_id`, GET `/{post-id}?fields=reactions.summary(true),comments.summary(true),shares` (+ `/insights` when the refreshed token has `read_insights`) → insert a `facebook_post_metrics` row. Commit before/after the external call — never hold a connection across it. **Implementation started 2026-06-08:** V39 stores append-only snapshots, the job batches/stale-skips posts, and analytics surfaces synced posts, engagement totals, and average reach.
 - A periodic `AssetPerformanceJob` rolls metrics up to `media_assets.performance_score`, which `AIRecommendationService` adds as a re-rank signal. Cheap, idempotent, fully inside existing patterns.
 
 ### 5.5 Pre-Submit Advisor (UC-4.10)

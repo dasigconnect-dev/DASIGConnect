@@ -106,6 +106,17 @@ export interface AdminAnalyticsDto {
   adminDirectPosts: number;
 }
 
+export interface FacebookEngagementDto {
+  syncedPosts: number;
+  reactions: number;
+  comments: number;
+  shares: number;
+  reachSampleSize: number;
+  averageReach: number;
+  averageImpressions: number;
+  latestFetchedAt: string | null;
+}
+
 export interface AnalyticsSummaryDto {
   range: AnalyticsRange | string;
   periodStart: string;
@@ -126,6 +137,7 @@ export interface AnalyticsSummaryDto {
   contributorAnalytics: ContributorAnalyticsDto | null;
   validatorAnalytics: ValidatorAnalyticsDto | null;
   aiPerformance: AiPerformanceDto;
+  facebookEngagement: FacebookEngagementDto;
   adminAnalytics: AdminAnalyticsDto | null;
   operationalHealth: OperationalHealthDto | null;
 }

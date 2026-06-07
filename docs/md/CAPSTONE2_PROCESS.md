@@ -57,6 +57,10 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
 - Phase 5 Facebook insights remains the next dependency-ordered phase. `read_insights` has been
   added in Facebook Developers; the backend OAuth flow now requests it, so the next operational
   step is re-authorizing the Page token and confirming the refreshed token includes the scope.
+- Phase 5 first implementation slice is in progress: V39 adds `facebook_post_metrics`,
+  `FacebookInsightsSyncJob` stores append-only Graph snapshots, and analytics exposes the latest
+  engagement summary. Reach/impressions stay null until the refreshed Page token carries
+  `read_insights`.
 - Phase 6 depends on the engagement data produced by Phase 5.
 - Phase 7A-7G are **all implemented** — UC-4.12 is feature complete. V34-V38 cover fixity, the
   integrity review workflow, rights records, lineage, and duplicate review (7C and 7G added no

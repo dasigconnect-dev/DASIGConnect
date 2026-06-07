@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Pageable;
 
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
@@ -198,4 +199,27 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         AND s.manualPublishStartedAt < :cutoff
         """)
     List<Submission> findAbandonedManualPublishes(@Param("cutoff") Instant cutoff);
+
+    /** UC-4.8: published Facebook posts that need a fresh engagement/insights snapshot. */
+    @Query("""
+        SELECT s FROM Submission s
+        WHERE s.platformPostId IS NOT NULL
+        AND s.publishedAt IS NOT NULL
+        AND s.publishedAt >= :publishedSince
+        AND s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.published,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.published_manual,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.admin_direct_post
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM FacebookPostMetric m
+            WHERE m.submission = s
+            AND m.fetchedAt >= :staleCutoff
+        )
+        ORDER BY s.publishedAt DESC
+        """)
+    List<Submission> findDueForFacebookInsights(
+            @Param("publishedSince") Instant publishedSince,
+            @Param("staleCutoff") Instant staleCutoff,
+            Pageable pageable);
 }
