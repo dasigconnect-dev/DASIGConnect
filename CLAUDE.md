@@ -12,6 +12,32 @@ See `README.md`, `TASKS.md`, and `docs/` for project context, SRS, SDD, and task
 
 ---
 
+## 📍 Capstone 2 — Current Development (read this first)
+
+Active work is on branch **`capstone2-advance-development`**, against a **separate dev Supabase
+project** — the submitted Capstone 1 production project is **frozen; never run migrations against
+it** (see `docs/adr/0003-*`). Capstone 2 (Module 4) turns the four subsystems into one closed
+feedback loop (Media → AI → Analytics → Submission).
+
+The **design-of-record lives in `docs/md/`** — members should read these for the current picture:
+
+- **`CAPSTONE2_SCOPE_AND_ARCHITECTURE.md`** — the *what*: UC‑4.1→4.12, schema additions, phasing, eval targets.
+- **`CAPSTONE2_PROCESS.md`** — the *how*: Kanban flow, environments, Definition of Done, and the dated **handoff log**.
+- **`CAPSTONE2_PHASE{1,2,3,7}_PLAN.md`** — per‑phase implementation plans.
+- **`HANDOFF.md`** — the most recent session handoff (top of file = latest).
+- **`docs/adr/`** — architecture decisions (ADR‑0001…0006); **`docs/eval/`** — frozen eval datasets + results (D1/D2/D5/D7).
+
+**Status (2026-06-08):** Phases **1–5 and 7** implemented locally; **Phase 5b** (Facebook page
+audience) and the Facebook‑style **Views/Engagement/Audience** insights UI (Recharts) landed.
+Flyway is at **V42** (next free **V43**). **Next phase: 6** — engagement→media ranking
+(UC‑4.9) + pre‑submit advisor (UC‑4.10).
+
+> ⚠️ The **"Current Local Status – 2026-05-28 (Session 9)"** section further down is **Capstone 1
+> (`module3`) history**, kept for reference. For anything current, trust the `docs/md/CAPSTONE2_*`
+> files and `HANDOFF.md` above.
+
+---
+
 ## Commands
 
 ### Backend (`/backend`)
