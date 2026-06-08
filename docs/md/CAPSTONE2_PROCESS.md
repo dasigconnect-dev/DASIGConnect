@@ -47,21 +47,30 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
 | Phase 6 | Engagement→media ranking (UC-4.9) + pre-submit advisor (UC-4.10) | — |
 | Phase 7 | Digital preservation + Repository Health (UC-4.12) | 7A-7C may proceed while Phase 5 is App-Review gated |
 
-### Current handoff - 2026-06-07
+### Current handoff - 2026-06-08
 
 - Phases 1-4 are implemented locally on the Capstone 2 dev project.
 - Phase 3 delivers hybrid search, strict relevance filtering, related-search autocomplete,
   and search feedback; D2 Recall@3 is recorded as 1.0.
 - Phase 4 delivers best-N caption support, visibility/consent gating, submission enforcement,
   and the media audit-history surface. `safety_verdict` remains optional.
-- Phase 5 Facebook insights remains the next dependency-ordered phase. `read_insights` has been
-  added in Facebook Developers; the backend OAuth flow now requests it, so the next operational
-  step is re-authorizing the Page token and confirming the refreshed token includes the scope.
-- Phase 5 first implementation slice is in progress: V39 adds `facebook_post_metrics`,
-  `FacebookInsightsSyncJob` stores append-only Graph snapshots, and analytics exposes the latest
-  engagement summary. Reach/impressions stay null until the refreshed Page token carries
-  `read_insights`.
-- Phase 6 depends on the engagement data produced by Phase 5.
+- Phase 5 Facebook insights is implemented as an operational foundation. `read_insights` is now
+  included in the Meta app permission set, and the manual long-lived Page token path is supported
+  by refreshing `FACEBOOK_PAGE_ACCESS_TOKEN` into the encrypted DB token row on backend startup.
+- Phase 5 migration status: V40 adds `facebook_post_metrics`. V39 is already occupied in the
+  connected dev database by `V39__seed_lerah_caones_contributor.sql`, so the Facebook metrics
+  migration must remain V40.
+- `FacebookInsightsSyncJob` stores append-only Graph snapshots, analytics exposes
+  `facebookEngagement`, and administrators can force a sync through
+  `POST /api/v1/analytics/facebook-insights/sync` or the Analytics dashboard **Sync insights**
+  button.
+- V41 extends `facebook_post_metrics` with post/video view counters, post clicks,
+  15-second/60-second views, and millisecond watch-time fields for the separate
+  `/analytics/insights` Content Insights page.
+- Current dev database state after verification: `facebook_post_metrics` exists; V40 succeeded;
+  there are currently 0 eligible published Facebook posts in the 90-day lookback, so metric rows
+  remain 0 until a DASIGConnect-published post has `platform_post_id` and `published_at`.
+- Phase 6 depends on engagement data produced by Phase 5 after real published posts exist.
 - Phase 7A-7G are **all implemented** — UC-4.12 is feature complete. V34-V38 cover fixity, the
   integrity review workflow, rights records, lineage, and duplicate review (7C and 7G added no
   migration). New uploads receive asynchronous SHA-256 verification; a bounded daily job backfills
@@ -88,10 +97,12 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
   with a documented Dublin Core mapping (`docs/md/dublin-core-mapping.md`), fixity/rights/lineage/
   provenance/lifecycle fields, audited; it omits storage URLs/credentials and is tenant-scoped.
 - **UC-4.12 (Phase 7) is feature complete.** Remaining preservation work is non-code: the D1
-  human-verified duplicate set and browser E2E after V34-V38 are applied to the dev database. With
-  Phase 7 done, the dependency-ordered next code phase is **Phase 5 (UC-4.8 Facebook insights)**.
-  `read_insights` is now part of the Facebook app setup; implementation should verify the refreshed
-  Page token before syncing reach/impression metrics.
+  human-verified duplicate set and browser E2E after V34-V38 are applied to the dev database.
+- **Phase 5 (UC-4.8) is now implemented** (see the Phase 5 bullets above), so the dependency-ordered
+  next code phase is **Phase 6 (UC-4.9 engagement→media ranking + UC-4.10 pre-submit advisor)**,
+  unblocked once real published posts produce `facebook_post_metrics` rows. `read_insights` is part
+  of the Facebook app setup; reach/impressions stay best-effort until the refreshed Page token is
+  validated.
 
 ### Media Library UX hardening - 2026-06-07
 
@@ -137,6 +148,35 @@ These are UC-2.2 Media Library polish items added on top of Phase 7, all on
 > **Action required before browser testing any of the above:** restart the backend
 > (`./mvnw.cmd spring-boot:run`) so Flyway applies **V34-V38** on the dev DB. Until then the new
 > endpoints 404 and the three sub-pages show empty/error states inside their (now correct) chrome.
+
+### Analytics sub-navigation redesign - 2026-06-08
+
+Phase 5 frontend polish: the Analytics area was restructured into its own sub-navigation
+shell, matching the Media Library redesign pattern. All on `capstone2-advance-development`.
+
+- **New `AnalyticsLayout` shell** (`features/analytics/components/AnalyticsLayout.tsx` +
+  `styles/analytics-layout.css`, self-contained `--alx-*` tokens). Clicking **Analytics** in the
+  main sidebar now opens a full-screen Analytics area with its own chrome: a sticky **top nav**
+  (Back → `/dashboard`, DASIGConnect brand, `DASIGConnect > Analytics > {page}` breadcrumb,
+  role chip + avatar) and a **left sub-sidebar** linking the analytics pages (**Overview**,
+  **Insights**) with `NavLink` active state and Tabler icons.
+- **Insights moved into the analytics sub-sidebar.** `ContentInsightsPage` is now reached from the
+  sidebar (label **Insights**), and the large **"Content Insights" button was removed** from the
+  Analytics dashboard toolbar. Both pages render their existing header/panels inside the shell;
+  their per-page back buttons were dropped (Back/breadcrumb live in the shared top nav).
+- **Standalone routing.** `/analytics` and `/analytics/insights` were moved **out of the
+  `DashboardLayout` group** into standalone full-screen routes (like `/media-repository/*`), each
+  still guarded by `ProtectedRoute`. The main shell sidebar is replaced by the analytics
+  sub-sidebar while in the area.
+- **Sidebar parity.** `.alx-sidebar` matches the Media Library `.fld-sidebar`: full-height
+  (`height: calc(100vh - nav-h)`), sticky at `top: nav-h`, internal scroll with
+  `overscroll-behavior: contain`, and the same scrollbar styling. Collapses to a horizontal bar
+  under 900px. Dead `.analytics-back-btn` / `.analytics-insights-btn` CSS removed.
+- **Verification:** `npm run build` passed (tsc + vite, 2002 modules). Scoped ESLint clean on the
+  new layout, `AnalyticsDashboardPage`, and `App.tsx`; `ContentInsightsPage` retains one
+  **pre-existing** `react-hooks/set-state-in-effect` finding in its data-fetch effect (not
+  introduced by this change). Browser E2E still needs a running backend + login (and V41) to
+  exercise the live Insights data.
 
 ## 2. Standing — sanctioned advance development
 
@@ -186,7 +226,7 @@ is safe and so a future document submission is a formality rather than a rewrite
 >   for the screen slice). This is part of every vertical slice.
 
 - **Branch per UC**, PR into the integration branch; keep the mainline releasable.
-- **Migrations:** Flyway only; the next free version is currently **V39**. Never reuse a
+- **Migrations:** Flyway only; the next free version is currently **V43**. Never reuse a
   version number. Add columns
   nullable-then-backfill; never a default that hides existing READY assets. Watch the
   `visibility` backfill landmine (grandfather existing assets to `cleared_for_public`).

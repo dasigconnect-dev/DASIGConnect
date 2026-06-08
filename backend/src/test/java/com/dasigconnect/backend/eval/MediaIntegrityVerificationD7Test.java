@@ -266,6 +266,7 @@ class MediaIntegrityVerificationD7Test {
         assertThat(mismatchDetected).as("all controlled mismatch detected").isEqualTo(mismatchTotal);
         assertThat(errorDetected).as("all controlled read errors detected").isEqualTo(errorTotal);
         assertThat(baselineOverwrites).as("0 expected checksums silently overwritten").isZero();
+        assertThat(detectedFailures).as("every controlled integrity failure was detected").isEqualTo(controlledFailures);
 
         writeResults(coverage, fixtures.size(), withBaseline,
                 missingDetected, missingTotal, mismatchDetected, mismatchTotal,

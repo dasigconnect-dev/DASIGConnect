@@ -10,8 +10,8 @@
 > collections, folders, smart phrases) over a backend autocomplete endpoint; the Collection search
 > reuses the same hybrid lifecycle. 3F search feedback logging is wired (`/ai/feedback/search`).
 > D2 golden-set re-run after the strict cutoff: **Recall@3 = MRR = Recall@8 = 1.000**.
-> **This is the active phase; Phase 4 items (UC-4.7, visibility gate, UC-4.11) are also implemented;
-> the next unstarted phase is Phase 5 (UC-4.8 Facebook insights).**
+> **Phase 3 is complete; Phase 4 (UC-4.7, visibility gate, UC-4.11), Phase 5 (UC-4.8 Facebook
+> insights), and Phase 7 are also implemented. The next unstarted phase is Phase 6 (UC-4.9/4.10).**
 
 ---
 
@@ -190,8 +190,10 @@ Top results + feedback controls
   query passes; frontend build + targeted ESLint clean. Backend running on the dev project.
 - **Commits:** `36864c5` (suggestions slice + overhaul), `0086ea1` (Claude metadata sources),
   `4e9bfe6` (description snippets), `7a89993` (strict relevance cutoff).
-- **Next:** Phase 5 (UC-4.8 Facebook engagement insights). Note its Meta App Review lead time for
-  `read_insights` — start that in parallel. Optional Phase 3 follow-ups: tune the similarity
+- **Next:** Phase 5 (UC-4.8 Facebook engagement insights) is now implemented (insights client/sync/
+  job, V40/V41 metrics, content-insights + admin sync endpoint); the next unstarted phase is Phase 6
+  (UC-4.9 engagement→ranking + UC-4.10 advisor). Reach/impressions stay best-effort until the
+  refreshed Page token / `read_insights` is validated. Optional Phase 3 follow-ups: tune the similarity
   floors / suggestion limits on real data; verify D2 with human (non-AI) labels before defense.
 
 ## 4. Implementation Rules

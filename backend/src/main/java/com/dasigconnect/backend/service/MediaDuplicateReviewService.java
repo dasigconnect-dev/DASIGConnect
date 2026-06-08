@@ -24,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -129,7 +130,7 @@ public class MediaDuplicateReviewService {
         boolean mergedTags = false;
         if (decision.equals("duplicate")) {
             if (comparedId == null) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                         "This asset has no compared duplicate to adjudicate.");
             }
             canonicalId = dto.getCanonicalAssetId();

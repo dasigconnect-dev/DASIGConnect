@@ -110,6 +110,18 @@ class MetricsAggregatorServiceTest {
     }
 
     @Test
+    void contentInsights_returnsNotReadyPayloadWhenMigrationIsMissing() {
+        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "administrator", null);
+        when(analyticsRepository.facebookContentInsightsReady()).thenReturn(false);
+
+        var insights = service.contentInsights("30d", null, admin);
+
+        assertThat(insights.metricsReady()).isFalse();
+        assertThat(insights.overview().syncedPosts()).isZero();
+        assertThat(insights.recentPosts()).isEmpty();
+    }
+
+    @Test
     void summary_rejectsUnsupportedRange() {
         JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "administrator", null);
 

@@ -12,10 +12,15 @@ import org.springframework.stereotype.Repository;
 
 import com.dasigconnect.backend.model.dto.analytics.ContributorBreakdownDto;
 import com.dasigconnect.backend.model.dto.analytics.CategoryPerformanceDto;
+import com.dasigconnect.backend.model.dto.analytics.ContentInsightDailyPointDto;
+import com.dasigconnect.backend.model.dto.analytics.ContentInsightOverviewDto;
+import com.dasigconnect.backend.model.dto.analytics.ContentTypeInsightDto;
 import com.dasigconnect.backend.model.dto.analytics.ContentIssueDto;
 import com.dasigconnect.backend.model.dto.analytics.DailyAnalyticsPointDto;
 import com.dasigconnect.backend.model.dto.analytics.InstitutionPostsDto;
 import com.dasigconnect.backend.model.dto.analytics.InstitutionFilterOptionDto;
+import com.dasigconnect.backend.model.dto.analytics.PostingWindowInsightDto;
+import com.dasigconnect.backend.model.dto.analytics.RecentContentInsightDto;
 import com.dasigconnect.backend.model.dto.analytics.StatusBreakdownDto;
 import com.dasigconnect.backend.model.dto.analytics.SubmissionAnalyticsRowDto;
 
@@ -403,6 +408,10 @@ public class AnalyticsRepository {
     }
 
     public FacebookEngagementStats facebookEngagement(Instant start, Instant end, AnalyticsScope scope) {
+        if (!tableExists("facebook_post_metrics")) {
+            return FacebookEngagementStats.empty();
+        }
+
         String sql = """
             WITH latest_metrics AS (
                 SELECT DISTINCT ON (m.submission_id)
@@ -439,6 +448,239 @@ public class AnalyticsRepository {
                 round(rs.getDouble("average_reach")),
                 round(rs.getDouble("average_impressions")),
                 instantOrNull(rs.getTimestamp("latest_fetched_at"))));
+    }
+
+    public boolean facebookContentInsightsReady() {
+        return tableExists("facebook_post_metrics") && columnExists("facebook_post_metrics", "average_watch_time_ms");
+    }
+
+    public ContentInsightOverviewDto contentInsightOverview(Instant start, Instant end, AnalyticsScope scope) {
+        String sql = latestContentMetricsCte(scope) + """
+            SELECT COUNT(*) AS synced_posts,
+                   COALESCE(SUM(views), 0) AS total_views,
+                   COALESCE(SUM(unique_views), 0) AS unique_views,
+                   COALESCE(SUM(reactions + comments + shares), 0) AS total_engagements,
+                   COALESCE(SUM(reactions), 0) AS reactions,
+                   COALESCE(SUM(comments), 0) AS comments,
+                   COALESCE(SUM(shares), 0) AS shares,
+                   COALESCE(SUM(post_clicks), 0) AS post_clicks,
+                   COALESCE(SUM(fifteen_second_views), 0) AS fifteen_second_views,
+                   COALESCE(SUM(sixty_second_views), 0) AS sixty_second_views,
+                   COALESCE(AVG(reach), 0) AS average_reach,
+                   COALESCE(AVG(impressions), 0) AS average_impressions,
+                   COALESCE(SUM(watch_time_ms), 0) / 1000.0 AS total_watch_time_seconds,
+                   COALESCE(AVG(average_watch_time_ms), 0) / 1000.0 AS average_watch_time_seconds,
+                   CASE WHEN COALESCE(SUM(COALESCE(NULLIF(reach, 0), NULLIF(unique_views, 0), NULLIF(views, 0), 0)), 0) = 0
+                        THEN 0
+                        ELSE COALESCE(SUM(reactions + comments + shares), 0) * 100.0
+                             / SUM(COALESCE(NULLIF(reach, 0), NULLIF(unique_views, 0), NULLIF(views, 0), 0))
+                   END AS engagement_rate,
+                   MAX(fetched_at) AS latest_fetched_at
+            FROM latest_metrics
+            """;
+        return jdbc.queryForObject(sql, params(start, end, scope), (rs, rowNum) -> new ContentInsightOverviewDto(
+                rs.getLong("synced_posts"),
+                rs.getLong("total_views"),
+                rs.getLong("unique_views"),
+                rs.getLong("total_engagements"),
+                rs.getLong("reactions"),
+                rs.getLong("comments"),
+                rs.getLong("shares"),
+                rs.getLong("post_clicks"),
+                rs.getLong("fifteen_second_views"),
+                rs.getLong("sixty_second_views"),
+                round(rs.getDouble("average_reach")),
+                round(rs.getDouble("average_impressions")),
+                round(rs.getDouble("total_watch_time_seconds")),
+                round(rs.getDouble("average_watch_time_seconds")),
+                round(rs.getDouble("engagement_rate")),
+                instantOrNull(rs.getTimestamp("latest_fetched_at"))));
+    }
+
+    public List<ContentInsightDailyPointDto> contentInsightDailyTrend(
+            Instant start, Instant end, AnalyticsScope scope) {
+        String sql = latestContentMetricsCte(scope) + """
+            SELECT CAST(day_start AS date) AS day,
+                   COUNT(lm.submission_id) AS posts_published,
+                   COALESCE(SUM(lm.views), 0) AS views,
+                   COALESCE(SUM(lm.reach), 0) AS reach,
+                   COALESCE(SUM(lm.reactions + lm.comments + lm.shares), 0) AS engagements,
+                   COALESCE(SUM(lm.watch_time_ms), 0) / 1000.0 AS watch_time_seconds
+            FROM generate_series(CAST(:start AS timestamptz), CAST(:end AS timestamptz), interval '1 day') AS day_start
+            LEFT JOIN latest_metrics lm ON CAST(lm.published_at AS date) = CAST(day_start AS date)
+            GROUP BY day_start
+            ORDER BY day_start ASC
+            """;
+        return jdbc.query(sql, params(start, end, scope), (rs, rowNum) -> new ContentInsightDailyPointDto(
+                rs.getDate("day").toLocalDate(),
+                rs.getLong("posts_published"),
+                rs.getLong("views"),
+                rs.getLong("reach"),
+                rs.getLong("engagements"),
+                round(rs.getDouble("watch_time_seconds"))));
+    }
+
+    public List<ContentTypeInsightDto> contentTypeInsights(Instant start, Instant end, AnalyticsScope scope) {
+        String sql = latestContentMetricsCte(scope) + """
+            SELECT content_type,
+                   COUNT(*) AS post_count,
+                   COALESCE(SUM(views), 0) AS views,
+                   COALESCE(SUM(reach), 0) AS reach,
+                   COALESCE(SUM(reactions + comments + shares), 0) AS engagements,
+                   CASE WHEN COALESCE(SUM(COALESCE(NULLIF(reach, 0), NULLIF(unique_views, 0), NULLIF(views, 0), 0)), 0) = 0
+                        THEN 0
+                        ELSE COALESCE(SUM(reactions + comments + shares), 0) * 100.0
+                             / SUM(COALESCE(NULLIF(reach, 0), NULLIF(unique_views, 0), NULLIF(views, 0), 0))
+                   END AS engagement_rate,
+                   COALESCE(AVG(average_watch_time_ms), 0) / 1000.0 AS average_watch_time_seconds
+            FROM latest_metrics
+            GROUP BY content_type
+            ORDER BY views DESC, engagements DESC, post_count DESC
+            """;
+        return jdbc.query(sql, params(start, end, scope), (rs, rowNum) -> new ContentTypeInsightDto(
+                rs.getString("content_type"),
+                rs.getLong("post_count"),
+                rs.getLong("views"),
+                rs.getLong("reach"),
+                rs.getLong("engagements"),
+                round(rs.getDouble("engagement_rate")),
+                round(rs.getDouble("average_watch_time_seconds"))));
+    }
+
+    public List<PostingWindowInsightDto> postingWindowInsights(Instant start, Instant end, AnalyticsScope scope) {
+        String sql = latestContentMetricsCte(scope) + """
+            SELECT TRIM(TO_CHAR(published_at AT TIME ZONE 'Asia/Manila', 'FMDay')) AS day_of_week,
+                   EXTRACT(HOUR FROM published_at AT TIME ZONE 'Asia/Manila')::int AS hour_of_day,
+                   COUNT(*) AS post_count,
+                   COALESCE(AVG(views), 0) AS average_views,
+                   COALESCE(AVG(reactions + comments + shares), 0) AS average_engagements,
+                   COALESCE(AVG(average_watch_time_ms), 0) / 1000.0 AS average_watch_time_seconds
+            FROM latest_metrics
+            GROUP BY day_of_week, hour_of_day
+            HAVING COUNT(*) > 0
+            ORDER BY average_engagements DESC, average_views DESC, post_count DESC
+            LIMIT 8
+            """;
+        return jdbc.query(sql, params(start, end, scope), (rs, rowNum) -> new PostingWindowInsightDto(
+                rs.getString("day_of_week"),
+                rs.getInt("hour_of_day"),
+                rs.getLong("post_count"),
+                round(rs.getDouble("average_views")),
+                round(rs.getDouble("average_engagements")),
+                round(rs.getDouble("average_watch_time_seconds"))));
+    }
+
+    public List<RecentContentInsightDto> recentContentInsights(Instant start, Instant end, AnalyticsScope scope) {
+        String sql = latestContentMetricsCte(scope) + """
+            SELECT submission_id,
+                   event_title,
+                   institution_name,
+                   category,
+                   published_at,
+                   content_type,
+                   media_count,
+                   views,
+                   COALESCE(reach, 0) AS reach,
+                   reactions,
+                   comments,
+                   shares,
+                   reactions + comments + shares AS engagements,
+                   CASE WHEN COALESCE(NULLIF(reach, 0), NULLIF(unique_views, 0), NULLIF(views, 0), 0) = 0
+                        THEN 0
+                        ELSE (reactions + comments + shares) * 100.0
+                             / COALESCE(NULLIF(reach, 0), NULLIF(unique_views, 0), NULLIF(views, 0), 0)
+                   END AS engagement_rate,
+                   COALESCE(average_watch_time_ms, 0) / 1000.0 AS average_watch_time_seconds,
+                   fifteen_second_views,
+                   sixty_second_views
+            FROM latest_metrics
+            ORDER BY published_at DESC
+            LIMIT 12
+            """;
+        return jdbc.query(sql, params(start, end, scope), (rs, rowNum) -> new RecentContentInsightDto(
+                rs.getObject("submission_id", UUID.class),
+                rs.getString("event_title"),
+                rs.getString("institution_name"),
+                rs.getString("category"),
+                instantOrNull(rs.getTimestamp("published_at")),
+                rs.getString("content_type"),
+                rs.getLong("media_count"),
+                rs.getLong("views"),
+                rs.getLong("reach"),
+                rs.getLong("reactions"),
+                rs.getLong("comments"),
+                rs.getLong("shares"),
+                rs.getLong("engagements"),
+                round(rs.getDouble("engagement_rate")),
+                round(rs.getDouble("average_watch_time_seconds")),
+                rs.getLong("fifteen_second_views"),
+                rs.getLong("sixty_second_views")));
+    }
+
+    private boolean tableExists(String tableName) {
+        Boolean exists = jdbc.queryForObject(
+                "SELECT to_regclass(:tableName) IS NOT NULL",
+                new MapSqlParameterSource("tableName", "public." + tableName),
+                Boolean.class);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    private boolean columnExists(String tableName, String columnName) {
+        Boolean exists = jdbc.queryForObject(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = :tableName
+                      AND column_name = :columnName
+                )
+                """,
+                new MapSqlParameterSource()
+                        .addValue("tableName", tableName)
+                        .addValue("columnName", columnName),
+                Boolean.class);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    private String latestContentMetricsCte(AnalyticsScope scope) {
+        return """
+            WITH latest_metrics AS (
+                SELECT DISTINCT ON (m.submission_id)
+                    m.submission_id,
+                    s.event_title,
+                    i.name AS institution_name,
+                    COALESCE(NULLIF(TRIM(s.category), ''), 'Uncategorized') AS category,
+                    s.published_at,
+                    (SELECT COUNT(*) FROM submission_media_assets sma WHERE sma.submission_id = s.id) AS media_count,
+                    CASE
+                        WHEN m.video_id IS NOT NULL THEN 'Video/Reel'
+                        WHEN (SELECT COUNT(*) FROM submission_media_assets sma WHERE sma.submission_id = s.id) > 1 THEN 'Multi-photo'
+                        WHEN (SELECT COUNT(*) FROM submission_media_assets sma WHERE sma.submission_id = s.id) = 1 THEN 'Photo'
+                        ELSE 'Post'
+                    END AS content_type,
+                    m.reactions,
+                    m.comments,
+                    m.shares,
+                    m.reach,
+                    m.impressions,
+                    m.post_clicks,
+                    m.views,
+                    m.unique_views,
+                    m.fifteen_second_views,
+                    m.sixty_second_views,
+                    m.watch_time_ms,
+                    m.average_watch_time_ms,
+                    m.fetched_at
+                FROM facebook_post_metrics m
+                JOIN submissions s ON s.id = m.submission_id
+                JOIN institutions i ON i.id = s.institution_id
+                WHERE s.published_at >= :start
+                  AND s.published_at < :end
+                  %s
+                ORDER BY m.submission_id, m.fetched_at DESC
+            )
+            """.formatted(scope.submissionFilter("s"));
     }
 
     public OperationalStats operationalHealth(Instant start, Instant end, Instant now, AnalyticsScope scope) {
@@ -826,7 +1068,11 @@ public class AnalyticsRepository {
                                    long adminActionCount) {}
     public record FacebookEngagementStats(long syncedPosts, long reactions, long comments, long shares,
                                           long reachSampleSize, double averageReach,
-                                          double averageImpressions, Instant latestFetchedAt) {}
+                                          double averageImpressions, Instant latestFetchedAt) {
+        public static FacebookEngagementStats empty() {
+            return new FacebookEngagementStats(0, 0, 0, 0, 0, 0.0, 0.0, null);
+        }
+    }
     public record ContributorStats(long submittedCount, long publishedCount, long revisionRequestCount,
                                    long rejectedOrRevisionCount) {}
     public record ValidatorStats(long submissionVolume, long pendingCount, long inReviewCount,

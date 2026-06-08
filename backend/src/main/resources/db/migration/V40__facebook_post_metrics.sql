@@ -1,7 +1,7 @@
 -- UC-4.8 Phase 5: Facebook engagement and insights time-series.
 -- Rows are append-only snapshots fetched from Graph API for published submissions.
 
-CREATE TABLE facebook_post_metrics (
+CREATE TABLE IF NOT EXISTS facebook_post_metrics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     submission_id UUID NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
     facebook_post_id TEXT NOT NULL,
@@ -16,13 +16,16 @@ CREATE TABLE facebook_post_metrics (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX ix_fb_metrics_submission_fetched
+CREATE INDEX IF NOT EXISTS ix_fb_metrics_submission_fetched
     ON facebook_post_metrics (submission_id, fetched_at DESC);
 
-CREATE INDEX ix_fb_metrics_post_fetched
+CREATE INDEX IF NOT EXISTS ix_fb_metrics_post_fetched
     ON facebook_post_metrics (facebook_post_id, fetched_at DESC);
 
 ALTER TABLE facebook_post_metrics ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS facebook_post_metrics_tenant_isolation
+    ON facebook_post_metrics;
 
 CREATE POLICY facebook_post_metrics_tenant_isolation
     ON facebook_post_metrics

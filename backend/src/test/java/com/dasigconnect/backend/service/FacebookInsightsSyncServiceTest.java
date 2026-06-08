@@ -2,6 +2,8 @@ package com.dasigconnect.backend.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -20,6 +22,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Pageable;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class FacebookInsightsSyncServiceTest {
 
@@ -28,10 +31,30 @@ class FacebookInsightsSyncServiceTest {
         SubmissionRepository submissionRepository = mock(SubmissionRepository.class);
         FacebookPostMetricRepository metricRepository = mock(FacebookPostMetricRepository.class);
         FacebookInsightsClient insightsClient = mock(FacebookInsightsClient.class);
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         when(insightsClient.isConfigured()).thenReturn(false);
 
         FacebookInsightsSyncService service = new FacebookInsightsSyncService(
-                submissionRepository, metricRepository, insightsClient, 20, 90, 360);
+                submissionRepository, metricRepository, insightsClient, jdbcTemplate, 20, 90, 360);
+
+        int synced = service.syncDueMetrics();
+
+        assertEquals(0, synced);
+        verify(submissionRepository, never()).findDueForFacebookInsights(any(), any(), any(Pageable.class));
+        verify(metricRepository, never()).save(any());
+    }
+
+    @Test
+    void syncDueMetrics_skipsWhenMetricsTableIsMissing() {
+        SubmissionRepository submissionRepository = mock(SubmissionRepository.class);
+        FacebookPostMetricRepository metricRepository = mock(FacebookPostMetricRepository.class);
+        FacebookInsightsClient insightsClient = mock(FacebookInsightsClient.class);
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(insightsClient.isConfigured()).thenReturn(true);
+        when(jdbcTemplate.queryForObject(anyString(), eq(Boolean.class))).thenReturn(false);
+
+        FacebookInsightsSyncService service = new FacebookInsightsSyncService(
+                submissionRepository, metricRepository, insightsClient, jdbcTemplate, 20, 90, 360);
 
         int synced = service.syncDueMetrics();
 
@@ -45,16 +68,19 @@ class FacebookInsightsSyncServiceTest {
         SubmissionRepository submissionRepository = mock(SubmissionRepository.class);
         FacebookPostMetricRepository metricRepository = mock(FacebookPostMetricRepository.class);
         FacebookInsightsClient insightsClient = mock(FacebookInsightsClient.class);
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         Submission submission = submission("123_456");
 
         when(insightsClient.isConfigured()).thenReturn(true);
+        when(jdbcTemplate.queryForObject(anyString(), eq(Boolean.class))).thenReturn(true);
         when(submissionRepository.findDueForFacebookInsights(any(), any(), any(Pageable.class)))
                 .thenReturn(List.of(submission));
         when(insightsClient.fetchPostMetrics("123_456")).thenReturn(new FacebookPostMetricsSnapshot(
-                11, 4, 2, 120, 180, "{\"id\":\"123_456\"}", "{\"data\":[]}"));
+                11, 4, 2, 120, 180, "video_1", 7, 31, 20, 9, 3, 92_000L,
+                23_000L, "{\"LIKE\":11}", "{\"id\":\"123_456\"}", "{\"data\":[]}", null));
 
         FacebookInsightsSyncService service = new FacebookInsightsSyncService(
-                submissionRepository, metricRepository, insightsClient, 20, 90, 360);
+                submissionRepository, metricRepository, insightsClient, jdbcTemplate, 20, 90, 360);
 
         int synced = service.syncDueMetrics();
 
@@ -69,6 +95,15 @@ class FacebookInsightsSyncServiceTest {
         assertEquals(2, saved.getShares());
         assertEquals(120, saved.getReach());
         assertEquals(180, saved.getImpressions());
+        assertEquals("video_1", saved.getVideoId());
+        assertEquals(7, saved.getPostClicks());
+        assertEquals(31, saved.getViews());
+        assertEquals(20, saved.getUniqueViews());
+        assertEquals(9, saved.getFifteenSecondViews());
+        assertEquals(3, saved.getSixtySecondViews());
+        assertEquals(92_000L, saved.getWatchTimeMs());
+        assertEquals(23_000L, saved.getAverageWatchTimeMs());
+        assertEquals("{\"LIKE\":11}", saved.getReactionsByType());
     }
 
     @Test
@@ -76,18 +111,20 @@ class FacebookInsightsSyncServiceTest {
         SubmissionRepository submissionRepository = mock(SubmissionRepository.class);
         FacebookPostMetricRepository metricRepository = mock(FacebookPostMetricRepository.class);
         FacebookInsightsClient insightsClient = mock(FacebookInsightsClient.class);
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         Submission failed = submission("bad_post");
         Submission good = submission("good_post");
 
         when(insightsClient.isConfigured()).thenReturn(true);
+        when(jdbcTemplate.queryForObject(anyString(), eq(Boolean.class))).thenReturn(true);
         when(submissionRepository.findDueForFacebookInsights(any(), any(), any(Pageable.class)))
                 .thenReturn(List.of(failed, good));
         when(insightsClient.fetchPostMetrics("bad_post")).thenThrow(new IOException("permission denied"));
         when(insightsClient.fetchPostMetrics("good_post")).thenReturn(new FacebookPostMetricsSnapshot(
-                3, 1, 0, null, null, "{}", null));
+                3, 1, 0, null, null, null, 0, 0, 0, 0, 0, null, null, null, "{}", null, null));
 
         FacebookInsightsSyncService service = new FacebookInsightsSyncService(
-                submissionRepository, metricRepository, insightsClient, 20, 90, 360);
+                submissionRepository, metricRepository, insightsClient, jdbcTemplate, 20, 90, 360);
 
         int synced = service.syncDueMetrics();
 

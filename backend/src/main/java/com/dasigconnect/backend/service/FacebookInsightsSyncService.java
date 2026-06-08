@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -23,6 +24,7 @@ public class FacebookInsightsSyncService {
     private final SubmissionRepository submissionRepository;
     private final FacebookPostMetricRepository metricRepository;
     private final FacebookInsightsClient insightsClient;
+    private final JdbcTemplate jdbcTemplate;
     private final int batchSize;
     private final int lookbackDays;
     private final int refreshIntervalMinutes;
@@ -31,12 +33,14 @@ public class FacebookInsightsSyncService {
             SubmissionRepository submissionRepository,
             FacebookPostMetricRepository metricRepository,
             FacebookInsightsClient insightsClient,
+            JdbcTemplate jdbcTemplate,
             @Value("${app.facebook.insights.batch-size:20}") int batchSize,
             @Value("${app.facebook.insights.lookback-days:90}") int lookbackDays,
             @Value("${app.facebook.insights.refresh-interval-minutes:360}") int refreshIntervalMinutes) {
         this.submissionRepository = submissionRepository;
         this.metricRepository = metricRepository;
         this.insightsClient = insightsClient;
+        this.jdbcTemplate = jdbcTemplate;
         this.batchSize = Math.min(Math.max(batchSize, 1), MAX_BATCH_SIZE);
         this.lookbackDays = Math.max(lookbackDays, 1);
         this.refreshIntervalMinutes = Math.max(refreshIntervalMinutes, 15);
@@ -45,6 +49,10 @@ public class FacebookInsightsSyncService {
     public int syncDueMetrics() {
         if (!insightsClient.isConfigured()) {
             log.info("Facebook insights sync skipped because Facebook token settings are incomplete.");
+            return 0;
+        }
+        if (!metricsTableExists()) {
+            log.info("Facebook insights sync skipped because facebook_post_metrics is not migrated yet.");
             return 0;
         }
 
@@ -78,8 +86,25 @@ public class FacebookInsightsSyncService {
         metric.setShares(snapshot.shares());
         metric.setReach(snapshot.reach());
         metric.setImpressions(snapshot.impressions());
+        metric.setVideoId(snapshot.videoId());
+        metric.setPostClicks(snapshot.postClicks());
+        metric.setViews(snapshot.views());
+        metric.setUniqueViews(snapshot.uniqueViews());
+        metric.setFifteenSecondViews(snapshot.fifteenSecondViews());
+        metric.setSixtySecondViews(snapshot.sixtySecondViews());
+        metric.setWatchTimeMs(snapshot.watchTimeMs());
+        metric.setAverageWatchTimeMs(snapshot.averageWatchTimeMs());
+        metric.setReactionsByType(snapshot.reactionsByType());
         metric.setRawPost(snapshot.rawPost());
         metric.setRawInsights(snapshot.rawInsights());
+        metric.setRawVideoInsights(snapshot.rawVideoInsights());
         metricRepository.save(metric);
+    }
+
+    private boolean metricsTableExists() {
+        Boolean exists = jdbcTemplate.queryForObject(
+                "SELECT to_regclass('public.facebook_post_metrics') IS NOT NULL",
+                Boolean.class);
+        return Boolean.TRUE.equals(exists);
     }
 }

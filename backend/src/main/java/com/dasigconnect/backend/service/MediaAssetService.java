@@ -48,7 +48,6 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlResponseDto;
 import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.AuditLogRepository;
-import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.MediaAssetRightsRepository;
 import com.dasigconnect.backend.repository.MediaImportBatchRepository;
@@ -69,7 +68,6 @@ public class MediaAssetService {
     private final SubmissionRepository submissionRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
     private final AssetTagRepository assetTagRepository;
-    private final MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     private final MediaImportBatchRepository mediaImportBatchRepository;
     private final SubmissionService submissionService;
     private final SupabaseStorageService supabaseStorageService;
@@ -88,7 +86,6 @@ public class MediaAssetService {
             SubmissionRepository submissionRepository,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
             AssetTagRepository assetTagRepository,
-            MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
             MediaImportBatchRepository mediaImportBatchRepository,
             SubmissionService submissionService,
             SupabaseStorageService supabaseStorageService,
@@ -102,7 +99,6 @@ public class MediaAssetService {
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.assetTagRepository = assetTagRepository;
-        this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
         this.mediaImportBatchRepository = mediaImportBatchRepository;
         this.submissionService = submissionService;
         this.supabaseStorageService = supabaseStorageService;

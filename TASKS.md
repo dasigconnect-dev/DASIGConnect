@@ -68,7 +68,9 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: `SubmissionService.reschedule()` - guard rail validation, hard violation override with audit log, slot re-lock, `SubmissionRescheduledEvent`.
 - Done: `SlotReservationService.reserveLockedSlot()` - direct locked reservation for admin reschedule (bypasses held→locked flow).
 - Done: `FacebookPublisherService` - Java HttpClient Graph API client matching `SupabaseStorageService` pattern.
-  - `@PostConstruct` token sync from env to DB on startup.
+  - `@PostConstruct` token sync from env to DB on startup; if an active DB token already exists
+    for `FACEBOOK_PAGE_ID`, startup refreshes the encrypted DB token from
+    `FACEBOOK_PAGE_ACCESS_TOKEN`.
   - 2-step photo publish: stage unpublished photos → POST to feed with attached_media.
   - Single-call video publish via `/{PAGE_ID}/videos`.
   - Mixed media → immediate PUBLISH_FAILED (pilot SRS constraint).
@@ -140,7 +142,26 @@ Legend: Done / In Progress / Not Started / Deferred
 - Deferred / Cut from current scope: contributor-facing category/tag AI suggestion. Do not continue the `useAiClassification` / `AiClassificationButton` / `AiClassificationSuggestion` path or add `/api/v1/ai/submissions/{id}/suggestions` unless scope changes; media suggestion has higher impact for UC-3.3.
 - Done locally: UC-3.5 Administrator Exception Handling backend — cherry-picked from `feat/uc35-exception-handling` into `module3`. All files present: `ExceptionHandlingController`, 8 DTOs under `model/dto/exception/`, `OverrideRequest`/`OverrideRequestDecision` entities, `OverrideRequestRepository`, `ExpiredOverrideCleanupJob`, `DirectPostService`, `OverrideRequestService`, `TokenManagementService`, `ValidationTimeoutService`, `SubmissionStatus` new enum values (`direct_post_scheduled`, `admin_direct_post`, `direct_post_failed`), `V24__override_requests.sql` migration. V24 not yet applied to Supabase — backend restart required.
 - Done locally: UC-3.5 Administrator Exception Handling frontend — 5-tab hub at `/admin/resolution`: `ValidationTimeoutTab` (Cat. B timeouts: Approve/Defer/Reject, UrgencyPill), `OverrideRequestsTab` (Cat. C: Approve/Suggest/Deny, active/expired split, repeated-request flag), `DirectPostTab` (Cat. D: institution select, caption counter, immediate/schedule toggle, GR-H1 ack, live FB preview), `SystemAuditTab` (Cat. E: token table, OAuth re-auth, audit log placeholder). `RejectOnBehalfModal` (shared modal for timeout taxonomy + override free-text), `SlotSuggestionModal`, `useResolutionCounts` (60s polling badge hook), `adminApi` axios instance. `ResolutionCenterScreen` rewritten as tab shell. `resolution.css` (~350 lines). Build: 228 modules, 0 TS errors, ESLint clean on all 15 files.
-- Done locally: UC-4.8 Phase 5 Facebook insights foundation — V39 `facebook_post_metrics` stores append-only Graph snapshots for published submissions. `FacebookInsightsClient` fetches reactions/comments/shares and, when the refreshed token has `read_insights`, reach/impressions. `FacebookInsightsSyncJob` runs every 6 hours by default, batches 20 posts, skips posts with a fresh snapshot, and never holds a DB transaction during Graph calls. Analytics summary now includes `facebookEngagement` and the Admin analytics panel shows synced posts, engagement count, and average reach.
+- Done locally: UC-4.8 Phase 5 Facebook insights foundation — V40
+  `facebook_post_metrics` stores append-only Graph snapshots for published submissions. V40 is
+  used because the connected dev DB already consumed Flyway version 39 for
+  `V39__seed_lerah_caones_contributor.sql`. `FacebookInsightsClient` fetches
+  reactions/comments/shares and, when the refreshed token has `read_insights`,
+  reach/impressions. `FacebookInsightsSyncJob` runs every 6 hours by default, batches 20 posts,
+  skips posts with a fresh snapshot, and never holds a DB transaction during Graph calls.
+  Analytics summary now includes `facebookEngagement`; the Admin analytics panel shows synced
+  posts, engagement count, and average reach.
+- Done locally: UC-4.8 migration/runtime hardening — analytics returns an empty Facebook
+  engagement summary if `facebook_post_metrics` is not migrated yet, and the insights sync job
+  skips safely instead of crashing on a missing table.
+- Done locally: UC-4.8 manual operations — admin-only
+  `POST /api/v1/analytics/facebook-insights/sync` triggers an immediate Facebook insights sync.
+  The Analytics dashboard System Operations panel includes a **Sync insights** button with
+  loading/toast feedback and automatic dashboard refresh.
+- Done locally: UC-3.5 Facebook OAuth callback fix — Meta's browser callback is now handled by
+  public `FacebookOAuthCallbackController`, protected by the OAuth `state` token instead of the
+  admin JWT. Successful callbacks redirect to
+  `/admin/resolution?tab=system-audit&facebook=connected`.
 
 ---
 
@@ -256,7 +277,10 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done: UC-3.3 Media Suggestions backend verification (2026-05-27): `.\mvnw.cmd test` passed after hybrid ranking, richer embedding text, and the `voyage-4-lite`/V21 dimension alignment (220 tests, 0 failures, 0 errors).
 - Done locally: frontend build passed after submission step-order, draft prompt, and multi-upload changes: `npm.cmd run build`.
 - Done locally: backend suite passed after AI media dual embeddings and publish-claim changes: `.\mvnw.cmd test` (273 tests, 0 failures, 0 errors).
-- Done locally: UC-4.8 Facebook insights focused verification passed: `.\mvnw.cmd test "-Dtest=FacebookInsightsSyncServiceTest,MetricsAggregatorServiceTest,AnalyticsControllerTest,ResolutionControllerTest"` (21 tests, 0 failures) and `npm.cmd run build`.
+- Done locally: UC-4.8 Facebook insights focused verification passed after token refresh,
+  OAuth callback, migration hardening, and manual sync work:
+  `.\mvnw.cmd test "-Dtest=FacebookPublisherServiceTest,FacebookOAuthCallbackControllerTest,FacebookInsightsSyncServiceTest,MetricsAggregatorServiceTest,AnalyticsControllerTest,ResolutionControllerTest"`
+  (27 tests, 0 failures) and `npm.cmd run build`.
 - Note: full-project `npm.cmd run lint` still fails due pre-existing lint debt outside analytics (`App.tsx`, dashboard, submission, validation, user-management, shared toast/button files); targeted analytics lint is clean.
 
 ---

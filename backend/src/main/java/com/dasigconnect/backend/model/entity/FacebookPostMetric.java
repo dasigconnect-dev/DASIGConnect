@@ -45,6 +45,34 @@ public class FacebookPostMetric {
     @Column
     private Integer impressions;
 
+    @Column(name = "video_id", columnDefinition = "text")
+    private String videoId;
+
+    @Column(name = "post_clicks", nullable = false)
+    private int postClicks;
+
+    @Column(nullable = false)
+    private int views;
+
+    @Column(name = "unique_views", nullable = false)
+    private int uniqueViews;
+
+    @Column(name = "fifteen_second_views", nullable = false)
+    private int fifteenSecondViews;
+
+    @Column(name = "sixty_second_views", nullable = false)
+    private int sixtySecondViews;
+
+    @Column(name = "watch_time_ms")
+    private Long watchTimeMs;
+
+    @Column(name = "average_watch_time_ms")
+    private Long averageWatchTimeMs;
+
+    @Column(name = "reactions_by_type", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String reactionsByType;
+
     @Column(name = "raw_post", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
     private String rawPost;
@@ -52,6 +80,10 @@ public class FacebookPostMetric {
     @Column(name = "raw_insights", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
     private String rawInsights;
+
+    @Column(name = "raw_video_insights", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String rawVideoInsights;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -95,11 +127,41 @@ public class FacebookPostMetric {
     public Integer getImpressions() { return impressions; }
     public void setImpressions(Integer impressions) { this.impressions = impressions; }
 
+    public String getVideoId() { return videoId; }
+    public void setVideoId(String videoId) { this.videoId = videoId; }
+
+    public int getPostClicks() { return postClicks; }
+    public void setPostClicks(int postClicks) { this.postClicks = postClicks; }
+
+    public int getViews() { return views; }
+    public void setViews(int views) { this.views = views; }
+
+    public int getUniqueViews() { return uniqueViews; }
+    public void setUniqueViews(int uniqueViews) { this.uniqueViews = uniqueViews; }
+
+    public int getFifteenSecondViews() { return fifteenSecondViews; }
+    public void setFifteenSecondViews(int fifteenSecondViews) { this.fifteenSecondViews = fifteenSecondViews; }
+
+    public int getSixtySecondViews() { return sixtySecondViews; }
+    public void setSixtySecondViews(int sixtySecondViews) { this.sixtySecondViews = sixtySecondViews; }
+
+    public Long getWatchTimeMs() { return watchTimeMs; }
+    public void setWatchTimeMs(Long watchTimeMs) { this.watchTimeMs = watchTimeMs; }
+
+    public Long getAverageWatchTimeMs() { return averageWatchTimeMs; }
+    public void setAverageWatchTimeMs(Long averageWatchTimeMs) { this.averageWatchTimeMs = averageWatchTimeMs; }
+
+    public String getReactionsByType() { return reactionsByType; }
+    public void setReactionsByType(String reactionsByType) { this.reactionsByType = reactionsByType; }
+
     public String getRawPost() { return rawPost; }
     public void setRawPost(String rawPost) { this.rawPost = rawPost; }
 
     public String getRawInsights() { return rawInsights; }
     public void setRawInsights(String rawInsights) { this.rawInsights = rawInsights; }
+
+    public String getRawVideoInsights() { return rawVideoInsights; }
+    public void setRawVideoInsights(String rawVideoInsights) { this.rawVideoInsights = rawVideoInsights; }
 
     public Instant getCreatedAt() { return createdAt; }
 }

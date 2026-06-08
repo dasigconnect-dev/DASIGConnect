@@ -1,6 +1,5 @@
 package com.dasigconnect.backend.service;
 
-import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import java.nio.file.Files;
 import java.nio.file.Path;

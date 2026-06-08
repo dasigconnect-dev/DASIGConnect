@@ -171,6 +171,89 @@ export interface AnalyticsReportDto {
   aggregateRows: Array<Record<string, string | number | boolean | null>>;
 }
 
+export interface ContentInsightOverviewDto {
+  syncedPosts: number;
+  totalViews: number;
+  uniqueViews: number;
+  totalEngagements: number;
+  reactions: number;
+  comments: number;
+  shares: number;
+  postClicks: number;
+  fifteenSecondViews: number;
+  sixtySecondViews: number;
+  averageReach: number;
+  averageImpressions: number;
+  totalWatchTimeSeconds: number;
+  averageWatchTimeSeconds: number;
+  engagementRate: number;
+  latestFetchedAt: string | null;
+}
+
+export interface ContentInsightDailyPointDto {
+  date: string;
+  postsPublished: number;
+  views: number;
+  reach: number;
+  engagements: number;
+  watchTimeSeconds: number;
+}
+
+export interface ContentTypeInsightDto {
+  contentType: string;
+  postCount: number;
+  views: number;
+  reach: number;
+  engagements: number;
+  engagementRate: number;
+  averageWatchTimeSeconds: number;
+}
+
+export interface PostingWindowInsightDto {
+  dayOfWeek: string;
+  hourOfDay: number;
+  postCount: number;
+  averageViews: number;
+  averageEngagements: number;
+  averageWatchTimeSeconds: number;
+}
+
+export interface RecentContentInsightDto {
+  submissionId: string;
+  eventTitle: string;
+  institutionName: string;
+  category: string;
+  publishedAt: string | null;
+  contentType: string;
+  mediaCount: number;
+  views: number;
+  reach: number;
+  reactions: number;
+  comments: number;
+  shares: number;
+  engagements: number;
+  engagementRate: number;
+  averageWatchTimeSeconds: number;
+  fifteenSecondViews: number;
+  sixtySecondViews: number;
+}
+
+export interface ContentInsightsDto {
+  range: AnalyticsRange | string;
+  periodStart: string;
+  periodEnd: string;
+  lastUpdated: string;
+  scopeRole: string;
+  adminView: boolean;
+  selectedInstitutionId: string | null;
+  metricsReady: boolean;
+  overview: ContentInsightOverviewDto;
+  dailyTrend: ContentInsightDailyPointDto[];
+  contentTypes: ContentTypeInsightDto[];
+  postingWindows: PostingWindowInsightDto[];
+  recentPosts: RecentContentInsightDto[];
+}
+
 export type AnalyticsExportMetric =
   | "posting-delay"
   | "content-completeness"
@@ -183,6 +266,45 @@ export function getAnalyticsSummary(range: AnalyticsRange, institutionId?: strin
     params: { range, ...(institutionId ? { institutionId } : {}) },
     signal,
   });
+}
+
+export function getContentInsights(range: AnalyticsRange, institutionId?: string | null, signal?: AbortSignal) {
+  return api.get<ContentInsightsDto>("/analytics/content-insights", {
+    params: { range, ...(institutionId ? { institutionId } : {}) },
+    signal,
+  });
+}
+
+export interface FollowerPointDto {
+  date: string;
+  followers: number | null;
+}
+
+export interface DemographicSliceDto {
+  label: string;
+  value: number;
+}
+
+/** UC-4.8 Phase 5b: page-level audience (followers + best-effort demographics). */
+export interface PageAudienceInsightsDto {
+  available: boolean;
+  latestFetchedAt: string | null;
+  followersCount: number | null;
+  fanCount: number | null;
+  netFollowerChange: number;
+  followerTrend: FollowerPointDto[];
+  demographicsAvailable: boolean;
+  ageGender: DemographicSliceDto[];
+  countries: DemographicSliceDto[];
+  cities: DemographicSliceDto[];
+}
+
+export function getPageAudience(range: AnalyticsRange, signal?: AbortSignal) {
+  return api.get<PageAudienceInsightsDto>("/analytics/audience-insights", { params: { range }, signal });
+}
+
+export function syncFacebookInsights() {
+  return api.post<{ syncedPosts: number }>("/analytics/facebook-insights/sync");
 }
 
 export function getAnalyticsReport(

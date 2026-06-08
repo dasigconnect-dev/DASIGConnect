@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import {
   Routes,
   Route,
@@ -38,6 +38,12 @@ import TrashScreen from "../features/media-repository/trash/TrashScreen";
 import AlbumsScreen from "../features/albums/AlbumsScreen";
 import NotificationsScreen from "../features/notifications/NotificationsScreen";
 import AnalyticsDashboardPage from "../features/analytics/AnalyticsDashboardPage";
+import RouteErrorBoundary from "./RouteErrorBoundary";
+// Insight pages pull in the (heavy) Recharts bundle — lazy-load so the chart library is
+// code-split and can never block the rest of the app's routes.
+const ViewsInsightsPage = lazy(() => import("../features/analytics/insights/ViewsInsightsPage"));
+const EngagementInsightsPage = lazy(() => import("../features/analytics/insights/EngagementInsightsPage"));
+const AudienceInsightsPage = lazy(() => import("../features/analytics/insights/AudienceInsightsPage"));
 import DashboardLayout from "../components/layout/DashboardLayout";
 import SessionModal from "../components/modals/SessionModal";
 import Toast from "../components/common/Toast";
@@ -55,6 +61,15 @@ import {
 const LOCKOUT_LIMIT = 5;
 const LOCKOUT_SECONDS = 15 * 60;
 const SESSION_WARNING_SECONDS = 5 * 60;
+
+/** Lightweight fallback shown while a lazy insight page (with its chart bundle) loads. */
+function InsightsRouteFallback() {
+  return (
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#f6f8fb", color: "#667085" }}>
+      Loading insights…
+    </div>
+  );
+}
 
 function App() {
   const navigate = useNavigate();
@@ -738,15 +753,53 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/analytics"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
-                <AnalyticsDashboardPage user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
         </Route>
+
+        <Route
+          path="/analytics"
+          element={
+            <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <AnalyticsDashboardPage user={currentUser!} />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/analytics/insights" element={<Navigate to="/analytics/views" replace />} />
+        <Route
+          path="/analytics/views"
+          element={
+            <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <RouteErrorBoundary>
+              <Suspense fallback={<InsightsRouteFallback />}>
+                <ViewsInsightsPage user={currentUser!} />
+              </Suspense>
+              </RouteErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analytics/engagement"
+          element={
+            <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <RouteErrorBoundary>
+              <Suspense fallback={<InsightsRouteFallback />}>
+                <EngagementInsightsPage user={currentUser!} />
+              </Suspense>
+              </RouteErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analytics/audience"
+          element={
+            <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <RouteErrorBoundary>
+              <Suspense fallback={<InsightsRouteFallback />}>
+                <AudienceInsightsPage user={currentUser!} />
+              </Suspense>
+              </RouteErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
 
         <Route
           path="/submissions/new"

@@ -184,26 +184,6 @@ public class AIClassificationService {
         mediaAssetRepository.save(asset);
     }
 
-    private void generateMetadataOnlyEmbedding(UUID assetId) {
-        try {
-            List<String> tagLabels = assetTagRepository
-                    .findByMediaAssetIdOrderByCreatedAtAsc(assetId)
-                    .stream()
-                    .map(AssetTag::getLabel)
-                    .toList();
-            String embeddingText = mediaAssetRepository.findActiveById(assetId)
-                    .map(asset -> buildEmbeddingText(asset, tagLabels))
-                    .orElse("");
-            if (embeddingText.isBlank()) {
-                log.warn("Metadata-only embedding skipped for asset {} because no asset metadata was found.", assetId);
-                return;
-            }
-            generateAndStoreEmbedding(assetId, embeddingText);
-        } catch (Exception e) {
-            log.warn("Metadata-only embedding failed for asset {}: {}", assetId, e.getMessage());
-        }
-    }
-
     private List<String> persistSuggestedTags(UUID assetId, Collection<String> suggestedTags) {
         if (suggestedTags == null || suggestedTags.isEmpty()) return List.of();
 

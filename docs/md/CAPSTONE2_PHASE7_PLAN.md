@@ -10,7 +10,9 @@
 > complete. V34-V38 cover fixity, review workflow, rights records, lineage, and duplicate review;
 > 7C and 7G added no migration. (The only outstanding item is D1's ≥50-pair human-verified set —
 > a manual review pass using the 7F workspace, not an automatable step.)
-> **Next Flyway version:** V39. Never reuse an applied migration version.
+> **Next Flyway version:** V41. Never reuse an applied migration version. V39 is occupied by
+> `V39__seed_lerah_caones_contributor.sql` in the connected dev DB, and V40 is
+> `V40__facebook_post_metrics.sql`.
 
 ---
 
@@ -337,7 +339,9 @@ reversible through a new decision (append-only, latest wins), and never auto-del
 
 **Verification (2026-06-06):**
 
-- V38 added; next free Flyway version is now **V39**.
+- V38 added; the next preservation-free Flyway version was V39 at the time. The current project
+  next free version is **V43** after the Phase 5/5b Facebook insights extensions landed (V40/V41
+  content insights, V42 page audience).
 - Backend `MediaDuplicateReviewServiceTest` (7) covers pending pair build (with Hamming),
   duplicate decision + audit, tag-merge, canonical-not-in-pair (400), keep-both, invalid decision
   (400), and cross-tenant hiding (404). Full suite green: **430 tests, 0 failures, 7 skips**.
@@ -365,7 +369,8 @@ and is tenant-scoped; a test asserts the signed URL never appears in the output)
 
 **Verification (2026-06-06):**
 
-- No migration (read-only export); next free Flyway version remains **V39**.
+- No migration (read-only export); at the time the next free preservation version remained V39.
+  The current project next free version is **V43** after V40/V41 content insights and V42 page audience.
 - Backend `MediaRepositoryExportServiceTest` (4): CSV headers + asset code + **no storage URL**,
   JSON envelope/mapping/count, invalid-format 400, validator cross-institution 403. Full suite
   green: **434 tests, 0 failures, 7 skips**.

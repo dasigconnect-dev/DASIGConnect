@@ -21,6 +21,8 @@ import com.dasigconnect.backend.model.dto.analytics.AdminAnalyticsDto;
 import com.dasigconnect.backend.model.dto.analytics.AnalyticsReportDto;
 import com.dasigconnect.backend.model.dto.analytics.AnalyticsSummaryDto;
 import com.dasigconnect.backend.model.dto.analytics.ContributorBreakdownDto;
+import com.dasigconnect.backend.model.dto.analytics.ContentInsightOverviewDto;
+import com.dasigconnect.backend.model.dto.analytics.ContentInsightsDto;
 import com.dasigconnect.backend.model.dto.analytics.ContributorAnalyticsDto;
 import com.dasigconnect.backend.model.dto.analytics.FacebookEngagementDto;
 import com.dasigconnect.backend.model.dto.analytics.KpiMetricDto;
@@ -213,6 +215,42 @@ public class MetricsAggregatorService {
                 analyticsRepository.exportRows(normalizedMetric, period.start(), period.end(), scope));
     }
 
+    public ContentInsightsDto contentInsights(String range, UUID institutionId, JwtUserDetails user) {
+        ReportingPeriod period = resolvePeriod(range);
+        AnalyticsScope scope = scopeFor(user, institutionId);
+        boolean metricsReady = analyticsRepository.facebookContentInsightsReady();
+        if (!metricsReady) {
+            return new ContentInsightsDto(
+                    period.label(),
+                    period.start(),
+                    period.end(),
+                    Instant.now(),
+                    scope.role(),
+                    "administrator".equals(scope.role()),
+                    scope.institutionId(),
+                    false,
+                    emptyContentInsightOverview(),
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    List.of());
+        }
+        return new ContentInsightsDto(
+                period.label(),
+                period.start(),
+                period.end(),
+                Instant.now(),
+                scope.role(),
+                "administrator".equals(scope.role()),
+                scope.institutionId(),
+                true,
+                analyticsRepository.contentInsightOverview(period.start(), period.end(), scope),
+                analyticsRepository.contentInsightDailyTrend(period.start(), period.end(), scope),
+                analyticsRepository.contentTypeInsights(period.start(), period.end(), scope),
+                analyticsRepository.postingWindowInsights(period.start(), period.end(), scope),
+                analyticsRepository.recentContentInsights(period.start(), period.end(), scope));
+    }
+
     private AiPerformanceDto aiPerformance(AiStats ai) {
         long totalEvents = ai.captionTotal() + ai.tagTotal() + ai.mediaTotal();
         return new AiPerformanceDto(
@@ -238,6 +276,11 @@ public class MetricsAggregatorService {
                 stats.averageReach(),
                 stats.averageImpressions(),
                 stats.latestFetchedAt());
+    }
+
+    private ContentInsightOverviewDto emptyContentInsightOverview() {
+        return new ContentInsightOverviewDto(
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, null);
     }
 
     private AnalyticsScope scopeFor(JwtUserDetails user, UUID institutionId) {

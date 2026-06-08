@@ -60,6 +60,7 @@ A web-based **Social Media Content Workflow and Scheduling Management System** t
 ### Module 3 — Scheduling, Publishing & AI Features
 - Visual **calendar scheduling** with conflict detection (FullCalendar.js)
 - **Automated Facebook publishing** via Facebook Graph API v25.0 (≥95% publish success rate within ±5 min)
+- **Facebook insights analytics** via scheduled and administrator-triggered Graph API sync
 - Manual publishing fallback for API constraint scenarios
 - **AI caption generation** — Claude Vision analyzes uploaded images and suggests captions within 10 seconds
 - **AI image classification** — auto-tags uploaded images into 8+ categories (≥80% accuracy target)
@@ -232,9 +233,36 @@ ANTHROPIC_API_KEY=<your-anthropic-key>
 VOYAGE_API_KEY=<your-voyage-key>
 FACEBOOK_PAGE_ACCESS_TOKEN=<your-facebook-token>
 FACEBOOK_PAGE_ID=<your-page-id>
+FACEBOOK_APP_ID=<your-meta-app-id>
+FACEBOOK_APP_SECRET=<your-meta-app-secret>
+FACEBOOK_OAUTH_REDIRECT_URI=http://localhost:8080/api/admin/resolution/tokens/oauth-callback
 ```
 
 > **Note:** `application.properties` references `${DATABASE_USER}` but the `.env` key is `DATABASE_USERNAME` — keep these in sync.
+
+### Facebook Token And Analytics Notes
+
+- Use a **Page access token**, not a User token, for `FACEBOOK_PAGE_ACCESS_TOKEN`.
+- The Page token must include `pages_manage_posts`, `pages_read_engagement`,
+  `pages_read_user_content`, `pages_show_list`, and `read_insights`.
+- On backend startup, DASIGConnect encrypts `FACEBOOK_PAGE_ACCESS_TOKEN` and refreshes the
+  active `facebook_page_tokens` row for `FACEBOOK_PAGE_ID`.
+- Do not paste a raw Page token directly into `facebook_page_tokens.encrypted_token`; that column
+  stores `base64(iv):base64(ciphertext+tag)` encrypted with a key derived from
+  `FACEBOOK_APP_SECRET`.
+- Facebook engagement snapshots are stored in `facebook_post_metrics` by
+  `V40__facebook_post_metrics.sql`.
+- The scheduled insights sync runs every 6 hours by default. Administrators can trigger an
+  immediate sync from the Analytics dashboard **Sync insights** button or by calling:
+
+```http
+POST /api/v1/analytics/facebook-insights/sync
+Authorization: Bearer <administrator-jwt>
+```
+
+- If sync returns zero posts, confirm there is at least one published submission with
+  `platform_post_id` and `published_at` inside the configured lookback window
+  (`FACEBOOK_INSIGHTS_LOOKBACK_DAYS`, default `90`).
 
 ---
 

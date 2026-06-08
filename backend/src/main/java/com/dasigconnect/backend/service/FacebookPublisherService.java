@@ -115,7 +115,14 @@ public class FacebookPublisherService {
         }
         try {
             pageTokenRepository.findByPageIdAndIsActiveTrue(pageId).ifPresentOrElse(
-                    existing -> log.info("Facebook page token already present for page {}.", pageId),
+                    existing -> {
+                        existing.setEncryptedToken(tokenEncryptionService.encryptToken(pageAccessToken));
+                        existing.setActive(true);
+                        existing.setExpiresAt(null);
+                        existing.setLastValidatedAt(null);
+                        pageTokenRepository.save(existing);
+                        log.info("Facebook page token refreshed from env for page {}.", pageId);
+                    },
                     () -> {
                         FacebookPageToken token = new FacebookPageToken();
                         token.setPageId(pageId);

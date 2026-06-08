@@ -2,11 +2,32 @@ import type { AnalyticsSummaryDto } from "../../../api/analyticsApi";
 import { formatNumber, formatPercent } from "../analyticsUtils";
 import RoleMetricPanel from "./RoleMetricPanel";
 
-export default function AdminAnalyticsPanel({ summary }: { summary: AnalyticsSummaryDto }) {
+interface Props {
+  summary: AnalyticsSummaryDto;
+  syncingInsights: boolean;
+  onSyncFacebookInsights: () => void;
+}
+
+export default function AdminAnalyticsPanel({ summary, syncingInsights, onSyncFacebookInsights }: Props) {
   if (!summary.adminAnalytics) return null;
   return (
     <RoleMetricPanel
       title="System Operations"
+      action={
+        <button
+          type="button"
+          className="btn-secondary analytics-sync-btn"
+          onClick={onSyncFacebookInsights}
+          disabled={syncingInsights}
+        >
+          {syncingInsights ? (
+            <span className="spinner-ring spinner-ring-xs" aria-hidden="true" />
+          ) : (
+            <i className="ti ti-brand-facebook" aria-hidden="true" />
+          )}
+          Sync insights
+        </button>
+      }
       metrics={[
         ["Facebook/API failures", formatNumber(summary.adminAnalytics.facebookApiFailureCount)],
         ["Admin workload", formatNumber(summary.adminAnalytics.administratorActions)],

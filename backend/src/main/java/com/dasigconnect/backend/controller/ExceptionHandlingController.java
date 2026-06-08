@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.dasigconnect.backend.model.dto.exception.DirectPostRequestDto;
@@ -181,13 +180,5 @@ public class ExceptionHandlingController {
             @PathVariable UUID tokenId,
             @AuthenticationPrincipal JwtUserDetails admin) {
         return ResponseEntity.ok(tokenManagementService.initOAuth(tokenId, admin));
-    }
-
-    @GetMapping("/tokens/oauth-callback")
-    public ResponseEntity<String> oauthCallback(
-            @RequestParam String code,
-            @RequestParam String state) {
-        String message = tokenManagementService.handleCallback(code, state);
-        return ResponseEntity.ok(message);
     }
 }

@@ -2,8 +2,10 @@ package com.dasigconnect.backend.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -23,9 +25,12 @@ import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.model.dto.analytics.AiPerformanceDto;
 import com.dasigconnect.backend.model.dto.analytics.AdminAnalyticsDto;
 import com.dasigconnect.backend.model.dto.analytics.AnalyticsSummaryDto;
+import com.dasigconnect.backend.model.dto.analytics.ContentInsightOverviewDto;
+import com.dasigconnect.backend.model.dto.analytics.ContentInsightsDto;
 import com.dasigconnect.backend.model.dto.analytics.ContributorBreakdownDto;
 import com.dasigconnect.backend.model.dto.analytics.KpiMetricDto;
 import com.dasigconnect.backend.model.dto.analytics.OperationalHealthDto;
+import com.dasigconnect.backend.service.FacebookInsightsSyncService;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.MetricsAggregatorService;
 import com.dasigconnect.backend.service.MetricsAggregatorService.CsvExport;
@@ -40,6 +45,12 @@ class AnalyticsControllerTest {
 
     @MockitoBean
     private MetricsAggregatorService metricsAggregatorService;
+
+    @MockitoBean
+    private FacebookInsightsSyncService facebookInsightsSyncService;
+
+    @MockitoBean
+    private com.dasigconnect.backend.service.FacebookPageAudienceService pageAudienceService;
 
     @MockitoBean
     private JWTService jwtService;
@@ -78,6 +89,37 @@ class AnalyticsControllerTest {
                 .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("posting-delay.csv")));
     }
 
+    @Test
+    @WithMockUser
+    void contentInsights_authenticated_returnsInsightPayload() throws Exception {
+        when(metricsAggregatorService.contentInsights(eq("30d"), any(), any())).thenReturn(contentInsightsDto());
+
+        mockMvc.perform(get("/api/v1/analytics/content-insights"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.metricsReady").value(true))
+                .andExpect(jsonPath("$.overview.totalViews").value(31))
+                .andExpect(jsonPath("$.overview.averageWatchTimeSeconds").value(23.0));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMINISTRATOR")
+    void syncFacebookInsights_asAdministrator_returnsSyncedCount() throws Exception {
+        when(facebookInsightsSyncService.syncDueMetrics()).thenReturn(2);
+
+        mockMvc.perform(post("/api/v1/analytics/facebook-insights/sync"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.syncedPosts").value(2));
+
+        verify(facebookInsightsSyncService).syncDueMetrics();
+    }
+
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
+    void syncFacebookInsights_asContributor_returns403() throws Exception {
+        mockMvc.perform(post("/api/v1/analytics/facebook-insights/sync"))
+                .andExpect(status().isForbidden());
+    }
+
     private AnalyticsSummaryDto summaryDto() {
         return new AnalyticsSummaryDto(
                 "30d",
@@ -102,5 +144,23 @@ class AnalyticsControllerTest {
                 new com.dasigconnect.backend.model.dto.analytics.FacebookEngagementDto(0, 0, 0, 0, 0, 0, 0, null),
                 new AdminAnalyticsDto(1, 4, 1),
                 new OperationalHealthDto(12, 0, 0, 0, 0, 20, 19, 95.0, 19, 100.0, 4));
+    }
+
+    private ContentInsightsDto contentInsightsDto() {
+        return new ContentInsightsDto(
+                "30d",
+                Instant.parse("2026-05-01T00:00:00Z"),
+                Instant.parse("2026-05-31T00:00:00Z"),
+                Instant.parse("2026-05-31T00:00:00Z"),
+                "administrator",
+                true,
+                null,
+                true,
+                new ContentInsightOverviewDto(1, 31, 20, 17, 11, 4, 2, 7, 9, 3, 120, 180, 92, 23, 14.17,
+                        Instant.parse("2026-05-31T00:00:00Z")),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of());
     }
 }

@@ -161,7 +161,7 @@ zero silent checksum replacement, and zero cross-tenant health/history/export re
 ## 5. Architecture Additions
 
 All aligned to the backend guide: Controller→Service→Repository, DTOs only at the boundary,
-Flyway (next free version is **V39** after V38 `media_duplicate_reviews`), RLS on every
+Flyway (next free version is **V43** after V42 `facebook_page_audience`), RLS on every
 institution-scoped table, short transactions, **no DB connection held across an external API
 or Supabase Storage call**, `@Async` / bounded executor for enrichment and fixity checks, and
 audit logging on state changes.
@@ -284,7 +284,7 @@ Correctness rules:
 
 ### 5.4 Insights Sync + Feedback Loop (UC-4.8 / UC-4.9)
 
-- `FacebookInsightsSyncJob` (`@Scheduled`, idempotent): for each published submission with a non-null `submissions.platform_post_id`, GET `/{post-id}?fields=reactions.summary(true),comments.summary(true),shares` (+ `/insights` when the refreshed token has `read_insights`) → insert a `facebook_post_metrics` row. Commit before/after the external call — never hold a connection across it. **Implementation started 2026-06-08:** V39 stores append-only snapshots, the job batches/stale-skips posts, and analytics surfaces synced posts, engagement totals, and average reach.
+- `FacebookInsightsSyncJob` (`@Scheduled`, idempotent): for each published submission with a non-null `submissions.platform_post_id`, GET `/{post-id}?fields=reactions.summary(true),comments.summary(true),shares` plus `/insights` when the refreshed token has `read_insights`, then insert a `facebook_post_metrics` row. Commit before/after the external call; never hold a connection across it. **Implemented 2026-06-08:** V40 stores append-only snapshots, the job batches/stale-skips posts, analytics surfaces synced posts, engagement totals, and average reach, and administrators can trigger an immediate sync through `POST /api/v1/analytics/facebook-insights/sync` or the Analytics dashboard **Sync insights** button.
 - A periodic `AssetPerformanceJob` rolls metrics up to `media_assets.performance_score`, which `AIRecommendationService` adds as a re-rank signal. Cheap, idempotent, fully inside existing patterns.
 
 ### 5.5 Pre-Submit Advisor (UC-4.10)
@@ -332,10 +332,19 @@ This is the planned **upgrade** of today's `AIRecommendationService.rankAsset()`
 
 ## 7. Suggested Phasing
 
-> **Status (2026-06-06):** Phases 1-4 are implemented locally on the dev project.
-> **Next dependency-ordered phase: 5 (UC-4.8 Facebook insights)** — `read_insights` has been added;
-> re-authorize and validate the Page token before syncing reach/impressions. Phase 7A-7B are complete; Phase 7C preservation work may proceed while
-> that external review is pending.
+> **Status (2026-06-08):** Phases 1-4, **5**, and 7 are implemented locally on the dev project.
+> Phase 5 (UC-4.8 Facebook insights) backend is in: `FacebookInsightsClient` (Graph API v25.0),
+> `FacebookInsightsSyncService` + `FacebookInsightsSyncJob` (6-hourly, overlap-guarded, batched,
+> external call outside any DB transaction), `FacebookPostMetric` time-series (V40/V41), and
+> `AnalyticsController` `POST /facebook-insights/sync` + `GET /content-insights`. `read_insights`
+> has been added; re-authorize and validate the Page token before syncing reach/impressions
+> (the sync degrades gracefully without it). **Phase 5b page audience** also landed:
+> `FacebookPageAudienceService` + daily job, `fetchPageAudience()`, V42 `facebook_page_audience`,
+> `GET /analytics/audience-insights` (followers + best-effort demographics — Meta deprecated most
+> `page_fans_*` breakdowns, so followers/growth is the reliable part). The insights UI is
+> redesigned Facebook-style into separate **Views / Engagement / Audience** pages (Recharts,
+> lazy-loaded; Recharts pinned to 2.x for Vite 8 compatibility). **Next dependency-ordered phase: 6
+> (UC-4.9 engagement→ranking + UC-4.10 pre-submit advisor)** — now unblocked by the `facebook_post_metrics` data.
 
 | Phase | Items | Effort | Risk | Status |
 |---|---|---|---|---|
@@ -343,8 +352,8 @@ This is the planned **upgrade** of today's `AIRecommendationService.rankAsset()`
 | 2 | AI auto-grouping + quality/dup filtering (UC-4.2/4.4) + curation (UC-4.3) | Med | Low | ✅ done (D1 dup threshold tuning pending a real dataset) |
 | 3 | NL/hybrid search (UC-4.5) + AI feedback loop (UC-4.6) | Med | Low | ✅ done — hybrid search + strict cutoff + related-search autocomplete + feedback; D2 Recall@3 1.0 |
 | 4 | Caption prompt mode + best-N (UC-4.7); consent/safety flags; media audit trail (UC-4.11) | Low | Low | ✅ done (UC-4.7, visibility + submit gate, UC-4.11); `safety_verdict` flag optional/pending |
-| 5 | Facebook insights sync + engagement analytics (UC-4.8) | Med | **Med (App Review)** | ⬜ not started — next |
-| 6 | Engagement→media ranking (UC-4.9) + pre-submit advisor (UC-4.10) | Med | Med (cold-start) | ⬜ not started (depends on UC-4.8 data) |
+| 5 | Facebook insights sync + engagement analytics (UC-4.8) | Med | **Med (App Review)** | ✅ done (locally) — insights client/sync/job, V40/V41 metrics, content-insights + admin sync; **5b page audience** (V42, followers + best-effort demographics, `/analytics/audience-insights`) + FB-style Views/Engagement/Audience UI (Recharts); reach/impressions + demographics best-effort pending `read_insights` |
+| 6 | Engagement→media ranking (UC-4.9) + pre-submit advisor (UC-4.10) | Med | Med (cold-start) | ⬜ not started — **next** (unblocked by Phase 5 data) |
 | 7 | Digital preservation + Repository Health (UC-4.12): fixity, rights, lineage, duplicate review, standards export | Med-High | Low-Med | ✅ Phase 7A-7G all done (fixity, monitoring, Repository Health, rights, lineage, duplicate review, Dublin Core export); only D1 human-labeling + browser E2E remain (non-code) |
 | — | Collage builder (client-side canvas) | Low–Med | Low — slot anywhere | ⬜ optional |
 

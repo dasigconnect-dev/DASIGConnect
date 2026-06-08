@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { User } from "../../types/auth.types";
-import type { AnalyticsExportMetric, AnalyticsRange } from "../../api/analyticsApi";
+import { syncFacebookInsights, type AnalyticsExportMetric, type AnalyticsRange } from "../../api/analyticsApi";
 import { useAnalyticsSummary } from "./hooks/useAnalyticsSummary";
+import AnalyticsLayout from "./components/AnalyticsLayout";
 import AdminAnalyticsPanel from "./components/AdminAnalyticsPanel";
 import AIPerformancePanel from "./components/AIPerformancePanel";
 import ContributorAnalyticsView from "./components/ContributorAnalyticsView";
@@ -12,6 +13,7 @@ import OperationalHealthPanel from "./components/OperationalHealthPanel";
 import PostsByInstitutionChart from "./components/PostsByInstitutionChart";
 import ValidatorAnalyticsView from "./components/ValidatorAnalyticsView";
 import BrandedSelect from "../../components/ui/BrandedSelect";
+import { useToast } from "../../context/ToastContext";
 import { formatDateRange, formatDateTime } from "./analyticsUtils";
 import "../../styles/analytics.css";
 
@@ -27,6 +29,7 @@ const RANGES: Array<{ value: AnalyticsRange; label: string }> = [
 ];
 
 export default function AnalyticsDashboardPage({ user }: Props) {
+  const toast = useToast();
   const {
     range,
     setRange,
@@ -39,12 +42,32 @@ export default function AnalyticsDashboardPage({ user }: Props) {
   } = useAnalyticsSummary("30d");
   const [reportMetric, setReportMetric] = useState<AnalyticsExportMetric | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
+  const [syncingInsights, setSyncingInsights] = useState(false);
   const role = summary?.scopeRole ?? user.role;
   const isAdminView = summary?.adminView ?? (role === "administrator" || role === "admin");
   const isValidatorView = role === "validator";
   const isContributorView = role === "contributor";
 
+  async function handleSyncFacebookInsights() {
+    setSyncingInsights(true);
+    try {
+      const res = await syncFacebookInsights();
+      const syncedPosts = res.data.syncedPosts;
+      if (syncedPosts > 0) {
+        toast.success(`Synced Facebook insights for ${syncedPosts} post${syncedPosts === 1 ? "" : "s"}.`);
+      } else {
+        toast.info("No due Facebook posts found for insights sync.");
+      }
+      refresh();
+    } catch {
+      toast.error("Facebook insights sync failed. Check the Page token and backend logs.");
+    } finally {
+      setSyncingInsights(false);
+    }
+  }
+
   return (
+    <AnalyticsLayout user={user} page="Overview">
     <div className="analytics-page" data-role={user.role}>
       <div className="screen-header analytics-header">
         <div>
@@ -117,6 +140,16 @@ export default function AnalyticsDashboardPage({ user }: Props) {
         </div>
       )}
 
+      {!loading && !error && !summary && (
+        <div className="analytics-state">
+          <i className="ti ti-chart-infographic" aria-hidden="true" />
+          <p>No analytics summary was returned.</p>
+          <button type="button" className="btn-secondary" onClick={refresh}>
+            Retry
+          </button>
+        </div>
+      )}
+
       {!loading && !error && summary && (
         <>
           <KpiTileGroup summary={summary} onOpenReport={setReportMetric} />
@@ -130,7 +163,13 @@ export default function AnalyticsDashboardPage({ user }: Props) {
             <div className="analytics-main-grid">
               <PostsByInstitutionChart rows={summary.postsByInstitution} />
               <div className="analytics-stack">
-                {summary.adminAnalytics && <AdminAnalyticsPanel summary={summary} />}
+                {summary.adminAnalytics && (
+                  <AdminAnalyticsPanel
+                    summary={summary}
+                    syncingInsights={syncingInsights}
+                    onSyncFacebookInsights={handleSyncFacebookInsights}
+                  />
+                )}
                 <AIPerformancePanel
                   data={summary.aiPerformance}
                   onOpenReport={() => setReportMetric("ai-performance")}
@@ -159,6 +198,7 @@ export default function AnalyticsDashboardPage({ user }: Props) {
         onClose={() => setReportMetric(null)}
       />
     </div>
+    </AnalyticsLayout>
   );
 }
 
