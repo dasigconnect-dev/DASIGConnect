@@ -5,6 +5,7 @@ import {
   attachAsset,
   createDraft,
   deleteDraft,
+  detachAsset,
   getSubmission,
   reorderSubmissionMedia,
   submitForReview,
@@ -60,6 +61,7 @@ interface FormState {
   savedAssets: SavedMediaAsset[];
   mediaOrder: string[];
   pendingAssetIds: string[];
+  removedAssetIds: string[];
 }
 
 type QueueFilter = "drafts" | "submitted" | "all";
@@ -91,6 +93,7 @@ const initialForm: FormState = {
   savedAssets: [],
   mediaOrder: [],
   pendingAssetIds: [],
+  removedAssetIds: [],
 };
 
 const statusLabels: Record<SubmissionStatus, string> = {
@@ -147,7 +150,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
   const [guardRailError, setGuardRailError] = useState("");
-  const [activeStep, setActiveStep] = useState<ProgressStep>("details");
+  // Media-first: the AI caption (Post Details) is image-based, so media must be picked first.
+  const [activeStep, setActiveStep] = useState<ProgressStep>("media");
 
   const queued = useMemo(() => {
     if (filter === "drafts")
@@ -288,17 +292,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const progressSteps = useMemo(
     () => [
       {
+        id: "media" as const,
+        label: "Media Assets",
+        complete: hasMedia,
+      },
+      {
         id: "details" as const,
         label: "Post Details",
         complete:
           Boolean(form.eventTitle.trim()) &&
           Boolean(form.eventDate) &&
           Boolean(form.caption.trim()),
-      },
-      {
-        id: "media" as const,
-        label: "Media Assets",
-        complete: hasMedia,
       },
       {
         id: "schedule" as const,
@@ -381,6 +385,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         savedAssets: assets,
         mediaOrder: assets.map((asset) => savedMediaKey(asset.id)),
         pendingAssetIds: assets.map((asset) => asset.id),
+        removedAssetIds: [],
       }));
       setPickerItems(assets.map(savedAssetToPickerItem));
 
@@ -437,6 +442,22 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     return latest;
   }
 
+  async function detachRemovedAssets(submissionId: string, removedIds: string[]) {
+    let latest: Awaited<ReturnType<typeof detachAsset>> | null = null;
+    for (const assetId of removedIds) {
+      try {
+        latest = await detachAsset(submissionId, assetId);
+      } catch (err: unknown) {
+        if (!isNotFoundError(err)) {
+          toast.warning(
+            getErrorMessage(err, "A removed asset could not be detached."),
+          );
+        }
+      }
+    }
+    return latest;
+  }
+
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
     setSaveState("idle");
@@ -453,7 +474,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setSaveState("idle");
     cleanSignatureRef.current = getDirtySignature(initialForm);
     setFilter("drafts");
-    setActiveStep("details");
+    setActiveStep("media");
     clearAssetIdParam();
   }
 
@@ -502,7 +523,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       void applySubmission(existingDraft);
       return;
     }
-    setActiveStep("details");
+    setActiveStep("media");
   }
 
   function requestLeave(action: () => void) {
@@ -553,12 +574,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           savedMediaKey(asset.id),
         ),
         pendingAssetIds: [],
+        removedAssetIds: [],
       };
       setForm(nextForm);
       setPickerItems((submission.mediaAssets ?? []).map(savedAssetToPickerItem));
       setActiveMediaIndex(0);
       setFilter(submission.status === "draft" ? "drafts" : "submitted");
-      setActiveStep("details");
+      setActiveStep("media");
       setCenterMode("edit");
       setPreviewTab("preview");
       setSaveState("saved");
@@ -570,9 +592,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
   }
 
-  async function saveDraft() {
-    if (isReadOnlySubmission) return false;
-    if (busy) return false;
+  // Returns the saved draft id (string) on success, or null on failure/no-op.
+  async function saveDraft(): Promise<string | null> {
+    if (isReadOnlySubmission) return null;
+    if (busy) return null;
     setSaveState("saving");
     try {
       const payload = toPayload(form, scheduledAt);
@@ -580,9 +603,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         ? await updateDraft(form.id, payload)
         : await createDraft(payload);
       let finalResponse = response;
+      if (form.removedAssetIds.length > 0) {
+        const detached = await detachRemovedAssets(
+          response.data.id,
+          form.removedAssetIds,
+        );
+        if (detached) finalResponse = detached;
+      }
       if (form.pendingAssetIds.length > 0) {
         const attached = await attachPendingAssets(
-          response.data.id,
+          finalResponse.data.id,
           form.pendingAssetIds,
         );
         if (attached) finalResponse = attached;
@@ -611,6 +641,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         savedAssets: orderedSavedAssets,
         mediaOrder: orderedSavedAssets.map((asset) => savedMediaKey(asset.id)),
         pendingAssetIds: [],
+        removedAssetIds: [],
       };
       setForm((current) => ({
         ...current,
@@ -620,6 +651,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         savedAssets: orderedSavedAssets,
         mediaOrder: orderedSavedAssets.map((asset) => savedMediaKey(asset.id)),
         pendingAssetIds: [],
+        removedAssetIds: [],
       }));
       setPickerItems(orderedSavedAssets.map(savedAssetToPickerItem));
       setSubmissions((current) =>
@@ -629,12 +661,27 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setSaveState("saved");
       cleanSignatureRef.current = getDirtySignature(nextForm);
       toast.success("Draft saved.");
-      return true;
+      return finalResponse.data.id;
     } catch (err: unknown) {
       setSaveState("idle");
       toast.error(getErrorMessage(err, "Draft could not be saved."));
-      return false;
+      return null;
     }
+  }
+
+  /**
+   * Ensure a saved draft exists (with the latest media attached) and return its id, so the
+   * AI media-suggestion / caption flows work without the user manually clicking "Save draft".
+   * Saves when there's no id yet or media attachments changed.
+   */
+  async function ensureDraftSaved(): Promise<string | null> {
+    const needsSave =
+      !form.id ||
+      form.files.length > 0 ||
+      form.pendingAssetIds.length > 0 ||
+      form.removedAssetIds.length > 0;
+    if (!needsSave) return form.id;
+    return saveDraft();
   }
 
   async function handleSave() {
@@ -680,9 +727,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         ? await updateDraft(form.id, payload)
         : await createDraft(payload);
       let draftResponse = draft;
+      if (form.removedAssetIds.length > 0) {
+        const detached = await detachRemovedAssets(
+          draft.data.id,
+          form.removedAssetIds,
+        );
+        if (detached) draftResponse = detached;
+      }
       if (form.pendingAssetIds.length > 0) {
         const attached = await attachPendingAssets(
-          draft.data.id,
+          draftResponse.data.id,
           form.pendingAssetIds,
         );
         if (attached) draftResponse = attached;
@@ -720,6 +774,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         savedAssets: submittedAssets,
         mediaOrder: submittedAssets.map((asset) => savedMediaKey(asset.id)),
         pendingAssetIds: [],
+        removedAssetIds: [],
       }));
       setPickerItems(submittedAssets.map(savedAssetToPickerItem));
       clearAssetIdParam();
@@ -776,7 +831,24 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
   function handlePickerChange(items: SubmissionMediaItem[]) {
     setPickerItems(items);
-    const currentSavedIds = new Set(form.savedAssets.map((a) => a.id));
+    const pendingIds = new Set(form.pendingAssetIds);
+    const serverAttachedIds = new Set([
+      ...form.savedAssets
+        .filter((asset) => !pendingIds.has(asset.id))
+        .map((asset) => asset.id),
+      ...form.removedAssetIds,
+    ]);
+    const nextAssetIds = new Set(
+      items.filter((item) => item.assetId).map((item) => item.assetId!),
+    );
+    const removedIds = new Set(form.removedAssetIds);
+    form.savedAssets.forEach((asset) => {
+      if (!pendingIds.has(asset.id) && !nextAssetIds.has(asset.id)) {
+        removedIds.add(asset.id);
+      }
+    });
+    nextAssetIds.forEach((assetId) => removedIds.delete(assetId));
+
     const newFiles = items.filter((i) => i.source === "upload" && i.file).map((i) => i.file!);
     const newSavedAssets: SavedMediaAsset[] = items
       .filter((i) => i.assetId)
@@ -791,7 +863,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         };
       });
     const newPendingAssetIds = items
-      .filter((i) => i.assetId && !currentSavedIds.has(i.assetId))
+      .filter((i) => i.assetId && !serverAttachedIds.has(i.assetId))
       .map((i) => i.assetId!);
     const newMediaOrder = items.map((i) =>
       i.assetId ? savedMediaKey(i.assetId) : i.file ? fileMediaKey(i.file) : i.clientId,
@@ -801,6 +873,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       files: newFiles,
       savedAssets: newSavedAssets,
       pendingAssetIds: newPendingAssetIds,
+      removedAssetIds: [...removedIds],
       mediaOrder: newMediaOrder,
     }));
     setSaveState("idle");
@@ -1216,6 +1289,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                       canSuggest={aiCaption.canSuggest}
                       rateLimitReset={aiCaption.rateLimitReset}
                       onSuggest={aiCaption.suggest}
+                      disabledHint={
+                        !hasImageAssets
+                          ? "Add a photo in Media Assets first — captions are generated from your selected images."
+                          : !form.id
+                            ? "Save this draft first to generate a caption."
+                            : undefined
+                      }
                     />
                   </div>
                 ) : undefined
@@ -1333,7 +1413,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             <MediaAssetsPicker
               items={pickerItems}
               onItemsChange={handlePickerChange}
-              submissionId={form.id}
+              onEnsureDraft={ensureDraftSaved}
               eventTitle={form.eventTitle}
               caption={form.caption}
               category={form.category}
@@ -1912,7 +1992,7 @@ function StepPanelActions({
   isDetailsComplete: boolean;
   onStepChange: (step: ProgressStep) => void;
 }) {
-  const order: ProgressStep[] = ["details", "media", "schedule"];
+  const order: ProgressStep[] = ["media", "details", "schedule"];
   const index = order.indexOf(activeStep);
   const previous = index > 0 ? order[index - 1] : null;
   const next = index < order.length - 1 ? order[index + 1] : null;
@@ -2226,7 +2306,8 @@ function isDirtyDraft(form: FormState) {
       form.tags.length ||
       form.files.length ||
       form.savedAssets.length ||
-      form.pendingAssetIds.length,
+      form.pendingAssetIds.length ||
+      form.removedAssetIds.length,
   );
 }
 
@@ -2249,6 +2330,7 @@ function getDirtySignature(form: FormState) {
     savedAssetIds: form.savedAssets.map((asset) => asset.id),
     mediaOrder: form.mediaOrder,
     pendingAssetIds: form.pendingAssetIds,
+    removedAssetIds: form.removedAssetIds,
   });
 }
 
@@ -2271,6 +2353,12 @@ function isConflictError(error: unknown) {
   if (typeof error !== "object" || error === null) return false;
   const status = (error as { response?: { status?: number } }).response?.status;
   return status === 409;
+}
+
+function isNotFoundError(error: unknown) {
+  if (typeof error !== "object" || error === null) return false;
+  const status = (error as { response?: { status?: number } }).response?.status;
+  return status === 404;
 }
 
 function getOrderedLocalFiles(form: FormState) {

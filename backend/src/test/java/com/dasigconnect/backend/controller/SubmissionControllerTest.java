@@ -239,6 +239,21 @@ class SubmissionControllerTest {
                 .andExpect(jsonPath("$.id").value(submissionId.toString()));
     }
 
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
+    void detachAsset_asContributor_returnsUpdatedSubmission() throws Exception {
+        UUID submissionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        when(submissionService.detachAsset(any(), any(), any()))
+                .thenReturn(responseDto(submissionId, SubmissionStatus.draft));
+
+        mockMvc.perform(delete("/api/v1/submissions/{id}/assets/{assetId}", submissionId, assetId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(submissionId.toString()));
+
+        verify(submissionService).detachAsset(any(), any(), any());
+    }
+
     private static SubmissionResponseDto responseDto(UUID id, SubmissionStatus status) {
         return SubmissionResponseDto.from(submission(id, status), List.of());
     }

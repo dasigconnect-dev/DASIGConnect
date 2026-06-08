@@ -396,6 +396,28 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void detachAsset_removesLinkAndReindexesRemainingMedia() {
+        UUID submissionId = UUID.randomUUID();
+        UUID firstAssetId = UUID.randomUUID();
+        UUID secondAssetId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        SubmissionMediaAsset firstLink = mediaLink(submission, mediaAsset(firstAssetId, institution), 0);
+        SubmissionMediaAsset secondLink = mediaLink(submission, mediaAsset(secondAssetId, institution), 1);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId))
+                .thenReturn(List.of(firstLink, secondLink))
+                .thenReturn(List.of(secondLink));
+
+        SubmissionResponseDto result = submissionService.detachAsset(submissionId, firstAssetId, contributorPrincipal);
+
+        assertThat(result.getId()).isEqualTo(submissionId);
+        assertThat(secondLink.getDisplayOrder()).isZero();
+        verify(submissionMediaAssetRepository).delete(firstLink);
+        verify(submissionMediaAssetRepository).saveAll(List.of(secondLink));
+    }
+
+    @Test
     void reorderMedia_updatesDisplayOrder() {
         UUID submissionId = UUID.randomUUID();
         UUID firstAssetId = UUID.randomUUID();

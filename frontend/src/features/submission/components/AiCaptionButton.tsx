@@ -5,6 +5,8 @@ interface Props {
   canSuggest: boolean;
   rateLimitReset: number | null;
   onSuggest: () => void;
+  /** Shown as a tooltip on the disabled button when suggestion isn't available yet. */
+  disabledHint?: string;
 }
 
 function formatResetTime(epochSeconds: number): string {
@@ -19,8 +21,24 @@ export default function AiCaptionButton({
   canSuggest,
   rateLimitReset,
   onSuggest,
+  disabledHint,
 }: Props) {
-  if (!canSuggest) return null;
+  // Caption suggestion is image-based; when it isn't available yet (no media / unsaved draft)
+  // show a disabled affordance with a hint instead of hiding it, so the action is discoverable.
+  if (!canSuggest) {
+    return (
+      <button
+        type="button"
+        className="ai-caption-btn ai-caption-btn--disabled"
+        disabled
+        style={{ opacity: 0.55, cursor: "not-allowed" }}
+        title={disabledHint ?? "Add media first to generate a caption."}
+      >
+        <i className="ti ti-sparkles" aria-hidden />
+        Suggest Caption
+      </button>
+    );
+  }
 
   if (state === "rate-limited") {
     const resetStr = rateLimitReset ? formatResetTime(rateLimitReset) : null;

@@ -468,6 +468,38 @@ public class SubmissionService {
     }
 
     /**
+     * Removes a media library asset from an editable submission. DELETE is
+     * intentionally idempotent so frontend draft sync can safely retry.
+     */
+    public SubmissionResponseDto detachAsset(UUID submissionId, UUID assetId, JwtUserDetails user) {
+        Submission submission = loadForContributor(submissionId, user);
+        assertEditableStatus(submission);
+
+        List<SubmissionMediaAsset> links =
+                submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId);
+        SubmissionMediaAsset removed = links.stream()
+                .filter(link -> link.getMediaAsset().getId().equals(assetId))
+                .findFirst()
+                .orElse(null);
+
+        if (removed == null) {
+            return buildResponse(submission);
+        }
+
+        submissionMediaAssetRepository.delete(removed);
+        List<SubmissionMediaAsset> remaining = links.stream()
+                .filter(link -> !link.getMediaAsset().getId().equals(assetId))
+                .toList();
+        for (int index = 0; index < remaining.size(); index++) {
+            remaining.get(index).setDisplayOrder(index);
+        }
+        submissionMediaAssetRepository.saveAll(remaining);
+
+        log.info("Contributor {} removed asset {} from submission {}", user.userId(), assetId, submissionId);
+        return buildResponse(submission);
+    }
+
+    /**
      * Updates the posting sequence for media already attached to an editable
      * submission. The request must include every attached media asset exactly
      * once so reordering cannot accidentally drop an asset.

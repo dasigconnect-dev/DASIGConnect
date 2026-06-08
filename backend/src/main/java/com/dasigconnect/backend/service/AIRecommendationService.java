@@ -11,6 +11,8 @@ import com.dasigconnect.backend.repository.AiInteractionLogRepository;
 import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.MediaAssetSearchHit;
+import com.dasigconnect.backend.repository.MediaAssetSearchRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -50,11 +52,26 @@ import java.util.stream.Collectors;
 public class AIRecommendationService {
 
     private static final Logger log = LoggerFactory.getLogger(AIRecommendationService.class);
+    private static final int RRF_K = 60;
+    private static final int CANDIDATE_LIMIT = 60;
+    private static final int SUGGESTION_LIMIT = 8;
+    private static final double SEMANTIC_MIN_SIMILARITY = 0.45;
+    private static final double IMAGE_MIN_SIMILARITY = 0.22;
+    private static final double SELECTED_IMAGE_MIN_SIMILARITY = 0.36;
+    private static final double SELECTED_SEMANTIC_MIN_SIMILARITY = 0.58;
+    private static final double SELECTED_STRONG_IMAGE_SIMILARITY = 0.44;
+    private static final Set<String> GENERIC_PROFILE_TERMS = Set.of(
+            "photo", "image", "picture", "media", "event", "activity", "campus",
+            "student", "students", "people", "person", "group", "team", "meeting",
+            "program", "school", "university", "college", "cit", "cit u", "dasig",
+            "jpg", "jpeg", "png", "webp", "file", "uploaded"
+    );
 
     private final SubmissionRepository submissionRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
     private final MediaAssetRepository mediaAssetRepository;
     private final MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
+    private final MediaAssetSearchRepository mediaAssetSearchRepository;
     private final AssetTagRepository assetTagRepository;
     private final AiInteractionLogRepository aiInteractionLogRepository;
     private final VoyageAIClient voyageAIClient;
@@ -63,6 +80,7 @@ public class AIRecommendationService {
                                    SubmissionMediaAssetRepository submissionMediaAssetRepository,
                                    MediaAssetRepository mediaAssetRepository,
                                    MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
+                                   MediaAssetSearchRepository mediaAssetSearchRepository,
                                    AssetTagRepository assetTagRepository,
                                    AiInteractionLogRepository aiInteractionLogRepository,
                                    VoyageAIClient voyageAIClient) {
@@ -70,14 +88,15 @@ public class AIRecommendationService {
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.mediaAssetRepository = mediaAssetRepository;
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
+        this.mediaAssetSearchRepository = mediaAssetSearchRepository;
         this.assetTagRepository = assetTagRepository;
         this.aiInteractionLogRepository = aiInteractionLogRepository;
         this.voyageAIClient = voyageAIClient;
     }
 
     /**
-     * Finds media assets in the institution library that are similar to the first
-     * embedded asset already attached to the submission.
+     * Finds media assets in the institution library that are similar to the
+     * embedded assets already attached to the submission.
      * Returns up to 5 results, excluding assets already in the submission.
      */
     @Transactional
@@ -87,16 +106,21 @@ public class AIRecommendationService {
 
         if (attached.isEmpty()) return List.of();
 
-        OptionalVector queryVector = firstAvailableEmbedding(attached);
-        if (queryVector.value() == null) return List.of();
-
         UUID institutionId = submission.getInstitution().getId();
         Set<UUID> attachedIds = attached.stream().map(MediaAsset::getId).collect(Collectors.toSet());
+        Map<UUID, List<TagSignal>> attachedTagMap = loadTagSignalMap(attached.stream().map(MediaAsset::getId).toList());
+        Set<String> selectedProfile = selectedProfileTerms(attached, attachedTagMap);
+        List<OptionalVector> queryVectors = availableEmbeddings(attached);
+        if (queryVectors.isEmpty() && selectedProfile.isEmpty()) return List.of();
 
-        List<MediaAssetSummaryDto> results = mediaAssetRepository
-                .findTopSimilar(institutionId, queryVector.value())
+        List<MediaAssetSummaryDto> results = similarAssets(
+                    institutionId,
+                    attached,
+                    attachedTagMap,
+                    queryVectors,
+                    attachedIds,
+                    selectedProfile)
                 .stream()
-                .filter(a -> !attachedIds.contains(a.getId()))
                 .limit(5)
                 .map(MediaAssetSummaryDto::from)
                 .toList();
@@ -126,42 +150,63 @@ public class AIRecommendationService {
             return List.of();
         }
 
-        String queryVector;
+        String semanticVector = null;
         try {
-            queryVector = voyageAIClient.embedQuery(embeddingText);
+            semanticVector = voyageAIClient.embedQuery(embeddingText);
         } catch (Exception e) {
-            log.warn("Voyage AI embedding failed for suggest-media on submission {}: {}", submissionId, e.getMessage());
+            log.warn("Voyage semantic embedding failed for suggest-media on submission {}: {}", submissionId, e.getMessage());
+        }
+
+        String imageVector = null;
+        try {
+            imageVector = voyageAIClient.embedMultimodalTextQuery(embeddingText);
+        } catch (Exception e) {
+            log.warn("Voyage visual embedding failed for suggest-media on submission {}: {}", submissionId, e.getMessage());
+        }
+
+        if (semanticVector == null && imageVector == null) {
             return fallbackSuggestions(institutionId, attachedIds, dto);
         }
 
-        List<Object[]> rows = mediaAssetEmbeddingRepository.findTopSimilarWithScore(
-                institutionId, MediaAssetEmbeddingType.SEMANTIC, queryVector, 30);
-        List<UUID> candidateIds = new ArrayList<>();
-        Map<UUID, Double> semanticScores = new LinkedHashMap<>();
-        for (Object[] row : rows) {
-            UUID id = toUuid(row[0]);
-            double score = row[1] instanceof Number number ? number.doubleValue() : 0.0;
-            candidateIds.add(id);
-            semanticScores.put(id, score);
-        }
-        if (candidateIds.isEmpty()) return fallbackSuggestions(institutionId, attachedIds, dto);
+        String lexicalText = buildLexicalQueryText(dto, attachedAssets, attachedTagMap);
+        List<MediaAssetSearchHit> lexicalHits = lexicalText.isBlank()
+                ? List.of()
+                : mediaAssetSearchRepository.searchLexical(
+                        lexicalText, institutionId, false, null, CANDIDATE_LIMIT, 0);
+
+        List<VectorHit> semanticHits = semanticVector == null
+                ? List.of()
+                : vectorHits(mediaAssetEmbeddingRepository.findTopSimilarWithScore(
+                        institutionId, MediaAssetEmbeddingType.SEMANTIC, semanticVector, CANDIDATE_LIMIT),
+                        SEMANTIC_MIN_SIMILARITY);
+        List<VectorHit> imageHits = imageVector == null
+                ? List.of()
+                : vectorHits(mediaAssetEmbeddingRepository.findTopSimilarWithScore(
+                        institutionId, MediaAssetEmbeddingType.IMAGE, imageVector, CANDIDATE_LIMIT),
+                        IMAGE_MIN_SIMILARITY);
+
+        List<Candidate> candidates = fuse(lexicalHits, semanticHits, imageHits).stream()
+                .filter(candidate -> !attachedIds.contains(candidate.assetId()))
+                .toList();
+        if (candidates.isEmpty()) return fallbackSuggestions(institutionId, attachedIds, dto);
+
+        List<UUID> candidateIds = candidates.stream().map(Candidate::assetId).toList();
 
         Map<UUID, MediaAsset> assetMap = mediaAssetRepository.findActiveByIds(candidateIds)
                 .stream()
                 .collect(Collectors.toMap(MediaAsset::getId, asset -> asset));
         Map<UUID, List<TagSignal>> tagMap = loadTagSignalMap(candidateIds);
 
-        List<MediaSuggestResultDto> rankedResults = candidateIds.stream()
-                .filter(id -> assetMap.containsKey(id))
-                .filter(id -> !attachedIds.contains(id))
-                .map(id -> rankAsset(
-                        assetMap.get(id),
-                        semanticScores.getOrDefault(id, 0.0),
+        List<MediaSuggestResultDto> rankedResults = candidates.stream()
+                .filter(candidate -> assetMap.containsKey(candidate.assetId()))
+                .map(candidate -> rankAsset(
+                        assetMap.get(candidate.assetId()),
+                        candidate,
                         dto,
-                        tagMap.getOrDefault(id, List.of())
+                        tagMap.getOrDefault(candidate.assetId(), List.of())
                 ))
                 .sorted(Comparator.comparingDouble(RankedAsset::score).reversed())
-                .limit(8)
+                .limit(SUGGESTION_LIMIT)
                 .map(result -> MediaSuggestResultDto.from(result.asset(), result.score(), result.reasons()))
                 .toList();
 
@@ -211,24 +256,79 @@ public class AIRecommendationService {
         return sb.toString().trim();
     }
 
+    private static String buildLexicalQueryText(MediaSuggestRequestDto dto,
+                                                List<MediaAsset> attachedAssets,
+                                                Map<UUID, List<TagSignal>> attachedTagMap) {
+        List<String> parts = new ArrayList<>();
+        addPart(parts, dto.getEventTitle());
+        addPart(parts, dto.getCaption());
+        addPart(parts, dto.getCategory());
+        if (dto.getTags() != null) {
+            dto.getTags().forEach(value -> addPart(parts, value));
+        }
+        if (attachedAssets != null) {
+            attachedAssets.stream()
+                    .limit(3)
+                    .forEach(asset -> {
+                        addPart(parts, asset.getTitle());
+                        addPart(parts, normalizeFileName(asset.getFileName()));
+                        addPart(parts, asset.getAiCategory());
+                        addPart(parts, asset.getAiDescription());
+                        addParts(parts, asset.getAiTags());
+                        addParts(parts, asset.getSpecificSubjects());
+                        addParts(parts, asset.getVisibleObjects());
+                        addParts(parts, asset.getPossibleUseCases());
+                        attachedTagMap.getOrDefault(asset.getId(), List.of())
+                                .forEach(tag -> addPart(parts, tag.label()));
+                    });
+        }
+        return parts.stream()
+                .map(AIRecommendationService::normalize)
+                .filter(part -> part.length() >= 2)
+                .distinct()
+                .collect(Collectors.joining(" "));
+    }
+
     static double boostedScore(MediaAsset asset, double semanticScore, MediaSuggestRequestDto dto, Set<String> assetTags) {
         List<TagSignal> tagSignals = assetTags.stream()
                 .map(label -> new TagSignal(label, "ai_generated"))
                 .toList();
-        return rankAsset(asset, semanticScore, dto, tagSignals).score();
+        return rankAsset(asset, Candidate.semanticOnly(asset.getId(), semanticScore), dto, tagSignals).score();
     }
 
-    private static RankedAsset rankAsset(MediaAsset asset, double semanticScore, MediaSuggestRequestDto dto, Collection<TagSignal> assetTags) {
-        double score = semanticScore;
+    private static RankedAsset rankAsset(MediaAsset asset, Candidate candidate, MediaSuggestRequestDto dto, Collection<TagSignal> assetTags) {
+        double semanticScore = candidate.semanticScore() == null ? 0.0 : candidate.semanticScore();
+        double imageScore = candidate.imageScore() == null ? 0.0 : candidate.imageScore();
+        double lexicalScore = candidate.lexicalScore() == null ? 0.0 : candidate.lexicalScore();
+        double score = Math.max(semanticScore, imageScore) + candidate.fusionScore();
         List<String> reasons = new ArrayList<>();
         Set<String> queryTerms = normalizedTerms(dto);
+        List<String> queryTokens = normalizedTokens(dto);
 
+        if (candidate.lexicalRank() != null) {
+            score += Math.min(0.14, 0.08 + lexicalScore * 0.08);
+            reasons.add("Exact metadata or keyword match.");
+        }
         if (semanticScore >= 0.75) {
             reasons.add("Strong semantic similarity to the title, caption, or tags.");
         } else if (semanticScore >= 0.55) {
             reasons.add("Similar to the post context from the title or caption.");
         } else if (semanticScore >= 0.40) {
             reasons.add("Some semantic overlap with the post context.");
+        }
+        if (imageScore >= 0.45) {
+            score += 0.06;
+            reasons.add("Strong visual similarity to the post context.");
+        } else if (imageScore >= 0.30) {
+            score += 0.035;
+            reasons.add("Visual details match the post context.");
+        } else if (imageScore >= IMAGE_MIN_SIMILARITY) {
+            score += 0.015;
+            reasons.add("Some visual overlap with the post context.");
+        }
+        if (semanticScore > 0 && imageScore > 0) {
+            score += 0.04;
+            reasons.add("Matched by both metadata meaning and visual embedding.");
         }
 
         String assetCategory = normalize(asset.getAiCategory());
@@ -237,7 +337,7 @@ public class AIRecommendationService {
             if (assetCategory.equals(requestCategory)) {
                 score += 0.10;
                 reasons.add("Category matches " + asset.getAiCategory() + ".");
-            } else if (queryTerms.contains(assetCategory)) {
+            } else if (queryTerms.contains(assetCategory) || queryTokens.contains(assetCategory)) {
                 score += 0.06;
                 reasons.add("Detected category appears in the post text.");
             }
@@ -247,7 +347,7 @@ public class AIRecommendationService {
                 .filter(TagSignal::manual)
                 .map(TagSignal::label)
                 .map(AIRecommendationService::normalize)
-                .filter(queryTerms::contains)
+                .filter(tag -> queryTerms.contains(tag) || queryTokens.contains(tag))
                 .distinct()
                 .limit(3)
                 .toList();
@@ -262,7 +362,7 @@ public class AIRecommendationService {
                 .filter(tag -> !tag.manual())
                 .map(TagSignal::label)
                 .map(AIRecommendationService::normalize)
-                .filter(queryTerms::contains)
+                .filter(tag -> queryTerms.contains(tag) || queryTokens.contains(tag))
                 .distinct()
                 .limit(3)
                 .toList();
@@ -274,16 +374,28 @@ public class AIRecommendationService {
         }
 
         List<String> matchingAssetTerms = normalizedAssetTerms(asset).stream()
-                .filter(queryTerms::contains)
+                .filter(term -> queryTerms.contains(term)
+                        || queryTokens.contains(term)
+                        || queryTokens.stream().anyMatch(token -> term.contains(token)))
                 .limit(3)
                 .toList();
-        score += Math.min(0.08, matchingAssetTerms.size() * 0.03);
+        score += Math.min(0.12, matchingAssetTerms.size() * 0.04);
         if (!matchingAssetTerms.isEmpty()) {
             reasons.add("Asset details mention " + String.join(", ", matchingAssetTerms) + ".");
         }
 
+        double metadataBoost = searchStyleMetadataBoost(asset, queryTokens);
+        if (metadataBoost > 0) {
+            score += metadataBoost;
+            reasons.addAll(searchStyleReasons(asset, queryTokens));
+        }
+
         boolean hasRichProfile = asset.getAiDescription() != null && !asset.getAiDescription().isBlank()
-                && !assetTags.isEmpty();
+                && (!assetTags.isEmpty()
+                    || hasAny(asset.getAiTags())
+                    || hasAny(asset.getSpecificSubjects())
+                    || hasAny(asset.getVisibleObjects())
+                    || hasAny(asset.getPossibleUseCases()));
         if (hasRichProfile) {
             score += 0.02;
             reasons.add("Has AI description and tags for stronger matching.");
@@ -308,7 +420,7 @@ public class AIRecommendationService {
             reasons.add("Ranked from available media metadata.");
         }
 
-        return new RankedAsset(asset, Math.max(0.0, Math.min(1.0, score)), reasons);
+        return new RankedAsset(asset, Math.max(0.0, Math.min(1.0, score)), reasons.stream().distinct().limit(6).toList());
     }
 
     private Submission loadAndAuthorise(UUID submissionId, JwtUserDetails user) {
@@ -322,14 +434,149 @@ public class AIRecommendationService {
         return submission;
     }
 
-    private OptionalVector firstAvailableEmbedding(List<MediaAsset> attached) {
+    private List<OptionalVector> availableEmbeddings(List<MediaAsset> attached) {
+        List<OptionalVector> vectors = new ArrayList<>();
+        for (MediaAsset asset : attached) {
+            String embedding = mediaAssetEmbeddingRepository
+                    .findEmbedding(asset.getId(), MediaAssetEmbeddingType.IMAGE)
+                    .orElse(null);
+            if (embedding != null) {
+                vectors.add(new OptionalVector(MediaAssetEmbeddingType.IMAGE, embedding));
+            }
+        }
         for (MediaAsset asset : attached) {
             String embedding = mediaAssetEmbeddingRepository
                     .findEmbedding(asset.getId(), MediaAssetEmbeddingType.SEMANTIC)
-                    .orElseGet(() -> mediaAssetRepository.findEmbeddingById(asset.getId()).orElse(null));
-            if (embedding != null) return new OptionalVector(embedding);
+                    .orElse(null);
+            if (embedding != null) {
+                vectors.add(new OptionalVector(MediaAssetEmbeddingType.SEMANTIC, embedding));
+            }
         }
-        return new OptionalVector(null);
+        for (MediaAsset asset : attached) {
+            String embedding = mediaAssetRepository.findEmbeddingById(asset.getId()).orElse(null);
+            if (embedding != null) {
+                vectors.add(new OptionalVector(null, embedding));
+            }
+        }
+        return vectors;
+    }
+
+    private List<MediaAsset> similarAssets(UUID institutionId,
+                                           List<MediaAsset> attached,
+                                           Map<UUID, List<TagSignal>> attachedTagMap,
+                                           List<OptionalVector> queryVectors,
+                                           Set<UUID> attachedIds,
+                                           Set<String> selectedProfile) {
+        List<VectorHit> imageHits = new ArrayList<>();
+        List<VectorHit> semanticHits = new ArrayList<>();
+        List<UUID> legacyIds = new ArrayList<>();
+
+        for (OptionalVector queryVector : queryVectors) {
+            if (queryVector.type() == null) {
+                legacyIds.addAll(mediaAssetRepository.findTopSimilar(institutionId, queryVector.value())
+                        .stream()
+                        .map(MediaAsset::getId)
+                        .filter(id -> !attachedIds.contains(id))
+                        .toList());
+                continue;
+            }
+
+            double floor = queryVector.type() == MediaAssetEmbeddingType.IMAGE
+                    ? SELECTED_IMAGE_MIN_SIMILARITY
+                    : SELECTED_SEMANTIC_MIN_SIMILARITY;
+            List<VectorHit> hits = vectorHits(mediaAssetEmbeddingRepository.findTopSimilarWithScore(
+                    institutionId, queryVector.type(), queryVector.value(), CANDIDATE_LIMIT), floor);
+            if (queryVector.type() == MediaAssetEmbeddingType.IMAGE) {
+                imageHits.addAll(hits);
+            } else {
+                semanticHits.addAll(hits);
+            }
+        }
+
+        String lexicalText = selectedProfile.isEmpty()
+                ? buildLexicalQueryText(new MediaSuggestRequestDto(), attached, attachedTagMap)
+                : String.join(" ", selectedProfile);
+        List<MediaAssetSearchHit> lexicalHits = lexicalText.isBlank()
+                ? List.of()
+                : mediaAssetSearchRepository.searchLexical(lexicalText, institutionId, false, null, CANDIDATE_LIMIT, 0);
+
+        List<Candidate> candidates = fuse(lexicalHits, semanticHits, imageHits);
+        List<UUID> orderedIds = candidates.stream()
+                .map(Candidate::assetId)
+                .toList();
+        if (orderedIds.isEmpty() && selectedProfile.isEmpty()) {
+            orderedIds = legacyIds.stream().distinct().toList();
+        }
+        orderedIds = orderedIds.stream()
+                .filter(id -> !attachedIds.contains(id))
+                .distinct()
+                .toList();
+        Map<UUID, MediaAsset> assets = mediaAssetRepository.findActiveByIds(orderedIds)
+                .stream()
+                .collect(Collectors.toMap(MediaAsset::getId, asset -> asset));
+        Map<UUID, Candidate> candidateMap = candidates.stream()
+                .collect(Collectors.toMap(Candidate::assetId, candidate -> candidate, (first, ignored) -> first));
+        Map<UUID, List<TagSignal>> tagMap = loadTagSignalMap(orderedIds);
+        return orderedIds.stream()
+                .map(id -> {
+                    MediaAsset asset = assets.get(id);
+                    Candidate candidate = candidateMap.get(id);
+                    if (asset == null) return null;
+                    if (candidate == null || selectedCandidateCompatible(asset, candidate,
+                            tagMap.getOrDefault(id, List.of()), selectedProfile)) {
+                        return asset;
+                    }
+                    return null;
+                })
+                .filter(asset -> asset != null)
+                .toList();
+    }
+
+    private static List<VectorHit> vectorHits(List<Object[]> rows, double minSimilarity) {
+        List<VectorHit> hits = new ArrayList<>();
+        int rank = 0;
+        for (Object[] row : rows) {
+            double score = row[1] instanceof Number number ? number.doubleValue() : 0.0;
+            if (score < minSimilarity) {
+                break;
+            }
+            hits.add(new VectorHit(toUuid(row[0]), score, ++rank));
+        }
+        return hits;
+    }
+
+    private static List<Candidate> fuse(List<MediaAssetSearchHit> lexicalHits,
+                                        List<VectorHit> semanticHits,
+                                        List<VectorHit> imageHits) {
+        Map<UUID, CandidateBuilder> candidates = new LinkedHashMap<>();
+        for (MediaAssetSearchHit hit : lexicalHits) {
+            CandidateBuilder candidate = candidates.computeIfAbsent(hit.assetId(), CandidateBuilder::new);
+            candidate.lexicalRank = hit.lexicalRank();
+            candidate.lexicalScore = hit.lexicalScore();
+            candidate.fusionScore += rrf(hit.lexicalRank()) * 1.35;
+        }
+        for (VectorHit hit : semanticHits) {
+            CandidateBuilder candidate = candidates.computeIfAbsent(hit.assetId(), CandidateBuilder::new);
+            candidate.semanticScore = max(candidate.semanticScore, hit.score());
+            candidate.fusionScore += rrf(hit.rank());
+        }
+        for (VectorHit hit : imageHits) {
+            CandidateBuilder candidate = candidates.computeIfAbsent(hit.assetId(), CandidateBuilder::new);
+            candidate.imageScore = max(candidate.imageScore, hit.score());
+            candidate.fusionScore += rrf(hit.rank()) * 1.15;
+        }
+        return candidates.values().stream()
+                .map(CandidateBuilder::build)
+                .sorted(Comparator.comparingDouble(Candidate::fusionScore).reversed())
+                .toList();
+    }
+
+    private static double rrf(int rank) {
+        return 1.0 / (RRF_K + rank);
+    }
+
+    private static Double max(Double current, double next) {
+        return current == null ? next : Math.max(current, next);
     }
 
     private Map<UUID, List<TagSignal>> loadTagSignalMap(List<UUID> assetIds) {
@@ -360,21 +607,28 @@ public class AIRecommendationService {
         return candidates.stream()
                 .map(asset -> rankAsset(
                         asset,
-                        0.35,
+                        Candidate.semanticOnly(asset.getId(), 0.20),
                         dto,
                         tagMap.getOrDefault(asset.getId(), List.of())
                 ))
                 .sorted(Comparator.comparingDouble(RankedAsset::score).reversed())
-                .limit(8)
+                .limit(SUGGESTION_LIMIT)
                 .map(result -> MediaSuggestResultDto.from(result.asset(), result.score(), result.reasons()))
                 .toList();
     }
 
     private static String selectedMediaContext(MediaAsset asset, Collection<TagSignal> tags) {
         StringBuilder sb = new StringBuilder();
+        append(sb, "title", asset.getTitle());
         append(sb, "filename", normalizeFileName(asset.getFileName()));
         append(sb, "category", asset.getAiCategory());
         append(sb, "description", asset.getAiDescription());
+        appendAll(sb, "ai_tags", arrayList(asset.getAiTags()));
+        appendAll(sb, "subjects", arrayList(asset.getSpecificSubjects()));
+        appendAll(sb, "objects", arrayList(asset.getVisibleObjects()));
+        appendAll(sb, "use_cases", arrayList(asset.getPossibleUseCases()));
+        appendAll(sb, "visual_style", arrayList(asset.getVisualStyle()));
+        appendAll(sb, "colors", arrayList(asset.getDominantColors()));
         appendAll(sb, "tags", tags.stream().map(TagSignal::label).toList());
         return sb.toString().trim();
     }
@@ -405,6 +659,19 @@ public class AIRecommendationService {
         }
     }
 
+    private static void addPart(List<String> parts, String value) {
+        if (value != null && !value.isBlank()) {
+            parts.add(value);
+        }
+    }
+
+    private static void addParts(List<String> parts, String[] values) {
+        if (values == null) return;
+        for (String value : values) {
+            addPart(parts, value);
+        }
+    }
+
     private static void addAllTerms(Set<String> terms, Collection<String> values) {
         if (values == null) return;
         values.forEach(value -> addTerm(terms, value));
@@ -424,11 +691,114 @@ public class AIRecommendationService {
 
     private static Set<String> normalizedAssetTerms(MediaAsset asset) {
         Set<String> terms = new LinkedHashSet<>();
+        addLooseWords(terms, asset.getTitle());
         addLooseWords(terms, asset.getFileName());
         addLooseWords(terms, asset.getAssetCode());
         addLooseWords(terms, asset.getAiCategory());
         addLooseWords(terms, asset.getAiDescription());
+        addAllTerms(terms, arrayList(asset.getAiTags()));
+        addAllTerms(terms, arrayList(asset.getSpecificSubjects()));
+        addAllTerms(terms, arrayList(asset.getVisibleObjects()));
+        addAllTerms(terms, arrayList(asset.getPossibleUseCases()));
+        addAllTerms(terms, arrayList(asset.getVisualStyle()));
+        addAllTerms(terms, arrayList(asset.getDominantColors()));
         return terms;
+    }
+
+    private static Set<String> selectedProfileTerms(List<MediaAsset> attached,
+                                                    Map<UUID, List<TagSignal>> attachedTagMap) {
+        Set<String> terms = new LinkedHashSet<>();
+        for (MediaAsset asset : attached) {
+            terms.addAll(assetProfileTerms(asset, attachedTagMap.getOrDefault(asset.getId(), List.of())));
+        }
+        return terms.stream()
+                .filter(term -> term.length() >= 3)
+                .filter(term -> !GENERIC_PROFILE_TERMS.contains(term))
+                .toList()
+                .stream()
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private static boolean selectedCandidateCompatible(MediaAsset asset,
+                                                       Candidate candidate,
+                                                       Collection<TagSignal> assetTags,
+                                                       Set<String> selectedProfile) {
+        if (candidate.imageScore() != null && candidate.imageScore() >= SELECTED_STRONG_IMAGE_SIMILARITY) {
+            return true;
+        }
+        if (candidate.lexicalRank() != null) {
+            return true;
+        }
+        if (selectedProfile.isEmpty()) {
+            return (candidate.imageScore() != null && candidate.imageScore() >= SELECTED_STRONG_IMAGE_SIMILARITY)
+                    || (candidate.semanticScore() != null && candidate.semanticScore() >= 0.70);
+        }
+        Set<String> candidateTerms = assetProfileTerms(asset, assetTags);
+        boolean profileOverlap = selectedProfile.stream().anyMatch(candidateTerms::contains);
+        return (candidate.imageScore() != null && candidate.imageScore() >= SELECTED_STRONG_IMAGE_SIMILARITY)
+                || (candidate.semanticScore() != null && candidate.semanticScore() >= 0.70 && profileOverlap);
+    }
+
+    private static Set<String> assetProfileTerms(MediaAsset asset, Collection<TagSignal> assetTags) {
+        Set<String> terms = new LinkedHashSet<>(normalizedAssetTerms(asset));
+        if (assetTags != null) {
+            assetTags.stream().map(TagSignal::label).forEach(value -> addLooseWords(terms, value));
+        }
+        return terms.stream()
+                .map(AIRecommendationService::normalize)
+                .filter(term -> term.length() >= 2)
+                .filter(term -> !GENERIC_PROFILE_TERMS.contains(term))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private static List<String> normalizedTokens(MediaSuggestRequestDto dto) {
+        Set<String> tokens = new LinkedHashSet<>();
+        addLooseWords(tokens, dto.getEventTitle());
+        addLooseWords(tokens, dto.getCaption());
+        addTerm(tokens, dto.getCategory());
+        addAllTerms(tokens, dto.getTags());
+        return tokens.stream().filter(token -> token.length() >= 2).toList();
+    }
+
+    private static double searchStyleMetadataBoost(MediaAsset asset, List<String> tokens) {
+        double boost = 0.0;
+        if (containsAny(asset.getTitle(), tokens)) {
+            boost += 0.06;
+        }
+        if (containsAny(asset.getAssetCode(), tokens) || containsAny(asset.getFileName(), tokens)) {
+            boost += 0.045;
+        }
+        if (containsAny(asset.getAiCategory(), tokens) || containsAny(asset.getAiTags(), tokens)) {
+            boost += 0.04;
+        }
+        if (containsAny(asset.getAiDescription(), tokens)
+                || containsAny(asset.getSpecificSubjects(), tokens)
+                || containsAny(asset.getVisibleObjects(), tokens)
+                || containsAny(asset.getPossibleUseCases(), tokens)
+                || containsAny(asset.getVisualStyle(), tokens)
+                || containsAny(asset.getDominantColors(), tokens)) {
+            boost += 0.025;
+        }
+        return boost;
+    }
+
+    private static List<String> searchStyleReasons(MediaAsset asset, List<String> tokens) {
+        Map<String, Boolean> reasons = new LinkedHashMap<>();
+        reasons.put("Title match", containsAny(asset.getTitle(), tokens));
+        reasons.put("Filename match", containsAny(asset.getFileName(), tokens));
+        reasons.put("Asset code match", containsAny(asset.getAssetCode(), tokens));
+        reasons.put("AI category match", containsAny(asset.getAiCategory(), tokens));
+        reasons.put("AI tag match", containsAny(asset.getAiTags(), tokens));
+        reasons.put("Subject match", containsAny(asset.getSpecificSubjects(), tokens));
+        reasons.put("Object match", containsAny(asset.getVisibleObjects(), tokens));
+        reasons.put("Use-case match", containsAny(asset.getPossibleUseCases(), tokens));
+        reasons.put("Visual style match", containsAny(asset.getVisualStyle(), tokens));
+        reasons.put("Color match", containsAny(asset.getDominantColors(), tokens));
+        return reasons.entrySet().stream()
+                .filter(Map.Entry::getValue)
+                .map(Map.Entry::getKey)
+                .limit(3)
+                .toList();
     }
 
     private static String normalizeFileName(String fileName) {
@@ -439,7 +809,36 @@ public class AIRecommendationService {
     }
 
     private static String normalize(String value) {
-        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", " ")
+                .trim()
+                .replaceAll("\\s+", " ");
+    }
+
+    private static boolean containsAny(String value, Collection<String> tokens) {
+        if (value == null || value.isBlank() || tokens == null || tokens.isEmpty()) {
+            return false;
+        }
+        String normalized = normalize(value);
+        return tokens.stream()
+                .map(AIRecommendationService::normalize)
+                .filter(token -> token.length() >= 2)
+                .anyMatch(normalized::contains);
+    }
+
+    private static boolean containsAny(String[] values, Collection<String> tokens) {
+        if (values == null || values.length == 0) {
+            return false;
+        }
+        return java.util.Arrays.stream(values).anyMatch(value -> containsAny(value, tokens));
+    }
+
+    private static boolean hasAny(String[] values) {
+        return values != null && values.length > 0;
+    }
+
+    private static List<String> arrayList(String[] values) {
+        return values == null ? List.of() : java.util.Arrays.asList(values);
     }
 
     private static UUID toUuid(Object value) {
@@ -447,11 +846,37 @@ public class AIRecommendationService {
         return UUID.fromString(String.valueOf(value));
     }
 
-    private record OptionalVector(String value) {}
+    private record OptionalVector(MediaAssetEmbeddingType type, String value) {}
 
     private record TagSignal(String label, String source) {
         boolean manual() {
             return source == null || source.equalsIgnoreCase("manual");
+        }
+    }
+
+    private record VectorHit(UUID assetId, double score, int rank) {}
+
+    private record Candidate(UUID assetId, Integer lexicalRank, Double lexicalScore,
+                             Double semanticScore, Double imageScore, double fusionScore) {
+        static Candidate semanticOnly(UUID assetId, double semanticScore) {
+            return new Candidate(assetId, null, null, semanticScore, null, 0.0);
+        }
+    }
+
+    private static class CandidateBuilder {
+        private final UUID assetId;
+        private Integer lexicalRank;
+        private Double lexicalScore;
+        private Double semanticScore;
+        private Double imageScore;
+        private double fusionScore;
+
+        private CandidateBuilder(UUID assetId) {
+            this.assetId = assetId;
+        }
+
+        private Candidate build() {
+            return new Candidate(assetId, lexicalRank, lexicalScore, semanticScore, imageScore, fusionScore);
         }
     }
 

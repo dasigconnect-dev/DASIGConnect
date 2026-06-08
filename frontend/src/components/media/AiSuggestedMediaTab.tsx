@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SubmissionMediaItem } from "../../types/media";
 import type { UseAiMediaSuggestionsReturn } from "../../hooks/useAiMediaSuggestions";
 import MediaAssetGrid, { type GridAsset } from "./MediaAssetGrid";
 
 interface AiSuggestedMediaTabProps {
   suggestions: UseAiMediaSuggestionsReturn;
-  submissionId: string | null;
+  /** True once at least one image asset is selected — enables image-based "more like these". */
+  hasImageItems: boolean;
   alreadyAddedIds: Set<string>;
   eventTitle: string;
   caption: string;
@@ -17,7 +18,7 @@ interface AiSuggestedMediaTabProps {
 
 export default function AiSuggestedMediaTab({
   suggestions,
-  submissionId,
+  hasImageItems,
   alreadyAddedIds,
   eventTitle,
   caption,
@@ -27,7 +28,11 @@ export default function AiSuggestedMediaTab({
   disabled,
 }: AiSuggestedMediaTabProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const { state, results, fetch } = suggestions;
+  const { state, results, mode, fetchSimilar, fetchFromDetails, reset } = suggestions;
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [mode, results]);
 
   const hasContext =
     eventTitle.trim().length > 0 ||
@@ -83,58 +88,69 @@ export default function AiSuggestedMediaTab({
     setSelectedIds(new Set());
   }
 
+  const regenerate = () => (mode === "details" ? fetchFromDetails() : fetchSimilar());
+  const chooseSourceAgain = () => reset();
+  const isBusy = state === "loading";
+
+  // The two ways AI can find media. Image-based works from the photos already added (no text);
+  // text-based works from the post details. Both auto-save the draft via ensureDraft.
+  const actionPicker = (
+    <div className="ast-modes">
+      <button
+        type="button"
+        className="ast-mode-btn ast-mode-btn--primary"
+        onClick={fetchSimilar}
+        disabled={disabled || isBusy || !hasImageItems}
+        title={hasImageItems ? undefined : "Add a photo first to find more like it."}
+      >
+        <i className="ti ti-photo-search" aria-hidden />
+        <span className="ast-mode-title">More like your selection</span>
+        <span className="ast-mode-sub">{hasImageItems ? "From the photos you added" : "Add a photo to enable"}</span>
+      </button>
+      <button
+        type="button"
+        className="ast-mode-btn"
+        onClick={fetchFromDetails}
+        disabled={disabled || isBusy || !hasContext}
+        title={hasContext ? undefined : "Add a title, caption, or tags to enable."}
+      >
+        <i className="ti ti-sparkles" aria-hidden />
+        <span className="ast-mode-title">From your post details</span>
+        <span className="ast-mode-sub">
+          {hasContext ? (contextParts.join(" · ").slice(0, 48) || "Title, caption & tags") : "Add post details to enable"}
+        </span>
+      </button>
+    </div>
+  );
+
   return (
     <div className="ast-root">
-      {hasContext && contextParts.length > 0 && (
-        <div className="ast-context-pill" aria-label="Search context">
-          <i className="ti ti-sparkles ast-context-icon" aria-hidden />
-          <span className="ast-context-text">{contextParts.join(" · ")}</span>
-        </div>
-      )}
-
-      {!hasContext && (
+      {!hasImageItems && !hasContext && state === "idle" ? (
         <div className="ast-no-context" role="status">
-          <i className="ti ti-info-circle" aria-hidden />
-          <span>Add an event title, caption, or tags first so AI can find relevant media.</span>
+          <i className="ti ti-bulb" aria-hidden />
+          <span>Add a photo above, or fill in your post details — then AI can suggest related media from your library.</span>
         </div>
-      )}
-
-      {hasContext && !submissionId && (
-        <div className="ast-idle" role="status">
-          <i className="ti ti-device-floppy" style={{ fontSize: 28, color: "var(--mp-muted)" }} aria-hidden />
-          <p className="ast-idle-hint">Save your draft first to enable AI media suggestions.</p>
-        </div>
-      )}
-
-      {hasContext && submissionId && state === "idle" && (
-        <div className="ast-idle">
-          <p className="ast-idle-hint">
-            AI will scan your media library and surface assets most relevant to your post context.
-          </p>
-          <button
-            type="button"
-            className="ast-generate-btn"
-            onClick={fetch}
-            disabled={disabled}
-          >
-            <i className="ti ti-sparkles" aria-hidden />
-            Generate Suggestions
-          </button>
-        </div>
+      ) : (
+        state === "idle" && (
+          <div className="ast-idle">
+            <p className="ast-idle-hint">Let AI surface related assets from your library. Pick a source:</p>
+            {actionPicker}
+          </div>
+        )
       )}
 
       {state === "loading" && (
         <div className="ast-loading" role="status" aria-live="polite">
           <span className="ast-spinner" aria-hidden />
-          <span>Scanning your media library…</span>
+          <span>{mode === "details" ? "Matching your post details…" : "Finding photos like your selection…"}</span>
         </div>
       )}
 
       {state === "error" && (
         <div className="ast-error" role="alert">
           <i className="ti ti-alert-circle" aria-hidden />
-          <span>Could not generate suggestions. Try again.</span>
-          <button type="button" className="ast-retry-btn" onClick={fetch} disabled={disabled}>
+          <span>Could not generate suggestions. Choose a source and try again.</span>
+          <button type="button" className="ast-retry-btn" onClick={chooseSourceAgain} disabled={disabled}>
             Retry
           </button>
         </div>
@@ -143,8 +159,12 @@ export default function AiSuggestedMediaTab({
       {state === "empty" && (
         <div className="ast-empty" role="status">
           <i className="ti ti-photo-off" aria-hidden />
-          <span>No closely matching assets found in your library. Try refining your caption or title.</span>
-          <button type="button" className="ast-retry-btn" onClick={fetch} disabled={disabled}>
+          <span>
+            {mode === "details"
+              ? "No closely matching assets found. Try refining your caption or title, or search by your selection."
+              : "No similar assets found in your library yet."}
+          </span>
+          <button type="button" className="ast-retry-btn" onClick={chooseSourceAgain} disabled={disabled}>
             Try again
           </button>
         </div>
@@ -154,12 +174,12 @@ export default function AiSuggestedMediaTab({
         <>
           <div className="ast-results-header">
             <span className="ast-results-label">
-              Top {results.length} match{results.length !== 1 ? "es" : ""} — ranked by relevance
+              {mode === "details" ? "Ranked by relevance to your post" : "Similar to your selected photos"} — {results.length} match{results.length !== 1 ? "es" : ""}
             </span>
             <button
               type="button"
               className="ast-regenerate-btn"
-              onClick={fetch}
+              onClick={regenerate}
               disabled={disabled}
               title="Regenerate suggestions"
             >

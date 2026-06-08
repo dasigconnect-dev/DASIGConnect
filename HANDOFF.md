@@ -1,5 +1,39 @@
 # Handoff - 2026-06-08
 
+## Content submission flow redevelopment (panel feedback)
+
+The panel flagged the submission flow for redevelopment: the **AI caption is image-based**
+(Claude Vision), but it lived in a Details-first wizard, so it fired before any media existed
+("how can a caption suggestion work if there's no media to base on?"). The AI **media
+suggestion** had the opposite problem — it required title/caption/tags **and** a manually saved
+draft, forcing back-and-forth just to enable the button. Both fixed:
+
+- **Wizard reordered to `Media Assets → Post Details → Preferred Schedule`.** Default/initial step
+  is **Media**; new and loaded drafts open on Media; next/back order updated (`StepPanelActions`);
+  only **Schedule** stays gated on Post Details completeness. So by the time the contributor reaches
+  Post Details, media exists and the image-based caption AI has photos to work from.
+- **Caption-AI button no longer vanishes.** When media/draft isn't ready it renders a **disabled
+  "Suggest Caption" with a hint** ("Add a photo in Media Assets first — captions are generated from
+  your selected images.") instead of disappearing. It enables once an image asset is present.
+- **AI media suggestion: no more back-and-forth.**
+  - **Auto-save:** `saveDraft()` now returns the draft id; new `ensureDraftSaved()` is passed to the
+    picker as `onEnsureDraft`. AI flows call it, so the draft (and its media) is saved automatically
+    — no manual "Save draft" to activate suggestions.
+  - **Dual-mode AI tab:** **"More like your selection"** (image-based `similar-media`, enabled once a
+    photo is added, **needs no text**) is the primary path; **"From your post details"** (text-based
+    `suggest-media`) is the optional secondary; a friendly empty state replaces the old "save draft
+    first" / "add a title first" dead-ends. `useAiMediaSuggestions` rewritten with
+    `fetchSimilar`/`fetchFromDetails`.
+- **Caveat:** `similar-media` ranks from an attached asset's embedding — **library-picked** photos
+  return instantly; a **freshly uploaded** photo is embedded asynchronously (PROCESSING→READY), so
+  right after upload "more like these" may briefly show the empty state until its embedding lands
+  (retry covers it). State this as a known latency, not a bug.
+- **Design note for the revised SRS:** media-first makes the *text→photo* suggestion no longer the
+  primed path; the AI-media value is preserved via image-based *similar-media* — a deliberate design
+  decision, not a regression.
+- Verification: frontend `npm run build` + targeted ESLint clean (SubmissionScreen, AiCaptionButton,
+  MediaAssetsPicker, AiSuggestedMediaTab, useAiMediaSuggestions). No migration; no backend schema change.
+
 ## Insights interactivity + per-content-type "reads"
 
 - **Clickable KPI tiles drive the chart.** The 4 metric tiles on **Views** (Views / 3-second /

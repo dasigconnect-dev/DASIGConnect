@@ -199,4 +199,17 @@ public class SubmissionController {
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.status(HttpStatus.CREATED).body(submissionService.attachAsset(id, dto, user));
     }
+
+    /**
+     * DELETE /api/v1/submissions/{id}/assets/{assetId} Removes an existing
+     * media library asset from an editable submission.
+     */
+    @DeleteMapping("/{id}/assets/{assetId}")
+    @PreAuthorize("hasRole('CONTRIBUTOR')")
+    public ResponseEntity<SubmissionResponseDto> detachAsset(
+            @PathVariable UUID id,
+            @PathVariable UUID assetId,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(submissionService.detachAsset(id, assetId, user));
+    }
 }

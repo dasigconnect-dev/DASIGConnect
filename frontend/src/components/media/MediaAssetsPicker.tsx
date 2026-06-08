@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SubmissionMediaItem } from "../../types/media";
 import { useAiMediaSuggestions } from "../../hooks/useAiMediaSuggestions";
 import SelectedMediaStrip from "./SelectedMediaStrip";
@@ -11,7 +11,8 @@ type PickerTab = "upload" | "library" | "ai";
 interface MediaAssetsPickerProps {
   items: SubmissionMediaItem[];
   onItemsChange: (items: SubmissionMediaItem[]) => void;
-  submissionId: string | null;
+  /** Auto-saves the draft (and attaches media) and returns its id, so AI needs no manual save. */
+  onEnsureDraft: () => Promise<string | null>;
   eventTitle: string;
   caption: string;
   category: string;
@@ -22,7 +23,7 @@ interface MediaAssetsPickerProps {
 export default function MediaAssetsPicker({
   items,
   onItemsChange,
-  submissionId,
+  onEnsureDraft,
   eventTitle,
   caption,
   category,
@@ -31,7 +32,28 @@ export default function MediaAssetsPicker({
 }: MediaAssetsPickerProps) {
   const [activeTab, setActiveTab] = useState<PickerTab>("upload");
 
-  const aiSuggestions = useAiMediaSuggestions(submissionId, eventTitle, caption, category, tags);
+  const aiSuggestions = useAiMediaSuggestions(onEnsureDraft, { eventTitle, caption, category, tags });
+  const hasImageItems = items.some((i) => i.mediaType === "image");
+  const mediaSignature = useMemo(
+    () =>
+      items
+        .map((item) =>
+          item.assetId
+            ? `asset:${item.assetId}`
+            : item.file
+              ? `file:${item.file.name}:${item.file.size}:${item.file.lastModified}`
+              : item.clientId,
+        )
+        .join("|"),
+    [items],
+  );
+  const previousMediaSignature = useRef(mediaSignature);
+
+  useEffect(() => {
+    if (previousMediaSignature.current === mediaSignature) return;
+    previousMediaSignature.current = mediaSignature;
+    aiSuggestions.reset();
+  }, [aiSuggestions, mediaSignature]);
 
   const alreadyAddedIds = new Set(items.filter((i) => i.assetId).map((i) => i.assetId!));
 
@@ -136,7 +158,7 @@ export default function MediaAssetsPicker({
           {activeTab === "ai" && (
             <AiSuggestedMediaTab
               suggestions={aiSuggestions}
-              submissionId={submissionId}
+              hasImageItems={hasImageItems}
               alreadyAddedIds={alreadyAddedIds}
               eventTitle={eventTitle}
               caption={caption}
