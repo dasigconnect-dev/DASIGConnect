@@ -194,8 +194,14 @@ export interface ContentInsightDailyPointDto {
   date: string;
   postsPublished: number;
   views: number;
+  uniqueViews: number;
   reach: number;
   engagements: number;
+  reactions: number;
+  comments: number;
+  shares: number;
+  fifteenSecondViews: number;
+  sixtySecondViews: number;
   watchTimeSeconds: number;
 }
 
@@ -207,6 +213,8 @@ export interface ContentTypeInsightDto {
   engagements: number;
   engagementRate: number;
   averageWatchTimeSeconds: number;
+  impressions: number;
+  postClicks: number;
 }
 
 export interface PostingWindowInsightDto {

@@ -503,8 +503,14 @@ public class AnalyticsRepository {
             SELECT CAST(day_start AS date) AS day,
                    COUNT(lm.submission_id) AS posts_published,
                    COALESCE(SUM(lm.views), 0) AS views,
+                   COALESCE(SUM(lm.unique_views), 0) AS unique_views,
                    COALESCE(SUM(lm.reach), 0) AS reach,
                    COALESCE(SUM(lm.reactions + lm.comments + lm.shares), 0) AS engagements,
+                   COALESCE(SUM(lm.reactions), 0) AS reactions,
+                   COALESCE(SUM(lm.comments), 0) AS comments,
+                   COALESCE(SUM(lm.shares), 0) AS shares,
+                   COALESCE(SUM(lm.fifteen_second_views), 0) AS fifteen_second_views,
+                   COALESCE(SUM(lm.sixty_second_views), 0) AS sixty_second_views,
                    COALESCE(SUM(lm.watch_time_ms), 0) / 1000.0 AS watch_time_seconds
             FROM generate_series(CAST(:start AS timestamptz), CAST(:end AS timestamptz), interval '1 day') AS day_start
             LEFT JOIN latest_metrics lm ON CAST(lm.published_at AS date) = CAST(day_start AS date)
@@ -515,8 +521,14 @@ public class AnalyticsRepository {
                 rs.getDate("day").toLocalDate(),
                 rs.getLong("posts_published"),
                 rs.getLong("views"),
+                rs.getLong("unique_views"),
                 rs.getLong("reach"),
                 rs.getLong("engagements"),
+                rs.getLong("reactions"),
+                rs.getLong("comments"),
+                rs.getLong("shares"),
+                rs.getLong("fifteen_second_views"),
+                rs.getLong("sixty_second_views"),
                 round(rs.getDouble("watch_time_seconds"))));
     }
 
@@ -527,6 +539,8 @@ public class AnalyticsRepository {
                    COALESCE(SUM(views), 0) AS views,
                    COALESCE(SUM(reach), 0) AS reach,
                    COALESCE(SUM(reactions + comments + shares), 0) AS engagements,
+                   COALESCE(SUM(impressions), 0) AS impressions,
+                   COALESCE(SUM(post_clicks), 0) AS post_clicks,
                    CASE WHEN COALESCE(SUM(COALESCE(NULLIF(reach, 0), NULLIF(unique_views, 0), NULLIF(views, 0), 0)), 0) = 0
                         THEN 0
                         ELSE COALESCE(SUM(reactions + comments + shares), 0) * 100.0
@@ -535,7 +549,7 @@ public class AnalyticsRepository {
                    COALESCE(AVG(average_watch_time_ms), 0) / 1000.0 AS average_watch_time_seconds
             FROM latest_metrics
             GROUP BY content_type
-            ORDER BY views DESC, engagements DESC, post_count DESC
+            ORDER BY impressions DESC, views DESC, engagements DESC, post_count DESC
             """;
         return jdbc.query(sql, params(start, end, scope), (rs, rowNum) -> new ContentTypeInsightDto(
                 rs.getString("content_type"),
@@ -544,7 +558,9 @@ public class AnalyticsRepository {
                 rs.getLong("reach"),
                 rs.getLong("engagements"),
                 round(rs.getDouble("engagement_rate")),
-                round(rs.getDouble("average_watch_time_seconds"))));
+                round(rs.getDouble("average_watch_time_seconds")),
+                rs.getLong("impressions"),
+                rs.getLong("post_clicks")));
     }
 
     public List<PostingWindowInsightDto> postingWindowInsights(Instant start, Instant end, AnalyticsScope scope) {

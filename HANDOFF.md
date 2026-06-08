@@ -1,5 +1,23 @@
 # Handoff - 2026-06-08
 
+## Insights interactivity + per-content-type "reads"
+
+- **Clickable KPI tiles drive the chart.** The 4 metric tiles on **Views** (Views / 3-second /
+  1-minute / Watch time) and **Engagement** (Engagement / Reactions / Comments / Shares) are now
+  selectable toggle buttons (`role="button"` + `aria-pressed`, keyboard Enter/Space); selecting one
+  re-plots the trend area chart to that KPI's daily series. `ContentInsightDailyPointDto` +
+  `AnalyticsRepository.contentInsightDailyTrend` now carry per-day uniqueViews / reactions /
+  comments / shares / 15s / 60s views. No migration (read-only query change).
+- **"Seen & read by content type."** Facebook exposes no literal "read" metric for text/photo, so
+  the Views content-type panel now shows **impressions** (times shown) + **post clicks** (reads —
+  "See more" expansions / photo opens) per format. This also fixes the prior bug where that panel
+  used the **video-only** `views` field, so Photo/Text/Link rows showed 0. `ContentTypeInsightDto`
+  + `contentTypeInsights` query gain `impressions` and `postClicks`. No migration.
+- These are **post-level proxies** — Facebook gives no caption-read metric; values populate once
+  posts are synced (dev currently has 0).
+- Verification: backend analytics tests green (`MetricsAggregatorServiceTest`,
+  `AnalyticsControllerTest`); frontend build + targeted ESLint clean.
+
 ## Insights redesign + page audience (UC-4.8 Phase 5b)
 
 - Insights split into separate **Views / Engagement / Audience** pages (Facebook-style) with

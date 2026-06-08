@@ -7,5 +7,7 @@ public record ContentTypeInsightDto(
         long reach,
         long engagements,
         double engagementRate,
-        double averageWatchTimeSeconds) {
+        double averageWatchTimeSeconds,
+        long impressions,
+        long postClicks) {
 }

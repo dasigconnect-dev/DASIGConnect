@@ -20,6 +20,7 @@ export default function MetricTile({ label, value, delta, sublabel, series, acti
     <div
       className={`ins-tile${active ? " active" : ""}${interactive ? " interactive" : ""}`}
       role={interactive ? "button" : undefined}
+      aria-pressed={interactive ? active : undefined}
       tabIndex={interactive ? 0 : undefined}
       onClick={onClick}
       onKeyDown={interactive ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick?.(); } } : undefined}
