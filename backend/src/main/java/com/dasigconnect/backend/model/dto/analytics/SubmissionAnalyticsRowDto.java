@@ -13,5 +13,7 @@ public record SubmissionAnalyticsRowDto(
         boolean complete,
         String contributorName,
         String institutionName,
+        String validatorName,
+        String validatorInstitutionName,
         Long revisionCycles) {
 }

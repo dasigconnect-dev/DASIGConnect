@@ -65,14 +65,14 @@ public class ValidationService {
     }
 
     /**
-     * Returns the validation queue for the caller's institution.
+     * Returns the universal validation queue. Validators and administrators can
+     * review content from any institution; audit logs retain the validator's
+     * home institution for traceability.
      * PENDING + IN_REVIEW submissions sorted by scheduledAt ASC (SRS Main Flow step 2).
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> getQueue(JwtUserDetails caller) {
-        List<Submission> submissions = "administrator".equals(caller.role())
-                ? submissionRepository.findValidationQueue()
-                : submissionRepository.findValidationQueueByInstitution(caller.institutionId());
+        List<Submission> submissions = submissionRepository.findValidationQueue();
         return submissions.stream()
                 .map(s -> SubmissionSummaryDto.from(s,
                         submissionMediaAssetRepository.countBySubmissionId(s.getId())))
@@ -81,11 +81,9 @@ public class ValidationService {
 
     /**
      * Approves a submission: transitions to SCHEDULED, confirms slot, releases lock.
-     * GR-H5: self-review blocked.
      */
     public void approve(UUID submissionId, JwtUserDetails caller) {
         Submission submission = loadSubmissionInScope(submissionId, caller);
-        assertNotSelfReview(submission, caller);
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
 
@@ -105,12 +103,10 @@ public class ValidationService {
     /**
      * Requests revision: transitions to NEEDS_REVISION, releases slot and lock.
      * BR-VAL-02: remarks must be 10–1000 characters.
-     * GR-H5: self-review blocked.
      */
     public void requestRevision(UUID submissionId, String remarks, JwtUserDetails caller) {
         validateRemarks(remarks);
         Submission submission = loadSubmissionInScope(submissionId, caller);
-        assertNotSelfReview(submission, caller);
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
 
@@ -131,12 +127,10 @@ public class ValidationService {
     /**
      * Rejects a submission: transitions to REJECTED, releases slot and lock.
      * BR-VAL-03: valid reason code required; OTHER requires written notes.
-     * GR-H5: self-review blocked.
      */
     public void reject(UUID submissionId, String reasonCode, String notes, JwtUserDetails caller) {
         validateRejectionCode(reasonCode, notes);
         Submission submission = loadSubmissionInScope(submissionId, caller);
-        assertNotSelfReview(submission, caller);
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
 
@@ -189,17 +183,10 @@ public class ValidationService {
                         "Submission not found."));
 
         if (!"administrator".equals(caller.role())
-                && !submission.getInstitution().getId().equals(caller.institutionId())) {
+                && !"validator".equals(caller.role())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found.");
         }
         return submission;
-    }
-
-    private void assertNotSelfReview(Submission submission, JwtUserDetails caller) {
-        if (submission.getContributor().getId().equals(caller.userId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "You cannot review your own submission.");
-        }
     }
 
     private void assertReviewableStatus(Submission submission) {

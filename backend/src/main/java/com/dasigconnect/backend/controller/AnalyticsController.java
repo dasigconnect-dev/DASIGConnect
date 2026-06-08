@@ -88,12 +88,14 @@ public class AnalyticsController {
     @PostMapping("/facebook-insights/sync")
     @PreAuthorize("hasRole('ADMINISTRATOR')")
     public ResponseEntity<FacebookInsightsSyncResponseDto> syncFacebookInsights() {
-        int syncedPosts = facebookInsightsSyncService.syncDueMetrics();
-        return ResponseEntity.ok(new FacebookInsightsSyncResponseDto(syncedPosts));
+        FacebookInsightsSyncService.SyncResult result = facebookInsightsSyncService.syncDueMetrics();
+        return ResponseEntity.ok(new FacebookInsightsSyncResponseDto(
+                result.synced(), result.due(), result.failed(), result.reason()));
     }
 
     /** UC-4.8 Phase 5b: page-level audience (followers + best-effort demographics). */
     @GetMapping("/audience-insights")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
     public ResponseEntity<PageAudienceInsightsDto> audienceInsights(
             @RequestParam(defaultValue = "30d") String range) {
         return ResponseEntity.ok(pageAudienceService.getAudienceInsights(range));
@@ -106,7 +108,7 @@ public class AnalyticsController {
         return ResponseEntity.ok(new AudienceSyncResponseDto(stored));
     }
 
-    public record FacebookInsightsSyncResponseDto(int syncedPosts) {}
+    public record FacebookInsightsSyncResponseDto(int syncedPosts, int duePosts, int failedPosts, String reason) {}
 
     public record AudienceSyncResponseDto(boolean stored) {}
 }

@@ -51,7 +51,7 @@ public class FacebookInsightsClient {
             throw new IOException("No active Facebook page token found.");
         }
 
-        JsonNode post = getJson(postMetricsUrl(facebookPostId, token));
+        EngagementCounts engagement = fetchEngagement(facebookPostId, token);
         Integer reach = null;
         Integer impressions = null;
         Map<String, JsonNode> insightMetrics = new LinkedHashMap<>();
@@ -66,12 +66,12 @@ public class FacebookInsightsClient {
         Integer sixtySecondViews = fetchIntegerInsight(
                 facebookPostId, token, insightMetrics, "post_video_views_60s_excludes_shorter");
         JsonNode reactionsByType = fetchJsonInsight(facebookPostId, token, insightMetrics, "post_reactions_by_type_total");
-        String videoId = firstVideoId(post);
+        String videoId = fetchVideoId(facebookPostId, token);
 
         return new FacebookPostMetricsSnapshot(
-                countAt(post, "reactions", "summary", "total_count"),
-                countAt(post, "comments", "summary", "total_count"),
-                countAt(post, "shares", "count"),
+                engagement.reactions(),
+                engagement.comments(),
+                engagement.shares(),
                 reach,
                 impressions,
                 videoId,
@@ -83,7 +83,7 @@ public class FacebookInsightsClient {
                 watchTimeMs,
                 averageWatchTimeMs,
                 reactionsByType == null ? null : reactionsByType.toString(),
-                post.toString(),
+                engagement.rawPost(),
                 insightMetrics.isEmpty() ? null : objectMapper.writeValueAsString(insightMetrics),
                 null);
     }
@@ -157,12 +157,64 @@ public class FacebookInsightsClient {
                 .orElse(null);
     }
 
-    private String postMetricsUrl(String facebookPostId, String token) {
-        String fields = "reactions.limit(0).summary(true),comments.limit(0).summary(true),shares,"
-                + "attachments{media_type,target{id}}";
+    /** Engagement counts for a published object, plus the raw node JSON for auditing. */
+    private record EngagementCounts(int reactions, int comments, int shares, String rawPost) {}
+
+    /**
+     * Resilient engagement fetch. Page-post ids ({@code {page}_{post}}) expose
+     * reactions/comments/shares; media-object ids (a bare photo/video id, e.g. from
+     * {@code /{page}/videos}) reject those fields with (#100), so we fall back to the
+     * {@code likes}/{@code comments} edges those nodes do support. Never throws on a field
+     * error — degrades to zeros so a single odd post can't fail the whole sync.
+     */
+    private EngagementCounts fetchEngagement(String facebookPostId, String token) throws InterruptedException {
+        try {
+            JsonNode post = getJson(postFieldsUrl(facebookPostId, token,
+                    "reactions.limit(0).summary(true),comments.limit(0).summary(true),shares"));
+            return new EngagementCounts(
+                    countAt(post, "reactions", "summary", "total_count"),
+                    countAt(post, "comments", "summary", "total_count"),
+                    countAt(post, "shares", "count"),
+                    post.toString());
+        } catch (IOException ex) {
+            log.warn("Post-style engagement unavailable for {} ({}); trying media-object fields.",
+                    facebookPostId, ex.getMessage());
+        }
+        try {
+            // Photo/video objects: likes + comments edges, no shares on the media node itself.
+            JsonNode media = getJson(postFieldsUrl(facebookPostId, token,
+                    "likes.limit(0).summary(true),comments.limit(0).summary(true)"));
+            return new EngagementCounts(
+                    countAt(media, "likes", "summary", "total_count"),
+                    countAt(media, "comments", "summary", "total_count"),
+                    0,
+                    media.toString());
+        } catch (IOException ex) {
+            log.warn("Engagement unavailable for {}: {}", facebookPostId, ex.getMessage());
+            return new EngagementCounts(0, 0, 0, "{}");
+        }
+    }
+
+    private String postFieldsUrl(String facebookPostId, String token, String fields) {
         return "https://graph.facebook.com/" + apiVersion + "/" + facebookPostId
                 + "?fields=" + encode(fields)
                 + "&access_token=" + encode(token);
+    }
+
+    private String attachmentsUrl(String facebookPostId, String token) {
+        return "https://graph.facebook.com/" + apiVersion + "/" + facebookPostId
+                + "?fields=" + encode("attachments{media_type,target{id}}")
+                + "&access_token=" + encode(token);
+    }
+
+    /** Best-effort: returns the first attached video id, or null when attachments are unavailable. */
+    private String fetchVideoId(String facebookPostId, String token) throws InterruptedException {
+        try {
+            return firstVideoId(getJson(attachmentsUrl(facebookPostId, token)));
+        } catch (IOException ex) {
+            log.warn("Attachments unavailable for post {}: {}", facebookPostId, ex.getMessage());
+            return null;
+        }
     }
 
     private String insightsUrl(String facebookPostId, String token, String metricName) {

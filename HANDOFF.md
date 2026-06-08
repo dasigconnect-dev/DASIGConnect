@@ -1,5 +1,82 @@
 # Handoff - 2026-06-08
 
+## Universal validator workflow + validator self-submission
+
+The professor-requested validator scope change is implemented locally:
+
+- **Universal validation:** validators can now review, lock, approve, request revision, and reject
+  submissions from any institution. `ValidationService` and `ReviewLockService` no longer block
+  cross-institution validation or validator-authored submissions.
+- **Validator content submission:** validators can use the submission form, AI caption/media
+  suggestion endpoints, media attach-to-draft flows, and dashboard submit action.
+- **Validator self-approval:** validator-authored submissions skip manual peer review on submit,
+  move directly to `scheduled`, confirm the slot reservation, and write a validation audit entry
+  with `action = self_approved`.
+- **Attribution:** validation log DTOs now include the validator institution. Analytics full-report
+  rows include `validatorName` and `validatorInstitutionName` for approved/self-approved content.
+- **Analytics access:** `/analytics/audience` is administrator-only. Existing analytics role scope
+  is retained: admin = network, validator = own institution analytics, contributor = own content.
+- **Business decision:** Media Library remains institution-scoped for validators. Universal review
+  happens in the validation queue where the submitted media is attached; cross-institution media
+  reuse from the library is intentionally not opened.
+- **Flyway:** new migration is `V43__validation_self_approval_action.sql`. V41 is already
+  `facebook_content_insight_metrics`; V42 is `facebook_page_audience`. Next free version is V44.
+
+Verification already run for the backend slice:
+
+```powershell
+.\mvnw.cmd test "-Dtest=SubmissionServiceTest,SubmissionControllerTest,AnalyticsControllerTest,MetricsAggregatorServiceTest"
+```
+
+Result: 47 tests, 0 failures. Frontend production build also passed with `npm.cmd run build`.
+
+## Facebook insights sync — visibility + resilience fixes
+
+Investigated "engagement on the Page isn't reflecting in Analytics." Findings + fixes:
+
+- **Analytics is not live.** Views/Engagement/Audience read `facebook_post_metrics`; rows only land
+  when a sync runs (admin **Sync insights** button, or `FacebookInsightsSyncJob` cron
+  `0 15 */6 * * *` UTC). The button + System Operations panel are **administrator-only**
+  (`AdminAnalyticsPanel`), so a contributor sees no sync control and no Facebook insight data.
+- **Sync now reports outcomes.** `syncDueMetrics()` returns `SyncResult(due, synced, failed,
+  reason)` (was a bare int); the controller returns `syncedPosts / duePosts / failedPosts / reason`;
+  the dashboard toast distinguishes *synced X of Y* / *all failed — token permission* / *no due
+  posts* / *not configured / not migrated*. Added a **"Last synced"** tile + footnote in System
+  Operations (only DASIGConnect-published posts are tracked; reach/views lag Facebook).
+- **`FacebookInsightsClient` made resilient to post object type:**
+  - `attachments` is fetched **separately, best-effort** (some objects reject it with `(#100)
+    nonexisting field (attachments)`, which previously failed the whole metric fetch).
+  - Engagement uses page-post fields (`reactions/comments/shares`) and **falls back to media-object
+    edges (`likes`/`comments`) for bare photo/video ids** (e.g. ids from `/{page}/videos`, which have
+    **no** `{page}_{post}` underscore and don't expose `reactions`). Never throws on a field error —
+    degrades to zeros so one odd post can't fail the whole sync.
+- **Known cause of empty *Views* (not a bug):** post-insight metrics `post_impressions`,
+  `post_impressions_unique`, `post_video_views`, etc. are **deprecated in Graph API v25.0**
+  (`(#100) The value must be a valid insights metric`), so reach/impressions/views return null.
+  Engagement works; **Views stays sparse** until valid v25.0 metric names are mapped or an honest
+  "metric unavailable" state is shown. **Open follow-up** (overlaps Phase 5c below).
+- **Benign noise:** Hikari `Failed to validate connection (… has been closed)` warnings are the
+  Supabase pooler dropping idle connections (discarded + recreated, not data loss). Optional
+  follow-up: tune `maxLifetime`/`keepaliveTime`.
+- Verification: backend `test-compile` BUILD SUCCESS; `FacebookInsightsSyncServiceTest` +
+  `AnalyticsControllerTest` green; frontend build + targeted ESLint clean. No migration added.
+
+## Planned Phase 5c Facebook insights expansion
+
+The richer Meta `read_insights` analytics belongs in **Phase 5**, as a planned Phase 5c expansion
+on top of the current Facebook insights foundation:
+
+- **Add now when implementing Phase 5c:** Page impressions/reach, Page post engagements, post
+  impressions/reach, post clicks/actions, engagement rate, top-performing posts, follower/fan
+  growth, and fans-online timing.
+- **Add carefully:** aggregated audience breakdowns by country, city, locale, and age/gender. These
+  must be shown as aggregate analytics only and may be unavailable when Page volume is too small.
+- **Keep restricted:** negative feedback and spam/hide/unlike-style signals should be visible only
+  to administrators and validators.
+- **Implementation rule:** store whatever Meta returns as normalized snapshots, keep old metric names
+  behind best-effort adapters, and render missing/deprecated metrics as "unavailable" instead of a
+  broken dashboard.
+
 ## Content submission flow redevelopment (panel feedback)
 
 The panel flagged the submission flow for redevelopment: the **AI caption is image-based**
@@ -71,7 +148,7 @@ draft, forcing back-and-forth just to enable the button. Both fixed:
   followers/growth is the reliable part; the Audience tab shows an honest "unavailable" note.
 - Backend compiler warnings cleaned to **0** (deprecated `JsonNode.fields()` /
   `HttpStatus.UNPROCESSABLE_ENTITY`, unused methods/fields/imports/locals).
-- **Flyway next free version is now V43** (V42 = page audience).
+- **Flyway next free version is now V44** (V43 = validator self-approval action).
 - Verification: backend **460 tests** pass; frontend `npm run build` + targeted ESLint clean.
 
 ## Latest Local Work
@@ -119,13 +196,16 @@ draft, forcing back-and-forth just to enable the button. Both fixed:
 
 ## Immediate Next Steps
 
-1. Put the long-lived Page access token in `backend/.env`:
+1. Restart the backend so Flyway applies `V43__validation_self_approval_action.sql`.
+2. Put the long-lived Page access token in `backend/.env`:
    `FACEBOOK_PAGE_ACCESS_TOKEN=<page-token>`.
-2. Restart the backend from the updated code.
 3. Confirm startup log includes `Facebook page token refreshed from env for page ...`.
 4. Open `http://localhost:5173/analytics` as an administrator.
 5. Click **Sync insights**.
-6. If the toast says no due posts were found, publish a post through DASIGConnect first so a
+6. Browser-check the validator path: login as validator, open Submit Event Content, submit a draft,
+   confirm it moves to scheduled, and confirm the validation queue still shows submissions from
+   other institutions.
+7. If the toast says no due posts were found, publish a post through DASIGConnect first so a
    submission has `platform_post_id` and `published_at` within the 90-day insights lookback.
 
 ---

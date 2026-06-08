@@ -167,13 +167,15 @@ export default function FullReportModal({
                       <th>Complete</th>
                       {report.submissions.some((row) => row.contributorName) && <th>Contributor</th>}
                       {report.submissions.some((row) => row.institutionName) && <th>Institution</th>}
+                      {report.submissions.some((row) => row.validatorName) && <th>Validator</th>}
+                      {report.submissions.some((row) => row.validatorInstitutionName) && <th>Validator Institution</th>}
                       {report.submissions.some((row) => row.revisionCycles !== null) && <th>Revisions</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {report.submissions.length === 0 ? (
                       <tr>
-                        <td colSpan={9}>No submission rows for this period.</td>
+                        <td colSpan={11}>No submission rows for this period.</td>
                       </tr>
                     ) : (
                       report.submissions.map((row) => (
@@ -198,6 +200,8 @@ export default function FullReportModal({
                           <td>{row.complete ? "Yes" : "No"}</td>
                           {report.submissions.some((item) => item.contributorName) && <td>{row.contributorName ?? ""}</td>}
                           {report.submissions.some((item) => item.institutionName) && <td>{row.institutionName ?? ""}</td>}
+                          {report.submissions.some((item) => item.validatorName) && <td>{row.validatorName ?? ""}</td>}
+                          {report.submissions.some((item) => item.validatorInstitutionName) && <td>{row.validatorInstitutionName ?? ""}</td>}
                           {report.submissions.some((item) => item.revisionCycles !== null) && <td>{row.revisionCycles ?? ""}</td>}
                         </tr>
                       ))

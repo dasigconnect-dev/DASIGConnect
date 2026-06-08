@@ -50,19 +50,12 @@ public class ReviewLockService {
     /**
      * Acquires a review lock for a submission.
      *
-     * GR-H5: blocks self-review (validator == contributor).
      * If the caller already holds the lock, returns the existing lock (idempotent).
      * If another validator holds a valid lock, returns 409.
      * Transitions submission: pending → in_review.
      */
     public ReviewLock acquire(UUID submissionId, JwtUserDetails caller) {
         Submission submission = loadSubmissionInScope(submissionId, caller);
-
-        // GR-H5: self-validation blocked
-        if (submission.getContributor().getId().equals(caller.userId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "You cannot review your own submission.");
-        }
 
         // Only PENDING submissions can be locked (IN_REVIEW may already be locked by this user)
         if (submission.getStatus() != SubmissionStatus.pending
@@ -204,9 +197,9 @@ public class ReviewLockService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Submission not found."));
 
-        // Administrators can access any submission; validators are institution-scoped
+        // Administrators and validators can access the universal validation queue.
         if (!"administrator".equals(caller.role())
-                && !submission.getInstitution().getId().equals(caller.institutionId())) {
+                && !"validator".equals(caller.role())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Submission not found.");
         }

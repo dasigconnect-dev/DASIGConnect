@@ -1,5 +1,5 @@
 import type { AnalyticsSummaryDto } from "../../../api/analyticsApi";
-import { formatNumber, formatPercent } from "../analyticsUtils";
+import { formatNumber, formatPercent, formatDateTime } from "../analyticsUtils";
 import RoleMetricPanel from "./RoleMetricPanel";
 
 interface Props {
@@ -40,12 +40,25 @@ export default function AdminAnalyticsPanel({ summary, syncingInsights, onSyncFa
         )],
         ["Avg reach", formatNumber(summary.facebookEngagement.averageReach)],
         [
+          "Last synced",
+          summary.facebookEngagement.latestFetchedAt
+            ? formatDateTime(summary.facebookEngagement.latestFetchedAt)
+            : "Never",
+        ],
+        [
           "Publishing success",
           summary.operationalHealth
             ? formatPercent(summary.operationalHealth.publishingSuccessRate)
             : "0.0%",
         ],
       ]}
+      note={
+        <>
+          Insights aren't live — they refresh on sync (automatically every ~6&nbsp;hours, or via{" "}
+          <strong>Sync insights</strong>). Only posts <strong>published through DASIGConnect</strong>{" "}
+          are tracked; reach/views can lag a few hours behind Facebook.
+        </>
+      }
     />
   );
 }

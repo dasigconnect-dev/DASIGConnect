@@ -26,9 +26,12 @@ public class FacebookInsightsSyncJob {
             return;
         }
         try {
-            int synced = syncService.syncDueMetrics();
-            if (synced > 0) {
-                log.info("FacebookInsightsSyncJob: synced metrics for {} published post(s).", synced);
+            var result = syncService.syncDueMetrics();
+            if (result.synced() > 0) {
+                log.info("FacebookInsightsSyncJob: synced metrics for {} published post(s).", result.synced());
+            } else if (result.failed() > 0) {
+                log.warn("FacebookInsightsSyncJob: {} due post(s), all {} fetch(es) failed. {}",
+                        result.due(), result.failed(), result.reason());
             }
         } catch (Exception ex) {
             log.warn("FacebookInsightsSyncJob failed: {}", ex.getMessage());

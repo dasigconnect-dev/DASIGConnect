@@ -388,13 +388,12 @@ function notice(user: User | null, stats: DashboardStats) {
     };
   }
   if (user.role === "validator") {
-    const instName = getInstitutionName(user);
     const pending = stats.submissions.filter(
       (s) => s.status === "pending" || s.status === "in_review",
     ).length;
     const pendingText = pending > 0
-      ? `You have <strong>${pending} submission${pending === 1 ? "" : "s"} awaiting your review</strong> from ${instName} contributors.`
-      : `No submissions are currently pending review from ${instName} contributors.`;
+      ? `You have <strong>${pending} submission${pending === 1 ? "" : "s"} awaiting your review</strong> across the validation queue.`
+      : `No submissions are currently pending review across the validation queue.`;
     return {
       icon: "ti ti-clipboard-check",
       html: `${pendingText} Approved content moves to the DASIG Administrator for scheduling.`,
@@ -549,8 +548,14 @@ function actionsForRole(user: User | null): ActionItem[] {
         icon: "ti ti-clipboard-check",
         accent: "ac-blue",
         title: "Review Queue",
-        subtitle: "Review pending submissions from contributors",
+        subtitle: "Review pending submissions across institutions",
         emphasized: true,
+      },
+      {
+        icon: "ti ti-photo-up",
+        accent: "ac-purple",
+        title: "Submit Event Content",
+        subtitle: "Create and fast-track your own content",
       },
       {
         icon: "ti ti-users",

@@ -57,6 +57,11 @@ State this in the revised SRS as *"iterative-incremental, feature-driven deliver
 - Phase 5 Facebook insights is implemented as an operational foundation. `read_insights` is now
   included in the Meta app permission set, and the manual long-lived Page token path is supported
   by refreshing `FACEBOOK_PAGE_ACCESS_TOKEN` into the encrypted DB token row on backend startup.
+- Planned Phase 5c adds the richer `read_insights` analytics set: Page impressions/reach, Page post
+  engagements, post impressions/reach, clicks/actions, top-performing posts, follower/fan growth,
+  fans-online timing, and aggregate audience breakdowns when Meta returns enough data. Negative
+  feedback stays administrator/validator-only, and unsupported/deprecated metrics must render as
+  unavailable instead of breaking the dashboard.
 - Phase 5 migration status: V40 adds `facebook_post_metrics`. V39 is already occupied in the
   connected dev database by `V39__seed_lerah_caones_contributor.sql`, so the Facebook metrics
   migration must remain V40.

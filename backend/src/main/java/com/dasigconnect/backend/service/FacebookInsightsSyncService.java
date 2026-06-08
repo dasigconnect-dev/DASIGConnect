@@ -46,14 +46,25 @@ public class FacebookInsightsSyncService {
         this.refreshIntervalMinutes = Math.max(refreshIntervalMinutes, 15);
     }
 
-    public int syncDueMetrics() {
+    /**
+     * Result of a sync pass. {@code due} is how many published posts were eligible for a refresh,
+     * {@code synced} how many were stored, {@code failed} how many Graph fetches errored, and
+     * {@code reason} a human-readable note when nothing could run (skipped) or all fetches failed.
+     */
+    public record SyncResult(int due, int synced, int failed, String reason) {
+        public static SyncResult skipped(String reason) {
+            return new SyncResult(0, 0, 0, reason);
+        }
+    }
+
+    public SyncResult syncDueMetrics() {
         if (!insightsClient.isConfigured()) {
             log.info("Facebook insights sync skipped because Facebook token settings are incomplete.");
-            return 0;
+            return SyncResult.skipped("Facebook Page token or Page ID is not configured.");
         }
         if (!metricsTableExists()) {
             log.info("Facebook insights sync skipped because facebook_post_metrics is not migrated yet.");
-            return 0;
+            return SyncResult.skipped("facebook_post_metrics table is not migrated yet — restart the backend to run Flyway.");
         }
 
         Instant now = Instant.now();
@@ -62,6 +73,8 @@ public class FacebookInsightsSyncService {
                 now.minus(refreshIntervalMinutes, ChronoUnit.MINUTES),
                 PageRequest.of(0, batchSize));
         int synced = 0;
+        int failed = 0;
+        String firstError = null;
         for (Submission submission : due) {
             String postId = submission.getPlatformPostId();
             try {
@@ -69,11 +82,22 @@ public class FacebookInsightsSyncService {
                 saveSnapshot(submission, snapshot, Instant.now());
                 synced++;
             } catch (Exception ex) {
+                failed++;
+                if (firstError == null) firstError = ex.getMessage();
                 log.warn("Facebook insights sync failed for submission {} post {}: {}",
                         submission.getId(), postId, ex.getMessage());
             }
         }
-        return synced;
+        String reason = null;
+        if (due.isEmpty()) {
+            reason = "No published posts are due for an insights refresh (need a DASIGConnect-published "
+                    + "post within the last " + lookbackDays + " days, not synced in the last "
+                    + refreshIntervalMinutes + " minutes).";
+        } else if (synced == 0 && failed > 0) {
+            reason = "All Graph API fetches failed — check the Page token permissions (read_insights / "
+                    + "pages_read_engagement). First error: " + firstError;
+        }
+        return new SyncResult(due.size(), synced, failed, reason);
     }
 
     private void saveSnapshot(Submission submission, FacebookPostMetricsSnapshot snapshot, Instant fetchedAt) {

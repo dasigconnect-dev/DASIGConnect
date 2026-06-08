@@ -127,6 +127,12 @@ Legend: Done / In Progress / Not Started / Deferred
 - Done locally: UC-2.4 Analytics role content - contributor analytics include own submitted/published posts, posting delay, completeness, revision/requested-changes, rejected/needs-revision rate, AI caption usage/acceptance, tag correction rate, top categories, and status breakdown. Validator analytics include institution workload, validation turnaround, contributor breakdown, missing requirements, queue aging, institution AI performance, and status/completeness signals. Admin analytics include network KPIs, institution comparison/filter, workflow posts, admin direct posts, publishing success, validation timeout risk, override rate, admin workload, Facebook/API failures, cross-institution trends, and network AI performance.
 - Done: UC-3.2 AI Caption backend — `ClaudeVisionClient` base64 image encoding, in-memory resize (5 MB limit), Supabase service-role-key auth fallback, smart image curation prompt, `existingCaption` context support with prompt injection defense, 512 max_tokens, 30s timeout. `CaptionRequestDto` + `CaptionGenerationService` + `CaptionController` updated to pass existingCaption.
 - Done: UC-3.2 AI Caption backend — `ClaudeVisionClient.buildPrompt()` updated with instruction-vs-draft intent detection: Claude reads the caption field and determines whether it is a user instruction/request (generates captions following that direction) or a draft caption to refine (improves wording, energy, hashtags). No UI change required.
+- Done locally: Universal validation update (2026-06-08) - validators can review, lock, approve, request revision, and reject submissions from any institution. Self-review blocking was removed because validators are now allowed to validate universally.
+- Done locally: Validator submission update (2026-06-08) - validators can create/edit/delete/submit their own content, use AI caption/media tools, and attach media to drafts. Validator-authored submissions fast-track from draft/revision to scheduled on submit and write a `validation_logs.action = self_approved` audit row.
+- Done locally: Flyway V43 - `V43__validation_self_approval_action.sql` extends the validation log action check constraint for `self_approved`. V41 is already used by Facebook content insight metrics and V42 by page audience snapshots.
+- Done locally: Analytics attribution update (2026-06-08) - full analytics report rows expose the approving validator name and validator institution for approved/self-approved content. Facebook audience insights are administrator-only.
+- Decision: media library remains institution-scoped for validator browsing/selection. Validators can review attached media from any submitted post through the validation queue, but their media library stays scoped to their own institution to avoid accidental cross-institution asset reuse.
+- Decision: analytics remains role-scoped. Administrators see network analytics; validators see their own institution analytics plus universal validation workload context in the validation queue; contributors see only their own content.
 - In Progress: UC-3.3 AI Media Recommendation - `VoyageAIClient`, `AIRecommendationService`, `AIRecommendationController`, media suggestion DTOs, pgvector similarity queries, and `EmbeddingReconciliationJob` are implemented locally. Image uploads also trigger async Claude classification plus Voyage embedding through `AIClassificationService`, but this is backend support for searchable/recommendable media metadata.
 - Done locally: UC-3.3 recommendation quality pass - asset embedding text now includes asset code, normalized filename, media type, AI category, AI image description, AI tags, and manual tags where available. Suggestion request text now includes title, caption, category, and tags.
 - Done locally: UC-3.3 hybrid ranking - pgvector returns a larger candidate set, then `AIRecommendationService` re-ranks with category, tag, and recency boosts before returning the top 8 media suggestions.
@@ -158,6 +164,14 @@ Legend: Done / In Progress / Not Started / Deferred
   `POST /api/v1/analytics/facebook-insights/sync` triggers an immediate Facebook insights sync.
   The Analytics dashboard System Operations panel includes a **Sync insights** button with
   loading/toast feedback and automatic dashboard refresh.
+- Planned: UC-4.8 Phase 5c Facebook insights expansion — extend the current Page/Post insights
+  foundation with the `read_insights`-backed metrics that are useful for Capstone 2 evaluation:
+  Page impressions/reach, Page post engagements, post impressions/reach, organic/paid and
+  viral/non-viral breakdowns where Meta still returns them, post clicks/actions, top-performing
+  posts, engagement-rate calculations, follower/fan growth, fans-online timing, and aggregated
+  audience breakdowns (country/city/locale/age-gender) when enough Page data exists. Negative
+  feedback should be administrator/validator-only. The UI must degrade gracefully when Meta
+  returns deprecated, unavailable, or low-volume metrics instead of showing a broken/empty page.
 - Done locally: UC-3.5 Facebook OAuth callback fix — Meta's browser callback is now handled by
   public `FacebookOAuthCallbackController`, protected by the OAuth `state` token instead of the
   admin JWT. Successful callbacks redirect to
@@ -247,7 +261,10 @@ Legend: Done / In Progress / Not Started / Deferred
 - Gap: preferred time slots are not returned by lookups (not yet required for current scope).
 - Done: UC-2.3 Notifications frontend — `/notifications` route, `NotificationsScreen`, `useNotifications` hook (real-time SSE via fetch+ReadableStream, list fetch, mark-read, mark-all-read, filter tabs, incoming animation with `latestIncomingId`), 7 components (AuditLog, BellWidget, DeliveryChannels, FilterTabs, NotificationItem, NotificationList, SseStatusBar), `notificationApi.ts`, `notifications.css`, sidebar notification badge (unread count polled in `DashboardLayout` on mount + window focus), CORS fixed for any Vite dev port.
 - Done: UC-2.1 Validation frontend — `ValidationQueueScreen.tsx` (queue panel, review lock acquire/release, approve/revision/reject decision modals, lock ownership UX), `useValidationQueue.ts` hook, `validationApi.ts`, `validation.css`, route wired in `App.tsx` and sidebar nav in `DashboardShell`.
+- Done locally: Universal validation frontend update (2026-06-08) - validation queue no longer blocks validator-authored submissions, validation logs show the validator institution, and dashboard copy explains cross-institution review.
+- Done locally: Validator submission frontend update (2026-06-08) - validators can open `/submissions/new`, the dashboard includes a Submit Event Content action, and the same submission/AI tooling is available to validator accounts.
 - Done locally: UC-2.4 Analytics frontend - `/analytics` is wired to live backend summary/report/export data with role-specific rendering. Contributor view hides peer names/leaderboards and network/admin operational data. Validator view shows institution-scoped contributor quality and review workload. Admin view shows network operations with optional institution filter. Full report modal and CSV export pass the same admin institution filter.
+- Done locally: Analytics frontend attribution update (2026-06-08) - full report modal includes Validator and Validator Institution columns, and `/analytics/audience` is restricted to administrators.
 - Done: UC-2.4 analytics role view components extracted into dedicated files under `frontend/src/features/analytics/components/`: `RoleMetricPanel.tsx`, `StatusBreakdownPanel.tsx`, `ContentIssuesPanel.tsx`, `CategoryPerformancePanel.tsx`, `ContributorAnalyticsView.tsx`, `ValidatorAnalyticsView.tsx`, `AdminAnalyticsPanel.tsx`. `AnalyticsDashboardPage.tsx` reduced from 356 to ~135 lines as a pure orchestrator. Build and ESLint clean.
 - Done: UC-3.2 AI Caption frontend — `useAiCaptionAssist` hook, `AiCaptionButton` inline pill button (idle/loading/error/rate-limited states), `AiCaptionSuggestion` panel (3 variant rows, tone badges, expand-to-edit, Use/Dismiss), caption counter repositioned to bottom-right inside textarea, hover-delete on saved filmstrip assets, `aiApi.ts` validateStatus fix + existingCaption param. Backend restart required to activate Java changes.
 - Done locally: Submit Content media picker now includes Upload Files, My Library, and AI Suggestions tabs. The AI Suggestions tab uses saved draft context (event title/caption/tags) to generate ranked media recommendations, supports multi-select, and adds selected assets into the current submission order.
@@ -281,6 +298,10 @@ Legend: Done / In Progress / Not Started / Deferred
   OAuth callback, migration hardening, and manual sync work:
   `.\mvnw.cmd test "-Dtest=FacebookPublisherServiceTest,FacebookOAuthCallbackControllerTest,FacebookInsightsSyncServiceTest,MetricsAggregatorServiceTest,AnalyticsControllerTest,ResolutionControllerTest"`
   (27 tests, 0 failures) and `npm.cmd run build`.
+- Done locally: Universal validator focused backend verification passed (2026-06-08):
+  `.\mvnw.cmd test "-Dtest=SubmissionServiceTest,SubmissionControllerTest,AnalyticsControllerTest,MetricsAggregatorServiceTest"`
+  (47 tests, 0 failures).
+- Done locally: Frontend production build passed after universal validator and analytics attribution updates (2026-06-08): `npm.cmd run build`.
 - Note: full-project `npm.cmd run lint` still fails due pre-existing lint debt outside analytics (`App.tsx`, dashboard, submission, validation, user-management, shared toast/button files); targeted analytics lint is clean.
 
 ---

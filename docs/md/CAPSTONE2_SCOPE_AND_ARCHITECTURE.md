@@ -115,7 +115,9 @@ Expose an explicit "prompt mode" toggle (the intent-detection path already exist
 ### Analytics
 
 **UC-4.8 — Facebook Engagement Insights Sync.**
-A `FacebookInsightsSyncJob` periodically pulls metrics for each published post (joined via **`submissions.platform_post_id`** — the actual published-post ID column from V1; note `publication_attempts` stores only `photo_ids_staged`, *not* the final post ID) into a time-series table: reactions, comments, shares (covered by existing `pages_read_engagement`), and — if `read_insights` is added — reach/impressions. Idempotent, respects the Graph API 200 calls/hour budget. Target: metrics for ≥95% of published posts refreshed within the sync window.
+A `FacebookInsightsSyncJob` periodically pulls metrics for each published post (joined via **`submissions.platform_post_id`** — the actual published-post ID column from V1; note `publication_attempts` stores only `photo_ids_staged`, *not* the final post ID) into a time-series table: reactions, comments, shares (covered by existing `pages_read_engagement`), and — when `read_insights` is available — reach/impressions. Idempotent, respects the Graph API 200 calls/hour budget. Target: metrics for ≥95% of published posts refreshed within the sync window.
+
+**Phase 5c expansion.** Once the long-lived Page token includes `read_insights`, extend UC-4.8 beyond the current foundation with Page impressions/reach, Page post engagements, post impressions/reach, post clicks/actions, top-performing posts, engagement-rate calculations, follower/fan growth, fans-online timing, and aggregated audience breakdowns (country/city/locale/age-gender) when Meta returns enough Page volume. Negative feedback signals are useful but should remain administrator/validator-only. Metric availability changes over time, so the implementation must normalize best-effort snapshots and render unavailable/deprecated metrics honestly instead of treating them as application failures.
 
 **UC-4.9 — Engagement → Media Ranking Feedback Loop.** *(Anchor #1)*
 Assets reused in well-performing posts get a *light* ranking nudge in future suggestions/search. Honest constraints baked into the design:
@@ -285,6 +287,7 @@ Correctness rules:
 ### 5.4 Insights Sync + Feedback Loop (UC-4.8 / UC-4.9)
 
 - `FacebookInsightsSyncJob` (`@Scheduled`, idempotent): for each published submission with a non-null `submissions.platform_post_id`, GET `/{post-id}?fields=reactions.summary(true),comments.summary(true),shares` plus `/insights` when the refreshed token has `read_insights`, then insert a `facebook_post_metrics` row. Commit before/after the external call; never hold a connection across it. **Implemented 2026-06-08:** V40 stores append-only snapshots, the job batches/stale-skips posts, analytics surfaces synced posts, engagement totals, and average reach, and administrators can trigger an immediate sync through `POST /api/v1/analytics/facebook-insights/sync` or the Analytics dashboard **Sync insights** button.
+- **Planned Phase 5c:** broaden the synced metric set for Page performance, post/content performance, click/action data, follower/fan timing, and aggregated audience summaries. Use adapter-style mapping because Meta periodically renames or removes metrics; the dashboard should say "unavailable" for unsupported metrics and continue showing the metrics that were returned.
 - A periodic `AssetPerformanceJob` rolls metrics up to `media_assets.performance_score`, which `AIRecommendationService` adds as a re-rank signal. Cheap, idempotent, fully inside existing patterns.
 
 ### 5.5 Pre-Submit Advisor (UC-4.10)
@@ -322,8 +325,8 @@ This is the planned **upgrade** of today's `AIRecommendationService.rankAsset()`
 
 | Risk | Reality | Mitigation |
 |---|---|---|
-| **Meta App Review** for `read_insights` (reach/impressions) | `pages_read_engagement` (reactions/comments/shares) is already available, and `read_insights` has now been added in Facebook Developers. | Re-authorize the Page token through the backend OAuth flow and confirm the refreshed token includes `read_insights`. In Development mode, admins/devs/testers of the app can read insights for pages they manage — sufficient for the capstone on the DASIG page. Build engagement metrics first, then include reach/impressions when token validation confirms the scope. |
-| Insight metric deprecation | Meta periodically deprecates granular insight metrics. | Reactions/comments/shares are stable; degrade gracefully on missing metrics. |
+| **Meta App Review** for `read_insights` (reach/impressions and richer Page metrics) | `pages_read_engagement` (reactions/comments/shares) is already available, and `read_insights` has now been added in Facebook Developers. | Re-authorize the Page token through the backend OAuth flow and confirm the refreshed token includes `read_insights`. In Development mode, admins/devs/testers of the app can read insights for pages they manage — sufficient for the capstone on the DASIG page. Build engagement metrics first, then include richer Page/post/audience metrics when token validation confirms the scope. |
+| Insight metric deprecation | Meta periodically deprecates granular insight metrics. | Reactions/comments/shares are stable; Phase 5c must use best-effort metric adapters, persist raw/normalized snapshots, and degrade gracefully on missing metrics. |
 | AI cost / rate limits | More Claude + Voyage calls. | Bounded queue, batched embeddings, caching, per-institution budget, metadata-only fallback. |
 | Render / Supabase free-tier | Memory + 5-connection pool. | Bounded queue is exactly the fix; never hold connections across external calls. |
 | Advisor cold-start | Sparse history early. | Heuristics first, Claude phrasing on top; don't promise sharp insight from few posts. |
@@ -341,7 +344,10 @@ This is the planned **upgrade** of today's `AIRecommendationService.rankAsset()`
 > (the sync degrades gracefully without it). **Phase 5b page audience** also landed:
 > `FacebookPageAudienceService` + daily job, `fetchPageAudience()`, V42 `facebook_page_audience`,
 > `GET /analytics/audience-insights` (followers + best-effort demographics — Meta deprecated most
-> `page_fans_*` breakdowns, so followers/growth is the reliable part). The insights UI is
+> `page_fans_*` breakdowns, so followers/growth is the reliable part). **Phase 5c is planned**
+> for richer `read_insights` analytics: Page impressions/reach, Page post engagements,
+> post impressions/reach, clicks/actions, top posts, follower/fan timing, and aggregate audience
+> summaries with graceful unavailable states. The insights UI is
 > redesigned Facebook-style into separate **Views / Engagement / Audience** pages (Recharts,
 > lazy-loaded; Recharts pinned to 2.x for Vite 8 compatibility). **Next dependency-ordered phase: 6
 > (UC-4.9 engagement→ranking + UC-4.10 pre-submit advisor)** — now unblocked by the `facebook_post_metrics` data.
@@ -352,7 +358,7 @@ This is the planned **upgrade** of today's `AIRecommendationService.rankAsset()`
 | 2 | AI auto-grouping + quality/dup filtering (UC-4.2/4.4) + curation (UC-4.3) | Med | Low | ✅ done (D1 dup threshold tuning pending a real dataset) |
 | 3 | NL/hybrid search (UC-4.5) + AI feedback loop (UC-4.6) | Med | Low | ✅ done — hybrid search + strict cutoff + related-search autocomplete + feedback; D2 Recall@3 1.0 |
 | 4 | Caption prompt mode + best-N (UC-4.7); consent/safety flags; media audit trail (UC-4.11) | Low | Low | ✅ done (UC-4.7, visibility + submit gate, UC-4.11); `safety_verdict` flag optional/pending |
-| 5 | Facebook insights sync + engagement analytics (UC-4.8) | Med | **Med (App Review)** | ✅ done (locally) — insights client/sync/job, V40/V41 metrics, content-insights + admin sync; **5b page audience** (V42, followers + best-effort demographics, `/analytics/audience-insights`) + FB-style Views/Engagement/Audience UI (Recharts); reach/impressions + demographics best-effort pending `read_insights` |
+| 5 | Facebook insights sync + engagement analytics (UC-4.8) | Med | **Med (App Review)** | ✅ foundation done locally — insights client/sync/job, V40/V41 metrics, content-insights + admin sync; **5b page audience** (V42, followers + best-effort demographics, `/analytics/audience-insights`) + FB-style Views/Engagement/Audience UI (Recharts); **5c planned** for richer `read_insights` Page/post/action/audience metrics with graceful unavailable states |
 | 6 | Engagement→media ranking (UC-4.9) + pre-submit advisor (UC-4.10) | Med | Med (cold-start) | ⬜ not started — **next** (unblocked by Phase 5 data) |
 | 7 | Digital preservation + Repository Health (UC-4.12): fixity, rights, lineage, duplicate review, standards export | Med-High | Low-Med | ✅ Phase 7A-7G all done (fixity, monitoring, Repository Health, rights, lineage, duplicate review, Dublin Core export); only D1 human-labeling + browser E2E remain (non-code) |
 | — | Collage builder (client-side canvas) | Low–Med | Low — slot anywhere | ⬜ optional |

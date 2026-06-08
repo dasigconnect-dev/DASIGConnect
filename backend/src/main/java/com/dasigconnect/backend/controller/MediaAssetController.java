@@ -239,7 +239,7 @@ public class MediaAssetController {
     }
 
     @PostMapping("/{id}/use-in-new-post")
-    @PreAuthorize("hasRole('CONTRIBUTOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'VALIDATOR')")
     public ResponseEntity<SubmissionResponseDto> useInNewPost(
             @PathVariable UUID id,
             @Valid @RequestBody MediaAssetUseInNewPostRequestDto dto,
@@ -248,7 +248,7 @@ public class MediaAssetController {
     }
 
     @PostMapping("/{id}/add-to-draft")
-    @PreAuthorize("hasRole('CONTRIBUTOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'VALIDATOR')")
     public ResponseEntity<SubmissionResponseDto> addToDraft(
             @PathVariable UUID id,
             @Valid @RequestBody MediaAssetAddToDraftRequestDto dto,

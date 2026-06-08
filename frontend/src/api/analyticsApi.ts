@@ -158,6 +158,8 @@ export interface SubmissionAnalyticsRowDto {
   complete: boolean;
   contributorName: string | null;
   institutionName: string | null;
+  validatorName: string | null;
+  validatorInstitutionName: string | null;
   revisionCycles: number | null;
 }
 
@@ -311,8 +313,15 @@ export function getPageAudience(range: AnalyticsRange, signal?: AbortSignal) {
   return api.get<PageAudienceInsightsDto>("/analytics/audience-insights", { params: { range }, signal });
 }
 
+export interface FacebookInsightsSyncResultDto {
+  syncedPosts: number;
+  duePosts: number;
+  failedPosts: number;
+  reason: string | null;
+}
+
 export function syncFacebookInsights() {
-  return api.post<{ syncedPosts: number }>("/analytics/facebook-insights/sync");
+  return api.post<FacebookInsightsSyncResultDto>("/analytics/facebook-insights/sync");
 }
 
 export function getAnalyticsReport(

@@ -15,6 +15,8 @@ export interface ValidationLog {
   submissionId: string;
   validatorId: string;
   validatorEmail: string;
+  validatorInstitutionId?: string | null;
+  validatorInstitutionName?: string | null;
   action: string;
   remarks?: string | null;
   rejectionReason?: string | null;

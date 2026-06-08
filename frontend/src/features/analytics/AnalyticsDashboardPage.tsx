@@ -52,11 +52,13 @@ export default function AnalyticsDashboardPage({ user }: Props) {
     setSyncingInsights(true);
     try {
       const res = await syncFacebookInsights();
-      const syncedPosts = res.data.syncedPosts;
+      const { syncedPosts, duePosts, failedPosts, reason } = res.data;
       if (syncedPosts > 0) {
-        toast.success(`Synced Facebook insights for ${syncedPosts} post${syncedPosts === 1 ? "" : "s"}.`);
+        toast.success(`Synced Facebook insights for ${syncedPosts} of ${duePosts} due post${duePosts === 1 ? "" : "s"}.`);
+      } else if (failedPosts > 0) {
+        toast.error(reason ?? `All ${failedPosts} due post(s) failed to sync. Check the Page token permissions and backend logs.`);
       } else {
-        toast.info("No due Facebook posts found for insights sync.");
+        toast.info(reason ?? "No due Facebook posts found for insights sync.");
       }
       refresh();
     } catch {

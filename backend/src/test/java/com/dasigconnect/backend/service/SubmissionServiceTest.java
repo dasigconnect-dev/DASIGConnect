@@ -19,11 +19,14 @@ import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
+import com.dasigconnect.backend.model.entity.ValidationAction;
+import com.dasigconnect.backend.model.entity.ValidationLog;
 import com.dasigconnect.backend.model.entity.NotificationEventType;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
+import com.dasigconnect.backend.repository.ValidationLogRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
@@ -34,6 +37,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -83,6 +87,9 @@ class SubmissionServiceTest {
     private UserRepository userRepository;
 
     @Mock
+    private ValidationLogRepository validationLogRepository;
+
+    @Mock
     private EntityManager entityManager;
 
     @InjectMocks
@@ -102,7 +109,7 @@ class SubmissionServiceTest {
         contributor = user(contributorId, "contributor@cit.edu.ph", UserRole.contributor, institution);
         contributorPrincipal = principal(contributorId, "contributor", institutionId);
 
-        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.validator))
+        when(userRepository.findByRole(UserRole.validator))
                 .thenReturn(List.of());
 
         ReflectionTestUtils.setField(submissionService, "entityManager", entityManager);
@@ -183,7 +190,7 @@ class SubmissionServiceTest {
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
-        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.validator))
+        when(userRepository.findByRole(UserRole.validator))
                 .thenReturn(List.of(validator));
 
         SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
@@ -198,6 +205,36 @@ class SubmissionServiceTest {
                 eq(NotificationEventType.submission_pending),
                 org.mockito.ArgumentMatchers.contains("submitted 'Research Expo' for review"),
                 eq("/submissions/" + submissionId));
+    }
+
+    @Test
+    void submit_validatorOwnedDraft_fastTracksToScheduledAndLogsSelfApproval() {
+        UUID validatorId = UUID.randomUUID();
+        JwtUserDetails validatorPrincipal = principal(validatorId, "validator", institutionId);
+        User validator = user(validatorId, "validator@cit.edu.ph", UserRole.validator, institution);
+        UUID submissionId = UUID.randomUUID();
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
+        submission.setContributor(validator);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(submissionRepository.save(submission)).thenReturn(submission);
+        when(entityManager.getReference(User.class, validatorId)).thenReturn(validator);
+        when(userRepository.findById(validatorId)).thenReturn(Optional.of(validator));
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+
+        SubmissionResponseDto result = submissionService.submit(submissionId, validatorPrincipal);
+
+        assertThat(result.getStatus()).isEqualTo("scheduled");
+        verify(slotReservationService).confirm(submissionId);
+        verify(notificationService, never()).createNotification(any(), any(), any(), any());
+
+        ArgumentCaptor<ValidationLog> logCaptor = ArgumentCaptor.forClass(ValidationLog.class);
+        verify(validationLogRepository).save(logCaptor.capture());
+        assertThat(logCaptor.getValue().getAction()).isEqualTo(ValidationAction.self_approved);
+        assertThat(logCaptor.getValue().getValidator()).isEqualTo(validator);
     }
 
     @Test
@@ -315,16 +352,17 @@ class SubmissionServiceTest {
     }
 
     @Test
-    void get_validatorFromOtherInstitutionIsForbidden() {
+    void get_validatorFromOtherInstitutionCanReadForUniversalValidation() {
         Submission submission = submission(UUID.randomUUID(), SubmissionStatus.pending, Instant.now());
         when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submission.getId()))
+                .thenReturn(List.of());
 
-        assertThatThrownBy(() -> submissionService.get(
+        SubmissionResponseDto result = submissionService.get(
                 submission.getId(),
-                principal(UUID.randomUUID(), "validator", UUID.randomUUID())))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN);
+                principal(UUID.randomUUID(), "validator", UUID.randomUUID()));
+
+        assertThat(result.getId()).isEqualTo(submission.getId());
     }
 
     @Test

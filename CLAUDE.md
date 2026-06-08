@@ -28,9 +28,22 @@ The **design-of-record lives in `docs/md/`** — members should read these for t
 - **`docs/adr/`** — architecture decisions (ADR‑0001…0006); **`docs/eval/`** — frozen eval datasets + results (D1/D2/D5/D7).
 
 **Status (2026-06-08):** Phases **1–5 and 7** implemented locally; **Phase 5b** (Facebook page
-audience) and the Facebook‑style **Views/Engagement/Audience** insights UI (Recharts) landed.
-Flyway is at **V42** (next free **V43**). **Next phase: 6** — engagement→media ranking
-(UC‑4.9) + pre‑submit advisor (UC‑4.10).
+audience) and the Facebook‐style **Views/Engagement/Audience** insights UI (Recharts) landed.
+Flyway is at **V43** (next free **V44**). **Planned Phase 5c** is the richer `read_insights`
+analytics expansion; after that, **Phase 6** is engagement→media ranking (UC‐4.9) +
+pre‐submit advisor (UC‐4.10).
+
+**Latest validator workflow update (2026-06-08):**
+- Validation is universal: `VALIDATOR` users can lock/review/approve/revise/reject submissions from any institution.
+- Validators can submit their own content. Validator-authored submissions fast-track to `scheduled` on submit and write a `validation_logs.action = self_approved` audit row.
+- Validator identity and validator institution are exposed in validation logs and analytics full-report rows for approved/self-approved content.
+- Media Library browsing/selection remains institution-scoped for validators; universal visibility happens through the Validation Queue, not through cross-institution asset reuse.
+- Analytics remains role-scoped: admin = network, validator = own institution analytics, contributor = own content. Facebook audience insights are administrator-only.
+- Phase 5c analytics scope is planned, not implemented: Page impressions/reach, Page post engagements,
+  post impressions/reach, clicks/actions, top-performing posts, follower growth/fans-online timing,
+  and aggregated audience breakdowns when Meta returns enough data. Negative feedback should stay
+  admin/validator-only, and missing/deprecated metrics must render as unavailable rather than broken.
+- Latest migration: `V43__validation_self_approval_action.sql`. V41 is Facebook content insight metrics; V42 is page audience snapshots.
 
 > ⚠️ The **"Current Local Status – 2026-05-28 (Session 9)"** section further down is **Capstone 1
 > (`module3`) history**, kept for reference. For anything current, trust the `docs/md/CAPSTONE2_*`

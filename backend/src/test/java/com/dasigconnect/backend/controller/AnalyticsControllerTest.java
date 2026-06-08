@@ -30,6 +30,7 @@ import com.dasigconnect.backend.model.dto.analytics.ContentInsightsDto;
 import com.dasigconnect.backend.model.dto.analytics.ContributorBreakdownDto;
 import com.dasigconnect.backend.model.dto.analytics.KpiMetricDto;
 import com.dasigconnect.backend.model.dto.analytics.OperationalHealthDto;
+import com.dasigconnect.backend.model.dto.analytics.PageAudienceInsightsDto;
 import com.dasigconnect.backend.service.FacebookInsightsSyncService;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.MetricsAggregatorService;
@@ -104,11 +105,13 @@ class AnalyticsControllerTest {
     @Test
     @WithMockUser(roles = "ADMINISTRATOR")
     void syncFacebookInsights_asAdministrator_returnsSyncedCount() throws Exception {
-        when(facebookInsightsSyncService.syncDueMetrics()).thenReturn(2);
+        when(facebookInsightsSyncService.syncDueMetrics())
+                .thenReturn(new FacebookInsightsSyncService.SyncResult(2, 2, 0, null));
 
         mockMvc.perform(post("/api/v1/analytics/facebook-insights/sync"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.syncedPosts").value(2));
+                .andExpect(jsonPath("$.syncedPosts").value(2))
+                .andExpect(jsonPath("$.duePosts").value(2));
 
         verify(facebookInsightsSyncService).syncDueMetrics();
     }
@@ -117,6 +120,24 @@ class AnalyticsControllerTest {
     @WithMockUser(roles = "CONTRIBUTOR")
     void syncFacebookInsights_asContributor_returns403() throws Exception {
         mockMvc.perform(post("/api/v1/analytics/facebook-insights/sync"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMINISTRATOR")
+    void audienceInsights_asAdministrator_returnsPayload() throws Exception {
+        when(pageAudienceService.getAudienceInsights(eq("30d")))
+                .thenReturn(PageAudienceInsightsDto.unavailable());
+
+        mockMvc.perform(get("/api/v1/analytics/audience-insights"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.available").value(false));
+    }
+
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
+    void audienceInsights_asContributor_returns403() throws Exception {
+        mockMvc.perform(get("/api/v1/analytics/audience-insights"))
                 .andExpect(status().isForbidden());
     }
 

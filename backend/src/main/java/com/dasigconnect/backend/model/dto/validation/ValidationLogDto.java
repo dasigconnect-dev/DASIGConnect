@@ -11,6 +11,8 @@ public class ValidationLogDto {
     private UUID submissionId;
     private UUID validatorId;
     private String validatorEmail;
+    private UUID validatorInstitutionId;
+    private String validatorInstitutionName;
     private String action;
     private String remarks;
     private String rejectionReason;
@@ -22,6 +24,10 @@ public class ValidationLogDto {
         dto.submissionId = entry.getSubmission().getId();
         dto.validatorId = entry.getValidator().getId();
         dto.validatorEmail = entry.getValidator().getEmail();
+        if (entry.getValidator().getInstitution() != null) {
+            dto.validatorInstitutionId = entry.getValidator().getInstitution().getId();
+            dto.validatorInstitutionName = entry.getValidator().getInstitution().getName();
+        }
         dto.action = entry.getAction().name();
         dto.remarks = entry.getRemarks();
         dto.rejectionReason = entry.getRejectionReason();
@@ -33,6 +39,8 @@ public class ValidationLogDto {
     public UUID getSubmissionId() { return submissionId; }
     public UUID getValidatorId() { return validatorId; }
     public String getValidatorEmail() { return validatorEmail; }
+    public UUID getValidatorInstitutionId() { return validatorInstitutionId; }
+    public String getValidatorInstitutionName() { return validatorInstitutionName; }
     public String getAction() { return action; }
     public String getRemarks() { return remarks; }
     public String getRejectionReason() { return rejectionReason; }

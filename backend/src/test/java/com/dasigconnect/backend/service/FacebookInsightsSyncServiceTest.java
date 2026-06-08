@@ -37,7 +37,7 @@ class FacebookInsightsSyncServiceTest {
         FacebookInsightsSyncService service = new FacebookInsightsSyncService(
                 submissionRepository, metricRepository, insightsClient, jdbcTemplate, 20, 90, 360);
 
-        int synced = service.syncDueMetrics();
+        int synced = service.syncDueMetrics().synced();
 
         assertEquals(0, synced);
         verify(submissionRepository, never()).findDueForFacebookInsights(any(), any(), any(Pageable.class));
@@ -56,7 +56,7 @@ class FacebookInsightsSyncServiceTest {
         FacebookInsightsSyncService service = new FacebookInsightsSyncService(
                 submissionRepository, metricRepository, insightsClient, jdbcTemplate, 20, 90, 360);
 
-        int synced = service.syncDueMetrics();
+        int synced = service.syncDueMetrics().synced();
 
         assertEquals(0, synced);
         verify(submissionRepository, never()).findDueForFacebookInsights(any(), any(), any(Pageable.class));
@@ -82,7 +82,7 @@ class FacebookInsightsSyncServiceTest {
         FacebookInsightsSyncService service = new FacebookInsightsSyncService(
                 submissionRepository, metricRepository, insightsClient, jdbcTemplate, 20, 90, 360);
 
-        int synced = service.syncDueMetrics();
+        int synced = service.syncDueMetrics().synced();
 
         assertEquals(1, synced);
         ArgumentCaptor<FacebookPostMetric> captor = ArgumentCaptor.forClass(FacebookPostMetric.class);
@@ -126,7 +126,7 @@ class FacebookInsightsSyncServiceTest {
         FacebookInsightsSyncService service = new FacebookInsightsSyncService(
                 submissionRepository, metricRepository, insightsClient, jdbcTemplate, 20, 90, 360);
 
-        int synced = service.syncDueMetrics();
+        int synced = service.syncDueMetrics().synced();
 
         assertEquals(1, synced);
         verify(metricRepository).save(any(FacebookPostMetric.class));

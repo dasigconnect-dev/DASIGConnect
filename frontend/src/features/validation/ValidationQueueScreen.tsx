@@ -112,10 +112,7 @@ export default function ValidationQueueScreen({
 
   const mediaAssets = selected?.mediaAssets ?? [];
   const selectedMedia = mediaAssets[mediaIndex];
-  const isSelfReview =
-    Boolean(selected?.contributorEmail) &&
-    selected?.contributorEmail?.toLowerCase() === user.email.toLowerCase();
-  const canAct = Boolean(selected && activeLock && !isSelfReview);
+  const canAct = Boolean(selected && activeLock);
 
   useEffect(() => {
     if (selectedId || loading || queue.length === 0) return;
@@ -170,12 +167,6 @@ export default function ValidationQueueScreen({
     try {
       const detail = await getSubmission(summary.id);
       setSelected(detail.data);
-
-      if (summary.contributorEmail?.toLowerCase() === user.email.toLowerCase()) {
-        setActiveLock(null);
-        setLockNotice("Self-validation blocked. This submission must be reviewed by another Validator.");
-        return;
-      }
 
       const lock = await acquireReviewLock(summary.id);
       setActiveLock(lock.data);
@@ -390,14 +381,7 @@ export default function ValidationQueueScreen({
 
         {selected && (
           <>
-            {isSelfReview && (
-              <NoticeBar
-                tone="danger"
-                icon="ti-alert-triangle"
-                text="Self-validation blocked. This submission is routed to another Validator."
-              />
-            )}
-            {lockNotice && !isSelfReview && (
+            {lockNotice && (
               <NoticeBar tone="warn" icon="ti-lock" text={lockNotice} />
             )}
             {activeLock && (
@@ -559,8 +543,11 @@ export default function ValidationQueueScreen({
                       <div>
                         <strong>{formatAction(entry.action)}</strong>
                         <span>
-                          {entry.validatorEmail} · {formatDateTime(entry.createdAt)}
+                          {entry.validatorEmail} - {formatDateTime(entry.createdAt)}
                         </span>
+                        {entry.validatorInstitutionName && (
+                          <span>Validator institution: {entry.validatorInstitutionName}</span>
+                        )}
                         {entry.remarks && <p>{entry.remarks}</p>}
                         {entry.rejectionReason && <p>{entry.rejectionReason}</p>}
                       </div>

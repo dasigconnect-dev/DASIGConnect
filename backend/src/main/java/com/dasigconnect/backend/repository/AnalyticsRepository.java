@@ -791,12 +791,24 @@ public class AnalyticsRepository {
                    THEN true ELSE false END AS complete,
                    COALESCE(NULLIF(TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))), ''), u.email) AS contributor_name,
                    i.name AS institution_name,
+                   COALESCE(NULLIF(TRIM(CONCAT(COALESCE(v.first_name, ''), ' ', COALESCE(v.last_name, ''))), ''), v.email) AS validator_name,
+                   vi.name AS validator_institution_name,
                    (SELECT COUNT(*) FROM audit_log revision
                     WHERE revision.resource_id = s.id
                       AND UPPER(revision.action) LIKE '%%REVISION%%') AS revision_cycles
             FROM submissions s
             JOIN users u ON u.id = s.contributor_id
             JOIN institutions i ON i.id = s.institution_id
+            LEFT JOIN LATERAL (
+                SELECT vl.validator_id
+                FROM validation_logs vl
+                WHERE vl.submission_id = s.id
+                  AND vl.action IN ('approved', 'self_approved')
+                ORDER BY vl.created_at DESC
+                LIMIT 1
+            ) latest_validation ON true
+            LEFT JOIN users v ON v.id = latest_validation.validator_id
+            LEFT JOIN institutions vi ON vi.id = v.institution_id
             WHERE s.status IN (%2$s)
               AND s.published_at >= :start
               AND s.published_at < :end
@@ -815,6 +827,8 @@ public class AnalyticsRepository {
                         rs.getBoolean("complete"),
                         showContributor ? rs.getString("contributor_name") : null,
                         showInstitution ? rs.getString("institution_name") : null,
+                        rs.getString("validator_name"),
+                        rs.getString("validator_institution_name"),
                         showRevisionCycles ? rs.getLong("revision_cycles") : null));
     }
 

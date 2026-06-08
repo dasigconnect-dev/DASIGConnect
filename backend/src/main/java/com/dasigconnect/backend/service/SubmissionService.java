@@ -47,10 +47,13 @@ import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
+import com.dasigconnect.backend.model.entity.ValidationAction;
+import com.dasigconnect.backend.model.entity.ValidationLog;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
+import com.dasigconnect.backend.repository.ValidationLogRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 
 import jakarta.persistence.EntityManager;
@@ -84,6 +87,7 @@ public class SubmissionService {
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final MediaIntegrityQueueService mediaIntegrityQueueService;
+    private final ValidationLogRepository validationLogRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -102,7 +106,8 @@ public class SubmissionService {
             NotificationService notificationService,
             UserRepository userRepository,
             ApplicationEventPublisher eventPublisher,
-            MediaIntegrityQueueService mediaIntegrityQueueService) {
+            MediaIntegrityQueueService mediaIntegrityQueueService,
+            ValidationLogRepository validationLogRepository) {
         this.submissionRepository = submissionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
@@ -114,6 +119,7 @@ public class SubmissionService {
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
         this.mediaIntegrityQueueService = mediaIntegrityQueueService;
+        this.validationLogRepository = validationLogRepository;
     }
 
     @Transactional(readOnly = true)
@@ -238,8 +244,9 @@ public class SubmissionService {
         }
 
         // Re-run guard rails — slot may have been taken since draft was saved
+        UUID submissionInstitutionId = submission.getInstitution().getId();
         if (guardRailsEnforced && submission.getScheduledAt() != null) {
-            GuardRailResult result = guardRailService.validate(user.institutionId(), submission.getScheduledAt());
+            GuardRailResult result = guardRailService.validate(submissionInstitutionId, submission.getScheduledAt());
             if (result.isBlocked()) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Guard rail violation: " + result.getHardBlocks().get(0).getMessage());
@@ -255,8 +262,9 @@ public class SubmissionService {
         // UC-4.x consent gate: every attached asset must be cleared for public use.
         assertAssetsCleared(submission);
 
-        submission.setStatus(SubmissionStatus.pending);
         submission.setSubmittedAt(Instant.now());
+        boolean validatorSelfApproval = "validator".equalsIgnoreCase(user.role());
+        submission.setStatus(validatorSelfApproval ? SubmissionStatus.scheduled : SubmissionStatus.pending);
         submission = submissionRepository.save(submission);
 
         auditLogService.record(
@@ -267,8 +275,17 @@ public class SubmissionService {
                         ? Map.of("scheduledAt", submission.getScheduledAt().toString())
                         : Map.of());
 
+        if (validatorSelfApproval) {
+            slotReservationService.confirm(submissionId);
+            User validator = userRepository.findById(user.userId())
+                    .orElseGet(() -> entityManager.getReference(User.class, user.userId()));
+            logValidationAction(submission, validator, ValidationAction.self_approved,
+                    "Validator-authored submission fast-tracked to scheduled.", null);
+        }
+
         // T1 — notify all institution validators (spec: contributor does not receive T1)
-        try {
+        if (!validatorSelfApproval) {
+            try {
             String contributorEmail = submission.getContributor().getEmail();
             String scheduledPart = submission.getScheduledAt() != null
                     ? " — scheduled for " + formatInstant(submission.getScheduledAt())
@@ -277,8 +294,7 @@ public class SubmissionService {
                     + "' for review" + scheduledPart + ".";
             String submissionLink = "/submissions/" + submissionId;
 
-            List<User> validators = userRepository
-                    .findByInstitutionIdAndRoleOrderByCreatedAtDesc(user.institutionId(), UserRole.validator);
+            List<User> validators = userRepository.findByRole(UserRole.validator);
             for (User validator : validators) {
                 notificationService.createNotification(
                         validator,
@@ -290,7 +306,9 @@ public class SubmissionService {
             log.warn("T1 notifications skipped for submission {} — {}", submissionId, e.getMessage());
         }
 
-        log.info("Submission {} → PENDING by contributor {}", submissionId, user.userId());
+        }
+
+        log.info("Submission {} -> {} by {}", submissionId, submission.getStatus(), user.userId());
         return buildResponse(submission);
     }
 
@@ -331,6 +349,17 @@ public class SubmissionService {
                     "These media assets are not cleared for public use: " + String.join(", ", uncleared)
                             + ". Mark them \"Cleared for public\" in the Media Library before submitting.");
         }
+    }
+
+    private void logValidationAction(Submission submission, User validator,
+            ValidationAction action, String remarks, String rejectionReason) {
+        ValidationLog entry = new ValidationLog();
+        entry.setSubmission(submission);
+        entry.setValidator(validator);
+        entry.setAction(action);
+        entry.setRemarks(remarks);
+        entry.setRejectionReason(rejectionReason);
+        validationLogRepository.save(entry);
     }
 
     /**
@@ -496,6 +525,7 @@ public class SubmissionService {
         submissionMediaAssetRepository.saveAll(remaining);
 
         log.info("Contributor {} removed asset {} from submission {}", user.userId(), assetId, submissionId);
+
         return buildResponse(submission);
     }
 
@@ -610,10 +640,7 @@ public class SubmissionService {
             case "administrator" -> {
                 /* full access */ }
             case "validator" -> {
-                if (!submission.getInstitution().getId().equals(user.institutionId())) {
-                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied.");
-                }
-            }
+                /* universal validation access */ }
             case "contributor" -> {
                 if (!submission.getContributor().getId().equals(user.userId())) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied.");

@@ -791,7 +791,7 @@ function App() {
         <Route
           path="/analytics/audience"
           element={
-            <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+            <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
               <RouteErrorBoundary>
               <Suspense fallback={<InsightsRouteFallback />}>
                 <AudienceInsightsPage user={currentUser!} />
@@ -804,7 +804,7 @@ function App() {
         <Route
           path="/submissions/new"
           element={
-            <ProtectedRoute user={currentUser} allowedRoles={["contributor"]}>
+            <ProtectedRoute user={currentUser} allowedRoles={["contributor", "validator"]}>
               <SubmissionScreen user={currentUser!} />
             </ProtectedRoute>
           }
