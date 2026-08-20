@@ -48,6 +48,7 @@ interface SubmissionScreenProps {
 interface FormState {
   id: string | null;
   status: SubmissionStatus;
+  selectedTemplateId: string | null;
   eventTitle: string;
   eventDate: string;
   caption: string;
@@ -80,6 +81,7 @@ type PreviewTab = "preview" | "details";
 const initialForm: FormState = {
   id: null,
   status: "draft",
+  selectedTemplateId: null,
   eventTitle: "",
   eventDate: "",
   caption: "",
@@ -111,6 +113,75 @@ const statusLabels: Record<SubmissionStatus, string> = {
   direct_post_failed: "Direct Post Failed",
   rejected: "Rejected",
 };
+
+const postTemplates = [
+  {
+    id: "event-announcement",
+    name: "Event Announcement",
+    target: "Upcoming seminars, workshops, summits",
+    category: "Seminar / Webinar",
+    tags: ["DASIG", "DOST", "Innovation"],
+    caption: [
+      "[EVENT TITLE]",
+      "",
+      "Date:",
+      "Venue or Platform:",
+      "Registration Link:",
+      "",
+      "[Brief description / Call to action]",
+      "",
+      "#DASIGCentralVisayas #DOST7 #InnovationEvent",
+    ].join("\n"),
+  },
+  {
+    id: "event-recap",
+    name: "Event Recap / Milestone",
+    target: "Post-activity highlights, achievements",
+    category: "Awards and Recognition",
+    tags: ["DASIG", "DOST"],
+    caption: [
+      "HISTORY HAS BEEN MADE",
+      "EVENT RECAP",
+      "",
+      "[Summary of accomplishments / key takeaways]",
+      "",
+      "[Acknowledged partners and attendees]",
+      "",
+      "#DASIGCentralVisayas #HistoryMadeHere #DOST7",
+    ].join("\n"),
+  },
+  {
+    id: "competition-call",
+    name: "Competition / Pitching Call",
+    target: "Hackathons, reverse pitching challenges",
+    category: "Innovation",
+    tags: ["DASIG", "Innovation"],
+    caption: [
+      "CALL FOR INNOVATORS / PARTICIPANTS",
+      "",
+      "[Challenge Theme / Problem Statement]",
+      "Prizes or Opportunities:",
+      "Deadline for Submission:",
+      "Apply here:",
+      "",
+      "#FlipTheScript #ReversePitching #DASIG",
+    ].join("\n"),
+  },
+  {
+    id: "partner-spotlight",
+    name: "Partner Feature / Spotlight",
+    target: "Member university/HEI spotlights",
+    category: "Partnership / Collaboration",
+    tags: ["DASIG", "Innovation", "Partnership"],
+    caption: [
+      "INSTITUTIONAL SPOTLIGHT: [University Name]",
+      "",
+      "[Feature on student research, lab innovation, or award]",
+      "",
+      "#ConnectedInnovation #CentralVisayas #[UniversityTag]",
+    ].join("\n"),
+  },
+];
 
 export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const navigate = useNavigate();
@@ -465,6 +536,23 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setSaveState("idle");
   }
 
+  function applyTemplate(templateId: string) {
+    const template = postTemplates.find((item) => item.id === templateId);
+    if (!template || isReadOnlySubmission) return;
+    const availableTags = new Set(lookups.availableTags ?? []);
+    const matchingTags = template.tags.filter((tag) => availableTags.has(tag));
+
+    setForm((current) => ({
+      ...current,
+      selectedTemplateId: template.id,
+      caption: template.caption,
+      category: template.category,
+      tags: [...new Set([...current.tags, ...matchingTags])],
+    }));
+    setSaveState("idle");
+    toast.info(`${template.name} template applied.`);
+  }
+
   function resetComposer() {
     setForm(initialForm);
     setPickerItems([]);
@@ -558,6 +646,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       const nextForm: FormState = {
         id: submission.id,
         status: submission.status,
+        selectedTemplateId: submission.templateId ?? null,
         eventTitle: submission.eventTitle || "",
         eventDate: submission.eventDate || "",
         caption: submission.caption || "",
@@ -1228,6 +1317,42 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 />
               </Field>
             </div>
+
+            <div className="sub-template-gallery" aria-label="Post templates">
+              <div className="sub-template-head">
+                <div>
+                  <div className="sub-template-title">Post Templates</div>
+                  <div className="sub-template-subtitle">
+                    Choose a baseline structure, then replace the placeholders.
+                  </div>
+                </div>
+                {form.selectedTemplateId && (
+                  <button
+                    className="sub-template-clear"
+                    type="button"
+                    disabled={isReadOnlySubmission}
+                    onClick={() => updateField("selectedTemplateId", null)}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="sub-template-grid">
+                {postTemplates.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    className={`sub-template-card ${form.selectedTemplateId === template.id ? "active" : ""}`}
+                    disabled={isReadOnlySubmission}
+                    onClick={() => applyTemplate(template.id)}
+                  >
+                    <span className="sub-template-card-name">{template.name}</span>
+                    <span className="sub-template-card-target">{template.target}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <Field
               label="Caption"
               action={
@@ -2639,6 +2764,7 @@ function toPayload(form: FormState, scheduledAt?: string): SubmissionPayload {
     description: form.description.trim(),
     scheduledAt,
     category: form.category || undefined,
+    templateId: form.selectedTemplateId ?? "",
     tags: form.tags.length > 0 ? form.tags : undefined,
   };
 }
@@ -2663,6 +2789,7 @@ function getDirtySignature(form: FormState) {
   return JSON.stringify({
     eventTitle: form.eventTitle.trim(),
     eventDate: form.eventDate,
+    selectedTemplateId: form.selectedTemplateId,
     caption: form.caption.trim(),
     description: form.description.trim(),
     category: form.category,

@@ -31,6 +31,7 @@ public class SubmissionResponseDto {
     private Instant updatedAt;
     private List<MediaAssetSummaryDto> mediaAssets;
     private String category;
+    private String templateId;
     private List<String> tags;
 
     public static SubmissionResponseDto from(Submission s, List<MediaAssetSummaryDto> mediaAssets) {
@@ -55,6 +56,7 @@ public class SubmissionResponseDto {
         dto.updatedAt = s.getUpdatedAt();
         dto.mediaAssets = mediaAssets;
         dto.category = s.getCategory();
+        dto.templateId = s.getTemplateId();
         dto.tags = (s.getTags() == null || s.getTags().isBlank())
                 ? List.of()
                 : Arrays.stream(s.getTags().split(",")).map(String::trim).filter(t -> !t.isEmpty()).toList();
@@ -139,6 +141,10 @@ public class SubmissionResponseDto {
 
     public String getCategory() {
         return category;
+    }
+
+    public String getTemplateId() {
+        return templateId;
     }
 
     public List<String> getTags() {

@@ -22,6 +22,9 @@ public class SubmissionUpdateDto {
     @Size(max = 100)
     private String category;
 
+    @Size(max = 80)
+    private String templateId;
+
     private List<String> tags;
 
     public String getEventTitle() {
@@ -70,6 +73,14 @@ public class SubmissionUpdateDto {
 
     public void setCategory(String category) {
         this.category = category;
+    }
+
+    public String getTemplateId() {
+        return templateId;
+    }
+
+    public void setTemplateId(String templateId) {
+        this.templateId = templateId;
     }
 
     public List<String> getTags() {

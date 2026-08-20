@@ -119,6 +119,7 @@ class SubmissionServiceTest {
 
         assertThat(result.getStatus()).isEqualTo("draft");
         assertThat(result.getEventTitle()).isEqualTo("Research Expo");
+        assertThat(result.getTemplateId()).isEqualTo("event-announcement");
         assertThat(result.getScheduledAt()).isEqualTo(scheduledAt);
         verify(slotReservationService).reserve(result.getId(), institutionId, scheduledAt);
         verify(auditLogService).record(eq(contributor), eq("SUBMISSION_CREATED"), eq(null), eq(null), eq(result.getId()), any());
@@ -132,6 +133,7 @@ class SubmissionServiceTest {
         Submission submission = submission(submissionId, SubmissionStatus.draft, oldSlot);
         SubmissionUpdateDto dto = new SubmissionUpdateDto();
         dto.setEventTitle("Updated Title");
+        dto.setTemplateId("partner-spotlight");
         dto.setScheduledAt(newSlot);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(submissionRepository.save(submission)).thenReturn(submission);
@@ -140,6 +142,7 @@ class SubmissionServiceTest {
         SubmissionResponseDto result = submissionService.update(submissionId, dto, contributorPrincipal);
 
         assertThat(result.getEventTitle()).isEqualTo("Updated Title");
+        assertThat(result.getTemplateId()).isEqualTo("partner-spotlight");
         assertThat(result.getScheduledAt()).isEqualTo(newSlot);
         verify(slotReservationService).reserve(submissionId, institutionId, newSlot);
     }
@@ -386,6 +389,7 @@ class SubmissionServiceTest {
         dto.setEventDate(LocalDate.of(2026, 6, 1));
         dto.setCaption("Caption");
         dto.setDescription("Description");
+        dto.setTemplateId("event-announcement");
         dto.setScheduledAt(scheduledAt);
         return dto;
     }

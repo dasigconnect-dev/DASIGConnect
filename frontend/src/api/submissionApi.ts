@@ -40,6 +40,7 @@ export interface SubmissionSummary {
   updatedAt?: string;
   mediaCount?: number;
   category?: string;
+  templateId?: string | null;
   tags?: string[];
   mediaAssets?: SavedMediaAsset[];
 }
@@ -51,6 +52,7 @@ export interface SubmissionPayload {
   description: string;
   scheduledAt?: string;
   category?: string;
+  templateId?: string | null;
   tags?: string[];
 }
 

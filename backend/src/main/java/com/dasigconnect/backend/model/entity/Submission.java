@@ -61,6 +61,9 @@ public class Submission {
     @Column(name = "category", length = 100)
     private String category;
 
+    @Column(name = "template_id", length = 80)
+    private String templateId;
+
     @Column(name = "tags", columnDefinition = "text")
     private String tags;
 
@@ -204,6 +207,9 @@ public class Submission {
 
     public String getCategory() { return category; }
     public void setCategory(String category) { this.category = category; }
+
+    public String getTemplateId() { return templateId; }
+    public void setTemplateId(String templateId) { this.templateId = templateId; }
 
     public String getTags() { return tags; }
     public void setTags(String tags) { this.tags = tags; }

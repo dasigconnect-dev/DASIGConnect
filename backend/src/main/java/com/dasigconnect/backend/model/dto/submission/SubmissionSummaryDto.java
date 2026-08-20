@@ -21,6 +21,7 @@ public class SubmissionSummaryDto {
     private String contributorEmail;
     private long mediaCount;
     private String category;
+    private String templateId;
     private List<String> tags;
 
     public static SubmissionSummaryDto from(Submission s, long mediaCount) {
@@ -36,6 +37,7 @@ public class SubmissionSummaryDto {
         dto.contributorEmail = s.getContributor().getEmail();
         dto.mediaCount = mediaCount;
         dto.category = s.getCategory();
+        dto.templateId = s.getTemplateId();
         dto.tags = (s.getTags() == null || s.getTags().isBlank())
                 ? List.of()
                 : Arrays.stream(s.getTags().split(",")).map(String::trim).filter(t -> !t.isEmpty()).toList();
@@ -84,6 +86,10 @@ public class SubmissionSummaryDto {
 
     public String getCategory() {
         return category;
+    }
+
+    public String getTemplateId() {
+        return templateId;
     }
 
     public List<String> getTags() {

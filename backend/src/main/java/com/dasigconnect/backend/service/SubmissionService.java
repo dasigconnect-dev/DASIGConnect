@@ -140,6 +140,9 @@ public class SubmissionService {
         submission.setDescription(dto.getDescription());
         submission.setStatus(SubmissionStatus.draft);
         submission.setCategory(dto.getCategory());
+        submission.setTemplateId(dto.getTemplateId() == null || dto.getTemplateId().isBlank()
+                ? null
+                : dto.getTemplateId());
         if (dto.getTags() != null && !dto.getTags().isEmpty()) {
             submission.setTags(String.join(",", dto.getTags()));
         }
@@ -181,6 +184,9 @@ public class SubmissionService {
         }
         if (dto.getCategory() != null) {
             submission.setCategory(dto.getCategory());
+        }
+        if (dto.getTemplateId() != null) {
+            submission.setTemplateId(dto.getTemplateId().isBlank() ? null : dto.getTemplateId());
         }
         if (dto.getTags() != null) {
             submission.setTags(dto.getTags().isEmpty() ? null : String.join(",", dto.getTags()));
