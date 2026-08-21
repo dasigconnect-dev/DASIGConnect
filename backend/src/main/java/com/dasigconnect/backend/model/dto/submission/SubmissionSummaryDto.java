@@ -22,6 +22,8 @@ public class SubmissionSummaryDto {
     private long mediaCount;
     private String category;
     private String templateId;
+    private boolean fastTrack;
+    private String liveEventName;
     private List<String> tags;
 
     public static SubmissionSummaryDto from(Submission s, long mediaCount) {
@@ -38,6 +40,8 @@ public class SubmissionSummaryDto {
         dto.mediaCount = mediaCount;
         dto.category = s.getCategory();
         dto.templateId = s.getTemplateId();
+        dto.fastTrack = s.isFastTrack();
+        dto.liveEventName = s.getLiveEventName();
         dto.tags = (s.getTags() == null || s.getTags().isBlank())
                 ? List.of()
                 : Arrays.stream(s.getTags().split(",")).map(String::trim).filter(t -> !t.isEmpty()).toList();
@@ -90,6 +94,14 @@ public class SubmissionSummaryDto {
 
     public String getTemplateId() {
         return templateId;
+    }
+
+    public boolean isFastTrack() {
+        return fastTrack;
+    }
+
+    public String getLiveEventName() {
+        return liveEventName;
     }
 
     public List<String> getTags() {

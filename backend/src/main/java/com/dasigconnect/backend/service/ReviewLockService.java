@@ -58,8 +58,9 @@ public class ReviewLockService {
     public ReviewLock acquire(UUID submissionId, JwtUserDetails caller) {
         Submission submission = loadSubmissionInScope(submissionId, caller);
 
-        // GR-H5: self-validation blocked
-        if (submission.getContributor().getId().equals(caller.userId())) {
+        // GR-H5 blocks contributor/validator self-review; administrators may self-approve.
+        if (!"administrator".equals(caller.role())
+                && submission.getContributor().getId().equals(caller.userId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "You cannot review your own submission.");
         }

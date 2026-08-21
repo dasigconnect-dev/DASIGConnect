@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
 
-export type DashboardNavId = 'home' | 'submit' | 'institution-management' | 'user-management' | 'scheduler' | 'resolution' | 'analytics' | 'media-repository' | 'notifications'
+export type DashboardNavId = 'home' | 'submit' | 'review-queue' | 'institution-management' | 'user-management' | 'scheduler' | 'resolution' | 'analytics' | 'media-repository' | 'notifications'
 
 interface DashboardShellProps {
   user: User
@@ -195,10 +195,17 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
     },
     {
       id: 'submit',
-      icon: user.role === 'validator' ? 'ti ti-clipboard-list' : 'ti ti-photo-up',
-      label: user.role === 'validator' ? 'Review Queue' : 'Submit Content',
-      path: user.role === 'validator' ? '/validation/queue' : '/submissions/new',
-      visible: user.role === 'validator' || user.role === 'contributor',
+      icon: 'ti ti-photo-up',
+      label: 'Submit Content',
+      path: '/submissions/new',
+      visible: user.role === 'contributor' || user.role === 'admin',
+    },
+    {
+      id: 'review-queue',
+      icon: 'ti ti-clipboard-check',
+      label: 'Review Queue',
+      path: '/validation/queue',
+      visible: user.role === 'validator' || user.role === 'admin',
     },
     {
       id: 'institution-management',
@@ -256,7 +263,7 @@ function groupDashboardNavItems(items: DashboardNavItem[]) {
   return [
     {
       label: 'Workspace',
-      items: items.filter((item) => ['home', 'submit', 'media-repository', 'notifications'].includes(item.id)),
+      items: items.filter((item) => ['home', 'submit', 'review-queue', 'media-repository', 'notifications'].includes(item.id)),
     },
     {
       label: 'Operations',

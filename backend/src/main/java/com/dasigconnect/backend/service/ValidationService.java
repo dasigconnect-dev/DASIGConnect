@@ -107,7 +107,9 @@ public class ValidationService {
         submission.setStatus(SubmissionStatus.scheduled);
         submissionRepository.save(submission);
 
-        slotReservationService.confirm(submissionId);
+        if (!submission.isFastTrack()) {
+            slotReservationService.confirm(submissionId);
+        }
         reviewLockService.release(submissionId, caller);
 
         User validator = loadUser(caller.userId());
@@ -211,7 +213,8 @@ public class ValidationService {
     }
 
     private void assertNotSelfReview(Submission submission, JwtUserDetails caller) {
-        if (submission.getContributor().getId().equals(caller.userId())) {
+        if (!"administrator".equals(caller.role())
+                && submission.getContributor().getId().equals(caller.userId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "You cannot review your own submission.");
         }

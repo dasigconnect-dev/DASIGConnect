@@ -524,6 +524,20 @@ function actionsForRole(user: User | null): ActionItem[] {
   if (user.role === "admin") {
     return [
       {
+        icon: "ti ti-photo-up",
+        accent: "ac-blue",
+        title: "Submit Event Content",
+        subtitle: "Create a draft under an institution scope",
+        emphasized: true,
+      },
+      {
+        icon: "ti ti-clipboard-check",
+        accent: "ac-purple",
+        title: "Review Queue",
+        subtitle: "Approve submitted drafts",
+        emphasized: true,
+      },
+      {
         icon: "ti ti-building-community",
         accent: "ac-green",
         title: "Add Institution",

@@ -21,6 +21,7 @@ import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
 import com.dasigconnect.backend.model.entity.NotificationEventType;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.ReviewLockRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
@@ -65,6 +66,9 @@ class SubmissionServiceTest {
     private SubmissionMediaAssetRepository submissionMediaAssetRepository;
 
     @Mock
+    private ReviewLockRepository reviewLockRepository;
+
+    @Mock
     private SlotReservationService slotReservationService;
 
     @Mock
@@ -75,6 +79,9 @@ class SubmissionServiceTest {
 
     @Mock
     private NotificationService notificationService;
+
+    @Mock
+    private EmailDeliveryService emailDeliveryService;
 
     @Mock
     private UserRepository userRepository;
@@ -196,8 +203,43 @@ class SubmissionServiceTest {
         verify(notificationService).createNotification(
                 eq(validator),
                 eq(NotificationEventType.submission_pending),
-                org.mockito.ArgumentMatchers.contains("submitted 'Research Expo' for review"),
+                org.mockito.ArgumentMatchers.contains("submitted 'Research Expo' for approval"),
                 eq("/submissions/" + submissionId));
+    }
+
+    @Test
+    void submit_withoutMedia_returns422() {
+        UUID submissionId = UUID.randomUUID();
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
+
+        assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .extracting(status -> status.value())
+                .isEqualTo(422);
+        verify(submissionRepository, never()).save(submission);
+    }
+
+    @Test
+    void withdraw_pendingWithoutReviewLock_returnsToDraft() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.pending, Instant.now());
+        submission.setSubmittedAt(Instant.now());
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(reviewLockRepository.existsBySubmissionId(submissionId)).thenReturn(false);
+        when(submissionRepository.save(submission)).thenReturn(submission);
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+
+        SubmissionResponseDto result = submissionService.withdraw(submissionId, contributorPrincipal);
+
+        assertThat(result.getStatus()).isEqualTo("draft");
+        assertThat(submission.getSubmittedAt()).isNull();
+        verify(auditLogService).record(eq(contributor), eq("SUBMISSION_WITHDRAWN"), eq(null), eq(null), eq(submissionId), any());
     }
 
     @Test
@@ -211,6 +253,31 @@ class SubmissionServiceTest {
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST);
         verify(guardRailService, never()).validate(any(), any());
+    }
+
+    @Test
+    void submit_fastTrackWithoutScheduledAt_transitionsToPendingAndEmailsAdmins() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, null);
+        submission.setFastTrack(true);
+        User admin = user(UUID.randomUUID(), "admin@dasig.test", UserRole.administrator, institution);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionRepository.save(submission)).thenReturn(submission);
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+        when(userRepository.findByRole(UserRole.administrator)).thenReturn(List.of(admin));
+
+        SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
+
+        assertThat(result.getStatus()).isEqualTo("pending");
+        assertThat(result.isFastTrack()).isTrue();
+        verify(guardRailService, never()).validate(any(), any());
+        verify(emailDeliveryService).send(
+                eq(admin),
+                eq("T-11_FAST_TRACK_SUBMISSION"),
+                org.mockito.ArgumentMatchers.contains("URGENT"),
+                org.mockito.ArgumentMatchers.contains("Fast-Track"));
     }
 
     @Test
@@ -280,6 +347,39 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void list_administratorHidesOtherUsersEditableDrafts() {
+        UUID adminId = UUID.randomUUID();
+        JwtUserDetails adminPrincipal = principal(adminId, "administrator", null);
+        Submission ownDraft = submission(UUID.randomUUID(), SubmissionStatus.draft, Instant.now());
+        ownDraft.setContributor(user(adminId, "admin@dasig.test", UserRole.administrator, institution));
+        Submission otherDraft = submission(UUID.randomUUID(), SubmissionStatus.draft, Instant.now());
+        otherDraft.setContributor(user(UUID.randomUUID(), "other@cit.edu.ph", UserRole.contributor, institution));
+        Submission pending = submission(UUID.randomUUID(), SubmissionStatus.pending, Instant.now());
+        pending.setContributor(user(UUID.randomUUID(), "pending@cit.edu.ph", UserRole.contributor, institution));
+        when(submissionRepository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(ownDraft, otherDraft, pending));
+
+        List<SubmissionSummaryDto> result = submissionService.list(adminPrincipal);
+
+        assertThat(result)
+                .extracting(SubmissionSummaryDto::getId)
+                .containsExactly(ownDraft.getId(), pending.getId());
+    }
+
+    @Test
+    void get_administratorCannotOpenOtherUsersEditableDraft() {
+        UUID adminId = UUID.randomUUID();
+        JwtUserDetails adminPrincipal = principal(adminId, "administrator", null);
+        Submission otherDraft = submission(UUID.randomUUID(), SubmissionStatus.draft, Instant.now());
+        otherDraft.setContributor(user(UUID.randomUUID(), "other@cit.edu.ph", UserRole.contributor, institution));
+        when(submissionRepository.findById(otherDraft.getId())).thenReturn(Optional.of(otherDraft));
+
+        assertThatThrownBy(() -> submissionService.get(otherDraft.getId(), adminPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
     void get_validatorFromOtherInstitutionIsForbidden() {
         Submission submission = submission(UUID.randomUUID(), SubmissionStatus.pending, Instant.now());
         when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
@@ -293,14 +393,17 @@ class SubmissionServiceTest {
     }
 
     @Test
-    void evaluateSlot_delegatesToGuardRailServiceWithTenantInstitution() {
+    void evaluateSlot_delegatesToGuardRailServiceWithSubmissionInstitution() {
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
         SlotEvaluateRequestDto dto = new SlotEvaluateRequestDto();
         dto.setScheduledAt(scheduledAt);
         GuardRailResult expected = new GuardRailResult();
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(expected);
 
-        GuardRailResult result = submissionService.evaluateSlot(dto, contributorPrincipal);
+        GuardRailResult result = submissionService.evaluateSlot(submissionId, dto, contributorPrincipal);
 
         assertThat(result).isSameAs(expected);
     }

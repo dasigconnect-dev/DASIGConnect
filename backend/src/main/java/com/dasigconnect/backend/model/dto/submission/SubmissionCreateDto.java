@@ -3,12 +3,15 @@ package com.dasigconnect.backend.model.dto.submission;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public class SubmissionCreateDto {
+
+    private UUID institutionId;
 
     @NotBlank(message = "Event title is required")
     @Size(max = 255, message = "Event title must not exceed 255 characters")
@@ -29,7 +32,20 @@ public class SubmissionCreateDto {
     @Size(max = 80)
     private String templateId;
 
+    private boolean fastTrack;
+
+    @Size(max = 160)
+    private String liveEventName;
+
     private List<String> tags;
+
+    public UUID getInstitutionId() {
+        return institutionId;
+    }
+
+    public void setInstitutionId(UUID institutionId) {
+        this.institutionId = institutionId;
+    }
 
     public String getEventTitle() {
         return eventTitle;
@@ -85,6 +101,22 @@ public class SubmissionCreateDto {
 
     public void setTemplateId(String templateId) {
         this.templateId = templateId;
+    }
+
+    public boolean isFastTrack() {
+        return fastTrack;
+    }
+
+    public void setFastTrack(boolean fastTrack) {
+        this.fastTrack = fastTrack;
+    }
+
+    public String getLiveEventName() {
+        return liveEventName;
+    }
+
+    public void setLiveEventName(String liveEventName) {
+        this.liveEventName = liveEventName;
     }
 
     public List<String> getTags() {

@@ -14,7 +14,7 @@ export default function FacebookPreviewDetails({
       <div className="fb-preview-details-head">
         <div>
           <h3 id="fb-preview-details-title">Submission Details</h3>
-          <p>Confirm readiness before sending this content to your validator.</p>
+          <p>Confirm readiness before sending this content for approval.</p>
         </div>
         <span className="fb-preview-status">{details.statusLabel}</span>
       </div>
@@ -27,7 +27,7 @@ export default function FacebookPreviewDetails({
           <strong>{details.completionLabel}</strong>
           <p>
             {isReady
-              ? "Everything needed for review is in place."
+              ? "Everything needed for approval is in place."
               : "Complete the remaining required fields before submission."}
           </p>
         </div>
@@ -35,7 +35,7 @@ export default function FacebookPreviewDetails({
 
       {!isReady && (
         <div className="fb-preview-validation-summary">
-          <span>Required before review</span>
+          <span>Required before approval</span>
           <ul>
             {details.missingItems.map((item) => (
               <li key={item}>{item}</li>
@@ -46,6 +46,9 @@ export default function FacebookPreviewDetails({
 
       <div className="fb-preview-detail-grid">
         <Detail label="Preferred schedule" value={details.schedule} emphasis />
+        {details.liveEventName && (
+          <Detail label="Active event" value={details.liveEventName} emphasis />
+        )}
         <Detail
           label={details.fileValidation.label}
           value={details.fileValidation.value}

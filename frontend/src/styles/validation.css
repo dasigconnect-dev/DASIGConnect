@@ -286,6 +286,22 @@
   border-color: var(--val-blue-bdr);
 }
 
+.val-status.pending {
+  color: var(--val-amber);
+}
+
+.val-urgent-badge {
+  border-radius: 999px;
+  border: 1px solid var(--val-red-bdr);
+  background: var(--val-red-dim);
+  color: var(--val-red);
+  padding: 3px 10px;
+  font-size: 10.5px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .val-qi-meta,
 .val-qi-bottom {
   display: flex;

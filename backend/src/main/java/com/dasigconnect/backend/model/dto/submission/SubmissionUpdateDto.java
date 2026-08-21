@@ -25,6 +25,11 @@ public class SubmissionUpdateDto {
     @Size(max = 80)
     private String templateId;
 
+    private Boolean fastTrack;
+
+    @Size(max = 160)
+    private String liveEventName;
+
     private List<String> tags;
 
     public String getEventTitle() {
@@ -81,6 +86,22 @@ public class SubmissionUpdateDto {
 
     public void setTemplateId(String templateId) {
         this.templateId = templateId;
+    }
+
+    public Boolean getFastTrack() {
+        return fastTrack;
+    }
+
+    public void setFastTrack(Boolean fastTrack) {
+        this.fastTrack = fastTrack;
+    }
+
+    public String getLiveEventName() {
+        return liveEventName;
+    }
+
+    public void setLiveEventName(String liveEventName) {
+        this.liveEventName = liveEventName;
     }
 
     public List<String> getTags() {

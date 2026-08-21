@@ -38,7 +38,7 @@ const rejectionReasons: Array<{ code: RejectionReasonCode; label: string }> = [
 ];
 
 const statusLabel: Record<string, string> = {
-  pending: "Pending",
+  pending: "Pending Approval",
   in_review: "In Review",
   needs_revision: "Needs Revision",
   scheduled: "Scheduled",
@@ -103,6 +103,7 @@ export default function ValidationQueueScreen({
           .some((value) => value!.toLowerCase().includes(term));
       })
       .sort((a, b) => {
+        if (a.fastTrack !== b.fastTrack) return a.fastTrack ? -1 : 1;
         const left =
           sortKey === "deadline" ? a.scheduledAt || "" : a.submittedAt || a.createdAt || "";
         const right =
@@ -132,6 +133,7 @@ export default function ValidationQueueScreen({
   const mediaAssets = selected?.mediaAssets ?? [];
   const selectedMedia = mediaAssets[mediaIndex];
   const isSelfReview =
+    user.role !== "admin" &&
     Boolean(selected?.contributorEmail) &&
     selected?.contributorEmail?.toLowerCase() === user.email.toLowerCase();
   const isTerminalStatus = Boolean(
@@ -227,7 +229,7 @@ export default function ValidationQueueScreen({
         return;
       }
 
-      if (summary.contributorEmail?.toLowerCase() === user.email.toLowerCase()) {
+      if (user.role !== "admin" && summary.contributorEmail?.toLowerCase() === user.email.toLowerCase()) {
         setActiveLock(null);
         setLockNotice("Self-validation blocked. This submission must be reviewed by another Validator.");
         return;
@@ -417,7 +419,7 @@ export default function ValidationQueueScreen({
                 <div className="val-qi-head">
                   <strong>{item.eventTitle || "Untitled submission"}</strong>
                   <span className={`val-status ${normalizeStatus(item.status)}`}>
-                    {statusLabel[normalizeStatus(item.status)] || item.status}
+                    {item.fastTrack ? "Fast-Track" : statusLabel[normalizeStatus(item.status)] || item.status}
                   </span>
                 </div>
                 <div className="val-qi-meta">
@@ -428,7 +430,7 @@ export default function ValidationQueueScreen({
                 <div className="val-qi-bottom">
                   <span className="val-deadline">
                     <i className="ti ti-clock"></i>
-                    {item.scheduledAt ? formatDateTime(item.scheduledAt) : "No slot"}
+                    {item.fastTrack ? "Urgent approval" : item.scheduledAt ? formatDateTime(item.scheduledAt) : "No slot"}
                   </span>
                   <span className="val-media-count">
                     <i className="ti ti-photo"></i> {item.mediaCount ?? 0}
@@ -454,7 +456,7 @@ export default function ValidationQueueScreen({
               <NoticeBar
                 tone="danger"
                 icon="ti-alert-triangle"
-                text="Self-validation blocked. This submission is routed to another Validator."
+                text="Self-validation blocked. This submission is routed to another reviewer."
               />
             )}
             {lockNotice && !isSelfReview && (
@@ -474,6 +476,7 @@ export default function ValidationQueueScreen({
                   <div className="val-badge-row">
                     <span className="val-inst">{user.inst}</span>
                     <span className="val-sub-id">{shortId(selected.id)}</span>
+                    {selected.fastTrack && <span className="val-urgent-badge">Fast-Track</span>}
                   </div>
                   <h2>{selected.eventTitle || "Untitled submission"}</h2>
                   <p>
@@ -484,12 +487,16 @@ export default function ValidationQueueScreen({
                 <div className="val-slot-card">
                   <span>Publish Slot</span>
                   <strong>
-                    {selected.scheduledAt
+                    {selected.fastTrack
+                      ? "Fast-Track"
+                      : selected.scheduledAt
                       ? formatDate(selected.scheduledAt)
                       : "Unscheduled"}
                   </strong>
                   <small>
-                    {selected.scheduledAt
+                    {selected.fastTrack
+                      ? "Urgent approval, no scheduled slot"
+                      : selected.scheduledAt
                       ? formatTime(selected.scheduledAt)
                       : "No preferred time"}
                   </small>

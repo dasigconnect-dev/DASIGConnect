@@ -41,11 +41,14 @@ export interface SubmissionSummary {
   mediaCount?: number;
   category?: string;
   templateId?: string | null;
+  fastTrack?: boolean;
+  liveEventName?: string | null;
   tags?: string[];
   mediaAssets?: SavedMediaAsset[];
 }
 
 export interface SubmissionPayload {
+  institutionId?: string | null;
   eventTitle: string;
   eventDate: string;
   caption: string;
@@ -53,6 +56,8 @@ export interface SubmissionPayload {
   scheduledAt?: string;
   category?: string;
   templateId?: string | null;
+  fastTrack?: boolean;
+  liveEventName?: string | null;
   tags?: string[];
 }
 
@@ -100,6 +105,10 @@ export function updateDraft(id: string, payload: SubmissionPayload) {
 
 export function submitForReview(id: string) {
   return api.post<SubmissionSummary>(`/submissions/${id}/submit`);
+}
+
+export function withdrawSubmission(id: string) {
+  return api.post<SubmissionSummary>(`/submissions/${id}/withdraw`);
 }
 
 export function deleteDraft(id: string) {
@@ -156,8 +165,8 @@ export function getSubmissionLookups(signal?: AbortSignal) {
   return api.get<SubmissionLookups>("/submissions/lookups", { signal });
 }
 
-export function validateGuardRails(scheduledAt: string) {
-  return api.post<GuardRailResult>("/guardrails/validate", { scheduledAt });
+export function validateGuardRails(scheduledAt: string, institutionId?: string | null) {
+  return api.post<GuardRailResult>("/guardrails/validate", { scheduledAt, institutionId });
 }
 
 function fileTypeFromFile(file: File) {

@@ -28,6 +28,7 @@ export interface FacebookPreviewDetailsData {
   readinessScore: number;
   completionLabel: string;
   category: string;
+  liveEventName: string;
   institution: string;
   tags: string[];
   schedule: string;

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
 import {
   attachAsset,
   createDraft,
@@ -11,6 +12,7 @@ import {
   updateDraft,
   uploadSubmissionMedia,
   validateGuardRails,
+  withdrawSubmission,
   type GuardRailResult,
   type SavedMediaAsset,
   type SubmissionLookups,
@@ -48,7 +50,10 @@ interface SubmissionScreenProps {
 interface FormState {
   id: string | null;
   status: SubmissionStatus;
+  institutionId: string;
   selectedTemplateId: string | null;
+  fastTrack: boolean;
+  liveEventName: string;
   eventTitle: string;
   eventDate: string;
   caption: string;
@@ -69,6 +74,8 @@ type ModalState =
   | "submit"
   | "success"
   | "delete"
+  | "withdraw"
+  | "fast-track-switch"
   | "draft-choice"
   | "draft-exit"
   | null;
@@ -81,7 +88,10 @@ type PreviewTab = "preview" | "details";
 const initialForm: FormState = {
   id: null,
   status: "draft",
+  institutionId: "",
   selectedTemplateId: null,
+  fastTrack: false,
+  liveEventName: "",
   eventTitle: "",
   eventDate: "",
   caption: "",
@@ -99,7 +109,7 @@ const initialForm: FormState = {
 
 const statusLabels: Record<SubmissionStatus, string> = {
   draft: "Draft",
-  pending: "Submitted",
+  pending: "Pending Approval",
   in_review: "Under Review",
   needs_revision: "Needs Revision",
   scheduled: "Scheduled",
@@ -220,38 +230,50 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [reorderingMedia, setReorderingMedia] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [hydratingId, setHydratingId] = useState<string | null>(null);
   const [refreshingQueue, setRefreshingQueue] = useState(false);
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
   const [guardRailError, setGuardRailError] = useState("");
+  const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
+  const [institutionsLoading, setInstitutionsLoading] = useState(false);
+  const [institutionsError, setInstitutionsError] = useState("");
   const [activeStep, setActiveStep] = useState<ProgressStep>("details");
+  const isAdminComposer = user.role === "admin";
+  const selectedInstitutionId = isAdminComposer ? form.institutionId : user.institutionId || "";
+  const selectedInstitutionName = useMemo(() => {
+    if (!isAdminComposer) return user.inst;
+    const selected = institutions.find((institution) => institution.id === form.institutionId);
+    return selected?.name || "Select institution";
+  }, [form.institutionId, institutions, isAdminComposer, user.inst]);
 
   const queued = useMemo(() => {
     if (filter === "drafts")
-      return submissions.filter((item) => item.status === "draft");
+      return submissions.filter((item) => item.status === "draft" || item.status === "needs_revision");
     if (filter === "submitted")
-      return submissions.filter((item) => item.status !== "draft");
+      return submissions.filter((item) => item.status !== "draft" && item.status !== "needs_revision");
     return submissions;
   }, [filter, submissions]);
 
   const draftCount = useMemo(
-    () => submissions.filter((item) => item.status === "draft").length,
+    () => submissions.filter((item) => item.status === "draft" || item.status === "needs_revision").length,
     [submissions],
   );
 
   const submittedCount = useMemo(
-    () => submissions.filter((item) => item.status !== "draft").length,
+    () => submissions.filter((item) => item.status !== "draft" && item.status !== "needs_revision").length,
     [submissions],
   );
 
   const scheduledAt = useMemo(() => {
+    if (form.fastTrack) return undefined;
     if (!form.scheduledDate || !form.scheduledTime) return undefined;
     const date = new Date(`${form.scheduledDate}T${form.scheduledTime}`);
     if (Number.isNaN(date.getTime())) return undefined;
     return date.toISOString();
-  }, [form.scheduledDate, form.scheduledTime]);
+  }, [form.fastTrack, form.scheduledDate, form.scheduledTime]);
 
   const readiness = useMemo(
     () => calculateReadiness(form, guardRails),
@@ -272,7 +294,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     () =>
       getPreviewDetails({
         form,
-        institution: user.inst,
+        institution: selectedInstitutionName,
         scheduledAt,
         lookups,
         guardRails,
@@ -288,15 +310,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       previewValidation.missingItems,
       readiness.score,
       scheduledAt,
-      user.inst,
+      selectedInstitutionName,
     ],
   );
   const submitDisabledReason =
     previewValidation.blockingErrors.length > 0
       ? previewValidation.blockingErrors[0]
       : undefined;
-  const canSubmitCurrentSubmission = form.status === "draft";
-  const isReadOnlySubmission = form.status !== "draft";
+  const isEditableSubmission = form.status === "draft" || form.status === "needs_revision";
+  const canSubmitCurrentSubmission = isEditableSubmission;
+  const isReadOnlySubmission = !isEditableSubmission;
   const canUseAiCaption = !isReadOnlySubmission;
   const hasMedia = form.files.length > 0 || form.savedAssets.length > 0;
   const isDirty = useMemo(
@@ -308,7 +331,33 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   );
   const shouldPromptBeforeLeave = isDirty;
   const busy =
-    saveState === "saving" || submitting || deleting || reorderingMedia;
+    saveState === "saving" || submitting || withdrawing || deleting || reorderingMedia;
+
+  useEffect(() => {
+    if (!isAdminComposer) return;
+    const controller = new AbortController();
+    setInstitutionsLoading(true);
+    listInstitutions(controller.signal)
+      .then((response) => {
+        const activeInstitutions = response.data.filter(
+          (institution) => institution.status?.toLowerCase() !== "inactive",
+        );
+        setInstitutions(activeInstitutions);
+        setInstitutionsError("");
+      })
+      .catch((err: unknown) => {
+        if ((err as { name?: string })?.name === "CanceledError") return;
+        setInstitutionsError(getErrorMessage(err, "Institution list could not be loaded."));
+      })
+      .finally(() => setInstitutionsLoading(false));
+    return () => controller.abort();
+  }, [isAdminComposer]);
+
+  useEffect(() => {
+    if (form.fastTrack && activeStep === "schedule") {
+      setActiveStep("details");
+    }
+  }, [activeStep, form.fastTrack]);
 
   const isDetailsComplete = useMemo(
     () =>
@@ -365,27 +414,36 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }, [navigate]);
 
   const progressSteps = useMemo(
-    () => [
-      {
-        id: "details" as const,
-        label: "Post Details",
-        complete:
-          Boolean(form.eventTitle.trim()) &&
-          Boolean(form.eventDate) &&
-          Boolean(form.caption.trim()),
-      },
-      {
-        id: "media" as const,
-        label: "Media Assets",
-        complete: hasMedia,
-      },
-      {
-        id: "schedule" as const,
-        label: "Preferred Schedule",
-        complete: Boolean(scheduledAt),
-      },
-    ],
-    [form.caption, form.eventDate, form.eventTitle, hasMedia, scheduledAt],
+    () => {
+      const steps: Array<{
+        id: ProgressStep;
+        label: string;
+        complete: boolean;
+      }> = [
+        {
+          id: "details" as const,
+          label: "Post Details",
+          complete:
+            Boolean(form.eventTitle.trim()) &&
+            Boolean(form.eventDate) &&
+            Boolean(form.caption.trim()),
+        },
+        {
+          id: "media" as const,
+          label: "Media Assets",
+          complete: hasMedia,
+        },
+      ];
+      if (!form.fastTrack) {
+        steps.push({
+          id: "schedule" as const,
+          label: "Preferred Schedule",
+          complete: Boolean(scheduledAt),
+        });
+      }
+      return steps;
+    },
+    [form.caption, form.eventDate, form.eventTitle, form.fastTrack, hasMedia, scheduledAt],
   );
 
   const hasImageAssets = useMemo(
@@ -406,9 +464,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         setGuardRailsLoading(false);
         return;
       }
+      if (isAdminComposer && !selectedInstitutionId) {
+        setGuardRails(null);
+        setGuardRailError("Select an institution scope before validating a schedule.");
+        setGuardRailsLoading(false);
+        return;
+      }
 
       setGuardRailsLoading(true);
-      validateGuardRails(scheduledAt)
+      validateGuardRails(scheduledAt, selectedInstitutionId || undefined)
         .then((response) => {
           setGuardRails(response.data);
           setGuardRailError("");
@@ -421,7 +485,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }, scheduledAt ? 350 : 0);
 
     return () => window.clearTimeout(timer);
-  }, [scheduledAt]);
+  }, [isAdminComposer, scheduledAt, selectedInstitutionId]);
 
   // Clean up ?tab= from the URL after it has been consumed by the lazy filter initializer.
   useEffect(() => {
@@ -536,6 +600,27 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setSaveState("idle");
   }
 
+  function updateFastTrack(value: boolean) {
+    if (value && !form.fastTrack && (form.scheduledDate || form.scheduledTime || form.selectedTemplateId)) {
+      setModal("fast-track-switch");
+      return;
+    }
+    applyFastTrackMode(value);
+  }
+
+  function applyFastTrackMode(value: boolean) {
+    setForm((current) => ({
+      ...current,
+      fastTrack: value,
+      liveEventName: value ? current.liveEventName : "",
+      scheduledDate: value ? "" : current.scheduledDate,
+      scheduledTime: value ? "" : current.scheduledTime,
+    }));
+    setGuardRails(value ? null : guardRails);
+    setGuardRailError(value ? "" : guardRailError);
+    setSaveState("idle");
+  }
+
   function applyTemplate(templateId: string) {
     const template = postTemplates.find((item) => item.id === templateId);
     if (!template || isReadOnlySubmission) return;
@@ -595,7 +680,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       startNewSubmission();
       return;
     }
-    const existingDraft = submissions.find((item) => item.status === "draft");
+    const existingDraft = submissions.find((item) => item.status === "draft" || item.status === "needs_revision");
     if (existingDraft || isDirty) {
       setModal("draft-choice");
       return;
@@ -606,6 +691,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   function resumeExistingDraft() {
     const existingDraft =
       submissions.find((item) => item.status === "draft") ||
+      submissions.find((item) => item.status === "needs_revision") ||
       (form.id ? submissions.find((item) => item.id === form.id) : undefined);
     setFilter("drafts");
     setModal(null);
@@ -646,7 +732,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       const nextForm: FormState = {
         id: submission.id,
         status: submission.status,
+        institutionId: submission.institutionId || "",
         selectedTemplateId: submission.templateId ?? null,
+        fastTrack: Boolean(submission.fastTrack),
+        liveEventName: submission.liveEventName || "",
         eventTitle: submission.eventTitle || "",
         eventDate: submission.eventDate || "",
         caption: submission.caption || "",
@@ -670,7 +759,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setForm(nextForm);
       setPickerItems((submission.mediaAssets ?? []).map(savedAssetToPickerItem));
       setActiveMediaIndex(0);
-      setFilter(submission.status === "draft" ? "drafts" : "submitted");
+      setFilter(submission.status === "draft" || submission.status === "needs_revision" ? "drafts" : "submitted");
       setActiveStep("details");
       setCenterMode("edit");
       setPreviewTab("preview");
@@ -686,6 +775,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   async function saveDraft() {
     if (isReadOnlySubmission) return false;
     if (busy) return false;
+    if (isAdminComposer && !form.institutionId) {
+      toast.error("Select an institution scope before saving this draft.");
+      setActiveStep("details");
+      return false;
+    }
     setSaveState("saving");
     try {
       const payload = toPayload(form, scheduledAt);
@@ -775,14 +869,18 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   async function handleSubmit() {
     if (isReadOnlySubmission || busy) return;
     const missing: string[] = [];
+    if (isAdminComposer && !form.institutionId) missing.push("an institution scope");
     if (!form.eventTitle.trim()) missing.push("an event title");
     if (!form.eventDate) missing.push("an event date");
     if (!form.caption.trim()) missing.push("a caption");
-    if (!scheduledAt) missing.push("a preferred schedule");
+    if (!hasMedia) missing.push("at least one media attachment");
+    if (!form.fastTrack && !scheduledAt) missing.push("a preferred schedule");
     if (missing.length > 0) {
       toast.error(`Add ${missing.join(", ")} before submitting.`);
-      if (!form.eventTitle.trim() || !form.eventDate || !form.caption.trim()) {
+      if ((isAdminComposer && !form.institutionId) || !form.eventTitle.trim() || !form.eventDate || !form.caption.trim()) {
         setActiveStep("details");
+      } else if (!hasMedia) {
+        setActiveStep("media");
       } else {
         setActiveStep("schedule");
       }
@@ -842,7 +940,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setPickerItems(submittedAssets.map(savedAssetToPickerItem));
       clearAssetIdParam();
       setModal("success");
-      toast.success("Submission sent for review.");
+      toast.success("Submission sent for approval.");
       void refresh();
     } catch (err: unknown) {
       toast.error(getErrorMessage(err, "Submission failed."));
@@ -873,6 +971,31 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       toast.error(getErrorMessage(err, "Draft could not be deleted."));
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleWithdraw() {
+    if (form.status !== "pending" || !form.id || busy) return;
+    setWithdrawing(true);
+    try {
+      const { data } = await withdrawSubmission(form.id);
+      setSubmissions((current) => upsertSubmission(current, data));
+      const nextAssets = data.mediaAssets ?? form.savedAssets;
+      setForm((current) => ({
+        ...current,
+        status: data.status,
+        savedAssets: nextAssets,
+        mediaOrder: nextAssets.map((asset) => savedMediaKey(asset.id)),
+      }));
+      setPickerItems(nextAssets.map(savedAssetToPickerItem));
+      setFilter("drafts");
+      setModal(null);
+      toast.success("Submission withdrawn to draft.");
+      void refresh();
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, "Submission could not be withdrawn."));
+    } finally {
+      setWithdrawing(false);
     }
   }
 
@@ -1181,7 +1304,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               </h1>
               <p className="sub-form-page-sub">
                 {centerMode === "preview"
-                  ? "Review how followers will see this post before sending it to validator review."
+                  ? "Review how followers will see this post before sending it for approval."
                   : isReadOnlySubmission
                     ? "Preview the content exactly as it was submitted."
                     : "Prepare event media, caption, tags, and a preferred publishing slot."}
@@ -1217,14 +1340,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   <i className="ti ti-brand-facebook"></i> Preview
                 </button>
               )}
-              <button
-                className="sub-btn-ghost danger"
-                type="button"
-                onClick={() => setModal("delete")}
-                disabled={busy || Boolean(hydratingId)}
-              >
-                {deleting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-trash"></i>} Delete
-              </button>
+              {form.status === "draft" && (
+                <button
+                  className="sub-btn-ghost danger"
+                  type="button"
+                  onClick={() => setModal("delete")}
+                  disabled={busy || Boolean(hydratingId)}
+                >
+                  {deleting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-trash"></i>} Delete
+                </button>
+              )}
               {isDirty && (
                 <button
                   className="sub-btn-ghost save"
@@ -1242,9 +1367,21 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 disabled={busy || Boolean(hydratingId) || previewValidation.blockingErrors.length > 0}
                 title={previewValidation.blockingErrors[0]}
               >
-                {submitting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-send"></i>} Submit for Review
+                {submitting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-send"></i>} Submit for Approval
               </button>
             </div>
+            )}
+            {isReadOnlySubmission && form.status === "pending" && (
+              <div className="sub-form-page-actions">
+                <button
+                  className="sub-btn-ghost"
+                  type="button"
+                  onClick={() => setModal("withdraw")}
+                  disabled={busy || Boolean(hydratingId)}
+                >
+                  {withdrawing ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-arrow-back-up"></i>} Withdraw
+                </button>
+              </div>
             )}
           </div>
 
@@ -1295,8 +1432,41 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               icon="ti-edit"
               tone="gold"
               title="Post Details"
-              subtitle="Use backend field names for the saved submission draft."
+              subtitle={form.fastTrack ? "Fast-Track uses a condensed caption and media workflow." : "Use backend field names for the saved submission draft."}
             />
+            {!isReadOnlySubmission && (
+              <label className="sub-fast-track-toggle">
+                <input
+                  type="checkbox"
+                  checked={form.fastTrack}
+                  onChange={(event) => updateFastTrack(event.target.checked)}
+                />
+                <span>
+                  <strong>Live Event Fast-Track</strong>
+                  <small>Condense this draft to caption and media only for urgent approval.</small>
+                </span>
+              </label>
+            )}
+            {isAdminComposer && (
+              <Field label="Institution Scope">
+                <BrandedSelect
+                  value={form.institutionId}
+                  placeholder={institutionsLoading ? "Loading institutions..." : "Select institution"}
+                  hint={institutionsLoading ? undefined : "Select institution"}
+                  options={institutions.map((institution) => ({
+                    value: institution.id,
+                    label: institution.name,
+                  }))}
+                  disabled={isReadOnlySubmission || Boolean(form.id)}
+                  loading={institutionsLoading}
+                  ariaLabel="Select institution scope"
+                  onChange={(value) => updateField("institutionId", value)}
+                />
+                {institutionsError && (
+                  <div className="sub-inline-note">{institutionsError}</div>
+                )}
+              </Field>
+            )}
             <div className="sub-field-row">
               <Field label="Event Title">
                 <input
@@ -1318,6 +1488,19 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               </Field>
             </div>
 
+            {form.fastTrack && (
+              <Field label="Active Event Name">
+                <input
+                  className="sub-finput"
+                  readOnly={isReadOnlySubmission}
+                  value={form.liveEventName}
+                  onChange={(event) => updateField("liveEventName", event.target.value)}
+                  placeholder="Optional event name for album association"
+                />
+              </Field>
+            )}
+
+            {!form.fastTrack && (
             <div className="sub-template-gallery" aria-label="Post templates">
               <div className="sub-template-head">
                 <div>
@@ -1352,11 +1535,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 ))}
               </div>
             </div>
+            )}
 
             <Field
               label="Caption"
               action={
-                canUseAiCaption ? (
+                canUseAiCaption && !form.fastTrack ? (
                   <AiCaptionButton
                     state={aiCaption.state}
                     canSuggest={aiCaption.canSuggest}
@@ -1379,7 +1563,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   {form.caption.length} / 500
                 </span>
               </div>
-              {canUseAiCaption && aiCaption.variants && (
+              {canUseAiCaption && !form.fastTrack && aiCaption.variants && (
                 <AiCaptionSuggestion
                   variants={aiCaption.variants}
                   onApply={(caption, tone, action) => {
@@ -1398,6 +1582,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               </div>
             </Field>
 
+            {!form.fastTrack && (
+            <>
             <div className="sub-field-row">
               <Field label="Event Category">
                 <BrandedSelect
@@ -1415,7 +1601,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 />
               </Field>
               <Field label="Institution Scope">
-                <input className="sub-finput" value={user.inst} readOnly />
+                <input className="sub-finput" value={selectedInstitutionName} readOnly />
               </Field>
             </div>
 
@@ -1463,6 +1649,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 placeholder="Notes for your Validator..."
               />
             </Field>
+            </>
+            )}
           </section>
 
           <section
@@ -1483,10 +1671,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               caption={form.caption}
               category={form.category}
               tags={form.tags}
-              disabled={form.status !== "draft"}
+              disabled={!isEditableSubmission}
             />
           </section>
 
+          {!form.fastTrack && (
           <section
             className={`sub-form-section sub-step-panel ${isReadOnlySubmission || activeStep === "schedule" ? "active" : ""}`}
             hidden={!isReadOnlySubmission && activeStep !== "schedule"}
@@ -1494,14 +1683,18 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             <SectionHead
               icon="ti-calendar-event"
               tone="purple"
-              title="Preferred Schedule"
-              subtitle="Choose a future date and a publish time between 8:00 AM and 8:00 PM."
+              title={form.fastTrack ? "Fast-Track Submission" : "Preferred Schedule"}
+              subtitle={
+                form.fastTrack
+                  ? "Use for live-event posts that need immediate approval and no scheduled slot."
+                  : "Choose a future date and a publish time between 8:00 AM and 8:00 PM."
+              }
             />
             <div className="sub-field-row">
               <Field label="Preferred Date">
                 <CalendarDateField
                   value={form.scheduledDate}
-                  readOnly={isReadOnlySubmission}
+                  readOnly={isReadOnlySubmission || form.fastTrack}
                   placeholder="Select preferred date"
                   minValue={dateToInputValue(new Date())}
                   onChange={(value) => updateField("scheduledDate", value)}
@@ -1510,21 +1703,28 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               <Field label="Preferred Time">
                 <TimePickerField
                   value={form.scheduledTime}
-                  readOnly={isReadOnlySubmission}
+                  readOnly={isReadOnlySubmission || form.fastTrack}
                   placeholder="Select preferred time"
                   onChange={(value) => updateField("scheduledTime", value)}
                 />
               </Field>
             </div>
-            {guardRailError && (
+            {form.fastTrack && (
+              <div className="sub-inline-note">
+                Fast-Track submissions have no scheduled slot and are sorted to the top of the approval queue.
+              </div>
+            )}
+            {!form.fastTrack && guardRailError && (
               <div className="sub-inline-error">{guardRailError}</div>
             )}
           </section>
+          )}
 
           {!isReadOnlySubmission && (
             <StepPanelActions
               activeStep={activeStep}
               isDetailsComplete={isDetailsComplete}
+              fastTrack={form.fastTrack}
               onStepChange={handleStepNav}
             />
           )}
@@ -1571,13 +1771,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
           <GuardSection title="Media Quality" icon="ti-photo">
             <CheckItem
-              pass
-              idle={!hasMedia}
+              pass={hasMedia}
               title="Media attached"
               sub={
                 hasMedia
                   ? `${form.savedAssets.length + form.files.length} file(s) attached`
-                  : "Optional for text-only posts"
+                  : "Required before approval submission"
               }
             />
             <CheckItem
@@ -1600,15 +1799,23 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
           <GuardSection title="Scheduling" icon="ti-calendar">
             <CheckItem
-              pass={Boolean(scheduledAt)}
-              title="Preferred slot selected"
+              pass={form.fastTrack || Boolean(scheduledAt)}
+              title={form.fastTrack ? "Fast-Track mode" : "Preferred slot selected"}
               sub={
-                scheduledAt
+                form.fastTrack
+                  ? "Urgent approval, no scheduled slot"
+                  : scheduledAt
                   ? formatDateTime(scheduledAt)
                   : "Select date and time"
               }
             />
-            {guardRailsLoading ? (
+            {form.fastTrack ? (
+              <CheckItem
+                pass
+                title="Slot confirmation"
+                sub="Skipped for Fast-Track"
+              />
+            ) : guardRailsLoading ? (
               <CheckItem
                 pass
                 idle
@@ -1664,7 +1871,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               disabled={busy || Boolean(hydratingId) || previewValidation.blockingErrors.length > 0}
               title={previewValidation.blockingErrors[0]}
             >
-              {submitting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-send"></i>} Submit for Review
+              {submitting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-send"></i>} Submit for Approval
             </button>
             {isDirty && (
               <button
@@ -1685,8 +1892,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       {modal === "submit" && (
         <ConfirmModal
           icon="ti-send"
-          title="Submit for Review?"
-          description={`This submission will be sent to your institution's Validator for review. Readiness score: ${readiness.score} / 100.`}
+          title="Submit for Approval?"
+          description={`This submission will be sent for administrator approval. Readiness score: ${readiness.score} / 100.`}
           cancelLabel="Go Back"
           confirmLabel={submitting ? "Submitting..." : "Confirm Submission"}
           loading={submitting}
@@ -1700,7 +1907,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           icon="ti-circle-check"
           tone="success"
           title="Submission sent!"
-          description="Your content has been submitted for validation. You will be notified when it is reviewed."
+          description="Your content has been submitted for approval. You will be notified when it is reviewed."
           confirmLabel="Done"
           onConfirm={() => setModal(null)}
         />
@@ -1717,6 +1924,33 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           disabled={busy}
           onCancel={() => setModal(null)}
           onConfirm={() => void handleDelete()}
+        />
+      )}
+      {modal === "withdraw" && (
+        <ConfirmModal
+          icon="ti-arrow-back-up"
+          title="Withdraw submission?"
+          description="This will return the pending approval submission to draft so you can edit it again."
+          cancelLabel="Cancel"
+          confirmLabel={withdrawing ? "Withdrawing..." : "Withdraw"}
+          loading={withdrawing}
+          disabled={busy}
+          onCancel={() => setModal(null)}
+          onConfirm={() => void handleWithdraw()}
+        />
+      )}
+      {modal === "fast-track-switch" && (
+        <ConfirmModal
+          icon="ti-bolt"
+          title="Switch to Fast-Track?"
+          description="This will discard the scheduled time and hide template, AI, and scheduling controls. Your caption and media will stay in the draft."
+          cancelLabel="Cancel"
+          confirmLabel="Switch Mode"
+          onCancel={() => setModal(null)}
+          onConfirm={() => {
+            applyFastTrackMode(true);
+            setModal(null);
+          }}
         />
       )}
       {modal === "draft-choice" && (
@@ -1846,7 +2080,7 @@ function InPageFacebookPreview({
               <h2 id="sub-preview-title">What followers will see</h2>
             </div>
             <p>
-              Preview the public-facing post before it moves into validator review.
+              Preview the public-facing post before it moves into approval.
             </p>
           </div>
           <FacebookPreviewCard
@@ -1878,7 +2112,7 @@ function InPageFacebookPreview({
           <i className="ti ti-shield-check" aria-hidden="true" />
           <span>
             {submitDisabledReason ||
-              "Submitting sends this post to your institution validator. Save as draft if you still want to refine it."}
+              "Submitting sends this post for approval. Save as draft if you still want to refine it."}
           </span>
         </div>
         <button
@@ -1914,7 +2148,7 @@ function InPageFacebookPreview({
               className={`ti ${isSubmitting ? "ti-loader-2 sub-spin" : "ti-send"}`}
               aria-hidden="true"
             />
-            {isSubmitting ? "Submitting..." : "Submit for Review"}
+            {isSubmitting ? "Submitting..." : "Submit for Approval"}
           </button>
         )}
       </div>
@@ -2053,13 +2287,15 @@ function StepProgress({
 function StepPanelActions({
   activeStep,
   isDetailsComplete,
+  fastTrack,
   onStepChange,
 }: {
   activeStep: ProgressStep;
   isDetailsComplete: boolean;
+  fastTrack: boolean;
   onStepChange: (step: ProgressStep) => void;
 }) {
-  const order: ProgressStep[] = ["details", "media", "schedule"];
+  const order: ProgressStep[] = fastTrack ? ["details", "media"] : ["details", "media", "schedule"];
   const index = order.indexOf(activeStep);
   const previous = index > 0 ? order[index - 1] : null;
   const next = index < order.length - 1 ? order[index + 1] : null;
@@ -2758,24 +2994,30 @@ function savedAssetToPickerItem(asset: SavedMediaAsset): SubmissionMediaItem {
 
 function toPayload(form: FormState, scheduledAt?: string): SubmissionPayload {
   return {
+    institutionId: form.institutionId || undefined,
     eventTitle: form.eventTitle.trim() || "Untitled submission",
     eventDate: form.eventDate || new Date().toISOString().slice(0, 10),
     caption: form.caption.trim(),
-    description: form.description.trim(),
+    description: form.fastTrack ? "" : form.description.trim(),
     scheduledAt,
-    category: form.category || undefined,
-    templateId: form.selectedTemplateId ?? "",
-    tags: form.tags.length > 0 ? form.tags : undefined,
+    category: form.fastTrack ? "" : form.category || undefined,
+    templateId: form.fastTrack ? "" : form.selectedTemplateId ?? "",
+    fastTrack: form.fastTrack,
+    liveEventName: form.fastTrack ? form.liveEventName.trim() : "",
+    tags: form.fastTrack ? [] : form.tags.length > 0 ? form.tags : undefined,
   };
 }
 
 function isDirtyDraft(form: FormState) {
   return Boolean(
     form.eventTitle.trim() ||
+      form.institutionId ||
       form.eventDate ||
       form.caption.trim() ||
       form.description.trim() ||
       form.category ||
+      form.fastTrack ||
+      form.liveEventName.trim() ||
       form.scheduledDate ||
       form.scheduledTime ||
       form.tags.length ||
@@ -2788,8 +3030,11 @@ function isDirtyDraft(form: FormState) {
 function getDirtySignature(form: FormState) {
   return JSON.stringify({
     eventTitle: form.eventTitle.trim(),
+    institutionId: form.institutionId,
     eventDate: form.eventDate,
     selectedTemplateId: form.selectedTemplateId,
+    fastTrack: form.fastTrack,
+    liveEventName: form.liveEventName.trim(),
     caption: form.caption.trim(),
     description: form.description.trim(),
     category: form.category,
@@ -2886,8 +3131,8 @@ function calculateReadiness(
   if (form.eventTitle.trim()) score += 20;
   if (form.eventDate) score += 20;
   if (captionTone(form.caption) === "ok") score += 25;
-  if (form.scheduledDate && form.scheduledTime) score += 20;
-  if (guardRails && !guardRails.blocked) score += 15;
+  if (form.fastTrack || (form.scheduledDate && form.scheduledTime)) score += 20;
+  if (form.fastTrack || (guardRails && !guardRails.blocked)) score += 15;
 
   return {
     score,
@@ -2924,7 +3169,8 @@ function getPreviewValidation(
   if (!form.eventTitle.trim()) missingItems.push("Add an event title.");
   if (!form.eventDate) missingItems.push("Select the event date.");
   if (!form.caption.trim()) missingItems.push("Write a caption.");
-  if (!scheduledAt) missingItems.push("Choose a preferred schedule.");
+  if (form.files.length + form.savedAssets.length < 1) missingItems.push("Attach at least one media asset.");
+  if (!form.fastTrack && !scheduledAt) missingItems.push("Choose a preferred schedule.");
   if (scheduledAt && new Date(scheduledAt) <= new Date()) {
     missingItems.push("Schedule must be set in the future.");
   }
@@ -2944,14 +3190,15 @@ function getPreviewValidation(
   if (unsupportedFile) {
     missingItems.push(`${unsupportedFile.name} uses an unsupported format.`);
   }
-  if (guardRails?.blocked) {
+  if (!form.fastTrack && guardRails?.blocked) {
     missingItems.push("Resolve the blocked publishing slot.");
   }
 
   if (!form.eventTitle.trim()) blockingErrors.push("Event title is required.");
   if (!form.eventDate) blockingErrors.push("Event date is required.");
   if (!form.caption.trim()) blockingErrors.push("Caption is required.");
-  if (!scheduledAt) blockingErrors.push("Preferred schedule is required.");
+  if (form.files.length + form.savedAssets.length < 1) blockingErrors.push("At least one media attachment is required.");
+  if (!form.fastTrack && !scheduledAt) blockingErrors.push("Preferred schedule is required.");
   if (scheduledAt && new Date(scheduledAt) <= new Date()) {
     blockingErrors.push("Preferred schedule must be set in the future.");
   }
@@ -3012,8 +3259,8 @@ function getPreviewDetails({
         }
       : {
           label: "File validation",
-          value: fileCount > 0 ? "Files look ready" : "Optional for text-only posts",
-          tone: fileCount > 0 ? ("ok" as const) : ("muted" as const),
+          value: fileCount > 0 ? "Files look ready" : "At least one media asset is required",
+          tone: fileCount > 0 ? ("ok" as const) : ("warn" as const),
         };
 
   const slotConfirmation = guardRailError
@@ -3022,6 +3269,12 @@ function getPreviewDetails({
         value: guardRailError,
         tone: "warn" as const,
       }
+    : form.fastTrack
+      ? {
+          label: "Slot confirmation",
+          value: "Skipped for Fast-Track",
+          tone: "ok" as const,
+        }
     : guardRails
       ? {
           label: "Slot confirmation",
@@ -3041,12 +3294,13 @@ function getPreviewDetails({
     readinessScore,
     completionLabel:
       missingItems.length === 0
-        ? "Ready for validator review"
+        ? "Ready for approval"
         : `${missingItems.length} item${missingItems.length === 1 ? "" : "s"} remaining`,
-    category: form.category || "Not selected",
+    category: form.fastTrack ? "Fast-Track" : form.category || "Not selected",
+    liveEventName: form.liveEventName.trim(),
     institution: institution || "Institution",
     tags: form.tags,
-    schedule: scheduledAt ? formatDateTime(scheduledAt) : "Not scheduled",
+    schedule: form.fastTrack ? "Fast-Track, no scheduled slot" : scheduledAt ? formatDateTime(scheduledAt) : "Not scheduled",
     fileCount,
     fileValidation,
     slotConfirmation,

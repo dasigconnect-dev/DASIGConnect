@@ -70,7 +70,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
             com.dasigconnect.backend.model.entity.SubmissionStatus.in_review
         )
-        ORDER BY s.scheduledAt ASC NULLS LAST
+        ORDER BY CASE WHEN s.fastTrack = true THEN 0 ELSE 1 END, s.scheduledAt ASC NULLS LAST
         """)
     List<Submission> findValidationQueueByInstitution(@Param("institutionId") UUID institutionId);
 
@@ -80,7 +80,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
             com.dasigconnect.backend.model.entity.SubmissionStatus.in_review
         )
-        ORDER BY s.scheduledAt ASC NULLS LAST
+        ORDER BY CASE WHEN s.fastTrack = true THEN 0 ELSE 1 END, s.scheduledAt ASC NULLS LAST
         """)
     List<Submission> findValidationQueue();
 
