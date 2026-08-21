@@ -20,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.context.ApplicationEventPublisher;
 
 import com.dasigconnect.backend.event.SubmissionRescheduledEvent;
+import com.dasigconnect.backend.event.SubmissionPendingMessengerEvent;
 import com.dasigconnect.backend.exception.GuardRailViolationException;
 import com.dasigconnect.backend.exception.MediaAssetNotFoundException;
 import com.dasigconnect.backend.exception.SubmissionNotFoundException;
@@ -279,6 +280,10 @@ public class SubmissionService {
                         t1Message,
                         submissionLink);
             }
+            eventPublisher.publishEvent(new SubmissionPendingMessengerEvent(
+                    submissionId,
+                    submission.getEventTitle(),
+                    validators.stream().map(User::getId).toList()));
         } catch (Exception e) {
             log.warn("T1 notifications skipped for submission {} — {}", submissionId, e.getMessage());
         }
