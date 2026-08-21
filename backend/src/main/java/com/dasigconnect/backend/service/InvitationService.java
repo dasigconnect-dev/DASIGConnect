@@ -72,15 +72,8 @@ public class InvitationService {
     }
 
     public InvitationResponseDto createInvitation(CreateInvitationRequestDto dto, JwtUserDetails inviter) {
-        if (dto.assignedRole() == UserRole.administrator) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot invite a user as administrator");
-        }
-
         String recipientEmail = dto.recipientEmail().trim().toLowerCase();
-        Institution institution = entityManager.find(Institution.class, dto.institutionId());
-        if (institution == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Institution not found");
-        }
+        Institution institution = resolveInvitationInstitution(dto);
         validateInviterScope(dto, inviter);
 
         // Enforce provisioning rules based on institution status
@@ -131,7 +124,7 @@ public class InvitationService {
                 token.getId(),
                 token.getRecipientEmail(),
                 token.getAssignedRole(),
-                institution.getId(),
+                institution != null ? institution.getId() : null,
                 token.getExpiresAt(),
                 token.getCreatedAt(),
                 emailDelivered,
@@ -149,7 +142,7 @@ public class InvitationService {
         return new InvitationValidateResponseDto(
                 token.getRecipientEmail(),
                 token.getAssignedRole(),
-                token.getInstitution().getName(),
+                token.getInstitution() != null ? token.getInstitution().getName() : null,
                 token.getExpiresAt());
     }
 
@@ -198,7 +191,7 @@ public class InvitationService {
                         "lastName", user.getLastName()));
 
         String jwt = jwtService.generateAccessToken(user);
-        UUID institutionId = user.getInstitution().getId();
+        UUID institutionId = user.getInstitution() != null ? user.getInstitution().getId() : null;
         return new LoginResponseDto(jwt, user.getRole().name(), institutionId);
     }
 
@@ -228,10 +221,36 @@ public class InvitationService {
         if (user.getAccountState() == UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "An active account already exists for this email");
         }
+        if (user.getRole() == UserRole.administrator && user.getAccountState() == UserStatus.inactive) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A deactivated Administrator must be reactivated by the Super Administrator");
+        }
+        user.setSuperAdministrator(false);
+        user.setSuperAdminTransferRequestedBy(null);
+        user.setSuperAdminTransferExpiresAt(null);
         user.setRole(role);
         user.setInstitution(institution);
         user.setAccountState(UserStatus.pending);
         return user;
+    }
+
+    private Institution resolveInvitationInstitution(CreateInvitationRequestDto dto) {
+        if (dto.assignedRole() == UserRole.administrator) {
+            if (dto.institutionId() != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Administrator invitations must not be assigned to an institution");
+            }
+            return null;
+        }
+        if (dto.institutionId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Institution is required for contributor and validator invitations");
+        }
+        Institution institution = entityManager.find(Institution.class, dto.institutionId());
+        if (institution == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Institution not found");
+        }
+        return institution;
     }
 
     private void validateInstitutionEmailDomain(String email, Institution institution) {
@@ -260,7 +279,7 @@ public class InvitationService {
 
         validateInviterScope(new CreateInvitationRequestDto(
                 original.getRecipientEmail(),
-                original.getInstitution().getId(),
+                original.getInstitution() != null ? original.getInstitution().getId() : null,
                 original.getAssignedRole()), requester);
 
         userRepository.findByEmail(original.getRecipientEmail()).ifPresent(user -> {
@@ -300,7 +319,7 @@ public class InvitationService {
                 newToken.getId(),
                 newToken.getRecipientEmail(),
                 newToken.getAssignedRole(),
-                newToken.getInstitution().getId(),
+                newToken.getInstitution() != null ? newToken.getInstitution().getId() : null,
                 newToken.getExpiresAt(),
                 newToken.getCreatedAt(),
                 emailDelivered,
@@ -312,7 +331,8 @@ public class InvitationService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invitation not found."));
 
         if (!isAdministrator(requester)) {
-            if (requester.institutionId() == null
+            if (token.getInstitution() == null
+                    || requester.institutionId() == null
                     || !token.getInstitution().getId().equals(requester.institutionId())) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "You can only cancel invitations for your own institution.");
@@ -331,7 +351,8 @@ public class InvitationService {
 
         // If the cancelled invitation was for a validator and the institution is PENDING,
         // revert to INACTIVE if no other pending validator invitations and no active validators remain.
-        if (cancelledRole == UserRole.validator
+        if (institution != null
+                && cancelledRole == UserRole.validator
                 && institution.getStatus() == InstitutionStatus.pending) {
             long pendingValidatorInvites = invitationTokenRepository
                     .countByInstitutionIdAndAssignedRoleAndUsedAtIsNullAndExpiresAtAfter(

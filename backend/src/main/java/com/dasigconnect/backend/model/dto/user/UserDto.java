@@ -13,6 +13,7 @@ public class UserDto {
     private String displayName;
     private String role;
     private String accountState;
+    private boolean superAdministrator;
     private UUID institutionId;
     private String institutionName;
     private Instant createdAt;
@@ -26,6 +27,7 @@ public class UserDto {
         dto.displayName = buildDisplayName(user);
         dto.role = user.getRole().name();
         dto.accountState = user.getAccountState().name();
+        dto.superAdministrator = user.isSuperAdministrator();
         dto.institutionId = user.getInstitution() != null ? user.getInstitution().getId() : null;
         dto.institutionName = user.getInstitution() != null ? user.getInstitution().getName() : null;
         dto.createdAt = user.getCreatedAt();
@@ -39,6 +41,7 @@ public class UserDto {
     public String getDisplayName() { return displayName; }
     public String getRole() { return role; }
     public String getAccountState() { return accountState; }
+    public boolean isSuperAdministrator() { return superAdministrator; }
     public UUID getInstitutionId() { return institutionId; }
     public String getInstitutionName() { return institutionName; }
     public Instant getCreatedAt() { return createdAt; }

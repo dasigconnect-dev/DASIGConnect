@@ -45,6 +45,15 @@ public class User {
     @Column(name = "account_state", nullable = false, length = 30)
     private UserStatus accountState = UserStatus.pending;
 
+    @Column(name = "is_super_administrator", nullable = false)
+    private boolean superAdministrator;
+
+    @Column(name = "super_admin_transfer_requested_by")
+    private UUID superAdminTransferRequestedBy;
+
+    @Column(name = "super_admin_transfer_expires_at")
+    private Instant superAdminTransferExpiresAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -128,6 +137,30 @@ public class User {
 
     public void setAccountState(UserStatus accountState) {
         this.accountState = accountState;
+    }
+
+    public boolean isSuperAdministrator() {
+        return superAdministrator;
+    }
+
+    public void setSuperAdministrator(boolean superAdministrator) {
+        this.superAdministrator = superAdministrator;
+    }
+
+    public UUID getSuperAdminTransferRequestedBy() {
+        return superAdminTransferRequestedBy;
+    }
+
+    public void setSuperAdminTransferRequestedBy(UUID superAdminTransferRequestedBy) {
+        this.superAdminTransferRequestedBy = superAdminTransferRequestedBy;
+    }
+
+    public Instant getSuperAdminTransferExpiresAt() {
+        return superAdminTransferExpiresAt;
+    }
+
+    public void setSuperAdminTransferExpiresAt(Instant superAdminTransferExpiresAt) {
+        this.superAdminTransferExpiresAt = superAdminTransferExpiresAt;
     }
 
     public Instant getCreatedAt() {

@@ -8,5 +8,5 @@ import java.util.UUID;
 
 public record CreateInvitationRequestDto(
         @NotBlank @Email String recipientEmail,
-        @NotNull UUID institutionId,
+        UUID institutionId,
         @NotNull UserRole assignedRole) {}

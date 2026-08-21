@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.service;
 
 import com.dasigconnect.backend.model.dto.user.UserDto;
+import com.dasigconnect.backend.model.dto.user.SuperAdministratorTransferResponseDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
@@ -22,6 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -30,6 +32,10 @@ class UserServiceTest {
 
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private JWTService jwtService;
+    @Mock
+    private AuditLogService auditLogService;
 
     @InjectMocks
     private UserService userService;
@@ -200,6 +206,78 @@ class UserServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void updateStatus_standardAdministratorCannotDeactivateAdministrator() {
+        User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.administrator, null);
+        User requesterAdmin = user(UUID.randomUUID(), "requester@dasigconnect.com", UserRole.administrator, null);
+        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        when(userRepository.findById(requesterAdmin.getId())).thenReturn(Optional.of(requesterAdmin));
+
+        assertThatThrownBy(() -> userService.updateStatus(targetAdmin.getId(), UserStatus.inactive,
+                principal(requesterAdmin.getId(), "administrator", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void updateStatus_superAdministratorCanDeactivateAdministratorAndRevokesSessions() {
+        User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.administrator, null);
+        User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.administrator, null);
+        superAdmin.setSuperAdministrator(true);
+        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        when(userRepository.findById(superAdmin.getId())).thenReturn(Optional.of(superAdmin));
+        when(userRepository.save(targetAdmin)).thenReturn(targetAdmin);
+
+        UserDto result = userService.updateStatus(targetAdmin.getId(), UserStatus.inactive,
+                principal(superAdmin.getId(), "administrator", null));
+
+        assertThat(result.getAccountState()).isEqualTo("inactive");
+        verify(jwtService).invalidateUserTokens(targetAdmin.getId());
+        verify(auditLogService).record(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void requestSuperAdministratorTransfer_setsPendingConfirmation() {
+        User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.administrator, null);
+        User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.administrator, null);
+        superAdmin.setSuperAdministrator(true);
+        when(userRepository.findById(superAdmin.getId())).thenReturn(Optional.of(superAdmin));
+        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        when(userRepository.save(targetAdmin)).thenReturn(targetAdmin);
+
+        SuperAdministratorTransferResponseDto result = userService.requestSuperAdministratorTransfer(
+                targetAdmin.getId(),
+                principal(superAdmin.getId(), "administrator", null));
+
+        assertThat(result.targetUserId()).isEqualTo(targetAdmin.getId());
+        assertThat(result.requestedBy()).isEqualTo(superAdmin.getId());
+        assertThat(result.status()).isEqualTo("pending_confirmation");
+        assertThat(targetAdmin.getSuperAdminTransferRequestedBy()).isEqualTo(superAdmin.getId());
+    }
+
+    @Test
+    void confirmSuperAdministratorTransfer_promotesIncomingAndDemotesOutgoing() {
+        User outgoing = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.administrator, null);
+        outgoing.setSuperAdministrator(true);
+        User incoming = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.administrator, null);
+        incoming.setSuperAdminTransferRequestedBy(outgoing.getId());
+        incoming.setSuperAdminTransferExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        when(userRepository.findById(incoming.getId())).thenReturn(Optional.of(incoming));
+        when(userRepository.findById(outgoing.getId())).thenReturn(Optional.of(outgoing));
+        when(userRepository.save(incoming)).thenReturn(incoming);
+        when(userRepository.save(outgoing)).thenReturn(outgoing);
+
+        UserDto result = userService.confirmSuperAdministratorTransfer(
+                principal(incoming.getId(), "administrator", null));
+
+        assertThat(result.isSuperAdministrator()).isTrue();
+        assertThat(outgoing.isSuperAdministrator()).isFalse();
+        assertThat(incoming.getSuperAdminTransferRequestedBy()).isNull();
+        verify(jwtService).invalidateUserTokens(outgoing.getId());
+        verify(auditLogService).record(any(), any(), any(), any(), any(), any());
     }
 
     private static JwtUserDetails principal(UUID id, String role, UUID institutionId) {
