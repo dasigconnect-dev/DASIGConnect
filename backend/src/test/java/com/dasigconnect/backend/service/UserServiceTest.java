@@ -18,6 +18,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -197,6 +198,40 @@ class UserServiceTest {
 
         assertThatThrownBy(() -> userService.updateStatus(validator.getId(), UserStatus.inactive,
                 principal(UUID.randomUUID(), "validator", institutionId)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void updateAvatar_administratorCanUploadValidPng() {
+        byte[] png = new byte[] {
+                (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00
+        };
+        MockMultipartFile file = new MockMultipartFile("file", "profile.png", "image/png", png);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        when(userRepository.save(contributor)).thenReturn(contributor);
+
+        UserDto result = userService.updateAvatar(
+                userId, file, principal(UUID.randomUUID(), "administrator", null));
+
+        assertThat(result.isHasAvatar()).isTrue();
+        assertThat(contributor.getAvatarData()).isEqualTo(png);
+        assertThat(contributor.getAvatarContentType()).isEqualTo("image/png");
+        assertThat(contributor.getAvatarUpdatedAt()).isNotNull();
+        verify(userRepository).save(contributor);
+    }
+
+    @Test
+    void updateAvatar_nonOwnerIsForbidden() {
+        byte[] png = new byte[] {
+                (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00
+        };
+        MockMultipartFile file = new MockMultipartFile("file", "profile.png", "image/png", png);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+
+        assertThatThrownBy(() -> userService.updateAvatar(
+                userId, file, principal(UUID.randomUUID(), "validator", institutionId)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);

@@ -122,9 +122,6 @@ export default function DashboardShell({
               </div>
             </div>
             <div className="dash-nav-right">
-              <div className={`role-chip ${roleChip(user).className}`} id="role-chip">
-                {roleChip(user).label}
-              </div>
               <div
                 className={`dash-avatar${showDropdown ? ' open' : ''}`}
                 id="dash-avatar"
@@ -203,7 +200,7 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
     {
       id: 'institution-management',
       icon: 'ti ti-building',
-      label: 'Institution Management',
+      label: 'Institutions',
       path: '/admin/institution-management',
       visible: user.role === 'admin',
     },
@@ -263,12 +260,6 @@ function groupDashboardNavItems(items: DashboardNavItem[]) {
       items: items.filter((item) => ['institution-management', 'user-management', 'scheduler', 'resolution', 'analytics'].includes(item.id)),
     },
   ].filter((group) => group.items.length > 0)
-}
-
-function roleChip(user: User) {
-  if (user.role === 'admin') return { className: 'chip-admin', label: 'Administrator' }
-  if (user.role === 'validator') return { className: 'chip-validator', label: 'Validator' }
-  return { className: 'chip-contributor', label: 'Contributor' }
 }
 
 function getInstitutionName(user: User) {

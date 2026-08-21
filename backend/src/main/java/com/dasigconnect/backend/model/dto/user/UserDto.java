@@ -16,6 +16,8 @@ public class UserDto {
     private UUID institutionId;
     private String institutionName;
     private Instant createdAt;
+    private boolean hasAvatar;
+    private Instant avatarUpdatedAt;
 
     public static UserDto from(User user) {
         UserDto dto = new UserDto();
@@ -29,6 +31,8 @@ public class UserDto {
         dto.institutionId = user.getInstitution() != null ? user.getInstitution().getId() : null;
         dto.institutionName = user.getInstitution() != null ? user.getInstitution().getName() : null;
         dto.createdAt = user.getCreatedAt();
+        dto.hasAvatar = user.getAvatarData() != null && user.getAvatarData().length > 0;
+        dto.avatarUpdatedAt = user.getAvatarUpdatedAt();
         return dto;
     }
 
@@ -42,6 +46,8 @@ public class UserDto {
     public UUID getInstitutionId() { return institutionId; }
     public String getInstitutionName() { return institutionName; }
     public Instant getCreatedAt() { return createdAt; }
+    public boolean isHasAvatar() { return hasAvatar; }
+    public Instant getAvatarUpdatedAt() { return avatarUpdatedAt; }
 
     private static String buildDisplayName(User user) {
         String first = user.getFirstName() != null ? user.getFirstName().trim() : "";

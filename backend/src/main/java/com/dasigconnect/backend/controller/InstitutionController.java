@@ -2,17 +2,23 @@ package com.dasigconnect.backend.controller;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.dasigconnect.backend.model.dto.institution.CreateInstitutionRequest;
 import com.dasigconnect.backend.model.dto.institution.InstitutionDto;
@@ -90,6 +96,23 @@ public class InstitutionController {
     @GetMapping
     public ResponseEntity<List<InstitutionDto>> listInstitutions() {
         return ResponseEntity.ok(institutionService.listInstitutions());
+    }
+
+    @PutMapping(value = "/{institutionId}/logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<InstitutionDto> updateLogo(
+            @PathVariable UUID institutionId,
+            @RequestParam("file") MultipartFile file) {
+        return ResponseEntity.ok(institutionService.updateLogo(institutionId, file));
+    }
+
+    @GetMapping("/{institutionId}/logo")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<byte[]> getLogo(@PathVariable UUID institutionId) {
+        InstitutionService.InstitutionLogo logo = institutionService.getLogo(institutionId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(logo.contentType()))
+                .cacheControl(CacheControl.maxAge(365, TimeUnit.DAYS).cachePublic().immutable())
+                .body(logo.data());
     }
 
     /**

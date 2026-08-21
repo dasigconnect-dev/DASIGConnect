@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import type { UserProfileResponse } from '../../../api/authApi'
 import type { User } from '../../../types/auth.types'
 import { getUserDisplayName, getUserInitials } from '../../../lib/userIdentity'
@@ -14,6 +14,15 @@ interface InstitutionUsersCardProps {
   onDeleteUser: (user: UserProfileResponse) => void
   onCancelInvitation: (user: UserProfileResponse) => void
   showRoleControls?: boolean
+  showInstitutionColumn?: boolean
+  title?: string
+  description?: string
+  headerAction?: ReactNode
+  variant?: 'default' | 'directory'
+  avatarUploadingUserId?: string | null
+  onAvatarUpload?: (user: UserProfileResponse, file: File) => void
+  showFilterPills?: boolean
+  userColumnLabel?: string
 }
 
 type RoleFilter = 'all' | 'validator' | 'contributor'
@@ -28,6 +37,15 @@ export default function InstitutionUsersCard({
   onDeleteUser,
   onCancelInvitation,
   showRoleControls = true,
+  showInstitutionColumn = true,
+  title = 'Manage Users',
+  description,
+  headerAction,
+  variant = 'default',
+  avatarUploadingUserId = null,
+  onAvatarUpload,
+  showFilterPills = true,
+  userColumnLabel = 'User',
 }: InstitutionUsersCardProps) {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
@@ -38,10 +56,10 @@ export default function InstitutionUsersCard({
     if (search && !searchValue.includes(search.toLowerCase())) {
       return false
     }
-    if (showRoleControls && roleFilter !== 'all' && user.role.toLowerCase() !== roleFilter) {
+    if (showFilterPills && showRoleControls && roleFilter !== 'all' && user.role.toLowerCase() !== roleFilter) {
       return false
     }
-    if (statusFilter !== 'all') {
+    if (showFilterPills && statusFilter !== 'all') {
       const state = user.accountState.toLowerCase()
       const matches =
         statusFilter === 'pending'
@@ -52,23 +70,30 @@ export default function InstitutionUsersCard({
     return true
   })
 
-  const hasFilters = search !== '' || (showRoleControls && roleFilter !== 'all') || statusFilter !== 'all'
+  const hasFilters = search !== '' || (showFilterPills && ((showRoleControls && roleFilter !== 'all') || statusFilter !== 'all'))
 
   return (
-    <section className={`um-data-card${loading ? ' is-busy' : ''}`} aria-busy={loading}>
+    <section
+      className={`um-data-card${variant === 'directory' ? ' is-directory' : ''}${loading ? ' is-busy' : ''}`}
+      aria-busy={loading}
+    >
       <div className="um-data-card-header">
-        <div className="um-data-card-title-group">
-          <h2 className="um-data-card-title">Manage Users</h2>
-          <span className="um-data-card-count">{users.length}</span>
-          {loading && users.length > 0 && (
-            <span className="um-refresh-pill">
-              <InlineSpinner /> Refreshing
-            </span>
-          )}
+        <div className="um-data-card-heading">
+          <div className="um-data-card-title-group">
+            <h2 className="um-data-card-title">{title}</h2>
+            <span className="um-data-card-count">{users.length}</span>
+            {loading && users.length > 0 && (
+              <span className="um-refresh-pill">
+                <InlineSpinner /> Refreshing
+              </span>
+            )}
+          </div>
+          {description && <p className="um-data-card-description">{description}</p>}
         </div>
+        {headerAction && <div className="um-data-card-action">{headerAction}</div>}
       </div>
 
-      <div className="um-filter-bar um-users-filter-bar">
+      <div className={`um-filter-bar um-users-filter-bar${showFilterPills ? '' : ' is-search-only'}`}>
         <div className="um-filter-group">
           <span className="um-filter-label">Search</span>
           <div className="um-search-wrap">
@@ -83,7 +108,7 @@ export default function InstitutionUsersCard({
             />
           </div>
         </div>
-        {showRoleControls && (
+        {showFilterPills && showRoleControls && (
           <>
             <div className="um-filter-divider" role="separator" aria-hidden="true"></div>
             <div className="um-filter-group">
@@ -96,38 +121,48 @@ export default function InstitutionUsersCard({
                     className={`um-filter-pill${roleFilter === value ? ' is-active' : ''}`}
                     onClick={() => setRoleFilter(value)}
                   >
-                    {value === 'all' ? 'All Roles' : value.charAt(0).toUpperCase() + value.slice(1)}
+                    {value === 'all'
+                      ? variant === 'directory' ? 'All' : 'All Roles'
+                      : value.charAt(0).toUpperCase() + value.slice(1)}
                   </button>
                 ))}
               </div>
             </div>
           </>
         )}
-        <div className="um-filter-divider" role="separator" aria-hidden="true"></div>
-        <div className="um-filter-group">
-          <span className="um-filter-label">Status</span>
-          <div className="um-filter-pills" role="group" aria-label="Filter by status">
-            {([
-              { value: 'all', label: 'All Status' },
-              { value: 'active', label: 'Active' },
-              { value: 'inactive', label: 'Inactive' },
-              { value: 'pending', label: 'Pending' },
-            ] as { value: StatusFilter; label: string }[]).map(({ value, label }) => (
-              <button
-                key={value}
-                type="button"
-                className={`um-filter-pill${statusFilter === value ? ' is-active' : ''}`}
-                onClick={() => setStatusFilter(value)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
+        {showFilterPills && (
+          <>
+            <div className="um-filter-divider" role="separator" aria-hidden="true"></div>
+            <div className="um-filter-group">
+              <span className="um-filter-label">Status</span>
+              <div className="um-filter-pills" role="group" aria-label="Filter by status">
+                {([
+                  { value: 'all', label: variant === 'directory' ? 'All' : 'All Status' },
+                  { value: 'active', label: 'Active' },
+                  { value: 'inactive', label: 'Inactive' },
+                  { value: 'pending', label: 'Pending' },
+                ] as { value: StatusFilter; label: string }[]).map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`um-filter-pill${statusFilter === value ? ' is-active' : ''}`}
+                    onClick={() => setStatusFilter(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {loading && users.length === 0 ? (
-        <UsersTableSkeleton />
+        <UsersTableSkeleton
+          showRoleControls={showRoleControls}
+          showInstitutionColumn={showInstitutionColumn}
+          userColumnLabel={userColumnLabel}
+        />
       ) : filtered.length === 0 ? (
         <div className="um-empty-state">
           {hasFilters ? (
@@ -154,9 +189,9 @@ export default function InstitutionUsersCard({
           <table className="um-table">
             <thead>
               <tr>
-                <th>User</th>
+                <th>{userColumnLabel}</th>
                 {showRoleControls && <th>Role</th>}
-                <th>Institution</th>
+                {showInstitutionColumn && <th>Institution</th>}
                 <th>Status</th>
                 <th>{statusFilter === 'pending' ? 'Expires' : 'Joined'}</th>
                 <th aria-label="Actions"></th>
@@ -219,11 +254,15 @@ export default function InstitutionUsersCard({
                   <tr key={managedUser.id} className={isInactive ? 'is-inactive-row' : ''}>
                     <td>
                       <div className="um-user-cell">
-                        <span className="um-user-avatar">
-                          {initials}
-                        </span>
+                        <UserAvatarEditor
+                          user={managedUser}
+                          initials={initials}
+                          uploading={avatarUploadingUserId === managedUser.id}
+                          onUpload={onAvatarUpload}
+                        />
                         <div>
                           <strong>{displayName}</strong>
+                          <span className="um-user-email">{managedUser.email}</span>
                         </div>
                       </div>
                     </td>
@@ -234,7 +273,7 @@ export default function InstitutionUsersCard({
                         </span>
                       </td>
                     )}
-                    <td>{managedUser.institutionName || '—'}</td>
+                    {showInstitutionColumn && <td>{managedUser.institutionName || '—'}</td>}
                     <td>
                       <span className={`um-badge ${stateClass(managedUser.accountState)}`}>
                         {isUpdating ? (
@@ -261,22 +300,106 @@ export default function InstitutionUsersCard({
   )
 }
 
-function UsersTableSkeleton() {
+function UserAvatarEditor({
+  user,
+  initials,
+  uploading,
+  onUpload,
+}: {
+  user: UserProfileResponse
+  initials: string
+  uploading: boolean
+  onUpload?: (user: UserProfileResponse, file: File) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const editable = Boolean(onUpload)
+  const hasImage = Boolean(user.avatarUrl)
+
+  const visual = (
+    <>
+      <span className="um-user-avatar-fallback">{initials}</span>
+      {user.avatarUrl && (
+        <img
+          key={user.avatarUrl}
+          src={user.avatarUrl}
+          alt=""
+          onError={(event) => {
+            event.currentTarget.style.display = 'none'
+          }}
+        />
+      )}
+      {editable && hasImage && (
+        <span className="um-user-avatar-hover" aria-hidden="true">
+          <i className={uploading ? 'ti ti-loader-2 um-spin' : 'ti ti-pencil'}></i>
+        </span>
+      )}
+      {editable && !hasImage && (
+        <span className="um-user-avatar-pencil" aria-hidden="true">
+          <i className={uploading ? 'ti ti-loader-2 um-spin' : 'ti ti-pencil'}></i>
+        </span>
+      )}
+    </>
+  )
+
+  return (
+    <div className={`um-user-avatar-editor${hasImage ? ' has-image' : ''}`}>
+      {editable ? (
+        <button
+          type="button"
+          className="um-user-avatar"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          aria-label={`${hasImage ? 'Replace' : 'Add'} ${getUserDisplayName(user)} profile image`}
+          title={`${hasImage ? 'Replace' : 'Add'} profile image`}
+        >
+          {visual}
+        </button>
+      ) : (
+        <span className="um-user-avatar">{visual}</span>
+      )}
+      {editable && (
+        <input
+          ref={inputRef}
+          className="um-avatar-file-input"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (file) onUpload?.(user, file)
+            event.target.value = ''
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function UsersTableSkeleton({
+  showRoleControls,
+  showInstitutionColumn,
+  userColumnLabel,
+}: {
+  showRoleControls: boolean
+  showInstitutionColumn: boolean
+  userColumnLabel: string
+}) {
+  const columns = 4 + Number(showRoleControls) + Number(showInstitutionColumn)
+
   return (
     <div className="um-table-wrap">
       <table className="um-table">
         <thead>
           <tr>
-            <th>User</th>
-            <th>Role</th>
-            <th>Institution</th>
+            <th>{userColumnLabel}</th>
+            {showRoleControls && <th>Role</th>}
+            {showInstitutionColumn && <th>Institution</th>}
             <th>Status</th>
             <th>Joined</th>
             <th aria-label="Actions"></th>
           </tr>
         </thead>
         <tbody>
-          <SkeletonRows rows={5} columns={6} />
+          <SkeletonRows rows={5} columns={columns} />
         </tbody>
       </table>
     </div>

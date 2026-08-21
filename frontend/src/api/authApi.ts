@@ -33,6 +33,9 @@ export interface UserProfileResponse {
   institutionId: string | null;
   institutionName: string | null;
   createdAt: string;
+  hasAvatar: boolean;
+  avatarUpdatedAt: string | null;
+  avatarUrl?: string | null;
 }
 
 export function login(email: string, password: string) {
@@ -85,6 +88,8 @@ export interface InstitutionResponse {
   institutionCode: string;
   status: string;
   emailDomain: string;
+  hasLogo: boolean;
+  logoUpdatedAt: string | null;
 }
 
 export function createInstitution(
@@ -107,6 +112,19 @@ export function deleteInstitution(id: string) {
   return api.delete(`/institutions/${id}`);
 }
 
+export function uploadInstitutionLogo(id: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return api.put<InstitutionResponse>(`/institutions/${id}/logo`, formData);
+}
+
+export function getInstitutionLogoUrl(id: string, logoUpdatedAt: string | null) {
+  return api.getUri({
+    url: `/institutions/${id}/logo`,
+    params: logoUpdatedAt ? { v: logoUpdatedAt } : undefined,
+  });
+}
+
 export function getUserCounts(institutionId: string) {
   return api.get<{ contributors: number; validators: number }>(
     "/users/counts",
@@ -119,6 +137,12 @@ export function getUserCounts(institutionId: string) {
 export function listUsers(institutionId: string) {
   return api.get<UserProfileResponse[]>("/users", {
     params: { institutionId },
+  }).then((response) => {
+    response.data = response.data.map((user) => ({
+      ...user,
+      avatarUrl: user.hasAvatar ? getUserAvatarUrl(user.id, user.avatarUpdatedAt) : null,
+    }));
+    return response;
   });
 }
 
@@ -128,6 +152,19 @@ export function updateUserStatus(
 ) {
   return api.patch<UserProfileResponse>(`/users/${id}/status`, {
     accountState,
+  });
+}
+
+export function uploadUserAvatar(id: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return api.put<UserProfileResponse>(`/users/${id}/avatar`, formData);
+}
+
+export function getUserAvatarUrl(id: string, avatarUpdatedAt: string | null) {
+  return api.getUri({
+    url: `/users/${id}/avatar`,
+    params: avatarUpdatedAt ? { v: avatarUpdatedAt } : undefined,
   });
 }
 

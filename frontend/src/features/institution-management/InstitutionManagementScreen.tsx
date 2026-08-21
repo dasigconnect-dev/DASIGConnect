@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -6,6 +6,8 @@ import {
   createInstitution,
   deleteInstitution,
   deleteUser,
+  getInstitutionLogoUrl,
+  getUserAvatarUrl,
   getUserCounts,
   getPendingInvitationCount,
   listInstitutions,
@@ -13,6 +15,8 @@ import {
   listPendingInvitations,
   listUsers,
   updateUserStatus,
+  uploadInstitutionLogo,
+  uploadUserAvatar,
 } from '../../api/authApi'
 import type { PendingInvitationResponse, UserProfileResponse } from '../../api/authApi'
 import type { User } from '../../types/auth.types'
@@ -31,6 +35,7 @@ interface InstitutionWithStats {
   code: string
   emailDomain: string
   status: string
+  logoUrl: string | null
   contributors: number
   validators: number
   pendingInvitations: number
@@ -61,20 +66,26 @@ interface InstitutionManagementLocationState {
   openAddInstitution?: boolean
 }
 
+type InstitutionStatusFilter = 'all' | 'active' | 'pending'
+
 export default function InstitutionManagementScreen({ user }: InstitutionManagementScreenProps) {
   const toast = useToast()
   const location = useLocation()
   const navigate = useNavigate()
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   // List view
   const [institutions, setInstitutions] = useState<InstitutionWithStats[]>([])
   const [listLoading, setListLoading] = useState(true)
   const [listError, setListError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [institutionStatusFilter, setInstitutionStatusFilter] =
+    useState<InstitutionStatusFilter>('all')
+  const [logoUploadingId, setLogoUploadingId] = useState<string | null>(null)
 
   // Detail view
   const [selectedInstitution, setSelectedInstitution] = useState<InstitutionWithStats | null>(null)
-  const [activeTab, setActiveTab] = useState<'invitations' | 'users'>('invitations')
+  const [showInviteModal, setShowInviteModal] = useState(false)
 
   // Add institution modal
   const [showAddModal, setShowAddModal] = useState(false)
@@ -98,6 +109,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const [managementLoading, setManagementLoading] = useState(false)
   const [managementError, setManagementError] = useState('')
 const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
+  const [avatarUploadingUserId, setAvatarUploadingUserId] = useState<string | null>(null)
 
   // Confirm dialog
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
@@ -123,6 +135,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
           code: item.institutionCode,
           emailDomain: item.emailDomain,
           status: item.status,
+          logoUrl: item.hasLogo ? getInstitutionLogoUrl(item.id, item.logoUpdatedAt) : null,
           contributors: 0,
           validators: 0,
           pendingInvitations: 0,
@@ -179,15 +192,28 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
   )
 
   const filteredInstitutions = useMemo(() => {
-    if (!searchQuery.trim()) return institutions
-    const q = searchQuery.toLowerCase()
-    return institutions.filter(
-      (i) =>
-        i.name.toLowerCase().includes(q) ||
-        i.code.toLowerCase().includes(q) ||
-        i.emailDomain.toLowerCase().includes(q),
-    )
-  }, [institutions, searchQuery])
+    const q = searchQuery.trim().toLowerCase()
+    return institutions.filter((institution) => {
+      if (institutionStatusFilter !== 'all' && institution.status !== institutionStatusFilter) {
+        return false
+      }
+      if (!q) return true
+      return (
+        institution.name.toLowerCase().includes(q) ||
+        institution.code.toLowerCase().includes(q) ||
+        institution.emailDomain.toLowerCase().includes(q)
+      )
+    })
+  }, [institutionStatusFilter, institutions, searchQuery])
+
+  const institutionStatusCounts = useMemo(
+    () => ({
+      all: institutions.length,
+      active: institutions.filter((institution) => institution.status === 'active').length,
+      pending: institutions.filter((institution) => institution.status === 'pending').length,
+    }),
+    [institutions],
+  )
 
   const trimmedAddName = addForm.name.trim()
   const normalizedAddDomain = normalizeDomain(addForm.domain)
@@ -214,6 +240,29 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
     }
   }, [showAddModal, addForm.loading])
 
+  useEffect(() => {
+    if (!showInviteModal || typeof document === 'undefined') return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !sending) {
+        setShowInviteModal(false)
+        setEmailChips([])
+        setEmailDraft('')
+        setInviteRole('contributor')
+        setInviteResults(null)
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [showInviteModal, sending])
+
   async function loadManagementLists(institutionId: string) {
     setManagementLoading(true)
     setManagementError('')
@@ -235,11 +284,9 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
 
   function handleSelectInstitution(inst: InstitutionWithStats) {
     setSelectedInstitution(inst)
-    setActiveTab('invitations')
     setEmailChips([])
     setEmailDraft('')
-    // Pre-select validator role for non-active institutions since contributors cannot be invited yet
-    setInviteRole(inst.status === 'active' ? null : 'validator')
+    setInviteRole('contributor')
     setInviteResults(null)
     setPendingInvitations([])
     setManagedUsers([])
@@ -278,6 +325,60 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
     }
   }
 
+  async function handleLogoUpload(inst: InstitutionWithStats, file: File) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Choose a JPEG, PNG, or WebP logo.')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Institution logo must be 2 MB or smaller.')
+      return
+    }
+
+    setLogoUploadingId(inst.id)
+    try {
+      const response = await uploadInstitutionLogo(inst.id, file)
+      const logoUrl = getInstitutionLogoUrl(inst.id, response.data.logoUpdatedAt)
+      setInstitutions((current) =>
+        current.map((item) => (item.id === inst.id ? { ...item, logoUrl } : item)),
+      )
+      toast.success(`${inst.name} logo updated.`)
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to upload the institution logo.'))
+    } finally {
+      setLogoUploadingId(null)
+    }
+  }
+
+  async function handleUserAvatarUpload(managedUser: UserProfileResponse, file: File) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Choose a JPEG, PNG, or WebP profile image.')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Profile image must be 2 MB or smaller.')
+      return
+    }
+
+    setAvatarUploadingUserId(managedUser.id)
+    try {
+      const response = await uploadUserAvatar(managedUser.id, file)
+      const avatarUrl = getUserAvatarUrl(managedUser.id, response.data.avatarUpdatedAt)
+      setManagedUsers((current) =>
+        current.map((item) =>
+          item.id === managedUser.id
+            ? { ...item, ...response.data, avatarUrl }
+            : item,
+        ),
+      )
+      toast.success(`${getUserDisplayName(managedUser)} profile image updated.`)
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to upload the profile image.'))
+    } finally {
+      setAvatarUploadingUserId(null)
+    }
+  }
+
   async function handleAddInstitution(e: FormEvent) {
     e.preventDefault()
     const name = trimmedAddName
@@ -306,6 +407,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
         code: response.data.institutionCode,
         emailDomain: response.data.emailDomain,
         status: response.data.status,
+        logoUrl: null,
         contributors: 0,
         validators: 0,
         pendingInvitations: 0,
@@ -327,6 +429,23 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
     if (addForm.loading && !options?.force) return
     setShowAddModal(false)
     setAddForm({ name: '', domain: '', loading: false, error: '' })
+  }
+
+  function handleOpenInviteModal() {
+    setEmailChips([])
+    setEmailDraft('')
+    setInviteRole('contributor')
+    setInviteResults(null)
+    setShowInviteModal(true)
+  }
+
+  function handleCloseInviteModal() {
+    if (sending) return
+    setShowInviteModal(false)
+    setEmailChips([])
+    setEmailDraft('')
+    setInviteRole('contributor')
+    setInviteResults(null)
   }
 
   async function handleSendInvitations(event: FormEvent<HTMLFormElement>) {
@@ -400,9 +519,12 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
       }
       setEmailChips([])
       setEmailDraft('')
-      setInviteRole(null)
+      setInviteRole('contributor')
       if (selectedInstitution) {
         await loadManagementLists(selectedInstitution.id)
+      }
+      if (failed.length === 0) {
+        setShowInviteModal(false)
       }
     } finally {
       setSending(false)
@@ -673,23 +795,110 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
         )
       : null
 
+  const inviteContributorModal =
+    showInviteModal && selectedInstitution && typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            className="dash-modal-backdrop im-modal-backdrop"
+            onClick={handleCloseInviteModal}
+            role="presentation"
+          >
+            <div
+              className="dash-modal-card im-invite-modal-card"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="im-invite-modal-title"
+              aria-describedby="im-invite-modal-subtitle"
+            >
+              <div className="dash-modal-header im-modal-header">
+                <div>
+                  <div id="im-invite-modal-title" className="dash-modal-title">
+                    Invite Contributor
+                  </div>
+                  <div id="im-invite-modal-subtitle" className="dash-modal-sub">
+                    Send an invitation to join {selectedInstitution.name}.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="dash-modal-close"
+                  onClick={handleCloseInviteModal}
+                  aria-label="Close invite contributor modal"
+                  disabled={sending}
+                >
+                  <i className="ti ti-x" aria-hidden="true"></i>
+                </button>
+              </div>
+
+              <InvitationComposer
+                chips={emailChips}
+                emailDraft={emailDraft}
+                role={inviteRole}
+                selectedInstitution={selectedInstitutionOption}
+                canChooseRole={false}
+                sending={sending}
+                onDraftChange={setEmailDraft}
+                onAddChip={(email) => {
+                  if (!emailChips.includes(email.toLowerCase())) {
+                    setEmailChips((prev) => [...prev, email.toLowerCase()])
+                  }
+                }}
+                onRemoveChip={(index) =>
+                  setEmailChips((prev) => prev.filter((_, i) => i !== index))
+                }
+                onRoleChange={setInviteRole}
+                onSubmit={(event) => void handleSendInvitations(event)}
+              />
+
+              {inviteResults && (
+                <DeliveryIssuesAlert
+                  results={inviteResults}
+                  onResubmitFailed={handleResubmitFailed}
+                />
+              )}
+            </div>
+          </div>,
+          document.body,
+        )
+      : null
+
   if (selectedInstitution) {
     return (
       <div className="um-screen">
-        <main className="um-body">
-          <nav className="im-breadcrumb" aria-label="Breadcrumb">
-            <button type="button" onClick={handleBackToList}>
-              <i className="ti ti-building" aria-hidden="true"></i>
-              Institution Management
+        <main className="um-body" key={selectedInstitution.id}>
+          <div className="im-detail-topbar">
+            <nav className="im-breadcrumb" aria-label="Breadcrumb">
+              <button type="button" onClick={handleBackToList}>
+                <i className="ti ti-building" aria-hidden="true"></i>
+                Institution Management
+              </button>
+              <i className="ti ti-chevron-right" aria-hidden="true"></i>
+              <span>{selectedInstitution.name}</span>
+            </nav>
+            <button
+              type="button"
+              className="im-delete-inst-btn"
+              onClick={() => handleDeleteInstitution(selectedInstitution)}
+              aria-label={`Delete ${selectedInstitution.name}`}
+            >
+              <i className="ti ti-trash" aria-hidden="true" />
+              Delete
             </button>
-            <i className="ti ti-chevron-right" aria-hidden="true"></i>
-            <span>{selectedInstitution.name}</span>
-          </nav>
+          </div>
 
-          <div className="im-detail-header">
-            <div className="im-detail-icon">
-              <i className="ti ti-building-community" aria-hidden="true"></i>
-            </div>
+          <div className={`im-detail-header${selectedInstitution.logoUrl ? ' has-logo' : ''}`}>
+            {selectedInstitution.logoUrl && (
+              <div className="im-detail-logo-watermark" aria-hidden="true">
+                <img
+                  src={selectedInstitution.logoUrl}
+                  alt=""
+                  onError={(event) => {
+                    event.currentTarget.parentElement?.classList.add('is-unavailable')
+                  }}
+                />
+              </div>
+            )}
             <div className="im-detail-info">
               <div className="im-detail-name-row">
                 <h1 className="im-detail-name">{selectedInstitution.name}</h1>
@@ -713,9 +922,9 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
             <div className="im-detail-stats">
               <div className="im-detail-stat">
                 <span className="im-detail-stat-val">
-                  {selectedInstitution.contributors + selectedInstitution.validators}
+                  {selectedInstitution.contributors}
                 </span>
-                <span className="im-detail-stat-lbl">Users</span>
+                <span className="im-detail-stat-lbl">Contributors</span>
               </div>
               <div className="im-detail-stat">
                 <span
@@ -725,15 +934,6 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
                 </span>
                 <span className="im-detail-stat-lbl">Pending Invites</span>
               </div>
-              <button
-                type="button"
-                className="im-delete-inst-btn"
-                onClick={() => handleDeleteInstitution(selectedInstitution)}
-                aria-label={`Delete ${selectedInstitution.name}`}
-              >
-                <i className="ti ti-trash" aria-hidden="true" />
-                Delete
-              </button>
             </div>
           </div>
 
@@ -744,151 +944,34 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
             </div>
           )}
 
-          <div className="um-tabs im-tabs-stretch" role="tablist" aria-label="Institution sections">
-            <button
-              type="button"
-              role="tab"
-              id="im-tab-invitations"
-              aria-controls="im-panel-invitations"
-              aria-selected={activeTab === 'invitations'}
-              className={`um-tab${activeTab === 'invitations' ? ' is-active' : ''}`}
-              onClick={() => setActiveTab('invitations')}
-            >
-              <i className="ti ti-send" aria-hidden="true"></i>
-              Invitations
-            </button>
-            <button
-              type="button"
-              role="tab"
-              id="im-tab-users"
-              aria-controls="im-panel-users"
-              aria-selected={activeTab === 'users'}
-              className={`um-tab${activeTab === 'users' ? ' is-active' : ''}`}
-              onClick={() => setActiveTab('users')}
-            >
-              <i className="ti ti-users" aria-hidden="true"></i>
-              Manage Users
-              {managedUsers.length > 0 && (
-                <span className="um-tab-badge is-neutral">{managedUsers.length}</span>
-              )}
-            </button>
-          </div>
-
-          {activeTab === 'invitations' && (
-            <div
-              id="im-panel-invitations"
-              role="tabpanel"
-              aria-labelledby="im-tab-invitations"
-              className="um-tab-panel"
-            >
-              {selectedInstitution?.status === 'inactive' && (
-                <div className="alert alert-info im-status-banner" role="status">
-                  <i className="ti ti-info-circle" aria-hidden="true"></i>
-                  <div>
-                    <strong>Institution is inactive.</strong> Invite a validator to activate this workspace. Contributors can only be invited once the institution is active.
-                  </div>
-                </div>
-              )}
-              {selectedInstitution?.status === 'pending' && (
-                <div className="alert alert-warn im-status-banner" role="status">
-                  <i className="ti ti-clock" aria-hidden="true"></i>
-                  <div>
-                    <strong>Awaiting validator activation.</strong> A validator invitation has been sent. Contributors can be invited once the validator activates their account.
-                  </div>
-                </div>
-              )}
-              <InvitationComposer
-                chips={emailChips}
-                emailDraft={emailDraft}
-                role={inviteRole}
-                selectedInstitution={selectedInstitutionOption}
-                canChooseRole={selectedInstitution?.status === 'active'}
-                sending={sending}
-                onDraftChange={setEmailDraft}
-                onAddChip={(email) => {
-                  if (!emailChips.includes(email.toLowerCase())) {
-                    setEmailChips((prev) => [...prev, email.toLowerCase()])
-                  }
-                }}
-                onRemoveChip={(index) =>
-                  setEmailChips((prev) => prev.filter((_, i) => i !== index))
-                }
-                onRoleChange={setInviteRole}
-                onSubmit={(event) => void handleSendInvitations(event)}
-              />
-
-              {inviteResults && (
-                <DeliveryIssuesAlert
-                  results={inviteResults}
-                  onResubmitFailed={handleResubmitFailed}
-                />
-              )}
-            </div>
-          )}
-
-          {activeTab === 'users' && (
-            <div
-              id="im-panel-users"
-              role="tabpanel"
-              aria-labelledby="im-tab-users"
-              className="um-tab-panel"
-            >
-              {!managementLoading && (
-                <div className="um-metrics-row">
-                  <MetricCard
-                    icon="ti ti-users"
-                    label="Total Users"
-                    value={managedUsers.length}
-                    loading={managementLoading && managedUsers.length === 0}
-                  />
-                  <MetricCard
-                    icon="ti ti-user-check"
-                    label="Active"
-                    value={
-                      managedUsers.filter((u) => u.accountState.toLowerCase() === 'active').length
-                    }
-                    loading={managementLoading && managedUsers.length === 0}
-                    accent="green"
-                  />
-                  <MetricCard
-                    icon="ti ti-shield-check"
-                    label="Validators"
-                    value={
-                      managedUsers.filter((u) => u.role.toLowerCase() === 'validator').length
-                    }
-                    loading={managementLoading && managedUsers.length === 0}
-                    accent="purple"
-                  />
-                  <MetricCard
-                    icon="ti ti-pencil"
-                    label="Contributors"
-                    value={
-                      managedUsers.filter((u) => u.role.toLowerCase() === 'contributor').length
-                    }
-                    loading={managementLoading && managedUsers.length === 0}
-                    accent="blue"
-                  />
-                  <MetricCard
-                    icon="ti ti-clock-pause"
-                    label="Pending Invites"
-                    value={pendingInvitations.length}
-                    loading={managementLoading && pendingInvitations.length === 0}
-                    accent={pendingInvitations.length > 0 ? 'gold' : undefined}
-                  />
-                </div>
-              )}
-
-              <InstitutionUsersCard
-                currentUser={user}
-                users={managedUsers}
-                loading={managementLoading}
-                updatingUserId={updatingUserId}
-                onToggleUserStatus={handleToggleUserStatus}
-                onDeleteUser={handleDeleteUser}
-                onCancelInvitation={handleCancelInvitationFromUsers}
-              />
-            </div>
-          )}
+          <InstitutionUsersCard
+            currentUser={user}
+            users={managedUsers.filter((managedUser) => managedUser.role.toLowerCase() === 'contributor')}
+            loading={managementLoading}
+            updatingUserId={updatingUserId}
+            onToggleUserStatus={handleToggleUserStatus}
+            onDeleteUser={handleDeleteUser}
+            onCancelInvitation={handleCancelInvitationFromUsers}
+            showRoleControls={false}
+            showInstitutionColumn={false}
+            showFilterPills={false}
+            userColumnLabel="Contributor"
+            title="Contributors"
+            description={`Contributor accounts assigned to ${selectedInstitution.name}.`}
+            variant="directory"
+            headerAction={(
+              <button
+                type="button"
+                className="im-invite-contributor-btn"
+                onClick={handleOpenInviteModal}
+              >
+                <i className="ti ti-user-plus" aria-hidden="true"></i>
+                Invite Contributor
+              </button>
+            )}
+            avatarUploadingUserId={avatarUploadingUserId}
+            onAvatarUpload={(managedUser, file) => void handleUserAvatarUpload(managedUser, file)}
+          />
 
         </main>
 
@@ -905,6 +988,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
             }}
           />
         )}
+        {inviteContributorModal}
       </div>
     )
   }
@@ -925,7 +1009,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
             onClick={() => setShowAddModal(true)}
           >
             <i className="ti ti-building-plus" aria-hidden="true"></i>
-            Add Institution
+            Add institution
           </button>
         </header>
 
@@ -937,42 +1021,55 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
         )}
 
         {!listLoading && institutions.length > 0 && (
-          <div className="im-search-bar">
-            <div className="im-search-wrap">
-              <i className="ti ti-search im-search-icon" aria-hidden="true"></i>
-              <input
-                className="im-search-input"
-                type="search"
-                placeholder="Search by name, code, or domain…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                aria-label="Search institutions"
-              />
+          <section className="im-registry-controls" aria-labelledby="institution-registry-title">
+            <div className="im-registry-toolbar">
+
+              <div className="im-registry-toolbar-row">
+                <div className="im-status-tabs" role="group" aria-label="Filter institutions by status">
+                  {(['all', 'active', 'pending'] as InstitutionStatusFilter[]).map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      className={`im-status-tab im-${status}${institutionStatusFilter === status ? ' is-active' : ''}`}
+                      onClick={() => setInstitutionStatusFilter(status)}
+                      aria-pressed={institutionStatusFilter === status}
+                    >
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                      <span className="im-status-tab-count">{institutionStatusCounts[status]}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="im-search-wrap">
+                  <i className="ti ti-search im-search-icon" aria-hidden="true"></i>
+                  <input
+                    ref={searchInputRef}
+                    className="im-search-input"
+                    type="search"
+                    placeholder="Search institutions..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    aria-label="Search institutions"
+                  />
+
+                </div>
+              </div>
             </div>
-          </div>
+          </section>
         )}
 
         {listLoading && (
-          <div className="im-card-grid">
+          <div className="im-registry" aria-label="Loading institutions" aria-busy="true">
+            <InstitutionRegistryHeader />
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="im-skeleton-card">
-                <div className="im-skeleton-card-top">
+              <div key={i} className="im-skeleton-row">
+                <div className="im-skeleton-institution">
                   <div className="im-skeleton-icon"></div>
-                  <div className="im-skeleton-info">
-                    <SkeletonBlock className="um-skeleton-line is-wide" />
-                    <div className="im-skeleton-chips">
-                      <SkeletonBlock className="um-skeleton-line is-short" />
-                      <SkeletonBlock className="um-skeleton-line is-short" />
-                    </div>
-                  </div>
+                  <SkeletonBlock className="um-skeleton-line is-wide" />
                 </div>
-                <div className="im-skeleton-stats">
-                  <SkeletonBlock className="um-skeleton-line is-medium" />
-                  <SkeletonBlock className="um-skeleton-line is-medium" />
-                </div>
-                <div className="im-skeleton-footer">
-                  <SkeletonBlock className="um-skeleton-line is-short" />
-                </div>
+                <SkeletonBlock className="um-skeleton-line is-short" />
+                <SkeletonBlock className="um-skeleton-line is-wide" />
+                <SkeletonBlock className="um-skeleton-line is-short" />
+                <SkeletonBlock className="um-skeleton-line is-short" />
               </div>
             ))}
           </div>
@@ -993,7 +1090,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
               onClick={() => setShowAddModal(true)}
             >
               <i className="ti ti-building-plus" aria-hidden="true"></i>
-              Add First Institution
+              Add first institution
             </button>
           </div>
         )}
@@ -1004,25 +1101,33 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
               <i className="ti ti-search-off" aria-hidden="true"></i>
             </div>
             <strong className="im-empty-title">No results</strong>
-            <p className="im-empty-sub">No institutions match "{searchQuery}".</p>
+            <p className="im-empty-sub">
+              No {institutionStatusFilter === 'all' ? '' : `${institutionStatusFilter} `}institutions
+              {searchQuery.trim() ? ` match "${searchQuery}"` : ' to show'}.
+            </p>
             <button
               type="button"
               className="im-clear-btn"
-              onClick={() => setSearchQuery('')}
+              onClick={() => {
+                setSearchQuery('')
+                setInstitutionStatusFilter('all')
+              }}
             >
-              Clear search
+              Clear filters
             </button>
           </div>
         )}
 
         {!listLoading && filteredInstitutions.length > 0 && (
-          <div className="im-card-grid">
+          <div className="im-registry" key={institutionStatusFilter}>
+            <InstitutionRegistryHeader />
             {filteredInstitutions.map((inst) => (
-              <InstitutionCard
+              <InstitutionRow
                 key={inst.id}
                 institution={inst}
-                onManage={() => handleSelectInstitution(inst)}
-                onDelete={() => handleDeleteInstitution(inst)}
+                onSelect={() => handleSelectInstitution(inst)}
+                onLogoUpload={(file) => void handleLogoUpload(inst, file)}
+                logoUploading={logoUploadingId === inst.id}
               />
             ))}
           </div>
@@ -1037,112 +1142,101 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-interface InstitutionCardProps {
-  institution: InstitutionWithStats
-  onManage: () => void
-  onDelete: () => void
-}
-
-function InstitutionCard({ institution, onManage, onDelete }: InstitutionCardProps) {
-  const totalUsers = institution.contributors + institution.validators
+function InstitutionRegistryHeader() {
   return (
-    <div className="im-inst-card">
-      <div className="im-inst-card-top">
-        <div className="im-inst-card-icon">
-          <i className="ti ti-building-community" aria-hidden="true"></i>
-        </div>
-        <div className="im-inst-card-info">
-          <h2 className="im-inst-card-name">{institution.name}</h2>
-          <InstitutionStatusBadge status={institution.status} />
-          <div className="im-inst-card-meta">
-            {institution.code && (
-              <span className="im-inst-card-chip">
-                <i className="ti ti-hash" aria-hidden="true"></i>
-                {institution.code}
-              </span>
-            )}
-            {institution.emailDomain && (
-              <span className="im-inst-card-chip">
-                <i className="ti ti-at" aria-hidden="true"></i>
-                {institution.emailDomain}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="im-inst-card-stats">
-        <div className="im-inst-stat">
-          <i className="ti ti-users" aria-hidden="true"></i>
-          {institution.statsLoading ? (
-            <SkeletonBlock className="um-skeleton-line is-short" />
-          ) : (
-            <span>
-              {totalUsers} user{totalUsers !== 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-        <div className="im-inst-stat">
-          <i className="ti ti-shield-check" aria-hidden="true"></i>
-          {institution.statsLoading ? (
-            <SkeletonBlock className="um-skeleton-line is-short" />
-          ) : (
-            <span>
-              {institution.validators} validator{institution.validators !== 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-        {!institution.statsLoading && institution.pendingInvitations > 0 && (
-          <div className="im-inst-stat is-warn">
-            <i className="ti ti-clock-pause" aria-hidden="true"></i>
-            <span>
-              {institution.pendingInvitations} pending invite
-              {institution.pendingInvitations !== 1 ? 's' : ''}
-            </span>
-          </div>
-        )}
-      </div>
-
-      <div className="im-inst-card-footer">
-        <button type="button" className="im-manage-btn" onClick={onManage}>
-          <i className="ti ti-settings" aria-hidden="true"></i>
-          Manage Users
-        </button>
-        <button
-          type="button"
-          className="im-delete-btn"
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          aria-label={`Delete ${institution.name}`}
-        >
-          <i className="ti ti-trash" aria-hidden="true"></i>
-        </button>
-      </div>
+    <div className="im-registry-header" aria-hidden="true">
+      <span>Institution</span>
+      <span>Code</span>
+      <span>Domain</span>
+      <span>Status</span>
+      <span>Action</span>
     </div>
   )
 }
 
-interface MetricCardProps {
-  icon: string
-  label: string
-  value: number
-  loading: boolean
-  accent?: 'blue' | 'green' | 'gold' | 'purple'
+interface InstitutionRowProps {
+  institution: InstitutionWithStats
+  onSelect: () => void
+  onLogoUpload: (file: File) => void
+  logoUploading: boolean
 }
 
-function MetricCard({ icon, label, value, loading, accent }: MetricCardProps) {
+function InstitutionRow({
+  institution,
+  onSelect,
+  onLogoUpload,
+  logoUploading,
+}: InstitutionRowProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   return (
-    <div className={`um-metric${accent ? ` accent-${accent}` : ''}`}>
-      <div className="um-metric-icon">
-        <i className={icon} aria-hidden="true"></i>
+    <div className={`im-inst-row is-${institution.status.toLowerCase()}`}>
+      <button
+        type="button"
+        className="im-inst-row-open"
+        onClick={onSelect}
+        aria-label={`Open ${institution.name} workspace`}
+      />
+
+      <div className="im-inst-cell">
+        <div className="im-inst-logo-wrap">
+          <div className={`im-inst-card-icon${institution.logoUrl ? ' has-logo' : ''}`}>
+            <span className="im-inst-logo-fallback" aria-hidden="true">
+              <i className="ti ti-building-community"></i>
+            </span>
+            {institution.logoUrl && (
+              <img
+                key={institution.logoUrl}
+                src={institution.logoUrl}
+                alt={`${institution.name} logo`}
+                onError={(event) => {
+                  event.currentTarget.style.display = 'none'
+                }}
+              />
+            )}
+          </div>
+          <button
+            type="button"
+            className={`im-logo-edit-btn${institution.logoUrl ? ' is-overlay' : ''}`}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={logoUploading}
+            aria-label={`${institution.logoUrl ? 'Replace' : 'Add'} ${institution.name} logo`}
+            title={`${institution.logoUrl ? 'Replace' : 'Add'} institution logo`}
+          >
+            <i
+              className={logoUploading ? 'ti ti-loader-2 im-spin' : 'ti ti-pencil'}
+              aria-hidden="true"
+            ></i>
+          </button>
+          <input
+            ref={fileInputRef}
+            className="im-logo-file-input"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) onLogoUpload(file)
+              event.target.value = ''
+            }}
+          />
+        </div>
+        <div className="im-inst-primary">
+          <h2 className="im-inst-card-name">{institution.name}</h2>
+          <div className="im-inst-mobile-meta">
+            <span>{institution.code || '—'}</span>
+            <span>{institution.emailDomain || '—'}</span>
+          </div>
+        </div>
       </div>
-      <div className="um-metric-body">
-        <span className="um-metric-label">{label}</span>
-        {loading ? (
-          <SkeletonBlock className="um-skeleton-number" />
-        ) : (
-          <strong className="um-metric-value">{value}</strong>
-        )}
+      <span className="im-inst-code">{institution.code || '—'}</span>
+      <span className="im-inst-domain">{institution.emailDomain || '—'}</span>
+      <div className="im-inst-status">
+        <InstitutionStatusBadge status={institution.status} />
       </div>
+      <span className="im-inst-open-cue" aria-hidden="true">
+        Open
+        <i className="ti ti-chevron-right"></i>
+      </span>
     </div>
   )
 }
