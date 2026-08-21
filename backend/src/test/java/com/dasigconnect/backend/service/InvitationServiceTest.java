@@ -67,8 +67,8 @@ class InvitationServiceTest {
         institution.setCode("citu");
         institution.setEmailDomain("example.com");
         institution.setStatus(InstitutionStatus.active); // default for most tests
-        adminPrincipal = new JwtUserDetails(UUID.randomUUID(), "admin@dasigconnect.com", "administrator", null);
-        validatorPrincipal = new JwtUserDetails(UUID.randomUUID(), "validator@example.com", "validator", institutionId);
+        adminPrincipal = new JwtUserDetails(UUID.randomUUID(), "admin@dasigconnect.com", "super_administrator", null);
+        validatorPrincipal = new JwtUserDetails(UUID.randomUUID(), "administrator@example.com", "administrator", institutionId);
     }
 
     private InvitationToken buildToken(boolean used, boolean expired) {
@@ -92,7 +92,7 @@ class InvitationServiceTest {
     @Test
     void createInvitation_withAdministratorRole_throws400() {
         CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
-                "admin@example.com", institutionId, UserRole.administrator);
+                "admin@example.com", institutionId, UserRole.super_administrator);
         assertThatThrownBy(() -> invitationService.createInvitation(dto))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
@@ -176,10 +176,10 @@ class InvitationServiceTest {
         when(emailService.buildInvitationLink(any())).thenReturn("http://localhost:5173/invite?token=token");
 
         CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
-                "validator@example.com", institutionId, UserRole.validator);
+                "validator@example.com", institutionId, UserRole.administrator);
         InvitationResponseDto result = invitationService.createInvitation(dto, adminPrincipal);
 
-        assertThat(result.assignedRole()).isEqualTo(UserRole.validator);
+        assertThat(result.assignedRole()).isEqualTo(UserRole.administrator);
         verify(institutionService).transitionToPending(institutionId);
         verify(emailService).sendInvitationEmail(eq("validator@example.com"), any());
     }
@@ -196,7 +196,7 @@ class InvitationServiceTest {
         when(emailService.buildInvitationLink(any())).thenReturn("http://localhost:5173/invite?token=token");
 
         invitationService.createInvitation(
-                new CreateInvitationRequestDto("validator2@example.com", institutionId, UserRole.validator),
+                new CreateInvitationRequestDto("validator2@example.com", institutionId, UserRole.administrator),
                 adminPrincipal);
 
         verify(institutionService, never()).transitionToPending(any());
@@ -212,12 +212,12 @@ class InvitationServiceTest {
         });
         when(emailService.buildInvitationLink(any())).thenReturn("http://localhost:5173/invite?token=token");
         CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
-                "validator@gmail.com", institutionId, UserRole.validator);
+                "validator@gmail.com", institutionId, UserRole.administrator);
 
         InvitationResponseDto result = invitationService.createInvitation(dto, adminPrincipal);
 
         assertThat(result.recipientEmail()).isEqualTo("validator@gmail.com");
-        assertThat(result.assignedRole()).isEqualTo(UserRole.validator);
+        assertThat(result.assignedRole()).isEqualTo(UserRole.administrator);
         verify(emailService).sendInvitationEmail(eq("validator@gmail.com"), any());
     }
 
@@ -358,7 +358,7 @@ class InvitationServiceTest {
     @Test
     void acceptInvitation_validatorForPendingInstitution_transitionsToActive() {
         institution.setStatus(InstitutionStatus.pending);
-        InvitationToken token = buildToken(false, false, UserRole.validator);
+        InvitationToken token = buildToken(false, false, UserRole.administrator);
         when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
         when(passwordEncoder.encode(any())).thenReturn("$hashed");
         when(userRepository.save(any())).thenAnswer(inv -> {
@@ -378,7 +378,7 @@ class InvitationServiceTest {
     @Test
     void acceptInvitation_validatorForActiveInstitution_doesNotTransitionAgain() {
         institution.setStatus(InstitutionStatus.active);
-        InvitationToken token = buildToken(false, false, UserRole.validator);
+        InvitationToken token = buildToken(false, false, UserRole.administrator);
         when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
         when(passwordEncoder.encode(any())).thenReturn("$hashed");
         when(userRepository.save(any())).thenAnswer(inv -> {
@@ -417,7 +417,7 @@ class InvitationServiceTest {
 
         InvitationResponseDto result = invitationService.resend(
                 original.getId(),
-                principal("administrator", null));
+                principal("super_administrator", null));
 
         assertThat(result.recipientEmail()).isEqualTo(original.getRecipientEmail());
         assertThat(result.emailDelivered()).isTrue();
@@ -434,7 +434,7 @@ class InvitationServiceTest {
         InvitationToken original = buildToken(true, false);
         when(invitationTokenRepository.findById(original.getId())).thenReturn(Optional.of(original));
 
-        assertThatThrownBy(() -> invitationService.resend(original.getId(), principal("administrator", null)))
+        assertThatThrownBy(() -> invitationService.resend(original.getId(), principal("super_administrator", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
                 .isEqualTo(409);
@@ -448,7 +448,7 @@ class InvitationServiceTest {
 
         List<PendingInvitationDto> result = invitationService.listPending(
                 institutionId,
-                principal("validator", institutionId));
+                principal("administrator", institutionId));
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).recipientEmail()).isEqualTo("invitee@example.com");
@@ -456,7 +456,7 @@ class InvitationServiceTest {
 
     @Test
     void countPending_validatorCannotCountOtherInstitution() {
-        assertThatThrownBy(() -> invitationService.countPending(UUID.randomUUID(), principal("validator", institutionId)))
+        assertThatThrownBy(() -> invitationService.countPending(UUID.randomUUID(), principal("administrator", institutionId)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
                 .isEqualTo(403);
@@ -467,7 +467,7 @@ class InvitationServiceTest {
         when(invitationTokenRepository.countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(eq(institutionId), any()))
                 .thenReturn(4L);
 
-        Map<String, Long> result = invitationService.countPending(institutionId, principal("administrator", null));
+        Map<String, Long> result = invitationService.countPending(institutionId, principal("super_administrator", null));
 
         assertThat(result).containsEntry("pendingInvitations", 4L);
     }

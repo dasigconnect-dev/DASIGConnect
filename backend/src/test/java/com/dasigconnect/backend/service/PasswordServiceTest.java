@@ -2,6 +2,7 @@ package com.dasigconnect.backend.service;
 
 import com.dasigconnect.backend.model.dto.password.ForgotPasswordRequestDto;
 import com.dasigconnect.backend.model.dto.password.ResetPasswordRequestDto;
+import com.dasigconnect.backend.model.dto.password.ChangePasswordRequestDto;
 import com.dasigconnect.backend.model.entity.PasswordResetToken;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
@@ -137,7 +138,22 @@ class PasswordServiceTest {
         passwordService.resetPassword(new ResetPasswordRequestDto("validtoken", "newpassword"));
 
         assertThat(user.getPasswordHash()).isEqualTo("$new_hash");
+        assertThat(user.getSessionVersion()).isEqualTo(1);
         assertThat(token.getUsedAt()).isNotNull();
         verify(auditLogService).record(eq(user), eq("PASSWORD_RESET"), any(), any(), any(), any());
+    }
+
+    @Test
+    void changePassword_validCurrentPassword_keepsExistingSessionsValid() {
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("current-password", "$old_hash")).thenReturn(true);
+        when(passwordEncoder.matches("new-password", "$old_hash")).thenReturn(false);
+        when(passwordEncoder.encode("new-password")).thenReturn("$new_hash");
+
+        passwordService.changePassword(user.getId(), new ChangePasswordRequestDto("current-password", "new-password"));
+
+        assertThat(user.getPasswordHash()).isEqualTo("$new_hash");
+        assertThat(user.getSessionVersion()).isZero();
+        verify(auditLogService).record(eq(user), eq("PASSWORD_CHANGED"), any(), any(), any(), any());
     }
 }

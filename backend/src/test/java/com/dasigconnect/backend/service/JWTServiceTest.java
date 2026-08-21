@@ -52,12 +52,12 @@ class JWTServiceTest {
     @Test
     void token_containsRequiredClaims() {
         UUID institutionId = UUID.randomUUID();
-        User user = buildUser(UserRole.validator, institutionId);
+        User user = buildUser(UserRole.administrator, institutionId);
 
         String token = jwtService.generateAccessToken(user);
         Claims claims = jwtService.extractClaims(token);
 
-        assertThat(claims.get("role", String.class)).isEqualTo("validator");
+        assertThat(claims.get("role", String.class)).isEqualTo("administrator");
         assertThat(claims.get("user_id", String.class)).isEqualTo(user.getId().toString());
         assertThat(claims.get("email", String.class)).isEqualTo("user@example.com");
         assertThat(claims.get("institution_id", String.class)).isEqualTo(institutionId.toString());
@@ -65,7 +65,7 @@ class JWTServiceTest {
 
     @Test
     void administrator_token_hasNoInstitutionId() {
-        User admin = buildUser(UserRole.administrator, null);
+        User admin = buildUser(UserRole.super_administrator, null);
         String token = jwtService.generateAccessToken(admin);
         Claims claims = jwtService.extractClaims(token);
         assertThat(claims.get("institution_id")).isNull();

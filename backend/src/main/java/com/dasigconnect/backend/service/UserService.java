@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.service;
 
 import com.dasigconnect.backend.model.dto.user.UserDto;
+import com.dasigconnect.backend.model.dto.user.UpdateAccountSettingsRequestDto;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
 import com.dasigconnect.backend.repository.AccountLockoutRepository;
@@ -61,10 +62,21 @@ public class UserService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
     }
 
+    @Transactional
+    public UserDto updateSettings(JwtUserDetails principal, UpdateAccountSettingsRequestDto request) {
+        var user = userRepository.findById(principal.userId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        String displayName = request.displayName() == null ? null : request.displayName().trim();
+        user.setDisplayName(displayName == null || displayName.isBlank() ? null : displayName);
+        user.setNotifyInApp(request.notifyInApp());
+        user.setNotifyEmail(request.notifyEmail());
+        return UserDto.from(userRepository.save(user));
+    }
+
     /**
      * Lists all users for a given institution.
-     * - ADMINISTRATOR: may query any institution
-     * - VALIDATOR: may only query their own institution
+     * - SUPER_ADMINISTRATOR: may query any institution
+     * - ADMINISTRATOR: may only query their own institution
      * - CONTRIBUTOR: access denied
      */
     public List<UserDto> listByInstitution(UUID institutionId, JwtUserDetails requester) {
@@ -143,28 +155,28 @@ public class UserService {
         validateInstitutionScope(institutionId, requester);
         return java.util.Map.of(
                 "contributors", userRepository.countByInstitutionIdAndRole(institutionId, UserRole.contributor),
-                "validators", userRepository.countByInstitutionIdAndRole(institutionId, UserRole.validator)
+                "validators", userRepository.countByInstitutionIdAndRole(institutionId, UserRole.administrator)
         );
     }
 
     private void validateInstitutionScope(UUID institutionId, JwtUserDetails requester) {
         switch (requester.role().toLowerCase()) {
-            case "administrator" -> { /* access allowed */ }
-            case "validator" -> {
+            case "super_administrator" -> { /* network-wide access allowed */ }
+            case "administrator" -> {
                 if (institutionId == null || !institutionId.equals(requester.institutionId())) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                            "Validators can only access users in their own institution.");
+                            "Administrators can only access users in their own institution.");
                 }
             }
             default -> throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only administrators and validators can access users.");
+                    "Only administrators and super administrators can access users.");
         }
     }
 
     private void validateCanManageUser(UUID institutionId, UserRole targetRole, JwtUserDetails requester) {
         validateInstitutionScope(institutionId, requester);
-        if ("validator".equalsIgnoreCase(requester.role()) && targetRole != UserRole.contributor) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Validators can only manage contributors");
+        if ("administrator".equalsIgnoreCase(requester.role()) && targetRole != UserRole.contributor) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Administrators can only manage contributors");
         }
     }
 }

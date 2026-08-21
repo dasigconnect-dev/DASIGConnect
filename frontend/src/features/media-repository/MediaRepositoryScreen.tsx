@@ -85,7 +85,7 @@ function putToSupabase(
 export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenProps) {
   const toast = useToast();
   const navigate = useNavigate();
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "super_administrator";
 
   const [networkView, setNetworkView] = useState(isAdmin);
   const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
@@ -249,7 +249,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   function canDeleteAsset(asset: MediaAsset) {
     if (isAdmin) return true;
-    if (user.role === "validator") {
+    if (user.role === "administrator") {
       return Boolean(user.institutionId && asset.institutionId === user.institutionId);
     }
     if (user.role === "contributor") {

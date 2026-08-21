@@ -112,7 +112,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
   }, [location.pathname, location.state, navigate])
 
   useEffect(() => {
-    if (user.role !== 'admin') return
+    if (user.role !== 'super_administrator') return
     setListLoading(true)
     setListError('')
     listInstitutions()
@@ -239,7 +239,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
     setEmailChips([])
     setEmailDraft('')
     // Pre-select validator role for non-active institutions since contributors cannot be invited yet
-    setInviteRole(inst.status === 'active' ? null : 'validator')
+    setInviteRole(inst.status === 'active' ? null : 'administrator')
     setInviteResults(null)
     setPendingInvitations([])
     setManagedUsers([])
@@ -352,7 +352,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
     }
     if (!inviteRole) return
 
-    if (inviteRole === 'validator') {
+    if (inviteRole === 'administrator') {
       const proceed = await confirmValidatorInvite()
       if (!proceed) return
     }
@@ -412,16 +412,16 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
   function confirmValidatorInvite(): Promise<boolean> {
     const activeValidators = managedUsers.filter(
       (u) =>
-        u.role.toLowerCase() === 'validator' && u.accountState.toLowerCase() === 'active',
+        u.role.toLowerCase() === 'administrator' && u.accountState.toLowerCase() === 'active',
     )
     if (activeValidators.length === 0) return Promise.resolve(true)
 
     const name = selectedInstitution?.name || 'this institution'
     return new Promise((resolve) => {
       setConfirmDialog({
-        title: 'Invite Additional Validator?',
-        message: `${name} already has ${activeValidators.length} active validator${activeValidators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
-        confirmLabel: 'Yes, invite validator',
+        title: 'Invite Additional Administrator?',
+        message: `${name} already has ${activeValidators.length} active administrator${activeValidators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
+        confirmLabel: 'Yes, invite administrator',
         dangerous: false,
         onConfirm: () => {
           setConfirmDialog(null)
@@ -785,7 +785,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
                 <div className="alert alert-info im-status-banner" role="status">
                   <i className="ti ti-info-circle" aria-hidden="true"></i>
                   <div>
-                    <strong>Institution is inactive.</strong> Invite a validator to activate this workspace. Contributors can only be invited once the institution is active.
+                    <strong>Institution is inactive.</strong> Invite an administrator to activate this workspace. Contributors can only be invited once the institution is active.
                   </div>
                 </div>
               )}
@@ -793,7 +793,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
                 <div className="alert alert-warn im-status-banner" role="status">
                   <i className="ti ti-clock" aria-hidden="true"></i>
                   <div>
-                    <strong>Awaiting validator activation.</strong> A validator invitation has been sent. Contributors can be invited once the validator activates their account.
+                    <strong>Awaiting administrator activation.</strong> An administrator invitation has been sent. Contributors can be invited once the administrator activates their account.
                   </div>
                 </div>
               )}
@@ -852,9 +852,9 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
                   />
                   <MetricCard
                     icon="ti ti-shield-check"
-                    label="Validators"
+                    label="Administrators"
                     value={
-                      managedUsers.filter((u) => u.role.toLowerCase() === 'validator').length
+                      managedUsers.filter((u) => u.role.toLowerCase() === 'administrator').length
                     }
                     loading={managementLoading && managedUsers.length === 0}
                     accent="purple"
@@ -1088,7 +1088,7 @@ function InstitutionCard({ institution, onManage, onDelete }: InstitutionCardPro
             <SkeletonBlock className="um-skeleton-line is-short" />
           ) : (
             <span>
-              {institution.validators} validator{institution.validators !== 1 ? 's' : ''}
+              {institution.validators} administrator{institution.validators !== 1 ? 's' : ''}
             </span>
           )}
         </div>

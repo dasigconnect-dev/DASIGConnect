@@ -16,7 +16,7 @@ interface InstitutionUsersCardProps {
   showRoleControls?: boolean
 }
 
-type RoleFilter = 'all' | 'validator' | 'contributor'
+type RoleFilter = 'all' | 'administrator' | 'contributor'
 type StatusFilter = 'all' | 'active' | 'inactive' | 'pending'
 
 export default function InstitutionUsersCard({
@@ -89,7 +89,7 @@ export default function InstitutionUsersCard({
             <div className="um-filter-group">
               <span className="um-filter-label">Role</span>
               <div className="um-filter-pills" role="group" aria-label="Filter by role">
-                {(['all', 'contributor', 'validator'] as RoleFilter[]).map((value) => (
+                {(['all', 'contributor', 'administrator'] as RoleFilter[]).map((value) => (
                   <button
                     key={value}
                     type="button"
@@ -313,6 +313,6 @@ function canToggleUserStatus(currentUser: User | null, managedUser: UserProfileR
   if (!currentUser) return false
   const state = managedUser.accountState.toLowerCase()
   if (state !== 'active' && state !== 'inactive') return false
-  if (currentUser.role === 'admin') return true
-  return currentUser.role === 'validator' && managedUser.role.toLowerCase() === 'contributor'
+  if (currentUser.role === 'super_administrator') return true
+  return currentUser.role === 'administrator' && managedUser.role.toLowerCase() === 'contributor'
 }

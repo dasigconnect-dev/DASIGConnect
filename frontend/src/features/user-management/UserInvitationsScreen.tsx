@@ -55,7 +55,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
   const [emailChips, setEmailChips] = useState<string[]>([])
   const [emailDraft, setEmailDraft] = useState('')
   const [inviteRole, setInviteRole] = useState<InviteRole>(
-    user.role === 'validator' ? 'contributor' : null,
+    user.role === 'administrator' ? 'contributor' : null,
   )
   const [inviteResults, setInviteResults] = useState<InviteResults | null>(null)
   const [sending, setSending] = useState(false)
@@ -76,7 +76,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
     () => institutions.find((inst) => inst.id === selectedInstitutionId) ?? null,
     [institutions, selectedInstitutionId],
   )
-  const isValidatorWorkspace = user.role === 'validator'
+  const isValidatorWorkspace = user.role === 'administrator'
   const visibleManagedUsers = useMemo(
     () =>
       isValidatorWorkspace
@@ -100,7 +100,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
   useEffect(() => {
     if (user.role === 'contributor') return
 
-    if (user.role === 'validator' && user.institutionId) {
+    if (user.role === 'administrator' && user.institutionId) {
       setInstitutions([
         {
           id: user.institutionId,
@@ -195,16 +195,16 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
 
     // Button is disabled when role is null, but guard here for type safety
     if (!inviteRole) return
-    if (user.role === 'validator' && inviteRole !== 'contributor') {
+    if (user.role === 'administrator' && inviteRole !== 'contributor') {
       setInviteResults({
         total: inviteEmails.length,
         success: [],
-        failed: [{ email: 'Batch', reason: 'Validators can only invite contributors.' }],
+        failed: [{ email: 'Batch', reason: 'Administrators can only invite contributors.' }],
       })
       return
     }
 
-    if (inviteRole === 'validator') {
+    if (inviteRole === 'administrator') {
       const proceed = await confirmValidatorInvite()
       if (!proceed) return
     }
@@ -252,7 +252,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
       }
       setEmailChips([])
       setEmailDraft('')
-      setInviteRole(user.role === 'validator' ? 'contributor' : null)
+      setInviteRole(user.role === 'administrator' ? 'contributor' : null)
       if (selectedInstitutionId) {
         await loadManagementLists(selectedInstitutionId)
       }
@@ -264,16 +264,16 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
   function confirmValidatorInvite(): Promise<boolean> {
     const activeValidators = managedUsers.filter(
       (u) =>
-        u.role.toLowerCase() === 'validator' && u.accountState.toLowerCase() === 'active',
+        u.role.toLowerCase() === 'administrator' && u.accountState.toLowerCase() === 'active',
     )
     if (activeValidators.length === 0) return Promise.resolve(true)
 
     const name = selectedInstitution?.name || 'this institution'
     return new Promise((resolve) => {
       setConfirmDialog({
-        title: 'Invite Additional Validator?',
-        message: `${name} already has ${activeValidators.length} active validator${activeValidators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
-        confirmLabel: 'Yes, invite validator',
+        title: 'Invite Additional Administrator?',
+        message: `${name} already has ${activeValidators.length} active administrator${activeValidators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
+        confirmLabel: 'Yes, invite administrator',
         dangerous: false,
         onConfirm: () => {
           setConfirmDialog(null)
@@ -446,7 +446,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
 
           {institutionsLoading ? (
             <SkeletonBlock className="um-skeleton-line is-wide" />
-          ) : user.role === 'validator' ? (
+          ) : user.role === 'administrator' ? (
             <span className="um-inst-name-pill">
               {selectedInstitution?.name || 'Institution'}
             </span>
@@ -528,7 +528,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
               emailDraft={emailDraft}
               role={inviteRole}
               selectedInstitution={selectedInstitution}
-              canChooseRole={user.role === 'admin'}
+              canChooseRole={user.role === 'super_administrator'}
               sending={sending}
               onDraftChange={setEmailDraft}
               onAddChip={(email) => {
@@ -589,8 +589,8 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
                 {!isValidatorWorkspace && (
                   <MetricCard
                     icon="ti ti-shield-check"
-                    label="Validators"
-                    value={managedUsers.filter((u) => u.role.toLowerCase() === 'validator').length}
+                    label="Administrators"
+                    value={managedUsers.filter((u) => u.role.toLowerCase() === 'administrator').length}
                     loading={managementLoading && managedUsers.length === 0}
                     accent="purple"
                   />

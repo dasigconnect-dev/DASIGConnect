@@ -62,7 +62,8 @@ public class BackendApplication {
     public org.flywaydb.core.Flyway flyway(
             DataSource dataSource,
             @Value("${spring.flyway.baseline-on-migrate:true}") boolean baselineOnMigrate,
-            @Value("${spring.flyway.baseline-version:0}") String baselineVersion) {
+            @Value("${spring.flyway.baseline-version:0}") String baselineVersion,
+            @Value("${spring.flyway.out-of-order:true}") boolean outOfOrder) {
         System.out.println("==================================================");
         System.out.println("INITIALIZING CUSTOM FLYWAY BEAN...");
         org.flywaydb.core.Flyway flyway = org.flywaydb.core.Flyway.configure()
@@ -70,6 +71,7 @@ public class BackendApplication {
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(baselineOnMigrate)
                 .baselineVersion(baselineVersion)
+                .outOfOrder(outOfOrder)
                 .load();
 
         flyway.repair();
@@ -137,7 +139,7 @@ public class BackendApplication {
                     admin.setEmail(adminEmail);
                     admin.setFirstName("DASIG");
                     admin.setLastName("Administrator");
-                    admin.setRole(com.dasigconnect.backend.model.entity.UserRole.administrator);
+                    admin.setRole(com.dasigconnect.backend.model.entity.UserRole.super_administrator);
                     admin.setPasswordHash(passwordEncoder.encode("admin123"));
                     admin.setAccountState(com.dasigconnect.backend.model.entity.UserStatus.active);
                     userRepository.save(admin);

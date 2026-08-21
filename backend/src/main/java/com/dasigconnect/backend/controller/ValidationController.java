@@ -57,7 +57,7 @@ public class ValidationController {
      * sorted by scheduledAt DESC. Used by the History tab in the validation UI.
      */
     @GetMapping("/queue")
-    @PreAuthorize("hasAnyRole('VALIDATOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<List<SubmissionSummaryDto>> getQueue(
             @RequestParam(defaultValue = "false") boolean history,
             @AuthenticationPrincipal JwtUserDetails caller) {
@@ -72,7 +72,7 @@ public class ValidationController {
      * Returns 409 if another validator holds an active lock.
      */
     @PostMapping("/{id}/lock")
-    @PreAuthorize("hasAnyRole('VALIDATOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<ReviewLockDto> acquireLock(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails caller) {
@@ -85,7 +85,7 @@ public class ValidationController {
      * Releases the review lock. Reverts IN_REVIEW → PENDING if no action was taken.
      */
     @DeleteMapping("/{id}/lock")
-    @PreAuthorize("hasAnyRole('VALIDATOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<Void> releaseLock(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails caller) {
@@ -98,7 +98,7 @@ public class ValidationController {
      * Approves a submission: transitions to SCHEDULED and confirms slot reservation.
      */
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAnyRole('VALIDATOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<Void> approve(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails caller) {
@@ -112,7 +112,7 @@ public class ValidationController {
      * Body: { remarks: string (10–1000 chars, BR-VAL-02) }
      */
     @PostMapping("/{id}/revise")
-    @PreAuthorize("hasAnyRole('VALIDATOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<Void> requestRevision(
             @PathVariable UUID id,
             @Valid @RequestBody RevisionRequestDto body,
@@ -127,7 +127,7 @@ public class ValidationController {
      * Body: { reasonCode: string (BR-VAL-03), notes: string? (required if OTHER) }
      */
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasAnyRole('VALIDATOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<Void> reject(
             @PathVariable UUID id,
             @Valid @RequestBody RejectionRequestDto body,
@@ -141,7 +141,7 @@ public class ValidationController {
      * Returns the validation audit log for a submission, newest first.
      */
     @GetMapping("/{id}/log")
-    @PreAuthorize("hasAnyRole('VALIDATOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<List<ValidationLogDto>> getLog(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails caller) {

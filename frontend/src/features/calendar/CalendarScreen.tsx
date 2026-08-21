@@ -229,7 +229,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
     }
   }, []);
 
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "super_administrator";
   const rangeLabel = useMemo(() => {
     if (!calendarRange) return "Calendar";
     const fmt = new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric" });

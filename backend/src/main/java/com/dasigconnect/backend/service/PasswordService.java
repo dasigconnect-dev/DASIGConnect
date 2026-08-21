@@ -2,6 +2,7 @@ package com.dasigconnect.backend.service;
 
 import com.dasigconnect.backend.model.dto.password.ForgotPasswordRequestDto;
 import com.dasigconnect.backend.model.dto.password.ResetPasswordRequestDto;
+import com.dasigconnect.backend.model.dto.password.ChangePasswordRequestDto;
 import com.dasigconnect.backend.model.entity.PasswordResetToken;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.PasswordResetTokenRepository;
@@ -11,6 +12,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -74,11 +76,26 @@ public class PasswordService {
 
         User user = resetToken.getUser();
         user.setPasswordHash(passwordEncoder.encode(dto.newPassword()));
+        user.setSessionVersion(user.getSessionVersion() + 1);
         userRepository.save(user);
 
         resetToken.setUsedAt(Instant.now());
         passwordResetTokenRepository.save(resetToken);
 
         auditLogService.record(user, "PASSWORD_RESET", null, null, user.getId(), Map.of());
+    }
+
+    public void changePassword(UUID userId, ChangePasswordRequestDto dto) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        if (!passwordEncoder.matches(dto.currentPassword(), user.getPasswordHash())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is incorrect");
+        }
+        if (passwordEncoder.matches(dto.newPassword(), user.getPasswordHash())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password must be different");
+        }
+        user.setPasswordHash(passwordEncoder.encode(dto.newPassword()));
+        userRepository.save(user);
+        auditLogService.record(user, "PASSWORD_CHANGED", null, null, user.getId(), Map.of());
     }
 }

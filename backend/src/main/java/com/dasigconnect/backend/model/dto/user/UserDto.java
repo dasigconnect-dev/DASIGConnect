@@ -16,6 +16,8 @@ public class UserDto {
     private UUID institutionId;
     private String institutionName;
     private Instant createdAt;
+    private boolean notifyInApp;
+    private boolean notifyEmail;
 
     public static UserDto from(User user) {
         UserDto dto = new UserDto();
@@ -29,6 +31,8 @@ public class UserDto {
         dto.institutionId = user.getInstitution() != null ? user.getInstitution().getId() : null;
         dto.institutionName = user.getInstitution() != null ? user.getInstitution().getName() : null;
         dto.createdAt = user.getCreatedAt();
+        dto.notifyInApp = user.isNotifyInApp();
+        dto.notifyEmail = user.isNotifyEmail();
         return dto;
     }
 
@@ -42,8 +46,13 @@ public class UserDto {
     public UUID getInstitutionId() { return institutionId; }
     public String getInstitutionName() { return institutionName; }
     public Instant getCreatedAt() { return createdAt; }
+    public boolean isNotifyInApp() { return notifyInApp; }
+    public boolean isNotifyEmail() { return notifyEmail; }
 
     private static String buildDisplayName(User user) {
+        if (user.getDisplayName() != null && !user.getDisplayName().isBlank()) {
+            return user.getDisplayName().trim();
+        }
         String first = user.getFirstName() != null ? user.getFirstName().trim() : "";
         String last = user.getLastName() != null ? user.getLastName().trim() : "";
         String fullName = (first + " " + last).trim();

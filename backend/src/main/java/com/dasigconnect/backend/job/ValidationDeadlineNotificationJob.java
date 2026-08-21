@@ -65,7 +65,7 @@ public class ValidationDeadlineNotificationJob {
 
         log.info("T8 deadline check: {} submission(s) approaching publication without validation.", urgent.size());
 
-        List<User> admins = userRepository.findByRole(UserRole.administrator);
+        List<User> admins = userRepository.findByRole(UserRole.super_administrator);
 
         for (Submission s : urgent) {
             String link = "/submissions/" + s.getId();
@@ -74,7 +74,7 @@ public class ValidationDeadlineNotificationJob {
                     + "Immediate action required.";
 
             List<User> validators = userRepository
-                    .findByInstitutionIdAndRoleOrderByCreatedAtDesc(s.getInstitution().getId(), UserRole.validator);
+                    .findByInstitutionIdAndRoleOrderByCreatedAtDesc(s.getInstitution().getId(), UserRole.administrator);
 
             for (User v : validators) {
                 if (alreadyNotified(v, link)) continue;

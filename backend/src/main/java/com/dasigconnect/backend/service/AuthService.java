@@ -42,7 +42,7 @@ public class AuthService {
     @Transactional
     public LoginResponseDto login(LoginRequestDto dto, HttpServletRequest request) {
         // Temporarily elevate scope to administrator to bypass RLS during authentication lookup
-        tenantScopeService.bindTenantScope(null, "administrator");
+        tenantScopeService.bindTenantScope(null, "super_administrator");
 
         User user = userRepository.findByEmail(dto.email())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
@@ -57,7 +57,13 @@ public class AuthService {
         }
 
         if (user.getAccountState() != UserStatus.active) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account is not active");
+            String message = switch (user.getAccountState()) {
+                case pending, pending_email_undelivered -> "Account pending activation. Check your invitation email.";
+                case expired -> "Account invitation expired. Contact an Administrator for reissue.";
+                case inactive -> "Account has been deactivated. Contact an Administrator.";
+                default -> "Account is not active";
+            };
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, message);
         }
 
         accountLockoutService.clearLockout(user);
@@ -77,6 +83,19 @@ public class AuthService {
     }
 
     public void logout(String token) {
-        jwtService.invalidateToken(token);
+        if (jwtService.validateToken(token)) {
+            jwtService.invalidateToken(token);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public LoginResponseDto refresh(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Account not found"));
+        if (user.getAccountState() != UserStatus.active) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account is not active");
+        }
+        UUID institutionId = user.getInstitution() != null ? user.getInstitution().getId() : null;
+        return new LoginResponseDto(jwtService.generateAccessToken(user), user.getRole().name(), institutionId);
     }
 }

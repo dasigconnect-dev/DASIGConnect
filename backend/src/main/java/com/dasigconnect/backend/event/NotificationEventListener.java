@@ -313,11 +313,11 @@ public class NotificationEventListener {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private List<User> validators(java.util.UUID institutionId) {
-        return userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.validator);
+        return userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.administrator);
     }
 
     private List<User> admins() {
-        return userRepository.findByRole(UserRole.administrator);
+        return userRepository.findByRole(UserRole.super_administrator);
     }
 
     private static String fmt(Instant instant) {

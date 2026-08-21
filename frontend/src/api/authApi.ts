@@ -6,6 +6,19 @@ const ADMIN_BASE_URL = BASE_URL.replace(/\/v1$/, "");
 export const api = axios.create({ baseURL: BASE_URL });
 export const adminApi = axios.create({ baseURL: ADMIN_BASE_URL });
 
+for (const client of [api, adminApi]) {
+  client.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      const url = String(error?.config?.url || "");
+      if (error?.response?.status === 401 && !url.includes("/auth/login") && !url.includes("/auth/forgot-password")) {
+        window.dispatchEvent(new CustomEvent("dasigconnect:session-expired"));
+      }
+      return Promise.reject(error);
+    },
+  );
+}
+
 export function setAuthToken(token: string | null) {
   if (token) {
     api.defaults.headers.common.Authorization = `Bearer ${token}`;
@@ -33,6 +46,8 @@ export interface UserProfileResponse {
   institutionId: string | null;
   institutionName: string | null;
   createdAt: string;
+  notifyInApp: boolean;
+  notifyEmail: boolean;
 }
 
 export function login(email: string, password: string) {
@@ -77,6 +92,34 @@ export function acceptInvitation(payload: AcceptInvitationPayload) {
 
 export function getMe() {
   return api.get<UserProfileResponse>("/me");
+}
+
+export function refreshSession() {
+  return api.post<LoginResponse>("/auth/refresh");
+}
+
+export function updateAccountSettings(data: { displayName: string; notifyInApp: boolean; notifyEmail: boolean }) {
+  return api.patch<UserProfileResponse>("/me/settings", data);
+}
+
+export function changePassword(currentPassword: string, newPassword: string) {
+  return api.post("/auth/change-password", { currentPassword, newPassword });
+}
+
+export interface PageSettingsResponse {
+  institutionId: string | null;
+  watermarkEnabled: boolean;
+  watermarkText: string | null;
+  facebookPageId: string | null;
+  updatedAt: string | null;
+}
+
+export function getPageSettings(institutionId?: string | null) {
+  return api.get<PageSettingsResponse>("/settings/page", { params: institutionId ? { institutionId } : {} });
+}
+
+export function updatePageSettings(data: Omit<PageSettingsResponse, "institutionId" | "updatedAt">, institutionId?: string | null) {
+  return api.put<PageSettingsResponse>("/settings/page", data, { params: institutionId ? { institutionId } : {} });
 }
 
 export interface InstitutionResponse {
@@ -159,7 +202,7 @@ export function resendInvitation(id: string) {
 export interface InviteUserRequest {
   recipientEmail: string;
   institutionId: string;
-  assignedRole: "contributor" | "validator";
+  assignedRole: "contributor" | "administrator";
 }
 
 export function inviteUser(data: InviteUserRequest) {

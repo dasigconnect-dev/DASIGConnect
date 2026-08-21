@@ -51,6 +51,7 @@ public class JWTService {
                 .claim("user_id", user.getId().toString())
                 .claim("email", user.getEmail())
                 .claim("role", user.getRole().name())
+                .claim("session_version", user.getSessionVersion())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiresAt))
                 .signWith(signingKey, Jwts.SIG.HS256);
@@ -93,6 +94,10 @@ public class JWTService {
     public void invalidateToken(String token) {
         Claims claims = extractClaims(token);
         blacklistedTokens.put(token, claims.getExpiration().toInstant());
+    }
+
+    public Duration getAccessTokenTtl() {
+        return accessTokenTtl;
     }
 
     private boolean isBlacklisted(String token) {

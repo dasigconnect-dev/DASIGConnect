@@ -315,7 +315,7 @@ public class MediaAssetService {
     }
 
     private boolean isValidator(JwtUserDetails user) {
-        return user.role() != null && user.role().toLowerCase().contains("validator");
+        return user.role() != null && user.role().toLowerCase().contains("administrator");
     }
 
     private boolean isContributor(JwtUserDetails user) {

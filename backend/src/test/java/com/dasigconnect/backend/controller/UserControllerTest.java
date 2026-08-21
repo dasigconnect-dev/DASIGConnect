@@ -68,7 +68,7 @@ class UserControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "VALIDATOR")
+    @WithMockUser(roles = "ADMINISTRATOR")
     void listUsers_asValidator_returnsUsers() throws Exception {
         UUID institutionId = UUID.randomUUID();
         when(userService.listByInstitution(any(), any())).thenReturn(List.of(userDto(
@@ -87,7 +87,7 @@ class UserControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void userCounts_asAdministrator_returnsCounts() throws Exception {
         UUID institutionId = UUID.randomUUID();
         when(userService.countByRole(any(), any())).thenReturn(Map.of("contributors", 5L, "validators", 1L));
@@ -99,14 +99,14 @@ class UserControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void userCounts_missingInstitutionId_returns400() throws Exception {
         mockMvc.perform(get("/api/v1/users/counts"))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
-    @WithMockUser(roles = "VALIDATOR")
+    @WithMockUser(roles = "ADMINISTRATOR")
     void getUser_asValidator_returnsUser() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID institutionId = UUID.randomUUID();
@@ -120,7 +120,7 @@ class UserControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void updateStatus_asAdministrator_returnsUpdatedUser() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID institutionId = UUID.randomUUID();
@@ -138,7 +138,7 @@ class UserControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void updateStatus_missingStatus_returns400() throws Exception {
         mockMvc.perform(patch("/api/v1/users/{id}/status", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)

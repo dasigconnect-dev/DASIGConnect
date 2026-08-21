@@ -98,7 +98,7 @@ class MediaAssetServiceTest {
         MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
 
-        mediaAssetService.delete(assetId, false, user(UUID.randomUUID(), "validator", institutionId));
+        mediaAssetService.delete(assetId, false, user(UUID.randomUUID(), "super_administrator", institutionId));
 
         verify(mediaAssetRepository).save(asset);
     }

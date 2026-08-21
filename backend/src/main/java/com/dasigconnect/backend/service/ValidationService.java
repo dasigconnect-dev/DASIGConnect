@@ -70,7 +70,7 @@ public class ValidationService {
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> getQueue(JwtUserDetails caller) {
-        List<Submission> submissions = "administrator".equals(caller.role())
+        List<Submission> submissions = "super_administrator".equals(caller.role())
                 ? submissionRepository.findValidationQueue()
                 : submissionRepository.findValidationQueueByInstitution(caller.institutionId());
         return submissions.stream()
@@ -85,7 +85,7 @@ public class ValidationService {
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> getHistory(JwtUserDetails caller) {
-        List<Submission> submissions = "administrator".equals(caller.role())
+        List<Submission> submissions = "super_administrator".equals(caller.role())
                 ? submissionRepository.findValidationHistory()
                 : submissionRepository.findValidationHistoryByInstitution(caller.institutionId());
         return submissions.stream()
@@ -203,7 +203,7 @@ public class ValidationService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Submission not found."));
 
-        if (!"administrator".equals(caller.role())
+        if (!"super_administrator".equals(caller.role())
                 && !submission.getInstitution().getId().equals(caller.institutionId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found.");
         }

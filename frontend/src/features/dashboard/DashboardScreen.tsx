@@ -66,7 +66,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
   });
 
   useEffect(() => {
-    if (user?.role === "validator" && user.institutionId) {
+    if (user?.role === "administrator" && user.institutionId) {
       setInstitutions([
         {
           id: user.institutionId,
@@ -77,7 +77,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
       ]);
       return;
     }
-    if (user?.role !== "admin") return;
+    if (user?.role !== "super_administrator") return;
     listInstitutions()
       .then((response) => {
         const mapped = response.data.map((item) => ({
@@ -120,7 +120,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
     }
 
     const institutionIds =
-      user.role === "admin"
+      user.role === "super_administrator"
         ? institutions.map((institution) => institution.id)
         : user.institutionId
           ? [user.institutionId]
@@ -347,7 +347,7 @@ const DOMAIN_MAP: Record<string, string> = {
 
 function getInstitutionName(user: User | null): string {
   if (!user) return "Institution";
-  if (user.role === "admin") return "DASIG";
+  if (user.role === "super_administrator") return "DASIG";
 
   const explicitInstitution = user.inst?.trim();
   if (explicitInstitution && explicitInstitution !== user.institutionId) {
@@ -381,13 +381,13 @@ function notice(user: User | null, stats: DashboardStats) {
       html: "<strong>Welcome to DASIGConnect!</strong> Your account is now active. Explore your dashboard and start submitting content for your institution's events.",
     };
   }
-  if (user.role === "admin") {
+  if (user.role === "super_administrator") {
     return {
       icon: "ti ti-shield-check",
       html: "<strong>Administrator workspace.</strong> You have full network-wide visibility across all member institutions.",
     };
   }
-  if (user.role === "validator") {
+  if (user.role === "administrator") {
     const instName = getInstitutionName(user);
     const pending = stats.submissions.filter(
       (s) => s.status === "pending" || s.status === "in_review",
@@ -403,7 +403,7 @@ function notice(user: User | null, stats: DashboardStats) {
   const instName = getInstitutionName(user);
   return {
     icon: "ti ti-confetti",
-    html: `<strong>Welcome to DASIGConnect!</strong> Your account is active and bound to ${instName}'s workspace. Submit photos and videos from your institution's events — your Validator will review them before they go to the DASIG Facebook page.`,
+    html: `<strong>Welcome to DASIGConnect!</strong> Your account is active and bound to ${instName}'s workspace. Submit photos and videos from your institution's events — your Administrator will review them before they go to the DASIG Facebook page.`,
   };
 }
 
@@ -426,7 +426,7 @@ function statsForRole(
   const reviewCount = submissions.filter(
     (item) => item.status === "pending" || item.status === "in_review",
   ).length;
-  if (user.role === "admin") {
+  if (user.role === "super_administrator") {
     return [
       {
         icon: "ti ti-building",
@@ -461,7 +461,7 @@ function statsForRole(
       },
     ];
   }
-  if (user.role === "validator") {
+  if (user.role === "administrator") {
     return [
       {
         icon: "ti ti-file-time",
@@ -521,7 +521,7 @@ function statsForRole(
 
 function actionsForRole(user: User | null): ActionItem[] {
   if (!user) return [];
-  if (user.role === "admin") {
+  if (user.role === "super_administrator") {
     return [
       {
         icon: "ti ti-building-community",
@@ -533,7 +533,7 @@ function actionsForRole(user: User | null): ActionItem[] {
         icon: "ti ti-user-plus",
         accent: "ac-blue",
         title: "Invite Members",
-        subtitle: "Send invitations to contributors and validators",
+        subtitle: "Send invitations to contributors and administrators",
       },
       {
         icon: "ti ti-layout-grid",
@@ -543,7 +543,7 @@ function actionsForRole(user: User | null): ActionItem[] {
       },
     ];
   }
-  if (user.role === "validator") {
+  if (user.role === "administrator") {
     return [
       {
         icon: "ti ti-clipboard-check",

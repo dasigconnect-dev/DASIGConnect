@@ -37,7 +37,7 @@ export function statusLabel(status: string) {
 }
 
 export function canSeePrivateCalendarStatus(role: string, isOwnInstitution: boolean) {
-  return role === "admin" || (role === "validator" && isOwnInstitution);
+  return role === "super_administrator" || (role === "administrator" && isOwnInstitution);
 }
 
 export function visibleCalendarStatus(status: string, role: string, isOwnInstitution: boolean) {
@@ -45,7 +45,7 @@ export function visibleCalendarStatus(status: string, role: string, isOwnInstitu
   if (PRIVATE_WORKFLOW_STATUSES.has(value) && !canSeePrivateCalendarStatus(role, isOwnInstitution)) {
     return "scheduled";
   }
-  if (role !== "admin" && value === "direct_post_scheduled") {
+  if (role !== "super_administrator" && value === "direct_post_scheduled") {
     return "scheduled";
   }
   return value;

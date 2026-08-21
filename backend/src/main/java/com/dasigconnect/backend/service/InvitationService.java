@@ -72,8 +72,8 @@ public class InvitationService {
     }
 
     public InvitationResponseDto createInvitation(CreateInvitationRequestDto dto, JwtUserDetails inviter) {
-        if (dto.assignedRole() == UserRole.administrator) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot invite a user as administrator");
+        if (dto.assignedRole() == UserRole.super_administrator) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Super Administrator accounts cannot be invited through institution onboarding");
         }
 
         String recipientEmail = dto.recipientEmail().trim().toLowerCase();
@@ -88,9 +88,9 @@ public class InvitationService {
             if (institution.getStatus() != InstitutionStatus.active) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Contributors can only be invited to active institutions. "
-                        + "Invite a validator first to activate this institution.");
+                        + "Invite an administrator first to activate this institution.");
             }
-        } else if (dto.assignedRole() == UserRole.validator) {
+        } else if (dto.assignedRole() == UserRole.administrator) {
             // Transition inactive → pending when the first validator invitation is sent
             if (institution.getStatus() == InstitutionStatus.inactive) {
                 institutionService.transitionToPending(institution.getId());
@@ -178,7 +178,7 @@ public class InvitationService {
         invitationTokenRepository.save(token);
 
         // Transition institution PENDING → ACTIVE when the first validator activates
-        if (token.getAssignedRole() == UserRole.validator) {
+        if (token.getAssignedRole() == UserRole.administrator) {
             Institution institution = token.getInstitution();
             InstitutionStatus status = institution.getStatus();
             if (status == InstitutionStatus.pending || status == InstitutionStatus.inactive) {
@@ -331,14 +331,14 @@ public class InvitationService {
 
         // If the cancelled invitation was for a validator and the institution is PENDING,
         // revert to INACTIVE if no other pending validator invitations and no active validators remain.
-        if (cancelledRole == UserRole.validator
+        if (cancelledRole == UserRole.administrator
                 && institution.getStatus() == InstitutionStatus.pending) {
             long pendingValidatorInvites = invitationTokenRepository
                     .countByInstitutionIdAndAssignedRoleAndUsedAtIsNullAndExpiresAtAfter(
-                            institution.getId(), UserRole.validator, Instant.now());
+                            institution.getId(), UserRole.administrator, Instant.now());
             long activeValidators = userRepository
                     .countByInstitutionIdAndRoleAndAccountState(
-                            institution.getId(), UserRole.validator, UserStatus.active);
+                            institution.getId(), UserRole.administrator, UserStatus.active);
             if (pendingValidatorInvites == 0 && activeValidators == 0) {
                 institutionService.transitionToInactive(institution.getId());
             }
@@ -368,7 +368,7 @@ public class InvitationService {
             return;
         }
         if (!isValidator(inviter)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators and validators can send invitations");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators and super administrators can send invitations");
         }
         if (dto.assignedRole() != UserRole.contributor) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Validators can only invite contributors");
@@ -388,11 +388,11 @@ public class InvitationService {
     }
 
     private boolean isAdministrator(JwtUserDetails inviter) {
-        return inviter != null && "administrator".equalsIgnoreCase(inviter.role());
+        return inviter != null && "super_administrator".equalsIgnoreCase(inviter.role());
     }
 
     private boolean isValidator(JwtUserDetails inviter) {
-        return inviter != null && "validator".equalsIgnoreCase(inviter.role());
+        return inviter != null && "administrator".equalsIgnoreCase(inviter.role());
     }
 
     private void validateInstitutionScope(UUID institutionId, JwtUserDetails requester) {
@@ -400,7 +400,7 @@ public class InvitationService {
             return;
         }
         if (!isValidator(requester)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators and validators can view invitations");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators and super administrators can view invitations");
         }
         if (requester.institutionId() == null || !requester.institutionId().equals(institutionId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Validators can only view invitations for their own institution");

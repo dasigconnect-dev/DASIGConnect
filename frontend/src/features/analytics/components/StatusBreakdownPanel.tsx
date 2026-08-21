@@ -24,12 +24,12 @@ function getStatusNavUrl(status: string, role: string): string | null {
     return "/submissions/new?tab=submitted";
   }
 
-  if (role === "validator") {
+  if (role === "administrator") {
     if (s === "approved" || s === "published") return "/scheduler/calendar";
     return "/validation/queue";
   }
 
-  if (role === "administrator" || role === "admin") {
+  if (role === "administrator" || role === "super_administrator") {
     if (s === "approved" || s === "published") return "/scheduler/calendar";
     if (s === "publish_failed" || s === "direct_post_scheduled") return "/admin/resolution";
     return "/validation/queue";

@@ -82,13 +82,13 @@ class UserServiceTest {
     @Test
     void listByInstitution_administrator_canListAnyInstitution() {
         UUID requestedInstitutionId = UUID.randomUUID();
-        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.validator, institution);
+        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.administrator, institution);
         when(userRepository.findByInstitutionIdOrderByCreatedAtDesc(requestedInstitutionId))
                 .thenReturn(List.of(validator));
 
         List<UserDto> result = userService.listByInstitution(
                 requestedInstitutionId,
-                principal(UUID.randomUUID(), "administrator", null));
+                principal(UUID.randomUUID(), "super_administrator", null));
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getEmail()).isEqualTo("validator@cit.edu.ph");
@@ -101,7 +101,7 @@ class UserServiceTest {
 
         List<UserDto> result = userService.listByInstitution(
                 institutionId,
-                principal(UUID.randomUUID(), "validator", institutionId));
+                principal(UUID.randomUUID(), "administrator", institutionId));
 
         assertThat(result).extracting(UserDto::getEmail).containsExactly("contributor@cit.edu.ph");
     }
@@ -110,7 +110,7 @@ class UserServiceTest {
     void listByInstitution_validatorCannotListOtherInstitution() {
         assertThatThrownBy(() -> userService.listByInstitution(
                 UUID.randomUUID(),
-                principal(UUID.randomUUID(), "validator", institutionId)))
+                principal(UUID.randomUUID(), "administrator", institutionId)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -129,22 +129,22 @@ class UserServiceTest {
     @Test
     void countByRole_returnsContributorAndValidatorCounts() {
         when(userRepository.countByInstitutionIdAndRole(institutionId, UserRole.contributor)).thenReturn(12L);
-        when(userRepository.countByInstitutionIdAndRole(institutionId, UserRole.validator)).thenReturn(2L);
+        when(userRepository.countByInstitutionIdAndRole(institutionId, UserRole.administrator)).thenReturn(2L);
 
         Map<String, Long> result = userService.countByRole(
                 institutionId,
-                principal(UUID.randomUUID(), "validator", institutionId));
+                principal(UUID.randomUUID(), "administrator", institutionId));
 
         assertThat(result).containsEntry("contributors", 12L).containsEntry("validators", 2L);
         verify(userRepository).countByInstitutionIdAndRole(institutionId, UserRole.contributor);
-        verify(userRepository).countByInstitutionIdAndRole(institutionId, UserRole.validator);
+        verify(userRepository).countByInstitutionIdAndRole(institutionId, UserRole.administrator);
     }
 
     @Test
     void countByRole_validatorCannotCountOtherInstitution() {
         assertThatThrownBy(() -> userService.countByRole(
                 UUID.randomUUID(),
-                principal(UUID.randomUUID(), "validator", institutionId)))
+                principal(UUID.randomUUID(), "administrator", institutionId)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -154,7 +154,7 @@ class UserServiceTest {
     void getById_validatorCanViewOwnInstitutionUser() {
         when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
 
-        UserDto result = userService.getById(userId, principal(UUID.randomUUID(), "validator", institutionId));
+        UserDto result = userService.getById(userId, principal(UUID.randomUUID(), "administrator", institutionId));
 
         assertThat(result.getEmail()).isEqualTo("contributor@cit.edu.ph");
     }
@@ -163,7 +163,7 @@ class UserServiceTest {
     void getById_validatorCannotViewOtherInstitutionUser() {
         when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
 
-        assertThatThrownBy(() -> userService.getById(userId, principal(UUID.randomUUID(), "validator", UUID.randomUUID())))
+        assertThatThrownBy(() -> userService.getById(userId, principal(UUID.randomUUID(), "administrator", UUID.randomUUID())))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -175,7 +175,7 @@ class UserServiceTest {
         when(userRepository.save(contributor)).thenReturn(contributor);
 
         UserDto result = userService.updateStatus(userId, UserStatus.inactive,
-                principal(UUID.randomUUID(), "administrator", null));
+                principal(UUID.randomUUID(), "super_administrator", null));
 
         assertThat(result.getAccountState()).isEqualTo("inactive");
         verify(userRepository).save(contributor);
@@ -184,7 +184,7 @@ class UserServiceTest {
     @Test
     void updateStatus_rejectsPendingStatusChange() {
         assertThatThrownBy(() -> userService.updateStatus(userId, UserStatus.pending,
-                principal(UUID.randomUUID(), "administrator", null)))
+                principal(UUID.randomUUID(), "super_administrator", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST);
@@ -192,11 +192,11 @@ class UserServiceTest {
 
     @Test
     void updateStatus_validatorCannotManageValidator() {
-        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.validator, institution);
+        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.administrator, institution);
         when(userRepository.findById(validator.getId())).thenReturn(Optional.of(validator));
 
         assertThatThrownBy(() -> userService.updateStatus(validator.getId(), UserStatus.inactive,
-                principal(UUID.randomUUID(), "validator", institutionId)))
+                principal(UUID.randomUUID(), "administrator", institutionId)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
