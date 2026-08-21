@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import {
   cancelInvitation,
   createInstitution,
+  deactivateInstitution,
   deleteInstitution,
   deleteUser,
   getInstitutionLogoUrl,
@@ -14,12 +15,17 @@ import {
   inviteUser,
   listPendingInvitations,
   listUsers,
+  reactivateInstitution,
+  reassignContributor,
+  updateInstitution,
   updateUserStatus,
   uploadInstitutionLogo,
   uploadUserAvatar,
 } from '../../api/authApi'
 import type { PendingInvitationResponse, UserProfileResponse } from '../../api/authApi'
+import { getUserDisplayName } from '../../lib/userIdentity'
 import type { User } from '../../types/auth.types'
+import BrandedSelect from '../../components/ui/BrandedSelect'
 import ConfirmDialog from '../user-management/components/ConfirmDialog'
 import DeliveryIssuesAlert from '../user-management/components/DeliveryIssuesAlert'
 import InstitutionUsersCard from '../user-management/components/InstitutionUsersCard'
@@ -27,7 +33,7 @@ import InvitationComposer from '../user-management/components/InvitationComposer
 import { SkeletonBlock } from '../user-management/components/LoadingPrimitives'
 import type { InviteResults, InviteRole } from '../user-management/types'
 import { useToast } from '../../context/ToastContext'
-import { getUserDisplayName } from '../../lib/userIdentity'
+
 
 interface InstitutionWithStats {
   id: string
@@ -73,6 +79,10 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const location = useLocation()
   const navigate = useNavigate()
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const instActionsMenuRef = useRef<HTMLDivElement>(null)
+
+  // Detail view three-dots menu
+  const [showInstActionsMenu, setShowInstActionsMenu] = useState(false)
 
   // List view
   const [institutions, setInstitutions] = useState<InstitutionWithStats[]>([])
@@ -96,6 +106,18 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     error: '',
   })
 
+  // Edit institution modal (A1)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editForm, setEditForm] = useState<AddFormState>({
+    name: '',
+    domain: '',
+    loading: false,
+    error: '',
+  })
+
+  // Status action loading (A2/A3)
+  const [statusActionLoading, setStatusActionLoading] = useState(false)
+
   // Invitation state (detail view)
   const [emailChips, setEmailChips] = useState<string[]>([])
   const [emailDraft, setEmailDraft] = useState('')
@@ -108,11 +130,29 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const [managedUsers, setManagedUsers] = useState<UserProfileResponse[]>([])
   const [managementLoading, setManagementLoading] = useState(false)
   const [managementError, setManagementError] = useState('')
-const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
   const [avatarUploadingUserId, setAvatarUploadingUserId] = useState<string | null>(null)
 
   // Confirm dialog
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
+
+  // Reassign contributor modal (A4)
+  const [reassignUser, setReassignUser] = useState<UserProfileResponse | null>(null)
+  const [reassignTargetId, setReassignTargetId] = useState<string>('')
+  const [reassignLoading, setReassignLoading] = useState(false)
+  const [reassignError, setReassignError] = useState<string>('')
+
+  // Close institution actions dropdown when clicking outside
+  useEffect(() => {
+    if (!showInstActionsMenu) return
+    function handleOutsideClick(event: MouseEvent) {
+      if (instActionsMenuRef.current && !instActionsMenuRef.current.contains(event.target as Node)) {
+        setShowInstActionsMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [showInstActionsMenu])
 
   useEffect(() => {
     const state = location.state as InstitutionManagementLocationState | null
@@ -149,12 +189,12 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
                 current.map((i) =>
                   i.id === inst.id
                     ? {
-                        ...i,
-                        contributors: countsRes.data.contributors,
-                        validators: countsRes.data.validators,
-                        pendingInvitations: pendingRes.data.pendingInvitations,
-                        statsLoading: false,
-                      }
+                      ...i,
+                      contributors: countsRes.data.contributors,
+                      validators: countsRes.data.validators,
+                      pendingInvitations: pendingRes.data.pendingInvitations,
+                      statsLoading: false,
+                    }
                     : i,
                 ),
               )
@@ -181,12 +221,12 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
     () =>
       selectedInstitution
         ? {
-            id: selectedInstitution.id,
-            name: selectedInstitution.name,
-            code: selectedInstitution.code,
-            emailDomain: selectedInstitution.emailDomain,
-            status: selectedInstitution.status,
-          }
+          id: selectedInstitution.id,
+          name: selectedInstitution.name,
+          code: selectedInstitution.code,
+          emailDomain: selectedInstitution.emailDomain,
+          status: selectedInstitution.status,
+        }
         : null,
     [selectedInstitution],
   )
@@ -271,8 +311,47 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
         listUsers(institutionId),
         listPendingInvitations(institutionId),
       ])
-      setManagedUsers(usersResponse.data)
-      setPendingInvitations(pendingResponse.data)
+      const usersData = usersResponse.data
+      const pendingData = pendingResponse.data
+      setManagedUsers(usersData)
+      setPendingInvitations(pendingData)
+
+      const contributors = usersData.filter(
+        (u) => u.role.toLowerCase() === 'contributor',
+      ).length
+      const validators = usersData.filter(
+        (u) => u.role.toLowerCase() === 'validator',
+      ).length
+      const pendingCount = Math.max(
+        pendingData.length,
+        usersData.filter((u) => u.accountState.toLowerCase().startsWith('pending')).length,
+      )
+
+      setSelectedInstitution((curr) =>
+        curr && curr.id === institutionId
+          ? {
+              ...curr,
+              contributors,
+              validators,
+              pendingInvitations: pendingCount,
+              statsLoading: false,
+            }
+          : curr,
+      )
+
+      setInstitutions((curr) =>
+        curr.map((inst) =>
+          inst.id === institutionId
+            ? {
+                ...inst,
+                contributors,
+                validators,
+                pendingInvitations: pendingCount,
+                statsLoading: false,
+              }
+            : inst,
+        ),
+      )
     } catch (error: unknown) {
       setManagedUsers([])
       setPendingInvitations([])
@@ -431,6 +510,130 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
     setAddForm({ name: '', domain: '', loading: false, error: '' })
   }
 
+  // ── A1: Edit Institution ────────────────────────────────────────────────────
+
+  function handleOpenEditModal() {
+    if (!selectedInstitution) return
+    setEditForm({
+      name: selectedInstitution.name,
+      domain: selectedInstitution.emailDomain,
+      loading: false,
+      error: '',
+    })
+    setShowEditModal(true)
+  }
+
+  function handleCloseEditModal(options?: { force?: boolean }) {
+    if (editForm.loading && !options?.force) return
+    setShowEditModal(false)
+    setEditForm({ name: '', domain: '', loading: false, error: '' })
+  }
+
+  const trimmedEditName = editForm.name.trim()
+  const normalizedEditDomain = normalizeDomain(editForm.domain)
+  const editNameIsValid = trimmedEditName.length >= 2
+  const editDomainIsValid = isValidDomain(normalizedEditDomain)
+  const editFormIsValid = editNameIsValid && editDomainIsValid
+
+  async function handleEditInstitution(e: FormEvent) {
+    e.preventDefault()
+    if (!selectedInstitution) return
+    const name = trimmedEditName
+    const domain = normalizedEditDomain
+
+    if (!name || !domain) {
+      setEditForm((f) => ({ ...f, error: 'All fields are required.' }))
+      return
+    }
+    if (!editNameIsValid) {
+      setEditForm((f) => ({ ...f, error: 'Institution name must be at least 2 characters.' }))
+      return
+    }
+    if (!editDomainIsValid) {
+      setEditForm((f) => ({ ...f, error: 'Enter a valid email domain (e.g. su.edu.ph).' }))
+      return
+    }
+
+    setEditForm((f) => ({ ...f, loading: true, error: '' }))
+    try {
+      const response = await updateInstitution(selectedInstitution.id, name, domain)
+      const updated = {
+        ...selectedInstitution,
+        name: response.data.name,
+        emailDomain: response.data.emailDomain,
+        code: response.data.institutionCode,
+      }
+      setSelectedInstitution(updated)
+      setInstitutions((current) =>
+        current.map((i) => (i.id === selectedInstitution.id ? updated : i)),
+      )
+      toast.success(`${updated.name} has been updated.`)
+      handleCloseEditModal({ force: true })
+    } catch (err: unknown) {
+      const message = getApiErrorMessage(err, 'Failed to update institution.')
+      setEditForm((f) => ({ ...f, error: message }))
+      toast.error(message)
+    } finally {
+      setEditForm((f) => ({ ...f, loading: false }))
+    }
+  }
+
+  // ── A2: Deactivate Institution ──────────────────────────────────────────────
+
+  function handleDeactivateInstitution(institution: InstitutionWithStats) {
+    setConfirmDialog({
+      title: 'Deactivate Institution',
+      message: `Deactivating "${institution.name}" will prevent new contributor invitations and flag existing contributor accounts for review. Historical submissions and media are retained for audit purposes.`,
+      confirmLabel: 'Deactivate',
+      dangerous: true,
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        setStatusActionLoading(true)
+        try {
+          const response = await deactivateInstitution(institution.id)
+          const updated = { ...institution, status: response.data.status }
+          setSelectedInstitution(updated)
+          setInstitutions((current) =>
+            current.map((i) => (i.id === institution.id ? updated : i)),
+          )
+          toast.success(`${institution.name} has been deactivated.`)
+        } catch (err: unknown) {
+          toast.error(getApiErrorMessage(err, 'Failed to deactivate institution.'))
+        } finally {
+          setStatusActionLoading(false)
+        }
+      },
+    })
+  }
+
+  // ── A3: Reactivate Institution ──────────────────────────────────────────────
+
+  function handleReactivateInstitution(institution: InstitutionWithStats) {
+    setConfirmDialog({
+      title: 'Reactivate Institution',
+      message: `Reactivate "${institution.name}" and restore its ability to receive new contributor invitations?`,
+      confirmLabel: 'Reactivate',
+      dangerous: false,
+      onConfirm: async () => {
+        setConfirmDialog(null)
+        setStatusActionLoading(true)
+        try {
+          const response = await reactivateInstitution(institution.id)
+          const updated = { ...institution, status: response.data.status }
+          setSelectedInstitution(updated)
+          setInstitutions((current) =>
+            current.map((i) => (i.id === institution.id ? updated : i)),
+          )
+          toast.success(`${institution.name} has been reactivated.`)
+        } catch (err: unknown) {
+          toast.error(getApiErrorMessage(err, 'Failed to reactivate institution.'))
+        } finally {
+          setStatusActionLoading(false)
+        }
+      },
+    })
+  }
+
   function handleOpenInviteModal() {
     setEmailChips([])
     setEmailDraft('')
@@ -581,6 +784,9 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
       setManagedUsers((current) =>
         current.map((item) => (item.id === managedUser.id ? response.data : item)),
       )
+      if (selectedInstitution) {
+        await loadManagementLists(selectedInstitution.id)
+      }
       toast.success(nextState === 'inactive' ? 'Account deactivated.' : 'Account reactivated.')
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to update account status.'))
@@ -607,6 +813,9 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
     try {
       await deleteUser(managedUser.id)
       setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
+      if (selectedInstitution) {
+        await loadManagementLists(selectedInstitution.id)
+      }
       toast.success('User removed.')
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to remove user.'))
@@ -636,6 +845,8 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
       )
       if (match) {
         await cancelInvitation(match.id)
+      } else {
+        await deleteUser(managedUser.id)
       }
       setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
       if (selectedInstitution) {
@@ -657,210 +868,373 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
     setInviteResults(null)
   }
 
+  // ── A4: Reassign contributor ──────────────────────────────────────────────────
+
+  function handleOpenReassign(managedUser: UserProfileResponse) {
+    setReassignUser(managedUser)
+    setReassignTargetId('')
+    setReassignError('')
+  }
+
+  function handleCloseReassign() {
+    if (reassignLoading) return
+    setReassignUser(null)
+    setReassignTargetId('')
+    setReassignError('')
+  }
+
+  async function handleConfirmReassign() {
+    if (!reassignUser || !reassignTargetId) return
+    setReassignLoading(true)
+    setReassignError('')
+    try {
+      await reassignContributor(reassignUser.id, reassignTargetId)
+      const targetInst = institutions.find((i) => i.id === reassignTargetId)
+      const displayName = getUserDisplayName(reassignUser)
+      toast.success(
+        `${displayName} has been reassigned to ${targetInst?.name ?? 'the selected institution'}.`,
+      )
+      // Remove contributor from the current institution's managed list
+      setManagedUsers((current) => current.filter((u) => u.id !== reassignUser.id))
+      // Update contributor count on the current institution
+      if (selectedInstitution) {
+        await loadManagementLists(selectedInstitution.id)
+      }
+      handleCloseReassign()
+    } catch (err: unknown) {
+      setReassignError(getApiErrorMessage(err, 'Unable to reassign contributor.'))
+    } finally {
+      setReassignLoading(false)
+    }
+  }
+
   // ── Detail view ──────────────────────────────────────────────────────────────
 
   const addInstitutionModal =
     showAddModal && typeof document !== 'undefined'
       ? createPortal(
+        <div
+          className="dash-modal-backdrop im-modal-backdrop"
+          onClick={() => handleCloseAddModal()}
+          role="presentation"
+        >
           <div
-            className="dash-modal-backdrop im-modal-backdrop"
-            onClick={() => handleCloseAddModal()}
-            role="presentation"
+            className="dash-modal-card im-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="im-modal-title"
+            aria-describedby="im-modal-subtitle"
           >
-            <div
-              className="dash-modal-card im-modal-card"
-              onClick={(e) => e.stopPropagation()}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="im-modal-title"
-              aria-describedby="im-modal-subtitle"
-            >
-              <div className="dash-modal-header im-modal-header">
-                <div>
-                  <div id="im-modal-title" className="dash-modal-title">
-                    Add Institution
-                  </div>
-                  <div id="im-modal-subtitle" className="dash-modal-sub">
-                    Provision a new HEI workspace and bind its email domain.
-                  </div>
+            <div className="dash-modal-header im-modal-header">
+              <div>
+                <div id="im-modal-title" className="dash-modal-title">
+                  Add Institution
                 </div>
-                <button
-                  type="button"
-                  className="dash-modal-close"
-                  onClick={() => handleCloseAddModal()}
-                  aria-label="Close"
-                  disabled={addForm.loading}
-                >
-                  <i className="ti ti-x" aria-hidden="true"></i>
-                </button>
+                <div id="im-modal-subtitle" className="dash-modal-sub">
+                  Provision a new HEI workspace and bind its email domain.
+                </div>
               </div>
+              <button
+                type="button"
+                className="dash-modal-close"
+                onClick={() => handleCloseAddModal()}
+                aria-label="Close"
+                disabled={addForm.loading}
+              >
+                <i className="ti ti-x" aria-hidden="true"></i>
+              </button>
+            </div>
 
-              <form className="im-add-form" onSubmit={(e) => void handleAddInstitution(e)}>
-                <div className="dash-field">
-                  <label className="dash-field-label" htmlFor="im-inst-name">
-                    Institution Name
-                  </label>
-                  <input
-                    id="im-inst-name"
-                    className={`dash-input${addForm.name && !addNameIsValid ? ' is-invalid' : ''}`}
-                    placeholder="Silliman University"
-                    value={addForm.name}
-                    onChange={(e) =>
-                      setAddForm((f) => ({ ...f, name: e.target.value, error: '' }))
-                    }
-                    disabled={addForm.loading}
-                    autoFocus
-                    aria-invalid={addForm.name ? !addNameIsValid : undefined}
-                  />
-                  {addForm.name && !addNameIsValid && (
-                    <div className="im-field-error" role="alert">
-                      Enter at least 2 characters.
-                    </div>
-                  )}
-                </div>
-
-                <div className="dash-field">
-                  <label className="dash-field-label" htmlFor="im-inst-domain">
-                    Associated Email Domain
-                  </label>
-                  <input
-                    id="im-inst-domain"
-                    className={`dash-input${
-                      addForm.domain && !addDomainIsValid ? ' is-invalid' : ''
-                    }`}
-                    placeholder="su.edu.ph"
-                    value={addForm.domain}
-                    onChange={(e) =>
-                      setAddForm((f) => ({ ...f, domain: e.target.value, error: '' }))
-                    }
-                    disabled={addForm.loading}
-                    aria-invalid={addForm.domain ? !addDomainIsValid : undefined}
-                  />
-                  {addForm.domain && !addDomainIsValid ? (
-                    <div className="im-field-error" role="alert">
-                      Use a valid domain, such as su.edu.ph.
-                    </div>
-                  ) : (
-                    <div className="dash-field-hint">
-                      Used to auto-route contributors and apply institution branding.
-                    </div>
-                  )}
-                </div>
-
-                <div className="dash-inline-field im-code-preview">
-                  <div>
-                    <div className="dash-inline-label">Generated Institution Code</div>
-                    <div className="dash-inline-sub">Based on name/domain.</div>
-                  </div>
-                  <div className="dash-pill">
-                    {generateInstitutionCode(trimmedAddName, normalizedAddDomain) || 'AUTO'}
-                  </div>
-                </div>
-
-                {addForm.error && (
-                  <div className="alert alert-err im-modal-alert" role="alert">
-                    <i className="ti ti-alert-circle" aria-hidden="true"></i>
-                    <div>{addForm.error}</div>
+            <form className="im-add-form" onSubmit={(e) => void handleAddInstitution(e)}>
+              <div className="dash-field">
+                <label className="dash-field-label" htmlFor="im-inst-name">
+                  Institution Name
+                </label>
+                <input
+                  id="im-inst-name"
+                  className={`dash-input${addForm.name && !addNameIsValid ? ' is-invalid' : ''}`}
+                  placeholder="Silliman University"
+                  value={addForm.name}
+                  onChange={(e) =>
+                    setAddForm((f) => ({ ...f, name: e.target.value, error: '' }))
+                  }
+                  disabled={addForm.loading}
+                  autoFocus
+                  aria-invalid={addForm.name ? !addNameIsValid : undefined}
+                />
+                {addForm.name && !addNameIsValid && (
+                  <div className="im-field-error" role="alert">
+                    Enter at least 2 characters.
                   </div>
                 )}
+              </div>
 
-                <div className="dash-modal-actions im-modal-actions">
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    onClick={() => handleCloseAddModal()}
-                    disabled={addForm.loading}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn-primary"
-                    disabled={!addFormIsValid || addForm.loading}
-                  >
-                    {addForm.loading ? (
-                      <>
-                        <i className="ti ti-loader-2 im-spin" aria-hidden="true"></i>
-                        Adding...
-                      </>
-                    ) : (
-                      'Add Institution'
-                    )}
-                  </button>
+              <div className="dash-field">
+                <label className="dash-field-label" htmlFor="im-inst-domain">
+                  Associated Email Domain
+                </label>
+                <input
+                  id="im-inst-domain"
+                  className={`dash-input${addForm.domain && !addDomainIsValid ? ' is-invalid' : ''
+                    }`}
+                  placeholder="su.edu.ph"
+                  value={addForm.domain}
+                  onChange={(e) =>
+                    setAddForm((f) => ({ ...f, domain: e.target.value, error: '' }))
+                  }
+                  disabled={addForm.loading}
+                  aria-invalid={addForm.domain ? !addDomainIsValid : undefined}
+                />
+                {addForm.domain && !addDomainIsValid ? (
+                  <div className="im-field-error" role="alert">
+                    Use a valid domain, such as su.edu.ph.
+                  </div>
+                ) : (
+                  <div className="dash-field-hint">
+                    Used to auto-route contributors and apply institution branding.
+                  </div>
+                )}
+              </div>
+
+              <div className="dash-inline-field im-code-preview">
+                <div>
+                  <div className="dash-inline-label">Generated Institution Code</div>
+                  <div className="dash-inline-sub">Based on name/domain.</div>
                 </div>
-              </form>
+                <div className="dash-pill">
+                  {generateInstitutionCode(trimmedAddName, normalizedAddDomain) || 'AUTO'}
+                </div>
+              </div>
+
+              {addForm.error && (
+                <div className="alert alert-err im-modal-alert" role="alert">
+                  <i className="ti ti-alert-circle" aria-hidden="true"></i>
+                  <div>{addForm.error}</div>
+                </div>
+              )}
+
+              <div className="dash-modal-actions im-modal-actions">
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => handleCloseAddModal()}
+                  disabled={addForm.loading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={!addFormIsValid || addForm.loading}
+                >
+                  {addForm.loading ? (
+                    <>
+                      <i className="ti ti-loader-2 im-spin" aria-hidden="true"></i>
+                      Adding...
+                    </>
+                  ) : (
+                    'Add Institution'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body,
+      )
+      : null
+
+  const editInstitutionModal =
+    showEditModal && typeof document !== 'undefined'
+      ? createPortal(
+        <div
+          className="dash-modal-backdrop im-modal-backdrop"
+          onClick={() => handleCloseEditModal()}
+          role="presentation"
+        >
+          <div
+            className="dash-modal-card im-add-modal-card"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="im-edit-modal-title"
+          >
+            <div className="dash-modal-header im-modal-header">
+              <div>
+                <div id="im-edit-modal-title" className="dash-modal-title">
+                  Edit Institution
+                </div>
+                <div className="dash-modal-sub">
+                  Update the institution's name or email domain.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="dash-modal-close"
+                onClick={() => handleCloseEditModal()}
+                aria-label="Close edit institution modal"
+                disabled={editForm.loading}
+              >
+                <i className="ti ti-x" aria-hidden="true"></i>
+              </button>
             </div>
-          </div>,
-          document.body,
-        )
+
+            <form className="dash-modal-body im-modal-body" onSubmit={(e) => void handleEditInstitution(e)} noValidate>
+              <div className="dash-field">
+                <label className="dash-field-label" htmlFor="im-edit-inst-name">
+                  Institution Name
+                </label>
+                <input
+                  id="im-edit-inst-name"
+                  className={`dash-input${editForm.name && !editNameIsValid ? ' is-invalid' : ''}`}
+                  placeholder="Silliman University"
+                  value={editForm.name}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, name: e.target.value, error: '' }))
+                  }
+                  disabled={editForm.loading}
+                  autoFocus
+                  aria-invalid={editForm.name ? !editNameIsValid : undefined}
+                />
+                {editForm.name && !editNameIsValid && (
+                  <div className="im-field-error" role="alert">
+                    Enter at least 2 characters.
+                  </div>
+                )}
+              </div>
+
+              <div className="dash-field">
+                <label className="dash-field-label" htmlFor="im-edit-inst-domain">
+                  Associated Email Domain
+                </label>
+                <input
+                  id="im-edit-inst-domain"
+                  className={`dash-input${editForm.domain && !editDomainIsValid ? ' is-invalid' : ''
+                    }`}
+                  placeholder="su.edu.ph"
+                  value={editForm.domain}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, domain: e.target.value, error: '' }))
+                  }
+                  disabled={editForm.loading}
+                  aria-invalid={editForm.domain ? !editDomainIsValid : undefined}
+                />
+                {editForm.domain && !editDomainIsValid ? (
+                  <div className="im-field-error" role="alert">
+                    Use a valid domain, such as su.edu.ph.
+                  </div>
+                ) : (
+                  <div className="dash-field-hint">
+                    Used to auto-route contributors and apply institution branding.
+                  </div>
+                )}
+              </div>
+
+              {editForm.error && (
+                <div className="alert alert-err im-modal-alert" role="alert">
+                  <i className="ti ti-alert-circle" aria-hidden="true"></i>
+                  <div>{editForm.error}</div>
+                </div>
+              )}
+
+              <div className="dash-modal-actions im-modal-actions">
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => handleCloseEditModal()}
+                  disabled={editForm.loading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={!editFormIsValid || editForm.loading}
+                >
+                  {editForm.loading ? (
+                    <>
+                      <i className="ti ti-loader-2 im-spin" aria-hidden="true"></i>
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Changes'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body,
+      )
       : null
 
   const inviteContributorModal =
     showInviteModal && selectedInstitution && typeof document !== 'undefined'
       ? createPortal(
+        <div
+          className="dash-modal-backdrop im-modal-backdrop"
+          onClick={handleCloseInviteModal}
+          role="presentation"
+        >
           <div
-            className="dash-modal-backdrop im-modal-backdrop"
-            onClick={handleCloseInviteModal}
-            role="presentation"
+            className="dash-modal-card im-invite-modal-card"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="im-invite-modal-title"
+            aria-describedby="im-invite-modal-subtitle"
           >
-            <div
-              className="dash-modal-card im-invite-modal-card"
-              onClick={(event) => event.stopPropagation()}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="im-invite-modal-title"
-              aria-describedby="im-invite-modal-subtitle"
-            >
-              <div className="dash-modal-header im-modal-header">
-                <div>
-                  <div id="im-invite-modal-title" className="dash-modal-title">
-                    Invite Contributor
-                  </div>
-                  <div id="im-invite-modal-subtitle" className="dash-modal-sub">
-                    Send an invitation to join {selectedInstitution.name}.
-                  </div>
+            <div className="dash-modal-header im-modal-header">
+              <div>
+                <div id="im-invite-modal-title" className="dash-modal-title">
+                  Invite Contributor
                 </div>
-                <button
-                  type="button"
-                  className="dash-modal-close"
-                  onClick={handleCloseInviteModal}
-                  aria-label="Close invite contributor modal"
-                  disabled={sending}
-                >
-                  <i className="ti ti-x" aria-hidden="true"></i>
-                </button>
+                <div id="im-invite-modal-subtitle" className="dash-modal-sub">
+                  Send an invitation to join {selectedInstitution.name}.
+                </div>
               </div>
-
-              <InvitationComposer
-                chips={emailChips}
-                emailDraft={emailDraft}
-                role={inviteRole}
-                selectedInstitution={selectedInstitutionOption}
-                canChooseRole={false}
-                sending={sending}
-                onDraftChange={setEmailDraft}
-                onAddChip={(email) => {
-                  if (!emailChips.includes(email.toLowerCase())) {
-                    setEmailChips((prev) => [...prev, email.toLowerCase()])
-                  }
-                }}
-                onRemoveChip={(index) =>
-                  setEmailChips((prev) => prev.filter((_, i) => i !== index))
-                }
-                onRoleChange={setInviteRole}
-                onSubmit={(event) => void handleSendInvitations(event)}
-              />
-
-              {inviteResults && (
-                <DeliveryIssuesAlert
-                  results={inviteResults}
-                  onResubmitFailed={handleResubmitFailed}
-                />
-              )}
+              <button
+                type="button"
+                className="dash-modal-close"
+                onClick={handleCloseInviteModal}
+                aria-label="Close invite contributor modal"
+                disabled={sending}
+              >
+                <i className="ti ti-x" aria-hidden="true"></i>
+              </button>
             </div>
-          </div>,
-          document.body,
-        )
+
+            <InvitationComposer
+              chips={emailChips}
+              emailDraft={emailDraft}
+              role={inviteRole}
+              selectedInstitution={selectedInstitutionOption}
+              canChooseRole={false}
+              sending={sending}
+              onDraftChange={setEmailDraft}
+              onAddChip={(email) => {
+                if (!emailChips.includes(email.toLowerCase())) {
+                  setEmailChips((prev) => [...prev, email.toLowerCase()])
+                }
+              }}
+              onRemoveChip={(index) =>
+                setEmailChips((prev) => prev.filter((_, i) => i !== index))
+              }
+              onRoleChange={setInviteRole}
+              onSubmit={(event) => void handleSendInvitations(event)}
+            />
+
+            {inviteResults && (
+              <DeliveryIssuesAlert
+                results={inviteResults}
+                onResubmitFailed={handleResubmitFailed}
+              />
+            )}
+          </div>
+        </div>,
+        document.body,
+      )
       : null
 
   if (selectedInstitution) {
@@ -876,15 +1250,64 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
               <i className="ti ti-chevron-right" aria-hidden="true"></i>
               <span>{selectedInstitution.name}</span>
             </nav>
-            <button
-              type="button"
-              className="im-delete-inst-btn"
-              onClick={() => handleDeleteInstitution(selectedInstitution)}
-              aria-label={`Delete ${selectedInstitution.name}`}
-            >
-              <i className="ti ti-trash" aria-hidden="true" />
-              Delete
-            </button>
+            <div className="im-topbar-actions" ref={instActionsMenuRef}>
+              <button
+                type="button"
+                className={`im-inst-actions-trigger${showInstActionsMenu ? ' is-open' : ''}`}
+                onClick={() => setShowInstActionsMenu((prev) => !prev)}
+                aria-label="Institution actions"
+                aria-haspopup="true"
+                aria-expanded={showInstActionsMenu}
+              >
+                <i className="ti ti-dots-vertical" aria-hidden="true" />
+              </button>
+              {showInstActionsMenu && (
+                <div className="im-inst-actions-menu" role="menu">
+                  <button
+                    type="button"
+                    className="im-inst-actions-item"
+                    role="menuitem"
+                    onClick={() => { setShowInstActionsMenu(false); handleOpenEditModal(); }}
+                  >
+                    <i className="ti ti-pencil" aria-hidden="true" />
+                    Edit
+                  </button>
+                  {selectedInstitution.status === 'inactive' ? (
+                    <button
+                      type="button"
+                      className="im-inst-actions-item is-reactivate"
+                      role="menuitem"
+                      onClick={() => { setShowInstActionsMenu(false); handleReactivateInstitution(selectedInstitution); }}
+                      disabled={statusActionLoading}
+                    >
+                      <i className="ti ti-circle-check" aria-hidden="true" />
+                      Reactivate
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="im-inst-actions-item is-deactivate"
+                      role="menuitem"
+                      onClick={() => { setShowInstActionsMenu(false); handleDeactivateInstitution(selectedInstitution); }}
+                      disabled={statusActionLoading}
+                    >
+                      <i className="ti ti-circle-off" aria-hidden="true" />
+                      Deactivate
+                    </button>
+                  )}
+                  <div className="im-inst-actions-divider" role="separator" />
+                  <button
+                    type="button"
+                    className="im-inst-actions-item is-delete"
+                    role="menuitem"
+                    onClick={() => { setShowInstActionsMenu(false); handleDeleteInstitution(selectedInstitution); }}
+                  >
+                    <i className="ti ti-trash" aria-hidden="true" />
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className={`im-detail-header${selectedInstitution.logoUrl ? ' has-logo' : ''}`}>
@@ -952,9 +1375,10 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
             onToggleUserStatus={handleToggleUserStatus}
             onDeleteUser={handleDeleteUser}
             onCancelInvitation={handleCancelInvitationFromUsers}
+            onReassign={handleOpenReassign}
             showRoleControls={false}
             showInstitutionColumn={false}
-            showFilterPills={false}
+            showFilterPills={true}
             userColumnLabel="Contributor"
             title="Contributors"
             description={`Contributor accounts assigned to ${selectedInstitution.name}.`}
@@ -989,6 +1413,103 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
           />
         )}
         {inviteContributorModal}
+        {editInstitutionModal}
+        {reassignUser && typeof document !== 'undefined' && createPortal(
+          <div
+            className="dash-modal-backdrop im-modal-backdrop"
+            onClick={handleCloseReassign}
+            role="presentation"
+          >
+            <div
+              className="dash-modal-card im-reassign-modal-card"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="im-reassign-modal-title"
+            >
+              <div className="dash-modal-header im-modal-header">
+                <div>
+                  <div id="im-reassign-modal-title" className="dash-modal-title">
+                    Reassign Contributor
+                  </div>
+                  <div className="dash-modal-sub">
+                    Move <strong>{getUserDisplayName(reassignUser)}</strong> to a different institution.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="dash-modal-close"
+                  onClick={handleCloseReassign}
+                  aria-label="Close reassign modal"
+                  disabled={reassignLoading}
+                >
+                  <i className="ti ti-x" aria-hidden="true"></i>
+                </button>
+              </div>
+
+              <div className="dash-modal-body im-modal-body">
+                <div className="im-reassign-notice">
+                  <i className="ti ti-info-circle" aria-hidden="true"></i>
+                  <span>
+                    The Contributor's Row-Level Security scoping will be updated to the new institution. Historical submissions will remain attributed to their original institution.
+                  </span>
+                </div>
+
+                <div className="dash-field">
+                  <label className="dash-field-label">
+                    Target Institution
+                  </label>
+                  <BrandedSelect
+                    value={reassignTargetId}
+                    onChange={(value) => { setReassignTargetId(value); setReassignError('') }}
+                    disabled={reassignLoading}
+                    placeholder="— Select an institution —"
+                    options={institutions
+                      .filter((inst) => inst.status === 'active' && inst.id !== (reassignUser.institutionId ?? selectedInstitution?.id))
+                      .map((inst) => ({
+                        value: inst.id,
+                        label: inst.name,
+                      }))}
+                  />
+                </div>
+
+                {reassignError && (
+                  <div className="alert alert-err im-modal-alert" role="alert">
+                    <i className="ti ti-alert-circle" aria-hidden="true"></i>
+                    <div>{reassignError}</div>
+                  </div>
+                )}
+
+                <div className="dash-modal-actions im-modal-actions">
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={handleCloseReassign}
+                    disabled={reassignLoading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={!reassignTargetId || reassignLoading}
+                    onClick={() => void handleConfirmReassign()}
+                  >
+                    {reassignLoading ? (
+                      <>
+                        <i className="ti ti-loader-2 im-spin" aria-hidden="true"></i>
+                        Reassigning...
+                      </>
+                    ) : (
+                      'Reassign'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
       </div>
     )
   }
@@ -1135,6 +1656,7 @@ const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
       </main>
 
       {addInstitutionModal}
+      {editInstitutionModal}
 
     </div>
   )

@@ -112,6 +112,18 @@ export function deleteInstitution(id: string) {
   return api.delete(`/institutions/${id}`);
 }
 
+export function updateInstitution(id: string, name: string, emailDomain: string) {
+  return api.put<InstitutionResponse>(`/institutions/${id}`, { name, emailDomain });
+}
+
+export function deactivateInstitution(id: string) {
+  return api.patch<InstitutionResponse>(`/institutions/${id}/deactivate`);
+}
+
+export function reactivateInstitution(id: string) {
+  return api.patch<InstitutionResponse>(`/institutions/${id}/reactivate`);
+}
+
 export function uploadInstitutionLogo(id: string, file: File) {
   const formData = new FormData();
   formData.append("file", file);
@@ -152,6 +164,12 @@ export function updateUserStatus(
 ) {
   return api.patch<UserProfileResponse>(`/users/${id}/status`, {
     accountState,
+  });
+}
+
+export function reassignContributor(id: string, targetInstitutionId: string) {
+  return api.patch<UserProfileResponse>(`/users/${id}/institution`, {
+    targetInstitutionId,
   });
 }
 

@@ -1,10 +1,13 @@
 package com.dasigconnect.backend.service;
 
 import com.dasigconnect.backend.model.dto.user.UserDto;
+import com.dasigconnect.backend.model.entity.InstitutionStatus;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
 import com.dasigconnect.backend.repository.AccountLockoutRepository;
 import com.dasigconnect.backend.repository.EmailDeliveryLogRepository;
+import com.dasigconnect.backend.repository.InstitutionRepository;
+import com.dasigconnect.backend.repository.InvitationTokenRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.NotificationRepository;
 import com.dasigconnect.backend.repository.ReviewLockRepository;
@@ -15,6 +18,7 @@ import com.dasigconnect.backend.security.JwtUserDetails;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -36,6 +40,9 @@ public class UserService {
     private final SubmissionRepository submissionRepository;
     private final MediaAssetRepository mediaAssetRepository;
     private final ValidationLogRepository validationLogRepository;
+    private final InstitutionRepository institutionRepository;
+    private final InvitationTokenRepository invitationTokenRepository;
+    private final AuditLogService auditLogService;
 
     public UserService(
             UserRepository userRepository,
@@ -45,7 +52,10 @@ public class UserService {
             ReviewLockRepository reviewLockRepository,
             SubmissionRepository submissionRepository,
             MediaAssetRepository mediaAssetRepository,
-            ValidationLogRepository validationLogRepository) {
+            ValidationLogRepository validationLogRepository,
+            InstitutionRepository institutionRepository,
+            InvitationTokenRepository invitationTokenRepository,
+            AuditLogService auditLogService) {
         this.userRepository = userRepository;
         this.notificationRepository = notificationRepository;
         this.emailDeliveryLogRepository = emailDeliveryLogRepository;
@@ -54,6 +64,9 @@ public class UserService {
         this.submissionRepository = submissionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
         this.validationLogRepository = validationLogRepository;
+        this.institutionRepository = institutionRepository;
+        this.invitationTokenRepository = invitationTokenRepository;
+        this.auditLogService = auditLogService;
     }
 
     /**
@@ -209,12 +222,85 @@ public class UserService {
     }
 
     /**
+     * A4: Reassigns a contributor to a different institution.
+     *
+     * Rules:
+     * - Only ADMINISTRATOR may call this.
+     * - Target user must be a CONTRIBUTOR (validators are managed via separate flows).
+     * - Target institution must exist and be ACTIVE.
+     * - Cannot reassign to the user's existing institution.
+     * - Historical submissions retain their original institution_id for audit and RLS integrity.
+     */
+    @Transactional
+    public UserDto reassignContributor(UUID userId, UUID targetInstitutionId, JwtUserDetails requester) {
+        if (!"administrator".equalsIgnoreCase(requester.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only administrators can reassign contributors.");
+        }
+
+        var user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found."));
+
+        if (user.getRole() != UserRole.contributor) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Only contributor accounts can be reassigned. Validators must be managed through institution settings.");
+        }
+
+        var targetInstitution = institutionRepository.findById(targetInstitutionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Target institution not found."));
+
+        if (targetInstitution.getStatus() != InstitutionStatus.active) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Target institution is not active. Contributors can only be assigned to active institutions.");
+        }
+
+        UUID fromInstitutionId = user.getInstitution() != null ? user.getInstitution().getId() : null;
+        String fromInstitutionName = user.getInstitution() != null ? user.getInstitution().getName() : "(none)";
+
+        if (fromInstitutionId != null && fromInstitutionId.equals(targetInstitutionId)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Contributor is already assigned to this institution.");
+        }
+
+        // RLS scope update — the single source-of-truth for the contributor's workspace
+        user.setInstitution(targetInstitution);
+        UserDto saved = UserDto.from(userRepository.save(user));
+
+        // Update any open, unexpired invitation tokens so accepting aligns with target institution
+        if (invitationTokenRepository != null && user.getEmail() != null) {
+            invitationTokenRepository
+                    .findByRecipientEmailAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(user.getEmail(), Instant.now())
+                    .forEach(token -> {
+                        token.setInstitution(targetInstitution);
+                        invitationTokenRepository.save(token);
+                    });
+        }
+
+        // Audit the transfer with full context
+        var actor = userRepository.findById(requester.userId()).orElse(null);
+        auditLogService.record(
+                actor,
+                "contributor.reassigned",
+                null, null,
+                userId,
+                Map.of(
+                        "fromInstitutionId",   fromInstitutionId != null ? fromInstitutionId.toString() : "",
+                        "fromInstitutionName", fromInstitutionName,
+                        "toInstitutionId",     targetInstitutionId.toString(),
+                        "toInstitutionName",   targetInstitution.getName()
+                ));
+
+        return saved;
+    }
+
+    /**
      * Returns counts of contributors and validators for an institution.
      * Used for dashboard summary tiles.
      */
-    public java.util.Map<String, Long> countByRole(UUID institutionId, JwtUserDetails requester) {
+    public Map<String, Long> countByRole(UUID institutionId, JwtUserDetails requester) {
         validateInstitutionScope(institutionId, requester);
-        return java.util.Map.of(
+        return Map.of(
                 "contributors", userRepository.countByInstitutionIdAndRole(institutionId, UserRole.contributor),
                 "validators", userRepository.countByInstitutionIdAndRole(institutionId, UserRole.validator)
         );

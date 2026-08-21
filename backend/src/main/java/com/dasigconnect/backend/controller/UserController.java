@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.controller;
 
+import com.dasigconnect.backend.model.dto.user.ReassignContributorRequest;
 import com.dasigconnect.backend.model.dto.user.UserDto;
 import com.dasigconnect.backend.model.dto.user.UpdateUserStatusRequestDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -80,6 +81,21 @@ public class UserController {
             @RequestBody @Valid UpdateUserStatusRequestDto request,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(userService.updateStatus(id, request.accountState(), user));
+    }
+
+    /**
+     * PATCH /api/v1/users/{id}/institution
+     * Reassigns a contributor account to a different institution (admin-only, A4).
+     * Validators cannot be reassigned through this endpoint.
+     * Historical submissions retain their original institution attribution.
+     */
+    @PatchMapping("/users/{id}/institution")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ResponseEntity<UserDto> reassignInstitution(
+            @PathVariable UUID id,
+            @RequestBody @Valid ReassignContributorRequest request,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(userService.reassignContributor(id, request.getTargetInstitutionId(), user));
     }
 
     @PutMapping(value = "/users/{id}/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

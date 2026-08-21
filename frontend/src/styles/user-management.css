@@ -1083,6 +1083,9 @@
 }
 
 .um-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 32px;
   padding: 0 11px;
   border: 1px solid var(--d-border);
@@ -1105,6 +1108,25 @@
 .um-filter-pill.is-active {
   border-color: var(--d-blue);
   background: #EEF3FF;
+  color: var(--d-blue);
+}
+
+.um-filter-pill-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(15, 23, 42, 0.06);
+  color: inherit;
+}
+
+.um-filter-pill.is-active .um-filter-pill-count {
+  background: rgba(37, 99, 235, 0.16);
   color: var(--d-blue);
 }
 
@@ -1152,7 +1174,7 @@
 .um-table tr.is-inactive-row td { opacity: 0.55; }
 .um-table tr.is-inactive-row:hover td { opacity: 0.8; }
 
-.um-table td strong { display: block; overflow-wrap: anywhere; }
+.um-table td strong { display: block; overflow-wrap: anywhere; font-size: 13px; }
 
 .um-user-email {
   display: block;
@@ -1160,7 +1182,7 @@
   margin-top: 2px;
   overflow: hidden;
   color: var(--d-muted);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1178,7 +1200,7 @@
   text-align: right;
 }
 
-.um-date-cell { white-space: nowrap; color: var(--d-muted); font-size: 12.5px; }
+.um-date-cell { white-space: nowrap; color: var(--d-text); font-size: 13px; font-weight: 600; }
 
 /* User cell with avatar */
 .um-user-cell {
@@ -1299,8 +1321,8 @@ button.um-user-avatar:focus-visible {
   white-space: nowrap;
   border-radius: 999px;
   padding: 3px 9px;
-  font-size: 10.5px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .um-badge.is-active { background: transparent; color: #166534; }
@@ -1313,8 +1335,8 @@ button.um-user-avatar:focus-visible {
   align-items: center;
   padding: 3px 9px;
   border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   background: #F1F5F9;
   color: var(--d-muted);
   border: 1px solid var(--d-border);

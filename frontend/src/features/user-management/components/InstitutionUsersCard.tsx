@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import type { UserProfileResponse } from '../../../api/authApi'
 import type { User } from '../../../types/auth.types'
 import { getUserDisplayName, getUserInitials } from '../../../lib/userIdentity'
@@ -13,6 +13,7 @@ interface InstitutionUsersCardProps {
   onToggleUserStatus: (user: UserProfileResponse) => void
   onDeleteUser: (user: UserProfileResponse) => void
   onCancelInvitation: (user: UserProfileResponse) => void
+  onReassign?: (user: UserProfileResponse) => void
   showRoleControls?: boolean
   showInstitutionColumn?: boolean
   title?: string
@@ -26,7 +27,7 @@ interface InstitutionUsersCardProps {
 }
 
 type RoleFilter = 'all' | 'validator' | 'contributor'
-type StatusFilter = 'all' | 'active' | 'inactive' | 'pending'
+type StatusFilter = 'all' | 'active' | 'pending' | 'cancelled' | 'inactive'
 
 export default function InstitutionUsersCard({
   currentUser,
@@ -36,6 +37,7 @@ export default function InstitutionUsersCard({
   onToggleUserStatus,
   onDeleteUser,
   onCancelInvitation,
+  onReassign,
   showRoleControls = true,
   showInstitutionColumn = true,
   title = 'Manage Users',
@@ -51,6 +53,16 @@ export default function InstitutionUsersCard({
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
+  const statusCounts = useMemo(() => ({
+    all: users.length,
+    active: users.filter((u) => u.accountState.toLowerCase() === 'active').length,
+    pending: users.filter((u) => u.accountState.toLowerCase().includes('pending')).length,
+    cancelled: users.filter((u) => {
+      const s = u.accountState.toLowerCase()
+      return s === 'inactive' || s === 'expired' || s === 'cancelled'
+    }).length,
+  }), [users])
+
   const filtered = users.filter((user) => {
     const searchValue = `${getUserDisplayName(user)} ${user.email}`.toLowerCase()
     if (search && !searchValue.includes(search.toLowerCase())) {
@@ -61,11 +73,13 @@ export default function InstitutionUsersCard({
     }
     if (showFilterPills && statusFilter !== 'all') {
       const state = user.accountState.toLowerCase()
-      const matches =
-        statusFilter === 'pending'
-          ? state.includes('pending')
-          : state === statusFilter
-      if (!matches) return false
+      if (statusFilter === 'active') {
+        if (state !== 'active') return false
+      } else if (statusFilter === 'pending') {
+        if (!state.includes('pending')) return false
+      } else if (statusFilter === 'cancelled' || statusFilter === 'inactive') {
+        if (state !== 'inactive' && state !== 'expired' && state !== 'cancelled') return false
+      }
     }
     return true
   })
@@ -137,18 +151,19 @@ export default function InstitutionUsersCard({
               <span className="um-filter-label">Status</span>
               <div className="um-filter-pills" role="group" aria-label="Filter by status">
                 {([
-                  { value: 'all', label: variant === 'directory' ? 'All' : 'All Status' },
-                  { value: 'active', label: 'Active' },
-                  { value: 'inactive', label: 'Inactive' },
-                  { value: 'pending', label: 'Pending' },
-                ] as { value: StatusFilter; label: string }[]).map(({ value, label }) => (
+                  { value: 'all', label: variant === 'directory' ? 'All' : 'All Status', count: statusCounts.all },
+                  { value: 'active', label: 'Active', count: statusCounts.active },
+                  { value: 'pending', label: 'Pending', count: statusCounts.pending },
+                  { value: 'cancelled', label: 'Cancelled', count: statusCounts.cancelled },
+                ] as { value: StatusFilter; label: string; count: number }[]).map(({ value, label, count }) => (
                   <button
                     key={value}
                     type="button"
                     className={`um-filter-pill${statusFilter === value ? ' is-active' : ''}`}
                     onClick={() => setStatusFilter(value)}
                   >
-                    {label}
+                    <span>{label}</span>
+                    <span className="um-filter-pill-count">{count}</span>
                   </button>
                 ))}
               </div>
@@ -240,6 +255,13 @@ export default function InstitutionUsersCard({
                             onClick: () => onToggleUserStatus(managedUser),
                             disabled: isUpdating,
                             dangerous: isActive,
+                          }
+                        : null,
+                      onReassign && managedUser.role.toLowerCase() === 'contributor'
+                        ? {
+                            label: 'Reassign institution',
+                            icon: 'ti ti-transfer',
+                            onClick: () => onReassign(managedUser),
                           }
                         : null,
                       {

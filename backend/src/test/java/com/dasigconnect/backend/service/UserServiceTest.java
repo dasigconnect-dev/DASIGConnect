@@ -2,11 +2,15 @@ package com.dasigconnect.backend.service;
 
 import com.dasigconnect.backend.model.dto.user.UserDto;
 import com.dasigconnect.backend.model.entity.Institution;
+import com.dasigconnect.backend.model.entity.InstitutionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
+import com.dasigconnect.backend.repository.InstitutionRepository;
+import com.dasigconnect.backend.repository.InvitationTokenRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,6 +27,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -31,6 +37,15 @@ class UserServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private InstitutionRepository institutionRepository;
+
+    @Mock
+    private AuditLogService auditLogService;
+
+    @Mock
+    private InvitationTokenRepository invitationTokenRepository;
 
     @InjectMocks
     private UserService userService;
@@ -50,6 +65,7 @@ class UserServiceTest {
         institution.setName("CIT-U");
         institution.setCode("CIT-U");
         institution.setEmailDomain("cit.edu.ph");
+        institution.setStatus(InstitutionStatus.active);
 
         contributor = user(userId, "contributor@cit.edu.ph", UserRole.contributor, institution);
     }
@@ -235,6 +251,82 @@ class UserServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void reassignContributor_success_transfersInstitutionAndSaves() {
+        UUID targetInstId = UUID.randomUUID();
+        Institution targetInst = new Institution();
+        targetInst.setId(targetInstId);
+        targetInst.setName("Silliman University");
+        targetInst.setCode("SU");
+        targetInst.setStatus(InstitutionStatus.active);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        when(institutionRepository.findById(targetInstId)).thenReturn(Optional.of(targetInst));
+        when(userRepository.save(contributor)).thenReturn(contributor);
+        when(invitationTokenRepository.findByRecipientEmailAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
+                eq(contributor.getEmail()), any())).thenReturn(Collections.emptyList());
+
+        UserDto result = userService.reassignContributor(
+                userId, targetInstId, principal(UUID.randomUUID(), "administrator", null));
+
+        assertThat(contributor.getInstitution()).isEqualTo(targetInst);
+        assertThat(result.getInstitutionId()).isEqualTo(targetInstId);
+        verify(userRepository).save(contributor);
+        verify(auditLogService).record(any(), eq("contributor.reassigned"), any(), any(), eq(userId), any());
+    }
+
+    @Test
+    void reassignContributor_nonAdmin_throwsForbidden() {
+        UUID targetInstId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> userService.reassignContributor(
+                userId, targetInstId, principal(UUID.randomUUID(), "validator", institutionId)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void reassignContributor_validatorUser_throwsUnprocessableEntity() {
+        User validator = user(UUID.randomUUID(), "val@cit.edu.ph", UserRole.validator, institution);
+        when(userRepository.findById(validator.getId())).thenReturn(Optional.of(validator));
+
+        assertThatThrownBy(() -> userService.reassignContributor(
+                validator.getId(), UUID.randomUUID(), principal(UUID.randomUUID(), "administrator", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    @Test
+    void reassignContributor_targetInactive_throwsUnprocessableEntity() {
+        UUID targetInstId = UUID.randomUUID();
+        Institution targetInst = new Institution();
+        targetInst.setId(targetInstId);
+        targetInst.setStatus(InstitutionStatus.inactive);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        when(institutionRepository.findById(targetInstId)).thenReturn(Optional.of(targetInst));
+
+        assertThatThrownBy(() -> userService.reassignContributor(
+                userId, targetInstId, principal(UUID.randomUUID(), "administrator", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    @Test
+    void reassignContributor_sameInstitution_throwsUnprocessableEntity() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(institution));
+
+        assertThatThrownBy(() -> userService.reassignContributor(
+                userId, institutionId, principal(UUID.randomUUID(), "administrator", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
     }
 
     private static JwtUserDetails principal(UUID id, String role, UUID institutionId) {
