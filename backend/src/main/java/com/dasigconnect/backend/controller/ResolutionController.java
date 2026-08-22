@@ -35,7 +35,7 @@ import com.dasigconnect.backend.service.ManualPublishingService;
  */
 @RestController
 @RequestMapping("/api/v1/resolution")
-@PreAuthorize("hasRole('SUPER_ADMINISTRATOR')")
+@PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
 public class ResolutionController {
 
     private final SubmissionRepository submissionRepository;

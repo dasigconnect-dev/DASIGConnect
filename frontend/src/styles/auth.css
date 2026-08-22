@@ -1217,15 +1217,15 @@ body {
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 .sidebar-nav-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 .sidebar-nav-group + .sidebar-nav-group {
-  padding-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--d-border);
 }
 .sidebar-nav-label {
@@ -1240,7 +1240,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: var(--r-sm);
   font-size: 13.5px;
   font-weight: 500;
@@ -1438,9 +1438,7 @@ body {
 }
 
 .dash-body {
-  padding: 30px 32px 80px;
-  max-width: 1200px;
-  margin: 0 auto;
+  padding: 32px 32px 80px;
   width: 100%;
 }
 .dash-page-header {
@@ -1707,13 +1705,12 @@ body {
 .dash-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: 99999;
   background: rgba(7, 17, 42, 0.72);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
-  animation: fadeInModal 0.25s ease;
 }
 .dash-modal-card {
   width: 100%;

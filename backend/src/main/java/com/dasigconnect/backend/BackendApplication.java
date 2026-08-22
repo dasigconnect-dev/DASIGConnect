@@ -140,6 +140,7 @@ public class BackendApplication {
                     admin.setFirstName("DASIG");
                     admin.setLastName("Administrator");
                     admin.setRole(com.dasigconnect.backend.model.entity.UserRole.super_administrator);
+                    admin.setSuperAdministrator(true);
                     admin.setPasswordHash(passwordEncoder.encode("admin123"));
                     admin.setAccountState(com.dasigconnect.backend.model.entity.UserStatus.active);
                     userRepository.save(admin);

@@ -42,7 +42,7 @@ public class CalendarController {
     }
 
     @PatchMapping("/submissions/{id}/reschedule")
-    @PreAuthorize("hasRole('SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
     public ResponseEntity<SubmissionResponseDto> reschedule(
             @PathVariable UUID id,
             @RequestBody @Valid RescheduleRequestDto dto,

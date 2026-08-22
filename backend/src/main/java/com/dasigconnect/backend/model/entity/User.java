@@ -1,5 +1,8 @@
 package com.dasigconnect.backend.model.entity;
 
+import java.time.Instant;
+import java.util.UUID;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,8 +14,6 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-import java.time.Instant;
-import java.util.UUID;
 
 @Entity
 @Table(name = "users")
@@ -57,11 +58,29 @@ public class User {
     @Column(name = "account_state", nullable = false, length = 30)
     private UserStatus accountState = UserStatus.pending;
 
+    @Column(name = "is_super_administrator", nullable = false)
+    private boolean superAdministrator;
+
+    @Column(name = "super_admin_transfer_requested_by")
+    private UUID superAdminTransferRequestedBy;
+
+    @Column(name = "super_admin_transfer_expires_at")
+    private Instant superAdminTransferExpiresAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Column(name = "avatar_data")
+    private byte[] avatarData;
+
+    @Column(name = "avatar_content_type", length = 40)
+    private String avatarContentType;
+
+    @Column(name = "avatar_updated_at")
+    private Instant avatarUpdatedAt;
 
     @PrePersist
     void onCreate() {
@@ -151,11 +170,59 @@ public class User {
         this.accountState = accountState;
     }
 
+    public boolean isSuperAdministrator() {
+        return superAdministrator;
+    }
+
+    public void setSuperAdministrator(boolean superAdministrator) {
+        this.superAdministrator = superAdministrator;
+    }
+
+    public UUID getSuperAdminTransferRequestedBy() {
+        return superAdminTransferRequestedBy;
+    }
+
+    public void setSuperAdminTransferRequestedBy(UUID superAdminTransferRequestedBy) {
+        this.superAdminTransferRequestedBy = superAdminTransferRequestedBy;
+    }
+
+    public Instant getSuperAdminTransferExpiresAt() {
+        return superAdminTransferExpiresAt;
+    }
+
+    public void setSuperAdminTransferExpiresAt(Instant superAdminTransferExpiresAt) {
+        this.superAdminTransferExpiresAt = superAdminTransferExpiresAt;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public byte[] getAvatarData() {
+        return avatarData;
+    }
+
+    public void setAvatarData(byte[] avatarData) {
+        this.avatarData = avatarData;
+    }
+
+    public String getAvatarContentType() {
+        return avatarContentType;
+    }
+
+    public void setAvatarContentType(String avatarContentType) {
+        this.avatarContentType = avatarContentType;
+    }
+
+    public Instant getAvatarUpdatedAt() {
+        return avatarUpdatedAt;
+    }
+
+    public void setAvatarUpdatedAt(Instant avatarUpdatedAt) {
+        this.avatarUpdatedAt = avatarUpdatedAt;
     }
 }

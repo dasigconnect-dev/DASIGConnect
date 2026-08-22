@@ -122,9 +122,6 @@ export default function DashboardShell({
               </div>
             </div>
             <div className="dash-nav-right">
-              <div className={`role-chip ${roleChip(user).className}`} id="role-chip">
-                {roleChip(user).label}
-              </div>
               <div
                 className={`dash-avatar${showDropdown ? ' open' : ''}`}
                 id="dash-avatar"
@@ -195,24 +192,24 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
     },
     {
       id: 'submit',
-      icon: user.role === 'administrator' ? 'ti ti-clipboard-list' : 'ti ti-photo-up',
-      label: user.role === 'administrator' ? 'Review Queue' : 'Submit Content',
-      path: user.role === 'administrator' ? '/validation/queue' : '/submissions/new',
-      visible: user.role === 'administrator' || user.role === 'contributor',
+      icon: user.role !== 'contributor' ? 'ti ti-clipboard-list' : 'ti ti-photo-up',
+      label: user.role !== 'contributor' ? 'Review Queue' : 'Submit Content',
+      path: user.role !== 'contributor' ? '/validation/queue' : '/submissions/new',
+      visible: true,
     },
     {
       id: 'institution-management',
       icon: 'ti ti-building',
-      label: 'Institution Management',
+      label: 'Institutions',
       path: '/admin/institution-management',
-      visible: user.role === 'super_administrator',
+      visible: user.role === 'super_administrator' || user.role === 'administrator',
     },
     {
       id: 'user-management',
       icon: 'ti ti-users',
       label: 'User Management',
       path: '/admin/user-management/invitations',
-      visible: user.role === 'administrator',
+      visible: user.role === 'super_administrator' || user.role === 'administrator',
     },
     {
       id: 'media-repository',
@@ -240,7 +237,7 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       icon: 'ti ti-alert-triangle',
       label: 'Resolution Center',
       path: '/admin/resolution',
-      visible: user.role === 'super_administrator',
+      visible: user.role === 'super_administrator' || user.role === 'administrator',
     },
     {
       id: 'analytics',
@@ -263,12 +260,6 @@ function groupDashboardNavItems(items: DashboardNavItem[]) {
       items: items.filter((item) => ['institution-management', 'user-management', 'scheduler', 'resolution', 'analytics'].includes(item.id)),
     },
   ].filter((group) => group.items.length > 0)
-}
-
-function roleChip(user: User) {
-  if (user.role === 'super_administrator') return { className: 'chip-admin', label: 'Super Administrator' }
-  if (user.role === 'administrator') return { className: 'chip-validator', label: 'Administrator' }
-  return { className: 'chip-contributor', label: 'Contributor' }
 }
 
 function getInstitutionName(user: User) {

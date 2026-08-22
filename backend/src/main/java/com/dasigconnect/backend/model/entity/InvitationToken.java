@@ -30,8 +30,8 @@ public class InvitationToken {
     @Column(name = "assigned_role", nullable = false, length = 20)
     private UserRole assignedRole;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "institution_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "institution_id")
     private Institution institution;
 
     @Column(name = "expires_at", nullable = false)

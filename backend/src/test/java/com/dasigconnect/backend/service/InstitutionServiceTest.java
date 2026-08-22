@@ -21,6 +21,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 
 import com.dasigconnect.backend.exception.InstitutionNotFoundException;
 import com.dasigconnect.backend.model.dto.institution.CreateInstitutionRequest;
@@ -54,7 +55,45 @@ class InstitutionServiceTest {
         mockInstitution.setId(institutionId);
         mockInstitution.setName("Cebu Institute of Technology - University");
         mockInstitution.setCode("CIT-U");
-        mockInstitution.setStatus(InstitutionStatus.inactive);
+        mockInstitution.setStatus(InstitutionStatus.active);
+    }
+
+    @Nested
+    @DisplayName("updateLogo()")
+    class UpdateLogoTests {
+
+        @Test
+        @DisplayName("should persist a valid PNG logo")
+        void shouldPersistValidPngLogo() {
+            byte[] png = new byte[]{
+                (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00
+            };
+            MockMultipartFile logo = new MockMultipartFile("file", "school.png", "image/png", png);
+
+            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+            when(institutionRepository.save(mockInstitution)).thenReturn(mockInstitution);
+
+            InstitutionDto result = institutionService.updateLogo(institutionId, logo);
+
+            assertThat(result.isHasLogo()).isTrue();
+            assertThat(mockInstitution.getLogoData()).isEqualTo(png);
+            assertThat(mockInstitution.getLogoContentType()).isEqualTo("image/png");
+            assertThat(mockInstitution.getLogoUpdatedAt()).isNotNull();
+            verify(institutionRepository).save(mockInstitution);
+        }
+
+        @Test
+        @DisplayName("should reject invalid mime-types with IllegalArgumentException")
+        void shouldRejectInvalidMimeType() {
+            byte[] text = "not a real image".getBytes();
+            MockMultipartFile fakeJpeg = new MockMultipartFile("file", "fake.jpg", "text/plain", text);
+
+            assertThatThrownBy(() -> institutionService.updateLogo(institutionId, fakeJpeg))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("JPEG, PNG, or WebP");
+
+            verify(institutionRepository, never()).save(any());
+        }
     }
 
     // ── createInstitution ─────────────────────────────────────────────────────
@@ -63,15 +102,15 @@ class InstitutionServiceTest {
     class CreateInstitutionTests {
 
         @Test
-        @DisplayName("should create institution with INACTIVE status")
-        void shouldCreateInstitution_withInactiveStatus() {
-            when(institutionRepository.existsByCode("CIT-U")).thenReturn(false);
+        @DisplayName("should create institution with ACTIVE status")
+        void shouldCreateInstitution_withActiveStatus() {
+            when(institutionRepository.existsByEmailDomain("cit.edu.ph")).thenReturn(false);
             when(institutionRepository.save(any())).thenReturn(mockInstitution);
 
             CreateInstitutionRequest req = new CreateInstitutionRequest("Cebu Institute of Technology - University", "CIT-U", "cit.edu.ph");
             InstitutionDto result = institutionService.createInstitution(req);
 
-            assertThat(result.getStatus()).isEqualTo(InstitutionStatus.inactive);
+            assertThat(result.getStatus()).isEqualTo(InstitutionStatus.active);
             assertThat(result.getInstitutionCode()).isEqualTo("CIT-U");
             assertThat(result.getName()).isEqualTo("Cebu Institute of Technology - University");
         }
@@ -155,6 +194,11 @@ class InstitutionServiceTest {
     @Nested
     @DisplayName("transitionToPending() — INACTIVE → PENDING")
     class TransitionToPendingTests {
+
+        @BeforeEach
+        void setInactive() {
+            mockInstitution.setStatus(InstitutionStatus.inactive);
+        }
 
         @Test
         @DisplayName("should transition from INACTIVE to PENDING")
