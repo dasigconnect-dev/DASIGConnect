@@ -17,6 +17,8 @@ interface MediaAssetsPickerProps {
   category: string;
   tags: string[];
   disabled?: boolean;
+  onItemClick?: (item: SubmissionMediaItem) => void;
+  getItemCaption?: (item: SubmissionMediaItem) => string;
 }
 
 export default function MediaAssetsPicker({
@@ -28,6 +30,8 @@ export default function MediaAssetsPicker({
   category,
   tags,
   disabled,
+  onItemClick,
+  getItemCaption,
 }: MediaAssetsPickerProps) {
   const [activeTab, setActiveTab] = useState<PickerTab>("upload");
 
@@ -75,6 +79,8 @@ export default function MediaAssetsPicker({
         disabled={disabled}
         onRemove={handleRemove}
         onReorder={handleReorder}
+        onItemClick={onItemClick}
+        getItemCaption={getItemCaption}
       />
 
       {aiSuggestions.state === "ready" && activeTab !== "ai" && (

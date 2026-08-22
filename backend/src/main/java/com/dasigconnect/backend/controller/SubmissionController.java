@@ -141,7 +141,7 @@ public class SubmissionController {
             @PathVariable UUID id,
             @Valid @RequestBody SlotEvaluateRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(submissionService.evaluateSlot(dto, user));
+        return ResponseEntity.ok(submissionService.evaluateSlot(id, dto, user));
     }
 
     /**

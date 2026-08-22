@@ -313,7 +313,7 @@ class SubmissionServiceTest {
         GuardRailResult expected = new GuardRailResult();
         when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(expected);
 
-        GuardRailResult result = submissionService.evaluateSlot(dto, contributorPrincipal);
+        GuardRailResult result = submissionService.evaluateSlot(UUID.randomUUID(), dto, contributorPrincipal);
 
         assertThat(result).isSameAs(expected);
     }

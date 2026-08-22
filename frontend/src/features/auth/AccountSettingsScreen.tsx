@@ -73,7 +73,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     </header>
 
     <div className="settings-grid">
-      <section className="settings-card">
+      <section className="settings-card" id="account">
         <SettingsHeader icon="ti ti-user-circle" title="Account Settings" description="Personalize your profile and notification delivery." />
         <div className="settings-card-body">
           <div className="settings-field">
@@ -92,7 +92,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
         <SettingsFooter label="Save Account Settings" icon="ti ti-device-floppy" busy={saving === "account"} onClick={() => void saveAccount()} />
       </section>
 
-      <section className="settings-card">
+      <section className="settings-card" id="password">
         <SettingsHeader icon="ti ti-lock" title="Password & Security" description="Use a strong password to protect your account." />
         <div className="settings-card-body settings-password-grid">
           <div className="settings-field"><label htmlFor="settings-current-password">Current password</label>
