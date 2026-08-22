@@ -235,7 +235,7 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
   } = useNotifications();
 
   const isContributor = user.role === "contributor";
-  const isValidator = user.role === "validator";
+  const isValidator = user.role === "administrator";
   const isAdmin = !isContributor && !isValidator;
 
   const workflowNotifications = isContributor

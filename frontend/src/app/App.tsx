@@ -16,6 +16,7 @@ import {
   resetPassword as resetPasswordRequest,
   setAuthToken,
   validateInvitation,
+  refreshSession,
 } from "../api/authApi";
 import type { LoginResponse, UserProfileResponse } from "../api/authApi";
 import type { User } from "../types/auth.types";
@@ -41,6 +42,7 @@ import Toast from "../components/common/Toast";
 import LoginSplash from "../components/common/LoginSplash";
 import PageLoader from "../components/common/PageLoader";
 import ProtectedRoute from "../components/common/ProtectedRoute";
+import AccountSettingsScreen from "../features/auth/AccountSettingsScreen";
 import { useToast } from "../context/ToastContext";
 import {
   fallbackDisplayNameFromEmail,
@@ -171,6 +173,35 @@ function App() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    const expire = () => {
+      setModalEmail(currentUser?.email || loginEmail);
+      setShowSessionModal(true);
+    };
+    window.addEventListener("dasigconnect:session-expired", expire);
+    return () => window.removeEventListener("dasigconnect:session-expired", expire);
+  }, [currentUser?.email, loginEmail]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    let lastRefresh = Date.now();
+    const refreshOnActivity = () => {
+      if (Date.now() - lastRefresh < 5 * 60 * 1000) return;
+      lastRefresh = Date.now();
+      void refreshSession().then(({ data }) => {
+        setAuthToken(data.accessToken);
+        localStorage.setItem("dasigconnect_token", data.accessToken);
+        startSessionCountdown(data.accessToken);
+      });
+    };
+    window.addEventListener("pointerdown", refreshOnActivity);
+    window.addEventListener("keydown", refreshOnActivity);
+    return () => {
+      window.removeEventListener("pointerdown", refreshOnActivity);
+      window.removeEventListener("keydown", refreshOnActivity);
+    };
+  }, [currentUser]);
 
   useEffect(() => {
     if (!isPasswordResetPath(location.pathname)) return;
@@ -708,10 +739,16 @@ function App() {
             path="/dashboard"
             element={<DashboardScreen user={currentUser!} />}
           />
+          <Route path="/settings" element={<AccountSettingsScreen user={currentUser!} onProfileUpdated={async () => {
+            const response = await getMe();
+            const updated = buildUserFromProfile(response.data, currentUser!.email);
+            setCurrentUser(updated);
+            localStorage.setItem("dasigconnect_user", JSON.stringify(updated));
+          }} />} />
           <Route
             path="/admin/institution-management"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["super_administrator", "administrator"]}>
                 <InstitutionManagementScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -719,7 +756,7 @@ function App() {
           <Route
             path="/admin/user-management/invitations"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["super_administrator", "administrator"]}>
                 <UserInvitationsScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -727,7 +764,7 @@ function App() {
           <Route
             path="/validation/queue"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["super_administrator", "administrator"]}>
                 <ValidationQueueScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -735,7 +772,7 @@ function App() {
           <Route
             path="/scheduler/calendar"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["super_administrator", "administrator", "contributor"]}>
                 <CalendarScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -743,7 +780,7 @@ function App() {
           <Route
             path="/admin/resolution"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["super_administrator", "administrator"]}>
                 <ResolutionCenterScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -751,7 +788,7 @@ function App() {
           <Route
             path="/media-repository"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["super_administrator", "administrator", "contributor"]}>
                 <MediaRepositoryScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -759,7 +796,7 @@ function App() {
           <Route
             path="/notifications"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["super_administrator", "administrator", "contributor"]}>
                 <NotificationsScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -767,7 +804,7 @@ function App() {
           <Route
             path="/analytics"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["super_administrator", "administrator", "contributor"]}>
                 <AnalyticsDashboardPage user={currentUser!} />
               </ProtectedRoute>
             }
@@ -785,7 +822,7 @@ function App() {
         <Route
           path="/submissions/:submissionId"
           element={
-            <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+            <ProtectedRoute user={currentUser} allowedRoles={["super_administrator", "administrator", "contributor"]}>
               <SubmissionScreen user={currentUser!} />
             </ProtectedRoute>
           }
@@ -827,8 +864,8 @@ function isPasswordResetPath(pathname: string) {
 
 function mapApiRole(role: string): User["role"] {
   const normalized = role.toLowerCase();
-  if (normalized.includes("admin")) return "admin";
-  if (normalized.includes("validator")) return "validator";
+  if (normalized === "super_administrator") return "super_administrator";
+  if (normalized === "administrator") return "administrator";
   return "contributor";
 }
 

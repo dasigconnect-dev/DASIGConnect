@@ -55,7 +55,6 @@ class UserServiceTest {
 
     @Mock
     private InvitationTokenRepository invitationTokenRepository;
-
     @Mock
     private SubmissionRepository submissionRepository;
     @Mock
@@ -125,13 +124,13 @@ class UserServiceTest {
     @Test
     void listByInstitution_administrator_canListAnyInstitution() {
         UUID requestedInstitutionId = UUID.randomUUID();
-        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.validator, institution);
+        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.administrator, institution);
         when(userRepository.findByInstitutionIdOrderByCreatedAtDesc(requestedInstitutionId))
                 .thenReturn(List.of(validator));
 
         List<UserDto> result = userService.listByInstitution(
                 requestedInstitutionId,
-                principal(UUID.randomUUID(), "administrator", null));
+                principal(UUID.randomUUID(), "super_administrator", null));
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getEmail()).isEqualTo("validator@cit.edu.ph");
@@ -144,19 +143,20 @@ class UserServiceTest {
 
         List<UserDto> result = userService.listByInstitution(
                 institutionId,
-                principal(UUID.randomUUID(), "validator", institutionId));
+                principal(UUID.randomUUID(), "administrator", institutionId));
 
         assertThat(result).extracting(UserDto::getEmail).containsExactly("contributor@cit.edu.ph");
     }
 
     @Test
-    void listByInstitution_validatorCannotListOtherInstitution() {
-        assertThatThrownBy(() -> userService.listByInstitution(
-                UUID.randomUUID(),
-                principal(UUID.randomUUID(), "validator", institutionId)))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN);
+    void listByInstitution_administratorCanListOtherInstitution() {
+        UUID otherInstitution = UUID.randomUUID();
+        when(userRepository.findByInstitutionIdOrderByCreatedAtDesc(otherInstitution))
+                .thenReturn(List.of(contributor));
+
+        assertThat(userService.listByInstitution(
+                otherInstitution,
+                principal(UUID.randomUUID(), "administrator", institutionId))).hasSize(1);
     }
 
     @Test
@@ -172,44 +172,41 @@ class UserServiceTest {
     @Test
     void countByRole_returnsContributorAndValidatorCounts() {
         when(userRepository.countByInstitutionIdAndRole(institutionId, UserRole.contributor)).thenReturn(12L);
-        when(userRepository.countByInstitutionIdAndRole(institutionId, UserRole.validator)).thenReturn(2L);
+        when(userRepository.countByInstitutionIdAndRole(institutionId, UserRole.administrator)).thenReturn(2L);
 
         Map<String, Long> result = userService.countByRole(
                 institutionId,
-                principal(UUID.randomUUID(), "validator", institutionId));
+                principal(UUID.randomUUID(), "administrator", institutionId));
 
         assertThat(result).containsEntry("contributors", 12L).containsEntry("validators", 2L);
         verify(userRepository).countByInstitutionIdAndRole(institutionId, UserRole.contributor);
-        verify(userRepository).countByInstitutionIdAndRole(institutionId, UserRole.validator);
+        verify(userRepository).countByInstitutionIdAndRole(institutionId, UserRole.administrator);
     }
 
     @Test
-    void countByRole_validatorCannotCountOtherInstitution() {
-        assertThatThrownBy(() -> userService.countByRole(
-                UUID.randomUUID(),
-                principal(UUID.randomUUID(), "validator", institutionId)))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN);
+    void countByRole_administratorCanCountOtherInstitution() {
+        UUID otherInstitution = UUID.randomUUID();
+        Map<String, Long> result = userService.countByRole(
+                otherInstitution,
+                principal(UUID.randomUUID(), "administrator", institutionId));
+        assertThat(result).containsEntry("contributors", 0L).containsEntry("validators", 0L);
     }
 
     @Test
     void getById_validatorCanViewOwnInstitutionUser() {
         when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
 
-        UserDto result = userService.getById(userId, principal(UUID.randomUUID(), "validator", institutionId));
+        UserDto result = userService.getById(userId, principal(UUID.randomUUID(), "administrator", institutionId));
 
         assertThat(result.getEmail()).isEqualTo("contributor@cit.edu.ph");
     }
 
     @Test
-    void getById_validatorCannotViewOtherInstitutionUser() {
+    void getById_administratorCanViewOtherInstitutionUser() {
         when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
 
-        assertThatThrownBy(() -> userService.getById(userId, principal(UUID.randomUUID(), "validator", UUID.randomUUID())))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(userService.getById(userId,
+                principal(UUID.randomUUID(), "administrator", UUID.randomUUID())).getId()).isEqualTo(userId);
     }
 
     @Test
@@ -218,7 +215,7 @@ class UserServiceTest {
         when(userRepository.save(contributor)).thenReturn(contributor);
 
         UserDto result = userService.updateStatus(userId, UserStatus.inactive,
-                principal(UUID.randomUUID(), "administrator", null));
+                principal(UUID.randomUUID(), "super_administrator", null));
 
         assertThat(result.getAccountState()).isEqualTo("inactive");
         verify(userRepository).save(contributor);
@@ -227,36 +224,46 @@ class UserServiceTest {
     @Test
     void updateStatus_rejectsPendingStatusChange() {
         assertThatThrownBy(() -> userService.updateStatus(userId, UserStatus.pending,
-                principal(UUID.randomUUID(), "administrator", null)))
+                principal(UUID.randomUUID(), "super_administrator", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test
-    void updateStatus_validatorCannotManageValidator() {
-        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.validator, institution);
+    void updateStatus_administratorCanManageAdministrator() {
+        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.administrator, institution);
         when(userRepository.findById(validator.getId())).thenReturn(Optional.of(validator));
+        when(userRepository.save(validator)).thenReturn(validator);
 
-        assertThatThrownBy(() -> userService.updateStatus(validator.getId(), UserStatus.inactive,
-                principal(UUID.randomUUID(), "validator", institutionId)))
+        assertThat(userService.updateStatus(validator.getId(), UserStatus.inactive,
+                principal(UUID.randomUUID(), "administrator", institutionId)).getAccountState()).isEqualTo("inactive");
+    }
+
+    @Test
+    void removeUser_standardAdministratorCannotRemoveAdministrator() {
+        User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.administrator, null);
+        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+
+        assertThatThrownBy(() -> userService.removeUser(targetAdmin.getId(),
+                principal(UUID.randomUUID(), "administrator", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test
-    void updateStatus_standardAdministratorCannotDeactivateAdministrator() {
+    void removeUser_superAdministratorCanRemoveAdministrator() {
         User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.administrator, null);
-        User requesterAdmin = user(UUID.randomUUID(), "requester@dasigconnect.com", UserRole.administrator, null);
+        targetAdmin.setAccountState(UserStatus.inactive);
+        User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.super_administrator, null);
+        superAdmin.setSuperAdministrator(true);
         when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
-        when(userRepository.findById(requesterAdmin.getId())).thenReturn(Optional.of(requesterAdmin));
+        when(userRepository.findById(superAdmin.getId())).thenReturn(Optional.of(superAdmin));
+        when(submissionRepository.existsByContributorId(targetAdmin.getId())).thenReturn(true);
 
-        assertThatThrownBy(() -> userService.updateStatus(targetAdmin.getId(), UserStatus.inactive,
-                principal(requesterAdmin.getId(), "administrator", null)))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(userService.removeUser(targetAdmin.getId(),
+                principal(superAdmin.getId(), "super_administrator", null))).isEqualTo("deactivated");
     }
 
     @Test
@@ -294,16 +301,13 @@ class UserServiceTest {
     }
 
     @Test
-    void updateStatus_superAdministratorCanDeactivateAdministratorAndRevokesSessions() {
+    void updateStatus_regularAdministratorCanDeactivateAdministratorAndRevokesSessions() {
         User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.administrator, null);
-        User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.administrator, null);
-        superAdmin.setSuperAdministrator(true);
         when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
-        when(userRepository.findById(superAdmin.getId())).thenReturn(Optional.of(superAdmin));
         when(userRepository.save(targetAdmin)).thenReturn(targetAdmin);
 
         UserDto result = userService.updateStatus(targetAdmin.getId(), UserStatus.inactive,
-                principal(superAdmin.getId(), "administrator", null));
+                principal(UUID.randomUUID(), "administrator", null));
 
         assertThat(result.getAccountState()).isEqualTo("inactive");
         verify(jwtService).invalidateUserTokens(targetAdmin.getId());
@@ -313,7 +317,7 @@ class UserServiceTest {
     @Test
     void requestSuperAdministratorTransfer_setsPendingConfirmation() {
         User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.administrator, null);
-        User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.administrator, null);
+        User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.super_administrator, null);
         superAdmin.setSuperAdministrator(true);
         when(userRepository.findById(superAdmin.getId())).thenReturn(Optional.of(superAdmin));
         when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
@@ -321,7 +325,7 @@ class UserServiceTest {
 
         SuperAdministratorTransferResponseDto result = userService.requestSuperAdministratorTransfer(
                 targetAdmin.getId(),
-                principal(superAdmin.getId(), "administrator", null));
+                principal(superAdmin.getId(), "super_administrator", null));
 
         assertThat(result.targetUserId()).isEqualTo(targetAdmin.getId());
         assertThat(result.requestedBy()).isEqualTo(superAdmin.getId());
@@ -331,7 +335,7 @@ class UserServiceTest {
 
     @Test
     void confirmSuperAdministratorTransfer_promotesIncomingAndDemotesOutgoing() {
-        User outgoing = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.administrator, null);
+        User outgoing = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.super_administrator, null);
         outgoing.setSuperAdministrator(true);
         User incoming = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.administrator, null);
         incoming.setSuperAdminTransferRequestedBy(outgoing.getId());
@@ -388,7 +392,7 @@ class UserServiceTest {
 
     @Test
     void reassignContributor_validatorUser_throwsUnprocessableEntity() {
-        User validator = user(UUID.randomUUID(), "val@cit.edu.ph", UserRole.validator, institution);
+        User validator = user(UUID.randomUUID(), "val@cit.edu.ph", UserRole.administrator, institution);
         when(userRepository.findById(validator.getId())).thenReturn(Optional.of(validator));
 
         assertThatThrownBy(() -> userService.reassignContributor(

@@ -38,6 +38,18 @@ public class User {
     @Column(name = "last_name", length = 100)
     private String lastName;
 
+    @Column(name = "display_name", length = 150)
+    private String displayName;
+
+    @Column(name = "notify_in_app", nullable = false)
+    private boolean notifyInApp = true;
+
+    @Column(name = "notify_email", nullable = false)
+    private boolean notifyEmail = true;
+
+    @Column(name = "session_version", nullable = false)
+    private long sessionVersion = 0;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserRole role;
@@ -133,6 +145,15 @@ public class User {
         this.lastName = lastName;
     }
 
+    public String getDisplayName() { return displayName; }
+    public void setDisplayName(String displayName) { this.displayName = displayName; }
+    public boolean isNotifyInApp() { return notifyInApp; }
+    public void setNotifyInApp(boolean notifyInApp) { this.notifyInApp = notifyInApp; }
+    public boolean isNotifyEmail() { return notifyEmail; }
+    public void setNotifyEmail(boolean notifyEmail) { this.notifyEmail = notifyEmail; }
+    public long getSessionVersion() { return sessionVersion; }
+    public void setSessionVersion(long sessionVersion) { this.sessionVersion = sessionVersion; }
+
     public UserRole getRole() {
         return role;
     }
@@ -171,8 +192,6 @@ public class User {
 
     public void setSuperAdminTransferExpiresAt(Instant superAdminTransferExpiresAt) {
         this.superAdminTransferExpiresAt = superAdminTransferExpiresAt;
-    
-
     }
 
     public Instant getCreatedAt() {

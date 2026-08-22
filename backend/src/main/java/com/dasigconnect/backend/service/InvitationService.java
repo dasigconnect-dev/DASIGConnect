@@ -68,10 +68,14 @@ public class InvitationService {
     }
 
     public InvitationResponseDto createInvitation(CreateInvitationRequestDto dto) {
-        return createInvitation(dto, null);
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "An authenticated administrator is required to create invitations");
     }
 
     public InvitationResponseDto createInvitation(CreateInvitationRequestDto dto, JwtUserDetails inviter) {
+        if (dto.assignedRole() == UserRole.super_administrator) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Super Administrator accounts cannot be invited through institution onboarding");
+        }
         String recipientEmail = dto.recipientEmail().trim().toLowerCase();
         Institution institution = resolveInvitationInstitution(dto);
         validateInviterScope(dto, inviter);
@@ -160,7 +164,6 @@ public class InvitationService {
 
         token.setUsedAt(Instant.now());
         invitationTokenRepository.save(token);
-
         auditLogService.record(
                 user,
                 "INVITATION_ACCEPTED",
@@ -226,7 +229,7 @@ public class InvitationService {
         }
         if (dto.institutionId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Institution is required for contributor and validator invitations");
+                    "Institution is required for contributor invitations");
         }
         Institution institution = entityManager.find(Institution.class, dto.institutionId());
         if (institution == null) {
@@ -367,12 +370,8 @@ public class InvitationService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invitation not found."));
 
         if (!isAdministrator(requester)) {
-            if (token.getInstitution() == null
-                    || requester.institutionId() == null
-                    || !token.getInstitution().getId().equals(requester.institutionId())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                        "You can only cancel invitations for your own institution.");
-            }
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only administrators and super administrators can cancel invitations.");
         }
 
         if (token.getUsedAt() != null) {
@@ -417,18 +416,11 @@ public class InvitationService {
     }
 
     private void validateInviterScope(CreateInvitationRequestDto dto, JwtUserDetails inviter) {
-        if (inviter == null || isAdministrator(inviter)) {
+        if (isAdministrator(inviter)) {
             return;
         }
-        if (!isValidator(inviter)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators and validators can send invitations");
-        }
-        if (dto.assignedRole() != UserRole.contributor) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Validators can only invite contributors");
-        }
-        if (inviter.institutionId() == null || !inviter.institutionId().equals(dto.institutionId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Validators can only invite users to their own institution");
-        }
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Only administrators and super administrators can send invitations");
     }
 
     private void invalidateOpenInvitations(String recipientEmail, Instant now) {
@@ -441,22 +433,15 @@ public class InvitationService {
     }
 
     private boolean isAdministrator(JwtUserDetails inviter) {
-        return inviter != null && "administrator".equalsIgnoreCase(inviter.role());
-    }
-
-    private boolean isValidator(JwtUserDetails inviter) {
-        return inviter != null && "validator".equalsIgnoreCase(inviter.role());
+        return inviter != null && ("super_administrator".equalsIgnoreCase(inviter.role())
+                || "administrator".equalsIgnoreCase(inviter.role()));
     }
 
     private void validateInstitutionScope(UUID institutionId, JwtUserDetails requester) {
-        if (requester == null || isAdministrator(requester)) {
+        if (isAdministrator(requester)) {
             return;
         }
-        if (!isValidator(requester)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators and validators can view invitations");
-        }
-        if (requester.institutionId() == null || !requester.institutionId().equals(institutionId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Validators can only view invitations for their own institution");
-        }
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Only administrators and super administrators can view invitations");
     }
 }

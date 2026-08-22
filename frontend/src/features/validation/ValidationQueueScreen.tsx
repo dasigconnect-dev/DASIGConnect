@@ -229,7 +229,7 @@ export default function ValidationQueueScreen({
 
       if (summary.contributorEmail?.toLowerCase() === user.email.toLowerCase()) {
         setActiveLock(null);
-        setLockNotice("Self-validation blocked. This submission must be reviewed by another Validator.");
+        setLockNotice("Self-validation blocked. This submission must be reviewed by another Administrator.");
         return;
       }
 
@@ -454,7 +454,7 @@ export default function ValidationQueueScreen({
               <NoticeBar
                 tone="danger"
                 icon="ti-alert-triangle"
-                text="Self-validation blocked. This submission is routed to another Validator."
+                text="Self-validation blocked. This submission is routed to another Administrator."
               />
             )}
             {lockNotice && !isSelfReview && (
@@ -590,7 +590,7 @@ export default function ValidationQueueScreen({
                   </p>
                 </DetailCard>
                 {selected.description && (
-                  <DetailCard icon="ti-notes" label="Validator Notes" full muted>
+                  <DetailCard icon="ti-notes" label="Administrator Notes" full muted>
                     {selected.description}
                   </DetailCard>
                 )}

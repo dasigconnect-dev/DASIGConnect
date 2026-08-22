@@ -1092,7 +1092,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               </h1>
               <p className="sub-form-page-sub">
                 {centerMode === "preview"
-                  ? "Review how followers will see this post before sending it to validator review."
+                  ? "Review how followers will see this post before sending it to administrator review."
                   : isReadOnlySubmission
                     ? "Preview the content exactly as it was submitted."
                     : "Prepare event media, caption, tags, and a preferred publishing slot."}
@@ -1326,7 +1326,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               </div>
             </Field>
 
-            <Field label="Description / Validator Notes">
+            <Field label="Description / Administrator Notes">
               <textarea
                 className="sub-finput"
                 rows={2}
@@ -1335,7 +1335,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 onChange={(event) =>
                   updateField("description", event.target.value)
                 }
-                placeholder="Notes for your Validator..."
+                placeholder="Notes for your Administrator..."
               />
             </Field>
           </section>
@@ -1561,7 +1561,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         <ConfirmModal
           icon="ti-send"
           title="Submit for Review?"
-          description={`This submission will be sent to your institution's Validator for review. Readiness score: ${readiness.score} / 100.`}
+          description={`This submission will be sent to your institution's Administrator for review. Readiness score: ${readiness.score} / 100.`}
           cancelLabel="Go Back"
           confirmLabel={submitting ? "Submitting..." : "Confirm Submission"}
           loading={submitting}
@@ -1721,7 +1721,7 @@ function InPageFacebookPreview({
               <h2 id="sub-preview-title">What followers will see</h2>
             </div>
             <p>
-              Preview the public-facing post before it moves into validator review.
+              Preview the public-facing post before it moves into administrator review.
             </p>
           </div>
           <FacebookPreviewCard
@@ -1753,7 +1753,7 @@ function InPageFacebookPreview({
           <i className="ti ti-shield-check" aria-hidden="true" />
           <span>
             {submitDisabledReason ||
-              "Submitting sends this post to your institution validator. Save as draft if you still want to refine it."}
+              "Submitting sends this post to your institution administrator. Save as draft if you still want to refine it."}
           </span>
         </div>
         <button
@@ -2914,7 +2914,7 @@ function getPreviewDetails({
     readinessScore,
     completionLabel:
       missingItems.length === 0
-        ? "Ready for validator review"
+        ? "Ready for administrator review"
         : `${missingItems.length} item${missingItems.length === 1 ? "" : "s"} remaining`,
     category: form.category || "Not selected",
     institution: institution || "Institution",
@@ -3071,7 +3071,7 @@ function formatTimeInput(value: string) {
 }
 
 function formatRole(role: User["role"]) {
-  if (role === "admin") return "Administrator";
+  if (role === "super_administrator") return "Administrator";
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 

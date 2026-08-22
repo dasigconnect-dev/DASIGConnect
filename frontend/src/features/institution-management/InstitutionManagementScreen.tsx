@@ -165,7 +165,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   }, [location.pathname, location.state, navigate])
 
   useEffect(() => {
-    if (user.role !== 'admin') return
+    if (user.role !== 'administrator' && user.role !== 'super_administrator') return
     setListLoading(true)
     setListError('')
     listInstitutions()
@@ -321,7 +321,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
         (u) => u.role.toLowerCase() === 'contributor',
       ).length
       const validators = usersData.filter(
-        (u) => u.role.toLowerCase() === 'validator',
+        (u) => u.role.toLowerCase() === 'administrator',
       ).length
       const pendingCount = Math.max(
         pendingData.length,
@@ -710,8 +710,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     }
     if (!inviteRole) return
 
-    if (inviteRole === 'validator') {
-      const proceed = await confirmValidatorInvite()
+    if (inviteRole === 'administrator') {
+      const proceed = await confirmAdministratorInvite()
       if (!proceed) return
     }
 
@@ -727,7 +727,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
         try {
           const response = await inviteUser({
             recipientEmail: email,
-            institutionId: selectedInstitution.id,
+            institutionId: inviteRole === 'administrator' ? null : selectedInstitution.id,
             assignedRole: inviteRole,
           })
           if (response.data.emailDelivered) {
@@ -770,19 +770,19 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     }
   }
 
-  function confirmValidatorInvite(): Promise<boolean> {
-    const activeValidators = managedUsers.filter(
+  function confirmAdministratorInvite(): Promise<boolean> {
+    const activeAdministrators = managedUsers.filter(
       (u) =>
-        u.role.toLowerCase() === 'validator' && u.accountState.toLowerCase() === 'active',
+        u.role.toLowerCase() === 'administrator' && u.accountState.toLowerCase() === 'active',
     )
-    if (activeValidators.length === 0) return Promise.resolve(true)
+    if (activeAdministrators.length === 0) return Promise.resolve(true)
 
     const name = selectedInstitution?.name || 'this institution'
     return new Promise((resolve) => {
       setConfirmDialog({
-        title: 'Invite Additional Validator?',
-        message: `${name} already has ${activeValidators.length} active validator${activeValidators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
-        confirmLabel: 'Yes, invite validator',
+        title: 'Invite Additional Administrator?',
+        message: `${name} already has ${activeAdministrators.length} active administrator${activeAdministrators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
+        confirmLabel: 'Yes, invite administrator',
         dangerous: false,
         onConfirm: () => {
           setConfirmDialog(null)

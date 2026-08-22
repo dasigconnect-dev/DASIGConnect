@@ -2,6 +2,9 @@ package com.dasigconnect.backend.security;
 
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.TenantScopeService;
+import com.dasigconnect.backend.repository.UserRepository;
+import com.dasigconnect.backend.model.entity.UserStatus;
+import org.springframework.beans.factory.ObjectProvider;
 import io.jsonwebtoken.Claims;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -28,10 +31,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JWTService jwtService;
     private final TenantScopeService tenantScopeService;
+    private final ObjectProvider<UserRepository> userRepositoryProvider;
 
-    public JwtAuthenticationFilter(JWTService jwtService, TenantScopeService tenantScopeService) {
+    public JwtAuthenticationFilter(JWTService jwtService, TenantScopeService tenantScopeService,
+            ObjectProvider<UserRepository> userRepositoryProvider) {
         this.jwtService = jwtService;
         this.tenantScopeService = tenantScopeService;
+        this.userRepositoryProvider = userRepositoryProvider;
     }
 
     @Override
@@ -41,7 +47,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (auth != null && auth.startsWith("Bearer ")) {
             String token = auth.substring(7);
             try {
-                if (jwtService.validateToken(token)) {
+                if (!jwtService.validateToken(token)) {
+                    if (request.getRequestURI().endsWith("/auth/logout")) {
+                        filterChain.doFilter(request, response);
+                        return;
+                    }
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Session is invalid or expired");
+                    return;
+                }
+                {
                     Claims claims = jwtService.extractClaims(token);
                     String role = claims.getOrDefault("role", "").toString();
                     String userIdStr = claims.getOrDefault("user_id", "").toString();
@@ -64,6 +78,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         log.debug("Invalid institution_id in token: {}", instStr);
                     }
 
+                    long tokenSessionVersion = claims.get("session_version", Number.class) == null
+                            ? -1 : claims.get("session_version", Number.class).longValue();
+                    UserRepository userRepository = userRepositoryProvider.getIfAvailable();
+                    if (userRepository != null) {
+                        var currentUser = userId == null ? null : userRepository.findById(userId).orElse(null);
+                        if (currentUser == null || currentUser.getAccountState() != UserStatus.active
+                                || currentUser.getSessionVersion() != tokenSessionVersion) {
+                            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Session has been revoked");
+                            return;
+                        }
+                    }
+
                     List<SimpleGrantedAuthority> authorities = new ArrayList<>();
                     if (!role.isBlank()) {
                         authorities.add(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
@@ -83,6 +109,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 }
             } catch (Exception ex) {
                 log.debug("JWT validation failed: {}", ex.getMessage());
+                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Session is invalid or expired");
+                return;
             }
         }
         filterChain.doFilter(request, response);

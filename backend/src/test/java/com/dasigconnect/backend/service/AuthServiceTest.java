@@ -129,7 +129,7 @@ class AuthServiceTest {
 
     @Test
     void login_administrator_returnsNullInstitutionId() {
-        activeUser.setRole(UserRole.administrator);
+        activeUser.setRole(UserRole.super_administrator);
         activeUser.setInstitution(null);
 
         when(userRepository.findByEmail(activeUser.getEmail())).thenReturn(Optional.of(activeUser));
@@ -140,11 +140,12 @@ class AuthServiceTest {
         LoginResponseDto result = authService.login(new LoginRequestDto(activeUser.getEmail(), RAW_PASSWORD), request);
 
         assertThat(result.institutionId()).isNull();
-        assertThat(result.role()).isEqualTo("administrator");
+        assertThat(result.role()).isEqualTo("super_administrator");
     }
 
     @Test
     void logout_delegatesToJwtService() {
+        when(jwtService.validateToken("some.token")).thenReturn(true);
         authService.logout("some.token");
         verify(jwtService).invalidateToken("some.token");
     }

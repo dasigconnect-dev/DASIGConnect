@@ -56,7 +56,7 @@ class InvitationControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void createInvitation_asAdministrator_returns201() throws Exception {
         InvitationResponseDto response = new InvitationResponseDto(
                 UUID.randomUUID(), "user@example.com", UserRole.contributor,
@@ -76,7 +76,7 @@ class InvitationControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void createInvitation_missingRecipientEmail_returns400() throws Exception {
         mockMvc.perform(post("/api/v1/invitations")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -99,7 +99,7 @@ class InvitationControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "VALIDATOR")
+    @WithMockUser(roles = "ADMINISTRATOR")
     void createInvitation_asValidator_reachesService() throws Exception {
         InvitationResponseDto response = new InvitationResponseDto(
                 UUID.randomUUID(), "user@example.com", UserRole.contributor,
@@ -164,7 +164,7 @@ class InvitationControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void resend_asAdministrator_returnsInvitation() throws Exception {
         UUID invitationId = UUID.randomUUID();
         InvitationResponseDto response = new InvitationResponseDto(
@@ -180,7 +180,7 @@ class InvitationControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "VALIDATOR")
+    @WithMockUser(roles = "ADMINISTRATOR")
     void pending_asValidator_returnsPendingInvitations() throws Exception {
         UUID invitationId = UUID.randomUUID();
         when(invitationService.listPending(any(), any())).thenReturn(List.of(new PendingInvitationDto(
@@ -198,7 +198,7 @@ class InvitationControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "VALIDATOR")
+    @WithMockUser(roles = "ADMINISTRATOR")
     void pendingCount_asValidator_returnsCount() throws Exception {
         when(invitationService.countPending(any(), any())).thenReturn(Map.of("pendingInvitations", 3L));
 

@@ -146,7 +146,7 @@ export default function CalendarEventDetailModal({
                 )}
               </span>
             </div>
-            <DetailRow label="Contributor" value={user.role === "admin" ? "Available in submission record" : "Your institution workspace"} />
+            <DetailRow label="Contributor" value={user.role === "super_administrator" ? "Available in submission record" : "Your institution workspace"} />
             <div className="cal-detail-row">
               <span className="cal-detail-label">Scheduled</span>
               <span className="cal-detail-value">
@@ -189,7 +189,7 @@ export default function CalendarEventDetailModal({
             />
           </details>
 
-          {user.role === "admin" && (
+          {user.role === "super_administrator" && (
             <details className="cal-drawer-disclosure">
               <summary>Metadata</summary>
               <div className="cal-detail-row">

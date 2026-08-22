@@ -28,7 +28,7 @@ interface InstitutionUsersCardProps {
   userColumnLabel?: string
 }
 
-type RoleFilter = 'all' | 'validator' | 'contributor'
+type RoleFilter = 'all' | 'administrator' | 'contributor'
 type StatusFilter = 'all' | 'active' | 'pending' | 'cancelled' | 'inactive'
 
 export default function InstitutionUsersCard({
@@ -518,6 +518,5 @@ function canToggleUserStatus(currentUser: User | null, managedUser: UserProfileR
   if (!currentUser) return false
   const state = managedUser.accountState.toLowerCase()
   if (state !== 'active' && state !== 'inactive') return false
-  if (currentUser.role === 'admin') return true
-  return currentUser.role === 'validator' && managedUser.role.toLowerCase() === 'contributor'
+  return currentUser.role === 'super_administrator' || currentUser.role === 'administrator'
 }

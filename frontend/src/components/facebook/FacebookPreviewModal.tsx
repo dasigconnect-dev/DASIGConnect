@@ -178,7 +178,7 @@ export default function FacebookPreviewModal({
             <span>
               {submitDisabledReason
                 ? submitDisabledReason
-                : "Submitting sends this post to your institution validator. You can still save changes as a draft before sending."}
+                : "Submitting sends this post to your institution administrator. You can still save changes as a draft before sending."}
             </span>
           </div>
           {previewError && onRetryPreview && (

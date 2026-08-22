@@ -35,7 +35,7 @@ public class InvitationController {
         this.invitationService = invitationService;
     }
 
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR','VALIDATOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
     @PostMapping
     public ResponseEntity<InvitationResponseDto> create(
             @RequestBody @Valid CreateInvitationRequestDto dto,
@@ -72,7 +72,7 @@ public class InvitationController {
      * Resends the invitation email with a fresh token.
      * Used when the original delivery failed (pending_email_undelivered).
      */
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR','VALIDATOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
     @PostMapping("/{id}/resend")
     public ResponseEntity<InvitationResponseDto> resend(
             @PathVariable UUID id,
@@ -81,7 +81,7 @@ public class InvitationController {
         return ResponseEntity.ok(invitationService.resend(id, requester));
     }
 
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR','VALIDATOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> cancel(
             @PathVariable UUID id,
@@ -91,7 +91,7 @@ public class InvitationController {
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR','VALIDATOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
     @GetMapping("/pending")
     public ResponseEntity<List<PendingInvitationDto>> pending(
             @RequestParam UUID institutionId,
@@ -100,7 +100,7 @@ public class InvitationController {
         return ResponseEntity.ok(invitationService.listPending(institutionId, requester));
     }
 
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR','VALIDATOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
     @GetMapping("/pending/count")
     public ResponseEntity<Map<String, Long>> pendingCount(
             @RequestParam UUID institutionId,

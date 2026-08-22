@@ -53,7 +53,9 @@ public class JWTService {
                 .claim("user_id", user.getId().toString())
                 .claim("email", user.getEmail())
                 .claim("role", user.getRole().name())
-                .claim("super_administrator", user.isSuperAdministrator())
+                .claim("session_version", user.getSessionVersion())
+                .claim("super_administrator",
+                        user.getRole() == com.dasigconnect.backend.model.entity.UserRole.super_administrator)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiresAt))
                 .signWith(signingKey, Jwts.SIG.HS256);
@@ -98,6 +100,10 @@ public class JWTService {
     public void invalidateToken(String token) {
         Claims claims = extractClaims(token);
         blacklistedTokens.put(token, claims.getExpiration().toInstant());
+    }
+
+    public Duration getAccessTokenTtl() {
+        return accessTokenTtl;
     }
 
     public void invalidateUserTokens(UUID userId) {

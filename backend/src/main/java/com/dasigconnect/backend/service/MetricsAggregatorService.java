@@ -56,8 +56,8 @@ public class MetricsAggregatorService {
         ReportingPeriod period = resolvePeriod(range);
         ReportingPeriod previousPeriod = previousPeriod(period);
         AnalyticsScope scope = scopeFor(user, institutionId);
-        boolean adminView = "administrator".equals(scope.role());
-        boolean validatorView = "validator".equals(scope.role());
+        boolean adminView = "super_administrator".equals(scope.role());
+        boolean validatorView = "administrator".equals(scope.role());
         boolean contributorView = "contributor".equals(scope.role());
 
         PostingDelayStats delay = analyticsRepository.averagePostingDelay(period.start(), period.end(), scope);
@@ -226,13 +226,13 @@ public class MetricsAggregatorService {
     private AnalyticsScope scopeFor(JwtUserDetails user, UUID institutionId) {
         String role = user.role() == null ? "" : user.role().toLowerCase(Locale.ROOT);
         return switch (role) {
-            case "administrator" -> new AnalyticsScope("administrator", institutionId, null);
-            case "validator" -> {
+            case "super_administrator" -> new AnalyticsScope("super_administrator", institutionId, null);
+            case "administrator" -> {
                 if (institutionId != null) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                             "Institution analytics filters are available to administrators only.");
                 }
-                yield new AnalyticsScope("validator", user.institutionId(), null);
+                yield new AnalyticsScope("administrator", user.institutionId(), null);
             }
             case "contributor" -> {
                 if (institutionId != null) {
@@ -321,7 +321,7 @@ public class MetricsAggregatorService {
     }
 
     private void assertMetricAllowed(String metric, AnalyticsScope scope) {
-        if ("operational-health".equals(metric) && !"administrator".equals(scope.role())) {
+        if ("operational-health".equals(metric) && !"super_administrator".equals(scope.role())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Operational health analytics are available to administrators only.");
         }
@@ -347,12 +347,12 @@ public class MetricsAggregatorService {
 
     private String csvFilename(String metric, ReportingPeriod period, AnalyticsScope scope) {
         String role = switch (scope.role()) {
+            case "super_administrator" -> "Super Administrator";
             case "administrator" -> "Administrator";
-            case "validator" -> "Validator";
             case "contributor" -> "Contributor";
             default -> "User";
         };
-        String scopeLabel = "administrator".equals(scope.role()) ? "Network" : "Institution";
+        String scopeLabel = "super_administrator".equals(scope.role()) ? "Network" : "Institution";
         return "DASIGConnect_Analytics_%s_%s_%s_%s.csv".formatted(
                 role,
                 scopeLabel,

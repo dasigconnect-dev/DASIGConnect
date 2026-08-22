@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.controller;
 
+import com.dasigconnect.backend.model.dto.user.UpdateAccountSettingsRequestDto;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -55,13 +56,20 @@ public class UserController {
         return ResponseEntity.ok(userService.getProfile(user));
     }
 
+    @PatchMapping("/me/settings")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<UserDto> updateMySettings(
+            @RequestBody @Valid UpdateAccountSettingsRequestDto request,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(userService.updateSettings(user, request));
+    }
+
     /**
      * GET /api/v1/users?institutionId={uuid} Lists all users for a given
-     * institution. - ADMINISTRATOR: any institution - VALIDATOR: own
-     * institution only
+     * institution. Both Administrator roles may query any institution.
      */
     @GetMapping("/users")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'VALIDATOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
     public ResponseEntity<List<UserDto>> listUsers(
             @RequestParam UUID institutionId,
             @AuthenticationPrincipal JwtUserDetails user) {
@@ -69,7 +77,7 @@ public class UserController {
     }
 
     @GetMapping("/users/{id}")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'VALIDATOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
     public ResponseEntity<UserDto> getUser(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
@@ -77,7 +85,7 @@ public class UserController {
     }
 
     @PatchMapping("/users/{id}/status")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'VALIDATOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
     public ResponseEntity<UserDto> updateStatus(
             @PathVariable UUID id,
             @RequestBody @Valid UpdateUserStatusRequestDto request,
@@ -87,12 +95,12 @@ public class UserController {
 
     /**
      * PATCH /api/v1/users/{id}/institution Reassigns a contributor account to a
-     * different institution (admin-only, A4). Validators cannot be reassigned
+     * different institution (Administrator-only, A4). Administrators cannot be reassigned
      * through this endpoint. Historical submissions retain their original
      * institution attribution.
      */
     @PatchMapping("/users/{id}/institution")
-    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
     public ResponseEntity<UserDto> reassignInstitution(
             @PathVariable UUID id,
             @RequestBody @Valid ReassignContributorRequest request,
@@ -120,7 +128,7 @@ public class UserController {
     }
 
     @DeleteMapping("/users/{id}")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'VALIDATOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
     public ResponseEntity<java.util.Map<String, String>> removeUser(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
@@ -129,7 +137,7 @@ public class UserController {
     }
 
     @PostMapping("/users/{id}/super-administrator-transfer")
-    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    @PreAuthorize("hasRole('SUPER_ADMINISTRATOR')")
     public ResponseEntity<SuperAdministratorTransferResponseDto> requestSuperAdministratorTransfer(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
@@ -148,7 +156,7 @@ public class UserController {
      * validator counts for an institution. Used by dashboard summary tiles.
      */
     @GetMapping("/users/counts")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'VALIDATOR')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
     public ResponseEntity<Map<String, Long>> userCounts(
             @RequestParam UUID institutionId,
             @AuthenticationPrincipal JwtUserDetails user) {

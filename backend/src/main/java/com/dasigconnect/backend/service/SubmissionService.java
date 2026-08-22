@@ -271,7 +271,7 @@ public class SubmissionService {
             String submissionLink = "/submissions/" + submissionId;
 
             List<User> validators = userRepository
-                    .findByInstitutionIdAndRoleOrderByCreatedAtDesc(user.institutionId(), UserRole.validator);
+                    .findByInstitutionIdAndRoleOrderByCreatedAtDesc(user.institutionId(), UserRole.administrator);
             for (User validator : validators) {
                 notificationService.createNotification(
                         validator,
@@ -320,8 +320,8 @@ public class SubmissionService {
 
     /**
      * Lists submissions filtered by the caller's role: - CONTRIBUTOR: only
-     * their own submissions for their institution - VALIDATOR: all submissions
-     * for their institution - ADMINISTRATOR: all submissions (not filtered by
+     * their own submissions for their institution - ADMINISTRATOR: all submissions
+     * for their institution - SUPER_ADMINISTRATOR: all submissions (not filtered by
      * institution)
      */
     @Transactional(readOnly = true)
@@ -330,10 +330,10 @@ public class SubmissionService {
             case "contributor" ->
                 submissionRepository
                 .findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(user.userId(), user.institutionId());
-            case "validator" ->
+            case "administrator" ->
                 submissionRepository
                 .findByInstitutionIdOrderByCreatedAtDesc(user.institutionId());
-            case "administrator" ->
+            case "super_administrator" ->
                 submissionRepository.findAllByOrderByCreatedAtDesc();
             default ->
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Unknown role");
@@ -549,9 +549,9 @@ public class SubmissionService {
 
     private void assertReadAccess(Submission submission, JwtUserDetails user) {
         switch (user.role().toLowerCase()) {
-            case "administrator" -> {
+            case "super_administrator" -> {
                 /* full access */ }
-            case "validator" -> {
+            case "administrator" -> {
                 if (!submission.getInstitution().getId().equals(user.institutionId())) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied.");
                 }

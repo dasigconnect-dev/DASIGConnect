@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
 
-export type DashboardNavId = 'home' | 'submit' | 'institution-management' | 'user-management' | 'scheduler' | 'resolution' | 'analytics' | 'media-repository' | 'notifications'
+export type DashboardNavId = 'home' | 'submit' | 'institution-management' | 'user-management' | 'scheduler' | 'resolution' | 'analytics' | 'media-repository' | 'notifications' | 'settings'
 
 interface DashboardShellProps {
   user: User
@@ -148,10 +148,10 @@ export default function DashboardShell({
                       {capitalize(user.role)} · {getInstitutionName(user)}
                     </div>
                   </div>
-                  <button type="button" className="udrop-item" disabled>
+                  <button type="button" className="udrop-item" onClick={() => navigate('/settings')}>
                     <i className="ti ti-key"></i> Change Password
                   </button>
-                  <button type="button" className="udrop-item" disabled>
+                  <button type="button" className="udrop-item" onClick={() => navigate('/settings')}>
                     <i className="ti ti-settings"></i> Account Settings
                   </button>
                   <div className="udrop-sep"></div>
@@ -192,24 +192,24 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
     },
     {
       id: 'submit',
-      icon: user.role === 'validator' ? 'ti ti-clipboard-list' : 'ti ti-photo-up',
-      label: user.role === 'validator' ? 'Review Queue' : 'Submit Content',
-      path: user.role === 'validator' ? '/validation/queue' : '/submissions/new',
-      visible: user.role === 'validator' || user.role === 'contributor',
+      icon: user.role !== 'contributor' ? 'ti ti-clipboard-list' : 'ti ti-photo-up',
+      label: user.role !== 'contributor' ? 'Review Queue' : 'Submit Content',
+      path: user.role !== 'contributor' ? '/validation/queue' : '/submissions/new',
+      visible: true,
     },
     {
       id: 'institution-management',
       icon: 'ti ti-building',
       label: 'Institutions',
       path: '/admin/institution-management',
-      visible: user.role === 'admin',
+      visible: user.role === 'super_administrator' || user.role === 'administrator',
     },
     {
       id: 'user-management',
       icon: 'ti ti-users',
       label: 'User Management',
       path: '/admin/user-management/invitations',
-      visible: user.role === 'validator',
+      visible: user.role === 'super_administrator' || user.role === 'administrator',
     },
     {
       id: 'media-repository',
@@ -237,7 +237,7 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       icon: 'ti ti-alert-triangle',
       label: 'Resolution Center',
       path: '/admin/resolution',
-      visible: user.role === 'admin',
+      visible: user.role === 'super_administrator' || user.role === 'administrator',
     },
     {
       id: 'analytics',
