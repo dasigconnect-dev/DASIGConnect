@@ -1,15 +1,10 @@
 package com.dasigconnect.backend.controller;
 
-import com.dasigconnect.backend.model.dto.user.ReassignContributorRequest;
-import com.dasigconnect.backend.model.dto.user.UserDto;
-import com.dasigconnect.backend.model.dto.user.UpdateUserStatusRequestDto;
-import com.dasigconnect.backend.security.JwtUserDetails;
-import com.dasigconnect.backend.service.UserService;
-import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -19,16 +14,25 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.dasigconnect.backend.model.dto.user.ReassignContributorRequest;
+import com.dasigconnect.backend.model.dto.user.SuperAdministratorTransferResponseDto;
+import com.dasigconnect.backend.model.dto.user.UpdateUserStatusRequestDto;
+import com.dasigconnect.backend.model.dto.user.UserDto;
+import com.dasigconnect.backend.security.JwtUserDetails;
+import com.dasigconnect.backend.service.UserService;
+
+import jakarta.validation.Valid;
+
 /**
- * User profile and management endpoints.
- * Base path: /api/v1
+ * User profile and management endpoints. Base path: /api/v1
  */
 @RestController
 @RequestMapping("/api/v1")
@@ -41,10 +45,9 @@ public class UserController {
     }
 
     /**
-     * GET /api/v1/me
-     * Returns the profile of the currently authenticated user.
-     * Used by the frontend to get reliable identity data (role, name, institution)
-     * rather than parsing it from the JWT payload.
+     * GET /api/v1/me Returns the profile of the currently authenticated user.
+     * Used by the frontend to get reliable identity data (role, name,
+     * institution) rather than parsing it from the JWT payload.
      */
     @GetMapping("/me")
     @PreAuthorize("isAuthenticated()")
@@ -53,10 +56,9 @@ public class UserController {
     }
 
     /**
-     * GET /api/v1/users?institutionId={uuid}
-     * Lists all users for a given institution.
-     * - ADMINISTRATOR: any institution
-     * - VALIDATOR: own institution only
+     * GET /api/v1/users?institutionId={uuid} Lists all users for a given
+     * institution. - ADMINISTRATOR: any institution - VALIDATOR: own
+     * institution only
      */
     @GetMapping("/users")
     @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'VALIDATOR')")
@@ -84,10 +86,10 @@ public class UserController {
     }
 
     /**
-     * PATCH /api/v1/users/{id}/institution
-     * Reassigns a contributor account to a different institution (admin-only, A4).
-     * Validators cannot be reassigned through this endpoint.
-     * Historical submissions retain their original institution attribution.
+     * PATCH /api/v1/users/{id}/institution Reassigns a contributor account to a
+     * different institution (admin-only, A4). Validators cannot be reassigned
+     * through this endpoint. Historical submissions retain their original
+     * institution attribution.
      */
     @PatchMapping("/users/{id}/institution")
     @PreAuthorize("hasRole('ADMINISTRATOR')")
@@ -126,10 +128,24 @@ public class UserController {
         return ResponseEntity.ok(java.util.Map.of("action", action));
     }
 
+    @PostMapping("/users/{id}/super-administrator-transfer")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ResponseEntity<SuperAdministratorTransferResponseDto> requestSuperAdministratorTransfer(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(userService.requestSuperAdministratorTransfer(id, user));
+    }
+
+    @PostMapping("/users/super-administrator-transfer/confirm")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ResponseEntity<UserDto> confirmSuperAdministratorTransfer(
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(userService.confirmSuperAdministratorTransfer(user));
+    }
+
     /**
-     * GET /api/v1/users/counts?institutionId={uuid}
-     * Returns contributor and validator counts for an institution.
-     * Used by dashboard summary tiles.
+     * GET /api/v1/users/counts?institutionId={uuid} Returns contributor and
+     * validator counts for an institution. Used by dashboard summary tiles.
      */
     @GetMapping("/users/counts")
     @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'VALIDATOR')")

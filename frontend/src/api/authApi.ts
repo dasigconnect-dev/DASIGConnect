@@ -123,7 +123,6 @@ export function deactivateInstitution(id: string) {
 export function reactivateInstitution(id: string) {
   return api.patch<InstitutionResponse>(`/institutions/${id}/reactivate`);
 }
-
 export function uploadInstitutionLogo(id: string, file: File) {
   const formData = new FormData();
   formData.append("file", file);
@@ -172,7 +171,6 @@ export function reassignContributor(id: string, targetInstitutionId: string) {
     targetInstitutionId,
   });
 }
-
 export function uploadUserAvatar(id: string, file: File) {
   const formData = new FormData();
   formData.append("file", file);

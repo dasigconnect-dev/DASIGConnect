@@ -2,7 +2,7 @@
 
 Module 1 is composed of:
 
-- `UC-1.1`: User Provisioning, Onboarding, and Authentication
+- `UC-1.1`: Administrator Account and Management
 - `UC-1.2`: Institution Onboarding and Workspace Provisioning
 - `UC-1.3`: Content Submission and Self-Service Scheduling
 
@@ -29,21 +29,29 @@ Module 1 is composed of:
    - scoped user listing
    - scoped user counts
 
-3. Invitation lifecycle is hardened:
+3. UC-1.1 Administrator Account Management is updated:
+   - use-case details are documented in `docs/md/UC-1.1-administrator-account-management.md`
+   - administrator invitations are network-scoped and remain pending until activation
+   - Super Administrator-only deactivation/reactivation/removal rules are enforced
+   - Super Administrator transfer requires target Administrator confirmation
+   - account management state changes are audited and relevant active sessions are revoked
+
+4. Invitation lifecycle is hardened:
    - active accounts cannot be re-invited
    - only one user account can exist per email
    - creating or resending an invite supersedes older unused, unexpired invite links for the same email
    - validators can only invite contributors into their own institution
    - validators must use the institution email domain rule
    - administrators can invite external emails such as Gmail for convenience
+   - administrators can invite other administrators without institution assignment
 
-4. Institution onboarding is implemented:
+5. Institution onboarding is implemented:
    - canonical `GET /api/v1/institutions`
    - canonical `POST /api/v1/institutions`
    - legacy `/api/v1/admin/institutions` remains supported
    - institution email domains are unique
 
-5. Submission backend and frontend wiring are implemented:
+6. Submission backend and frontend wiring are implemented:
    - `GET /api/v1/submissions`
    - `GET /api/v1/submissions/{id}`
    - `POST /api/v1/submissions`
@@ -54,7 +62,7 @@ Module 1 is composed of:
    - `GET /api/v1/submissions/lookups`
    - `POST /api/v1/submissions/{id}/evaluate-slot`
 
-6. Dashboard wiring is implemented:
+7. Dashboard wiring is implemented:
    - role-specific admin/validator/contributor dashboard views
    - live institution count
    - live user counts
@@ -63,19 +71,19 @@ Module 1 is composed of:
    - resend invite action
    - current users list for selected institution
 
-7. Frontend auth state now hydrates from `GET /api/v1/me` after login, invite accept, session modal relogin, and saved-token restore. Institution display now comes from the backend profile; email-domain guessing is only a fallback.
+8. Frontend auth state now hydrates from `GET /api/v1/me` after login, invite accept, session modal relogin, and saved-token restore. Institution display now comes from the backend profile; email-domain guessing is only a fallback.
 
-8. Local SMTP has been configured through ignored environment files. Production/staging still need team-owned SMTP values.
+9. Local SMTP has been configured through ignored environment files. Production/staging still need team-owned SMTP values.
 
-9. Local Supabase configuration is in place:
+10. Local Supabase configuration is in place:
    - backend database connection through `DASIG_DATABASE_*`
    - backend Supabase service config through `DASIG_SUPABASE_*`
    - frontend direct upload config through `VITE_SUPABASE_*`
    - shared storage bucket: `dasigconnect-media`
 
-10. Fresh Supabase database startup is fixed. Flyway baselines at version `0`, then applies V1 through V4 so Module 1 tables are created correctly.
+11. Fresh Supabase database startup is fixed. Flyway baselines at version `0`, then applies V1 through V4 so Module 1 tables are created correctly.
 
-11. Testing-mode submission changes are in place:
+12. Testing-mode submission changes are in place:
 
 - backend guard rail enforcement is configurable with `APP_GUARDRAILS_ENFORCED`
 - local default is currently `false`
@@ -83,7 +91,7 @@ Module 1 is composed of:
 - frontend submit buttons are not disabled by readiness score while testing
 - frontend draft payloads provide safe defaults for blank backend-required fields
 
-12. Submission queue design has been improved locally with a clearer queue panel, count badge, stronger item containers, and active/hover states.
+13. Submission queue design has been improved locally with a clearer queue panel, count badge, stronger item containers, and active/hover states.
 
 ## Verification
 
@@ -100,6 +108,14 @@ Module 1 is composed of:
   - `SubmissionServiceTest`
   - `SubmissionControllerTest`
 - Focused submission result: 42 tests, 0 failures, 0 errors.
+- Focused UC-1.1 backend tests passed:
+  - `InvitationControllerTest`
+  - `UserControllerTest`
+  - `InvitationServiceTest`
+  - `UserServiceTest`
+  - `JWTServiceTest`
+- Focused UC-1.1 result: 78 tests, 0 failures, 0 errors.
+- Full backend result: 294 tests, 0 failures, 0 errors.
 
 ## Remaining Module 1 Gaps
 
@@ -138,4 +154,4 @@ Module 1 is composed of:
 
 ## Branch Note
 
-Current work is on `feature/uc13-submission-backend`. Merge to main only after local verification, review, and team approval.
+Current UC-1.1 work is on `feature/uc11-admin-account-management`. Open a PR into `dev`, request team review, and merge only after approval.

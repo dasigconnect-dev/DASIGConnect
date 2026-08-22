@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import javax.crypto.SecretKey;
@@ -29,6 +30,7 @@ public class JWTService {
     private final SecretKey signingKey;
     private final Duration accessTokenTtl;
     private final Map<String, Instant> blacklistedTokens = new ConcurrentHashMap<>();
+    private final Map<UUID, Instant> userTokensRevokedAt = new ConcurrentHashMap<>();
 
     @Autowired
     public JWTService(
@@ -51,6 +53,7 @@ public class JWTService {
                 .claim("user_id", user.getId().toString())
                 .claim("email", user.getEmail())
                 .claim("role", user.getRole().name())
+                .claim("super_administrator", user.isSuperAdministrator())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiresAt))
                 .signWith(signingKey, Jwts.SIG.HS256);
@@ -78,12 +81,14 @@ public class JWTService {
         if (isBlacklisted(token)) {
             throw new JwtException("JWT has been invalidated");
         }
-        return Jwts.parser()
+        Claims claims = Jwts.parser()
                 .verifyWith(signingKey)
                 .clock(() -> Date.from(clock.instant()))
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+        assertUserTokenNotRevoked(claims);
+        return claims;
     }
 
     public Map<String, Object> verify(String token) {
@@ -93,6 +98,33 @@ public class JWTService {
     public void invalidateToken(String token) {
         Claims claims = extractClaims(token);
         blacklistedTokens.put(token, claims.getExpiration().toInstant());
+    }
+
+    public void invalidateUserTokens(UUID userId) {
+        if (userId != null) {
+            userTokensRevokedAt.put(userId, clock.instant());
+        }
+    }
+
+    private void assertUserTokenNotRevoked(Claims claims) {
+        String userIdClaim = claims.get("user_id", String.class);
+        if (userIdClaim == null || userIdClaim.isBlank()) {
+            return;
+        }
+        UUID userId;
+        try {
+            userId = UUID.fromString(userIdClaim);
+        } catch (IllegalArgumentException ex) {
+            return;
+        }
+        Instant revokedAt = userTokensRevokedAt.get(userId);
+        if (revokedAt == null) {
+            return;
+        }
+        Date issuedAt = claims.getIssuedAt();
+        if (issuedAt == null || !issuedAt.toInstant().isAfter(revokedAt)) {
+            throw new JwtException("JWT was issued before account sessions were revoked");
+        }
     }
 
     private boolean isBlacklisted(String token) {

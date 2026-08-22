@@ -38,10 +38,10 @@ import jakarta.validation.Valid;
  * NOTE: M1's UserRole enum uses lowercase ("administrator"), but Spring
  * Security expects "ROLE_ADMINISTRATOR" (uppercase). The filter applies
  * .toUpperCase() when creating the GrantedAuthority, so
+ *
  * @PreAuthorize("hasRole('ADMINISTRATOR')") works correctly with M1's enum.
  *
- * Base path: /api/v1/institutions
- * Legacy alias: /api/v1/admin/institutions
+ * Base path: /api/v1/institutions Legacy alias: /api/v1/admin/institutions
  */
 @RestController
 @RequestMapping({"/api/v1/institutions", "/api/v1/admin/institutions"})
@@ -120,8 +120,8 @@ public class InstitutionController {
     /**
      * PUT /api/v1/institutions/{institutionId}
      *
-     * A1: Updates the institution's name and email domain.
-     * Returns 400 if the new name or domain conflicts with another institution.
+     * A1: Updates the institution's name and email domain. Returns 400 if the
+     * new name or domain conflicts with another institution.
      */
     @PutMapping("/{institutionId}")
     public ResponseEntity<InstitutionDto> updateInstitution(
@@ -133,8 +133,8 @@ public class InstitutionController {
     /**
      * PATCH /api/v1/institutions/{institutionId}/deactivate
      *
-     * A2: Admin-initiated deactivation. Sets status to INACTIVE.
-     * Historical data retained; new invitations blocked.
+     * A2: Admin-initiated deactivation. Sets status to INACTIVE. Historical
+     * data retained; new invitations blocked.
      */
     @PatchMapping("/{institutionId}/deactivate")
     public ResponseEntity<InstitutionDto> deactivateInstitution(@PathVariable UUID institutionId) {

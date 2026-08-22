@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.controller;
 
 import com.dasigconnect.backend.config.SecurityConfig;
+import com.dasigconnect.backend.model.dto.user.SuperAdministratorTransferResponseDto;
 import com.dasigconnect.backend.model.dto.user.UserDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.User;
@@ -25,6 +26,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -144,6 +146,38 @@ class UserControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMINISTRATOR")
+    void requestSuperAdministratorTransfer_asAdministrator_returnsPendingTransfer() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+        when(userService.requestSuperAdministratorTransfer(any(), any()))
+                .thenReturn(new SuperAdministratorTransferResponseDto(
+                        targetId,
+                        requesterId,
+                        java.time.Instant.now().plusSeconds(3600),
+                        "pending_confirmation"));
+
+        mockMvc.perform(post("/api/v1/users/{id}/super-administrator-transfer", targetId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targetUserId").value(targetId.toString()))
+                .andExpect(jsonPath("$.requestedBy").value(requesterId.toString()))
+                .andExpect(jsonPath("$.status").value("pending_confirmation"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMINISTRATOR")
+    void confirmSuperAdministratorTransfer_asAdministrator_returnsIncomingSuperAdministrator() throws Exception {
+        User incoming = user(UUID.randomUUID(), "incoming@dasigconnect.com", UserRole.administrator, null);
+        incoming.setSuperAdministrator(true);
+        when(userService.confirmSuperAdministratorTransfer(any())).thenReturn(UserDto.from(incoming));
+
+        mockMvc.perform(post("/api/v1/users/super-administrator-transfer/confirm"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("incoming@dasigconnect.com"))
+                .andExpect(jsonPath("$.superAdministrator").value(true));
     }
 
     private static UserDto userDto(UUID id, String email, UserRole role, UUID institutionId) {

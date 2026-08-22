@@ -24,7 +24,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     long countByInstitutionIdAndRoleAndAccountState(UUID institutionId, UserRole role, UserStatus accountState);
 
-    /** A3: check if institution has any active validators before reactivating */
+    /**
+     * A3: check if institution has any active validators before reactivating
+     */
     boolean existsByInstitutionIdAndAccountState(UUID institutionId, UserStatus accountState);
 
     List<User> findByRole(UserRole role);
