@@ -93,6 +93,10 @@ export function acceptInvitation(payload: AcceptInvitationPayload) {
   return api.post<LoginResponse>("/invitations/accept", payload);
 }
 
+export function resendExpiredInvitation(payload: { token?: string | null; email?: string | null }) {
+  return api.post<{ message: string }>("/invitations/resend-expired", payload);
+}
+
 export function getMe() {
   return api.get<UserProfileResponse>("/me");
 }
@@ -202,7 +206,7 @@ export function listUsers(institutionId: string) {
 
 export function updateUserStatus(
   id: string,
-  accountState: "active" | "inactive",
+  accountState: "active" | "inactive" | "cancelled",
 ) {
   return api.patch<UserProfileResponse>(`/users/${id}/status`, {
     accountState,
@@ -255,7 +259,7 @@ export function resendInvitation(id: string) {
 export interface InviteUserRequest {
   recipientEmail: string;
   institutionId: string | null;
-  assignedRole: "contributor" | "administrator";
+  assignedRole: "contributor" | "administrator" | "validator";
 }
 
 export function inviteUser(data: InviteUserRequest) {

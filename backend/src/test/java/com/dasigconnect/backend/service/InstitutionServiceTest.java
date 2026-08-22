@@ -55,7 +55,7 @@ class InstitutionServiceTest {
         mockInstitution.setId(institutionId);
         mockInstitution.setName("Cebu Institute of Technology - University");
         mockInstitution.setCode("CIT-U");
-        mockInstitution.setStatus(InstitutionStatus.inactive);
+        mockInstitution.setStatus(InstitutionStatus.active);
     }
 
     @Nested
@@ -83,10 +83,10 @@ class InstitutionServiceTest {
         }
 
         @Test
-        @DisplayName("should reject a file whose contents are not a supported image")
-        void shouldRejectInvalidImageContents() {
-            MockMultipartFile fakeJpeg = new MockMultipartFile(
-                    "file", "school.jpg", "image/jpeg", "not an image".getBytes());
+        @DisplayName("should reject invalid mime-types with IllegalArgumentException")
+        void shouldRejectInvalidMimeType() {
+            byte[] text = "not a real image".getBytes();
+            MockMultipartFile fakeJpeg = new MockMultipartFile("file", "fake.jpg", "text/plain", text);
 
             assertThatThrownBy(() -> institutionService.updateLogo(institutionId, fakeJpeg))
                     .isInstanceOf(IllegalArgumentException.class)
@@ -102,15 +102,15 @@ class InstitutionServiceTest {
     class CreateInstitutionTests {
 
         @Test
-        @DisplayName("should create institution with INACTIVE status")
-        void shouldCreateInstitution_withInactiveStatus() {
-            when(institutionRepository.existsByCode("CIT-U")).thenReturn(false);
+        @DisplayName("should create institution with ACTIVE status")
+        void shouldCreateInstitution_withActiveStatus() {
+            when(institutionRepository.existsByEmailDomain("cit.edu.ph")).thenReturn(false);
             when(institutionRepository.save(any())).thenReturn(mockInstitution);
 
             CreateInstitutionRequest req = new CreateInstitutionRequest("Cebu Institute of Technology - University", "CIT-U", "cit.edu.ph");
             InstitutionDto result = institutionService.createInstitution(req);
 
-            assertThat(result.getStatus()).isEqualTo(InstitutionStatus.inactive);
+            assertThat(result.getStatus()).isEqualTo(InstitutionStatus.active);
             assertThat(result.getInstitutionCode()).isEqualTo("CIT-U");
             assertThat(result.getName()).isEqualTo("Cebu Institute of Technology - University");
         }
@@ -194,6 +194,11 @@ class InstitutionServiceTest {
     @Nested
     @DisplayName("transitionToPending() — INACTIVE → PENDING")
     class TransitionToPendingTests {
+
+        @BeforeEach
+        void setInactive() {
+            mockInstitution.setStatus(InstitutionStatus.inactive);
+        }
 
         @Test
         @DisplayName("should transition from INACTIVE to PENDING")

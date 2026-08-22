@@ -20,15 +20,11 @@ interface InvitationComposerProps {
 
 function composerSubtitle(
   canChooseRole: boolean,
-  institution: InstitutionOption | null,
+  _institution: InstitutionOption | null,
   role: InviteRole,
 ) {
   if (canChooseRole) return 'Invite contributors or administrators securely into this institution workspace.'
   if (role === 'contributor') return 'Invite contributors securely into this institution workspace.'
-  const status = institution?.status
-  if (status === 'inactive' || status === 'pending') {
-    return 'Invite an administrator to activate this institution workspace.'
-  }
   return 'Invite contributors securely into this institution workspace.'
 }
 

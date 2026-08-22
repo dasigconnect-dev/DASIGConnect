@@ -5,5 +5,6 @@ public enum UserStatus {
     pending_email_undelivered,
     active,
     expired,
-    inactive
+    inactive,
+    cancelled
 }

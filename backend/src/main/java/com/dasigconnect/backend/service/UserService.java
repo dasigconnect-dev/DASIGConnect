@@ -129,6 +129,22 @@ public class UserService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         validateCanManageUser(user, requester);
 
+        if (newStatus == UserStatus.inactive) {
+            if (user.getAccountState() != UserStatus.active) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only active users can be deactivated.");
+            }
+        } else if (newStatus == UserStatus.active) {
+            if (user.getAccountState() != UserStatus.inactive) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only inactive users can be reactivated.");
+            }
+        } else if (newStatus == UserStatus.cancelled) {
+            if (user.getAccountState() != UserStatus.pending
+                    && user.getAccountState() != UserStatus.pending_email_undelivered
+                    && user.getAccountState() != UserStatus.expired) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only pending accounts can have invitations cancelled.");
+            }
+        }
+
         user.setAccountState(newStatus);
         User saved = userRepository.save(user);
         if (newStatus == UserStatus.inactive) {
@@ -149,21 +165,21 @@ public class UserService {
     @Transactional
     public UserDto updateAvatar(UUID id, MultipartFile file, JwtUserDetails requester) {
         if (file == null || file.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a profile image to upload.");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A valid image file is required.");
         }
-        if (file.getSize() > MAX_AVATAR_BYTES) {
+        if (file.getSize() > 2 * 1024 * 1024) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Profile image must be 2 MB or smaller.");
         }
 
         byte[] bytes;
         try {
             bytes = file.getBytes();
-        } catch (IOException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unable to read the profile image.", ex);
+        } catch (java.io.IOException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unable to read profile image.");
         }
 
         String contentType = detectImageContentType(bytes);
-        var target = userRepository.findById(id)
+        var user = userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         boolean isAdministrator = isAdministratorRole(requester);
@@ -173,10 +189,18 @@ public class UserService {
                     "Only administrators or the account owner can update this profile image.");
         }
 
-        target.setAvatarData(bytes);
-        target.setAvatarContentType(contentType);
-        target.setAvatarUpdatedAt(Instant.now());
-        return UserDto.from(userRepository.save(target));
+        user.setAvatarData(bytes);
+        user.setAvatarContentType(contentType);
+        user.setAvatarUpdatedAt(Instant.now());
+        User saved = userRepository.save(user);
+
+        auditLogService.record(
+                findRequesterForAudit(requester),
+                "USER_AVATAR_UPDATED",
+                null, null,
+                saved.getId(),
+                java.util.Map.of("contentType", contentType, "sizeBytes", bytes.length));
+        return UserDto.from(saved);
     }
 
     public UserAvatar getAvatar(UUID id) {
@@ -217,14 +241,10 @@ public class UserService {
     }
 
     /**
-     * Removes a user. Two outcomes based on whether the user has business data:
+     * Removes a deactivated user.
      *
-     * - Has submissions, media assets, or validation history → auto-deactivate
-     * (soft delete: account disabled, all related records preserved). - No
-     * related records → permanent delete after cleaning up owned records.
-     *
-     * Returns "deactivated" or "deleted" so the caller can surface the right
-     * message.
+     * Only works on users that are currently in INACTIVE state. Active or pending
+     * users cannot be removed without deactivating or cancelling first.
      */
     @Transactional
     public String removeUser(UUID id, JwtUserDetails requester) {
@@ -233,18 +253,21 @@ public class UserService {
 
         validateCanRemoveUser(user, requester);
 
+        if (user.getAccountState() != UserStatus.inactive && user.getAccountState() != UserStatus.cancelled) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only deactivated or cancelled users can be removed. Please deactivate or cancel the invitation first.");
+        }
+
         boolean hasData = submissionRepository.existsByContributorId(id)
                 || mediaAssetRepository.existsByUploaderId(id)
                 || validationLogRepository.existsByValidatorId(id);
 
         if (hasData) {
-            // Preserve data integrity — just disable the account
-            user.setAccountState(UserStatus.inactive);
-            userRepository.save(user);
+            // Already inactive; invalidate tokens and record removal audit
             jwtService.invalidateUserTokens(user.getId());
             auditLogService.record(
                     findRequesterForAudit(requester),
-                    "USER_DEACTIVATED",
+                    "USER_REMOVED",
                     null, null,
                     user.getId(),
                     java.util.Map.of("email", user.getEmail(), "role", user.getRole().name()));

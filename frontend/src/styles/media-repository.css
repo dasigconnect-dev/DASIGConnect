@@ -999,15 +999,15 @@
 .med-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 99999;
   background: rgba(10, 22, 40, 0.72);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
+  opacity: 1;
+  pointer-events: auto;
+  animation: dc-modal-backdrop-in 200ms ease-out both;
   font-family: var(--med-ff-body, 'Plus Jakarta Sans', system-ui, sans-serif);
   --med-navy-deep: #0A1628;
   --med-navy-mid:  #1A3A6B;
@@ -1032,11 +1032,6 @@
   --med-ff-body: 'Plus Jakarta Sans', system-ui, sans-serif;
 }
 
-.med-modal-overlay.open {
-  opacity: 1;
-  pointer-events: all;
-}
-
 .med-modal-card {
   background: var(--med-surface-0);
   border-radius: var(--med-radius-lg);
@@ -1044,12 +1039,9 @@
   max-width: 540px;
   max-height: 90vh;
   overflow-y: auto;
-  transform: scale(0.95);
-  transition: transform 0.2s ease;
   box-shadow: 0 20px 60px rgba(10, 22, 40, 0.35);
+  animation: dc-modal-pop-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-
-.med-modal-overlay.open .med-modal-card { transform: scale(1); }
 
 .med-modal-header {
   display: flex;

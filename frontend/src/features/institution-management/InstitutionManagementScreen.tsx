@@ -17,6 +17,7 @@ import {
   listUsers,
   reactivateInstitution,
   reassignContributor,
+  resendInvitation,
   updateInstitution,
   updateUserStatus,
   uploadInstitutionLogo,
@@ -378,9 +379,25 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   }
 
   function handleDeleteInstitution(inst: InstitutionWithStats) {
+    const contributorsCount = managedUsers.filter((u) => u.role.toLowerCase() === 'contributor').length
+    if (contributorsCount > 0) {
+      setConfirmDialog({
+        title: 'Cannot Delete Institution',
+        message: `"${inst.name}" currently has ${contributorsCount} assigned contributor account(s). Please transfer or remove all contributors before deleting this institution.`,
+        confirmLabel: 'Transfer Contributors',
+        dangerous: false,
+        onConfirm: () => {
+          setConfirmDialog(null)
+          const firstContributor = managedUsers.find((u) => u.role.toLowerCase() === 'contributor')
+          if (firstContributor) handleOpenReassign(firstContributor)
+        },
+      })
+      return
+    }
+
     setConfirmDialog({
       title: 'Delete Institution',
-      message: `Permanently delete "${inst.name}"? This cannot be undone. The institution must have no users and no submissions.`,
+      message: `Permanently delete "${inst.name}"? This cannot be undone. The institution must have no contributors and no submissions.`,
       confirmLabel: 'Delete',
       dangerous: true,
       onConfirm: () => {
@@ -581,9 +598,28 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   // ── A2: Deactivate Institution ──────────────────────────────────────────────
 
   function handleDeactivateInstitution(institution: InstitutionWithStats) {
+    const contributorsCount = managedUsers.filter((u) => u.role.toLowerCase() === 'contributor').length
+    const pendingCount = pendingInvitations.length
+    if (contributorsCount > 0 || pendingCount > 0) {
+      setConfirmDialog({
+        title: 'Cannot Deactivate Institution',
+        message: `"${institution.name}" currently has ${contributorsCount} contributor account(s) and ${pendingCount} pending invitation(s). All contributors must be transferred to another institution or removed before deactivating.`,
+        confirmLabel: contributorsCount > 0 ? 'Transfer Contributors' : 'Close',
+        dangerous: false,
+        onConfirm: () => {
+          setConfirmDialog(null)
+          if (contributorsCount > 0) {
+            const firstContributor = managedUsers.find((u) => u.role.toLowerCase() === 'contributor')
+            if (firstContributor) handleOpenReassign(firstContributor)
+          }
+        },
+      })
+      return
+    }
+
     setConfirmDialog({
       title: 'Deactivate Institution',
-      message: `Deactivating "${institution.name}" will prevent new contributor invitations and flag existing contributor accounts for review. Historical submissions and media are retained for audit purposes.`,
+      message: `Deactivate "${institution.name}"? New contributor invitations will be blocked. You can reactivate this institution at any time.`,
       confirmLabel: 'Deactivate',
       dangerous: true,
       onConfirm: async () => {
@@ -846,15 +882,44 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
       if (match) {
         await cancelInvitation(match.id)
       } else {
-        await deleteUser(managedUser.id)
+        await updateUserStatus(managedUser.id, 'cancelled')
       }
-      setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
+      setManagedUsers((current) =>
+        current.map((item) =>
+          item.id === managedUser.id ? { ...item, accountState: 'cancelled' } : item,
+        ),
+      )
       if (selectedInstitution) {
         await loadManagementLists(selectedInstitution.id)
       }
       toast.success('Invitation cancelled.')
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to cancel invitation.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  async function handleResendInvitationFromUsers(managedUser: UserProfileResponse) {
+    if (!selectedInstitution) return
+    setUpdatingUserId(managedUser.id)
+    try {
+      const match = pendingInvitations.find(
+        (inv) => inv.recipientEmail.toLowerCase() === managedUser.email.toLowerCase(),
+      )
+      if (match) {
+        await resendInvitation(match.id)
+      } else {
+        await inviteUser({
+          recipientEmail: managedUser.email,
+          institutionId: selectedInstitution.id,
+          assignedRole: (managedUser.role.toLowerCase() as 'contributor' | 'validator'),
+        })
+      }
+      await loadManagementLists(selectedInstitution.id)
+      toast.success(`Invitation resent to ${managedUser.email}.`)
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to resend invitation.'))
     } finally {
       setUpdatingUserId(null)
     }
@@ -1375,6 +1440,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             onToggleUserStatus={handleToggleUserStatus}
             onDeleteUser={handleDeleteUser}
             onCancelInvitation={handleCancelInvitationFromUsers}
+            onResendInvitation={handleResendInvitationFromUsers}
+            resendingUserId={updatingUserId}
             onReassign={handleOpenReassign}
             showRoleControls={false}
             showInstitutionColumn={false}
@@ -1388,6 +1455,12 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
                 type="button"
                 className="im-invite-contributor-btn"
                 onClick={handleOpenInviteModal}
+                disabled={selectedInstitution.status === 'inactive'}
+                title={
+                  selectedInstitution.status === 'inactive'
+                    ? 'Reactivate this institution to invite contributors.'
+                    : undefined
+                }
               >
                 <i className="ti ti-user-plus" aria-hidden="true"></i>
                 Invite Contributor

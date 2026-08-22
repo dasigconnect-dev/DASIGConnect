@@ -9,6 +9,8 @@ interface UploadModalProps {
 }
 
 export default function UploadModal({ open, institutionName, onClose, onUpload }: UploadModalProps) {
+  if (!open) return null;
+
   const [dragOver, setDragOver] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [progress, setProgress] = useState(0);

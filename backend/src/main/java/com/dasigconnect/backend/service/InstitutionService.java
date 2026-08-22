@@ -93,7 +93,7 @@ public class InstitutionService {
         institution.setName(request.getName());
         institution.setCode(request.getInstitutionCode());
         institution.setEmailDomain(emailDomain);
-        institution.setStatus(InstitutionStatus.inactive);
+        institution.setStatus(InstitutionStatus.active);
 
         institution = institutionRepository.save(institution);
 
@@ -252,6 +252,15 @@ public class InstitutionService {
                     "Institution '" + institution.getName() + "' is already inactive.");
         }
 
+        long contributorCount = userRepository.countByInstitutionId(institutionId);
+        long pendingInviteCount = invitationTokenRepository
+                .countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(institutionId, Instant.now());
+        if (contributorCount > 0 || pendingInviteCount > 0) {
+            throw new IllegalStateException(
+                    "Cannot deactivate institution '" + institution.getName()
+                    + "' while contributors or pending invitations exist. Please transfer or remove contributors first.");
+        }
+
         String previousStatus = institution.getStatus().name();
         institution.setStatus(InstitutionStatus.inactive);
         Institution saved = institutionRepository.save(institution);
@@ -269,8 +278,7 @@ public class InstitutionService {
     // ── A3: Reactivate Institution ────────────────────────────────────────────
     /**
      * Admin-initiated reactivation of a deactivated institution (A3). Sets
-     * status back to ACTIVE. If the institution has no active validators, it
-     * transitions to PENDING instead, following the normal state machine.
+     * status back to ACTIVE.
      */
     public InstitutionDto reactivateInstitution(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)
@@ -281,35 +289,17 @@ public class InstitutionService {
                     "Institution '" + institution.getName() + "' is not inactive and cannot be reactivated.");
         }
 
-        boolean hasActiveValidators = userRepository.existsByInstitutionIdAndAccountState(
-                institutionId, com.dasigconnect.backend.model.entity.UserStatus.active);
-
-        InstitutionStatus newStatus = hasActiveValidators
-                ? InstitutionStatus.active
-                : InstitutionStatus.inactive; // stays inactive — no validators to activate it
-
-        // If there are pending validator invitations, move to pending
-        boolean hasPendingInvitations = invitationTokenRepository
-                .countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(institutionId, Instant.now()) > 0;
-        if (!hasActiveValidators && hasPendingInvitations) {
-            newStatus = InstitutionStatus.pending;
-        } else if (!hasActiveValidators) {
-            throw new IllegalStateException(
-                    "Cannot reactivate '" + institution.getName()
-                    + "': no active validators found. Send a validator invitation first.");
-        }
-
         String previousStatus = institution.getStatus().name();
-        institution.setStatus(newStatus);
+        institution.setStatus(InstitutionStatus.active);
         Institution saved = institutionRepository.save(institution);
 
         auditLogService.recordSystemAction(
                 "INSTITUTION_REACTIVATED",
                 institutionId,
-                Map.of("previousStatus", previousStatus, "newStatus", newStatus.name())
+                Map.of("previousStatus", previousStatus, "newStatus", InstitutionStatus.active.name())
         );
 
-        log.info("Institution {} reactivated by admin (inactive → {})", institutionId, newStatus);
+        log.info("Institution {} reactivated by admin (inactive → ACTIVE)", institutionId);
         return InstitutionDto.from(saved);
     }
 
@@ -413,7 +403,7 @@ public class InstitutionService {
 
         if (userRepository.existsByInstitutionId(institutionId)) {
             throw new IllegalArgumentException(
-                    "\"" + institution.getName() + "\" still has users. Remove all users before deleting.");
+                    "\"" + institution.getName() + "\" still has contributors. Transfer or remove all contributors before deleting.");
         }
 
         if (submissionRepository.existsByInstitutionId(institutionId)) {
