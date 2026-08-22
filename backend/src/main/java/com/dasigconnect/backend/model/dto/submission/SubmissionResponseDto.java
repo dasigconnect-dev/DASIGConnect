@@ -32,6 +32,7 @@ public class SubmissionResponseDto {
     private List<MediaAssetSummaryDto> mediaAssets;
     private String category;
     private List<String> tags;
+    private boolean requiresManualPublishing;
 
     public static SubmissionResponseDto from(Submission s, List<MediaAssetSummaryDto> mediaAssets) {
         SubmissionResponseDto dto = new SubmissionResponseDto();
@@ -58,6 +59,7 @@ public class SubmissionResponseDto {
         dto.tags = (s.getTags() == null || s.getTags().isBlank())
                 ? List.of()
                 : Arrays.stream(s.getTags().split(",")).map(String::trim).filter(t -> !t.isEmpty()).toList();
+        dto.requiresManualPublishing = s.isRequiresManualPublishing();
         return dto;
     }
 
@@ -143,5 +145,9 @@ public class SubmissionResponseDto {
 
     public List<String> getTags() {
         return tags;
+    }
+
+    public boolean isRequiresManualPublishing() {
+        return requiresManualPublishing;
     }
 }

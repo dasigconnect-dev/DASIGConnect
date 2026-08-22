@@ -42,6 +42,7 @@ export interface SubmissionSummary {
   category?: string;
   tags?: string[];
   mediaAssets?: SavedMediaAsset[];
+  requiresManualPublishing?: boolean;
 }
 
 export interface SubmissionPayload {
@@ -127,7 +128,11 @@ export async function uploadSubmissionMedia(id: string, files: File[]) {
       data: { signedUrl, publicUrl },
     } = await api.post<{ signedUrl: string; publicUrl: string; path: string }>(
       `/submissions/${id}/media/upload-url`,
-      { fileName: safeFileName(file.name), fileType: fileTypeFromFile(file) },
+      {
+        fileName: safeFileName(file.name),
+        fileType: fileTypeFromFile(file),
+        fileSizeBytes: file.size,
+      },
     );
     const upload = await fetch(signedUrl, {
       method: "PUT",

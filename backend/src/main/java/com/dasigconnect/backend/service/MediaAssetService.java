@@ -98,12 +98,12 @@ public class MediaAssetService {
         String trimmedCategory = aiCategory == null ? "" : aiCategory.trim();
         String trimmedMediaType = mediaType == null ? "" : mediaType.trim().toLowerCase();
 
-        boolean admin = isAdmin(user);
-        boolean networkScope = admin && "network".equalsIgnoreCase(scope);
+        boolean superAdministrator = isSuperAdministrator(user);
+        boolean networkScope = superAdministrator && "network".equalsIgnoreCase(scope);
         List<MediaAsset> source;
-        if (admin && institutionId != null) {
+        if (superAdministrator && institutionId != null) {
             source = mediaAssetRepository.findActiveByInstitution(institutionId);
-        } else if (admin || networkScope) {
+        } else if (superAdministrator || networkScope) {
             source = mediaAssetRepository.findAllActive();
         } else {
             source = mediaAssetRepository.findActiveByInstitution(user.institutionId());
@@ -138,7 +138,7 @@ public class MediaAssetService {
     public MediaAssetDetailDto get(UUID id, JwtUserDetails user) {
         MediaAsset asset = mediaAssetRepository.findActiveById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
-        if (!isAdmin(user) && !asset.getInstitution().getId().equals(user.institutionId())) {
+        if (!isSuperAdministrator(user) && !asset.getInstitution().getId().equals(user.institutionId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
         }
         List<MediaAssetUsageDto> usedIn = submissionMediaAssetRepository
@@ -314,6 +314,10 @@ public class MediaAssetService {
         return user.role() != null && user.role().toLowerCase().contains("admin");
     }
 
+    private boolean isSuperAdministrator(JwtUserDetails user) {
+        return user.role() != null && "super_administrator".equalsIgnoreCase(user.role());
+    }
+
     private boolean isValidator(JwtUserDetails user) {
         return user.role() != null && user.role().toLowerCase().contains("administrator");
     }
@@ -325,7 +329,7 @@ public class MediaAssetService {
     private MediaAsset loadAsset(UUID assetId, JwtUserDetails user) {
         MediaAsset asset = mediaAssetRepository.findActiveById(assetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
-        if (!isAdmin(user) && !asset.getInstitution().getId().equals(user.institutionId())) {
+        if (!isSuperAdministrator(user) && !asset.getInstitution().getId().equals(user.institutionId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
         }
         return asset;
