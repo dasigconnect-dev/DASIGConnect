@@ -423,12 +423,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     return () => controller.abort();
   }, [isAdminComposer]);
 
-  useEffect(() => {
-    if (form.fastTrack && activeStep === "schedule") {
-      setActiveStep("details");
-    }
-  }, [activeStep, form.fastTrack]);
-
   const isDetailsComplete = useMemo(
     () =>
       Boolean(form.eventTitle.trim()) &&
@@ -456,7 +450,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         : target === "schedule"
           ? "schedule"
           : "details";
-    setActiveStep(step === "schedule" && form.fastTrack ? "details" : step);
+    if (step === "schedule" && !isDetailsComplete) {
+      handleStepNav("schedule");
+      return;
+    }
+    setActiveStep(step);
 
     window.setTimeout(() => {
       const targetNode =
@@ -534,13 +532,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             Boolean(form.caption.trim()),
         },
       ];
-      if (!form.fastTrack) {
-        steps.push({
-          id: "schedule" as const,
-          label: "Preferred Schedule",
-          complete: Boolean(scheduledAt),
-        });
-      }
+      steps.push({
+        id: "schedule" as const,
+        label: form.fastTrack ? "Fast-Track" : "Preferred Schedule",
+        complete: form.fastTrack || Boolean(scheduledAt),
+      });
       return steps;
     },
     [form.caption, form.eventDate, form.eventTitle, form.fastTrack, hasMedia, scheduledAt],
@@ -733,7 +729,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function updateFastTrack(value: boolean) {
-    if (value && !form.fastTrack && (form.scheduledDate || form.scheduledTime || form.selectedTemplateId)) {
+    if (value && !form.fastTrack && (form.scheduledDate || form.scheduledTime)) {
       setModal("fast-track-switch");
       return;
     }
@@ -745,8 +741,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       ...current,
       fastTrack: value,
       liveEventName: value ? current.liveEventName : "",
-      scheduledDate: value ? "" : current.scheduledDate,
-      scheduledTime: value ? "" : current.scheduledTime,
     }));
     setGuardRails(value ? null : guardRails);
     setGuardRailError(value ? "" : guardRailError);
@@ -1704,21 +1698,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               icon="ti-edit"
               tone="gold"
               title="Post Details"
-              subtitle={form.fastTrack ? "Fast-Track uses a condensed caption and media workflow." : "Use backend field names for the saved submission draft."}
+              subtitle="Use backend field names for the saved submission draft."
             />
-            {!isReadOnlySubmission && (
-              <label className="sub-fast-track-toggle">
-                <input
-                  type="checkbox"
-                  checked={form.fastTrack}
-                  onChange={(event) => updateFastTrack(event.target.checked)}
-                />
-                <span>
-                  <strong>Live Event Fast-Track</strong>
-                  <small>Condense this draft to caption and media only for urgent approval.</small>
-                </span>
-              </label>
-            )}
             {isAdminComposer && (
               <Field label="Institution Scope">
                 <BrandedSelect
@@ -1762,18 +1743,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 </Field>
               </div>
             </div>
-
-            {form.fastTrack && (
-              <Field label="Active Event Name">
-                <input
-                  className="sub-finput"
-                  readOnly={isReadOnlySubmission}
-                  value={form.liveEventName}
-                  onChange={(event) => updateField("liveEventName", event.target.value)}
-                  placeholder="Optional event name for album association"
-                />
-              </Field>
-            )}
 
             <Field
               label="Caption"
@@ -1892,7 +1861,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             />
           </section>
 
-          {!form.fastTrack && (
           <section
             className={`sub-form-section sub-step-panel ${isReadOnlySubmission || activeStep === "schedule" ? "active" : ""}`}
             ref={scheduleSectionRef}
@@ -1908,6 +1876,37 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   : "Choose a future date and a publish time between 8:00 AM and 8:00 PM."
               }
             />
+            {!isReadOnlySubmission && (
+              <label className="sub-fast-track-toggle">
+                <input
+                  type="checkbox"
+                  checked={form.fastTrack}
+                  onChange={(event) => updateFastTrack(event.target.checked)}
+                />
+                <span>
+                  <strong>Live Event Fast-Track</strong>
+                  <small>Use caption and media only for urgent live-event approval.</small>
+                </span>
+              </label>
+            )}
+            {form.fastTrack && (
+              <>
+                <Field label="Active Event Name">
+                  <input
+                    className="sub-finput"
+                    readOnly={isReadOnlySubmission}
+                    value={form.liveEventName}
+                    onChange={(event) => updateField("liveEventName", event.target.value)}
+                    placeholder="Optional event name for album association"
+                  />
+                </Field>
+                <div className="sub-inline-note">
+                  Fast-Track submissions keep your post details and media, skip the scheduled slot, and move as urgent in the approval queue.
+                </div>
+              </>
+            )}
+            {!form.fastTrack && (
+              <>
             <div className="sub-field-row">
               <Field label="Preferred Date">
                 <CalendarDateField
@@ -1927,22 +1926,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 />
               </Field>
             </div>
-            {form.fastTrack && (
-              <div className="sub-inline-note">
-                Fast-Track submissions have no scheduled slot and are sorted to the top of the approval queue.
-              </div>
+              </>
             )}
             {!form.fastTrack && guardRailError && (
               <div className="sub-inline-error">{guardRailError}</div>
             )}
           </section>
-          )}
 
           {!isReadOnlySubmission && (
             <StepPanelActions
               activeStep={activeStep}
               isDetailsComplete={isDetailsComplete}
-              fastTrack={form.fastTrack}
               onStepChange={handleStepNav}
             />
           )}
@@ -1997,25 +1991,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               />
             ))}
           </GuardSection>
-
-          <div className="sub-fb-preview-wrap">
-            <div className="sub-guard-section-title">
-              <i className="ti ti-brand-facebook"></i> Facebook Preview
-            </div>
-            <FacebookPreviewCard
-              pageName={facebookPreview.pageName}
-              pageAvatarUrl={facebookPreview.pageAvatarUrl}
-              publishDate={facebookPreview.publishDate}
-              caption={facebookPreview.caption}
-              mediaItems={facebookPreview.mediaItems}
-              activeMediaIndex={activeMediaIndex}
-              onMediaIndexChange={setActiveMediaIndex}
-              onOpen={() => {
-                setPreviewTab("preview");
-                setCenterMode("preview");
-              }}
-            />
-          </div>
 
           <div className="sub-guard-actions">
             {!isReadOnlySubmission && (
@@ -2167,7 +2142,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         <ConfirmModal
           icon="ti-bolt"
           title="Switch to Fast-Track?"
-          description="This will discard the scheduled time and hide template, AI, and scheduling controls. Your caption and media will stay in the draft."
+          description="This will hide scheduling controls while Fast-Track is enabled, but your entered post details and preferred schedule will stay saved in the draft."
           cancelLabel="Cancel"
           confirmLabel="Switch Mode"
           onCancel={() => setModal(null)}
@@ -2532,15 +2507,13 @@ function StepProgress({
 function StepPanelActions({
   activeStep,
   isDetailsComplete,
-  fastTrack,
   onStepChange,
 }: {
   activeStep: ProgressStep;
   isDetailsComplete: boolean;
-  fastTrack: boolean;
   onStepChange: (step: ProgressStep) => void;
 }) {
-  const order: ProgressStep[] = fastTrack ? ["media", "details"] : ["media", "details", "schedule"];
+  const order: ProgressStep[] = ["media", "details", "schedule"];
   const index = order.indexOf(activeStep);
   const previous = index > 0 ? order[index - 1] : null;
   const next = index < order.length - 1 ? order[index + 1] : null;

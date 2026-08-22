@@ -24,6 +24,7 @@ import ForgotSentScreen from "../features/auth/ForgotSentScreen";
 import ResetPasswordScreen from "../features/auth/ResetPasswordScreen";
 import InviteScreen from "../features/auth/InviteScreen";
 import NoAccountScreen from "../features/auth/NoAccountScreen";
+import AccountSettingsScreen from "../features/auth/AccountSettingsScreen";
 import DashboardScreen from "../features/dashboard/DashboardScreen";
 import SubmissionScreen from "../features/submission/SubmissionScreen";
 import ValidationQueueScreen from "../features/validation/ValidationQueueScreen";
@@ -78,6 +79,12 @@ function App() {
   const [modalError, setModalError] = useState(false);
   const [modalLoginLoading, setModalLoginLoading] = useState(false);
   const [showModalPassword, setShowModalPassword] = useState(false);
+
+  async function refreshCurrentUserProfile() {
+    if (!currentUser) return;
+    const user = await loadCurrentUser(currentUser);
+    setCurrentUser(user);
+  }
 
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSentEmail, setForgotSentEmail] = useState("");
@@ -749,6 +756,14 @@ function App() {
             element={
               <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
                 <SubmissionScreen user={currentUser!} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+                <AccountSettingsScreen user={currentUser!} onProfileUpdated={refreshCurrentUserProfile} />
               </ProtectedRoute>
             }
           />
