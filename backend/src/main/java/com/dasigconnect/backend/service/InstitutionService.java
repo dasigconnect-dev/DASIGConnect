@@ -313,7 +313,7 @@ public class InstitutionService {
         return InstitutionDto.from(saved);
     }
 
-        /**
+    /**
      * INACTIVE → PENDING. Called when an admin sends a validator invitation.
      */
     public void transitionToPending(UUID institutionId) {
@@ -371,7 +371,7 @@ public class InstitutionService {
     /**
      * ACTIVE or PENDING → INACTIVE. Called when all validators are
      * deactivated/removed, or when the last pending validator invitation is
-    * cancelled.
+     * cancelled.
      */
     public void transitionToInactive(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)
@@ -404,8 +404,8 @@ public class InstitutionService {
      * Blocked with 400 if the institution still has users, submissions, or
      * active media assets — the admin must clear those first. Invitation
      * tokens, slot reservations, and override requests are cleaned up
-     * automatically since they are ephemeral administrative records that
-     * are meaningless without the owning institution.
+     * automatically since they are ephemeral administrative records that are
+     * meaningless without the owning institution.
      */
     public void deleteInstitution(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)

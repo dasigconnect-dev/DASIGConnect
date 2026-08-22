@@ -202,7 +202,9 @@ public class UserService {
                 "Profile image must be a valid JPEG, PNG, or WebP image.");
     }
 
-    public record UserAvatar(byte[] data, String contentType) {}
+    public record UserAvatar(byte[] data, String contentType) {
+
+    }
 
     /**
      * Removes a user. Two outcomes based on whether the user has business data:

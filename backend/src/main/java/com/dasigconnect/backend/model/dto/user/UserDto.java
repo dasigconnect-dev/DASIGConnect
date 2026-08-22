@@ -67,17 +67,29 @@ public class UserDto {
         return accountState;
     }
 
-    public boolean isSuperAdministrator() { return superAdministrator; }
+    public boolean isSuperAdministrator() {
+        return superAdministrator;
+    }
 
-    public UUID getInstitutionId() { return institutionId; }
+    public UUID getInstitutionId() {
+        return institutionId;
+    }
 
-    public String getInstitutionName() { return institutionName; }
+    public String getInstitutionName() {
+        return institutionName;
+    }
 
-    public Instant getCreatedAt() { return createdAt; }
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
 
-    public boolean isHasAvatar() { return hasAvatar; }
+    public boolean isHasAvatar() {
+        return hasAvatar;
+    }
 
-    public Instant getAvatarUpdatedAt() { return avatarUpdatedAt; }
+    public Instant getAvatarUpdatedAt() {
+        return avatarUpdatedAt;
+    }
 
     private static String buildDisplayName(User user) {
         String first = user.getFirstName() != null ? user.getFirstName().trim() : "";

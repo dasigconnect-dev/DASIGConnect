@@ -171,6 +171,8 @@ public class User {
 
     public void setSuperAdminTransferExpiresAt(Instant superAdminTransferExpiresAt) {
         this.superAdminTransferExpiresAt = superAdminTransferExpiresAt;
+    
+
     }
 
     public Instant getCreatedAt() {
