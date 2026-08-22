@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.dasigconnect.backend.model.dto.user.ReassignContributorRequest;
+import com.dasigconnect.backend.model.dto.user.SuperAdministratorTransferResponseDto;
 import com.dasigconnect.backend.model.dto.user.UpdateUserStatusRequestDto;
 import com.dasigconnect.backend.model.dto.user.UserDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -124,6 +126,21 @@ public class UserController {
             @AuthenticationPrincipal JwtUserDetails user) {
         String action = userService.removeUser(id, user);
         return ResponseEntity.ok(java.util.Map.of("action", action));
+    }
+
+    @PostMapping("/users/{id}/super-administrator-transfer")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ResponseEntity<SuperAdministratorTransferResponseDto> requestSuperAdministratorTransfer(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(userService.requestSuperAdministratorTransfer(id, user));
+    }
+
+    @PostMapping("/users/super-administrator-transfer/confirm")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ResponseEntity<UserDto> confirmSuperAdministratorTransfer(
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(userService.confirmSuperAdministratorTransfer(user));
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.service;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -12,8 +13,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.dasigconnect.backend.model.dto.user.SuperAdministratorTransferResponseDto;
 import com.dasigconnect.backend.model.dto.user.UserDto;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
+import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
 import com.dasigconnect.backend.repository.AccountLockoutRepository;
@@ -32,6 +35,7 @@ import com.dasigconnect.backend.security.JwtUserDetails;
 @Transactional(readOnly = true)
 public class UserService {
 
+    private static final Duration SUPER_ADMIN_TRANSFER_TTL = Duration.ofHours(24);
     private static final long MAX_AVATAR_BYTES = 2L * 1024 * 1024;
 
     private final UserRepository userRepository;
@@ -42,6 +46,7 @@ public class UserService {
     private final SubmissionRepository submissionRepository;
     private final MediaAssetRepository mediaAssetRepository;
     private final ValidationLogRepository validationLogRepository;
+    private final JWTService jwtService;
     private final InstitutionRepository institutionRepository;
     private final InvitationTokenRepository invitationTokenRepository;
     private final AuditLogService auditLogService;
@@ -55,6 +60,7 @@ public class UserService {
             SubmissionRepository submissionRepository,
             MediaAssetRepository mediaAssetRepository,
             ValidationLogRepository validationLogRepository,
+            JWTService jwtService,
             InstitutionRepository institutionRepository,
             InvitationTokenRepository invitationTokenRepository,
             AuditLogService auditLogService) {
@@ -66,6 +72,7 @@ public class UserService {
         this.submissionRepository = submissionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
         this.validationLogRepository = validationLogRepository;
+        this.jwtService = jwtService;
         this.institutionRepository = institutionRepository;
         this.invitationTokenRepository = invitationTokenRepository;
         this.auditLogService = auditLogService;
@@ -110,10 +117,23 @@ public class UserService {
 
         var user = userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        validateCanManageUser(user.getInstitution() != null ? user.getInstitution().getId() : null, user.getRole(), requester);
+        validateCanManageUser(user, requester);
 
         user.setAccountState(newStatus);
-        return UserDto.from(userRepository.save(user));
+        User saved = userRepository.save(user);
+        if (newStatus == UserStatus.inactive) {
+            jwtService.invalidateUserTokens(saved.getId());
+        }
+        auditLogService.record(
+                findRequesterForAudit(requester),
+                "USER_STATUS_UPDATED",
+                null, null,
+                saved.getId(),
+                java.util.Map.of(
+                        "email", saved.getEmail(),
+                        "role", saved.getRole().name(),
+                        "accountState", saved.getAccountState().name()));
+        return UserDto.from(saved);
     }
 
     @Transactional
@@ -201,9 +221,7 @@ public class UserService {
         var user = userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        validateCanManageUser(
-                user.getInstitution() != null ? user.getInstitution().getId() : null,
-                user.getRole(), requester);
+        validateCanManageUser(user, requester);
 
         boolean hasData = submissionRepository.existsByContributorId(id)
                 || mediaAssetRepository.existsByUploaderId(id)
@@ -213,15 +231,29 @@ public class UserService {
             // Preserve data integrity — just disable the account
             user.setAccountState(UserStatus.inactive);
             userRepository.save(user);
+            jwtService.invalidateUserTokens(user.getId());
+            auditLogService.record(
+                    findRequesterForAudit(requester),
+                    "USER_DEACTIVATED",
+                    null, null,
+                    user.getId(),
+                    java.util.Map.of("email", user.getEmail(), "role", user.getRole().name()));
             return "deactivated";
         }
 
         // No related records — safe to permanently delete
+        jwtService.invalidateUserTokens(user.getId());
         notificationRepository.deleteByRecipientId(id);
         emailDeliveryLogRepository.deleteByRecipientId(id);
         accountLockoutRepository.deleteByUserId(id);
         reviewLockRepository.deleteByLockedById(id);
         userRepository.delete(user);
+        auditLogService.record(
+                findRequesterForAudit(requester),
+                "USER_DELETED",
+                null, null,
+                id,
+                java.util.Map.of("email", user.getEmail(), "role", user.getRole().name()));
         return "deleted";
     }
 
@@ -309,6 +341,98 @@ public class UserService {
         );
     }
 
+    @Transactional
+    public SuperAdministratorTransferResponseDto requestSuperAdministratorTransfer(
+            UUID targetUserId,
+            JwtUserDetails requester) {
+        User requesterAccount = requireActiveSuperAdministrator(requester);
+        if (requesterAccount.getId().equals(targetUserId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Super Administrator cannot transfer status to the same account");
+        }
+
+        User target = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        if (target.getRole() != UserRole.administrator || target.getAccountState() != UserStatus.active) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Super Administrator status can only be transferred to an active Administrator");
+        }
+        if (target.isSuperAdministrator()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Target account is already the Super Administrator");
+        }
+
+        Instant expiresAt = Instant.now().plus(SUPER_ADMIN_TRANSFER_TTL);
+        target.setSuperAdminTransferRequestedBy(requesterAccount.getId());
+        target.setSuperAdminTransferExpiresAt(expiresAt);
+        userRepository.save(target);
+
+        auditLogService.record(
+                requesterAccount,
+                "SUPER_ADMINISTRATOR_TRANSFER_REQUESTED",
+                null, null,
+                target.getId(),
+                java.util.Map.of("targetEmail", target.getEmail(), "expiresAt", expiresAt.toString()));
+
+        return new SuperAdministratorTransferResponseDto(
+                target.getId(),
+                requesterAccount.getId(),
+                expiresAt,
+                "pending_confirmation");
+    }
+
+    @Transactional
+    public UserDto confirmSuperAdministratorTransfer(JwtUserDetails requester) {
+        User incoming = userRepository.findById(requester.userId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        if (incoming.getRole() != UserRole.administrator || incoming.getAccountState() != UserStatus.active) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only an active Administrator can confirm Super Administrator transfer");
+        }
+        if (incoming.getSuperAdminTransferRequestedBy() == null
+                || incoming.getSuperAdminTransferExpiresAt() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No pending Super Administrator transfer exists for this account");
+        }
+        if (incoming.getSuperAdminTransferExpiresAt().isBefore(Instant.now())) {
+            incoming.setSuperAdminTransferRequestedBy(null);
+            incoming.setSuperAdminTransferExpiresAt(null);
+            userRepository.save(incoming);
+            throw new ResponseStatusException(HttpStatus.GONE,
+                    "Pending Super Administrator transfer has expired");
+        }
+
+        User outgoing = userRepository.findById(incoming.getSuperAdminTransferRequestedBy())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                "Requesting Super Administrator account no longer exists"));
+        if (outgoing.getRole() != UserRole.administrator
+                || outgoing.getAccountState() != UserStatus.active
+                || !outgoing.isSuperAdministrator()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Requesting account is no longer the active Super Administrator");
+        }
+
+        incoming.setSuperAdministrator(true);
+        incoming.setSuperAdminTransferRequestedBy(null);
+        incoming.setSuperAdminTransferExpiresAt(null);
+        outgoing.setSuperAdministrator(false);
+        outgoing.setSuperAdminTransferRequestedBy(null);
+        outgoing.setSuperAdminTransferExpiresAt(null);
+
+        userRepository.save(outgoing);
+        User savedIncoming = userRepository.save(incoming);
+        jwtService.invalidateUserTokens(outgoing.getId());
+
+        auditLogService.record(
+                incoming,
+                "SUPER_ADMINISTRATOR_TRANSFER_CONFIRMED",
+                null, null,
+                incoming.getId(),
+                java.util.Map.of("previousSuperAdministratorId", outgoing.getId().toString()));
+
+        return UserDto.from(savedIncoming);
+    }
+
     private void validateInstitutionScope(UUID institutionId, JwtUserDetails requester) {
         switch (requester.role().toLowerCase()) {
             case "administrator" -> {
@@ -325,10 +449,43 @@ public class UserService {
         }
     }
 
-    private void validateCanManageUser(UUID institutionId, UserRole targetRole, JwtUserDetails requester) {
+    private void validateCanManageUser(User target, JwtUserDetails requester) {
+        UUID institutionId = target.getInstitution() != null ? target.getInstitution().getId() : null;
+        UserRole targetRole = target.getRole();
         validateInstitutionScope(institutionId, requester);
         if ("validator".equalsIgnoreCase(requester.role()) && targetRole != UserRole.contributor) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Validators can only manage contributors");
         }
+        if (targetRole == UserRole.administrator) {
+            User requesterAccount = requireActiveSuperAdministrator(requester);
+            if (requesterAccount.getId().equals(target.getId())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Super Administrator cannot remove or deactivate their own account");
+            }
+        }
+    }
+
+    private User requireActiveSuperAdministrator(JwtUserDetails requester) {
+        if (requester == null || requester.userId() == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the Super Administrator can manage Administrator accounts");
+        }
+        User requesterAccount = userRepository.findById(requester.userId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Only the Super Administrator can manage Administrator accounts"));
+        if (requesterAccount.getRole() != UserRole.administrator
+                || requesterAccount.getAccountState() != UserStatus.active
+                || !requesterAccount.isSuperAdministrator()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the Super Administrator can manage Administrator accounts");
+        }
+        return requesterAccount;
+    }
+
+    private User findRequesterForAudit(JwtUserDetails requester) {
+        if (requester == null || requester.userId() == null) {
+            return null;
+        }
+        return userRepository.findById(requester.userId()).orElse(null);
     }
 }

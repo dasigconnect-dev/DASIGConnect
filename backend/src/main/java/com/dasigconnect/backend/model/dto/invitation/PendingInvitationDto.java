@@ -18,7 +18,7 @@ public record PendingInvitationDto(
                 token.getId(),
                 token.getRecipientEmail(),
                 token.getAssignedRole(),
-                token.getInstitution().getId(),
+                token.getInstitution() != null ? token.getInstitution().getId() : null,
                 token.getExpiresAt(),
                 token.getCreatedAt());
     }
