@@ -83,6 +83,15 @@ public class UserController {
         return ResponseEntity.ok(userService.updateStatus(id, request.accountState(), user));
     }
 
+    @DeleteMapping("/users/{id}")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'VALIDATOR')")
+    public ResponseEntity<java.util.Map<String, String>> removeUser(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        String action = userService.removeUser(id, user);
+        return ResponseEntity.ok(java.util.Map.of("action", action));
+    }
+
     /**
      * PATCH /api/v1/users/{id}/institution
      * Reassigns a contributor account to a different institution (admin-only, A4).

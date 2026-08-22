@@ -65,8 +65,8 @@ class InstitutionServiceTest {
         @Test
         @DisplayName("should persist a valid PNG logo")
         void shouldPersistValidPngLogo() {
-            byte[] png = new byte[] {
-                    (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00
+            byte[] png = new byte[]{
+                (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00
             };
             MockMultipartFile logo = new MockMultipartFile("file", "school.png", "image/png", png);
 

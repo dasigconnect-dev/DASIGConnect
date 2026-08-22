@@ -1,5 +1,17 @@
 package com.dasigconnect.backend.service;
 
+import java.io.IOException;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
+
 import com.dasigconnect.backend.model.dto.user.UserDto;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
 import com.dasigconnect.backend.model.entity.UserRole;
@@ -15,16 +27,6 @@ import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.repository.ValidationLogRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
-import java.io.IOException;
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @Transactional(readOnly = true)
@@ -70,8 +72,8 @@ public class UserService {
     }
 
     /**
-     * Returns the profile of the authenticated user.
-     * Used by GET /api/v1/me so the frontend has reliable identity data.
+     * Returns the profile of the authenticated user. Used by GET /api/v1/me so
+     * the frontend has reliable identity data.
      */
     public UserDto getProfile(JwtUserDetails principal) {
         return userRepository.findById(principal.userId())
@@ -80,10 +82,9 @@ public class UserService {
     }
 
     /**
-     * Lists all users for a given institution.
-     * - ADMINISTRATOR: may query any institution
-     * - VALIDATOR: may only query their own institution
-     * - CONTRIBUTOR: access denied
+     * Lists all users for a given institution. - ADMINISTRATOR: may query any
+     * institution - VALIDATOR: may only query their own institution -
+     * CONTRIBUTOR: access denied
      */
     public List<UserDto> listByInstitution(UUID institutionId, JwtUserDetails requester) {
         validateInstitutionScope(institutionId, requester);
@@ -181,16 +182,19 @@ public class UserService {
                 "Profile image must be a valid JPEG, PNG, or WebP image.");
     }
 
-    public record UserAvatar(byte[] data, String contentType) {}
+    public record UserAvatar(byte[] data, String contentType) {
+
+    }
 
     /**
      * Removes a user. Two outcomes based on whether the user has business data:
      *
      * - Has submissions, media assets, or validation history → auto-deactivate
-     *   (soft delete: account disabled, all related records preserved).
-     * - No related records → permanent delete after cleaning up owned records.
+     * (soft delete: account disabled, all related records preserved). - No
+     * related records → permanent delete after cleaning up owned records.
      *
-     * Returns "deactivated" or "deleted" so the caller can surface the right message.
+     * Returns "deactivated" or "deleted" so the caller can surface the right
+     * message.
      */
     @Transactional
     public String removeUser(UUID id, JwtUserDetails requester) {
@@ -224,12 +228,11 @@ public class UserService {
     /**
      * A4: Reassigns a contributor to a different institution.
      *
-     * Rules:
-     * - Only ADMINISTRATOR may call this.
-     * - Target user must be a CONTRIBUTOR (validators are managed via separate flows).
-     * - Target institution must exist and be ACTIVE.
-     * - Cannot reassign to the user's existing institution.
-     * - Historical submissions retain their original institution_id for audit and RLS integrity.
+     * Rules: - Only ADMINISTRATOR may call this. - Target user must be a
+     * CONTRIBUTOR (validators are managed via separate flows). - Target
+     * institution must exist and be ACTIVE. - Cannot reassign to the user's
+     * existing institution. - Historical submissions retain their original
+     * institution_id for audit and RLS integrity.
      */
     @Transactional
     public UserDto reassignContributor(UUID userId, UUID targetInstitutionId, JwtUserDetails requester) {
@@ -248,7 +251,7 @@ public class UserService {
 
         var targetInstitution = institutionRepository.findById(targetInstitutionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Target institution not found."));
+                "Target institution not found."));
 
         if (targetInstitution.getStatus() != InstitutionStatus.active) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -285,18 +288,18 @@ public class UserService {
                 null, null,
                 userId,
                 Map.of(
-                        "fromInstitutionId",   fromInstitutionId != null ? fromInstitutionId.toString() : "",
+                        "fromInstitutionId", fromInstitutionId != null ? fromInstitutionId.toString() : "",
                         "fromInstitutionName", fromInstitutionName,
-                        "toInstitutionId",     targetInstitutionId.toString(),
-                        "toInstitutionName",   targetInstitution.getName()
+                        "toInstitutionId", targetInstitutionId.toString(),
+                        "toInstitutionName", targetInstitution.getName()
                 ));
 
         return saved;
     }
 
     /**
-     * Returns counts of contributors and validators for an institution.
-     * Used for dashboard summary tiles.
+     * Returns counts of contributors and validators for an institution. Used
+     * for dashboard summary tiles.
      */
     public Map<String, Long> countByRole(UUID institutionId, JwtUserDetails requester) {
         validateInstitutionScope(institutionId, requester);
@@ -308,15 +311,17 @@ public class UserService {
 
     private void validateInstitutionScope(UUID institutionId, JwtUserDetails requester) {
         switch (requester.role().toLowerCase()) {
-            case "administrator" -> { /* access allowed */ }
+            case "administrator" -> {
+                /* access allowed */ }
             case "validator" -> {
                 if (institutionId == null || !institutionId.equals(requester.institutionId())) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                             "Validators can only access users in their own institution.");
                 }
             }
-            default -> throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only administrators and validators can access users.");
+            default ->
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Only administrators and validators can access users.");
         }
     }
 

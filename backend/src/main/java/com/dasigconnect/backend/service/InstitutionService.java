@@ -5,7 +5,6 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -29,11 +28,10 @@ import com.dasigconnect.backend.repository.UserRepository;
 /**
  * Manages the institution lifecycle.
  *
- * State machine:
- *   INACTIVE  → (admin sends validator invitation)  → PENDING
- *   PENDING   → (validator activates account)       → ACTIVE
- *   ACTIVE    → (all validators deactivated)        → INACTIVE
- *   PENDING   → (last validator invitation cancelled, no active validators) → INACTIVE
+ * State machine: INACTIVE → (admin sends validator invitation) → PENDING
+ * PENDING → (validator activates account) → ACTIVE ACTIVE → (all validators
+ * deactivated) → INACTIVE PENDING → (last validator invitation cancelled, no
+ * active validators) → INACTIVE
  *
  * Invalid transitions are rejected with IllegalStateException → HTTP 409.
  */
@@ -76,7 +74,8 @@ public class InstitutionService {
     }
 
     /**
-     * Creates a new institution with status INACTIVE and provisions its RLS workspace.
+     * Creates a new institution with status INACTIVE and provisions its RLS
+     * workspace.
      */
     public InstitutionDto createInstitution(CreateInstitutionRequest request) {
         if (institutionRepository.existsByCode(request.getInstitutionCode())) {
@@ -191,13 +190,14 @@ public class InstitutionService {
         throw new IllegalArgumentException("Logo must be a valid JPEG, PNG, or WebP image.");
     }
 
-    public record InstitutionLogo(byte[] data, String contentType) {}
+    public record InstitutionLogo(byte[] data, String contentType) {
+
+    }
 
     // ── A1: Edit Institution Details ──────────────────────────────────────────
-
     /**
-     * Updates an institution's name and/or email domain.
-     * Validates uniqueness of name and domain across all other institutions.
+     * Updates an institution's name and/or email domain. Validates uniqueness
+     * of name and domain across all other institutions.
      */
     public InstitutionDto updateInstitution(UUID institutionId, UpdateInstitutionRequest request) {
         Institution institution = institutionRepository.findById(institutionId)
@@ -238,11 +238,10 @@ public class InstitutionService {
     }
 
     // ── A2: Deactivate Institution ────────────────────────────────────────────
-
     /**
-     * Admin-initiated deactivation of an institution (A2).
-     * Sets status to INACTIVE regardless of current status (active or pending).
-     * Historical data is retained; new invitations will be blocked by status checks.
+     * Admin-initiated deactivation of an institution (A2). Sets status to
+     * INACTIVE regardless of current status (active or pending). Historical
+     * data is retained; new invitations will be blocked by status checks.
      */
     public InstitutionDto deactivateInstitution(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)
@@ -268,11 +267,10 @@ public class InstitutionService {
     }
 
     // ── A3: Reactivate Institution ────────────────────────────────────────────
-
     /**
-     * Admin-initiated reactivation of a deactivated institution (A3).
-     * Sets status back to ACTIVE. If the institution has no active validators,
-     * it transitions to PENDING instead, following the normal state machine.
+     * Admin-initiated reactivation of a deactivated institution (A3). Sets
+     * status back to ACTIVE. If the institution has no active validators, it
+     * transitions to PENDING instead, following the normal state machine.
      */
     public InstitutionDto reactivateInstitution(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)
@@ -342,8 +340,8 @@ public class InstitutionService {
     }
 
     /**
-     * PENDING → ACTIVE. Called when the first validator activates their account.
-     * Also accepts INACTIVE as a precondition to handle edge cases.
+     * PENDING → ACTIVE. Called when the first validator activates their
+     * account. Also accepts INACTIVE as a precondition to handle edge cases.
      */
     public void transitionToActive(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)
@@ -371,8 +369,9 @@ public class InstitutionService {
     }
 
     /**
-     * ACTIVE or PENDING → INACTIVE. Called when all validators are deactivated/removed,
-     * or when the last pending validator invitation is cancelled.
+     * ACTIVE or PENDING → INACTIVE. Called when all validators are
+     * deactivated/removed, or when the last pending validator invitation is
+     * cancelled.
      */
     public void transitionToInactive(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)
@@ -405,8 +404,8 @@ public class InstitutionService {
      * Blocked with 400 if the institution still has users, submissions, or
      * active media assets — the admin must clear those first. Invitation
      * tokens, slot reservations, and override requests are cleaned up
-     * automatically since they are ephemeral administrative records that
-     * are meaningless without the owning institution.
+     * automatically since they are ephemeral administrative records that are
+     * meaningless without the owning institution.
      */
     public void deleteInstitution(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)
