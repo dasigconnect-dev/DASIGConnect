@@ -47,6 +47,8 @@ export default function DeleteModal({
   onClose,
   onConfirmDelete,
 }: DeleteModalProps) {
+  if (!open) return null;
+
   const modal = (
     <div
       className={`med-modal-overlay${open ? " open" : ""}`}
