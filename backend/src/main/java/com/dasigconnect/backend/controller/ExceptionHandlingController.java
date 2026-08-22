@@ -42,7 +42,7 @@ import com.dasigconnect.backend.service.ValidationTimeoutService;
  */
 @RestController
 @RequestMapping("/api/admin/resolution")
-@PreAuthorize("hasRole('ADMINISTRATOR')")
+@PreAuthorize("hasRole('SUPER_ADMINISTRATOR')")
 public class ExceptionHandlingController {
 
     private final SubmissionRepository submissionRepository;

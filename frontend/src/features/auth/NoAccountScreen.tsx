@@ -59,7 +59,7 @@ export default function NoAccountScreen({
             <i className="ti ti-info-circle"></i>
             <div>
               If you are a member of a DASIG HEI, contact your institution's
-              Validator or the DASIG Administrator with your official
+              Administrator or the DASIG Super Administrator with your official
               institutional email address.
             </div>
           </div>

@@ -473,7 +473,7 @@ public class AnalyticsRepository {
 
     public List<SubmissionAnalyticsRowDto> submissionReportRows(Instant start, Instant end, AnalyticsScope scope) {
         boolean showContributor = !"contributor".equals(scope.role());
-        boolean showInstitution = "administrator".equals(scope.role());
+        boolean showInstitution = "super_administrator".equals(scope.role());
         boolean showRevisionCycles = !"contributor".equals(scope.role());
         String sql = """
             SELECT s.id AS submission_id,
@@ -731,10 +731,10 @@ public class AnalyticsRepository {
 
     public record AnalyticsScope(String role, UUID institutionId, UUID userId) {
         public String submissionFilter(String alias) {
-            if ("administrator".equals(role) && institutionId == null) {
+            if ("super_administrator".equals(role) && institutionId == null) {
                 return "";
             }
-            if ("validator".equals(role) || "contributor".equals(role)) {
+            if ("administrator".equals(role) || "contributor".equals(role)) {
                 if ("contributor".equals(role)) {
                     return " AND " + alias + ".contributor_id = :userId ";
                 }
@@ -744,10 +744,10 @@ public class AnalyticsRepository {
         }
 
         public String auditFilter(String actorAlias) {
-            if ("administrator".equals(role)) {
+            if ("super_administrator".equals(role)) {
                 return "";
             }
-            if ("validator".equals(role)) {
+            if ("administrator".equals(role)) {
                 return " AND " + actorAlias + ".institution_id = :institutionId ";
             }
             return " AND " + actorAlias + ".id = :userId ";
@@ -759,7 +759,7 @@ public class AnalyticsRepository {
         }
 
         public String contributorBreakdownFilter(String alias) {
-            if ("administrator".equals(role) || "validator".equals(role)) {
+            if ("super_administrator".equals(role) || "administrator".equals(role)) {
                 return submissionFilter(alias);
             }
             return " AND " + alias + ".contributor_id = :userId ";

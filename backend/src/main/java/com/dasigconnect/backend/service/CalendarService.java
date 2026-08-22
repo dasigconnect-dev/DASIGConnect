@@ -30,7 +30,7 @@ public class CalendarService {
 
     public List<CalendarEventDto> getCalendarEvents(JwtUserDetails user) {
         return switch (user.role().toLowerCase()) {
-            case "administrator" -> getAdminCalendar();
+            case "super_administrator" -> getAdminCalendar();
             default -> getScopedCalendar(user);
         };
     }

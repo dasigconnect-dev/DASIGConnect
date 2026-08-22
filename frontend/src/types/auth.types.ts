@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'validator' | 'contributor'
+export type UserRole = 'super_administrator' | 'administrator' | 'contributor'
 
 export type ScreenId =
   | 'login'

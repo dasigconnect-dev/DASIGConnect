@@ -44,7 +44,7 @@ class MetricsAggregatorServiceTest {
     @Test
     void summary_aggregatesKpisAndScopesValidatorToInstitution() {
         UUID institutionId = UUID.randomUUID();
-        JwtUserDetails validator = new JwtUserDetails(UUID.randomUUID(), "validator@test.local", "validator", institutionId);
+        JwtUserDetails validator = new JwtUserDetails(UUID.randomUUID(), "administrator@test.local", "administrator", institutionId);
 
         when(analyticsRepository.averagePostingDelay(any(), any(), any()))
                 .thenReturn(new PostingDelayStats(2.345, 6));
@@ -85,27 +85,27 @@ class MetricsAggregatorServiceTest {
         ArgumentCaptor<AnalyticsScope> scopeCaptor = ArgumentCaptor.forClass(AnalyticsScope.class);
         org.mockito.Mockito.verify(analyticsRepository, org.mockito.Mockito.atLeastOnce())
                 .averagePostingDelay(any(Instant.class), any(Instant.class), scopeCaptor.capture());
-        assertThat(scopeCaptor.getValue().role()).isEqualTo("validator");
+        assertThat(scopeCaptor.getValue().role()).isEqualTo("administrator");
         assertThat(scopeCaptor.getValue().institutionId()).isEqualTo(institutionId);
         assertThat(scopeCaptor.getValue().userId()).isNull();
     }
 
     @Test
     void export_returnsCsvWithHeaders() {
-        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "administrator", null);
+        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "super_administrator", null);
         when(analyticsRepository.exportRows(any(), any(), any(), any()))
                 .thenReturn(List.of(Map.of("metric", "publication_attempts", "value", 5)));
 
         var export = service.export("operational-health", "7d", null, admin);
 
-        assertThat(export.filename()).contains("DASIGConnect_Analytics_Administrator_Network_operational_health_7D").endsWith(".csv");
+        assertThat(export.filename()).contains("DASIGConnect_Analytics_Super Administrator_Network_operational_health_7D").endsWith(".csv");
         assertThat(export.content()).contains("\"metric\",\"value\"");
         assertThat(export.content()).contains("\"publication_attempts\",\"5\"");
     }
 
     @Test
     void summary_rejectsUnsupportedRange() {
-        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "administrator", null);
+        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "super_administrator", null);
 
         assertThatThrownBy(() -> service.summary("13d", null, admin))
                 .isInstanceOf(ResponseStatusException.class)

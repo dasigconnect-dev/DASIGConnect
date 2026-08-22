@@ -90,7 +90,7 @@ class SubmissionControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "VALIDATOR")
+    @WithMockUser(roles = "ADMINISTRATOR")
     void create_asValidator_returns403() throws Exception {
         mockMvc.perform(post("/api/v1/submissions")
                 .contentType(MediaType.APPLICATION_JSON)

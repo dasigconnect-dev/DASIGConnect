@@ -71,7 +71,7 @@ class ResolutionControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void listFailures_asAdministrator_returnsEmptyList() throws Exception {
         when(submissionRepository.findPublishFailures()).thenReturn(List.of());
 
@@ -82,7 +82,7 @@ class ResolutionControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void listFailures_asAdministrator_returnsFailureList() throws Exception {
         Submission s = publishFailedSubmission(UUID.randomUUID());
         when(submissionRepository.findPublishFailures()).thenReturn(List.of(s));
@@ -99,7 +99,7 @@ class ResolutionControllerTest {
     // ── GET /{id} ─────────────────────────────────────────────────────────────
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void getDetail_publishFailed_returnsDetail() throws Exception {
         UUID id = UUID.randomUUID();
         Submission s = publishFailedSubmission(id);
@@ -118,7 +118,7 @@ class ResolutionControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void getDetail_notFound_returns404() throws Exception {
         UUID id = UUID.randomUUID();
         when(submissionRepository.findByIdWithInstitution(id)).thenReturn(Optional.empty());
@@ -128,7 +128,7 @@ class ResolutionControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void getDetail_ineligibleStatus_returns409() throws Exception {
         UUID id = UUID.randomUUID();
         Submission s = publishFailedSubmission(id);
@@ -142,7 +142,7 @@ class ResolutionControllerTest {
     // ── POST /{id}/retry ──────────────────────────────────────────────────────
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void retry_asAdministrator_returns204() throws Exception {
         UUID id = UUID.randomUUID();
         doNothing().when(manualPublishingService).retry(eq(id), any());
@@ -156,7 +156,7 @@ class ResolutionControllerTest {
     // ── POST /{id}/manual-publish/start ───────────────────────────────────────
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void startManualPublish_asAdministrator_returns204() throws Exception {
         UUID id = UUID.randomUUID();
         doNothing().when(manualPublishingService).start(eq(id), any());
@@ -170,7 +170,7 @@ class ResolutionControllerTest {
     // ── POST /{id}/manual-publish/complete ────────────────────────────────────
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void completeManualPublish_withUrl_returns204() throws Exception {
         UUID id = UUID.randomUUID();
         doNothing().when(manualPublishingService).complete(eq(id), any(), any());
@@ -186,7 +186,7 @@ class ResolutionControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void completeManualPublish_withoutBody_returns204() throws Exception {
         UUID id = UUID.randomUUID();
         doNothing().when(manualPublishingService).complete(eq(id), any(), any());
@@ -200,7 +200,7 @@ class ResolutionControllerTest {
     // ── POST /{id}/manual-publish/cancel ──────────────────────────────────────
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
     void cancelManualPublish_asAdministrator_returns204() throws Exception {
         UUID id = UUID.randomUUID();
         doNothing().when(manualPublishingService).cancel(eq(id), any());

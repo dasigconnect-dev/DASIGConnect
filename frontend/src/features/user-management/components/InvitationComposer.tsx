@@ -23,11 +23,11 @@ function composerSubtitle(
   institution: InstitutionOption | null,
   role: InviteRole,
 ) {
-  if (canChooseRole) return 'Invite contributors or validators securely into this institution workspace.'
+  if (canChooseRole) return 'Invite contributors or administrators securely into this institution workspace.'
   if (role === 'contributor') return 'Invite contributors securely into this institution workspace.'
   const status = institution?.status
   if (status === 'inactive' || status === 'pending') {
-    return 'Invite a validator to activate this institution workspace.'
+    return 'Invite an administrator to activate this institution workspace.'
   }
   return 'Invite contributors securely into this institution workspace.'
 }
@@ -139,17 +139,17 @@ export default function InvitationComposer({
               </button>
               <button
                 type="button"
-                className={`um-role-pill${role === 'validator' ? ' is-active' : ''}`}
-                onClick={() => onRoleChange('validator')}
+                className={`um-role-pill${role === 'administrator' ? ' is-active' : ''}`}
+                onClick={() => onRoleChange('administrator')}
                 disabled={sending}
                 role="radio"
-                aria-checked={role === 'validator'}
+                aria-checked={role === 'administrator'}
               >
                 <span className="um-role-pill-icon">
                   <i className="ti ti-shield-check" aria-hidden="true"></i>
                 </span>
                 <span>
-                  <strong>Validator</strong>
+                  <strong>Administrator</strong>
                   <small>Reviews and approves submissions</small>
                 </span>
               </button>

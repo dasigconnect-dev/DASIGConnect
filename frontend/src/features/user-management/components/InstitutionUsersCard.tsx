@@ -26,7 +26,7 @@ interface InstitutionUsersCardProps {
   userColumnLabel?: string
 }
 
-type RoleFilter = 'all' | 'validator' | 'contributor'
+type RoleFilter = 'all' | 'administrator' | 'contributor'
 type StatusFilter = 'all' | 'active' | 'pending' | 'cancelled' | 'inactive'
 
 export default function InstitutionUsersCard({
@@ -128,7 +128,7 @@ export default function InstitutionUsersCard({
             <div className="um-filter-group">
               <span className="um-filter-label">Role</span>
               <div className="um-filter-pills" role="group" aria-label="Filter by role">
-                {(['all', 'contributor', 'validator'] as RoleFilter[]).map((value) => (
+                {(['all', 'contributor', 'administrator'] as RoleFilter[]).map((value) => (
                   <button
                     key={value}
                     type="button"
@@ -219,6 +219,7 @@ export default function InstitutionUsersCard({
                 const isInactive = managedUser.accountState.toLowerCase() === 'inactive'
                 const isPending = managedUser.accountState.toLowerCase().includes('pending')
                 const canManage = canToggleUserStatus(currentUser, managedUser)
+                const canRemove = canRemoveUser(currentUser, managedUser)
                 const displayName = getUserDisplayName(managedUser)
                 const initials = getUserInitials(managedUser)
 
@@ -230,13 +231,13 @@ export default function InstitutionUsersCard({
                         onClick: () => onCancelInvitation(managedUser),
                         dangerous: true,
                       },
-                      {
+                      canRemove ? {
                         label: 'Remove user',
                         icon: 'ti ti-trash',
                         onClick: () => onDeleteUser(managedUser),
                         dangerous: true,
-                      },
-                    ]
+                      } : null,
+                    ].filter((item): item is NonNullable<typeof item> => item !== null)
                   : [
                       {
                         label: 'Reset password',
@@ -264,12 +265,12 @@ export default function InstitutionUsersCard({
                             onClick: () => onReassign(managedUser),
                           }
                         : null,
-                      {
+                      canRemove ? {
                         label: 'Remove user',
                         icon: 'ti ti-trash',
                         onClick: () => onDeleteUser(managedUser),
                         dangerous: true,
-                      },
+                      } : null,
                     ].filter((item): item is NonNullable<typeof item> => item !== null)
 
                 return (
@@ -458,6 +459,14 @@ function canToggleUserStatus(currentUser: User | null, managedUser: UserProfileR
   if (!currentUser) return false
   const state = managedUser.accountState.toLowerCase()
   if (state !== 'active' && state !== 'inactive') return false
-  if (currentUser.role === 'admin') return true
-  return currentUser.role === 'validator' && managedUser.role.toLowerCase() === 'contributor'
+  return currentUser.role === 'super_administrator' || currentUser.role === 'administrator'
+}
+
+function canRemoveUser(currentUser: User | null, managedUser: UserProfileResponse) {
+  if (!currentUser) return false
+  const managedRole = managedUser.role.toLowerCase()
+  if (managedRole === 'administrator' || managedRole === 'super_administrator') {
+    return currentUser.role === 'super_administrator'
+  }
+  return currentUser.role === 'super_administrator' || currentUser.role === 'administrator'
 }

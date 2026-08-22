@@ -9,6 +9,7 @@ import "../styles/institution-management.css";
 import "../styles/calendar.css";
 import "../styles/media-picker.css";
 import "../styles/ui.css";
+import "../styles/settings.css";
 import { ToastProvider } from "../context/ToastContext";
 import App from "./App.tsx";
 

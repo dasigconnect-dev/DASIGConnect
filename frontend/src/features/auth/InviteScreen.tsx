@@ -123,7 +123,7 @@ export default function InviteScreen({
                   Invitation link has expired.
                 </strong>
                 This invitation token is no longer valid. Your account remains
-                in PENDING status. Please contact your institution's Validator
+                in PENDING status. Please contact your institution's Administrator
                 or the DASIG Administrator to request a new invitation.
               </div>
             </div>

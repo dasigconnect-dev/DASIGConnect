@@ -98,7 +98,7 @@ export default function LoginScreen({
                 <div className="l-feat-text">
                   <div className="l-feat-title">Validation Workflow</div>
                   <div className="l-feat-sub">
-                    Validators review and approve content before it reaches the
+                    Administrators review and approve content before it reaches the
                     scheduler.
                   </div>
                 </div>

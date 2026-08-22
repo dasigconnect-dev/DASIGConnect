@@ -84,7 +84,7 @@ class AnalyticsControllerTest {
                 Instant.parse("2026-05-01T00:00:00Z"),
                 Instant.parse("2026-05-31T00:00:00Z"),
                 Instant.parse("2026-05-31T00:00:00Z"),
-                "administrator",
+                "super_administrator",
                 true,
                 null,
                 List.of(),

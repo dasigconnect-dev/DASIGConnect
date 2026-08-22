@@ -99,7 +99,7 @@ class SubmissionServiceTest {
         contributor = user(contributorId, "contributor@cit.edu.ph", UserRole.contributor, institution);
         contributorPrincipal = principal(contributorId, "contributor", institutionId);
 
-        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.validator))
+        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.administrator))
                 .thenReturn(List.of());
 
         ReflectionTestUtils.setField(submissionService, "entityManager", entityManager);
@@ -173,14 +173,14 @@ class SubmissionServiceTest {
         UUID submissionId = UUID.randomUUID();
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
-        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.validator, institution);
+        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.administrator, institution);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
-        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.validator))
+        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.administrator))
                 .thenReturn(List.of(validator));
 
         SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
@@ -283,7 +283,7 @@ class SubmissionServiceTest {
 
         assertThatThrownBy(() -> submissionService.get(
                 submission.getId(),
-                principal(UUID.randomUUID(), "validator", UUID.randomUUID())))
+                principal(UUID.randomUUID(), "administrator", UUID.randomUUID())))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);

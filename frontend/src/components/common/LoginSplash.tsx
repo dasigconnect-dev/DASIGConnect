@@ -8,8 +8,8 @@ interface LoginSplashProps {
 }
 
 const ROLE_LABEL: Record<string, string> = {
-  admin: 'Administrator',
-  validator: 'Validator',
+  super_administrator: 'Super Administrator',
+  administrator: 'Administrator',
   contributor: 'Contributor',
 }
 
