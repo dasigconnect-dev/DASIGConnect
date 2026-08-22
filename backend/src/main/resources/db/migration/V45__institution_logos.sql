@@ -1,0 +1,4 @@
+ALTER TABLE institutions
+    ADD COLUMN IF NOT EXISTS logo_data BYTEA,
+    ADD COLUMN IF NOT EXISTS logo_content_type VARCHAR(40),
+    ADD COLUMN IF NOT EXISTS logo_updated_at TIMESTAMPTZ;

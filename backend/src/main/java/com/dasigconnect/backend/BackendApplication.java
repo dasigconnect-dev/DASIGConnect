@@ -70,6 +70,7 @@ public class BackendApplication {
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(baselineOnMigrate)
                 .baselineVersion(baselineVersion)
+                .outOfOrder(true)
                 .load();
 
         flyway.repair();
