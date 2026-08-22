@@ -96,6 +96,7 @@ export function logAiInteraction(
 // ─── UC-3.2 Caption Generation ───────────────────────────────────────────────
 
 export type CaptionTone = "professional" | "community" | "energetic";
+export const AI_CAPTION_PROMPT_MAX_LENGTH = 280;
 
 export interface CaptionVariant {
   tone: CaptionTone;
@@ -120,7 +121,9 @@ export type CaptionAction =
 
 export async function suggestCaption(
   submissionId: string,
-  existingCaption?: string
+  existingCaption?: string,
+  prompt?: string,
+  tone?: CaptionTone
 ): Promise<CaptionResponse> {
   const res = await api.post<{ submissionId: string; variants: CaptionVariant[] }>(
     "/ai/caption",
@@ -128,6 +131,8 @@ export async function suggestCaption(
       submissionId,
       // Only send if non-empty — backend treats null/absent as "generate from scratch"
       ...(existingCaption?.trim() ? { existingCaption: existingCaption.trim() } : {}),
+      ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
+      ...(tone ? { tone } : {}),
     },
     { validateStatus: () => true }
   );

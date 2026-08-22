@@ -23,6 +23,7 @@ import {
   useSubmissionLookups,
   useSubmissions,
 } from "../../hooks/useSubmissions";
+import type { CaptionTone } from "../../api/aiApi";
 import { useFacebookPreviewData } from "../../hooks/useFacebookPreviewData";
 import { fileMediaKey, savedMediaKey } from "../../hooks/useMediaReorder";
 import type { User } from "../../types/auth.types";
@@ -39,7 +40,10 @@ import MediaAssetsPicker from "../../components/media/MediaAssetsPicker";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import AiCaptionButton from "./components/AiCaptionButton";
-import AiCaptionSuggestion from "./components/AiCaptionSuggestion";
+import AiCaptionPromptDialog from "./components/AiCaptionPromptDialog";
+import FancyTextTool, {
+  type FancyTextSelection,
+} from "./components/FancyTextTool";
 
 interface SubmissionScreenProps {
   user: User;
@@ -76,6 +80,7 @@ type PendingLeaveAction = (() => void) | null;
 type ProgressStep = "media" | "details" | "schedule";
 type CenterMode = "edit" | "preview";
 type PreviewTab = "preview" | "details";
+const AUTO_SAVE_DELAY_MS = 1200;
 
 const initialForm: FormState = {
   id: null,
@@ -126,6 +131,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   } = useSubmissionLookups();
   const toast = useToast();
   const detailsSectionRef = useRef<HTMLElement | null>(null);
+  const captionTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const prefilledRef = useRef(false);
   const filterParamConsumedRef = useRef(false);
   const routedSubmissionRef = useRef<string | null>(null);
@@ -157,6 +163,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [guardRailError, setGuardRailError] = useState("");
   const [activeStep, setActiveStep] = useState<ProgressStep>("details");
   const [mediaUploadFailed, setMediaUploadFailed] = useState(false);
+  const [captionSelection, setCaptionSelection] = useState<FancyTextSelection>({
+    start: 0,
+    end: 0,
+  });
+  const [captionPromptOpen, setCaptionPromptOpen] = useState(false);
+  const [fancyTextPreviewActive, setFancyTextPreviewActive] = useState(false);
 
   const queued = useMemo(() => {
     if (filter === "drafts")
@@ -332,6 +344,21 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   );
   const aiCaption = useAiCaptionAssist(form.id, hasImageAssets, form.caption);
 
+  async function handleAiCaptionPromptSubmit(prompt: string, tone: CaptionTone) {
+    setCaptionPromptOpen(false);
+    const savedSubmission = await saveDraft({ silent: true });
+    if (!savedSubmission) return;
+    const generatedVariant = await aiCaption.suggest(
+      prompt,
+      tone,
+      savedSubmission.id,
+      savedSubmission.caption ?? form.caption,
+    );
+    if (!generatedVariant) return;
+    updateField("caption", generatedVariant.caption);
+    aiCaption.logApplyForSubmission(savedSubmission.id, generatedVariant.tone, "use");
+  }
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       if (!scheduledAt) {
@@ -470,6 +497,41 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setSaveState("idle");
   }
 
+  function captureCaptionSelection(element: HTMLTextAreaElement) {
+    setCaptionSelection({
+      start: element.selectionStart,
+      end: element.selectionEnd,
+    });
+  }
+
+  function restoreCaptionSelection(nextSelection: FancyTextSelection) {
+    setCaptionSelection(nextSelection);
+
+    window.requestAnimationFrame(() => {
+      const textarea = captionTextareaRef.current;
+      if (!textarea) return;
+
+      textarea.focus();
+      textarea.setSelectionRange(nextSelection.start, nextSelection.end);
+    });
+  }
+
+  function previewCaptionSelection(
+    nextCaption: string,
+    nextSelection: FancyTextSelection,
+  ) {
+    updateField("caption", nextCaption);
+    restoreCaptionSelection(nextSelection);
+  }
+
+  function replaceCaptionSelection(
+    nextCaption: string,
+    nextSelection: FancyTextSelection,
+  ) {
+    updateField("caption", nextCaption);
+    restoreCaptionSelection(nextSelection);
+  }
+
   function resetComposer() {
     setForm(initialForm);
     setPickerItems([]);
@@ -601,7 +663,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
   }
 
-  async function saveDraft() {
+  async function saveDraft(
+    options: { silent?: boolean; suppressError?: boolean } = {},
+  ): Promise<SubmissionSummary | false> {
     if (isReadOnlySubmission) return false;
     if (busy) return false;
     setSaveState("saving");
@@ -665,15 +729,35 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setSaveState("saved");
       setMediaUploadFailed(false);
       cleanSignatureRef.current = getDirtySignature(nextForm);
-      toast.success("Draft saved.");
-      return true;
+      if (!options.silent) toast.success("Draft saved.");
+      return finalResponse.data;
     } catch (err: unknown) {
       setSaveState("idle");
       if (form.files.length > 0) setMediaUploadFailed(true);
-      toast.error(getErrorMessage(err, "Draft could not be saved."));
+      if (!options.suppressError) {
+        toast.error(getErrorMessage(err, "Draft could not be saved."));
+      }
       return false;
     }
   }
+
+  useEffect(() => {
+    if (!isDirty || isReadOnlySubmission || busy || fancyTextPreviewActive) return;
+    if (!form.id && !form.eventTitle.trim()) return;
+
+    const timer = window.setTimeout(() => {
+      void saveDraft({ silent: true, suppressError: true });
+    }, AUTO_SAVE_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    busy,
+    fancyTextPreviewActive,
+    form,
+    isDirty,
+    isReadOnlySubmission,
+    scheduledAt,
+  ]);
 
   async function handleSave() {
     await saveDraft();
@@ -1288,45 +1372,58 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               label="Caption"
               action={
                 canUseAiCaption ? (
-                  <AiCaptionButton
-                    state={aiCaption.state}
-                    canSuggest={aiCaption.canSuggest}
-                    rateLimitReset={aiCaption.rateLimitReset}
-                    onSuggest={aiCaption.suggest}
-                  />
+                  <div className="sub-caption-actions">
+                    <FancyTextTool
+                      caption={form.caption}
+                      selection={captionSelection}
+                      disabled={isReadOnlySubmission}
+                      onReplaceSelection={replaceCaptionSelection}
+                      onPreviewSelection={previewCaptionSelection}
+                      onRestoreSelection={restoreCaptionSelection}
+                      onPreviewStateChange={setFancyTextPreviewActive}
+                    />
+                    <AiCaptionButton
+                      state={aiCaption.state}
+                      canSuggest={canUseAiCaption && !busy}
+                      rateLimitReset={aiCaption.rateLimitReset}
+                      notice={aiCaption.notice}
+                      onSuggest={() => setCaptionPromptOpen(true)}
+                    />
+                  </div>
                 ) : undefined
               }
             >
               <div className="sub-caption-wrapper">
                 <textarea
+                  ref={captionTextareaRef}
                   className={`sub-finput ${captionTone(form.caption)}`}
                   rows={4}
                   readOnly={isReadOnlySubmission}
                   value={form.caption}
-                  onChange={(event) => updateField("caption", event.target.value)}
+                  onChange={(event) => {
+                    updateField("caption", event.target.value);
+                    captureCaptionSelection(event.currentTarget);
+                  }}
+                  onClick={(event) => captureCaptionSelection(event.currentTarget)}
+                  onKeyUp={(event) => captureCaptionSelection(event.currentTarget)}
+                  onSelect={(event) => captureCaptionSelection(event.currentTarget)}
                   placeholder="Write a compelling caption for the DASIG Facebook page..."
                 />
                 <span className={`sub-caption-counter ${captionTone(form.caption)}`}>
-                  {form.caption.length} / 500
+                  {formatWordCount(form.caption)}
                 </span>
               </div>
-              {canUseAiCaption && aiCaption.variants && (
-                <AiCaptionSuggestion
-                  variants={aiCaption.variants}
-                  onApply={(caption, tone, action) => {
-                    if (!canUseAiCaption) return;
-                    updateField("caption", caption);
-                    aiCaption.logApply(tone, action);
-                  }}
-                  onDismissOne={aiCaption.logDismissOne}
-                  onDismissAll={aiCaption.dismissAll}
-                  onRegenerate={aiCaption.regenerate}
-                />
-              )}
               <div className="sub-finput-hint">
-                Captions between 150-500 characters perform best on Facebook.
-                Include relevant hashtags.
+                Word count updates as you type. Include relevant hashtags.
               </div>
+              <AiCaptionPromptDialog
+                open={captionPromptOpen}
+                state={aiCaption.state}
+                hasImageAssets={hasImageAssets}
+                existingCaption={form.caption}
+                onClose={() => setCaptionPromptOpen(false)}
+                onSubmit={handleAiCaptionPromptSubmit}
+              />
             </Field>
 
             <div className="sub-field-row">
@@ -1505,8 +1602,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             />
             <CheckItem
               pass={captionTone(form.caption) === "ok"}
-              title="Caption length"
-              sub={`${form.caption.length} characters`}
+              title="Caption words"
+              sub={formatWordCount(form.caption)}
             />
             <CheckItem
               pass
@@ -3011,9 +3108,18 @@ function getPreviewDetails({
 }
 
 function captionTone(caption: string) {
-  if (caption.length >= 150 && caption.length <= 500) return "ok";
-  if (caption.length === 0) return "";
-  return "warn";
+  const words = countWords(caption);
+  if (words > 0) return "ok";
+  if (words === 0) return "";
+  return "";
+}
+
+function countWords(value: string) {
+  return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function formatWordCount(value: string) {
+  return String(countWords(value));
 }
 
 
