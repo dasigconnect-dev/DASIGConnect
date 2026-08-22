@@ -8,9 +8,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
-import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -61,12 +61,17 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", ex.getMessage(), "status", 400));
     }
 
+    @ExceptionHandler(InstitutionNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleInstitutionNotFound(InstitutionNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", ex.getMessage(), "status", 404));
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalState(IllegalStateException ex) {
-        log.error("Upstream/storage failure", ex);
-        String message = ex.getMessage() != null ? ex.getMessage() : "Upstream service error";
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(Map.of("error", message, "status", 502));
+        String message = ex.getMessage() != null ? ex.getMessage() : "Invalid state transition";
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("error", message, "status", 409));
     }
 
     @ExceptionHandler(CannotCreateTransactionException.class)

@@ -349,6 +349,15 @@ public class InvitationService {
         invitationTokenRepository.delete(token);
         log.info("Invitation {} cancelled by {}", tokenId, requester != null ? requester.userId() : "unknown");
 
+        // Clean up pending unactivated user record if one was created for this invitation
+        userRepository.findByEmail(token.getRecipientEmail()).ifPresent(user -> {
+            if (user.getAccountState() == UserStatus.pending
+                    || user.getAccountState() == UserStatus.pending_email_undelivered
+                    || user.getAccountState() == UserStatus.expired) {
+                userRepository.delete(user);
+            }
+        });
+
         // If the cancelled invitation was for a validator and the institution is PENDING,
         // revert to INACTIVE if no other pending validator invitations and no active validators remain.
         if (institution != null
