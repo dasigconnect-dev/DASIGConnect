@@ -720,7 +720,7 @@ function App() {
           <Route
             path="/admin/institution-management"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["super_administrator"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["super_administrator", "administrator"]}>
                 <InstitutionManagementScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -752,7 +752,7 @@ function App() {
           <Route
             path="/admin/resolution"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["super_administrator"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["super_administrator", "administrator"]}>
                 <ResolutionCenterScreen user={currentUser!} />
               </ProtectedRoute>
             }

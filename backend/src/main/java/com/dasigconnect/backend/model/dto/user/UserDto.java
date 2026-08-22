@@ -1,8 +1,9 @@
 package com.dasigconnect.backend.model.dto.user;
 
-import com.dasigconnect.backend.model.entity.User;
 import java.time.Instant;
 import java.util.UUID;
+
+import com.dasigconnect.backend.model.entity.User;
 
 public class UserDto {
 
@@ -13,11 +14,14 @@ public class UserDto {
     private String displayName;
     private String role;
     private String accountState;
+    private boolean superAdministrator;
     private UUID institutionId;
     private String institutionName;
     private Instant createdAt;
     private boolean notifyInApp;
     private boolean notifyEmail;
+    private boolean hasAvatar;
+    private Instant avatarUpdatedAt;
 
     public static UserDto from(User user) {
         UserDto dto = new UserDto();
@@ -28,24 +32,69 @@ public class UserDto {
         dto.displayName = buildDisplayName(user);
         dto.role = user.getRole().name();
         dto.accountState = user.getAccountState().name();
+        dto.superAdministrator = user.isSuperAdministrator();
         dto.institutionId = user.getInstitution() != null ? user.getInstitution().getId() : null;
         dto.institutionName = user.getInstitution() != null ? user.getInstitution().getName() : null;
         dto.createdAt = user.getCreatedAt();
         dto.notifyInApp = user.isNotifyInApp();
         dto.notifyEmail = user.isNotifyEmail();
+        dto.hasAvatar = user.getAvatarData() != null && user.getAvatarData().length > 0;
+        dto.avatarUpdatedAt = user.getAvatarUpdatedAt();
         return dto;
     }
 
-    public UUID getId() { return id; }
-    public String getEmail() { return email; }
-    public String getFirstName() { return firstName; }
-    public String getLastName() { return lastName; }
-    public String getDisplayName() { return displayName; }
-    public String getRole() { return role; }
-    public String getAccountState() { return accountState; }
-    public UUID getInstitutionId() { return institutionId; }
-    public String getInstitutionName() { return institutionName; }
-    public Instant getCreatedAt() { return createdAt; }
+    public UUID getId() {
+        return id;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public String getAccountState() {
+        return accountState;
+    }
+
+    public boolean isSuperAdministrator() {
+        return superAdministrator;
+    }
+
+    public UUID getInstitutionId() {
+        return institutionId;
+    }
+
+    public String getInstitutionName() {
+        return institutionName;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public boolean isHasAvatar() {
+        return hasAvatar;
+    }
+
+    public Instant getAvatarUpdatedAt() {
+        return avatarUpdatedAt;
+    }
+
     public boolean isNotifyInApp() { return notifyInApp; }
     public boolean isNotifyEmail() { return notifyEmail; }
 

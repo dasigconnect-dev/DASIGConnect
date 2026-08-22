@@ -237,7 +237,8 @@ function InvitationTableSkeleton() {
   )
 }
 
-function institutionName(id: string, institutions: InstitutionOption[]) {
+function institutionName(id: string | null, institutions: InstitutionOption[]) {
+  if (!id) return 'Network-wide'
   return institutions.find((inst) => inst.id === id)?.name || 'Institution'
 }
 
