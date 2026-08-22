@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
 
-export type DashboardNavId = 'home' | 'submit' | 'institution-management' | 'user-management' | 'scheduler' | 'resolution' | 'analytics' | 'media-repository' | 'notifications' | 'settings'
+export type DashboardNavId = 'home' | 'submit' | 'review-queue' | 'institution-management' | 'user-management' | 'scheduler' | 'resolution' | 'analytics' | 'media-repository' | 'notifications'
 
 interface DashboardShellProps {
   user: User
@@ -122,6 +122,9 @@ export default function DashboardShell({
               </div>
             </div>
             <div className="dash-nav-right">
+              <div className={`role-chip ${roleChip(user).className}`} id="role-chip">
+                {roleChip(user).label}
+              </div>
               <div
                 className={`dash-avatar${showDropdown ? ' open' : ''}`}
                 id="dash-avatar"
@@ -148,10 +151,10 @@ export default function DashboardShell({
                       {capitalize(user.role)} · {getInstitutionName(user)}
                     </div>
                   </div>
-                  <button type="button" className="udrop-item" onClick={() => navigate('/settings')}>
+                  <button type="button" className="udrop-item" disabled>
                     <i className="ti ti-key"></i> Change Password
                   </button>
-                  <button type="button" className="udrop-item" onClick={() => navigate('/settings')}>
+                  <button type="button" className="udrop-item" disabled>
                     <i className="ti ti-settings"></i> Account Settings
                   </button>
                   <div className="udrop-sep"></div>
@@ -181,7 +184,12 @@ export default function DashboardShell({
   )
 }
 
+function isAdministratorRole(user: User) {
+  return user.role === 'administrator' || user.role === 'super_administrator'
+}
+
 function dashboardNavItems(user: User): DashboardNavItem[] {
+  const isAdministrator = isAdministratorRole(user)
   return [
     {
       id: 'home',
@@ -192,24 +200,31 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
     },
     {
       id: 'submit',
-      icon: user.role !== 'contributor' ? 'ti ti-clipboard-list' : 'ti ti-photo-up',
-      label: user.role !== 'contributor' ? 'Review Queue' : 'Submit Content',
-      path: user.role !== 'contributor' ? '/validation/queue' : '/submissions/new',
-      visible: true,
+      icon: 'ti ti-photo-up',
+      label: 'My Submissions',
+      path: '/submissions',
+      visible: user.role === 'contributor' || isAdministrator,
+    },
+    {
+      id: 'review-queue',
+      icon: 'ti ti-clipboard-check',
+      label: 'Review Queue',
+      path: '/validation/queue',
+      visible: isAdministrator,
     },
     {
       id: 'institution-management',
       icon: 'ti ti-building',
-      label: 'Institutions',
+      label: 'Institution Management',
       path: '/admin/institution-management',
-      visible: user.role === 'super_administrator' || user.role === 'administrator',
+      visible: isAdministrator,
     },
     {
       id: 'user-management',
       icon: 'ti ti-users',
       label: 'User Management',
       path: '/admin/user-management/invitations',
-      visible: user.role === 'super_administrator' || user.role === 'administrator',
+      visible: isAdministrator,
     },
     {
       id: 'media-repository',
@@ -237,7 +252,7 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       icon: 'ti ti-alert-triangle',
       label: 'Resolution Center',
       path: '/admin/resolution',
-      visible: user.role === 'super_administrator' || user.role === 'administrator',
+      visible: isAdministrator,
     },
     {
       id: 'analytics',
@@ -253,13 +268,19 @@ function groupDashboardNavItems(items: DashboardNavItem[]) {
   return [
     {
       label: 'Workspace',
-      items: items.filter((item) => ['home', 'submit', 'media-repository', 'notifications'].includes(item.id)),
+      items: items.filter((item) => ['home', 'submit', 'review-queue', 'media-repository', 'notifications'].includes(item.id)),
     },
     {
       label: 'Operations',
       items: items.filter((item) => ['institution-management', 'user-management', 'scheduler', 'resolution', 'analytics'].includes(item.id)),
     },
   ].filter((group) => group.items.length > 0)
+}
+
+function roleChip(user: User) {
+  if (user.role === 'super_administrator') return { className: 'chip-admin', label: 'Super Administrator' }
+  if (user.role === 'administrator') return { className: 'chip-admin', label: 'Administrator' }
+  return { className: 'chip-contributor', label: 'Contributor' }
 }
 
 function getInstitutionName(user: User) {

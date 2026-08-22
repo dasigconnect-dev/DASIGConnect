@@ -22,6 +22,7 @@ export interface SavedMediaAsset {
   fileName: string;
   fileType: string;
   fileSizeBytes: number;
+  caption?: string | null;
 }
 
 export interface SubmissionSummary {
@@ -40,17 +41,24 @@ export interface SubmissionSummary {
   updatedAt?: string;
   mediaCount?: number;
   category?: string;
+  templateId?: string | null;
+  fastTrack?: boolean;
+  liveEventName?: string | null;
   tags?: string[];
   mediaAssets?: SavedMediaAsset[];
 }
 
 export interface SubmissionPayload {
+  institutionId?: string | null;
   eventTitle: string;
   eventDate: string;
   caption: string;
   description: string;
   scheduledAt?: string;
   category?: string;
+  templateId?: string | null;
+  fastTrack?: boolean;
+  liveEventName?: string | null;
   tags?: string[];
 }
 
@@ -100,13 +108,22 @@ export function submitForReview(id: string) {
   return api.post<SubmissionSummary>(`/submissions/${id}/submit`);
 }
 
+export function withdrawSubmission(id: string) {
+  return api.post<SubmissionSummary>(`/submissions/${id}/withdraw`);
+}
+
 export function deleteDraft(id: string) {
   return api.delete<void>(`/submissions/${id}`);
 }
 
-export function reorderSubmissionMedia(id: string, mediaAssetIds: string[]) {
+export function reorderSubmissionMedia(
+  id: string,
+  mediaAssetIds: string[],
+  mediaCaptions?: Record<string, string>,
+) {
   return api.patch<SubmissionSummary>(`/submissions/${id}/media/order`, {
     mediaAssetIds,
+    mediaCaptions,
   });
 }
 
@@ -154,8 +171,8 @@ export function getSubmissionLookups(signal?: AbortSignal) {
   return api.get<SubmissionLookups>("/submissions/lookups", { signal });
 }
 
-export function validateGuardRails(scheduledAt: string) {
-  return api.post<GuardRailResult>("/guardrails/validate", { scheduledAt });
+export function validateGuardRails(scheduledAt: string, institutionId?: string | null) {
+  return api.post<GuardRailResult>("/guardrails/validate", { scheduledAt, institutionId });
 }
 
 function fileTypeFromFile(file: File) {
