@@ -29,6 +29,9 @@ public class SubmissionMediaAsset {
     @Column(name = "display_order", nullable = false)
     private int displayOrder = 0;
 
+    @Column(name = "caption", length = 500)
+    private String caption;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -49,6 +52,9 @@ public class SubmissionMediaAsset {
 
     public int getDisplayOrder() { return displayOrder; }
     public void setDisplayOrder(int displayOrder) { this.displayOrder = displayOrder; }
+
+    public String getCaption() { return caption; }
+    public void setCaption(String caption) { this.caption = caption; }
 
     public Instant getCreatedAt() { return createdAt; }
 }

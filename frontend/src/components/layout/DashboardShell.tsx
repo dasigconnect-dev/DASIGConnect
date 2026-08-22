@@ -196,8 +196,8 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
     {
       id: 'submit',
       icon: 'ti ti-photo-up',
-      label: 'Submit Content',
-      path: '/submissions/new',
+      label: 'My Submissions',
+      path: '/submissions',
       visible: user.role === 'contributor' || user.role === 'admin',
     },
     {

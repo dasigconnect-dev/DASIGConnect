@@ -181,7 +181,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
 
 
   const actionRoutes: Record<string, string> = {
-    "Submit Event Content": "/submissions/new",
+    "My Submissions": "/submissions",
     "Add Institution": "/admin/institution-management",
     "Invite Members": "/admin/institution-management",
     "Institution Overview": "/admin/institution-management",
@@ -526,7 +526,7 @@ function actionsForRole(user: User | null): ActionItem[] {
       {
         icon: "ti ti-photo-up",
         accent: "ac-blue",
-        title: "Submit Event Content",
+        title: "My Submissions",
         subtitle: "Create a draft under an institution scope",
         emphasized: true,
       },
@@ -584,8 +584,8 @@ function actionsForRole(user: User | null): ActionItem[] {
     {
       icon: "ti ti-photo-up",
       accent: "ac-blue",
-      title: "Submit Event Content",
-      subtitle: "Upload photos, videos & captions",
+      title: "My Submissions",
+      subtitle: "Manage drafts, media, and captions",
       emphasized: true,
     },
   ];

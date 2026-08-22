@@ -22,6 +22,7 @@ export interface SavedMediaAsset {
   fileName: string;
   fileType: string;
   fileSizeBytes: number;
+  caption?: string | null;
 }
 
 export interface SubmissionSummary {
@@ -115,9 +116,14 @@ export function deleteDraft(id: string) {
   return api.delete<void>(`/submissions/${id}`);
 }
 
-export function reorderSubmissionMedia(id: string, mediaAssetIds: string[]) {
+export function reorderSubmissionMedia(
+  id: string,
+  mediaAssetIds: string[],
+  mediaCaptions?: Record<string, string>,
+) {
   return api.patch<SubmissionSummary>(`/submissions/${id}/media/order`, {
     mediaAssetIds,
+    mediaCaptions,
   });
 }
 

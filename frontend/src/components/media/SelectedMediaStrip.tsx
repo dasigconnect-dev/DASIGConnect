@@ -6,6 +6,8 @@ interface SelectedMediaStripProps {
   disabled?: boolean;
   onRemove: (clientId: string) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
+  onItemClick?: (item: SubmissionMediaItem) => void;
+  getItemCaption?: (item: SubmissionMediaItem) => string;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -19,6 +21,8 @@ export default function SelectedMediaStrip({
   disabled = false,
   onRemove,
   onReorder,
+  onItemClick,
+  getItemCaption,
 }: SelectedMediaStripProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -67,6 +71,7 @@ export default function SelectedMediaStrip({
         {items.map((item, index) => {
           const isDragging = dragIndex === index;
           const isOver = dragOverIndex === index && dragIndex !== index;
+          const itemCaption = getItemCaption?.(item).trim() ?? "";
           return (
             <div
               key={item.clientId}
@@ -86,7 +91,19 @@ export default function SelectedMediaStrip({
               role="listitem"
               aria-label={`${item.fileName}, position ${index + 1} of ${items.length}`}
             >
-              <div className="sms-thumb">
+              <div
+                role="button"
+                tabIndex={0}
+                className="sms-thumb sms-thumb-btn"
+                onClick={() => onItemClick?.(item)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onItemClick?.(item);
+                  }
+                }}
+                aria-label={`Edit caption for ${item.fileName}`}
+              >
                 {item.mediaType === "video" ? (
                   <div className="sms-video-thumb">
                     {item.previewUrl ? (
@@ -118,18 +135,31 @@ export default function SelectedMediaStrip({
                 <span className={`sms-source-badge sms-source-badge--${item.source}`} aria-hidden>
                   {SOURCE_LABELS[item.source]}
                 </span>
-                {!disabled && (
-                  <button
-                    type="button"
-                    className="sms-remove-btn"
-                    onClick={() => onRemove(item.clientId)}
-                    aria-label={`Remove ${item.fileName}`}
-                    title="Remove"
-                  >
-                    <i className="ti ti-x" aria-hidden />
-                  </button>
-                )}
               </div>
+              {!disabled && (
+                <button
+                  type="button"
+                  className="sms-remove-btn"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRemove(item.clientId);
+                  }}
+                  aria-label={`Remove ${item.fileName}`}
+                  title="Remove"
+                >
+                  <i className="ti ti-x" aria-hidden />
+                </button>
+              )}
+              <button
+                type="button"
+                className={`sms-caption-preview ${itemCaption ? "has-caption" : ""}`}
+                onClick={() => onItemClick?.(item)}
+                disabled={!onItemClick}
+                title={itemCaption || "Add optional caption"}
+              >
+                <i className={`ti ${itemCaption ? "ti-message-circle-2" : "ti-message-plus"}`} aria-hidden />
+                <span>{itemCaption || "Add caption"}</span>
+              </button>
             </div>
           );
         })}

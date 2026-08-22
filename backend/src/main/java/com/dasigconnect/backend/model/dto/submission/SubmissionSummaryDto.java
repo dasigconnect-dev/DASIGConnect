@@ -13,6 +13,7 @@ public class SubmissionSummaryDto {
     private UUID id;
     private String eventTitle;
     private LocalDate eventDate;
+    private String caption;
     private String status;
     private Instant scheduledAt;
     private Instant submittedAt;
@@ -31,6 +32,7 @@ public class SubmissionSummaryDto {
         dto.id = s.getId();
         dto.eventTitle = s.getEventTitle();
         dto.eventDate = s.getEventDate();
+        dto.caption = s.getCaption();
         dto.status = s.getStatus().name();
         dto.scheduledAt = s.getScheduledAt();
         dto.submittedAt = s.getSubmittedAt();
@@ -58,6 +60,10 @@ public class SubmissionSummaryDto {
 
     public LocalDate getEventDate() {
         return eventDate;
+    }
+
+    public String getCaption() {
+        return caption;
     }
 
     public String getStatus() {

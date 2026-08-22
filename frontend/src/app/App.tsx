@@ -744,6 +744,14 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/submissions"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["admin", "contributor"]}>
+                <SubmissionScreen user={currentUser!} />
+              </ProtectedRoute>
+            }
+          />
         </Route>
 
         <Route

@@ -576,7 +576,11 @@ public class SubmissionService {
         }
 
         for (int index = 0; index < dto.getMediaAssetIds().size(); index++) {
-            linksByAssetId.get(dto.getMediaAssetIds().get(index)).setDisplayOrder(index);
+            SubmissionMediaAsset link = linksByAssetId.get(dto.getMediaAssetIds().get(index));
+            link.setDisplayOrder(index);
+            if (dto.getMediaCaptions() != null && dto.getMediaCaptions().containsKey(dto.getMediaAssetIds().get(index))) {
+                link.setCaption(normalizeOptional(dto.getMediaCaptions().get(dto.getMediaAssetIds().get(index))));
+            }
         }
         submissionMediaAssetRepository.saveAll(links);
 
@@ -710,7 +714,7 @@ public class SubmissionService {
         List<MediaAssetSummaryDto> mediaAssets = submissionMediaAssetRepository
                 .findBySubmissionIdOrderByDisplayOrderAsc(submission.getId())
                 .stream()
-                .map(sma -> MediaAssetSummaryDto.from(sma.getMediaAsset()))
+                .map(MediaAssetSummaryDto::from)
                 .toList();
         return SubmissionResponseDto.from(submission, mediaAssets);
     }
