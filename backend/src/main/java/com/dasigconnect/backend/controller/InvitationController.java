@@ -58,6 +58,15 @@ public class InvitationController {
         return ResponseEntity.ok(invitationService.acceptInvitation(dto));
     }
 
+    @PostMapping("/resend-expired")
+    public ResponseEntity<Map<String, String>> resendExpired(
+            @RequestBody Map<String, String> request) {
+        String token = request != null ? request.get("token") : null;
+        String email = request != null ? request.get("email") : null;
+        invitationService.resendExpiredToken(token, email);
+        return ResponseEntity.ok(Map.of("message", "A new invitation link has been sent to your email."));
+    }
+
     /**
      * POST /api/v1/invitations/{id}/resend
      * Resends the invitation email with a fresh token.

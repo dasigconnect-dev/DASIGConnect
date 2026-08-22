@@ -35,6 +35,9 @@ interface InviteScreenProps {
   onToggleConfirmPassword: () => void
   onActivate: () => void
   onBackToLogin: () => void
+  onResendExpired?: () => void
+  resending?: boolean
+  resendSuccess?: boolean
   showPassword: boolean
   showConfirmPassword: boolean
 }
@@ -60,6 +63,9 @@ export default function InviteScreen({
   onToggleConfirmPassword,
   onActivate,
   onBackToLogin,
+  onResendExpired,
+  resending = false,
+  resendSuccess = false,
   showPassword,
   showConfirmPassword,
 }: InviteScreenProps) {
@@ -114,7 +120,7 @@ export default function InviteScreen({
         </LeftPanel>
         <RightPanel>
           <div id="inv-expired" className={state === 'expired' ? '' : 'hidden'}>
-            <div className="alert alert-err" style={{ marginBottom: 0 }}>
+            <div className="alert alert-err" style={{ marginBottom: 14 }}>
               <i className="ti ti-clock-x"></i>
               <div>
                 <strong
@@ -123,15 +129,37 @@ export default function InviteScreen({
                   Invitation link has expired.
                 </strong>
                 This invitation token is no longer valid. Your account remains
-                in PENDING status. Please contact your institution's Validator
-                or the DASIG Administrator to request a new invitation.
+                in PENDING status. You can request a fresh invitation link below,
+                or contact your DASIG Administrator.
               </div>
             </div>
+            {resendSuccess && (
+              <div className="alert alert-ok" style={{ marginBottom: 14 }}>
+                <i className="ti ti-mail-check"></i>
+                <div>
+                  <strong style={{ display: 'block', marginBottom: 3, color: '#86EFAC' }}>
+                    New invitation link sent!
+                  </strong>
+                  A fresh invitation link has been dispatched to your email address. Please check your inbox.
+                </div>
+              </div>
+            )}
+            {onResendExpired && !resendSuccess && (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={onResendExpired}
+                disabled={resending}
+                style={{ width: '100%', marginBottom: 10 }}
+              >
+                <i className="ti ti-send"></i> {resending ? 'Sending new link…' : 'Resend Invitation Link'}
+              </button>
+            )}
             <button
               type="button"
               className="btn-ghost"
               onClick={onBackToLogin}
-              style={{ marginTop: 14 }}
+              style={{ width: '100%' }}
             >
               Return to Sign In
             </button>
@@ -183,14 +211,22 @@ export default function InviteScreen({
 
             <div className="token-box">
               <div className="token-lbl">Activating account for</div>
-              <div className="token-email" id="inv-email-display">
-                {email}
-              </div>
-              <div className="token-meta">
-                <span id="inv-role-display">{roleLabel}</span>
-                <span className="token-dot"></span>
-                <span id="inv-inst-display">{institution}</span>
-              </div>
+              {email ? (
+                <>
+                  <div className="token-email" id="inv-email-display">
+                    {email}
+                  </div>
+                  <div className="token-meta">
+                    {roleLabel && <span id="inv-role-display">{roleLabel}</span>}
+                    {roleLabel && institution && <span className="token-dot"></span>}
+                    {institution && <span id="inv-inst-display">{institution}</span>}
+                  </div>
+                </>
+              ) : (
+                <div className="token-meta" style={{ marginTop: '4px' }}>
+                  <span>Loading invitation details...</span>
+                </div>
+              )}
             </div>
 
             <div className="form-head compact">
@@ -349,10 +385,12 @@ export default function InviteScreen({
               <i className="ti ti-circle-check"></i>{' '}
               {loading ? 'Activating...' : 'Activate My Account'}
             </button>
-            <div className="countdown">
-              <i className="ti ti-clock"></i>{' '}
-              <span id="inv-countdown">{inviteCountdown}</span>
-            </div>
+            {inviteCountdown && (
+              <div className="countdown">
+                <i className="ti ti-clock"></i>{' '}
+                <span id="inv-countdown">{inviteCountdown}</span>
+              </div>
+            )}
           </div>
 
           <div id="inv-success" className={state === 'success' ? '' : 'hidden'}>

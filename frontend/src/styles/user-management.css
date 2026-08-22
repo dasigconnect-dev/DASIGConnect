@@ -993,10 +993,10 @@
 }
 
 .um-users-filter-bar {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr auto 1fr;
-  align-items: end;
-  gap: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .um-users-filter-bar .um-filter-group {
@@ -1005,10 +1005,13 @@
 
 .um-users-filter-bar .um-filter-group:first-child {
   padding-left: 0;
+  flex: 1;
+  max-width: 320px;
 }
 
 .um-users-filter-bar .um-filter-group:last-child {
   padding-right: 0;
+  margin-left: auto;
 }
 
 .um-users-filter-bar .um-search-wrap {
@@ -1213,16 +1216,28 @@
   position: relative;
   width: 42px;
   height: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  max-width: 42px;
+  max-height: 42px;
   flex: 0 0 42px;
+  border-radius: 50%;
 }
 
 .um-user-avatar {
   position: relative;
   display: grid;
+  place-items: center;
   width: 42px;
   height: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  max-width: 42px;
+  max-height: 42px;
+  aspect-ratio: 1 / 1;
   padding: 0;
-  overflow: visible;
+  margin: 0;
+  overflow: hidden;
   border-radius: 50%;
   background: #EEF3FF;
   border: 1px solid #DCE8FF;
@@ -1230,6 +1245,7 @@
   font-size: 12px;
   font-weight: 800;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 button.um-user-avatar {
@@ -1251,7 +1267,12 @@ button.um-user-avatar:focus-visible {
   grid-area: 1 / 1;
   width: 100%;
   height: 100%;
-  border-radius: inherit;
+  min-width: 100%;
+  min-height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 50%;
+  box-sizing: border-box;
 }
 
 .um-user-avatar-fallback {
@@ -1266,6 +1287,8 @@ button.um-user-avatar:focus-visible {
   object-fit: cover;
   object-position: center;
   background: #fff;
+  border-radius: 50%;
+  aspect-ratio: 1 / 1;
 }
 
 .um-user-avatar-hover {
@@ -1327,6 +1350,7 @@ button.um-user-avatar:focus-visible {
 
 .um-badge.is-active { background: transparent; color: #166534; }
 .um-badge.is-pending { background: transparent; color: #854D0E; }
+.um-badge.is-cancelled { background: transparent; color: #DC2626; }
 .um-badge.is-muted { background: transparent; color: #374151; }
 
 /* Role tags */
@@ -1467,7 +1491,7 @@ button.um-user-avatar:focus-visible {
 .um-confirm-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: 99999;
   background: rgba(12, 29, 61, 0.42);
   display: flex;
   align-items: center;

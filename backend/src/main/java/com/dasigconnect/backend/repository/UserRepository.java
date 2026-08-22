@@ -20,6 +20,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     boolean existsByInstitutionId(UUID institutionId);
 
+    long countByInstitutionId(UUID institutionId);
+
     long countByInstitutionIdAndRole(UUID institutionId, UserRole role);
 
     long countByInstitutionIdAndRoleAndAccountState(UUID institutionId, UserRole role, UserStatus accountState);

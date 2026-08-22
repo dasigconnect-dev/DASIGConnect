@@ -393,15 +393,44 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
       if (match) {
         await cancelInvitation(match.id)
       } else {
-        await deleteUser(managedUser.id)
+        await updateUserStatus(managedUser.id, 'cancelled')
       }
-      setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
+      setManagedUsers((current) =>
+        current.map((item) =>
+          item.id === managedUser.id ? { ...item, accountState: 'cancelled' } : item,
+        ),
+      )
       if (selectedInstitutionId) {
         await loadManagementLists(selectedInstitutionId)
       }
       toast.success('Invitation cancelled.')
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to cancel invitation.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  async function handleResendInvitationFromUsers(managedUser: UserProfileResponse) {
+    if (!selectedInstitutionId) return
+    setUpdatingUserId(managedUser.id)
+    try {
+      const match = pendingInvitations.find(
+        (inv) => inv.recipientEmail.toLowerCase() === managedUser.email.toLowerCase(),
+      )
+      if (match) {
+        await resendInvitation(match.id)
+      } else {
+        await inviteUser({
+          recipientEmail: managedUser.email,
+          institutionId: selectedInstitutionId,
+          assignedRole: (managedUser.role.toLowerCase() as 'contributor' | 'validator'),
+        })
+      }
+      await loadManagementLists(selectedInstitutionId)
+      toast.success(`Invitation resent to ${managedUser.email}.`)
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to resend invitation.'))
     } finally {
       setUpdatingUserId(null)
     }
@@ -622,6 +651,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
               onToggleUserStatus={handleToggleUserStatus}
               onDeleteUser={handleDeleteUser}
               onCancelInvitation={handleCancelInvitationFromUsers}
+              onResendInvitation={handleResendInvitationFromUsers}
               showRoleControls={!isValidatorWorkspace}
             />
           </div>

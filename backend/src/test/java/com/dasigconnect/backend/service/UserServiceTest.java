@@ -7,9 +7,16 @@ import com.dasigconnect.backend.model.entity.InstitutionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
+import com.dasigconnect.backend.repository.AccountLockoutRepository;
+import com.dasigconnect.backend.repository.EmailDeliveryLogRepository;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
+import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.NotificationRepository;
+import com.dasigconnect.backend.repository.ReviewLockRepository;
+import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
+import com.dasigconnect.backend.repository.ValidationLogRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import java.util.Collections;
 import java.util.List;
@@ -49,6 +56,21 @@ class UserServiceTest {
     @Mock
     private InvitationTokenRepository invitationTokenRepository;
 
+    @Mock
+    private SubmissionRepository submissionRepository;
+    @Mock
+    private MediaAssetRepository mediaAssetRepository;
+    @Mock
+    private ValidationLogRepository validationLogRepository;
+    @Mock
+    private NotificationRepository notificationRepository;
+    @Mock
+    private EmailDeliveryLogRepository emailDeliveryLogRepository;
+    @Mock
+    private AccountLockoutRepository accountLockoutRepository;
+    @Mock
+    private ReviewLockRepository reviewLockRepository;
+
     @InjectMocks
     private UserService userService;
 
@@ -56,6 +78,7 @@ class UserServiceTest {
     private UUID institutionId;
     private Institution institution;
     private User contributor;
+    private JwtUserDetails adminPrincipal;
 
     @BeforeEach
     void setUp() {
@@ -70,6 +93,7 @@ class UserServiceTest {
         institution.setStatus(InstitutionStatus.active);
 
         contributor = user(userId, "contributor@cit.edu.ph", UserRole.contributor, institution);
+        adminPrincipal = principal(UUID.randomUUID(), "administrator", null);
     }
 
     @Test
@@ -401,6 +425,56 @@ class UserServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode().value())
                 .isEqualTo(422);
+    }
+
+    @Test
+    void removeUser_activeUser_throws409Conflict() {
+        contributor.setAccountState(UserStatus.active);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+
+        assertThatThrownBy(() -> userService.removeUser(userId, adminPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode().value())
+                .isEqualTo(409);
+    }
+
+    @Test
+    void removeUser_inactiveUserWithoutData_deletesSuccessfully() {
+        contributor.setAccountState(UserStatus.inactive);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        when(submissionRepository.existsByContributorId(userId)).thenReturn(false);
+        when(mediaAssetRepository.existsByUploaderId(userId)).thenReturn(false);
+        when(validationLogRepository.existsByValidatorId(userId)).thenReturn(false);
+
+        String result = userService.removeUser(userId, adminPrincipal);
+
+        assertThat(result).isEqualTo("deleted");
+        verify(userRepository).delete(contributor);
+    }
+
+    @Test
+    void removeUser_cancelledUserWithoutData_deletesSuccessfully() {
+        contributor.setAccountState(UserStatus.cancelled);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        when(submissionRepository.existsByContributorId(userId)).thenReturn(false);
+        when(mediaAssetRepository.existsByUploaderId(userId)).thenReturn(false);
+        when(validationLogRepository.existsByValidatorId(userId)).thenReturn(false);
+
+        String result = userService.removeUser(userId, adminPrincipal);
+
+        assertThat(result).isEqualTo("deleted");
+        verify(userRepository).delete(contributor);
+    }
+
+    @Test
+    void updateStatus_deactivateNonActiveUser_throws400() {
+        contributor.setAccountState(UserStatus.inactive);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+
+        assertThatThrownBy(() -> userService.updateStatus(userId, UserStatus.inactive, adminPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode().value())
+                .isEqualTo(400);
     }
 
     private static JwtUserDetails principal(UUID id, String role, UUID institutionId) {

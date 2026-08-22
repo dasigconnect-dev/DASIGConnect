@@ -13,7 +13,9 @@ interface InstitutionUsersCardProps {
   onToggleUserStatus: (user: UserProfileResponse) => void
   onDeleteUser: (user: UserProfileResponse) => void
   onCancelInvitation: (user: UserProfileResponse) => void
+  onResendInvitation?: (user: UserProfileResponse) => void
   onReassign?: (user: UserProfileResponse) => void
+  resendingUserId?: string | null
   showRoleControls?: boolean
   showInstitutionColumn?: boolean
   title?: string
@@ -37,7 +39,9 @@ export default function InstitutionUsersCard({
   onToggleUserStatus,
   onDeleteUser,
   onCancelInvitation,
+  onResendInvitation,
   onReassign,
+  resendingUserId = null,
   showRoleControls = true,
   showInstitutionColumn = true,
   title = 'Manage Users',
@@ -56,10 +60,10 @@ export default function InstitutionUsersCard({
   const statusCounts = useMemo(() => ({
     all: users.length,
     active: users.filter((u) => u.accountState.toLowerCase() === 'active').length,
-    pending: users.filter((u) => u.accountState.toLowerCase().includes('pending')).length,
+    pending: users.filter((u) => u.accountState.toLowerCase().startsWith('pending')).length,
     cancelled: users.filter((u) => {
       const s = u.accountState.toLowerCase()
-      return s === 'inactive' || s === 'expired' || s === 'cancelled'
+      return s === 'cancelled' || s === 'expired' || s === 'inactive'
     }).length,
   }), [users])
 
@@ -76,9 +80,9 @@ export default function InstitutionUsersCard({
       if (statusFilter === 'active') {
         if (state !== 'active') return false
       } else if (statusFilter === 'pending') {
-        if (!state.includes('pending')) return false
+        if (!state.startsWith('pending')) return false
       } else if (statusFilter === 'cancelled' || statusFilter === 'inactive') {
-        if (state !== 'inactive' && state !== 'expired' && state !== 'cancelled') return false
+        if (state !== 'cancelled' && state !== 'expired' && state !== 'inactive') return false
       }
     }
     return true
@@ -115,29 +119,38 @@ export default function InstitutionUsersCard({
             <input
               type="search"
               className="um-search-input"
-              placeholder="Name or email…"
+              placeholder={variant === 'directory' ? 'Name or email...' : 'Search by name or email...'}
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
               aria-label="Search users"
             />
+            {search && (
+              <button
+                type="button"
+                className="um-search-clear"
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+              >
+                <i className="ti ti-x" aria-hidden="true"></i>
+              </button>
+            )}
           </div>
         </div>
+
         {showFilterPills && showRoleControls && (
           <>
             <div className="um-filter-divider" role="separator" aria-hidden="true"></div>
             <div className="um-filter-group">
               <span className="um-filter-label">Role</span>
               <div className="um-filter-pills" role="group" aria-label="Filter by role">
-                {(['all', 'contributor', 'validator'] as RoleFilter[]).map((value) => (
+                {(['all', 'validator', 'contributor'] as RoleFilter[]).map((r) => (
                   <button
-                    key={value}
+                    key={r}
                     type="button"
-                    className={`um-filter-pill${roleFilter === value ? ' is-active' : ''}`}
-                    onClick={() => setRoleFilter(value)}
+                    className={`um-filter-pill${roleFilter === r ? ' is-active' : ''}`}
+                    onClick={() => setRoleFilter(r)}
                   >
-                    {value === 'all'
-                      ? variant === 'directory' ? 'All' : 'All Roles'
-                      : value.charAt(0).toUpperCase() + value.slice(1)}
+                    {r === 'all' ? (variant === 'directory' ? 'All' : 'All Roles') : formatRoleLabel(r)}
                   </button>
                 ))}
               </div>
@@ -180,23 +193,29 @@ export default function InstitutionUsersCard({
         />
       ) : filtered.length === 0 ? (
         <div className="um-empty-state">
-          {hasFilters ? (
-            <>
-              <i className="ti ti-filter-off"></i>
-              <span>No users match your filters.</span>
-              <button
-                type="button"
-                className="um-empty-clear"
-                onClick={() => { setSearch(''); setRoleFilter('all'); setStatusFilter('all') }}
-              >
-                Clear filters
-              </button>
-            </>
-          ) : (
-            <>
-              <i className="ti ti-users-off"></i>
-              <span>No users found for this institution.</span>
-            </>
+          <div className="um-empty-icon" aria-hidden="true">
+            <i className="ti ti-users"></i>
+          </div>
+          <p className="um-empty-title">
+            {hasFilters ? 'No matching users found' : 'No users found'}
+          </p>
+          <p className="um-empty-sub">
+            {hasFilters
+              ? 'Try changing your search terms or filters.'
+              : 'Users will appear here once they are added.'}
+          </p>
+          {hasFilters && (
+            <button
+              type="button"
+              className="um-empty-clear"
+              onClick={() => {
+                setSearch('')
+                setRoleFilter('all')
+                setStatusFilter('all')
+              }}
+            >
+              Clear filters
+            </button>
           )}
         </div>
       ) : (
@@ -215,46 +234,78 @@ export default function InstitutionUsersCard({
             <tbody>
               {filtered.map((managedUser) => {
                 const isUpdating = updatingUserId === managedUser.id
-                const isActive = managedUser.accountState.toLowerCase() === 'active'
-                const isInactive = managedUser.accountState.toLowerCase() === 'inactive'
-                const isPending = managedUser.accountState.toLowerCase().includes('pending')
+                const stateLower = managedUser.accountState.toLowerCase()
+                const isActive = stateLower === 'active'
+                const isUnactivatedInvite = !managedUser.firstName || managedUser.firstName.trim() === ''
+                const isCancelled = stateLower === 'cancelled' || stateLower === 'expired' || (stateLower === 'inactive' && isUnactivatedInvite)
+                const isInactive = stateLower === 'inactive' && !isUnactivatedInvite
+                const isPending = stateLower.startsWith('pending')
+                const isResending = resendingUserId === managedUser.id
                 const canManage = canToggleUserStatus(currentUser, managedUser)
                 const displayName = getUserDisplayName(managedUser)
                 const initials = getUserInitials(managedUser)
 
                 const menuItems = isPending
                   ? [
+                      onResendInvitation
+                        ? {
+                            label: isResending ? 'Resending…' : 'Resend invitation',
+                            icon: 'ti ti-send',
+                            onClick: () => onResendInvitation(managedUser),
+                            disabled: isResending,
+                          }
+                        : null,
                       {
                         label: 'Cancel invitation',
                         icon: 'ti ti-ban',
                         onClick: () => onCancelInvitation(managedUser),
                         dangerous: true,
                       },
+                    ].filter((item): item is NonNullable<typeof item> => item !== null)
+                  : isCancelled
+                  ? [
+                      onResendInvitation
+                        ? {
+                            label: isResending ? 'Resending…' : 'Resend invitation',
+                            icon: 'ti ti-send',
+                            onClick: () => onResendInvitation(managedUser),
+                            disabled: isResending,
+                          }
+                        : null,
                       {
-                        label: 'Remove user',
+                        label: 'Remove contributor',
                         icon: 'ti ti-trash',
                         onClick: () => onDeleteUser(managedUser),
                         dangerous: true,
                       },
-                    ]
-                  : [
-                      {
-                        label: 'Reset password',
-                        icon: 'ti ti-key',
-                        onClick: () => undefined,
-                        disabled: true,
-                      },
+                    ].filter((item): item is NonNullable<typeof item> => item !== null)
+                  : isActive
+                  ? [
                       canManage
                         ? {
-                            label: isUpdating
-                              ? 'Updating…'
-                              : isActive
-                                ? 'Deactivate account'
-                                : 'Reactivate account',
-                            icon: isActive ? 'ti ti-user-off' : 'ti ti-user-check',
+                            label: isUpdating ? 'Updating…' : 'Deactivate contributor',
+                            icon: 'ti ti-user-off',
                             onClick: () => onToggleUserStatus(managedUser),
                             disabled: isUpdating,
-                            dangerous: isActive,
+                            dangerous: true,
+                          }
+                        : null,
+                      onReassign && managedUser.role.toLowerCase() === 'contributor'
+                        ? {
+                            label: 'Reassign institution',
+                            icon: 'ti ti-transfer',
+                            onClick: () => onReassign(managedUser),
+                          }
+                        : null,
+                    ].filter((item): item is NonNullable<typeof item> => item !== null)
+                  : [
+                      canManage
+                        ? {
+                            label: isUpdating ? 'Updating…' : 'Reactivate contributor',
+                            icon: 'ti ti-user-check',
+                            onClick: () => onToggleUserStatus(managedUser),
+                            disabled: isUpdating,
+                            dangerous: false,
                           }
                         : null,
                       onReassign && managedUser.role.toLowerCase() === 'contributor'
@@ -265,7 +316,7 @@ export default function InstitutionUsersCard({
                           }
                         : null,
                       {
-                        label: 'Remove user',
+                        label: 'Remove contributor',
                         icon: 'ti ti-trash',
                         onClick: () => onDeleteUser(managedUser),
                         dangerous: true,
@@ -297,11 +348,11 @@ export default function InstitutionUsersCard({
                     )}
                     {showInstitutionColumn && <td>{managedUser.institutionName || '—'}</td>}
                     <td>
-                      <span className={`um-badge ${stateClass(managedUser.accountState)}`}>
+                      <span className={`um-badge ${stateClass(managedUser)}`}>
                         {isUpdating ? (
                           <><InlineSpinner /> Updating</>
                         ) : (
-                          formatAccountState(managedUser.accountState)
+                          formatAccountState(managedUser)
                         )}
                       </span>
                     </td>
@@ -355,11 +406,6 @@ function UserAvatarEditor({
           <i className={uploading ? 'ti ti-loader-2 um-spin' : 'ti ti-pencil'}></i>
         </span>
       )}
-      {editable && !hasImage && (
-        <span className="um-user-avatar-pencil" aria-hidden="true">
-          <i className={uploading ? 'ti ti-loader-2 um-spin' : 'ti ti-pencil'}></i>
-        </span>
-      )}
     </>
   )
 
@@ -378,6 +424,11 @@ function UserAvatarEditor({
         </button>
       ) : (
         <span className="um-user-avatar">{visual}</span>
+      )}
+      {editable && !hasImage && (
+        <span className="um-user-avatar-pencil" aria-hidden="true">
+          <i className={uploading ? 'ti ti-loader-2 um-spin' : 'ti ti-pencil'}></i>
+        </span>
       )}
       {editable && (
         <input
@@ -433,8 +484,13 @@ function formatRoleLabel(value: string) {
   return n.charAt(0).toUpperCase() + n.slice(1)
 }
 
-function formatAccountState(value: string) {
-  return value
+function formatAccountState(user: UserProfileResponse) {
+  const n = user.accountState.toLowerCase()
+  const isUnactivatedInvite = !user.firstName || user.firstName.trim() === ''
+  if (n === 'cancelled' || (n === 'inactive' && isUnactivatedInvite)) {
+    return 'Cancelled'
+  }
+  return user.accountState
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
@@ -446,8 +502,12 @@ function formatDate(value: string) {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function stateClass(value: string) {
-  const n = value.toLowerCase()
+function stateClass(user: UserProfileResponse) {
+  const n = user.accountState.toLowerCase()
+  const isUnactivatedInvite = !user.firstName || user.firstName.trim() === ''
+  if (n === 'cancelled' || (n === 'inactive' && isUnactivatedInvite)) {
+    return 'is-cancelled'
+  }
   if (n.includes('inactive')) return 'is-muted'
   if (n.includes('active')) return 'is-active'
   if (n.includes('pending')) return 'is-pending'

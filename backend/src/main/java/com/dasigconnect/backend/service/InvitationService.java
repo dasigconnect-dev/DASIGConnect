@@ -76,19 +76,10 @@ public class InvitationService {
         Institution institution = resolveInvitationInstitution(dto);
         validateInviterScope(dto, inviter);
 
-        // Enforce provisioning rules based on institution status
-        if (dto.assignedRole() == UserRole.contributor) {
-            if (institution.getStatus() != InstitutionStatus.active) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Contributors can only be invited to active institutions. "
-                        + "Invite a validator first to activate this institution.");
-            }
-        } else if (dto.assignedRole() == UserRole.validator) {
-            // Transition inactive → pending when the first validator invitation is sent
-            if (institution.getStatus() == InstitutionStatus.inactive) {
-                institutionService.transitionToPending(institution.getId());
-            }
-            // If already pending or active, the invitation proceeds without a status change
+        // Reject invitation to inactive institution
+        if (institution != null && institution.getStatus() == InstitutionStatus.inactive) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Cannot invite contributors to an inactive institution. Reactivate the institution first.");
         }
 
         User invitedUser = userRepository.findByEmail(recipientEmail)
@@ -169,15 +160,6 @@ public class InvitationService {
 
         token.setUsedAt(Instant.now());
         invitationTokenRepository.save(token);
-
-        // Transition institution PENDING → ACTIVE when the first validator activates
-        if (token.getAssignedRole() == UserRole.validator) {
-            Institution institution = token.getInstitution();
-            InstitutionStatus status = institution.getStatus();
-            if (status == InstitutionStatus.pending || status == InstitutionStatus.inactive) {
-                institutionService.transitionToActive(institution.getId());
-            }
-        }
 
         auditLogService.record(
                 user,
@@ -283,7 +265,9 @@ public class InvitationService {
                 original.getAssignedRole()), requester);
 
         userRepository.findByEmail(original.getRecipientEmail()).ifPresent(user -> {
-            if (user.getAccountState() == UserStatus.pending_email_undelivered) {
+            if (user.getAccountState() == UserStatus.pending_email_undelivered
+                    || user.getAccountState() == UserStatus.expired
+                    || user.getAccountState() == UserStatus.cancelled) {
                 user.setAccountState(UserStatus.pending);
                 userRepository.save(user);
             }
@@ -326,6 +310,58 @@ public class InvitationService {
                 emailService.buildInvitationLink(rawToken));
     }
 
+    public void resendExpiredToken(String rawToken, String email) {
+        InvitationToken targetToken = null;
+        if (rawToken != null && !rawToken.isBlank()) {
+            String hash = TokenHashUtils.sha256Hex(rawToken.trim());
+            targetToken = invitationTokenRepository.findByTokenHash(hash).orElse(null);
+        }
+
+        String targetEmail = targetToken != null ? targetToken.getRecipientEmail() : (email != null ? email.trim().toLowerCase() : null);
+        if (targetEmail == null || targetEmail.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email or valid token is required.");
+        }
+
+        User user = userRepository.findByEmail(targetEmail).orElse(null);
+        if (user != null && user.getAccountState() == UserStatus.active) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Account is already active. Please sign in.");
+        }
+
+        UserRole role = targetToken != null ? targetToken.getAssignedRole() : (user != null ? user.getRole() : UserRole.contributor);
+        Institution institution = targetToken != null ? targetToken.getInstitution() : (user != null ? user.getInstitution() : null);
+
+        if (user != null && (user.getAccountState() == UserStatus.pending_email_undelivered
+                || user.getAccountState() == UserStatus.expired
+                || user.getAccountState() == UserStatus.cancelled)) {
+            user.setAccountState(UserStatus.pending);
+            userRepository.save(user);
+        }
+
+        Instant now = Instant.now();
+        invalidateOpenInvitations(targetEmail, now);
+
+        String freshRawToken = TokenHashUtils.generateRawToken();
+        String freshTokenHash = TokenHashUtils.sha256Hex(freshRawToken);
+
+        InvitationToken newToken = new InvitationToken();
+        newToken.setRecipientEmail(targetEmail);
+        newToken.setAssignedRole(role);
+        newToken.setInstitution(institution);
+        newToken.setTokenHash(freshTokenHash);
+        newToken.setExpiresAt(now.plus(Duration.ofHours(72)));
+        invitationTokenRepository.save(newToken);
+
+        try {
+            emailService.sendInvitationEmail(targetEmail, freshRawToken);
+        } catch (RuntimeException ex) {
+            if (user != null) {
+                user.setAccountState(UserStatus.pending_email_undelivered);
+                userRepository.save(user);
+            }
+            log.warn("Resend expired invitation email failed for {}: {}", targetEmail, ex.getMessage());
+        }
+    }
+
     public void cancel(UUID tokenId, JwtUserDetails requester) {
         InvitationToken token = invitationTokenRepository.findById(tokenId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invitation not found."));
@@ -349,30 +385,17 @@ public class InvitationService {
         invitationTokenRepository.delete(token);
         log.info("Invitation {} cancelled by {}", tokenId, requester != null ? requester.userId() : "unknown");
 
-        // Clean up pending unactivated user record if one was created for this invitation
         userRepository.findByEmail(token.getRecipientEmail()).ifPresent(user -> {
             if (user.getAccountState() == UserStatus.pending
                     || user.getAccountState() == UserStatus.pending_email_undelivered
                     || user.getAccountState() == UserStatus.expired) {
-                userRepository.delete(user);
+                user.setAccountState(UserStatus.cancelled);
+                userRepository.save(user);
+            } else {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Cancel invitation is only allowed for pending accounts.");
             }
         });
-
-        // If the cancelled invitation was for a validator and the institution is PENDING,
-        // revert to INACTIVE if no other pending validator invitations and no active validators remain.
-        if (institution != null
-                && cancelledRole == UserRole.validator
-                && institution.getStatus() == InstitutionStatus.pending) {
-            long pendingValidatorInvites = invitationTokenRepository
-                    .countByInstitutionIdAndAssignedRoleAndUsedAtIsNullAndExpiresAtAfter(
-                            institution.getId(), UserRole.validator, Instant.now());
-            long activeValidators = userRepository
-                    .countByInstitutionIdAndRoleAndAccountState(
-                            institution.getId(), UserRole.validator, UserStatus.active);
-            if (pendingValidatorInvites == 0 && activeValidators == 0) {
-                institutionService.transitionToInactive(institution.getId());
-            }
-        }
     }
 
     @Transactional(readOnly = true)

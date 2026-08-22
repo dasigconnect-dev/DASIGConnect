@@ -1062,6 +1062,15 @@
   outline-offset: 2px;
 }
 
+.im-invite-contributor-btn:disabled,
+.im-invite-contributor-btn[disabled] {
+  opacity: 0.42;
+  cursor: not-allowed;
+  pointer-events: none;
+  box-shadow: none;
+  transform: none;
+}
+
 /* ---- Modal size override ---- */
 .im-modal-card {
   max-width: 560px;

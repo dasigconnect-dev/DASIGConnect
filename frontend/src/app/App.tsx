@@ -12,6 +12,7 @@ import {
   login,
   logout as logoutRequest,
   requestPasswordReset,
+  resendExpiredInvitation,
   resetPassword as resetPasswordRequest,
   setAuthToken,
   validateInvitation,
@@ -106,6 +107,8 @@ function App() {
   const [showInviteConfirmPassword, setShowInviteConfirmPassword] =
     useState(false);
   const [inviteCountdown, setInviteCountdown] = useState("");
+  const [inviteResending, setInviteResending] = useState(false);
+  const [inviteResendSuccess, setInviteResendSuccess] = useState(false);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -381,6 +384,28 @@ function App() {
     }
   }
 
+  async function handleResendExpired() {
+    if (inviteResending) return;
+    setInviteResending(true);
+    try {
+      await resendExpiredInvitation({
+        token: inviteToken,
+        email: inviteEmail || undefined,
+      });
+      setInviteResendSuccess(true);
+      toast.success("A fresh invitation link has been dispatched to your email.");
+    } catch (err: unknown) {
+      toast.error(
+        getApiErrorMessage(
+          err,
+          "Could not resend invitation. Please contact your DASIG Administrator.",
+        ),
+      );
+    } finally {
+      setInviteResending(false);
+    }
+  }
+
   async function handleLogout() {
     if (logoutLoading) return;
     setLogoutLoading(true);
@@ -643,6 +668,9 @@ function App() {
               }
               onActivate={() => void handleInviteActivate()}
               onBackToLogin={() => navigate("/login")}
+              onResendExpired={() => void handleResendExpired()}
+              resending={inviteResending}
+              resendSuccess={inviteResendSuccess}
               showPassword={showInvitePassword}
               showConfirmPassword={showInviteConfirmPassword}
               loading={inviteLoading}
