@@ -277,7 +277,7 @@ public class UserService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found."));
 
         if (user.getRole() != UserRole.contributor) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(org.springframework.http.HttpStatusCode.valueOf(422),
                     "Only contributor accounts can be reassigned. Validators must be managed through institution settings.");
         }
 
@@ -286,7 +286,7 @@ public class UserService {
                 "Target institution not found."));
 
         if (targetInstitution.getStatus() != InstitutionStatus.active) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(org.springframework.http.HttpStatusCode.valueOf(422),
                     "Target institution is not active. Contributors can only be assigned to active institutions.");
         }
 
@@ -294,7 +294,7 @@ public class UserService {
         String fromInstitutionName = user.getInstitution() != null ? user.getInstitution().getName() : "(none)";
 
         if (fromInstitutionId != null && fromInstitutionId.equals(targetInstitutionId)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(org.springframework.http.HttpStatusCode.valueOf(422),
                     "Contributor is already assigned to this institution.");
         }
 
