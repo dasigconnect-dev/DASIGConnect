@@ -160,6 +160,7 @@ public class AIRecommendationService {
                         dto,
                         tagMap.getOrDefault(id, List.of())
                 ))
+                .filter(result -> result.score() >= 0.40)
                 .sorted(Comparator.comparingDouble(RankedAsset::score).reversed())
                 .limit(8)
                 .map(result -> MediaSuggestResultDto.from(result.asset(), result.score(), result.reasons()))
@@ -314,8 +315,11 @@ public class AIRecommendationService {
     private Submission loadAndAuthorise(UUID submissionId, JwtUserDetails user) {
         Submission submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found."));
-        boolean isAdmin = user.role() != null && user.role().toLowerCase(Locale.ROOT).contains("admin");
-        if (!isAdmin && !submission.getInstitution().getId().equals(user.institutionId())) {
+        boolean isSuperAdministrator = "super_administrator".equalsIgnoreCase(user.role());
+        boolean sameInstitution = submission.getInstitution().getId().equals(user.institutionId());
+        boolean ownsSubmission = submission.getContributor().getId().equals(user.userId());
+        if (!isSuperAdministrator && (!sameInstitution
+                || ("contributor".equalsIgnoreCase(user.role()) && !ownsSubmission))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Submission does not belong to your institution.");
         }
@@ -364,6 +368,7 @@ public class AIRecommendationService {
                         dto,
                         tagMap.getOrDefault(asset.getId(), List.of())
                 ))
+                .filter(result -> result.score() >= 0.40)
                 .sorted(Comparator.comparingDouble(RankedAsset::score).reversed())
                 .limit(8)
                 .map(result -> MediaSuggestResultDto.from(result.asset(), result.score(), result.reasons()))

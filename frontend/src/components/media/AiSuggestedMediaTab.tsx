@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { SubmissionMediaItem } from "../../types/media";
 import type { UseAiMediaSuggestionsReturn } from "../../hooks/useAiMediaSuggestions";
+import { hasSufficientMediaContext } from "../../hooks/useAiMediaSuggestions";
 import MediaAssetGrid, { type GridAsset } from "./MediaAssetGrid";
 
 interface AiSuggestedMediaTabProps {
@@ -29,11 +30,7 @@ export default function AiSuggestedMediaTab({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const { state, results, fetch } = suggestions;
 
-  const hasContext =
-    eventTitle.trim().length > 0 ||
-    caption.trim().length > 0 ||
-    category.trim().length > 0 ||
-    tags.length > 0;
+  const hasContext = hasSufficientMediaContext(eventTitle, caption, category, tags);
 
   const contextParts: string[] = [];
   if (eventTitle.trim()) contextParts.push(eventTitle.trim());
