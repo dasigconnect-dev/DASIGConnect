@@ -83,6 +83,22 @@ export default function MediaAssetsPicker({
         getItemCaption={getItemCaption}
       />
 
+      {aiSuggestions.state === "ready" && activeTab !== "ai" && (
+        <div className="mp-auto-suggestions" aria-label="Suggested media ranked by relevance">
+          <AiSuggestedMediaTab
+            suggestions={aiSuggestions}
+            submissionId={submissionId}
+            alreadyAddedIds={alreadyAddedIds}
+            eventTitle={eventTitle}
+            caption={caption}
+            category={category}
+            tags={tags}
+            onAddItems={handleAddItems}
+            disabled={disabled}
+          />
+        </div>
+      )}
+
       <div className="mp-tabs" role="tablist" aria-label="Media source">
         {tabs.map((tab) => (
           <button

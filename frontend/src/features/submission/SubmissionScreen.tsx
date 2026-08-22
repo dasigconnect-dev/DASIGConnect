@@ -298,6 +298,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     const selected = institutions.find((institution) => institution.id === form.institutionId);
     return selected?.name || "Select institution";
   }, [form.institutionId, institutions, isAdminComposer, user.inst]);
+  const [mediaUploadFailed, setMediaUploadFailed] = useState(false);
 
   const queued = useMemo(() => {
     const byFilter = (() => {
@@ -431,13 +432,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     [form.eventTitle, form.eventDate, form.caption],
   );
 
-  function handleStepNav(step: ProgressStep) {
+  async function handleStepNav(step: ProgressStep) {
     if (step === "schedule" && !isDetailsComplete) {
       toast.warning(
         "Complete Post Details — title, event date, and caption — before setting a schedule.",
       );
       setActiveStep("details");
       return;
+    }
+    if (step === "media" && isDetailsComplete && !form.id && !busy) {
+      const saved = await saveDraft();
+      if (!saved) return;
     }
     setActiveStep(step);
   }
@@ -799,6 +804,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     cleanSignatureRef.current = getDirtySignature(initialForm);
     setFilter("drafts");
     setActiveStep("media");
+    setMediaUploadFailed(false);
     clearAssetIdParam();
   }
 
@@ -911,6 +917,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setCenterMode("edit");
       setPreviewTab("preview");
       setSaveState("saved");
+      setMediaUploadFailed(false);
       cleanSignatureRef.current = getDirtySignature(nextForm);
     } catch {
       toast.error("Could not load submission detail.");
@@ -945,11 +952,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         if (attached) finalResponse = attached;
       }
       if (form.files.length > 0) {
-        const uploadResult = await uploadSubmissionMedia(
+        const uploadResult = await uploadLocalFilesSafely(
           finalResponse.data.id,
           getOrderedLocalFiles(form),
+          finalResponse,
         );
-        if (uploadResult) finalResponse = uploadResult as typeof response;
+        finalResponse = uploadResult as typeof response;
       }
       const savedAssets = finalResponse.data.mediaAssets ?? [];
       const orderedAssetIds = resolveSavedMediaOrder(form, savedAssets);
@@ -990,11 +998,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       );
       clearAssetIdParam();
       setSaveState("saved");
+      setMediaUploadFailed(false);
       cleanSignatureRef.current = getDirtySignature(nextForm);
       toast.success("Draft saved.");
       return true;
     } catch (err: unknown) {
       setSaveState("idle");
+      if (form.files.length > 0) setMediaUploadFailed(true);
       toast.error(getErrorMessage(err, "Draft could not be saved."));
       return false;
     }
@@ -1056,16 +1066,20 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       }
       if (form.files.length > 0) {
         try {
-          const uploadResult = await uploadSubmissionMedia(
+          const uploadResult = await uploadLocalFilesSafely(
             draftResponse.data.id,
             getOrderedLocalFiles(form),
+            draftResponse,
           );
-          if (uploadResult) draftResponse = uploadResult as typeof draft;
+          draftResponse = uploadResult as typeof draft;
         } catch (uploadErr: unknown) {
-          toast.warning(
-            "Media upload skipped: " +
-              getErrorMessage(uploadErr, "Supabase not configured"),
+          toast.error(
+            "Media upload failed. Your draft was preserved; use Save Draft or Submit to retry. " +
+              getErrorMessage(uploadErr, "Check your connection and try again."),
           );
+          setMediaUploadFailed(true);
+          setActiveStep("media");
+          return;
         }
       }
       const savedAssets = draftResponse.data.mediaAssets ?? [];
@@ -1103,6 +1117,45 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function uploadLocalFilesSafely<T extends { data: { mediaAssets?: SavedMediaAsset[] } }>(
+    submissionId: string,
+    files: File[],
+    initialResponse: T,
+  ): Promise<T> {
+    let latestResponse = initialResponse;
+
+    for (let index = 0; index < files.length; index += 1) {
+      try {
+        const uploaded = await uploadSubmissionMedia(submissionId, [files[index]]);
+        if (uploaded) latestResponse = uploaded as unknown as T;
+      } catch (error) {
+        const remainingFiles = files.slice(index);
+        const savedAssets = latestResponse.data.mediaAssets ?? form.savedAssets;
+        setForm((current) => ({
+          ...current,
+          id: submissionId,
+          files: remainingFiles,
+          savedAssets,
+          mediaOrder: [
+            ...savedAssets.map((asset) => savedMediaKey(asset.id)),
+            ...remainingFiles.map(fileMediaKey),
+          ],
+          pendingAssetIds: [],
+          removedAssetIds: [],
+        }));
+        setPickerItems((current) => [
+          ...savedAssets.map(savedAssetToPickerItem),
+          ...current.filter(
+            (item) => item.file != null && remainingFiles.includes(item.file),
+          ),
+        ]);
+        throw error;
+      }
+    }
+
+    return latestResponse;
   }
 
   async function handleDelete() {
@@ -1859,6 +1912,21 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               onItemClick={openMediaCaption}
               getItemCaption={(item) => form.mediaCaptions[pickerMediaKey(item)] ?? ""}
             />
+            {pickerItems.some((item) => item.mediaType === "image") &&
+              pickerItems.some((item) => item.mediaType === "video") && (
+                <div className="sub-inline-warning" role="status">
+                  <i className="ti ti-alert-triangle" aria-hidden />
+                  Mixed image and video attachments are allowed, but this post will require manual publishing.
+                </div>
+              )}
+            {mediaUploadFailed && form.files.length > 0 && (
+              <div className="sub-inline-error" role="alert">
+                <span>Upload interrupted. Your draft and selected files are still available.</span>
+                <button type="button" className="link-btn" onClick={() => void handleSave()} disabled={busy}>
+                  Retry upload
+                </button>
+              </div>
+            )}
           </section>
 
           <section

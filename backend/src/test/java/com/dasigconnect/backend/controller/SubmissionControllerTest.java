@@ -91,13 +91,15 @@ class SubmissionControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMINISTRATOR")
-    void create_asValidator_returns403() throws Exception {
+    void create_asAdministratorInContributorCapacity_returns201() throws Exception {
+        when(submissionService.create(any(), any())).thenReturn(responseDto(UUID.randomUUID(), SubmissionStatus.draft));
+
         mockMvc.perform(post("/api/v1/submissions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                                 {"eventTitle":"Research Expo","eventDate":"2026-06-01"}
                                 """))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isCreated());
     }
 
     @Test

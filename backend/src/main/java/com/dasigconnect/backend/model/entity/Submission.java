@@ -94,6 +94,9 @@ public class Submission {
     @Column(name = "published_manual_notes", columnDefinition = "text")
     private String publishedManualNotes;
 
+    @Column(name = "requires_manual_publishing", nullable = false)
+    private boolean requiresManualPublishing;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -280,6 +283,14 @@ public class Submission {
 
     public void setPublishedManualNotes(String publishedManualNotes) {
         this.publishedManualNotes = publishedManualNotes;
+    }
+
+    public boolean isRequiresManualPublishing() {
+        return requiresManualPublishing;
+    }
+
+    public void setRequiresManualPublishing(boolean requiresManualPublishing) {
+        this.requiresManualPublishing = requiresManualPublishing;
     }
 
     public Instant getCreatedAt() {

@@ -7,6 +7,7 @@ import com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType;
 import com.dasigconnect.backend.model.entity.MediaFileType;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.AiInteractionLogRepository;
 import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
@@ -89,6 +90,10 @@ class AIRecommendationServiceTest {
         Submission submission = new Submission();
         submission.setId(submissionId);
         submission.setInstitution(institution);
+        UUID contributorId = UUID.randomUUID();
+        User contributor = new User();
+        contributor.setId(contributorId);
+        submission.setContributor(contributor);
 
         MediaAsset attached = asset(attachedId, "cookie-selected.jpg", "Event");
         MediaAsset fallback = asset(fallbackId, "cookie-library.jpg", "Event");
@@ -124,7 +129,7 @@ class AIRecommendationServiceTest {
         List<MediaSuggestResultDto> results = service.suggestMedia(
                 submissionId,
                 dto,
-                new JwtUserDetails(UUID.randomUUID(), "contributor@test.edu", "contributor", institutionId)
+                new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId)
         );
 
         assertEquals(1, results.size());

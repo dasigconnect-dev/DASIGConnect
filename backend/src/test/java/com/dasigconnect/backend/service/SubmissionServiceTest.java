@@ -263,6 +263,22 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void submit_withoutMedia_returns422() {
+        UUID submissionId = UUID.randomUUID();
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
+
+        assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("media attachment")
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode().value())
+                .isEqualTo(422);
+    }
+
+    @Test
     void list_contributorUsesContributorScopedQueryAndAddsMediaCount() {
         Submission submission = submission(UUID.randomUUID(), SubmissionStatus.draft, Instant.now());
         when(submissionRepository.findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(contributorId, institutionId))
@@ -337,6 +353,25 @@ class SubmissionServiceTest {
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .extracting(status -> status.value())
                 .isEqualTo(422);
+    }
+
+    @Test
+    void attachMedia_whenFileExceedsFiftyMb_returns422() {
+        UUID submissionId = UUID.randomUUID();
+        AttachMediaDto dto = new AttachMediaDto();
+        dto.setStorageUrl("https://storage.example/media/video.mp4");
+        dto.setFileName("video.mp4");
+        dto.setFileType("mp4");
+        dto.setFileSizeBytes(50L * 1024 * 1024 + 1);
+        when(submissionRepository.findById(submissionId))
+                .thenReturn(Optional.of(submission(submissionId, SubmissionStatus.draft, Instant.now())));
+
+        assertThatThrownBy(() -> submissionService.attachMedia(submissionId, dto, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("50 MB")
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode().value())
+                .isEqualTo(422);
+        verify(mediaAssetRepository, never()).save(any());
     }
 
     @Test

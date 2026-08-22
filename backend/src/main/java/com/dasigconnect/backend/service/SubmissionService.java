@@ -71,6 +71,7 @@ public class SubmissionService {
     private static final Logger log = LoggerFactory.getLogger(SubmissionService.class);
 
     private static final int MAX_MEDIA_PER_SUBMISSION = 10;
+    private static final long MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024;
 
     private final SubmissionRepository submissionRepository;
     private final MediaAssetRepository mediaAssetRepository;
@@ -122,6 +123,7 @@ public class SubmissionService {
     public SignedUploadUrlResponse createSignedUploadUrl(UUID submissionId, SignedUploadUrlRequest dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
+        validateMediaFile(dto.getFileType(), dto.getFileSizeBytes());
         String safeFileName = dto.getFileName().replaceAll("[^a-zA-Z0-9._-]", "-");
         String objectPath = submissionId + "/" + UUID.randomUUID() + "-" + safeFileName;
         String signedUrl = supabaseStorageService.createSignedUploadUrl(objectPath);
@@ -325,6 +327,11 @@ public class SubmissionService {
         // Content completeness is a data-integrity invariant, not a scheduling
         // guard rail — enforce it on every submit regardless of guardRailsEnforced.
         assertContentComplete(submission);
+        if (submissionMediaAssetRepository.countBySubmissionId(submissionId) == 0) {
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
+                    "At least one valid media attachment is required before submitting.");
+        }
+        refreshManualPublishingFlag(submission);
 
         submission.setStatus(SubmissionStatus.pending);
         submission.setSubmittedAt(Instant.now());
@@ -467,13 +474,7 @@ public class SubmissionService {
                     "Maximum of " + MAX_MEDIA_PER_SUBMISSION + " media assets per submission.");
         }
 
-        MediaFileType fileType;
-        try {
-            fileType = MediaFileType.valueOf(dto.getFileType().toLowerCase());
-        } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Unsupported file type: " + dto.getFileType());
-        }
+        MediaFileType fileType = validateMediaFile(dto.getFileType(), dto.getFileSizeBytes());
 
         MediaAsset asset = new MediaAsset();
         asset.setInstitution(entityManager.getReference(Institution.class, submission.getInstitution().getId()));
@@ -486,6 +487,7 @@ public class SubmissionService {
         asset = mediaAssetRepository.save(asset);
 
         linkAssetToSubmission(submission, asset, (int) currentCount);
+        refreshManualPublishingFlag(submission);
 
         log.info("Media asset {} attached to submission {} by user {}", asset.getId(), submissionId, user.userId());
         return buildResponse(submission);
@@ -519,6 +521,7 @@ public class SubmissionService {
         }
 
         linkAssetToSubmission(submission, asset, (int) currentCount);
+        refreshManualPublishingFlag(submission);
 
         log.info("Existing asset {} attached to submission {} by user {}", asset.getId(), submissionId, user.userId());
         return buildResponse(submissionRepository.findById(submissionId).orElseThrow());
@@ -533,7 +536,9 @@ public class SubmissionService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Media asset is not attached to this submission."));
 
-        submissionMediaAssetRepository.delete(link);
+        submissionMediaAssetRepository.delete(link
+        submissionMediaAssetRepository.flush();
+        refreshManualPublishingFlag(submission); 
         log.info("Asset {} detached from submission {} by user {}", mediaAssetId, submissionId, user.userId());
     }
 
@@ -699,6 +704,30 @@ public class SubmissionService {
         link.setMediaAsset(asset);
         link.setDisplayOrder(currentCount);
         submissionMediaAssetRepository.save(link);
+    }
+
+    private MediaFileType validateMediaFile(String rawFileType, Long fileSizeBytes) {
+        MediaFileType fileType;
+        try {
+            fileType = MediaFileType.valueOf(rawFileType == null ? "" : rawFileType.toLowerCase());
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unsupported file type. Accepted types: JPEG, PNG, WebP, GIF, MP4, MOV, WebM.");
+        }
+        if (fileSizeBytes == null || fileSizeBytes <= 0 || fileSizeBytes > MAX_FILE_SIZE_BYTES) {
+            throw new ResponseStatusException(HttpStatusCode.valueOf(422),
+                    "File size must be greater than 0 and no larger than 50 MB.");
+        }
+        return fileType;
+    }
+
+    private void refreshManualPublishingFlag(Submission submission) {
+        List<MediaAsset> assets = submissionMediaAssetRepository
+                .findMediaAssetsBySubmissionId(submission.getId());
+        boolean hasImage = assets.stream().anyMatch(asset -> asset.getFileType().isImage());
+        boolean hasVideo = assets.stream().anyMatch(asset -> asset.getFileType().isVideo());
+        submission.setRequiresManualPublishing(hasImage && hasVideo);
+        submissionRepository.save(submission);
     }
 
     private SubmissionResponseDto buildResponse(Submission submission) {
