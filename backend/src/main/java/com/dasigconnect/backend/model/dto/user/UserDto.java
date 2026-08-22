@@ -1,8 +1,9 @@
 package com.dasigconnect.backend.model.dto.user;
 
-import com.dasigconnect.backend.model.entity.User;
 import java.time.Instant;
 import java.util.UUID;
+
+import com.dasigconnect.backend.model.entity.User;
 
 public class UserDto {
 
@@ -13,6 +14,7 @@ public class UserDto {
     private String displayName;
     private String role;
     private String accountState;
+    private boolean superAdministrator;
     private UUID institutionId;
     private String institutionName;
     private Instant createdAt;
@@ -28,6 +30,7 @@ public class UserDto {
         dto.displayName = buildDisplayName(user);
         dto.role = user.getRole().name();
         dto.accountState = user.getAccountState().name();
+        dto.superAdministrator = user.isSuperAdministrator();
         dto.institutionId = user.getInstitution() != null ? user.getInstitution().getId() : null;
         dto.institutionName = user.getInstitution() != null ? user.getInstitution().getName() : null;
         dto.createdAt = user.getCreatedAt();
@@ -36,17 +39,44 @@ public class UserDto {
         return dto;
     }
 
-    public UUID getId() { return id; }
-    public String getEmail() { return email; }
-    public String getFirstName() { return firstName; }
-    public String getLastName() { return lastName; }
-    public String getDisplayName() { return displayName; }
-    public String getRole() { return role; }
-    public String getAccountState() { return accountState; }
+    public UUID getId() {
+        return id;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public String getAccountState() {
+        return accountState;
+    }
+
+    public boolean isSuperAdministrator() { return superAdministrator; }
+
     public UUID getInstitutionId() { return institutionId; }
+
     public String getInstitutionName() { return institutionName; }
+
     public Instant getCreatedAt() { return createdAt; }
+
     public boolean isHasAvatar() { return hasAvatar; }
+
     public Instant getAvatarUpdatedAt() { return avatarUpdatedAt; }
 
     private static String buildDisplayName(User user) {

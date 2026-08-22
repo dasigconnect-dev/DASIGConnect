@@ -14,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 import com.dasigconnect.backend.exception.InstitutionNotFoundException;
 import com.dasigconnect.backend.model.dto.institution.CreateInstitutionRequest;
 import com.dasigconnect.backend.model.dto.institution.InstitutionDto;
+import com.dasigconnect.backend.model.dto.institution.UpdateInstitutionRequest;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
 import com.dasigconnect.backend.repository.InstitutionRepository;
@@ -27,11 +28,10 @@ import com.dasigconnect.backend.repository.UserRepository;
 /**
  * Manages the institution lifecycle.
  *
- * State machine:
- *   INACTIVE  → (admin sends validator invitation)  → PENDING
- *   PENDING   → (validator activates account)       → ACTIVE
- *   ACTIVE    → (all validators deactivated)        → INACTIVE
- *   PENDING   → (last validator invitation cancelled, no active validators) → INACTIVE
+ * State machine: INACTIVE → (admin sends validator invitation) → PENDING
+ * PENDING → (validator activates account) → ACTIVE ACTIVE → (all validators
+ * deactivated) → INACTIVE PENDING → (last validator invitation cancelled, no
+ * active validators) → INACTIVE
  *
  * Invalid transitions are rejected with IllegalStateException → HTTP 409.
  */
@@ -74,7 +74,8 @@ public class InstitutionService {
     }
 
     /**
-     * Creates a new institution with status INACTIVE and provisions its RLS workspace.
+     * Creates a new institution with status INACTIVE and provisions its RLS
+     * workspace.
      */
     public InstitutionDto createInstitution(CreateInstitutionRequest request) {
         if (institutionRepository.existsByCode(request.getInstitutionCode())) {
@@ -189,9 +190,130 @@ public class InstitutionService {
         throw new IllegalArgumentException("Logo must be a valid JPEG, PNG, or WebP image.");
     }
 
-    public record InstitutionLogo(byte[] data, String contentType) {}
+    public record InstitutionLogo(byte[] data, String contentType) {
 
+    }
+
+    // ── A1: Edit Institution Details ──────────────────────────────────────────
     /**
+     * Updates an institution's name and/or email domain. Validates uniqueness
+     * of name and domain across all other institutions.
+     */
+    public InstitutionDto updateInstitution(UUID institutionId, UpdateInstitutionRequest request) {
+        Institution institution = institutionRepository.findById(institutionId)
+                .orElseThrow(() -> new InstitutionNotFoundException(institutionId));
+
+        String newName = request.getName().trim();
+        String newDomain = request.getEmailDomain().trim().toLowerCase();
+
+        // A5: reject duplicate name (exclude self)
+        if (institutionRepository.existsByNameIgnoreCaseAndIdNot(newName, institutionId)) {
+            throw new IllegalArgumentException(
+                    "An institution named '" + newName + "' already exists.");
+        }
+
+        // reject duplicate email domain (exclude self)
+        if (institutionRepository.existsByEmailDomainAndIdNot(newDomain, institutionId)) {
+            throw new IllegalArgumentException(
+                    "Email domain '" + newDomain + "' is already in use by another institution.");
+        }
+
+        String previousName = institution.getName();
+        String previousDomain = institution.getEmailDomain();
+        institution.setName(newName);
+        institution.setEmailDomain(newDomain);
+        Institution saved = institutionRepository.save(institution);
+
+        auditLogService.recordSystemAction(
+                "INSTITUTION_UPDATED",
+                institutionId,
+                Map.of(
+                        "previousName", previousName, "newName", newName,
+                        "previousDomain", previousDomain, "newDomain", newDomain
+                )
+        );
+
+        log.info("Institution {} updated: name='{}', domain='{}'", institutionId, newName, newDomain);
+        return InstitutionDto.from(saved);
+    }
+
+    // ── A2: Deactivate Institution ────────────────────────────────────────────
+    /**
+     * Admin-initiated deactivation of an institution (A2). Sets status to
+     * INACTIVE regardless of current status (active or pending). Historical
+     * data is retained; new invitations will be blocked by status checks.
+     */
+    public InstitutionDto deactivateInstitution(UUID institutionId) {
+        Institution institution = institutionRepository.findById(institutionId)
+                .orElseThrow(() -> new InstitutionNotFoundException(institutionId));
+
+        if (institution.getStatus() == InstitutionStatus.inactive) {
+            throw new IllegalStateException(
+                    "Institution '" + institution.getName() + "' is already inactive.");
+        }
+
+        String previousStatus = institution.getStatus().name();
+        institution.setStatus(InstitutionStatus.inactive);
+        Institution saved = institutionRepository.save(institution);
+
+        auditLogService.recordSystemAction(
+                "INSTITUTION_DEACTIVATED",
+                institutionId,
+                Map.of("previousStatus", previousStatus)
+        );
+
+        log.info("Institution {} deactivated by admin ({} → inactive)", institutionId, previousStatus);
+        return InstitutionDto.from(saved);
+    }
+
+    // ── A3: Reactivate Institution ────────────────────────────────────────────
+    /**
+     * Admin-initiated reactivation of a deactivated institution (A3). Sets
+     * status back to ACTIVE. If the institution has no active validators, it
+     * transitions to PENDING instead, following the normal state machine.
+     */
+    public InstitutionDto reactivateInstitution(UUID institutionId) {
+        Institution institution = institutionRepository.findById(institutionId)
+                .orElseThrow(() -> new InstitutionNotFoundException(institutionId));
+
+        if (institution.getStatus() != InstitutionStatus.inactive) {
+            throw new IllegalStateException(
+                    "Institution '" + institution.getName() + "' is not inactive and cannot be reactivated.");
+        }
+
+        boolean hasActiveValidators = userRepository.existsByInstitutionIdAndAccountState(
+                institutionId, com.dasigconnect.backend.model.entity.UserStatus.active);
+
+        InstitutionStatus newStatus = hasActiveValidators
+                ? InstitutionStatus.active
+                : InstitutionStatus.inactive; // stays inactive — no validators to activate it
+
+        // If there are pending validator invitations, move to pending
+        boolean hasPendingInvitations = invitationTokenRepository
+                .countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(institutionId, Instant.now()) > 0;
+        if (!hasActiveValidators && hasPendingInvitations) {
+            newStatus = InstitutionStatus.pending;
+        } else if (!hasActiveValidators) {
+            throw new IllegalStateException(
+                    "Cannot reactivate '" + institution.getName()
+                    + "': no active validators found. Send a validator invitation first.");
+        }
+
+        String previousStatus = institution.getStatus().name();
+        institution.setStatus(newStatus);
+        Institution saved = institutionRepository.save(institution);
+
+        auditLogService.recordSystemAction(
+                "INSTITUTION_REACTIVATED",
+                institutionId,
+                Map.of("previousStatus", previousStatus, "newStatus", newStatus.name())
+        );
+
+        log.info("Institution {} reactivated by admin (inactive → {})", institutionId, newStatus);
+        return InstitutionDto.from(saved);
+    }
+
+        /**
      * INACTIVE → PENDING. Called when an admin sends a validator invitation.
      */
     public void transitionToPending(UUID institutionId) {
@@ -218,8 +340,8 @@ public class InstitutionService {
     }
 
     /**
-     * PENDING → ACTIVE. Called when the first validator activates their account.
-     * Also accepts INACTIVE as a precondition to handle edge cases.
+     * PENDING → ACTIVE. Called when the first validator activates their
+     * account. Also accepts INACTIVE as a precondition to handle edge cases.
      */
     public void transitionToActive(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)
@@ -247,8 +369,9 @@ public class InstitutionService {
     }
 
     /**
-     * ACTIVE or PENDING → INACTIVE. Called when all validators are deactivated/removed,
-     * or when the last pending validator invitation is cancelled.
+     * ACTIVE or PENDING → INACTIVE. Called when all validators are
+     * deactivated/removed, or when the last pending validator invitation is
+    * cancelled.
      */
     public void transitionToInactive(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)

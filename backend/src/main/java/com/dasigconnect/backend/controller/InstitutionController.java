@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -22,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.dasigconnect.backend.model.dto.institution.CreateInstitutionRequest;
 import com.dasigconnect.backend.model.dto.institution.InstitutionDto;
+import com.dasigconnect.backend.model.dto.institution.UpdateInstitutionRequest;
 import com.dasigconnect.backend.service.InstitutionService;
 
 import jakarta.validation.Valid;
@@ -36,10 +38,10 @@ import jakarta.validation.Valid;
  * NOTE: M1's UserRole enum uses lowercase ("administrator"), but Spring
  * Security expects "ROLE_ADMINISTRATOR" (uppercase). The filter applies
  * .toUpperCase() when creating the GrantedAuthority, so
+ *
  * @PreAuthorize("hasRole('ADMINISTRATOR')") works correctly with M1's enum.
  *
- * Base path: /api/v1/institutions
- * Legacy alias: /api/v1/admin/institutions
+ * Base path: /api/v1/institutions Legacy alias: /api/v1/admin/institutions
  */
 @RestController
 @RequestMapping({"/api/v1/institutions", "/api/v1/admin/institutions"})
@@ -113,6 +115,41 @@ public class InstitutionController {
                 .contentType(MediaType.parseMediaType(logo.contentType()))
                 .cacheControl(CacheControl.maxAge(365, TimeUnit.DAYS).cachePublic().immutable())
                 .body(logo.data());
+    }
+
+    /**
+     * PUT /api/v1/institutions/{institutionId}
+     *
+     * A1: Updates the institution's name and email domain. Returns 400 if the
+     * new name or domain conflicts with another institution.
+     */
+    @PutMapping("/{institutionId}")
+    public ResponseEntity<InstitutionDto> updateInstitution(
+            @PathVariable UUID institutionId,
+            @Valid @RequestBody UpdateInstitutionRequest request) {
+        return ResponseEntity.ok(institutionService.updateInstitution(institutionId, request));
+    }
+
+    /**
+     * PATCH /api/v1/institutions/{institutionId}/deactivate
+     *
+     * A2: Admin-initiated deactivation. Sets status to INACTIVE. Historical
+     * data retained; new invitations blocked.
+     */
+    @PatchMapping("/{institutionId}/deactivate")
+    public ResponseEntity<InstitutionDto> deactivateInstitution(@PathVariable UUID institutionId) {
+        return ResponseEntity.ok(institutionService.deactivateInstitution(institutionId));
+    }
+
+    /**
+     * PATCH /api/v1/institutions/{institutionId}/reactivate
+     *
+     * A3: Admin-initiated reactivation. Restores ACTIVE or PENDING status
+     * depending on whether the institution has active validators.
+     */
+    @PatchMapping("/{institutionId}/reactivate")
+    public ResponseEntity<InstitutionDto> reactivateInstitution(@PathVariable UUID institutionId) {
+        return ResponseEntity.ok(institutionService.reactivateInstitution(institutionId));
     }
 
     /**

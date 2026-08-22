@@ -46,6 +46,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     String role = claims.getOrDefault("role", "").toString();
                     String userIdStr = claims.getOrDefault("user_id", "").toString();
                     String email = claims.getOrDefault("email", "").toString();
+                    boolean superAdministrator = Boolean.parseBoolean(
+                            claims.getOrDefault("super_administrator", "false").toString());
                     Object instClaim = claims.get("institution_id");
                     String instStr = instClaim != null ? instClaim.toString() : null;
 
@@ -67,7 +69,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         authorities.add(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
                     }
 
-                    JwtUserDetails principal = new JwtUserDetails(userId, email, role, institutionId);
+                    JwtUserDetails principal = new JwtUserDetails(
+                            userId,
+                            email,
+                            role,
+                            institutionId,
+                            superAdministrator);
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(principal, null, authorities);
                     SecurityContextHolder.getContext().setAuthentication(authentication);

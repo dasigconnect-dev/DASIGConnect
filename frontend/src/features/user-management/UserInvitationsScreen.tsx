@@ -392,6 +392,8 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
       )
       if (match) {
         await cancelInvitation(match.id)
+      } else {
+        await deleteUser(managedUser.id)
       }
       setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
       if (selectedInstitutionId) {

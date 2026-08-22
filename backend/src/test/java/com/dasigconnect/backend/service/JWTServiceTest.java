@@ -61,6 +61,7 @@ class JWTServiceTest {
         assertThat(claims.get("user_id", String.class)).isEqualTo(user.getId().toString());
         assertThat(claims.get("email", String.class)).isEqualTo("user@example.com");
         assertThat(claims.get("institution_id", String.class)).isEqualTo(institutionId.toString());
+        assertThat(claims.get("super_administrator", Boolean.class)).isFalse();
     }
 
     @Test
@@ -69,6 +70,17 @@ class JWTServiceTest {
         String token = jwtService.generateAccessToken(admin);
         Claims claims = jwtService.extractClaims(token);
         assertThat(claims.get("institution_id")).isNull();
+    }
+
+    @Test
+    void superAdministrator_token_containsSuperAdministratorClaim() {
+        User admin = buildUser(UserRole.administrator, null);
+        admin.setSuperAdministrator(true);
+
+        String token = jwtService.generateAccessToken(admin);
+        Claims claims = jwtService.extractClaims(token);
+
+        assertThat(claims.get("super_administrator", Boolean.class)).isTrue();
     }
 
     @Test
@@ -114,6 +126,17 @@ class JWTServiceTest {
         User user = buildUser(UserRole.contributor, null);
         String token = jwtService.generateAccessToken(user);
         jwtService.invalidateToken(token);
+        assertThatThrownBy(() -> jwtService.extractClaims(token)).isInstanceOf(JwtException.class);
+    }
+
+    @Test
+    void invalidateUserTokens_revokesExistingUserToken() {
+        User user = buildUser(UserRole.administrator, null);
+        String token = jwtService.generateAccessToken(user);
+
+        jwtService.invalidateUserTokens(user.getId());
+
+        assertThat(jwtService.validateToken(token)).isFalse();
         assertThatThrownBy(() -> jwtService.extractClaims(token)).isInstanceOf(JwtException.class);
     }
 }
