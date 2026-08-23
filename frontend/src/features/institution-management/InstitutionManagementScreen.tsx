@@ -47,7 +47,11 @@ interface InstitutionWithStats {
   validators: number
   pendingInvitations: number
   statsLoading: boolean
+  isProtected?: boolean
 }
+
+const DEFAULT_INSTITUTION_NAME = 'dasig central visayas'
+const DEFAULT_INSTITUTION_CODE = 'dasig-cv'
 
 interface AddFormState {
   name: string
@@ -187,6 +191,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
           validators: 0,
           pendingInvitations: 0,
           statsLoading: true,
+          isProtected: item.isProtected ?? item.protected,
         }))
         institutionsMemoryCache.data = base
         setInstitutions(base)
@@ -240,6 +245,11 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
           status: selectedInstitution.status,
         }
         : null,
+    [selectedInstitution],
+  )
+
+  const selectedInstitutionIsDefault = useMemo(
+    () => (selectedInstitution ? isDefaultInstitutionRecord(selectedInstitution) : false),
     [selectedInstitution],
   )
 
@@ -618,6 +628,10 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   // ── A2: Deactivate Institution ──────────────────────────────────────────────
 
   function handleDeactivateInstitution(institution: InstitutionWithStats) {
+    if (institution.isProtected) {
+      toast.error('Protected institutions cannot be deactivated.')
+      return
+    }
     const contributorsCount = managedUsers.filter((u) => u.role.toLowerCase() === 'contributor').length
     const pendingCount = pendingInvitations.length
     if (contributorsCount > 0 || pendingCount > 0) {
@@ -1374,7 +1388,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
                       className="im-inst-actions-item is-deactivate"
                       role="menuitem"
                       onClick={() => { setShowInstActionsMenu(false); handleDeactivateInstitution(selectedInstitution); }}
-                      disabled={statusActionLoading}
+                      disabled={statusActionLoading || !!selectedInstitution.isProtected}
+                      title={selectedInstitution.isProtected ? 'Protected institutions cannot be deactivated' : undefined}
                     >
                       <i className="ti ti-circle-off" aria-hidden="true" />
                       Deactivate
@@ -1395,7 +1410,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             </div>
           </div>
 
-          <div className={`im-detail-header${selectedInstitution.logoUrl ? ' has-logo' : ''}`}>
+          <div className={`im-detail-header${selectedInstitution.logoUrl ? ' has-logo' : ''}${selectedInstitutionIsDefault ? ' is-default' : ''}`}>
             {selectedInstitution.logoUrl && (
               <div className="im-detail-logo-watermark" aria-hidden="true">
                 <img
@@ -1410,6 +1425,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             <div className="im-detail-info">
               <div className="im-detail-name-row">
                 <h1 className="im-detail-name">{selectedInstitution.name}</h1>
+                {selectedInstitutionIsDefault && <DefaultInstitutionPill />}
                 <InstitutionStatusBadge status={selectedInstitution.status} />
               </div>
               <div className="im-detail-meta">
@@ -1781,9 +1797,10 @@ function InstitutionRow({
   logoUploading,
 }: InstitutionRowProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const isDefaultInstitution = isDefaultInstitutionRecord(institution)
 
   return (
-    <div className={`im-inst-row is-${institution.status.toLowerCase()}`}>
+    <div className={`im-inst-row is-${institution.status.toLowerCase()}${isDefaultInstitution ? ' is-default' : ''}`}>
       <button
         type="button"
         className="im-inst-row-open"
@@ -1834,7 +1851,10 @@ function InstitutionRow({
           />
         </div>
         <div className="im-inst-primary">
-          <h2 className="im-inst-card-name">{institution.name}</h2>
+          <div className="im-inst-card-name-row">
+            <h2 className="im-inst-card-name">{institution.name}</h2>
+            {isDefaultInstitution && <DefaultInstitutionPill compact />}
+          </div>
           <div className="im-inst-mobile-meta">
             <span>{institution.code || '—'}</span>
             <span>{institution.emailDomain || '—'}</span>
@@ -1879,6 +1899,22 @@ function InstitutionStatusBadge({ status }: { status: string }) {
       Inactive
     </span>
   )
+}
+
+function DefaultInstitutionPill({ compact = false }: { compact?: boolean }) {
+  return (
+    <span className={`im-default-pill${compact ? ' is-compact' : ''}`}>
+      <i className="ti ti-sparkles" aria-hidden="true"></i>
+      Default
+    </span>
+  )
+}
+
+function isDefaultInstitutionRecord(institution: Pick<InstitutionWithStats, 'isProtected' | 'name' | 'code'>) {
+  if (institution.isProtected) return true
+  const normalizedName = institution.name.trim().toLowerCase()
+  const normalizedCode = institution.code.trim().toLowerCase()
+  return normalizedName === DEFAULT_INSTITUTION_NAME || normalizedCode === DEFAULT_INSTITUTION_CODE
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────

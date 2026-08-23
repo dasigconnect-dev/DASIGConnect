@@ -20,6 +20,7 @@ import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
 import com.dasigconnect.backend.model.entity.NotificationEventType;
+import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
@@ -57,6 +58,9 @@ class SubmissionServiceTest {
 
     @Mock
     private SubmissionRepository submissionRepository;
+
+    @Mock
+    private InstitutionRepository institutionRepository;
 
     @Mock
     private MediaAssetRepository mediaAssetRepository;
@@ -125,6 +129,52 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void create_byAdministratorWithoutInstitutionId_defaultsToDasigCentralVisayas() {
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        SubmissionCreateDto dto = createDto(scheduledAt);
+        dto.setInstitutionId(null); // Omitted institution_id
+
+        UUID adminId = UUID.randomUUID();
+        User admin = user(adminId, "admin@dasigconnect.com", UserRole.super_administrator, null);
+        JwtUserDetails adminPrincipal = principal(adminId, "super_administrator", null);
+
+        UUID dasigInstId = UUID.randomUUID();
+        Institution dasigInst = new Institution();
+        dasigInst.setId(dasigInstId);
+        dasigInst.setName("DASIG Central Visayas");
+        dasigInst.setProtected(true);
+
+        when(institutionRepository.findByNameIgnoreCase("DASIG Central Visayas")).thenReturn(Optional.of(dasigInst));
+        when(entityManager.getReference(User.class, adminId)).thenReturn(admin);
+        when(entityManager.getReference(Institution.class, dasigInstId)).thenReturn(dasigInst);
+        when(submissionRepository.save(any(Submission.class))).thenAnswer(invocation -> assignSubmissionId(invocation.getArgument(0)));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(any())).thenReturn(List.of());
+
+        SubmissionResponseDto result = submissionService.create(dto, adminPrincipal);
+
+        assertThat(result.getStatus()).isEqualTo("draft");
+        verify(slotReservationService).reserve(result.getId(), dasigInstId, scheduledAt);
+    }
+
+    @Test
+    void create_byContributorWithCustomInstitutionId_ignoresPayloadAndUsesSessionInstitutionId() {
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        SubmissionCreateDto dto = createDto(scheduledAt);
+        dto.setInstitutionId(UUID.randomUUID()); // Client supplied spoofed institutionId
+
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(entityManager.getReference(Institution.class, institutionId)).thenReturn(institution);
+        when(submissionRepository.save(any(Submission.class))).thenAnswer(invocation -> assignSubmissionId(invocation.getArgument(0)));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(any())).thenReturn(List.of());
+
+        SubmissionResponseDto result = submissionService.create(dto, contributorPrincipal);
+
+        assertThat(result.getStatus()).isEqualTo("draft");
+        // Verify slot reservation uses the contributor's session institutionId, NOT the DTO's institutionId
+        verify(slotReservationService).reserve(result.getId(), institutionId, scheduledAt);
+    }
+
+    @Test
     void update_draftSubmission_updatesFieldsAndReservesChangedSlot() {
         UUID submissionId = UUID.randomUUID();
         Instant oldSlot = Instant.parse("2026-06-01T08:00:00Z");
@@ -180,7 +230,7 @@ class SubmissionServiceTest {
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
-        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.administrator))
+        when(userRepository.findByRole(UserRole.administrator))
                 .thenReturn(List.of(validator));
 
         SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
@@ -193,7 +243,7 @@ class SubmissionServiceTest {
         verify(notificationService).createNotification(
                 eq(validator),
                 eq(NotificationEventType.submission_pending),
-                org.mockito.ArgumentMatchers.contains("submitted 'Research Expo' for review"),
+                org.mockito.ArgumentMatchers.contains("submitted 'Research Expo' for approval"),
                 eq("/submissions/" + submissionId));
     }
 
@@ -299,7 +349,7 @@ class SubmissionServiceTest {
 
         assertThatThrownBy(() -> submissionService.get(
                 submission.getId(),
-                principal(UUID.randomUUID(), "administrator", UUID.randomUUID())))
+                principal(UUID.randomUUID(), "validator", UUID.randomUUID())))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -307,13 +357,17 @@ class SubmissionServiceTest {
 
     @Test
     void evaluateSlot_delegatesToGuardRailServiceWithTenantInstitution() {
+        UUID submissionId = UUID.randomUUID();
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+
         SlotEvaluateRequestDto dto = new SlotEvaluateRequestDto();
         dto.setScheduledAt(scheduledAt);
         GuardRailResult expected = new GuardRailResult();
         when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(expected);
 
-        GuardRailResult result = submissionService.evaluateSlot(UUID.randomUUID(), dto, contributorPrincipal);
+        GuardRailResult result = submissionService.evaluateSlot(submissionId, dto, contributorPrincipal);
 
         assertThat(result).isSameAs(expected);
     }

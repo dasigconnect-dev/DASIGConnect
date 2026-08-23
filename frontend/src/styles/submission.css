@@ -2618,6 +2618,33 @@ textarea.sub-finput {
   line-height: 1.45;
 }
 
+.sub-inline-default-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--sub-gold-bdr, #fde68a);
+  background: var(--sub-gold-dim, #fffbeb);
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.sub-posting-select.is-default .dc-select-trigger {
+  border-color: var(--sub-gold-bdr, #fde68a);
+  background: linear-gradient(180deg, #fffdf5 0%, #fffbeb 100%);
+}
+
+.sub-posting-select.is-default .dc-select-trigger:hover:not(:disabled),
+.sub-posting-select.is-default .dc-select-trigger.open {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.16);
+  background: #fffdf5;
+}
+
 .sub-guard-panel {
   border-left: 1px solid var(--sub-border);
   display: flex;

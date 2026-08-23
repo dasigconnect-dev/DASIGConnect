@@ -87,6 +87,8 @@ public class BackendApplication {
             org.flywaydb.core.Flyway flyway,
             DataSource dataSource,
             com.dasigconnect.backend.repository.UserRepository userRepository,
+            com.dasigconnect.backend.repository.InstitutionRepository institutionRepository,
+            com.dasigconnect.backend.repository.PageSettingsRepository pageSettingsRepository,
             org.springframework.security.crypto.password.PasswordEncoder passwordEncoder) {
         return args -> {
             System.out.println("==================================================");
@@ -131,6 +133,66 @@ public class BackendApplication {
                     System.out.println("Successfully granted BYPASSRLS privilege to: " + activeRole);
                 } catch (Exception rlsEx) {
                     System.out.println("Warning: Could not configure RLS bypass: " + rlsEx.getMessage());
+                }
+
+                // Seed Protected Institution: DASIG Central Visayas
+                String dasigInstName = "DASIG Central Visayas";
+                com.dasigconnect.backend.model.entity.Institution dasigInstitution = institutionRepository.findByNameIgnoreCase(dasigInstName)
+                        .orElseGet(() -> {
+                            System.out.println("No default protected institution found. Seeding " + dasigInstName + "...");
+                            com.dasigconnect.backend.model.entity.Institution inst = new com.dasigconnect.backend.model.entity.Institution();
+                            inst.setName(dasigInstName);
+                            inst.setCode("DASIG-CV");
+                            inst.setEmailDomain("dasig.gov.ph");
+                            inst.setProtected(true);
+                            inst.setStatus(com.dasigconnect.backend.model.entity.InstitutionStatus.active);
+                            return institutionRepository.save(inst);
+                        });
+
+                if (!dasigInstitution.isProtected() || dasigInstitution.getStatus() != com.dasigconnect.backend.model.entity.InstitutionStatus.active) {
+                    dasigInstitution.setProtected(true);
+                    dasigInstitution.setStatus(com.dasigconnect.backend.model.entity.InstitutionStatus.active);
+                    dasigInstitution = institutionRepository.save(dasigInstitution);
+                }
+
+                // Assign Official DASIG Logo Asset as Institution Logo / Default Watermark
+                byte[] officialDasigLogoSvg = ("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\" role=\"img\" aria-label=\"DASIGConnect logo\">"
+                        + "<rect width=\"64\" height=\"64\" rx=\"14\" fill=\"#0b1d42\"/>"
+                        + "<rect x=\"8\" y=\"6\" width=\"48\" height=\"52\" rx=\"13\" fill=\"#1459d9\"/>"
+                        + "<rect x=\"12\" y=\"10\" width=\"40\" height=\"44\" rx=\"10\" fill=\"#2578f3\"/>"
+                        + "<path fill=\"#fff\" d=\"m32 20 12 6.4v11.2L32 44l-12-6.4V26.4z\"/>"
+                        + "</svg>").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+                if (dasigInstitution.getLogoData() == null || dasigInstitution.getLogoData().length == 0) {
+                    dasigInstitution.setLogoData(officialDasigLogoSvg);
+                    dasigInstitution.setLogoContentType("image/svg+xml");
+                    dasigInstitution.setLogoUpdatedAt(java.time.Instant.now());
+                    dasigInstitution = institutionRepository.save(dasigInstitution);
+                    System.out.println("Official DASIG logo asset assigned to " + dasigInstName);
+                }
+
+                // Watermark Configuration: Assign default watermark configuration if watermark table exists (UC-2.5)
+                boolean hasWatermarkTable = false;
+                try (ResultSet rs = metaData.getTables(null, "public", "%", new String[]{"TABLE"})) {
+                    while (rs.next()) {
+                        String tableName = rs.getString("TABLE_NAME");
+                        if ("page_settings".equalsIgnoreCase(tableName) || "watermark_configurations".equalsIgnoreCase(tableName) || "watermark_configs".equalsIgnoreCase(tableName)) {
+                            hasWatermarkTable = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hasWatermarkTable && pageSettingsRepository != null) {
+                    var existingSettings = pageSettingsRepository.findByInstitutionId(dasigInstitution.getId());
+                    if (existingSettings.isEmpty()) {
+                        com.dasigconnect.backend.model.entity.PageSettings settings = new com.dasigconnect.backend.model.entity.PageSettings();
+                        settings.setInstitution(dasigInstitution);
+                        settings.setWatermarkEnabled(true);
+                        settings.setWatermarkText("DASIG Central Visayas");
+                        pageSettingsRepository.save(settings);
+                        System.out.println("Default watermark configuration assigned to " + dasigInstName);
+                    }
                 }
 
                 if (userRepository.findByEmail(adminEmail).isEmpty()) {

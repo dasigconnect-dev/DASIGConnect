@@ -269,6 +269,17 @@ const postTemplates = [
 
 const submissionDetailsMemoryCache: Record<string, { caption: string; mediaAssets: SavedMediaAsset[] }> = {};
 
+const DEFAULT_INSTITUTION_NAME = "dasig central visayas";
+const DEFAULT_INSTITUTION_CODE = "dasig-cv";
+
+function isDefaultInstitution(institution: InstitutionResponse) {
+  return (
+    Boolean(institution.isProtected ?? institution.protected) ||
+    institution.name.trim().toLowerCase() === DEFAULT_INSTITUTION_NAME ||
+    institution.institutionCode.trim().toLowerCase() === DEFAULT_INSTITUTION_CODE
+  );
+}
+
 export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -337,6 +348,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const isMySubmissionsPage = location.pathname === "/submissions";
   const selectedInstitutionId = isAdminComposer ? form.institutionId : user.institutionId || "";
   const [mediaUploadFailed, setMediaUploadFailed] = useState(false);
+  const selectedPostingInstitution = useMemo(
+    () => institutions.find((institution) => institution.id === form.institutionId) ?? null,
+    [form.institutionId, institutions],
+  );
+  const selectedPostingIsDefault = Boolean(
+    selectedPostingInstitution && isDefaultInstitution(selectedPostingInstitution),
+  );
 
   const queued = useMemo(() => {
     const byFilter = (() => {
@@ -436,6 +454,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         );
         setInstitutions(activeInstitutions);
         setInstitutionsError("");
+        setForm((prev) => {
+          if (prev.institutionId || prev.id) return prev;
+          const dasig = activeInstitutions.find(
+            (inst) => isDefaultInstitution(inst),
+          );
+          return dasig ? { ...prev, institutionId: dasig.id } : prev;
+        });
       })
       .catch((err: unknown) => {
         if ((err as { name?: string })?.name === "CanceledError") return;
@@ -1995,20 +2020,29 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               subtitle="Use backend field names for the saved submission draft."
             />
             {isAdminComposer && (
-              <Field label="Institution Scope">
+              <Field label="Posting As">
                 <BrandedSelect
                   value={form.institutionId}
                   placeholder={institutionsLoading ? "Loading institutions..." : "Select institution"}
                   hint={institutionsLoading ? undefined : "Select institution"}
                   options={institutions.map((institution) => ({
                     value: institution.id,
-                    label: institution.name,
+                    label: isDefaultInstitution(institution)
+                      ? `${institution.name} (Default)`
+                      : institution.name,
                   }))}
                   disabled={isReadOnlySubmission || Boolean(form.id)}
                   loading={institutionsLoading}
-                  ariaLabel="Select institution scope"
+                  ariaLabel="Posting As"
+                  className={`sub-posting-select${selectedPostingIsDefault ? " is-default" : ""}`}
                   onChange={(value) => updateField("institutionId", value)}
                 />
+                {selectedPostingIsDefault && (
+                  <div className="sub-inline-default-note">
+                    <i className="ti ti-sparkles" aria-hidden="true"></i>
+                    Default institution for network-wide DASIG announcements.
+                  </div>
+                )}
                 {institutionsError && (
                   <div className="sub-inline-note">{institutionsError}</div>
                 )}
