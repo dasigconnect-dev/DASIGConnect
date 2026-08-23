@@ -137,6 +137,7 @@ export interface InstitutionResponse {
   emailDomain: string;
   hasLogo: boolean;
   logoUpdatedAt: string | null;
+  isProtected?: boolean;
 }
 
 export function createInstitution(

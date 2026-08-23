@@ -45,6 +45,7 @@ import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
+import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.ReviewLockRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
@@ -74,6 +75,7 @@ public class SubmissionService {
     private static final long MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024;
 
     private final SubmissionRepository submissionRepository;
+    private final InstitutionRepository institutionRepository;
     private final MediaAssetRepository mediaAssetRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
     private final ReviewLockRepository reviewLockRepository;
@@ -94,6 +96,7 @@ public class SubmissionService {
 
     public SubmissionService(
             SubmissionRepository submissionRepository,
+            InstitutionRepository institutionRepository,
             MediaAssetRepository mediaAssetRepository,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
             ReviewLockRepository reviewLockRepository,
@@ -106,6 +109,7 @@ public class SubmissionService {
             UserRepository userRepository,
             ApplicationEventPublisher eventPublisher) {
         this.submissionRepository = submissionRepository;
+        this.institutionRepository = institutionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.reviewLockRepository = reviewLockRepository;
@@ -645,20 +649,18 @@ public class SubmissionService {
     }
 
     private UUID resolveSubmissionInstitutionId(UUID requestedInstitutionId, JwtUserDetails user) {
-        if ("administrator".equals(user.role())) {
-            if (requestedInstitutionId == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Select an institution scope before creating a submission.");
+        if ("administrator".equalsIgnoreCase(user.role()) || "super_administrator".equalsIgnoreCase(user.role())) {
+            if (requestedInstitutionId != null) {
+                return requestedInstitutionId;
             }
-            return requestedInstitutionId;
+            return institutionRepository.findByNameIgnoreCase("DASIG Central Visayas")
+                    .map(Institution::getId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                            "Default institution 'DASIG Central Visayas' not found."));
         }
         if (user.institutionId() == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Your account is not scoped to an institution.");
-        }
-        if (requestedInstitutionId != null && !requestedInstitutionId.equals(user.institutionId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "You cannot create submissions for another institution.");
         }
         return user.institutionId();
     }

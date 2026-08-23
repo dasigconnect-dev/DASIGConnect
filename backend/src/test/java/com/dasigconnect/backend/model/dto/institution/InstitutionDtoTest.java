@@ -20,6 +20,7 @@ class InstitutionDtoTest {
         institution.setName("Cebu Institute of Technology - University");
         institution.setCode("CIT-U");
         institution.setStatus(InstitutionStatus.active);
+        institution.setProtected(true);
 
         InstitutionDto dto = InstitutionDto.from(institution);
 
@@ -27,6 +28,7 @@ class InstitutionDtoTest {
         assertThat(dto.getName()).isEqualTo("Cebu Institute of Technology - University");
         assertThat(dto.getInstitutionCode()).isEqualTo("CIT-U");
         assertThat(dto.getStatus()).isEqualTo(InstitutionStatus.active);
+        assertThat(dto.isProtected()).isTrue();
     }
 
     @Test

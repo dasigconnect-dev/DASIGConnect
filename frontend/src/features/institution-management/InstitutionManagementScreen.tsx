@@ -47,6 +47,7 @@ interface InstitutionWithStats {
   validators: number
   pendingInvitations: number
   statsLoading: boolean
+  isProtected?: boolean
 }
 
 interface AddFormState {
@@ -187,6 +188,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
           validators: 0,
           pendingInvitations: 0,
           statsLoading: true,
+          isProtected: item.isProtected,
         }))
         institutionsMemoryCache.data = base
         setInstitutions(base)
@@ -618,6 +620,10 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   // ── A2: Deactivate Institution ──────────────────────────────────────────────
 
   function handleDeactivateInstitution(institution: InstitutionWithStats) {
+    if (institution.isProtected) {
+      toast.error('Protected institutions cannot be deactivated.')
+      return
+    }
     const contributorsCount = managedUsers.filter((u) => u.role.toLowerCase() === 'contributor').length
     const pendingCount = pendingInvitations.length
     if (contributorsCount > 0 || pendingCount > 0) {
@@ -1374,7 +1380,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
                       className="im-inst-actions-item is-deactivate"
                       role="menuitem"
                       onClick={() => { setShowInstActionsMenu(false); handleDeactivateInstitution(selectedInstitution); }}
-                      disabled={statusActionLoading}
+                      disabled={statusActionLoading || !!selectedInstitution.isProtected}
+                      title={selectedInstitution.isProtected ? 'Protected institutions cannot be deactivated' : undefined}
                     >
                       <i className="ti ti-circle-off" aria-hidden="true" />
                       Deactivate

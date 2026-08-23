@@ -417,6 +417,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         );
         setInstitutions(activeInstitutions);
         setInstitutionsError("");
+        setForm((prev) => {
+          if (prev.institutionId || prev.id) return prev;
+          const dasig = activeInstitutions.find(
+            (inst) => inst.name.toLowerCase() === "dasig central visayas",
+          );
+          return dasig ? { ...prev, institutionId: dasig.id } : prev;
+        });
       })
       .catch((err: unknown) => {
         if ((err as { name?: string })?.name === "CanceledError") return;
@@ -1889,7 +1896,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               subtitle="Use backend field names for the saved submission draft."
             />
             {isAdminComposer && (
-              <Field label="Institution Scope">
+              <Field label="Posting As">
                 <BrandedSelect
                   value={form.institutionId}
                   placeholder={institutionsLoading ? "Loading institutions..." : "Select institution"}
@@ -1900,7 +1907,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   }))}
                   disabled={isReadOnlySubmission || Boolean(form.id)}
                   loading={institutionsLoading}
-                  ariaLabel="Select institution scope"
+                  ariaLabel="Posting As"
                   onChange={(value) => updateField("institutionId", value)}
                 />
                 {institutionsError && (
