@@ -19,25 +19,40 @@ const emptyLookups: SubmissionLookups = {
   availableTags: [],
 };
 
+let cachedSubmissions: SubmissionSummary[] | null = null;
+let cachedLookups: SubmissionLookups | null = null;
+
 export function useSubmissions() {
-  const [submissions, setSubmissions] = useState<SubmissionSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [submissions, setSubmissions] = useState<SubmissionSummary[]>(() => cachedSubmissions ?? []);
+  const [loading, setLoading] = useState(() => cachedSubmissions === null);
   const [error, setError] = useState("");
 
-  const refresh = useCallback((signal?: AbortSignal) => {
-    setLoading(true);
+  const refresh = useCallback(async (signal?: AbortSignal) => {
+    if (!cachedSubmissions) {
+      setLoading(true);
+    }
     setError("");
-    return listSubmissions(signal)
-      .then((response) => setSubmissions(response.data))
-      .catch((err: any) => {
-        if (err.name === "CanceledError") return;
-        setError(
-          err.response?.data?.error ||
-            err.message ||
-            "Unable to load submissions.",
-        );
-      })
-      .finally(() => setLoading(false));
+    try {
+      const response = await listSubmissions(signal);
+      if (!signal?.aborted) {
+        cachedSubmissions = response.data;
+        setSubmissions(response.data);
+      }
+      return response.data;
+    } catch (err: any) {
+      if (err.name === "CanceledError" || err.name === "AbortError" || err?.code === "ERR_CANCELED") {
+        return;
+      }
+      setError(
+        err.response?.data?.error ||
+          err.message ||
+          "Unable to load submissions.",
+      );
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -50,28 +65,43 @@ export function useSubmissions() {
 }
 
 export function useSubmissionLookups() {
-  const [lookups, setLookups] = useState<SubmissionLookups>(emptyLookups);
-  const [loading, setLoading] = useState(true);
+  const [lookups, setLookups] = useState<SubmissionLookups>(() => cachedLookups ?? emptyLookups);
+  const [loading, setLoading] = useState(() => cachedLookups === null);
   const [error, setError] = useState("");
+
+  const refresh = useCallback(async (signal?: AbortSignal) => {
+    if (!cachedLookups) {
+      setLoading(true);
+    }
+    setError("");
+    try {
+      const response = await getSubmissionLookups(signal);
+      if (!signal?.aborted) {
+        cachedLookups = response.data;
+        setLookups(response.data);
+      }
+      return response.data;
+    } catch (err: any) {
+      if (err.name === "CanceledError" || err.name === "AbortError" || err?.code === "ERR_CANCELED") {
+        return;
+      }
+      setError(
+        err.response?.data?.error ||
+          err.message ||
+          "Unable to load submission settings.",
+      );
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
-    setError("");
-    getSubmissionLookups(controller.signal)
-      .then((response) => setLookups(response.data))
-      .catch((err: any) => {
-        if (err.name === "CanceledError") return;
-        setError(
-          err.response?.data?.error ||
-            err.message ||
-            "Unable to load submission options.",
-        );
-      })
-      .finally(() => setLoading(false));
-
+    void refresh(controller.signal);
     return () => controller.abort();
-  }, []);
+  }, [refresh]);
 
-  return { lookups, loading, error };
+  return { lookups, loading, error, refresh };
 }

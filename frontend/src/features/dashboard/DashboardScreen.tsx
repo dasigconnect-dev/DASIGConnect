@@ -190,11 +190,9 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
     "Add Institution": "/admin/institution-management",
     "Invite Members": "/admin/institution-management",
     "Institution Overview": "/admin/institution-management",
-    "User Management": "/admin/user-management/invitations",
-    "Invite Contributor": "/admin/user-management/invitations",
+    "Institution Management": "/admin/institution-management",
     "Review Queue": "/validation/queue",
     "View Calendar": "/scheduler/calendar",
-    "Resolution Center": "/admin/resolution",
     "Analytics": "/analytics",
   };
 
@@ -607,16 +605,16 @@ function actionsForRole(user: User | null): ActionItem[] {
         emphasized: true,
       },
       {
-        icon: "ti ti-users",
+        icon: "ti ti-building",
         accent: "ac-green",
-        title: "User Management",
-        subtitle: "View and manage institution members",
+        title: "Institution Management",
+        subtitle: "Manage HEI workspace and contributors",
       },
       {
-        icon: "ti ti-user-plus",
+        icon: "ti ti-calendar-event",
         accent: "ac-purple",
-        title: "Invite Contributor",
-        subtitle: "Send an invitation to a new contributor",
+        title: "View Calendar",
+        subtitle: "View scheduled and published events",
       },
     ];
   }

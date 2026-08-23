@@ -38,6 +38,7 @@ import BrandedSelect from "../../components/ui/BrandedSelect";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import AiCaptionButton from "./components/AiCaptionButton";
 import AiCaptionSuggestion from "./components/AiCaptionSuggestion";
+import "../../styles/dasig-loader.css";
 
 interface SubmissionScreenProps {
   user: User;
@@ -127,6 +128,34 @@ function isDraftStatus(status: SubmissionStatus) {
 
 function isPublishedStatus(status: SubmissionStatus) {
   return status === "published" || status === "published_manual" || status === "admin_direct_post";
+}
+
+function getSubmissionStatusIcon(status: SubmissionStatus) {
+  switch (status) {
+    case "published":
+    case "published_manual":
+      return "ti ti-circle-check";
+    case "scheduled":
+    case "direct_post_scheduled":
+      return "ti ti-calendar-event";
+    case "pending":
+    case "in_review":
+      return "ti ti-clock";
+    case "needs_revision":
+      return "ti ti-alert-triangle";
+    case "publish_failed":
+    case "direct_post_failed":
+    case "rejected":
+      return "ti ti-circle-x";
+    case "publishing":
+    case "direct_post_publishing":
+      return "ti ti-loader-2 sub-spin";
+    case "admin_direct_post":
+      return "ti ti-send";
+    case "draft":
+    default:
+      return "ti ti-edit";
+  }
 }
 
 function matchesQueueSearch(item: SubmissionSummary, query: string) {
@@ -226,6 +255,8 @@ const postTemplates = [
   },
 ];
 
+const submissionDetailsMemoryCache: Record<string, { caption: string; mediaAssets: SavedMediaAsset[] }> = {};
+
 export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -255,12 +286,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     const tab = new URLSearchParams(window.location.search).get("tab");
     const valid: QueueFilter[] = ["drafts", "submitted", "published", "all"];
     if (tab && (valid as string[]).includes(tab)) return tab as QueueFilter;
-    return "drafts";
+    return "all";
   });
   const [queueSearch, setQueueSearch] = useState("");
   const [listDetails, setListDetails] = useState<
     Record<string, { caption: string; mediaAssets: SavedMediaAsset[] }>
-  >({});
+  >(() => ({ ...submissionDetailsMemoryCache }));
   const [form, setForm] = useState<FormState>(initialForm);
   const [pickerItems, setPickerItems] = useState<SubmissionMediaItem[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -649,13 +680,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       results.forEach((result, index) => {
         const id = needsPreview[index]?.id;
         if (!id) return;
-        nextEntries[id] =
+        const entry =
           result.status === "fulfilled"
             ? {
                 caption: result.value.data.caption ?? "",
                 mediaAssets: result.value.data.mediaAssets ?? [],
               }
             : { caption: "", mediaAssets: [] };
+        nextEntries[id] = entry;
+        submissionDetailsMemoryCache[id] = entry;
       });
       setListDetails((current) => ({ ...current, ...nextEntries }));
     });
@@ -667,23 +700,36 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
   useEffect(() => {
     const submissionId = routeSubmissionId ?? searchParams.get("submissionId");
-    if (!submissionId) {
+    if (!submissionId || submissionId === "new") {
       routedSubmissionRef.current = null;
       return;
     }
     if (routedSubmissionRef.current === submissionId) return;
     routedSubmissionRef.current = submissionId;
-    setFilter("submitted");
+    const existing = submissions.find((s) => s.id === submissionId);
+    const initialStatus = existing?.status ?? "pending";
+    const editableDraft = initialStatus === "draft" || initialStatus === "needs_revision";
+    setFilter(editableDraft ? "drafts" : "submitted");
     setCenterMode("edit");
+    if (existing) {
+      setForm((current) => ({
+        ...current,
+        id: existing.id,
+        status: existing.status,
+        eventTitle: existing.eventTitle || "",
+        eventDate: existing.eventDate || "",
+        institutionId: existing.institutionId || current.institutionId,
+      }));
+    }
     void applySubmission({
       id: submissionId,
-      institutionId: user.institutionId || "",
-      institutionName: user.inst,
-      eventTitle: "",
-      eventDate: "",
-      status: "pending",
+      institutionId: existing?.institutionId || user.institutionId || "",
+      institutionName: existing?.institutionName || user.inst,
+      eventTitle: existing?.eventTitle || "",
+      eventDate: existing?.eventDate || "",
+      status: initialStatus,
     });
-  }, [routeSubmissionId, searchParams, user.inst, user.institutionId]);
+  }, [routeSubmissionId, searchParams, submissions, user.inst, user.institutionId]);
 
   function clearAssetIdParam() {
     if (!searchParams.has("assetIds")) return;
@@ -1337,12 +1383,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   if (isMySubmissionsPage) {
     return (
       <div className="submission-screen sub-list-shell-page">
-        {(loading || hydratingId) && (
-          <div className="sub-route-loader" aria-hidden="true">
-            <span></span>
-          </div>
-        )}
-
         <main className="sub-list-page">
           <section className="sub-list-head">
             <div>
@@ -1377,71 +1417,77 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             </div>
           </section>
 
-          <section className="sub-list-tools" aria-label="Submission filters">
-            <div className="sub-sidebar-search sub-list-search">
-              <i className="ti ti-search"></i>
-              <input
-                type="search"
-                value={queueSearch}
-                onChange={(event) => setQueueSearch(event.target.value)}
-                placeholder="Search by title, caption, institution, or status..."
-                aria-label="Search submissions"
-              />
+          <div className="sub-toolbar-card" style={{ marginBottom: "16px" }}>
+            <div className="sub-registry-toolbar">
+              <div className="sub-status-tabs" role="group" aria-label="Filter submissions by status">
+                <button
+                  type="button"
+                  className={`sub-status-tab${filter === "all" ? " is-active" : ""}`}
+                  onClick={() => setFilter("all")}
+                  aria-pressed={filter === "all"}
+                >
+                  All
+                  <span className="sub-status-tab-count">{loading ? "-" : submissions.length}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`sub-status-tab${filter === "drafts" ? " is-active" : ""}`}
+                  onClick={() => setFilter("drafts")}
+                  aria-pressed={filter === "drafts"}
+                >
+                  Drafts
+                  <span className="sub-status-tab-count">{loading ? "-" : draftCount}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`sub-status-tab${filter === "submitted" ? " is-active" : ""}`}
+                  onClick={() => setFilter("submitted")}
+                  aria-pressed={filter === "submitted"}
+                >
+                  Submitted
+                  <span className="sub-status-tab-count">{loading ? "-" : submittedCount}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`sub-status-tab${filter === "published" ? " is-active" : ""}`}
+                  onClick={() => setFilter("published")}
+                  aria-pressed={filter === "published"}
+                >
+                  Published
+                  <span className="sub-status-tab-count">{loading ? "-" : publishedCount}</span>
+                </button>
+              </div>
+
+              <div className="sub-search-wrap">
+                <i className="ti ti-search sub-search-icon" aria-hidden="true"></i>
+                <input
+                  type="search"
+                  className="sub-search-input"
+                  value={queueSearch}
+                  onChange={(event) => setQueueSearch(event.target.value)}
+                  placeholder="Search submissions..."
+                  aria-label="Search submissions"
+                />
+              </div>
             </div>
-            <div className="sub-sidebar-tabs sub-list-tabs">
-              <button
-                className={`sub-stab ${filter === "drafts" ? "active" : ""}`}
-                type="button"
-                onClick={() => setFilter("drafts")}
-              >
-                <span className="sub-stab-label">Drafts</span>
-                <span className="sub-stab-badge">{draftCount}</span>
-              </button>
-              <button
-                className={`sub-stab ${filter === "submitted" ? "active" : ""}`}
-                type="button"
-                onClick={() => setFilter("submitted")}
-              >
-                <span className="sub-stab-label">Submitted</span>
-                <span className="sub-stab-badge">{submittedCount}</span>
-              </button>
-              <button
-                className={`sub-stab ${filter === "published" ? "active" : ""}`}
-                type="button"
-                onClick={() => setFilter("published")}
-              >
-                <span className="sub-stab-label">Published</span>
-                <span className="sub-stab-badge">{publishedCount}</span>
-              </button>
-              <button
-                className={`sub-stab ${filter === "all" ? "active" : ""}`}
-                type="button"
-                onClick={() => setFilter("all")}
-              >
-                <span className="sub-stab-label">All</span>
-                <span className="sub-stab-badge">{submissions.length}</span>
-              </button>
-            </div>
-          </section>
+          </div>
 
           <section className="sub-list-results" aria-label="My submissions">
-            {loading && <QueueSkeleton />}
-            {!loading && error && (
+            {loading || refreshingQueue ? (
+              <QueueLoadingState />
+            ) : error ? (
               <QueueState
                 icon="ti-database-off"
                 title="Unable to load submissions"
                 description="Check your session and backend connection, then refresh the page."
               />
-            )}
-            {!loading && !error && queued.length === 0 && (
+            ) : queued.length === 0 ? (
               <QueueState
                 icon="ti-folder-open"
                 title="No submissions found"
                 description="Try another filter or create a new submission."
               />
-            )}
-            {!loading &&
-              !error &&
+            ) : (
               queued.map((item) => {
                 const detail = listDetails[item.id];
                 const mediaAssets =
@@ -1449,46 +1495,126 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 const thumbnail = mediaAssets[0];
                 const captionPreview = item.caption || detail?.caption || "";
                 return (
-                  <button
-                    className="sub-list-card"
+                  <article
+                    className="sub-fb-post-card"
                     key={item.id}
-                    type="button"
                     onClick={() => navigate(`/submissions/${item.id}`)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        navigate(`/submissions/${item.id}`);
+                      }
+                    }}
                   >
-                    <div className="sub-list-thumb">
-                      {thumbnail?.storageUrl && isImageFileType(thumbnail.fileType) ? (
-                        <img src={thumbnail.storageUrl} alt="" />
-                      ) : thumbnail?.storageUrl && isVideoFileType(thumbnail.fileType) ? (
-                        <video src={thumbnail.storageUrl} muted playsInline preload="metadata" />
-                      ) : (
-                        <i className="ti ti-photo"></i>
-                      )}
-                      {(item.mediaCount ?? 0) > 1 && (
-                        <span className="sub-list-thumb-count">+{(item.mediaCount ?? 0) - 1}</span>
-                      )}
-                    </div>
-                    <div className="sub-list-card-body">
-                      <div className="sub-list-card-top">
-                        <h2>{item.eventTitle || "Untitled submission"}</h2>
+                    {/* Header: FB Brand Avatar + Page Info + Status Badge */}
+                    <div className="sub-fb-card-head">
+                      <div className="sub-fb-avatar" aria-hidden="true">
+                        <i className="ti ti-brand-facebook"></i>
+                      </div>
+                      <div className="sub-fb-author">
+                        <div className="sub-fb-author-name">
+                          {item.institutionName || user.inst || "DASIGCONNECT"}
+                        </div>
+                        <div className="sub-fb-author-meta">
+                          <span>{formatDate(item.eventDate)}</span>
+                          <span className="sub-fb-dot" aria-hidden="true">•</span>
+                          <i className="ti ti-world" title="Public post" aria-hidden="true"></i>
+                        </div>
+                      </div>
+                      <div className="sub-fb-status-wrap">
                         <span className={`sub-qi-badge status-${item.status}`}>
+                          <i className={getSubmissionStatusIcon(item.status)} aria-hidden="true"></i>
                           {statusLabels[item.status]}
                         </span>
                       </div>
-                      <p>{captionPreview || "No caption yet."}</p>
-                      <div className="sub-qi-meta">
-                        <i className="ti ti-building"></i>
-                        {item.institutionName || user.inst}
-                        <span className="sub-qi-dot"></span>
-                        {formatDate(item.eventDate)}
-                        <span className="sub-qi-dot"></span>
-                        {(item.mediaCount ?? 0)} media
+                    </div>
+
+                    {/* Post Content: Event Title & Caption */}
+                    <div className="sub-fb-card-content">
+                      {item.eventTitle && <h2 className="sub-fb-event-title">{item.eventTitle}</h2>}
+                      {captionPreview ? (
+                        <p className="sub-fb-caption-text">{captionPreview}</p>
+                      ) : (
+                        <p className="sub-fb-caption-text sub-fb-empty-text">No caption provided.</p>
+                      )}
+                    </div>
+
+                    {/* Media Container with Circular Loader */}
+                    <SubmissionCardMedia
+                      thumbnail={thumbnail}
+                      mediaCount={item.mediaCount}
+                      detailsLoaded={Boolean(listDetails[item.id])}
+                    />
+
+                    {/* Reactions & Engagement Row */}
+                    <div className="sub-fb-reactions-bar">
+                      <div className="sub-fb-reactions-icons">
+                        <span className="sub-fb-react-icon fb-like-icon" title="Like">
+                          <i className="ti ti-thumb-up-filled"></i>
+                        </span>
+                        <span className="sub-fb-react-icon fb-heart-icon" title="Love">
+                          <i className="ti ti-heart-filled"></i>
+                        </span>
+                        <span className="sub-fb-reactions-text">
+                          {(item.mediaCount ?? 0)} media · {item.eventTitle ? "1 Post" : "Draft"}
+                        </span>
+                      </div>
+                      <div className="sub-fb-open-action">
+                        <span>Open details</span>
+                        <i className="ti ti-chevron-right"></i>
                       </div>
                     </div>
-                  </button>
+
+                    {/* Facebook Interactive Bar */}
+                    <div className="sub-fb-actions-bar" aria-hidden="true">
+                      <div className="sub-fb-action-btn">
+                        <i className="ti ti-thumb-up"></i>
+                        <span>Like</span>
+                      </div>
+                      <div className="sub-fb-action-btn">
+                        <i className="ti ti-message-circle"></i>
+                        <span>Comment</span>
+                      </div>
+                      <div className="sub-fb-action-btn">
+                        <i className="ti ti-share-3"></i>
+                        <span>Share</span>
+                      </div>
+                    </div>
+                  </article>
                 );
-              })}
+              })
+            )}
           </section>
         </main>
+      </div>
+    );
+  }
+
+  if (
+    routeSubmissionId &&
+    routeSubmissionId !== "new" &&
+    (!form.id || form.id !== routeSubmissionId || hydratingId === routeSubmissionId)
+  ) {
+    return (
+      <div className="submission-screen">
+        <nav className="sub-topnav">
+          <div className="sub-nav-left">
+            <button
+              className="sub-back-btn"
+              type="button"
+              onClick={handleBack}
+              aria-label="Back to My Submissions"
+            >
+              <i className="ti ti-arrow-left"></i>
+              <span>Back to My Submissions</span>
+            </button>
+          </div>
+        </nav>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "65vh" }}>
+          <QueueLoadingState />
+        </div>
       </div>
     );
   }
@@ -1504,22 +1630,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               event.stopPropagation();
             }}
             onClick={handleBack}
+            aria-label="Back to My Submissions"
           >
             <i className="ti ti-arrow-left"></i>
-            <span>Back</span>
+            <span>Back to My Submissions</span>
           </button>
-          <div className="sub-nav-brand">
-            <div className="sub-nav-brand-icon">
-              <BrandMark />
-            </div>
-            <div className="sub-nav-brand-name">
-              DASIG<em>Connect</em>
-            </div>
-          </div>
-          <div className="sub-nav-breadcrumb">
-            <i className="ti ti-chevron-right"></i>
-            <span>My Submissions</span>
-          </div>
         </div>
         <div className="sub-nav-right">
           {(isDirty || saveState === "saving" || saveState === "saved") && (
@@ -1731,7 +1846,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           >
             <SectionHead
               icon="ti-edit"
-              tone="gold"
+              tone="blue"
               title="Post Details"
               subtitle="Use backend field names for the saved submission draft."
             />
@@ -1918,7 +2033,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           >
             <SectionHead
               icon="ti-calendar-event"
-              tone="purple"
+              tone="blue"
               title={form.fastTrack ? "Fast-Track Submission" : "Preferred Schedule"}
               subtitle={
                 form.fastTrack
@@ -3099,19 +3214,108 @@ function stepLabel(step: ProgressStep) {
   return "Preferred Schedule";
 }
 
-function QueueSkeleton() {
+function QueueLoadingState() {
   return (
-    <div className="sub-queue-skeleton" aria-label="Loading submissions">
-      {Array.from({ length: 4 }).map((_, index) => (
-        <div className="sub-queue-skeleton-card" key={index}>
-          <span className="sub-skel-line wide sub-shimmer"></span>
-          <span className="sub-skel-line sub-shimmer"></span>
-          <div className="sub-skel-thumbs">
-            <span className="sub-skel-thumb sub-shimmer"></span>
-            <span className="sub-skel-thumb sub-shimmer"></span>
-          </div>
+    <div
+      className="sub-queue-loading"
+      role="status"
+      aria-label="Loading submissions"
+    >
+      <div className="dc-dot-triangle-container">
+        <div className="dc-dot-triangle-label">
+          <span>Loading</span>
+          <span className="dc-dot-triangle-label-dots">
+            <span className="dc-dot-triangle-dot-char">.</span>
+            <span className="dc-dot-triangle-dot-char">.</span>
+            <span className="dc-dot-triangle-dot-char">.</span>
+          </span>
         </div>
-      ))}
+        <div className="loader-stage" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className="loader-dots" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function SubmissionCardMedia({
+  thumbnail,
+  mediaCount = 0,
+  detailsLoaded = false,
+}: {
+  thumbnail?: SavedMediaAsset;
+  mediaCount?: number;
+  detailsLoaded?: boolean;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
+
+  // If there is media attached (mediaCount > 0) but the thumbnail is still being fetched from backend:
+  if (mediaCount > 0 && !thumbnail?.storageUrl && !detailsLoaded) {
+    return (
+      <div className="sub-fb-media-container">
+        <div className="sub-fb-media-loader" aria-label="Loading media">
+          <div className="sub-fb-spinner"></div>
+        </div>
+      </div>
+    );
+  }
+
+  // If there is no media attached or media failed to load:
+  if (!thumbnail?.storageUrl || hasError || mediaCount === 0) {
+    return (
+      <div className="sub-fb-media-container">
+        <div className="sub-fb-no-media">
+          <i className="ti ti-photo"></i>
+          <span>No media attached</span>
+        </div>
+      </div>
+    );
+  }
+
+  const isImg = isImageFileType(thumbnail.fileType);
+  const isVid = isVideoFileType(thumbnail.fileType);
+
+  return (
+    <div className="sub-fb-media-container">
+      {!loaded && (
+        <div className="sub-fb-media-loader" aria-label="Loading media">
+          <div className="sub-fb-spinner"></div>
+        </div>
+      )}
+      {isImg ? (
+        <img
+          src={thumbnail.storageUrl}
+          alt=""
+          className={`sub-fb-media-img${loaded ? " is-loaded" : " is-loading"}`}
+          onLoad={() => setLoaded(true)}
+          onError={() => {
+            setLoaded(true);
+            setHasError(true);
+          }}
+          loading="lazy"
+        />
+      ) : isVid ? (
+        <video
+          src={thumbnail.storageUrl}
+          muted
+          playsInline
+          preload="metadata"
+          className={`sub-fb-media-video${loaded ? " is-loaded" : " is-loading"}`}
+          onLoadedData={() => setLoaded(true)}
+          onError={() => {
+            setLoaded(true);
+            setHasError(true);
+          }}
+        />
+      ) : null}
+      {(mediaCount ?? 0) > 1 && loaded && (
+        <span className="sub-fb-media-badge">
+          <i className="ti ti-photo-copy"></i>
+          +{(mediaCount ?? 0) - 1} photos
+        </span>
+      )}
     </div>
   );
 }
@@ -3236,13 +3440,7 @@ function ConfirmModal({
   );
 }
 
-function BrandMark() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2L22 7V17L12 22L2 17V7L12 2Z" />
-    </svg>
-  );
-}
+
 
 function savedAssetToPickerItem(asset: SavedMediaAsset): SubmissionMediaItem {
   const isVideo = ["mp4", "mov", "webm"].includes(asset.fileType.toLowerCase());

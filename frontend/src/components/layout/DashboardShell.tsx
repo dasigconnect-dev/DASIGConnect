@@ -154,13 +154,6 @@ export default function DashboardShell({
                   <button
                     type="button"
                     className="udrop-item"
-                    onClick={() => navigate('/settings#password')}
-                  >
-                    <i className="ti ti-key"></i> Change Password
-                  </button>
-                  <button
-                    type="button"
-                    className="udrop-item"
                     onClick={() => navigate('/settings#account')}
                   >
                     <i className="ti ti-settings"></i> Account Settings
@@ -228,13 +221,6 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       visible: isAdministrator,
     },
     {
-      id: 'user-management',
-      icon: 'ti ti-users',
-      label: 'User Management',
-      path: '/admin/user-management/invitations',
-      visible: isAdministrator,
-    },
-    {
       id: 'media-repository',
       icon: 'ti ti-photo',
       label: 'Media Repository',
@@ -256,13 +242,6 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       visible: true,
     },
     {
-      id: 'resolution',
-      icon: 'ti ti-alert-triangle',
-      label: 'Resolution Center',
-      path: '/admin/resolution',
-      visible: isAdministrator,
-    },
-    {
       id: 'analytics',
       icon: 'ti ti-chart-bar',
       label: 'Analytics',
@@ -280,7 +259,7 @@ function groupDashboardNavItems(items: DashboardNavItem[]) {
     },
     {
       label: 'Operations',
-      items: items.filter((item) => ['institution-management', 'user-management', 'scheduler', 'resolution', 'analytics'].includes(item.id)),
+      items: items.filter((item) => ['institution-management', 'scheduler', 'analytics'].includes(item.id)),
     },
   ].filter((group) => group.items.length > 0)
 }
