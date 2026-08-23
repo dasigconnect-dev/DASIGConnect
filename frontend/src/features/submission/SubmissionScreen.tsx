@@ -40,6 +40,7 @@ import BrandedSelect from "../../components/ui/BrandedSelect";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import AiCaptionButton from "./components/AiCaptionButton";
 import AiCaptionSuggestion from "./components/AiCaptionSuggestion";
+import AlbumCombobox from "../../components/ui/AlbumCombobox";
 import "../../styles/dasig-loader.css";
 
 interface SubmissionScreenProps {
@@ -355,6 +356,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const selectedPostingIsDefault = Boolean(
     selectedPostingInstitution && isDefaultInstitution(selectedPostingInstitution),
   );
+  
+  const [existingAlbums, setExistingAlbums] = useState<string[]>([
+    "2026 Hackathons", 
+    "DOST Region 7 Announcements", 
+    "Webinars"
+  ]); //replace with api call instead of dummy data
 
   const queued = useMemo(() => {
     const byFilter = (() => {
@@ -2219,34 +2226,22 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   : "Assign the media album, add media tags, then choose the preferred publishing slot."
               }
             />
-            <Field
-              label="Album Assignment"
-              action={
-                !isReadOnlySubmission ? (
-                  <button
-                    className="sub-template-clear"
-                    type="button"
-                    onClick={applyAutoAlbum}
-                  >
-                    Auto-Match
-                  </button>
-                ) : undefined
-              }
+            <Field 
+              label="Album Assignment" 
+              tooltip="Select an existing album, type to create a new one, or let AI auto-match based on your event details."
             >
-              <input
-                ref={albumNameRef}
-                className="sub-finput"
-                readOnly={isReadOnlySubmission}
-                value={form.albumName}
-                onChange={(event) => updateField("albumName", event.target.value)}
-                placeholder="Select or enter album name"
-              />
-              <div className="sub-inline-note">
-                Event Title can be used as the default album when no existing album is selected.
-              </div>
-            </Field>
+                <AlbumCombobox
+                    value={form.albumName}
+                    existingAlbums={existingAlbums}
+                    readOnly={isReadOnlySubmission}
+                    placeholder="Search, select, or create a new album"
+                    onChange={(value) => updateField("albumName", value)}
+                    onAutoMatch={applyAutoAlbum}
+                />
+                </Field>
 
-            <Field label="Media Tags">
+            <Field label="Media Tags"
+              tooltip="Add relevant media tags to help categorize and search for this content later.">
               <div className="sub-hashtag-entry">
                 <input
                   ref={mediaTagsInputRef}
@@ -2259,7 +2254,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                       addMediaTag();
                     }
                   }}
-                  placeholder="Add media tag"
+                  placeholder="Add album tag"
                   disabled={isReadOnlySubmission}
                 />
                 <button
@@ -2285,39 +2280,74 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     </button>
                   ))
                 ) : (
-                  <span className="sub-muted-text">Event title will appear here as the default media tag.</span>
+                  <span className="sub-muted-text">Event title will appear here as the default album tag.</span>
                 )}
               </div>
             </Field>
 
             {!isReadOnlySubmission && (
-              <label className="sub-fast-track-toggle">
-                <input
-                  type="checkbox"
-                  checked={form.fastTrack}
-                  onChange={(event) => updateFastTrack(event.target.checked)}
-                />
-                <span>
-                  <strong>Live Event Fast-Track</strong>
-                  <small>Use caption and media only for urgent live-event approval.</small>
-                </span>
-              </label>
-            )}
-            {form.fastTrack && (
-              <>
-                <Field label="Active Event Name">
-                  <input
-                    className="sub-finput"
-                    readOnly={isReadOnlySubmission}
-                    value={form.liveEventName}
-                    onChange={(event) => updateField("liveEventName", event.target.value)}
-                    placeholder="Optional event name for album association"
-                  />
-                </Field>
-                <div className="sub-inline-note">
-                  Fast-Track submissions keep your post details and media, skip the scheduled slot, and move as urgent in the approval queue.
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", marginTop: "24px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, color: "#374151", fontSize: "14px" }}>
+                    Publishing Mode
+                    <i
+                        className="ti ti-info-circle"
+                        title="Choose 'Schedule' to plan a future post, or 'Live Event' to bypass the calendar queue for urgent, immediate publication."
+                        style={{ color: "#9ca3af", cursor: "help", fontSize: "15px" }}
+                    />
+                    </div>
+                    
+                    {/* Segmented Pill Toggle */}
+                    <div style={{ display: "flex", background: "#f3f4f6", padding: "4px", borderRadius: "8px", gap: "4px" }}>
+                    <button
+                        type="button"
+                        style={{
+                        padding: "6px 12px",
+                        border: "none",
+                        borderRadius: "6px",
+                        background: !form.fastTrack ? "#fff" : "transparent",
+                        color: !form.fastTrack ? "#111827" : "#6b7280",
+                        boxShadow: !form.fastTrack ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                        fontWeight: !form.fastTrack ? 600 : 500,
+                        fontSize: "13px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        transition: "all 0.2s"
+                        }}
+                        onClick={() => updateFastTrack(false)}
+                    >
+                        <i className="ti ti-calendar" /> Schedule
+                    </button>
+                    <button
+                        type="button"
+                        style={{
+                        padding: "6px 12px",
+                        border: "none",
+                        borderRadius: "6px",
+                        background: form.fastTrack ? "#fff" : "transparent",
+                        color: form.fastTrack ? "#111827" : "#6b7280",
+                        boxShadow: form.fastTrack ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                        fontWeight: form.fastTrack ? 600 : 500,
+                        fontSize: "13px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        transition: "all 0.2s"
+                        }}
+                        onClick={() => updateFastTrack(true)}
+                    >
+                        <i className="ti ti-bolt" style={{ color: form.fastTrack ? "#eab308" : "inherit" }} /> Live Event
+                    </button>
+                    </div>
                 </div>
-              </>
+                )}
+            {form.fastTrack && (
+                <div className="sub-inline-note" style={{ marginTop: "16px", marginBottom: "8px" }}>
+                    <i className="ti ti-info-circle" style={{ marginRight: "6px" }}></i>
+                    Fast-Track submissions keep your post details and media, skip the scheduled slot, and move as urgent in the approval queue.
+                </div>
             )}
             {!form.fastTrack && (
               <>
@@ -2764,18 +2794,29 @@ function Field({
   count,
   tone,
   action,
+  tooltip,
   children,
 }: {
   label: string;
   count?: string;
   tone?: string;
   action?: ReactNode;
+  tooltip?: string;
   children: ReactNode;
 }) {
   return (
     <label className="sub-fgroup">
       <span className="sub-flabel">
-        {label}
+        <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          {label}
+          {tooltip && (
+            <i 
+              className="ti ti-info-circle" 
+              title={tooltip} 
+              style={{ color: "#9ca3af", cursor: "help", fontSize: "15px" }} 
+            />
+          )}
+        </span>
         <span className="sub-flabel-right">
           {count && (
             <span className={`sub-flabel-count ${tone || ""}`}>{count}</span>
