@@ -31,7 +31,11 @@ public class SubmissionResponseDto {
     private Instant updatedAt;
     private List<MediaAssetSummaryDto> mediaAssets;
     private String category;
+    private String templateId;
+    private boolean fastTrack;
+    private String liveEventName;
     private List<String> tags;
+    private boolean requiresManualPublishing;
 
     public static SubmissionResponseDto from(Submission s, List<MediaAssetSummaryDto> mediaAssets) {
         SubmissionResponseDto dto = new SubmissionResponseDto();
@@ -55,9 +59,13 @@ public class SubmissionResponseDto {
         dto.updatedAt = s.getUpdatedAt();
         dto.mediaAssets = mediaAssets;
         dto.category = s.getCategory();
+        dto.templateId = s.getTemplateId();
+        dto.fastTrack = s.isFastTrack();
+        dto.liveEventName = s.getLiveEventName();
         dto.tags = (s.getTags() == null || s.getTags().isBlank())
                 ? List.of()
                 : Arrays.stream(s.getTags().split(",")).map(String::trim).filter(t -> !t.isEmpty()).toList();
+        dto.requiresManualPublishing = s.isRequiresManualPublishing();
         return dto;
     }
 
@@ -141,7 +149,23 @@ public class SubmissionResponseDto {
         return category;
     }
 
+    public String getTemplateId() {
+        return templateId;
+    }
+
+    public boolean isFastTrack() {
+        return fastTrack;
+    }
+
+    public String getLiveEventName() {
+        return liveEventName;
+    }
+
     public List<String> getTags() {
         return tags;
+    }
+
+    public boolean isRequiresManualPublishing() {
+        return requiresManualPublishing;
     }
 }

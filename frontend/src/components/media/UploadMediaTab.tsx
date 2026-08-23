@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { SubmissionMediaItem } from "../../types/media";
 
 const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/quicktime", "video/webm"];
@@ -23,14 +23,18 @@ function fileToItem(file: File): SubmissionMediaItem {
 
 export default function UploadMediaTab({ onFilesAdded, disabled }: UploadMediaTabProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [errors, setErrors] = useState<string[]>([]);
 
   function processFiles(fileList: FileList | null) {
     if (!fileList || disabled) return;
     const valid: File[] = [];
     const oversized: string[] = [];
+    const unsupported: string[] = [];
 
     Array.from(fileList).forEach((file) => {
-      if (file.size > MAX_MB * 1024 * 1024) {
+      if (!ACCEPTED_TYPES.includes(file.type.toLowerCase())) {
+        unsupported.push(file.name);
+      } else if (file.size > MAX_MB * 1024 * 1024) {
         oversized.push(file.name);
       } else {
         valid.push(file);
@@ -39,8 +43,17 @@ export default function UploadMediaTab({ onFilesAdded, disabled }: UploadMediaTa
 
     if (oversized.length > 0) {
       // Surface in DOM — parent toast handles this
-      console.warn(`Files exceed ${MAX_MB} MB:`, oversized.join(", "));
+      // Displayed below with the exact affected filenames.
     }
+
+    const nextErrors: string[] = [];
+    if (unsupported.length > 0) nextErrors.push(
+      `${unsupported.join(", ")}: unsupported format. Accepted types: JPEG, PNG, WebP, GIF, MP4, MOV, WebM.`,
+    );
+    if (oversized.length > 0) nextErrors.push(
+      `${oversized.join(", ")}: file size exceeds the ${MAX_MB} MB limit.`,
+    );
+    setErrors(nextErrors);
 
     if (valid.length > 0) {
       onFilesAdded(valid.map(fileToItem));
@@ -98,6 +111,11 @@ export default function UploadMediaTab({ onFilesAdded, disabled }: UploadMediaTa
           <span>WEBM</span>
         </div>
       </label>
+      {errors.length > 0 && (
+        <div className="umt-errors" role="alert">
+          {errors.map((error) => <p key={error}>{error}</p>)}
+        </div>
+      )}
     </div>
   );
 }

@@ -132,6 +132,7 @@
 .sms-strip::-webkit-scrollbar-thumb { background: var(--mp-border); border-radius: 2px; }
 
 .sms-item {
+  position: relative;
   flex-shrink: 0;
   width: 170px;
   display: flex;
@@ -159,12 +160,69 @@
   cursor: default;
 }
 
+.sms-caption-preview {
+  width: 100%;
+  min-height: 30px;
+  border: none;
+  border-top: 1px solid var(--mp-border);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--mp-muted);
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  text-align: left;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.sms-caption-preview.has-caption {
+  color: var(--mp-text);
+  background: #fff;
+}
+
+.sms-caption-preview .ti {
+  color: var(--mp-blue);
+  font-size: 13px;
+}
+
+.sms-caption-preview span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sms-caption-preview:disabled {
+  cursor: default;
+}
+
+.sms-caption-preview:focus-visible {
+  outline: 3px solid rgba(24, 119, 242, 0.28);
+  outline-offset: -3px;
+}
+
 .sms-thumb {
   position: relative;
   width: 170px;
   height: 118px;
   background: var(--mp-border);
   overflow: hidden;
+}
+
+.sms-thumb-btn {
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  display: block;
+  text-align: inherit;
+}
+
+.sms-thumb-btn:focus-visible {
+  outline: 3px solid rgba(24, 119, 242, 0.28);
+  outline-offset: 2px;
 }
 
 .sms-img {
@@ -987,4 +1045,29 @@
   .skeleton-line {
     animation: none;
   }
+}
+
+.umt-errors {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.umt-errors p {
+  margin: 0;
+}
+
+.mp-auto-suggestions {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #f8fbff;
 }

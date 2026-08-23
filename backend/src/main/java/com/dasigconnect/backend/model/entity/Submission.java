@@ -64,6 +64,15 @@ public class Submission {
     @Column(name = "tags", columnDefinition = "text")
     private String tags;
 
+    @Column(name = "template_id", length = 100)
+    private String templateId;
+
+    @Column(name = "fast_track", nullable = false)
+    private boolean fastTrack;
+
+    @Column(name = "live_event_name", length = 255)
+    private String liveEventName;
+
     @Column(name = "validator_remarks", columnDefinition = "text")
     private String validatorRemarks;
 
@@ -84,6 +93,9 @@ public class Submission {
 
     @Column(name = "published_manual_notes", columnDefinition = "text")
     private String publishedManualNotes;
+
+    @Column(name = "requires_manual_publishing", nullable = false)
+    private boolean requiresManualPublishing;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -208,6 +220,15 @@ public class Submission {
     public String getTags() { return tags; }
     public void setTags(String tags) { this.tags = tags; }
 
+    public String getTemplateId() { return templateId; }
+    public void setTemplateId(String templateId) { this.templateId = templateId; }
+
+    public boolean isFastTrack() { return fastTrack; }
+    public void setFastTrack(boolean fastTrack) { this.fastTrack = fastTrack; }
+
+    public String getLiveEventName() { return liveEventName; }
+    public void setLiveEventName(String liveEventName) { this.liveEventName = liveEventName; }
+
     public String getValidatorRemarks() {
         return validatorRemarks;
     }
@@ -262,6 +283,14 @@ public class Submission {
 
     public void setPublishedManualNotes(String publishedManualNotes) {
         this.publishedManualNotes = publishedManualNotes;
+    }
+
+    public boolean isRequiresManualPublishing() {
+        return requiresManualPublishing;
+    }
+
+    public void setRequiresManualPublishing(boolean requiresManualPublishing) {
+        this.requiresManualPublishing = requiresManualPublishing;
     }
 
     public Instant getCreatedAt() {

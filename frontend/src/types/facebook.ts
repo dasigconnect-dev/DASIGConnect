@@ -29,6 +29,7 @@ export interface FacebookPreviewDetailsData {
   completionLabel: string;
   category: string;
   institution: string;
+  liveEventName?: string;
   tags: string[];
   schedule: string;
   fileCount: number;
