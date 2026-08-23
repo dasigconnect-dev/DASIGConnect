@@ -41,6 +41,9 @@ public class Institution {
     @Column(nullable = false, length = 30)
     private InstitutionStatus status = InstitutionStatus.inactive;
 
+    @Column(name = "is_protected", nullable = false)
+    private boolean isProtected = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -124,6 +127,14 @@ public class Institution {
 
     public void setStatus(InstitutionStatus status) {
         this.status = status;
+    }
+
+    public boolean isProtected() {
+        return isProtected;
+    }
+
+    public void setProtected(boolean isProtected) {
+        this.isProtected = isProtected;
     }
 
     public Instant getCreatedAt() {

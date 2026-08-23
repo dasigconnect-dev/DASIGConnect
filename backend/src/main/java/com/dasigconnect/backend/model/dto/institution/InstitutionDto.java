@@ -41,6 +41,7 @@ public class InstitutionDto {
     private InstitutionStatus status;
     private boolean hasLogo;
     private Instant logoUpdatedAt;
+    private boolean isProtected;
 
     // ── Constructors ──────────────────────────────────────────────────────────
     public InstitutionDto() {
@@ -48,6 +49,11 @@ public class InstitutionDto {
 
     public InstitutionDto(UUID id, String name, String institutionCode, String emailDomain,
             InstitutionStatus status, boolean hasLogo, Instant logoUpdatedAt) {
+        this(id, name, institutionCode, emailDomain, status, hasLogo, logoUpdatedAt, false);
+    }
+
+    public InstitutionDto(UUID id, String name, String institutionCode, String emailDomain,
+            InstitutionStatus status, boolean hasLogo, Instant logoUpdatedAt, boolean isProtected) {
         this.id = id;
         this.name = name;
         this.institutionCode = institutionCode;
@@ -55,6 +61,7 @@ public class InstitutionDto {
         this.status = status;
         this.hasLogo = hasLogo;
         this.logoUpdatedAt = logoUpdatedAt;
+        this.isProtected = isProtected;
     }
 
     // ── Static Factory ────────────────────────────────────────────────────────
@@ -78,7 +85,8 @@ public class InstitutionDto {
                 institution.getEmailDomain(),
                 institution.getStatus(),
                 institution.getLogoData() != null && institution.getLogoData().length > 0,
-                institution.getLogoUpdatedAt()
+                institution.getLogoUpdatedAt(),
+                institution.isProtected()
         );
     }
 
@@ -137,6 +145,14 @@ public class InstitutionDto {
 
     public void setLogoUpdatedAt(Instant logoUpdatedAt) {
         this.logoUpdatedAt = logoUpdatedAt;
+    }
+
+    public boolean isProtected() {
+        return isProtected;
+    }
+
+    public void setProtected(boolean isProtected) {
+        this.isProtected = isProtected;
     }
 
     @Override

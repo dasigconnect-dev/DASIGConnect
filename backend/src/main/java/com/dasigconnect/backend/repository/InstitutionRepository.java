@@ -13,6 +13,8 @@ public interface InstitutionRepository extends JpaRepository<Institution, UUID> 
 
     Optional<Institution> findByCode(String code);
 
+    Optional<Institution> findByNameIgnoreCase(String name);
+
     boolean existsByCode(String code);
 
     boolean existsByEmailDomain(String emailDomain);

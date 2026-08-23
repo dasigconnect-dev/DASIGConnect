@@ -1,0 +1,143 @@
+package com.dasigconnect.backend.service;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import static org.mockito.Mockito.when;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.dasigconnect.backend.model.dto.calendar.CalendarEventDto;
+import com.dasigconnect.backend.model.entity.Institution;
+import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionStatus;
+import com.dasigconnect.backend.repository.InstitutionRepository;
+import com.dasigconnect.backend.repository.SubmissionRepository;
+import com.dasigconnect.backend.security.JwtUserDetails;
+
+@ExtendWith(MockitoExtension.class)
+class CalendarServiceTest {
+
+    @Mock
+    private SubmissionRepository submissionRepository;
+
+    @Mock
+    private InstitutionRepository institutionRepository;
+
+    @InjectMocks
+    private CalendarService calendarService;
+
+    private UUID myInstId;
+    private UUID dasigCentralVisayasId;
+    private UUID otherInstId;
+
+    private Institution myInstitution;
+    private Institution dasigInstitution;
+    private Institution otherInstitution;
+
+    @BeforeEach
+    void setUp() {
+        myInstId = UUID.randomUUID();
+        dasigCentralVisayasId = UUID.randomUUID();
+        otherInstId = UUID.randomUUID();
+
+        myInstitution = new Institution();
+        myInstitution.setId(myInstId);
+        myInstitution.setName("Cebu Institute of Technology - University");
+        myInstitution.setCode("CIT-U");
+
+        dasigInstitution = new Institution();
+        dasigInstitution.setId(dasigCentralVisayasId);
+        dasigInstitution.setName("DASIG Central Visayas");
+        dasigInstitution.setCode("DASIG-CV");
+        dasigInstitution.setProtected(true);
+
+        otherInstitution = new Institution();
+        otherInstitution.setId(otherInstId);
+        otherInstitution.setName("University of the Philippines Cebu");
+        otherInstitution.setCode("UP-Cebu");
+    }
+
+    private Submission createSubmission(UUID id, String title, Institution institution, SubmissionStatus status) {
+        Submission s = new Submission();
+        s.setId(id);
+        s.setEventTitle(title);
+        s.setInstitution(institution);
+        s.setStatus(status);
+        s.setCaption("Event caption for " + title);
+        s.setDescription("Event description for " + title);
+        s.setScheduledAt(Instant.parse("2026-08-25T10:00:00Z"));
+        return s;
+    }
+
+    private JwtUserDetails createPrincipal(UUID userId, String role, UUID instId) {
+        return new JwtUserDetails(
+                userId,
+                "user@example.com",
+                role,
+                instId);
+    }
+
+    @Test
+    @DisplayName("Super Administrator receives full event details for all institutions")
+    void getCalendarEvents_asSuperAdmin_returnsFullEventsForAll() {
+        Submission s1 = createSubmission(UUID.randomUUID(), "CIT Tech Fest", myInstitution, SubmissionStatus.scheduled);
+        Submission s2 = createSubmission(UUID.randomUUID(), "UP Hackathon", otherInstitution, SubmissionStatus.scheduled);
+        when(submissionRepository.findAllWithScheduledSlot()).thenReturn(List.of(s1, s2));
+
+        JwtUserDetails adminUser = createPrincipal(UUID.randomUUID(), "super_administrator", null);
+        List<CalendarEventDto> results = calendarService.getCalendarEvents(adminUser);
+
+        assertThat(results).hasSize(2);
+        assertThat(results.get(0).getTitle()).isEqualTo("CIT Tech Fest");
+        assertThat(results.get(0).getCaption()).isEqualTo("Event caption for CIT Tech Fest");
+        assertThat(results.get(1).getTitle()).isEqualTo("UP Hackathon");
+    }
+
+    @Test
+    @DisplayName("Contributor receives full details for own institution and DASIG Central Visayas, masked for other institutions")
+    void getCalendarEvents_asContributor_returnsFullForOwnAndDasig_maskedForOthers() {
+        Submission mySub = createSubmission(UUID.randomUUID(), "CIT Tech Fest", myInstitution, SubmissionStatus.scheduled);
+        Submission dasigSub = createSubmission(UUID.randomUUID(), "DASIG Regional Assembly", dasigInstitution, SubmissionStatus.scheduled);
+        Submission otherSub = createSubmission(UUID.randomUUID(), "UP Hackathon", otherInstitution, SubmissionStatus.scheduled);
+
+        when(institutionRepository.findByNameIgnoreCase("DASIG Central Visayas")).thenReturn(Optional.of(dasigInstitution));
+        when(submissionRepository.findAllCalendarVisibleSlots()).thenReturn(List.of(mySub, dasigSub, otherSub));
+
+        JwtUserDetails contributorUser = createPrincipal(UUID.randomUUID(), "contributor", myInstId);
+        List<CalendarEventDto> results = calendarService.getCalendarEvents(contributorUser);
+
+        assertThat(results).hasSize(3);
+
+        // Own institution: full details
+        CalendarEventDto myEvent = results.stream().filter(e -> e.getId().equals(mySub.getId())).findFirst().orElseThrow();
+        assertThat(myEvent.getTitle()).isEqualTo("CIT Tech Fest");
+        assertThat(myEvent.getCaption()).isEqualTo("Event caption for CIT Tech Fest");
+        assertThat(myEvent.getDescription()).isEqualTo("Event description for CIT Tech Fest");
+        assertThat(myEvent.getInstitutionId()).isEqualTo(myInstId);
+
+        // DASIG Central Visayas: full details
+        CalendarEventDto dasigEvent = results.stream().filter(e -> e.getId().equals(dasigSub.getId())).findFirst().orElseThrow();
+        assertThat(dasigEvent.getTitle()).isEqualTo("DASIG Regional Assembly");
+        assertThat(dasigEvent.getCaption()).isEqualTo("Event caption for DASIG Regional Assembly");
+        assertThat(dasigEvent.getDescription()).isEqualTo("Event description for DASIG Regional Assembly");
+        assertThat(dasigEvent.getInstitutionId()).isEqualTo(dasigCentralVisayasId);
+
+        // Other institution: masked (timing-only, content masked)
+        CalendarEventDto otherEvent = results.stream().filter(e -> e.getId().equals(otherSub.getId())).findFirst().orElseThrow();
+        assertThat(otherEvent.getTitle()).isNull();
+        assertThat(otherEvent.getCaption()).isNull();
+        assertThat(otherEvent.getDescription()).isNull();
+        assertThat(otherEvent.getContributorName()).isNull();
+        assertThat(otherEvent.getInstitutionId()).isEqualTo(otherInstId);
+        assertThat(otherEvent.getScheduledAt()).isEqualTo(Instant.parse("2026-08-25T10:00:00Z"));
+    }
+}
