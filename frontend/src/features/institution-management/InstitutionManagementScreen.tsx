@@ -76,6 +76,10 @@ interface InstitutionManagementLocationState {
 
 type InstitutionStatusFilter = 'all' | 'active' | 'pending'
 
+const institutionsMemoryCache: {
+  data: InstitutionWithStats[] | null;
+} = { data: null }
+
 export default function InstitutionManagementScreen({ user }: InstitutionManagementScreenProps) {
   const toast = useToast()
   const location = useLocation()
@@ -87,8 +91,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const [showInstActionsMenu, setShowInstActionsMenu] = useState(false)
 
   // List view
-  const [institutions, setInstitutions] = useState<InstitutionWithStats[]>([])
-  const [listLoading, setListLoading] = useState(true)
+  const [institutions, setInstitutions] = useState<InstitutionWithStats[]>(() => institutionsMemoryCache.data ?? [])
+  const [listLoading, setListLoading] = useState(() => institutionsMemoryCache.data === null)
   const [listError, setListError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [institutionStatusFilter, setInstitutionStatusFilter] =
@@ -167,7 +171,9 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
 
   useEffect(() => {
     if (user.role !== 'administrator' && user.role !== 'super_administrator') return
-    setListLoading(true)
+    if (!institutionsMemoryCache.data) {
+      setListLoading(true)
+    }
     setListError('')
     listInstitutions()
       .then((response) => {
@@ -184,12 +190,13 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
           statsLoading: true,
           isProtected: item.isProtected,
         }))
+        institutionsMemoryCache.data = base
         setInstitutions(base)
         base.forEach((inst) => {
           Promise.all([getUserCounts(inst.id), getPendingInvitationCount(inst.id)])
             .then(([countsRes, pendingRes]) => {
-              setInstitutions((current) =>
-                current.map((i) =>
+              setInstitutions((current) => {
+                const next = current.map((i) =>
                   i.id === inst.id
                     ? {
                       ...i,
@@ -199,13 +206,17 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
                       statsLoading: false,
                     }
                     : i,
-                ),
-              )
+                )
+                institutionsMemoryCache.data = next
+                return next
+              })
             })
             .catch(() => {
-              setInstitutions((current) =>
-                current.map((i) => (i.id === inst.id ? { ...i, statsLoading: false } : i)),
-              )
+              setInstitutions((current) => {
+                const next = current.map((i) => (i.id === inst.id ? { ...i, statsLoading: false } : i))
+                institutionsMemoryCache.data = next
+                return next
+              })
             })
         })
       })

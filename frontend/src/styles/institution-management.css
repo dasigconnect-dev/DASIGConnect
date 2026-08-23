@@ -286,12 +286,12 @@
   display: grid;
   grid-template-columns: var(--im-registry-columns);
   align-items: center;
-  column-gap: 20px;
-  padding: 0 20px;
+  column-gap: 24px;
+  padding: 0 24px;
 }
 
 .im-registry-header {
-  min-height: 40px;
+  min-height: 48px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   background: var(--d-blue, #1877f2);
   color: #ffffff;
@@ -312,10 +312,11 @@
 
 .im-inst-row {
   position: relative;
-  min-height: 70px;
+  min-height: 76px;
+  padding: 18px 24px;
   border-bottom: 1px solid var(--d-border);
   color: var(--d-text);
-  font-size: 13px;
+  font-size: 13.5px;
   transition: background 150ms ease;
 }
 
