@@ -68,20 +68,27 @@
 }
 
 .im-registry-controls {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+  animation: um-section-in 200ms ease-out both;
+}
+
+.im-toolbar-card {
+  border: 1px solid var(--d-border);
+  border-radius: 12px;
+  background: var(--d-surface, #ffffff);
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(12, 29, 61, 0.04);
   animation: um-section-in 200ms ease-out both;
 }
 
 .im-registry-toolbar {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--d-border);
-  border-radius: var(--r-md, 10px);
-  background: var(--d-surface);
-  box-shadow: 0 1px 3px rgba(10, 22, 40, 0.05);
-  border-bottom: 1px solid var(--d-border);
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  background: var(--d-surface, #ffffff);
+  border-bottom: none;
 }
 
 .im-registry-toolbar-header {
@@ -196,7 +203,7 @@
   width: min(100%, 320px);
   flex: 0 0 320px;
   margin-left: auto;
-  margin-bottom: 8px;
+  margin-bottom: 0;
 }
 
 .im-search-icon {
@@ -284,13 +291,13 @@
 }
 
 .im-registry-header {
-  min-height: 38px;
-  border-bottom: 1px solid var(--d-border);
-  background: #f8fafc;
-  color: #718096;
-  font-size: 10.5px;
+  min-height: 40px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: var(--d-blue, #1877f2);
+  color: #ffffff;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -689,6 +696,31 @@
 .im-clear-btn:hover {
   background: #eef5ff;
   color: #1460cc;
+}
+
+/* ---- Detail view back button ---- */
+.im-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--d-blue);
+  font-family: var(--ff-body);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+  transition: color 150ms ease, transform 200ms ease;
+}
+
+.im-back-btn i {
+  font-size: 15px;
+}
+
+.im-back-btn:hover {
+  color: #1565d8;
+  transform: translateX(-4px);
 }
 
 /* ---- Detail view breadcrumb ---- */

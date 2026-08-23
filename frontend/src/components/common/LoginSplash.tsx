@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { User } from '../../types/auth.types'
 import { getGreetingName } from '../../lib/userIdentity'
+import '../../styles/dasig-loader.css'
 
 interface LoginSplashProps {
   user: User | null
@@ -63,10 +64,9 @@ export default function LoginSplash({ user, visible }: LoginSplashProps) {
             </span>
           )}
         </div>
-        <i
-          className="ti ti-loader-2 dc-splash-progress"
-          aria-hidden="true"
-        />
+        <div className="dc-splash-loader-stage">
+          <div className="loader-dots" />
+        </div>
       </div>
     </div>
   )

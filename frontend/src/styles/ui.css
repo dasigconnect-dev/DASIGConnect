@@ -264,6 +264,12 @@
   margin: 22px 0;
 }
 
+.dc-splash-loader-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 6px;
+}
 .dc-splash-progress {
   width: 48px;
   height: 48px;

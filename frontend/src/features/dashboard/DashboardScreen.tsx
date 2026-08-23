@@ -58,6 +58,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
   const [institutions, setInstitutions] = useState<
     { id: string; name: string; code: string; emailDomain: string }[]
   >([]);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(true);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
     submissions: [],
     contributors: 0,
@@ -95,6 +96,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
 
   useEffect(() => {
     if (!user) return;
+    setLoadingSubmissions(true);
     listSubmissions()
       .then((response) => {
         setDashboardStats((current) => ({
@@ -104,6 +106,9 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
       })
       .catch(() => {
         setDashboardStats((current) => ({ ...current, submissions: [] }));
+      })
+      .finally(() => {
+        setLoadingSubmissions(false);
       });
   }, [user?.role, user?.inst]);
 
@@ -264,8 +269,19 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
           ))}
         </div>
 
-        <div className="section-title">
-          <i className="ti ti-history"></i> Recent Activity
+        <div className="section-header-row">
+          <div className="section-title" style={{ margin: 0 }}>
+            <i className="ti ti-history"></i> Recent Activity
+          </div>
+          {dashboardStats.submissions.length > 0 && (
+            <button
+              type="button"
+              className="section-link-btn"
+              onClick={() => navigate("/dashboard/recent-activity")}
+            >
+              View All <i className="ti ti-arrow-right" style={{ fontSize: 13 }}></i>
+            </button>
+          )}
         </div>
         <div className="card-wrap">
           <table className="data-table" id="activity-table">
@@ -278,47 +294,87 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
               </tr>
             </thead>
             <tbody id="activity-body">
-              {activityForRole(user, dashboardStats.submissions, institutions).length === 0 ? (
+              {loadingSubmissions ? (
+                Array.from({ length: 5 }).map((_, index) => (
+                  <tr key={`skel-row-${index}`} className="dash-skeleton-row">
+                    <td>
+                      <div className="dash-skeleton dash-skeleton-line is-title"></div>
+                      <br />
+                      <div className="dash-skeleton dash-skeleton-line is-sub"></div>
+                    </td>
+                    <td>
+                      <div className="dash-skeleton dash-skeleton-line is-inst"></div>
+                    </td>
+                    <td>
+                      <div className="dash-skeleton dash-skeleton-line is-date"></div>
+                    </td>
+                    <td>
+                      <div className="dash-skeleton dash-skeleton-line is-pill"></div>
+                    </td>
+                  </tr>
+                ))
+              ) : activityForRole(user, dashboardStats.submissions, institutions).length === 0 ? (
                 <tr>
                   <td
                     colSpan={4}
                     style={{
                       textAlign: "center",
-                      padding: 28,
+                      padding: "36px 20px",
                       color: "var(--d-muted)",
                       fontSize: 13,
                     }}
                   >
-                    <i
-                      className="ti ti-photo-off"
+                    <div
                       style={{
-                        fontSize: 28,
-                        display: "block",
-                        marginBottom: 8,
-                        opacity: 0.4,
+                        width: 44,
+                        height: 44,
+                        borderRadius: "50%",
+                        background: "#eff6ff",
+                        border: "1px solid #dbeafe",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        margin: "0 auto 12px",
                       }}
-                    ></i>
-                    No submissions yet. Start by submitting your first event
-                    content.
+                    >
+                      <i
+                        className="ti ti-photo-off"
+                        style={{
+                          fontSize: 22,
+                          color: "#3b82f6",
+                        }}
+                      ></i>
+                    </div>
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        color: "#1e293b",
+                        marginBottom: 4,
+                      }}
+                    >
+                      No submissions yet
+                    </div>
+                    <div style={{ color: "#64748b", fontSize: 12.5 }}>
+                      Start by submitting your first event content.
+                    </div>
                   </td>
                 </tr>
               ) : (
                 activityForRole(user, dashboardStats.submissions, institutions).map((row) => (
                   <tr key={`${row.title}-${row.submitted}`}>
                     <td>
-                      <strong>{row.title}</strong>
-                      <br />
-                      <span style={{ fontSize: 11, color: "var(--d-muted)" }}>
-                        {row.subtitle}
-                      </span>
+                      <div className="act-title">{row.title}</div>
+                      {row.subtitle && (
+                        <span className="act-category">{row.subtitle}</span>
+                      )}
                     </td>
-                    <td>{row.institution}</td>
-                    <td>{row.submitted}</td>
+                    <td className="act-institution">{row.institution}</td>
+                    <td className="act-date">{row.submitted}</td>
                     <td>
                       <span className={`status-pill ${row.status.className}`}>
                         <i
                           className={row.status.icon}
-                          style={{ fontSize: 11 }}
+                          style={{ fontSize: 13.5 }}
                         ></i>{" "}
                         {row.status.label}
                       </span>
@@ -436,20 +492,19 @@ function statsForRole(
       },
       {
         icon: "ti ti-users",
-        color: "#16A34A",
+        color: "#1877F2",
         label: "Total Users",
         value: String(stats.contributors + stats.validators),
       },
       {
         icon: "ti ti-clock-pause",
-        color: "#D97706",
+        color: "#1877F2",
         label: "Pending Invites",
         value: String(stats.pendingInvitations),
-        highlight: stats.pendingInvitations > 0,
       },
       {
         icon: "ti ti-calendar-event",
-        color: "#7C3AED",
+        color: "#1877F2",
         label: "Scheduled Posts",
         value: String(scheduledCount),
       },
@@ -465,14 +520,13 @@ function statsForRole(
     return [
       {
         icon: "ti ti-file-time",
-        color: "#D97706",
+        color: "#1877F2",
         label: "Pending Review",
         value: String(reviewCount),
-        highlight: true,
       },
       {
         icon: "ti ti-circle-check",
-        color: "#16A34A",
+        color: "#1877F2",
         label: "Approved This Month",
         value: String(scheduledCount + publishedCount),
       },
@@ -484,7 +538,7 @@ function statsForRole(
       },
       {
         icon: "ti ti-building",
-        color: "#7C3AED",
+        color: "#1877F2",
         label: "Institution",
         value: getInstitutionName(user),
         valueStyle: { fontSize: 16, paddingTop: 6 },
@@ -500,19 +554,19 @@ function statsForRole(
     },
     {
       icon: "ti ti-circle-check",
-      color: "#16A34A",
+      color: "#1877F2",
       label: "Approved",
       value: String(scheduledCount + publishedCount),
     },
     {
       icon: "ti ti-clock",
-      color: "#D97706",
+      color: "#1877F2",
       label: "Under Review",
       value: String(reviewCount),
     },
     {
       icon: "ti ti-brand-facebook",
-      color: "#7C3AED",
+      color: "#1877F2",
       label: "Published",
       value: String(publishedCount),
     },

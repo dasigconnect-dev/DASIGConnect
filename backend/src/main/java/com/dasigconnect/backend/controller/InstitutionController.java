@@ -99,6 +99,17 @@ public class InstitutionController {
         return ResponseEntity.ok(institutionService.listInstitutions());
     }
 
+    /**
+     * GET /api/v1/institutions/public
+     *
+     * Returns all institutions for public display on the login page.
+     */
+    @GetMapping("/public")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<List<InstitutionDto>> listPublicInstitutions() {
+        return ResponseEntity.ok(institutionService.listInstitutions());
+    }
+
     @PutMapping(value = "/{institutionId}/logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<InstitutionDto> updateLogo(
             @PathVariable UUID institutionId,

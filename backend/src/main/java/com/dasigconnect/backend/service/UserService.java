@@ -369,8 +369,8 @@ public class UserService {
     public Map<String, Long> countByRole(UUID institutionId, JwtUserDetails requester) {
         validateInstitutionScope(institutionId, requester);
         return Map.of(
-                "contributors", userRepository.countByInstitutionIdAndRole(institutionId, UserRole.contributor),
-                "validators", userRepository.countByInstitutionIdAndRole(institutionId, UserRole.administrator)
+                "contributors", userRepository.countByInstitutionIdAndRoleAndAccountState(institutionId, UserRole.contributor, UserStatus.active),
+                "validators", userRepository.countByInstitutionIdAndRoleAndAccountState(institutionId, UserRole.administrator, UserStatus.active)
         );
     }
 

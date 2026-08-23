@@ -256,6 +256,15 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     [institutions],
   )
 
+  const activeContributorsCount = useMemo(() => {
+    if (managementLoading && selectedInstitution) {
+      return selectedInstitution.contributors
+    }
+    return managedUsers.filter(
+      (u) => u.role.toLowerCase() === 'contributor' && u.accountState.toLowerCase() === 'active',
+    ).length
+  }, [managementLoading, managedUsers, selectedInstitution])
+
   const trimmedAddName = addForm.name.trim()
   const normalizedAddDomain = normalizeDomain(addForm.domain)
   const addNameIsValid = trimmedAddName.length > 1
@@ -1307,14 +1316,14 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
       <div className="um-screen">
         <main className="um-body" key={selectedInstitution.id}>
           <div className="im-detail-topbar">
-            <nav className="im-breadcrumb" aria-label="Breadcrumb">
-              <button type="button" onClick={handleBackToList}>
-                <i className="ti ti-building" aria-hidden="true"></i>
-                Institution Management
-              </button>
-              <i className="ti ti-chevron-right" aria-hidden="true"></i>
-              <span>{selectedInstitution.name}</span>
-            </nav>
+            <button
+              type="button"
+              className="im-back-btn"
+              onClick={handleBackToList}
+            >
+              <i className="ti ti-arrow-left" aria-hidden="true"></i>
+              Back to Institution Management
+            </button>
             <div className="im-topbar-actions" ref={instActionsMenuRef}>
               <button
                 type="button"
@@ -1410,7 +1419,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             <div className="im-detail-stats">
               <div className="im-detail-stat">
                 <span className="im-detail-stat-val">
-                  {selectedInstitution.contributors}
+                  {activeContributorsCount}
                 </span>
                 <span className="im-detail-stat-lbl">Contributors</span>
               </div>
@@ -1602,7 +1611,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             className="im-add-btn"
             onClick={() => setShowAddModal(true)}
           >
-            <i className="ti ti-building-plus" aria-hidden="true"></i>
+            <i className="ti ti-plus" aria-hidden="true"></i>
             Add institution
           </button>
         </header>
@@ -1612,43 +1621,6 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             <i className="ti ti-alert-circle" aria-hidden="true"></i>
             <div>{listError}</div>
           </div>
-        )}
-
-        {!listLoading && institutions.length > 0 && (
-          <section className="im-registry-controls" aria-labelledby="institution-registry-title">
-            <div className="im-registry-toolbar">
-
-              <div className="im-registry-toolbar-row">
-                <div className="im-status-tabs" role="group" aria-label="Filter institutions by status">
-                  {(['all', 'active', 'pending'] as InstitutionStatusFilter[]).map((status) => (
-                    <button
-                      key={status}
-                      type="button"
-                      className={`im-status-tab im-${status}${institutionStatusFilter === status ? ' is-active' : ''}`}
-                      onClick={() => setInstitutionStatusFilter(status)}
-                      aria-pressed={institutionStatusFilter === status}
-                    >
-                      {status.charAt(0).toUpperCase() + status.slice(1)}
-                      <span className="im-status-tab-count">{institutionStatusCounts[status]}</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="im-search-wrap">
-                  <i className="ti ti-search im-search-icon" aria-hidden="true"></i>
-                  <input
-                    ref={searchInputRef}
-                    className="im-search-input"
-                    type="search"
-                    placeholder="Search institutions..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    aria-label="Search institutions"
-                  />
-
-                </div>
-              </div>
-            </div>
-          </section>
         )}
 
         {listLoading && (
@@ -1689,42 +1661,77 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
           </div>
         )}
 
-        {!listLoading && institutions.length > 0 && filteredInstitutions.length === 0 && (
-          <div className="im-empty-state">
-            <div className="im-empty-icon-wrap">
-              <i className="ti ti-search-off" aria-hidden="true"></i>
+        {!listLoading && institutions.length > 0 && (
+          <>
+            <div className="im-toolbar-card" style={{ marginBottom: "16px" }}>
+              <div className="im-registry-toolbar">
+                <div className="im-registry-toolbar-row">
+                  <div className="im-status-tabs" role="group" aria-label="Filter institutions by status">
+                    {(['all', 'active', 'pending'] as InstitutionStatusFilter[]).map((status) => (
+                      <button
+                        key={status}
+                        type="button"
+                        className={`im-status-tab im-${status}${institutionStatusFilter === status ? ' is-active' : ''}`}
+                        onClick={() => setInstitutionStatusFilter(status)}
+                        aria-pressed={institutionStatusFilter === status}
+                      >
+                        {status.charAt(0).toUpperCase() + status.slice(1)}
+                        <span className="im-status-tab-count">{institutionStatusCounts[status]}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="im-search-wrap">
+                    <i className="ti ti-search im-search-icon" aria-hidden="true"></i>
+                    <input
+                      ref={searchInputRef}
+                      className="im-search-input"
+                      type="search"
+                      placeholder="Search institutions..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      aria-label="Search institutions"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
-            <strong className="im-empty-title">No results</strong>
-            <p className="im-empty-sub">
-              No {institutionStatusFilter === 'all' ? '' : `${institutionStatusFilter} `}institutions
-              {searchQuery.trim() ? ` match "${searchQuery}"` : ' to show'}.
-            </p>
-            <button
-              type="button"
-              className="im-clear-btn"
-              onClick={() => {
-                setSearchQuery('')
-                setInstitutionStatusFilter('all')
-              }}
-            >
-              Clear filters
-            </button>
-          </div>
-        )}
 
-        {!listLoading && filteredInstitutions.length > 0 && (
-          <div className="im-registry" key={institutionStatusFilter}>
-            <InstitutionRegistryHeader />
-            {filteredInstitutions.map((inst) => (
-              <InstitutionRow
-                key={inst.id}
-                institution={inst}
-                onSelect={() => handleSelectInstitution(inst)}
-                onLogoUpload={(file) => void handleLogoUpload(inst, file)}
-                logoUploading={logoUploadingId === inst.id}
-              />
-            ))}
-          </div>
+            {filteredInstitutions.length === 0 ? (
+              <div className="im-empty-state">
+                <div className="im-empty-icon-wrap">
+                  <i className="ti ti-search-off" aria-hidden="true"></i>
+                </div>
+                <strong className="im-empty-title">No results</strong>
+                <p className="im-empty-sub">
+                  No {institutionStatusFilter === 'all' ? '' : `${institutionStatusFilter} `}institutions
+                  {searchQuery.trim() ? ` match "${searchQuery}"` : ' to show'}.
+                </p>
+                <button
+                  type="button"
+                  className="im-clear-btn"
+                  onClick={() => {
+                    setSearchQuery('')
+                    setInstitutionStatusFilter('all')
+                  }}
+                >
+                  Clear filters
+                </button>
+              </div>
+            ) : (
+              <div className="im-registry" key={institutionStatusFilter}>
+                <InstitutionRegistryHeader />
+                {filteredInstitutions.map((inst) => (
+                  <InstitutionRow
+                    key={inst.id}
+                    institution={inst}
+                    onSelect={() => handleSelectInstitution(inst)}
+                    onLogoUpload={(file) => void handleLogoUpload(inst, file)}
+                    logoUploading={logoUploadingId === inst.id}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </main>
 

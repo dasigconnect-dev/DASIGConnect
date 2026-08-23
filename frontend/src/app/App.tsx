@@ -27,6 +27,7 @@ import InviteScreen from "../features/auth/InviteScreen";
 import NoAccountScreen from "../features/auth/NoAccountScreen";
 import AccountSettingsScreen from "../features/auth/AccountSettingsScreen";
 import DashboardScreen from "../features/dashboard/DashboardScreen";
+import RecentActivityScreen from "../features/dashboard/RecentActivityScreen";
 import SubmissionScreen from "../features/submission/SubmissionScreen";
 import ValidationQueueScreen from "../features/validation/ValidationQueueScreen";
 import UserInvitationsScreen from "../features/user-management/UserInvitationsScreen";
@@ -714,6 +715,10 @@ function App() {
           <Route
             path="/dashboard"
             element={<DashboardScreen user={currentUser!} />}
+          />
+          <Route
+            path="/dashboard/recent-activity"
+            element={<RecentActivityScreen user={currentUser!} />}
           />
           <Route
             path="/admin/institution-management"
