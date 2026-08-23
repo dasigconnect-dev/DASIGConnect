@@ -150,6 +150,8 @@ public class SubmissionService {
         submission.setDescription(dto.getDescription());
         submission.setStatus(SubmissionStatus.draft);
         submission.setCategory(dto.getCategory());
+        submission.setAlbumName(normalizeOptional(dto.getAlbumName()));
+        submission.setMediaTags(joinTags(dto.getMediaTags()));
         submission.setTemplateId(dto.getTemplateId() == null || dto.getTemplateId().isBlank()
                 ? null
                 : dto.getTemplateId());
@@ -237,6 +239,12 @@ public class SubmissionService {
         }
         if (dto.getTemplateId() != null) {
             submission.setTemplateId(dto.getTemplateId().isBlank() ? null : dto.getTemplateId());
+        }
+        if (dto.getAlbumName() != null) {
+            submission.setAlbumName(normalizeOptional(dto.getAlbumName()));
+        }
+        if (dto.getMediaTags() != null) {
+            submission.setMediaTags(joinTags(dto.getMediaTags()));
         }
         if (dto.getFastTrack() != null) {
             submission.setFastTrack(dto.getFastTrack());
@@ -401,6 +409,9 @@ public class SubmissionService {
         }
         if (submissionMediaAssetRepository.countBySubmissionId(submission.getId()) < 1) {
             missing.add("at least one media attachment");
+        }
+        if (submission.getAlbumName() == null || submission.getAlbumName().isBlank()) {
+            missing.add("an album assignment");
         }
         if (!missing.isEmpty()) {
             throw new ResponseStatusException(HttpStatusCode.valueOf(422),
@@ -577,6 +588,10 @@ public class SubmissionService {
             if (dto.getMediaCaptions() != null && dto.getMediaCaptions().containsKey(dto.getMediaAssetIds().get(index))) {
                 link.setCaption(normalizeOptional(dto.getMediaCaptions().get(dto.getMediaAssetIds().get(index))));
             }
+            if (dto.getSkipWatermarks() != null && dto.getSkipWatermarks().containsKey(dto.getMediaAssetIds().get(index))) {
+                boolean canSkipWatermark = link.getMediaAsset().getFileType().isImage();
+                link.setSkipWatermark(canSkipWatermark && Boolean.TRUE.equals(dto.getSkipWatermarks().get(dto.getMediaAssetIds().get(index))));
+            }
         }
         submissionMediaAssetRepository.saveAll(links);
 
@@ -745,6 +760,16 @@ public class SubmissionService {
 
     private static String normalizeOptional(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String joinTags(List<String> tags) {
+        if (tags == null || tags.isEmpty()) return null;
+        String joined = tags.stream()
+                .map(SubmissionService::normalizeOptional)
+                .filter(tag -> tag != null && !tag.isBlank())
+                .distinct()
+                .collect(Collectors.joining(","));
+        return joined.isBlank() ? null : joined;
     }
 
     private static String formatInstant(Instant instant) {

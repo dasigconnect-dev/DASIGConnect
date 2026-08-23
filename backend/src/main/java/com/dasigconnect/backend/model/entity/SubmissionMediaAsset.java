@@ -32,6 +32,9 @@ public class SubmissionMediaAsset {
     @Column(name = "caption", length = 500)
     private String caption;
 
+    @Column(name = "skip_watermark", nullable = false)
+    private boolean skipWatermark;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -55,6 +58,9 @@ public class SubmissionMediaAsset {
 
     public String getCaption() { return caption; }
     public void setCaption(String caption) { this.caption = caption; }
+
+    public boolean isSkipWatermark() { return skipWatermark; }
+    public void setSkipWatermark(boolean skipWatermark) { this.skipWatermark = skipWatermark; }
 
     public Instant getCreatedAt() { return createdAt; }
 }

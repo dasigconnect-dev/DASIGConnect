@@ -35,6 +35,8 @@ public class SubmissionResponseDto {
     private boolean fastTrack;
     private String liveEventName;
     private List<String> tags;
+    private String albumName;
+    private List<String> mediaTags;
     private boolean requiresManualPublishing;
 
     public static SubmissionResponseDto from(Submission s, List<MediaAssetSummaryDto> mediaAssets) {
@@ -65,6 +67,10 @@ public class SubmissionResponseDto {
         dto.tags = (s.getTags() == null || s.getTags().isBlank())
                 ? List.of()
                 : Arrays.stream(s.getTags().split(",")).map(String::trim).filter(t -> !t.isEmpty()).toList();
+        dto.albumName = s.getAlbumName();
+        dto.mediaTags = (s.getMediaTags() == null || s.getMediaTags().isBlank())
+                ? List.of()
+                : Arrays.stream(s.getMediaTags().split(",")).map(String::trim).filter(t -> !t.isEmpty()).toList();
         dto.requiresManualPublishing = s.isRequiresManualPublishing();
         return dto;
     }
@@ -163,6 +169,14 @@ public class SubmissionResponseDto {
 
     public List<String> getTags() {
         return tags;
+    }
+
+    public String getAlbumName() {
+        return albumName;
+    }
+
+    public List<String> getMediaTags() {
+        return mediaTags;
     }
 
     public boolean isRequiresManualPublishing() {

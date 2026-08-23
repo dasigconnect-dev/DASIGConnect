@@ -23,6 +23,7 @@ export interface SavedMediaAsset {
   fileType: string;
   fileSizeBytes: number;
   caption?: string | null;
+  skipWatermark?: boolean;
 }
 
 export interface SubmissionSummary {
@@ -45,6 +46,8 @@ export interface SubmissionSummary {
   fastTrack?: boolean;
   liveEventName?: string | null;
   tags?: string[];
+  albumName?: string | null;
+  mediaTags?: string[];
   mediaAssets?: SavedMediaAsset[];
   requiresManualPublishing?: boolean;
 }
@@ -61,6 +64,8 @@ export interface SubmissionPayload {
   fastTrack?: boolean;
   liveEventName?: string | null;
   tags?: string[];
+  albumName?: string | null;
+  mediaTags?: string[];
 }
 
 export interface SubmissionLookups {
@@ -137,10 +142,12 @@ export function reorderSubmissionMedia(
   id: string,
   mediaAssetIds: string[],
   mediaCaptions?: Record<string, string>,
+  skipWatermarks?: Record<string, boolean>,
 ) {
   return api.patch<SubmissionSummary>(`/submissions/${id}/media/order`, {
     mediaAssetIds,
     mediaCaptions,
+    skipWatermarks,
   });
 }
 

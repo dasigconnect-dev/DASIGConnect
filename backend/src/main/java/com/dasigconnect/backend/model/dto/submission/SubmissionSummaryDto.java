@@ -26,6 +26,8 @@ public class SubmissionSummaryDto {
     private boolean fastTrack;
     private String liveEventName;
     private List<String> tags;
+    private String albumName;
+    private List<String> mediaTags;
 
     public static SubmissionSummaryDto from(Submission s, long mediaCount) {
         SubmissionSummaryDto dto = new SubmissionSummaryDto();
@@ -47,6 +49,10 @@ public class SubmissionSummaryDto {
         dto.tags = (s.getTags() == null || s.getTags().isBlank())
                 ? List.of()
                 : Arrays.stream(s.getTags().split(",")).map(String::trim).filter(t -> !t.isEmpty()).toList();
+        dto.albumName = s.getAlbumName();
+        dto.mediaTags = (s.getMediaTags() == null || s.getMediaTags().isBlank())
+                ? List.of()
+                : Arrays.stream(s.getMediaTags().split(",")).map(String::trim).filter(t -> !t.isEmpty()).toList();
         return dto;
     }
 
@@ -112,5 +118,13 @@ public class SubmissionSummaryDto {
 
     public List<String> getTags() {
         return tags;
+    }
+
+    public String getAlbumName() {
+        return albumName;
+    }
+
+    public List<String> getMediaTags() {
+        return mediaTags;
     }
 }
