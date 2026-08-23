@@ -30,10 +30,8 @@ import DashboardScreen from "../features/dashboard/DashboardScreen";
 import RecentActivityScreen from "../features/dashboard/RecentActivityScreen";
 import SubmissionScreen from "../features/submission/SubmissionScreen";
 import ValidationQueueScreen from "../features/validation/ValidationQueueScreen";
-import UserInvitationsScreen from "../features/user-management/UserInvitationsScreen";
 import InstitutionManagementScreen from "../features/institution-management/InstitutionManagementScreen";
 import CalendarScreen from "../features/calendar/CalendarScreen";
-import ResolutionCenterScreen from "../features/resolution/ResolutionCenterScreen";
 import MediaRepositoryScreen from "../features/media-repository/MediaRepositoryScreen";
 import NotificationsScreen from "../features/notifications/NotificationsScreen";
 import AnalyticsDashboardPage from "../features/analytics/AnalyticsDashboardPage";
@@ -729,12 +727,8 @@ function App() {
             }
           />
           <Route
-            path="/admin/user-management/invitations"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
-                <UserInvitationsScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
+            path="/admin/user-management/*"
+            element={<Navigate to="/admin/institution-management" replace />}
           />
           <Route
             path="/validation/queue"
@@ -754,11 +748,7 @@ function App() {
           />
           <Route
             path="/admin/resolution"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
-                <ResolutionCenterScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
+            element={<Navigate to="/dashboard" replace />}
           />
           <Route
             path="/media-repository"
