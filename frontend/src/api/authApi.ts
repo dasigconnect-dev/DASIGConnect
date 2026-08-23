@@ -138,6 +138,7 @@ export interface InstitutionResponse {
   hasLogo: boolean;
   logoUpdatedAt: string | null;
   isProtected?: boolean;
+  protected?: boolean;
 }
 
 export function createInstitution(
