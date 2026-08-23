@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react'
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
 import Spinner from '../../components/common/Spinner'
+import { listPublicInstitutions, type InstitutionResponse } from '../../api/authApi'
 
 interface LoginScreenProps {
   active: boolean
@@ -40,6 +42,29 @@ export default function LoginScreen({
 }: LoginScreenProps) {
   const showLockout = lockRemaining > 0
   const showAttempts = attempts > 0 && !showLockout
+  const [institutions, setInstitutions] = useState<InstitutionResponse[]>([])
+
+  useEffect(() => {
+    let mounted = true
+    const controller = new AbortController()
+
+    listPublicInstitutions(controller.signal)
+      .then((res) => {
+        if (mounted && Array.isArray(res.data)) {
+          setInstitutions(res.data)
+        }
+      })
+      .catch((err) => {
+        if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
+          console.error('Failed to load member institutions', err)
+        }
+      })
+
+    return () => {
+      mounted = false
+      controller.abort()
+    }
+  }, [])
 
   return (
     <Screen id="login" active={active}>
@@ -131,12 +156,14 @@ export default function LoginScreen({
               Member Institutions
             </div>
             <div className="l-members">
-              <div className="member-pill">CIT-U</div>
-              <div className="member-pill">Silliman University</div>
-              <div className="member-pill">VSU</div>
-              <div className="member-pill">USC</div>
-              <div className="member-pill">UC</div>
-              <div className="member-pill">+ others</div>
+              {institutions.slice(0, 5).map((inst) => (
+                <div key={inst.id} className="member-pill" title={inst.name}>
+                  {inst.institutionCode || inst.name}
+                </div>
+              ))}
+              {institutions.length > 5 && (
+                <div className="member-pill">+ others</div>
+              )}
             </div>
           </div>
         </LeftPanel>

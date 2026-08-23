@@ -994,53 +994,39 @@
 
 .um-users-filter-bar {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
 
-.um-users-filter-bar .um-filter-group {
-  padding: 0 18px;
-}
-
-.um-users-filter-bar .um-filter-group:first-child {
-  padding-left: 0;
+.um-filter-pills-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   flex: 1;
-  max-width: 320px;
-}
-
-.um-users-filter-bar .um-filter-group:last-child {
-  padding-right: 0;
-  margin-left: auto;
+  flex-wrap: wrap;
 }
 
 .um-users-filter-bar .um-search-wrap {
-  min-width: 0;
-  max-width: 100%;
-  width: 100%;
+  position: relative;
+  width: min(100%, 280px);
+  flex: 0 0 280px;
+  margin-left: auto;
 }
 
 .um-data-card.is-directory .um-users-filter-bar {
-  grid-template-columns: minmax(250px, 1fr) 1px auto 1px auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   padding: 14px 24px;
   background: #FAFCFF;
   border-top: 1px solid var(--d-border);
 }
 
 .um-data-card.is-directory .um-users-filter-bar.is-search-only {
-  grid-template-columns: minmax(280px, 520px);
-}
-
-.um-data-card.is-directory .um-users-filter-bar .um-filter-group {
-  padding-inline: 16px;
-}
-
-.um-data-card.is-directory .um-users-filter-bar .um-filter-group:first-child {
-  padding-left: 0;
-}
-
-.um-data-card.is-directory .um-users-filter-bar .um-filter-group:last-child {
-  padding-right: 0;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .um-filter-divider {
@@ -1082,61 +1068,69 @@
 
 .um-filter-pills {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
 }
 
 .um-filter-pill {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  height: 32px;
-  padding: 0 11px;
-  border: 1px solid var(--d-border);
-  border-radius: 8px;
-  background: var(--d-surface);
-  color: var(--d-muted);
+  min-height: 38px;
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #F8FAFC;
+  color: #64748B;
   font-family: var(--ff-body);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 12.5px;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  transition:
-    border-color var(--um-fast) var(--um-ease),
-    background var(--um-fast) var(--um-ease),
-    color var(--um-fast) var(--um-ease);
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
 }
 
-.um-filter-pill:hover { border-color: #B8D0F8; color: var(--d-text); }
+.um-filter-pill:hover {
+  color: var(--d-blue);
+  border-color: #BFDBFE;
+  background: #EFF6FF;
+}
 
 .um-filter-pill.is-active {
+  color: #ffffff;
+  font-weight: 650;
+  background: var(--d-blue);
   border-color: var(--d-blue);
-  background: #EEF3FF;
-  color: var(--d-blue);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
 }
 
 .um-filter-pill-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9999px;
-  font-size: 11px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--d-blue);
+  background: #DBEAFE;
+  font-size: 10.5px;
   font-weight: 700;
-  background: rgba(15, 23, 42, 0.06);
-  color: inherit;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 .um-filter-pill.is-active .um-filter-pill-count {
-  background: rgba(37, 99, 235, 0.16);
-  color: var(--d-blue);
+  background: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
 }
 
 /* ---- Table ---- */
 .um-table-wrap {
   overflow: auto;
-  border-top: 1px solid var(--d-border);
+  border-top: none;
   transition: border-color var(--um-fast) var(--um-ease);
 }
 
@@ -1148,14 +1142,14 @@
 
 .um-table th {
   text-align: left;
-  padding: 10px 16px;
-  font-size: 10.5px;
+  padding: 12px 16px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--d-muted);
-  background: #F8FAFC;
-  border-bottom: 1px solid var(--d-border);
+  color: #ffffff;
+  background: var(--d-blue, #1877f2);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   white-space: nowrap;
 }
 

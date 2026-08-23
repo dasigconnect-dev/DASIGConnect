@@ -155,6 +155,10 @@ export function listInstitutions(signal?: AbortSignal) {
   return api.get<InstitutionResponse[]>("/institutions", { signal });
 }
 
+export function listPublicInstitutions(signal?: AbortSignal) {
+  return api.get<InstitutionResponse[]>("/institutions/public", { signal });
+}
+
 export function deleteInstitution(id: string) {
   return api.delete(`/institutions/${id}`);
 }

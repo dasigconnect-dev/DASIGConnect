@@ -1,19 +1,37 @@
-import Spinner from './Spinner'
+import "../../styles/dasig-loader.css";
 
 export default function PageLoader() {
   return (
-    <div className="dc-page-loader" role="status" aria-label="Loading DASIGConnect">
-      <div className="dc-page-loader-brand">
-        <div className="dc-page-loader-icon">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 2L22 7V17L12 22L2 17V7L12 2Z" />
-          </svg>
+    <div
+      className="dc-page-loader"
+      role="status"
+      aria-label="Loading"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 2000,
+        background: "#F8FAFC",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div className="dc-dot-triangle-container">
+        {/* Loading label positioned above the loader */}
+        <div className="dc-dot-triangle-label">
+          <span>Loading</span>
+          <span className="dc-dot-triangle-label-dots">
+            <span className="dc-dot-triangle-dot-char">.</span>
+            <span className="dc-dot-triangle-dot-char">.</span>
+            <span className="dc-dot-triangle-dot-char">.</span>
+          </span>
         </div>
-        <div className="dc-page-loader-name">
-          DASIG<em>Connect</em>
+
+        {/* 1. Dot Triangle Element */}
+        <div className="loader-stage" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className="loader-dots" />
         </div>
       </div>
-      <Spinner size="md" color="blue" className="dc-page-loader-spinner" aria-label="Loading" />
     </div>
-  )
+  );
 }
