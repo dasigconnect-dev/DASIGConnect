@@ -21,7 +21,6 @@ function getActiveNav(pathname: string): DashboardNavId {
   if (pathname.startsWith('/admin/institution-management')) return 'institution-management'
   if (pathname.startsWith('/admin/user-management')) return 'user-management'
   if (pathname.startsWith('/admin/resolution')) return 'resolution'
-  if (pathname.startsWith('/settings')) return 'settings'
   if (pathname.startsWith('/media-repository')) return 'media-repository'
   if (pathname.startsWith('/notifications')) return 'notifications'
   if (pathname.startsWith('/validation')) return 'submit'

@@ -187,7 +187,7 @@ class SubmissionControllerTest {
     @WithMockUser(roles = "CONTRIBUTOR")
     void evaluateSlot_validBody_returnsGuardRailResult() throws Exception {
         UUID submissionId = UUID.randomUUID();
-        when(submissionService.evaluateSlot(any(), any())).thenReturn(new GuardRailResult());
+        when(submissionService.evaluateSlot(any(), any(), any())).thenReturn(new GuardRailResult());
 
         mockMvc.perform(post("/api/v1/submissions/{id}/evaluate-slot", submissionId)
                 .contentType(MediaType.APPLICATION_JSON)

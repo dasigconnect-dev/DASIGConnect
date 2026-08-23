@@ -13,6 +13,7 @@ public class SubmissionSummaryDto {
     private UUID id;
     private String eventTitle;
     private LocalDate eventDate;
+    private String caption;
     private String status;
     private Instant scheduledAt;
     private Instant submittedAt;
@@ -21,6 +22,9 @@ public class SubmissionSummaryDto {
     private String contributorEmail;
     private long mediaCount;
     private String category;
+    private String templateId;
+    private boolean fastTrack;
+    private String liveEventName;
     private List<String> tags;
 
     public static SubmissionSummaryDto from(Submission s, long mediaCount) {
@@ -28,6 +32,7 @@ public class SubmissionSummaryDto {
         dto.id = s.getId();
         dto.eventTitle = s.getEventTitle();
         dto.eventDate = s.getEventDate();
+        dto.caption = s.getCaption();
         dto.status = s.getStatus().name();
         dto.scheduledAt = s.getScheduledAt();
         dto.submittedAt = s.getSubmittedAt();
@@ -36,6 +41,9 @@ public class SubmissionSummaryDto {
         dto.contributorEmail = s.getContributor().getEmail();
         dto.mediaCount = mediaCount;
         dto.category = s.getCategory();
+        dto.templateId = s.getTemplateId();
+        dto.fastTrack = s.isFastTrack();
+        dto.liveEventName = s.getLiveEventName();
         dto.tags = (s.getTags() == null || s.getTags().isBlank())
                 ? List.of()
                 : Arrays.stream(s.getTags().split(",")).map(String::trim).filter(t -> !t.isEmpty()).toList();
@@ -52,6 +60,10 @@ public class SubmissionSummaryDto {
 
     public LocalDate getEventDate() {
         return eventDate;
+    }
+
+    public String getCaption() {
+        return caption;
     }
 
     public String getStatus() {
@@ -84,6 +96,18 @@ public class SubmissionSummaryDto {
 
     public String getCategory() {
         return category;
+    }
+
+    public String getTemplateId() {
+        return templateId;
+    }
+
+    public boolean isFastTrack() {
+        return fastTrack;
+    }
+
+    public String getLiveEventName() {
+        return liveEventName;
     }
 
     public List<String> getTags() {

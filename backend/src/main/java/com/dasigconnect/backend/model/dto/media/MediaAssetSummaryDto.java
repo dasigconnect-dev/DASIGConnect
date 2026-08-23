@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.model.dto.media;
 
 import com.dasigconnect.backend.model.entity.MediaAsset;
+import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -18,6 +19,7 @@ public class MediaAssetSummaryDto {
     private String institutionName;
     private UUID uploaderId;
     private String uploaderEmail;
+    private String caption;
 
     public static MediaAssetSummaryDto from(MediaAsset asset) {
         MediaAssetSummaryDto dto = new MediaAssetSummaryDto();
@@ -36,6 +38,12 @@ public class MediaAssetSummaryDto {
         return dto;
     }
 
+    public static MediaAssetSummaryDto from(SubmissionMediaAsset link) {
+        MediaAssetSummaryDto dto = from(link.getMediaAsset());
+        dto.caption = link.getCaption();
+        return dto;
+    }
+
     public UUID getId() { return id; }
     public String getAssetCode() { return assetCode; }
     public String getStorageUrl() { return storageUrl; }
@@ -48,4 +56,5 @@ public class MediaAssetSummaryDto {
     public String getInstitutionName() { return institutionName; }
     public UUID getUploaderId() { return uploaderId; }
     public String getUploaderEmail() { return uploaderEmail; }
+    public String getCaption() { return caption; }
 }
