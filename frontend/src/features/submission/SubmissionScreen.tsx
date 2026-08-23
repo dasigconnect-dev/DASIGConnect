@@ -287,15 +287,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const isAdminComposer = user.role === "administrator" || user.role === "super_administrator";
   const isMySubmissionsPage = location.pathname === "/submissions";
   const selectedInstitutionId = isAdminComposer ? form.institutionId : user.institutionId || "";
-<<<<<<< HEAD
-  const selectedInstitutionName = useMemo(() => {
-    if (!isAdminComposer) return user.inst;
-    const selected = institutions.find((institution) => institution.id === form.institutionId);
-    return selected?.name || "Select institution";
-  }, [form.institutionId, institutions, isAdminComposer, user.inst]);
   const [mediaUploadFailed, setMediaUploadFailed] = useState(false);
-=======
->>>>>>> 6e90b13 (Refined submission workflow ui)
 
   const queued = useMemo(() => {
     const byFilter = (() => {
@@ -406,10 +398,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     [form.eventTitle, form.eventDate, form.caption],
   );
 
-<<<<<<< HEAD
   async function handleStepNav(step: ProgressStep) {
-=======
-  function handleStepNav(step: ProgressStep) {
     if (step === "details" && !hasMedia) {
       toast.warning("Add at least one media file before entering Post Details.");
       setActiveStep("media");
@@ -420,7 +409,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setActiveStep("media");
       return;
     }
->>>>>>> 6e90b13 (Refined submission workflow ui)
     if (step === "schedule" && !isDetailsComplete) {
       toast.warning(
         "Complete Post Details — title, event date, and caption — before setting a schedule.",
@@ -1334,10 +1322,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function handleEditPreviewDetails() {
+    const nextStep: ProgressStep = hasMedia ? "details" : "media";
+    const nextRef = hasMedia ? detailsSectionRef : mediaSectionRef;
     setCenterMode("edit");
-    setActiveStep("details");
+    setActiveStep(nextStep);
     window.setTimeout(() => {
-      detailsSectionRef.current?.scrollIntoView({
+      nextRef.current?.scrollIntoView({
         behavior: "smooth",
         block: "start",
       });

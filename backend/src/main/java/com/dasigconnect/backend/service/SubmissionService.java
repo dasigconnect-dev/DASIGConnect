@@ -536,7 +536,7 @@ public class SubmissionService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Media asset is not attached to this submission."));
 
-        submissionMediaAssetRepository.delete(link
+        submissionMediaAssetRepository.delete(link);
         submissionMediaAssetRepository.flush();
         refreshManualPublishingFlag(submission); 
         log.info("Asset {} detached from submission {} by user {}", mediaAssetId, submissionId, user.userId());
