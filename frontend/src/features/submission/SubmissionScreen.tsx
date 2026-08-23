@@ -28,14 +28,10 @@ import {
 import { useFacebookPreviewData } from "../../hooks/useFacebookPreviewData";
 import { fileMediaKey, savedMediaKey } from "../../hooks/useMediaReorder";
 import type { User } from "../../types/auth.types";
-import type {
-  FacebookPreviewDetailsData,
-  FacebookPreviewMediaItem,
-} from "../../types/facebook";
+import type { FacebookPreviewMediaItem } from "../../types/facebook";
 import type { SubmissionMediaItem } from "../../types/media";
 import { useToast } from "../../context/ToastContext";
 import FacebookPreviewCard from "../../components/facebook/FacebookPreviewCard";
-import FacebookPreviewDetails from "../../components/facebook/FacebookPreviewDetails";
 import FacebookPreviewMediaReorder from "../../components/facebook/FacebookPreviewMediaReorder";
 import MediaAssetsPicker from "../../components/media/MediaAssetsPicker";
 import BrandedSelect from "../../components/ui/BrandedSelect";
@@ -84,7 +80,6 @@ type SaveState = "idle" | "saving" | "saved";
 type PendingLeaveAction = (() => void) | null;
 type ProgressStep = "media" | "details" | "schedule";
 type CenterMode = "edit" | "preview";
-type PreviewTab = "preview" | "details";
 
 const initialForm: FormState = {
   id: null,
@@ -275,7 +270,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [pendingLeaveAction, setPendingLeaveAction] =
     useState<PendingLeaveAction>(null);
   const [centerMode, setCenterMode] = useState<CenterMode>("edit");
-  const [previewTab, setPreviewTab] = useState<PreviewTab>("preview");
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [reorderingMedia, setReorderingMedia] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -293,12 +287,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const isAdminComposer = user.role === "administrator" || user.role === "super_administrator";
   const isMySubmissionsPage = location.pathname === "/submissions";
   const selectedInstitutionId = isAdminComposer ? form.institutionId : user.institutionId || "";
+<<<<<<< HEAD
   const selectedInstitutionName = useMemo(() => {
     if (!isAdminComposer) return user.inst;
     const selected = institutions.find((institution) => institution.id === form.institutionId);
     return selected?.name || "Select institution";
   }, [form.institutionId, institutions, isAdminComposer, user.inst]);
   const [mediaUploadFailed, setMediaUploadFailed] = useState(false);
+=======
+>>>>>>> 6e90b13 (Refined submission workflow ui)
 
   const queued = useMemo(() => {
     const byFilter = (() => {
@@ -361,29 +358,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     () => getPreviewValidation(form, scheduledAt, lookups, guardRails),
     [form, guardRails, lookups, scheduledAt],
   );
-  const previewDetails = useMemo<FacebookPreviewDetailsData>(
-    () =>
-      getPreviewDetails({
-        form,
-        institution: selectedInstitutionName,
-        scheduledAt,
-        lookups,
-        guardRails,
-        guardRailError,
-        readinessScore: readiness.score,
-        missingItems: previewValidation.missingItems,
-      }),
-    [
-      form,
-      guardRails,
-      guardRailError,
-      lookups,
-      previewValidation.missingItems,
-      readiness.score,
-      scheduledAt,
-      selectedInstitutionName,
-    ],
-  );
   const submitDisabledReason =
     previewValidation.blockingErrors.length > 0
       ? previewValidation.blockingErrors[0]
@@ -432,7 +406,21 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     [form.eventTitle, form.eventDate, form.caption],
   );
 
+<<<<<<< HEAD
   async function handleStepNav(step: ProgressStep) {
+=======
+  function handleStepNav(step: ProgressStep) {
+    if (step === "details" && !hasMedia) {
+      toast.warning("Add at least one media file before entering Post Details.");
+      setActiveStep("media");
+      return;
+    }
+    if (step === "schedule" && !hasMedia) {
+      toast.warning("Add at least one media file before setting a schedule.");
+      setActiveStep("media");
+      return;
+    }
+>>>>>>> 6e90b13 (Refined submission workflow ui)
     if (step === "schedule" && !isDetailsComplete) {
       toast.warning(
         "Complete Post Details — title, event date, and caption — before setting a schedule.",
@@ -455,6 +443,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         : target === "schedule"
           ? "schedule"
           : "details";
+    if (step === "details" && !hasMedia) {
+      handleStepNav("details");
+      return;
+    }
     if (step === "schedule" && !isDetailsComplete) {
       handleStepNav("schedule");
       return;
@@ -755,6 +747,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   function applyTemplate(templateId: string) {
     const template = postTemplates.find((item) => item.id === templateId);
     if (!template || isReadOnlySubmission) return;
+    if (!hasMedia) {
+      toast.warning("Add at least one media file before choosing a post template.");
+      setActiveStep("media");
+      return;
+    }
 
     setForm((current) => ({
       ...current,
@@ -797,7 +794,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setHashtagInput("");
     setActiveMediaIndex(0);
     setCenterMode("edit");
-    setPreviewTab("preview");
     setGuardRails(null);
     setGuardRailError("");
     setSaveState("idle");
@@ -823,7 +819,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setHashtagInput("");
     setActiveMediaIndex(0);
     setCenterMode("edit");
-    setPreviewTab("preview");
     setGuardRails(null);
     setGuardRailError("");
     setSaveState("idle");
@@ -915,7 +910,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setFilter(editableDraft ? "drafts" : "submitted");
       setActiveStep(editableDraft ? "media" : "details");
       setCenterMode("edit");
-      setPreviewTab("preview");
       setSaveState("saved");
       setMediaUploadFailed(false);
       cleanSignatureRef.current = getDirtySignature(nextForm);
@@ -1577,7 +1571,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 <div>
                   <div className="sub-sidebar-section-title">Post Templates</div>
                   <div className="sub-sidebar-section-subtitle">
-                    Insert a baseline caption structure.
+                    {hasMedia
+                      ? "Insert a baseline caption structure."
+                      : "Add media first to unlock templates."}
                   </div>
                 </div>
                 {form.selectedTemplateId && (
@@ -1599,7 +1595,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     className={`sub-sidebar-template-card ${
                       form.selectedTemplateId === template.id ? "active" : ""
                     }`}
-                    disabled={isReadOnlySubmission}
+                    disabled={isReadOnlySubmission || !hasMedia}
+                    title={!hasMedia ? "Add media first before choosing a template." : undefined}
                     onClick={() => applyTemplate(template.id)}
                   >
                     <span className="sub-sidebar-template-name">{template.name}</span>
@@ -1650,10 +1647,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 <button
                   className="sub-btn-ghost preview"
                   type="button"
-                  onClick={() => {
-                    setPreviewTab("preview");
-                    setCenterMode("preview");
-                  }}
+                  onClick={() => setCenterMode("preview")}
                   disabled={busy || Boolean(hydratingId)}
                 >
                   <i className="ti ti-brand-facebook"></i> Preview
@@ -1706,15 +1700,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
           {centerMode === "preview" ? (
             <InPageFacebookPreview
-              activeTab={previewTab}
-              onTabChange={setPreviewTab}
               pageName={facebookPreview.pageName}
               pageAvatarUrl={facebookPreview.pageAvatarUrl}
               publishDate={facebookPreview.publishDate}
               caption={facebookPreview.caption}
               mediaItems={facebookPreview.mediaItems}
               activeMediaIndex={activeMediaIndex}
-              details={previewDetails}
               canSaveDraft={form.status === "draft" && isDirty}
               canSubmitForReview={canSubmitCurrentSubmission}
               submitDisabledReason={
@@ -1737,6 +1728,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             <StepProgress
               steps={progressSteps}
               activeStep={activeStep}
+              hasMedia={hasMedia}
               isDetailsComplete={isDetailsComplete}
               onStepClick={handleStepNav}
             />
@@ -2004,6 +1996,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           {!isReadOnlySubmission && (
             <StepPanelActions
               activeStep={activeStep}
+              hasMedia={hasMedia}
               isDetailsComplete={isDetailsComplete}
               onStepChange={handleStepNav}
             />
@@ -2013,52 +2006,55 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         </main>
 
         <aside className="sub-guard-panel">
-          {lookupsLoading || hydratingId ? (
-            <ReadinessSkeleton />
-          ) : (
-          <div className="sub-guard-header">
-            <div className="sub-guard-title">
-              <i className="ti ti-shield-check"></i> Readiness
+          <div className="sub-guard-scroll">
+            {lookupsLoading || hydratingId ? (
+              <ReadinessSkeleton />
+            ) : (
+            <div className="sub-guard-header">
+              <div className="sub-guard-title">
+                <i className="ti ti-shield-check"></i> Readiness
+              </div>
+              <ReadinessRing score={readiness.score} />
+              <div className="sub-score-grade">{readiness.grade}</div>
+              <div className="sub-score-desc">{readiness.description}</div>
             </div>
-            <ReadinessRing score={readiness.score} />
-            <div className="sub-score-grade">{readiness.grade}</div>
-            <div className="sub-score-desc">{readiness.description}</div>
+            )}
+
+            <GuardSection
+              title="Required"
+              icon="ti-list-check"
+              meta={`${readiness.requiredComplete} / ${readiness.required.length}`}
+              defaultOpen
+            >
+              {readiness.required.map((item) => (
+                <CheckItem
+                  key={item.title}
+                  pass={item.pass}
+                  idle={item.idle}
+                  title={item.title}
+                  sub={item.sub}
+                  onClick={() => handleReadinessJump(item.target)}
+                />
+              ))}
+            </GuardSection>
+
+            <GuardSection
+              title="Recommended"
+              icon="ti-sparkles"
+              meta={`${readiness.recommendedComplete} / ${readiness.recommended.length}`}
+            >
+              {readiness.recommended.map((item) => (
+                <CheckItem
+                  key={item.title}
+                  pass={item.pass}
+                  idle={item.idle}
+                  title={item.title}
+                  sub={item.sub}
+                  onClick={() => handleReadinessJump(item.target)}
+                />
+              ))}
+            </GuardSection>
           </div>
-          )}
-
-          <GuardSection
-            title="Required"
-            icon="ti-list-check"
-            meta={`${readiness.requiredComplete} / ${readiness.required.length}`}
-          >
-            {readiness.required.map((item) => (
-              <CheckItem
-                key={item.title}
-                pass={item.pass}
-                idle={item.idle}
-                title={item.title}
-                sub={item.sub}
-                onClick={() => handleReadinessJump(item.target)}
-              />
-            ))}
-          </GuardSection>
-
-          <GuardSection
-            title="Recommended"
-            icon="ti-sparkles"
-            meta={`${readiness.recommendedComplete} / ${readiness.recommended.length}`}
-          >
-            {readiness.recommended.map((item) => (
-              <CheckItem
-                key={item.title}
-                pass={item.pass}
-                idle={item.idle}
-                title={item.title}
-                sub={item.sub}
-                onClick={() => handleReadinessJump(item.target)}
-              />
-            ))}
-          </GuardSection>
 
           <div className="sub-guard-actions">
             {!isReadOnlySubmission && (
@@ -2271,15 +2267,12 @@ function SectionHead({
 }
 
 function InPageFacebookPreview({
-  activeTab,
-  onTabChange,
   pageName,
   pageAvatarUrl,
   publishDate,
   caption,
   mediaItems,
   activeMediaIndex,
-  details,
   canSaveDraft,
   canSubmitForReview,
   submitDisabledReason,
@@ -2292,15 +2285,12 @@ function InPageFacebookPreview({
   onSubmitForReview,
   onEditDetails,
 }: {
-  activeTab: PreviewTab;
-  onTabChange: (tab: PreviewTab) => void;
   pageName: string;
   pageAvatarUrl?: string;
   publishDate?: string;
   caption: string;
   mediaItems: FacebookPreviewMediaItem[];
   activeMediaIndex: number;
-  details: FacebookPreviewDetailsData;
   canSaveDraft: boolean;
   canSubmitForReview: boolean;
   submitDisabledReason?: string;
@@ -2315,64 +2305,34 @@ function InPageFacebookPreview({
 }) {
   return (
     <section className="sub-preview-workflow" aria-labelledby="sub-preview-title">
-      <div className="sub-preview-tabs" role="tablist" aria-label="Facebook preview sections">
-        <button
-          type="button"
-          className={activeTab === "preview" ? "active" : ""}
-          role="tab"
-          aria-selected={activeTab === "preview"}
-          onClick={() => onTabChange("preview")}
-        >
-          <i className="ti ti-brand-facebook" aria-hidden="true" />
-          Preview
-        </button>
-        <button
-          type="button"
-          className={activeTab === "details" ? "active" : ""}
-          role="tab"
-          aria-selected={activeTab === "details"}
-          onClick={() => onTabChange("details")}
-        >
-          <i className="ti ti-list-check" aria-hidden="true" />
-          Submission Details
-          {details.missingItems.length > 0 && <span>{details.missingItems.length}</span>}
-        </button>
-      </div>
-
-      {activeTab === "preview" ? (
-        <div className="sub-preview-tab-panel" role="tabpanel">
-          <div className="sub-preview-stage-head">
-            <div>
-              <span>Public feed preview</span>
-              <h2 id="sub-preview-title">What followers will see</h2>
-            </div>
-            <p>
-              Preview the public-facing post before it moves into approval.
-            </p>
+      <div className="sub-preview-tab-panel">
+        <div className="sub-preview-stage-head">
+          <div>
+            <span>Public feed preview</span>
+            <h2 id="sub-preview-title">What followers will see</h2>
           </div>
-          <FacebookPreviewCard
-            pageName={pageName}
-            pageAvatarUrl={pageAvatarUrl}
-            publishDate={publishDate}
-            caption={caption}
-            mediaItems={mediaItems}
-            activeMediaIndex={activeMediaIndex}
-            onMediaIndexChange={onMediaIndexChange}
-            size="large"
-          />
-          <FacebookPreviewMediaReorder
-            mediaItems={mediaItems}
-            activeMediaId={mediaItems[activeMediaIndex]?.id}
-            disabled={reorderDisabled}
-            onSelect={onMediaIndexChange}
-            onReorder={onReorderMedia}
-          />
+          <p>
+            Preview the public-facing post before it moves into approval.
+          </p>
         </div>
-      ) : (
-        <div className="sub-preview-details-panel" role="tabpanel">
-          <FacebookPreviewDetails details={details} />
-        </div>
-      )}
+        <FacebookPreviewCard
+          pageName={pageName}
+          pageAvatarUrl={pageAvatarUrl}
+          publishDate={publishDate}
+          caption={caption}
+          mediaItems={mediaItems}
+          activeMediaIndex={activeMediaIndex}
+          onMediaIndexChange={onMediaIndexChange}
+          size="large"
+        />
+        <FacebookPreviewMediaReorder
+          mediaItems={mediaItems}
+          activeMediaId={mediaItems[activeMediaIndex]?.id}
+          disabled={reorderDisabled}
+          onSelect={onMediaIndexChange}
+          onReorder={onReorderMedia}
+        />
+      </div>
 
       <div className="sub-preview-footer">
         <div className="sub-preview-guidance" role="status">
@@ -2456,23 +2416,28 @@ function GuardSection({
   title,
   icon,
   meta,
+  defaultOpen = false,
   children,
 }: {
   title: string;
   icon: string;
   meta?: string;
+  defaultOpen?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="sub-guard-section">
-      <div className="sub-guard-section-title">
+    <details className="sub-guard-section" open={defaultOpen}>
+      <summary className="sub-guard-section-title">
         <span>
           <i className={`ti ${icon}`}></i> {title}
         </span>
-        {meta && <small>{meta}</small>}
-      </div>
-      {children}
-    </div>
+        <span className="sub-guard-section-meta">
+          {meta && <small>{meta}</small>}
+          <i className="ti ti-chevron-down" aria-hidden="true"></i>
+        </span>
+      </summary>
+      <div className="sub-guard-section-body">{children}</div>
+    </details>
   );
 }
 
@@ -2523,6 +2488,7 @@ function CheckItem({
 function StepProgress({
   steps,
   activeStep,
+  hasMedia,
   isDetailsComplete,
   onStepClick,
 }: {
@@ -2532,11 +2498,25 @@ function StepProgress({
     complete: boolean;
   }>;
   activeStep: ProgressStep;
+  hasMedia: boolean;
   isDetailsComplete: boolean;
   onStepClick: (step: ProgressStep) => void;
 }) {
   function isLocked(id: ProgressStep) {
-    return id === "schedule" && !isDetailsComplete;
+    return (id === "details" && !hasMedia) || (id === "schedule" && (!hasMedia || !isDetailsComplete));
+  }
+
+  function lockTitle(id: ProgressStep) {
+    if (id === "details" && !hasMedia) {
+      return "Add media first before entering Post Details.";
+    }
+    if (id === "schedule" && !hasMedia) {
+      return "Add media first before setting a schedule.";
+    }
+    if (id === "schedule" && !isDetailsComplete) {
+      return "Complete Post Details first - title, event date, and caption are required.";
+    }
+    return undefined;
   }
 
   return (
@@ -2549,7 +2529,7 @@ function StepProgress({
             key={step.id}
             className={`sub-step ${active ? "active" : ""} ${step.complete ? "complete" : ""} ${locked ? "locked" : ""}`}
             type="button"
-            title={locked ? "Complete Post Details first — title, event date, and caption are required." : undefined}
+            title={lockTitle(step.id)}
             onClick={() => onStepClick(step.id)}
           >
             <span className="sub-step-circle">
@@ -2574,10 +2554,12 @@ function StepProgress({
 
 function StepPanelActions({
   activeStep,
+  hasMedia,
   isDetailsComplete,
   onStepChange,
 }: {
   activeStep: ProgressStep;
+  hasMedia: boolean;
   isDetailsComplete: boolean;
   onStepChange: (step: ProgressStep) => void;
 }) {
@@ -2585,7 +2567,17 @@ function StepPanelActions({
   const index = order.indexOf(activeStep);
   const previous = index > 0 ? order[index - 1] : null;
   const next = index < order.length - 1 ? order[index + 1] : null;
-  const nextIsLocked = next === "schedule" && !isDetailsComplete;
+  const nextIsLocked =
+    (next === "details" && !hasMedia) ||
+    (next === "schedule" && (!hasMedia || !isDetailsComplete));
+  const nextLockedTitle =
+    next === "details" && !hasMedia
+      ? "Add media first before entering Post Details."
+      : next === "schedule" && !hasMedia
+        ? "Add media first before setting a schedule."
+        : next === "schedule" && !isDetailsComplete
+          ? "Complete Post Details first - title, event date, and caption are required."
+          : undefined;
 
   return (
     <div className="sub-step-panel-actions">
@@ -2602,15 +2594,11 @@ function StepPanelActions({
           type="button"
           className={`sub-step-panel-btn ${nextIsLocked ? "locked" : "primary"}`}
           onClick={() => onStepChange(next)}
-          title={
-            nextIsLocked
-              ? "Complete Post Details first — title, event date, and caption are required."
-              : undefined
-          }
+          title={nextLockedTitle}
         >
           {nextIsLocked ? (
             <>
-              <i className="ti ti-lock"></i> Complete Details First
+              <i className="ti ti-lock"></i> {next === "details" ? "Add Media First" : "Complete Details First"}
             </>
           ) : (
             <>
@@ -3714,98 +3702,6 @@ function isWithinPublishWindow(timeValue: string) {
   const m = Number(timeValue.split(":")[1]) || 0;
   const totalMin = h * 60 + m;
   return totalMin >= 8 * 60 && totalMin <= 20 * 60;
-}
-
-function getPreviewDetails({
-  form,
-  institution,
-  scheduledAt,
-  lookups,
-  guardRails,
-  guardRailError,
-  readinessScore,
-  missingItems,
-}: {
-  form: FormState;
-  institution: string;
-  scheduledAt?: string;
-  lookups: SubmissionLookups;
-  guardRails: GuardRailResult | null;
-  guardRailError: string;
-  readinessScore: number;
-  missingItems: string[];
-}): FacebookPreviewDetailsData {
-  const hasInvalidSize = form.files.some(
-    (file) => file.size > lookups.maxFileSizeMb * 1024 * 1024,
-  );
-  const hasInvalidType = form.files.some(
-    (file) => !isAllowedFile(file, lookups.allowedFileTypes),
-  );
-  const fileCount = form.files.length + form.savedAssets.length;
-  const fileValidation =
-    hasInvalidSize || hasInvalidType
-      ? {
-          label: "File validation",
-          value: hasInvalidSize
-            ? `${lookups.maxFileSizeMb} MB max per file`
-            : "Unsupported file format",
-          tone: "error" as const,
-        }
-      : {
-          label: "File validation",
-          value: fileCount > 0 ? "Files look ready" : "At least one media asset is required",
-          tone: fileCount > 0 ? ("ok" as const) : ("warn" as const),
-        };
-
-  const slotConfirmation = guardRailError
-    ? {
-        label: "Slot confirmation",
-        value: guardRailError,
-        tone: "warn" as const,
-      }
-    : form.fastTrack
-      ? {
-          label: "Slot confirmation",
-          value: "Skipped for Fast-Track",
-          tone: "ok" as const,
-        }
-    : guardRails
-      ? {
-          label: "Slot confirmation",
-          value: guardRails.clean
-            ? "Guardrails passed"
-            : `Testing override: ${guardRails.hardBlocks.length} issue(s) noted`,
-          tone: guardRails.clean ? ("ok" as const) : ("warn" as const),
-        }
-      : {
-          label: "Slot confirmation",
-          value: scheduledAt ? "Testing override active" : "No slot selected",
-          tone: scheduledAt ? ("muted" as const) : ("warn" as const),
-        };
-
-  return {
-    statusLabel: statusLabels[form.status],
-    readinessScore,
-    completionLabel:
-      missingItems.length === 0
-        ? "Ready for approval"
-        : `${missingItems.length} item${missingItems.length === 1 ? "" : "s"} remaining`,
-    category: form.fastTrack ? "Fast-Track" : form.category || "Not selected",
-    liveEventName: form.liveEventName.trim(),
-    institution: institution || "Institution",
-    tags: form.tags,
-    schedule: form.fastTrack ? "Fast-Track, no scheduled slot" : scheduledAt ? formatDateTime(scheduledAt) : "Not scheduled",
-    fileCount,
-    fileValidation,
-    slotConfirmation,
-    aiCaptionAssist: {
-      label: "AI caption assist",
-      value: "Not available yet",
-      tone: "muted",
-    },
-    validatorNotes: form.description.trim(),
-    missingItems,
-  };
 }
 
 function captionTone(caption: string) {

@@ -1,10 +1,6 @@
-import { useEffect, useState } from "react";
-import type {
-  FacebookPreviewDetailsData,
-  FacebookPreviewMediaItem,
-} from "../../types/facebook";
+import { useEffect } from "react";
+import type { FacebookPreviewMediaItem } from "../../types/facebook";
 import FacebookPreviewCard from "./FacebookPreviewCard";
-import FacebookPreviewDetails from "./FacebookPreviewDetails";
 import FacebookPreviewMediaReorder from "./FacebookPreviewMediaReorder";
 
 interface FacebookPreviewModalProps {
@@ -15,7 +11,6 @@ interface FacebookPreviewModalProps {
   caption: string;
   mediaItems: FacebookPreviewMediaItem[];
   activeMediaIndex: number;
-  details: FacebookPreviewDetailsData;
   canSaveDraft: boolean;
   canSubmitForReview: boolean;
   submitDisabledReason?: string;
@@ -40,7 +35,6 @@ export default function FacebookPreviewModal({
   caption,
   mediaItems,
   activeMediaIndex,
-  details,
   canSaveDraft,
   canSubmitForReview,
   submitDisabledReason,
@@ -56,12 +50,6 @@ export default function FacebookPreviewModal({
   onEditDetails,
   onRetryPreview,
 }: FacebookPreviewModalProps) {
-  const [activeTab, setActiveTab] = useState<"preview" | "details">("preview");
-
-  useEffect(() => {
-    if (open) setActiveTab("preview");
-  }, [open]);
-
   useEffect(() => {
     if (!open) return;
 
@@ -103,34 +91,7 @@ export default function FacebookPreviewModal({
           </button>
         </div>
 
-        <div className="fb-preview-modal-tabs" role="tablist" aria-label="Facebook preview sections">
-          <button
-            type="button"
-            className={activeTab === "preview" ? "active" : ""}
-            role="tab"
-            aria-selected={activeTab === "preview"}
-            onClick={() => setActiveTab("preview")}
-          >
-            <i className="ti ti-brand-facebook" aria-hidden="true" />
-            Preview
-          </button>
-          <button
-            type="button"
-            className={activeTab === "details" ? "active" : ""}
-            role="tab"
-            aria-selected={activeTab === "details"}
-            onClick={() => setActiveTab("details")}
-          >
-            <i className="ti ti-list-check" aria-hidden="true" />
-            Submission Details
-            {details.missingItems.length > 0 && (
-              <span>{details.missingItems.length}</span>
-            )}
-          </button>
-        </div>
-
-        <div className={`fb-preview-modal-body ${activeTab === "preview" ? "preview-mode" : "details-mode"}`}>
-          {activeTab === "preview" ? (
+        <div className="fb-preview-modal-body preview-mode">
           <div className="fb-preview-modal-post" role="tabpanel">
             <div className="fb-preview-stage-head">
               <div>
@@ -165,11 +126,6 @@ export default function FacebookPreviewModal({
               onReorder={onReorderMedia}
             />
           </div>
-          ) : (
-            <div className="fb-preview-details-tab" role="tabpanel">
-              <FacebookPreviewDetails details={details} />
-            </div>
-          )}
         </div>
 
         <div className="fb-preview-modal-actions">
