@@ -6,6 +6,7 @@ import {
   createDraft,
   deleteDraft,
   detachAsset,
+  getEngagementRecommendations,
   getSubmission,
   reorderSubmissionMedia,
   submitForReview,
@@ -14,6 +15,7 @@ import {
   validateGuardRails,
   withdrawSubmission,
   type GuardRailResult,
+  type EngagementRecommendations,
   type SavedMediaAsset,
   type SubmissionLookups,
   type SubmissionPayload,
@@ -286,6 +288,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
   const [guardRailError, setGuardRailError] = useState("");
+  const [engagementRecommendations, setEngagementRecommendations] =
+    useState<EngagementRecommendations | null>(null);
+  const [engagementLoading, setEngagementLoading] = useState(false);
   const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
   const [institutionsLoading, setInstitutionsLoading] = useState(false);
   const [institutionsError, setInstitutionsError] = useState("");
@@ -588,6 +593,28 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     return () => window.clearTimeout(timer);
   }, [isAdminComposer, scheduledAt, selectedInstitutionId]);
 
+  useEffect(() => {
+    if (activeStep !== "schedule" || form.fastTrack || isReadOnlySubmission
+        || (isAdminComposer && !selectedInstitutionId)) {
+      setEngagementRecommendations(null);
+      setEngagementLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setEngagementLoading(true);
+    getEngagementRecommendations(selectedInstitutionId, controller.signal)
+      .then((response) => {
+        setEngagementRecommendations(response.data.available ? response.data : null);
+      })
+      .catch((error: unknown) => {
+        if ((error as { name?: string })?.name !== "CanceledError") {
+          setEngagementRecommendations(null);
+        }
+      })
+      .finally(() => setEngagementLoading(false));
+    return () => controller.abort();
+  }, [activeStep, form.fastTrack, isReadOnlySubmission, selectedInstitutionId]);
+
   // Clean up ?tab= from the URL after it has been consumed by the lazy filter initializer.
   useEffect(() => {
     if (filterParamConsumedRef.current) return;
@@ -749,6 +776,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }));
     setGuardRails(value ? null : guardRails);
     setGuardRailError(value ? "" : guardRailError);
+    setSaveState("idle");
+  }
+
+  function applyEngagementSlot(value: string) {
+    const slot = new Date(value);
+    if (Number.isNaN(slot.getTime())) return;
+    setForm((current) => ({
+      ...current,
+      scheduledDate: dateToInputValue(slot),
+      scheduledTime: `${String(slot.getHours()).padStart(2, "0")}:${String(slot.getMinutes()).padStart(2, "0")}`,
+    }));
     setSaveState("idle");
   }
 
@@ -1975,6 +2013,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
             {!form.fastTrack && (
               <>
+            <EngagementRecommendationsPanel
+              loading={engagementLoading}
+              recommendations={engagementRecommendations}
+              selectedAt={scheduledAt}
+              onSelect={applyEngagementSlot}
+            />
             <div className="sub-field-row">
               <Field label="Preferred Date">
                 <CalendarDateField
@@ -2623,6 +2667,51 @@ function StepPanelActions({
           <i className="ti ti-check"></i> Final step
         </span>
       )}
+    </div>
+  );
+}
+
+function EngagementRecommendationsPanel({
+  loading,
+  recommendations,
+  selectedAt,
+  onSelect,
+}: {
+  loading: boolean;
+  recommendations: EngagementRecommendations | null;
+  selectedAt?: string;
+  onSelect: (scheduledAt: string) => void;
+}) {
+  if (loading) {
+    return (
+      <div className="sub-engagement-panel sub-engagement-loading" aria-live="polite">
+        <i className="ti ti-loader-2"></i> Finding the best engagement times…
+      </div>
+    );
+  }
+  if (!recommendations || recommendations.slots.length === 0) return null;
+  return (
+    <div className="sub-engagement-panel">
+      <div className="sub-engagement-heading">
+        <span><i className="ti ti-chart-line"></i> Recommended times</span>
+        <small>{recommendations.source === "HISTORICAL" ? `${recommendations.sampleSize} Facebook posts analyzed` : "Best-practice guidance"}</small>
+      </div>
+      {recommendations.notice && <p className="sub-engagement-notice">{recommendations.notice}</p>}
+      <div className="sub-engagement-slots">
+        {recommendations.slots.map((slot) => (
+          <button
+            type="button"
+            className={selectedAt && new Date(selectedAt).getTime() === new Date(slot.scheduledAt).getTime() ? "selected" : ""}
+            key={slot.scheduledAt}
+            onClick={() => onSelect(slot.scheduledAt)}
+          >
+            <strong>{formatDateTime(slot.scheduledAt)}</strong>
+            <span>{slot.windowLabel}</span>
+            {slot.warnings.length > 0 && <em>{slot.warnings[0]}</em>}
+          </button>
+        ))}
+      </div>
+      <small className="sub-engagement-manual">You can ignore these suggestions and choose any valid custom time.</small>
     </div>
   );
 }

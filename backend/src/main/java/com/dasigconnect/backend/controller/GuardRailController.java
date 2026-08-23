@@ -29,10 +29,12 @@ public class GuardRailController {
     }
 
     @PostMapping("/validate")
-    @PreAuthorize("hasRole('CONTRIBUTOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<GuardRailResult> validate(
             @Valid @RequestBody GuardRailValidateRequest dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(guardRailService.validate(user.institutionId(), dto.getScheduledAt()));
+        java.util.UUID institutionId = user.institutionId() != null
+                ? user.institutionId() : dto.getInstitutionId();
+        return ResponseEntity.ok(guardRailService.validate(institutionId, dto.getScheduledAt()));
     }
 }
