@@ -25,6 +25,11 @@ public class SubmissionUpdateDto {
     @Size(max = 100)
     private String templateId;
 
+    @Size(max = 255)
+    private String albumName;
+
+    private List<String> mediaTags;
+
     private Boolean fastTrack;
 
     @Size(max = 255)
@@ -94,6 +99,22 @@ public class SubmissionUpdateDto {
 
     public void setTemplateId(String templateId) {
         this.templateId = templateId;
+    }
+
+    public String getAlbumName() {
+        return albumName;
+    }
+
+    public void setAlbumName(String albumName) {
+        this.albumName = albumName;
+    }
+
+    public List<String> getMediaTags() {
+        return mediaTags;
+    }
+
+    public void setMediaTags(List<String> mediaTags) {
+        this.mediaTags = mediaTags;
     }
 
     public Boolean getFastTrack() {

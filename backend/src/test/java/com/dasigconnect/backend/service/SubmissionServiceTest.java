@@ -476,6 +476,7 @@ class SubmissionServiceTest {
         dto.setCaption("Caption");
         dto.setDescription("Description");
         dto.setScheduledAt(scheduledAt);
+        dto.setAlbumName("Research Expo Album");
         return dto;
     }
 
@@ -488,6 +489,7 @@ class SubmissionServiceTest {
         submission.setEventDate(LocalDate.of(2026, 6, 1));
         submission.setCaption("Caption");
         submission.setDescription("Description");
+        submission.setAlbumName("Research Expo Album");
         submission.setStatus(status);
         submission.setScheduledAt(scheduledAt);
         return submission;

@@ -40,6 +40,7 @@ import BrandedSelect from "../../components/ui/BrandedSelect";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import AiCaptionButton from "./components/AiCaptionButton";
 import AiCaptionSuggestion from "./components/AiCaptionSuggestion";
+import AlbumCombobox from "../../components/ui/AlbumCombobox";
 import "../../styles/dasig-loader.css";
 
 interface SubmissionScreenProps {
@@ -61,15 +62,18 @@ interface FormState {
   scheduledDate: string;
   scheduledTime: string;
   tags: string[];
+  albumName: string;
+  mediaTags: string[];
   files: File[];
   savedAssets: SavedMediaAsset[];
   mediaOrder: string[];
   mediaCaptions: Record<string, string>;
+  mediaSkipWatermark: Record<string, boolean>;
   pendingAssetIds: string[];
   removedAssetIds: string[];
 }
 
-type QueueFilter = "drafts" | "submitted" | "published" | "all";
+type QueueFilter = "drafts" | "submitted" | "published" | "failed" | "all";
 type ModalState =
   | "submit"
   | "success"
@@ -99,10 +103,13 @@ const initialForm: FormState = {
   scheduledDate: "",
   scheduledTime: "",
   tags: [],
+  albumName: "",
+  mediaTags: [],
   files: [],
   savedAssets: [],
   mediaOrder: [],
   mediaCaptions: {},
+  mediaSkipWatermark: {},
   pendingAssetIds: [],
   removedAssetIds: [],
 };
@@ -130,6 +137,10 @@ function isDraftStatus(status: SubmissionStatus) {
 
 function isPublishedStatus(status: SubmissionStatus) {
   return status === "published" || status === "published_manual" || status === "admin_direct_post";
+}
+
+function isPublishFailedStatus(status: SubmissionStatus) {
+  return status === "publish_failed" || status === "direct_post_failed";
 }
 
 function getSubmissionStatusIcon(status: SubmissionStatus) {
@@ -289,6 +300,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const eventDateRef = useRef<HTMLDivElement | null>(null);
   const captionRef = useRef<HTMLTextAreaElement | null>(null);
   const tagsInputRef = useRef<HTMLInputElement | null>(null);
+  const albumNameRef = useRef<HTMLInputElement | null>(null);
+  const mediaTagsInputRef = useRef<HTMLInputElement | null>(null);
   const prefilledRef = useRef(false);
   const filterParamConsumedRef = useRef(false);
   const routedSubmissionRef = useRef<string | null>(null);
@@ -297,7 +310,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const browserBackGuardRef = useRef(false);
   const [filter, setFilter] = useState<QueueFilter>(() => {
     const tab = new URLSearchParams(window.location.search).get("tab");
-    const valid: QueueFilter[] = ["drafts", "submitted", "published", "all"];
+    const valid: QueueFilter[] = ["drafts", "submitted", "published", "failed", "all"];
     if (tab && (valid as string[]).includes(tab)) return tab as QueueFilter;
     return "all";
   });
@@ -311,6 +324,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [modal, setModal] = useState<ModalState>(null);
   const [captionMediaKey, setCaptionMediaKey] = useState<string | null>(null);
   const [hashtagInput, setHashtagInput] = useState("");
+  const [mediaTagInput, setMediaTagInput] = useState("");
   const [pendingLeaveAction, setPendingLeaveAction] =
     useState<PendingLeaveAction>(null);
   const [centerMode, setCenterMode] = useState<CenterMode>("edit");
@@ -342,13 +356,20 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const selectedPostingIsDefault = Boolean(
     selectedPostingInstitution && isDefaultInstitution(selectedPostingInstitution),
   );
+  
+  const [existingAlbums, setExistingAlbums] = useState<string[]>([
+    "2026 Hackathons", 
+    "DOST Region 7 Announcements", 
+    "Webinars"
+  ]); //replace with api call instead of dummy data
 
   const queued = useMemo(() => {
     const byFilter = (() => {
       if (filter === "drafts") return submissions.filter((item) => isDraftStatus(item.status));
       if (filter === "submitted")
-        return submissions.filter((item) => !isDraftStatus(item.status) && !isPublishedStatus(item.status));
+        return submissions.filter((item) => !isDraftStatus(item.status) && !isPublishedStatus(item.status) && !isPublishFailedStatus(item.status));
       if (filter === "published") return submissions.filter((item) => isPublishedStatus(item.status));
+      if (filter === "failed") return submissions.filter((item) => isPublishFailedStatus(item.status));
       return submissions;
     })();
     return byFilter.filter((item) => matchesQueueSearch(item, queueSearch));
@@ -360,12 +381,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   );
 
   const submittedCount = useMemo(
-    () => submissions.filter((item) => !isDraftStatus(item.status) && !isPublishedStatus(item.status)).length,
+    () => submissions.filter((item) => !isDraftStatus(item.status) && !isPublishedStatus(item.status) && !isPublishFailedStatus(item.status)).length,
     [submissions],
   );
 
   const publishedCount = useMemo(
     () => submissions.filter((item) => isPublishedStatus(item.status)).length,
+    [submissions],
+  );
+
+  const failedCount = useMemo(
+    () => submissions.filter((item) => isPublishFailedStatus(item.status)).length,
     [submissions],
   );
 
@@ -489,7 +515,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     const step: ProgressStep =
       target === "media" || target === "fileRequirements" || target === "mediaCaptions"
         ? "media"
-        : target === "schedule"
+        : target === "schedule" || target === "album" || target === "mediaTags"
           ? "schedule"
           : "details";
     if (step === "details" && !hasMedia) {
@@ -512,6 +538,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               ? captionRef.current
               : target === "tags"
                 ? tagsInputRef.current
+                : target === "album"
+                  ? albumNameRef.current
+                  : target === "mediaTags"
+                    ? mediaTagsInputRef.current
                 : target === "schedule"
                   ? scheduleSectionRef.current
                   : mediaSectionRef.current;
@@ -580,12 +610,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       ];
       steps.push({
         id: "schedule" as const,
-        label: form.fastTrack ? "Fast-Track" : "Preferred Schedule",
-        complete: form.fastTrack || Boolean(scheduledAt),
+        label: "Organize & Schedule",
+        complete: Boolean(form.albumName.trim()) && (form.fastTrack || Boolean(scheduledAt)),
       });
       return steps;
     },
-    [form.caption, form.eventDate, form.eventTitle, form.fastTrack, hasMedia, scheduledAt],
+    [form.albumName, form.caption, form.eventDate, form.eventTitle, form.fastTrack, hasMedia, scheduledAt],
   );
 
   const hasImageAssets = useMemo(
@@ -807,7 +837,19 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "eventTitle" && typeof value === "string") {
+        const previousDefault = current.eventTitle.trim();
+        const shouldRefreshDefaultTag =
+          current.mediaTags.length === 0 ||
+          (current.mediaTags.length === 1 && current.mediaTags[0] === previousDefault);
+        if (shouldRefreshDefaultTag) {
+          next.mediaTags = defaultMediaTags(value);
+        }
+      }
+      return next;
+    });
     setSaveState("idle");
   }
 
@@ -884,11 +926,44 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setSaveState("idle");
   }
 
+  function addMediaTag() {
+    if (isReadOnlySubmission) return;
+    const tag = normalizeMediaTag(mediaTagInput);
+    if (!tag) return;
+    setForm((current) => {
+      const existing = effectiveMediaTags(current);
+      if (existing.some((item) => item.toLowerCase() === tag.toLowerCase())) {
+        return current;
+      }
+      return {
+        ...current,
+        mediaTags: [...existing, tag],
+      };
+    });
+    setMediaTagInput("");
+    setSaveState("idle");
+  }
+
+  function removeMediaTag(tag: string) {
+    if (isReadOnlySubmission) return;
+    setForm((current) => ({
+      ...current,
+      mediaTags: effectiveMediaTags(current).filter((item) => item !== tag),
+    }));
+    setSaveState("idle");
+  }
+
+  function applyAutoAlbum() {
+    if (isReadOnlySubmission) return;
+    updateField("albumName", form.eventTitle.trim() || form.liveEventName.trim() || "Auto-Matched Album");
+  }
+
   function resetComposer() {
     setForm(initialForm);
     setPickerItems([]);
     setCaptionMediaKey(null);
     setHashtagInput("");
+    setMediaTagInput("");
     setActiveMediaIndex(0);
     setCenterMode("edit");
     setGuardRails(null);
@@ -914,6 +989,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setPickerItems([]);
     setCaptionMediaKey(null);
     setHashtagInput("");
+    setMediaTagInput("");
     setActiveMediaIndex(0);
     setCenterMode("edit");
     setGuardRails(null);
@@ -984,6 +1060,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           ? formatTimeInput(submission.scheduledAt)
           : "",
         tags: [],
+        albumName: submission.albumName || "",
+        mediaTags: submission.mediaTags ?? defaultMediaTags(submission.eventTitle || ""),
         files: [],
         savedAssets: submission.mediaAssets ?? [],
         mediaOrder: (submission.mediaAssets ?? []).map((asset) =>
@@ -995,6 +1073,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             asset.caption ?? "",
           ]),
         ),
+        mediaSkipWatermark: mediaSkipWatermarkFromSavedAssets(submission.mediaAssets ?? []),
         pendingAssetIds: [],
         removedAssetIds: [],
       };
@@ -1002,6 +1081,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setPickerItems((submission.mediaAssets ?? []).map(savedAssetToPickerItem));
       setCaptionMediaKey(null);
       setHashtagInput("");
+      setMediaTagInput("");
       setActiveMediaIndex(0);
       const editableDraft = submission.status === "draft" || submission.status === "needs_revision";
       setFilter(editableDraft ? "drafts" : "submitted");
@@ -1053,11 +1133,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       const savedAssets = finalResponse.data.mediaAssets ?? [];
       const orderedAssetIds = resolveSavedMediaOrder(form, savedAssets);
       const mediaCaptions = resolveSavedMediaCaptions(form, savedAssets, orderedAssetIds);
-      if (orderedAssetIds.length === savedAssets.length && shouldSyncMediaDetails(savedAssets, mediaCaptions)) {
+      const skipWatermarks = resolveSavedMediaSkipWatermarks(form, savedAssets, orderedAssetIds);
+      if (orderedAssetIds.length === savedAssets.length && shouldSyncMediaDetails(savedAssets, mediaCaptions, skipWatermarks)) {
         finalResponse = await reorderSubmissionMedia(
           finalResponse.data.id,
           orderedAssetIds,
           mediaCaptions,
+          skipWatermarks,
         );
       }
       const orderedSavedAssets = finalResponse.data.mediaAssets ?? savedAssets;
@@ -1069,6 +1151,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         savedAssets: orderedSavedAssets,
         mediaOrder: orderedSavedAssets.map((asset) => savedMediaKey(asset.id)),
         mediaCaptions: mediaCaptionsFromSavedAssets(orderedSavedAssets),
+        mediaSkipWatermark: mediaSkipWatermarkFromSavedAssets(orderedSavedAssets),
         pendingAssetIds: [],
       };
       setForm((current) => ({
@@ -1079,6 +1162,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         savedAssets: orderedSavedAssets,
         mediaOrder: orderedSavedAssets.map((asset) => savedMediaKey(asset.id)),
         mediaCaptions: mediaCaptionsFromSavedAssets(orderedSavedAssets),
+        mediaSkipWatermark: mediaSkipWatermarkFromSavedAssets(orderedSavedAssets),
         pendingAssetIds: [],
         removedAssetIds: [],
       }));
@@ -1127,6 +1211,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (!form.eventDate) missing.push("an event date");
     if (!form.caption.trim()) missing.push("a caption");
     if (!hasMedia) missing.push("at least one media attachment");
+    if (!form.albumName.trim()) missing.push("an album assignment");
     if (!form.fastTrack && !scheduledAt) missing.push("a preferred schedule");
     if (missing.length > 0) {
       toast.error(`Add ${missing.join(", ")} before submitting.`);
@@ -1176,11 +1261,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       const savedAssets = draftResponse.data.mediaAssets ?? [];
       const orderedAssetIds = resolveSavedMediaOrder(form, savedAssets);
       const mediaCaptions = resolveSavedMediaCaptions(form, savedAssets, orderedAssetIds);
-      if (orderedAssetIds.length === savedAssets.length && shouldSyncMediaDetails(savedAssets, mediaCaptions)) {
+      const skipWatermarks = resolveSavedMediaSkipWatermarks(form, savedAssets, orderedAssetIds);
+      if (orderedAssetIds.length === savedAssets.length && shouldSyncMediaDetails(savedAssets, mediaCaptions, skipWatermarks)) {
         draftResponse = await reorderSubmissionMedia(
           draftResponse.data.id,
           orderedAssetIds,
           mediaCaptions,
+          skipWatermarks,
         );
       }
       const submitted = await submitForReview(draftResponse.data.id);
@@ -1194,6 +1281,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         savedAssets: submittedAssets,
         mediaOrder: submittedAssets.map((asset) => savedMediaKey(asset.id)),
         mediaCaptions: mediaCaptionsFromSavedAssets(submittedAssets),
+        mediaSkipWatermark: mediaSkipWatermarkFromSavedAssets(submittedAssets),
         pendingAssetIds: [],
         removedAssetIds: [],
       }));
@@ -1354,6 +1442,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       removedAssetIds: [...new Set([...current.removedAssetIds, ...justRemoved])],
       mediaOrder: newMediaOrder,
       mediaCaptions: pruneMediaCaptions(current.mediaCaptions, newMediaOrder),
+      mediaSkipWatermark: pruneMediaFlags(current.mediaSkipWatermark, newMediaOrder),
     }));
     setSaveState("idle");
   }
@@ -1364,6 +1453,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       mediaCaptions: {
         ...current.mediaCaptions,
         [mediaKey]: caption,
+      },
+    }));
+    setSaveState("idle");
+  }
+
+  function updateMediaSkipWatermark(mediaKey: string, skipWatermark: boolean) {
+    setForm((current) => ({
+      ...current,
+      mediaSkipWatermark: {
+        ...current.mediaSkipWatermark,
+        [mediaKey]: skipWatermark,
       },
     }));
     setSaveState("idle");
@@ -1404,7 +1504,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       const savedIds = orderedIds
         .filter((id) => id.startsWith("saved:"))
         .map((id) => id.replace("saved:", ""));
-      const { data } = await reorderSubmissionMedia(form.id, savedIds);
+      const captions = captionsForSavedIds(form.mediaCaptions, savedIds);
+      const skipWatermarks = skipWatermarksForSavedIds(form.mediaSkipWatermark, savedIds);
+      const { data } = await reorderSubmissionMedia(form.id, savedIds, captions, skipWatermarks);
       const nextAssets = data.mediaAssets ?? sortedSavedAssets;
       const nextForm: FormState = {
         ...form,
@@ -1412,12 +1514,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         files: [],
         mediaOrder: nextAssets.map((asset) => savedMediaKey(asset.id)),
         mediaCaptions: mediaCaptionsFromSavedAssets(nextAssets),
+        mediaSkipWatermark: mediaSkipWatermarkFromSavedAssets(nextAssets),
       };
       setForm((current) => ({
         ...current,
         savedAssets: nextAssets,
         mediaOrder: nextAssets.map((asset) => savedMediaKey(asset.id)),
         mediaCaptions: mediaCaptionsFromSavedAssets(nextAssets),
+        mediaSkipWatermark: mediaSkipWatermarkFromSavedAssets(nextAssets),
       }));
       setPickerItems(nextAssets.map(savedAssetToPickerItem));
       setSubmissions((current) => upsertSubmission(current, data));
@@ -1518,6 +1622,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 >
                   Published
                   <span className="sub-status-tab-count">{loading ? "-" : publishedCount}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`sub-status-tab${filter === "failed" ? " is-active" : ""}`}
+                  onClick={() => setFilter("failed")}
+                  aria-pressed={filter === "failed"}
+                >
+                  Publish Failed
+                  <span className="sub-status-tab-count">{loading ? "-" : failedCount}</span>
                 </button>
               </div>
 
@@ -2104,43 +2217,137 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             hidden={!isReadOnlySubmission && activeStep !== "schedule"}
           >
             <SectionHead
-              icon="ti-calendar-event"
+              icon="ti-folders"
               tone="blue"
-              title={form.fastTrack ? "Fast-Track Submission" : "Preferred Schedule"}
+              title="Organize & Schedule"
               subtitle={
                 form.fastTrack
-                  ? "Use for live-event posts that need immediate approval and no scheduled slot."
-                  : "Choose a future date and a publish time between 8:00 AM and 8:00 PM."
+                  ? "Assign the media album, add media tags, and submit as urgent live-event content."
+                  : "Assign the media album, add media tags, then choose the preferred publishing slot."
               }
             />
-            {!isReadOnlySubmission && (
-              <label className="sub-fast-track-toggle">
-                <input
-                  type="checkbox"
-                  checked={form.fastTrack}
-                  onChange={(event) => updateFastTrack(event.target.checked)}
-                />
-                <span>
-                  <strong>Live Event Fast-Track</strong>
-                  <small>Use caption and media only for urgent live-event approval.</small>
-                </span>
-              </label>
-            )}
-            {form.fastTrack && (
-              <>
-                <Field label="Active Event Name">
-                  <input
-                    className="sub-finput"
+            <Field 
+              label="Album Assignment" 
+              tooltip="Select an existing album, type to create a new one, or let AI auto-match based on your event details."
+            >
+                <AlbumCombobox
+                    value={form.albumName}
+                    existingAlbums={existingAlbums}
                     readOnly={isReadOnlySubmission}
-                    value={form.liveEventName}
-                    onChange={(event) => updateField("liveEventName", event.target.value)}
-                    placeholder="Optional event name for album association"
-                  />
+                    placeholder="Search, select, or create a new album"
+                    onChange={(value) => updateField("albumName", value)}
+                    onAutoMatch={applyAutoAlbum}
+                />
                 </Field>
-                <div className="sub-inline-note">
-                  Fast-Track submissions keep your post details and media, skip the scheduled slot, and move as urgent in the approval queue.
+
+            <Field label="Media Tags"
+              tooltip="Add relevant media tags to help categorize and search for this content later.">
+              <div className="sub-hashtag-entry">
+                <input
+                  ref={mediaTagsInputRef}
+                  className="sub-finput"
+                  value={mediaTagInput}
+                  onChange={(event) => setMediaTagInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addMediaTag();
+                    }
+                  }}
+                  placeholder="Add album tag"
+                  disabled={isReadOnlySubmission}
+                />
+                <button
+                  type="button"
+                  className="sub-hashtag-add"
+                  disabled={isReadOnlySubmission || !normalizeMediaTag(mediaTagInput)}
+                  onClick={addMediaTag}
+                >
+                  <i className="ti ti-plus" aria-hidden /> Add
+                </button>
+              </div>
+              <div className="sub-tag-row">
+                {effectiveMediaTags(form).length > 0 ? (
+                  effectiveMediaTags(form).map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      className="sub-tag active"
+                      onClick={() => removeMediaTag(tag)}
+                      disabled={isReadOnlySubmission}
+                    >
+                      {tag}
+                    </button>
+                  ))
+                ) : (
+                  <span className="sub-muted-text">Event title will appear here as the default album tag.</span>
+                )}
+              </div>
+            </Field>
+
+            {!isReadOnlySubmission && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", marginTop: "24px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, color: "#374151", fontSize: "14px" }}>
+                    Publishing Mode
+                    <i
+                        className="ti ti-info-circle"
+                        title="Choose 'Schedule' to plan a future post, or 'Live Event' to bypass the calendar queue for urgent, immediate publication."
+                        style={{ color: "#9ca3af", cursor: "help", fontSize: "15px" }}
+                    />
+                    </div>
+                    
+                    {/* Segmented Pill Toggle */}
+                    <div style={{ display: "flex", background: "#f3f4f6", padding: "4px", borderRadius: "8px", gap: "4px" }}>
+                    <button
+                        type="button"
+                        style={{
+                        padding: "6px 12px",
+                        border: "none",
+                        borderRadius: "6px",
+                        background: !form.fastTrack ? "#fff" : "transparent",
+                        color: !form.fastTrack ? "#111827" : "#6b7280",
+                        boxShadow: !form.fastTrack ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                        fontWeight: !form.fastTrack ? 600 : 500,
+                        fontSize: "13px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        transition: "all 0.2s"
+                        }}
+                        onClick={() => updateFastTrack(false)}
+                    >
+                        <i className="ti ti-calendar" /> Schedule
+                    </button>
+                    <button
+                        type="button"
+                        style={{
+                        padding: "6px 12px",
+                        border: "none",
+                        borderRadius: "6px",
+                        background: form.fastTrack ? "#fff" : "transparent",
+                        color: form.fastTrack ? "#111827" : "#6b7280",
+                        boxShadow: form.fastTrack ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                        fontWeight: form.fastTrack ? 600 : 500,
+                        fontSize: "13px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        transition: "all 0.2s"
+                        }}
+                        onClick={() => updateFastTrack(true)}
+                    >
+                        <i className="ti ti-bolt" style={{ color: form.fastTrack ? "#eab308" : "inherit" }} /> Live Event
+                    </button>
+                    </div>
                 </div>
-              </>
+                )}
+            {form.fastTrack && (
+                <div className="sub-inline-note" style={{ marginTop: "16px", marginBottom: "8px" }}>
+                    <i className="ti ti-info-circle" style={{ marginRight: "6px" }}></i>
+                    Fast-Track submissions keep your post details and media, skip the scheduled slot, and move as urgent in the approval queue.
+                </div>
             )}
             {!form.fastTrack && (
               <>
@@ -2318,6 +2525,22 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               placeholder="Optional caption for this media"
               autoFocus
             />
+            {captionMediaItem.mediaType === "image" && (
+              <label className="sub-watermark-toggle">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.mediaSkipWatermark[captionMediaKey])}
+                  disabled={isReadOnlySubmission}
+                  onChange={(event) =>
+                    updateMediaSkipWatermark(captionMediaKey, event.target.checked)
+                  }
+                />
+                <span>
+                  <strong>Skip watermark for this image</strong>
+                  <small>Exclude this photo from automatic watermarking at approval.</small>
+                </span>
+              </label>
+            )}
             <div className="sub-modal-actions">
               <button
                 className="sub-modal-btn info"
@@ -2571,18 +2794,29 @@ function Field({
   count,
   tone,
   action,
+  tooltip,
   children,
 }: {
   label: string;
   count?: string;
   tone?: string;
   action?: ReactNode;
+  tooltip?: string;
   children: ReactNode;
 }) {
   return (
     <label className="sub-fgroup">
       <span className="sub-flabel">
-        {label}
+        <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          {label}
+          {tooltip && (
+            <i 
+              className="ti ti-info-circle" 
+              title={tooltip} 
+              style={{ color: "#9ca3af", cursor: "help", fontSize: "15px" }} 
+            />
+          )}
+        </span>
         <span className="sub-flabel-right">
           {count && (
             <span className={`sub-flabel-count ${tone || ""}`}>{count}</span>
@@ -3590,6 +3824,8 @@ function toPayload(form: FormState, scheduledAt?: string): SubmissionPayload {
     fastTrack: form.fastTrack,
     liveEventName: form.fastTrack ? form.liveEventName.trim() : "",
     tags: [],
+    albumName: form.albumName.trim() || null,
+    mediaTags: effectiveMediaTags(form),
   };
 }
 
@@ -3625,6 +3861,19 @@ function removeHashtag(caption: string, hashtag: string) {
     .trim();
 }
 
+function normalizeMediaTag(value: string) {
+  return value.trim().replace(/^#+/, "").replace(/\s+/g, " ");
+}
+
+function defaultMediaTags(eventTitle: string) {
+  const tag = normalizeMediaTag(eventTitle);
+  return tag ? [tag] : [];
+}
+
+function effectiveMediaTags(form: FormState) {
+  return form.mediaTags.length > 0 ? form.mediaTags : defaultMediaTags(form.eventTitle);
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -3637,11 +3886,14 @@ function isDirtyDraft(form: FormState) {
       form.caption.trim() ||
       form.fastTrack ||
       form.liveEventName.trim() ||
+      form.albumName.trim() ||
+      form.mediaTags.length ||
       form.scheduledDate ||
       form.scheduledTime ||
       form.files.length ||
       form.savedAssets.length ||
       Object.values(form.mediaCaptions ?? {}).some((caption) => caption.trim()) ||
+      Object.values(form.mediaSkipWatermark ?? {}).some(Boolean) ||
       form.pendingAssetIds.length,
   );
 }
@@ -3655,6 +3907,8 @@ function getDirtySignature(form: FormState) {
     fastTrack: form.fastTrack,
     liveEventName: form.liveEventName.trim(),
     caption: form.caption.trim(),
+    albumName: form.albumName.trim(),
+    mediaTags: effectiveMediaTags(form),
     scheduledDate: form.scheduledDate,
     scheduledTime: form.scheduledTime,
     files: form.files.map((file) => ({
@@ -3666,6 +3920,7 @@ function getDirtySignature(form: FormState) {
     savedAssetIds: form.savedAssets.map((asset) => asset.id),
     mediaOrder: form.mediaOrder,
     mediaCaptions: form.mediaCaptions ?? {},
+    mediaSkipWatermark: form.mediaSkipWatermark ?? {},
     pendingAssetIds: form.pendingAssetIds,
   });
 }
@@ -3746,12 +4001,44 @@ function resolveSavedMediaCaptions(
   return captions;
 }
 
+function resolveSavedMediaSkipWatermarks(
+  form: FormState,
+  savedAssets: SavedMediaAsset[],
+  orderedAssetIds: string[],
+) {
+  const existingIds = new Set(form.savedAssets.map((asset) => asset.id));
+  const newAssets = savedAssets.filter((asset) => !existingIds.has(asset.id));
+  const newAssetQueue = [...newAssets];
+  const skipWatermarks: Record<string, boolean> = {};
+
+  form.mediaOrder.forEach((mediaKey) => {
+    const assetId = mediaKey.startsWith("saved:")
+      ? mediaKey.replace("saved:", "")
+      : mediaKey.startsWith("local:")
+        ? newAssetQueue.shift()?.id
+        : undefined;
+    if (!assetId || !orderedAssetIds.includes(assetId)) return;
+    skipWatermarks[assetId] = Boolean(form.mediaSkipWatermark[mediaKey]);
+  });
+
+  savedAssets.forEach((asset) => {
+    if (!(asset.id in skipWatermarks)) skipWatermarks[asset.id] = Boolean(asset.skipWatermark);
+  });
+
+  return skipWatermarks;
+}
+
 function shouldSyncMediaDetails(
   savedAssets: SavedMediaAsset[],
   mediaCaptions: Record<string, string>,
+  skipWatermarks: Record<string, boolean>,
 ) {
   if (savedAssets.length > 1) return true;
-  return savedAssets.some((asset) => (asset.caption ?? "") !== (mediaCaptions[asset.id] ?? ""));
+  return savedAssets.some(
+    (asset) =>
+      (asset.caption ?? "") !== (mediaCaptions[asset.id] ?? "") ||
+      Boolean(asset.skipWatermark) !== Boolean(skipWatermarks[asset.id]),
+  );
 }
 
 function mediaCaptionsFromSavedAssets(savedAssets: SavedMediaAsset[]) {
@@ -3760,10 +4047,41 @@ function mediaCaptionsFromSavedAssets(savedAssets: SavedMediaAsset[]) {
   );
 }
 
+function mediaSkipWatermarkFromSavedAssets(savedAssets: SavedMediaAsset[]) {
+  return Object.fromEntries(
+    savedAssets.map((asset) => [savedMediaKey(asset.id), Boolean(asset.skipWatermark)]),
+  );
+}
+
+function captionsForSavedIds(
+  mediaCaptions: Record<string, string>,
+  savedIds: string[],
+) {
+  return Object.fromEntries(
+    savedIds.map((id) => [id, (mediaCaptions[savedMediaKey(id)] ?? "").trim()]),
+  );
+}
+
+function skipWatermarksForSavedIds(
+  mediaSkipWatermark: Record<string, boolean>,
+  savedIds: string[],
+) {
+  return Object.fromEntries(
+    savedIds.map((id) => [id, Boolean(mediaSkipWatermark[savedMediaKey(id)])]),
+  );
+}
+
 function pruneMediaCaptions(captions: Record<string, string>, mediaOrder: string[]) {
   const activeKeys = new Set(mediaOrder);
   return Object.fromEntries(
     Object.entries(captions).filter(([key]) => activeKeys.has(key)),
+  );
+}
+
+function pruneMediaFlags(flags: Record<string, boolean>, mediaOrder: string[]) {
+  const activeKeys = new Set(mediaOrder);
+  return Object.fromEntries(
+    Object.entries(flags).filter(([key]) => activeKeys.has(key)),
   );
 }
 
@@ -3795,8 +4113,10 @@ type ReadinessTarget =
   | "media"
   | "fileRequirements"
   | "schedule"
+  | "album"
   | "captionLength"
   | "tags"
+  | "mediaTags"
   | "mediaCaptions"
   | "template";
 
@@ -3816,6 +4136,7 @@ function getReadinessChecklist(
   guardRailsLoading: boolean,
 ) {
   const fileCount = form.files.length + form.savedAssets.length;
+  const mediaTags = effectiveMediaTags(form);
   const filesWithinLimit = form.files.every(
     (file) => file.size <= lookups.maxFileSizeMb * 1024 * 1024,
   );
@@ -3863,6 +4184,12 @@ function getReadinessChecklist(
         : `${lookups.maxFileSizeMb} MB max; ${lookups.allowedFileTypes.join(", ") || "accepted media only"}`,
     },
     {
+      title: "Album assignment",
+      target: "album",
+      pass: Boolean(form.albumName.trim()),
+      sub: form.albumName.trim() || "Required before approval submission",
+    },
+    {
       title: form.fastTrack ? "Fast-Track route" : "Schedule guard rails",
       target: form.fastTrack ? "caption" : "schedule",
       pass: slotReady,
@@ -3898,6 +4225,14 @@ function getReadinessChecklist(
       sub: extractHashtags(form.caption).length > 0
         ? `${extractHashtags(form.caption).length} tag(s) included`
         : "Add tags for discoverability",
+    },
+    {
+      title: "Media tags",
+      target: "mediaTags",
+      pass: mediaTags.length > 0,
+      sub: mediaTags.length > 0
+        ? `${mediaTags.length} media tag(s) added`
+        : "Event title is used as the default tag",
     },
     {
       title: "Per-media captions",
@@ -3962,6 +4297,7 @@ function getPreviewValidation(
   if (!form.eventDate) missingItems.push("Select the event date.");
   if (!form.caption.trim()) missingItems.push("Write a caption.");
   if (form.files.length + form.savedAssets.length < 1) missingItems.push("Attach at least one media asset.");
+  if (!form.albumName.trim()) missingItems.push("Assign an album.");
   if (!form.fastTrack && !scheduledAt) missingItems.push("Choose a preferred schedule.");
   if (scheduledAt && new Date(scheduledAt) <= new Date()) {
     missingItems.push("Schedule must be set in the future.");
@@ -3987,6 +4323,7 @@ function getPreviewValidation(
   if (!form.eventDate) blockingErrors.push("Event date is required.");
   if (!form.caption.trim()) blockingErrors.push("Caption is required.");
   if (form.files.length + form.savedAssets.length < 1) blockingErrors.push("At least one media attachment is required.");
+  if (!form.albumName.trim()) blockingErrors.push("Album assignment is required.");
   if (!form.fastTrack && !scheduledAt) blockingErrors.push("Preferred schedule is required.");
   if (scheduledAt && new Date(scheduledAt) <= new Date()) {
     blockingErrors.push("Preferred schedule must be set in the future.");
