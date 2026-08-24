@@ -53,9 +53,12 @@ public class NotificationEventListener {
         Submission s = event.submission();
         User contributor = s.getContributor();
         String slot = s.getScheduledAt() != null ? fmt(s.getScheduledAt()) : "TBD";
+        String link = "/submissions/" + s.getId();
         String msg = "Your submission '" + s.getEventTitle()
                 + "' was approved and is scheduled for " + slot + ".";
-        String link = "/submissions/" + s.getId();
+        if (event.edited()) {
+            msg += " The Administrator made changes before publishing — view the diff at " + link + ".";
+        }
 
         notificationService.createNotification(contributor, NotificationEventType.submission_approved, msg, link);
         emailDeliveryService.send(contributor,

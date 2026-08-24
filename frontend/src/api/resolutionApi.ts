@@ -129,8 +129,17 @@ export function getResolutionDetail(id: string, signal?: AbortSignal) {
   return api.get<ManualPublishDetail>(`/resolution/${id}`, { signal });
 }
 
+export interface RetryWithNewSchedulePayload {
+  scheduledAt: string;
+  overrideReason?: string;
+}
+
 export function retryPublication(id: string) {
   return api.post<void>(`/resolution/${id}/retry`);
+}
+
+export function retryPublicationWithNewSchedule(id: string, payload: RetryWithNewSchedulePayload) {
+  return api.post<void>(`/resolution/${id}/retry-with-new-schedule`, payload);
 }
 
 export function startManualPublish(id: string) {

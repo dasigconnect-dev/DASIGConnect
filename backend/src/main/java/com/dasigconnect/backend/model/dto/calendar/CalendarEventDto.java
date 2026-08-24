@@ -19,6 +19,8 @@ public class CalendarEventDto {
     private String caption;
     private String description;
     private String contributorName;
+    /** True once the submission's slot reservation is permanently locked (post-approval). */
+    private boolean locked;
 
     public static CalendarEventDto full(Submission s) {
         CalendarEventDto dto = new CalendarEventDto();
@@ -69,4 +71,7 @@ public class CalendarEventDto {
     public String getCaption() { return caption; }
     public String getDescription() { return description; }
     public String getContributorName() { return contributorName; }
+
+    public boolean isLocked() { return locked; }
+    public void setLocked(boolean locked) { this.locked = locked; }
 }

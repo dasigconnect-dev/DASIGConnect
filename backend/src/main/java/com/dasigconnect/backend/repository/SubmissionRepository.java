@@ -62,18 +62,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("windowStart") java.time.Instant windowStart,
             @Param("windowEnd") java.time.Instant windowEnd);
 
-    // UC-2.1 validation queue — PENDING + IN_REVIEW sorted by scheduledAt ASC
-    @Query("""
-        SELECT s FROM Submission s
-        WHERE s.institution.id = :institutionId
-        AND s.status IN (
-            com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review
-        )
-        ORDER BY s.scheduledAt ASC NULLS LAST
-        """)
-    List<Submission> findValidationQueueByInstitution(@Param("institutionId") UUID institutionId);
-
+    // UC-2.4 approval queue — network-wide PENDING + IN_REVIEW sorted by scheduledAt ASC
     @Query("""
         SELECT s FROM Submission s
         WHERE s.status IN (
@@ -84,27 +73,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         """)
     List<Submission> findValidationQueue();
 
-    // UC-2.1 validation history — all post-review statuses, most recently updated first
-    @Query("""
-        SELECT s FROM Submission s
-        WHERE s.institution.id = :institutionId
-        AND s.status IN (
-            com.dasigconnect.backend.model.entity.SubmissionStatus.needs_revision,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.publishing,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.publish_failed,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.published,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.published_manual,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.admin_direct_post,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_publishing,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_failed,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.rejected
-        )
-        ORDER BY s.updatedAt DESC
-        """)
-    List<Submission> findValidationHistoryByInstitution(@Param("institutionId") UUID institutionId);
-
+    // UC-2.4 approval history — network-wide, all post-review statuses, most recently updated first
     @Query("""
         SELECT s FROM Submission s
         WHERE s.status IN (

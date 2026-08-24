@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
 import com.dasigconnect.backend.model.dto.validation.RejectionRequestDto;
 import com.dasigconnect.backend.model.dto.validation.ReviewLockDto;
 import com.dasigconnect.backend.model.dto.validation.RevisionRequestDto;
@@ -68,6 +69,18 @@ public class ValidationController {
     }
 
     /**
+     * GET /api/v1/validation/{id}/lock
+     * Read-only lock status check — does not acquire or extend anything. Used by the
+     * frontend to restore lock UI state after a page refresh. data is null if unlocked.
+     */
+    @GetMapping("/{id}/lock")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    public ResponseEntity<ApiResponse<ReviewLockDto>> getLockStatus(@PathVariable UUID id) {
+        ReviewLockDto dto = reviewLockService.getActiveLock(id).map(ReviewLockDto::from).orElse(null);
+        return ResponseEntity.ok(ApiResponse.success(dto));
+    }
+
+    /**
      * POST /api/v1/validation/{id}/lock
      * Acquires a review lock for a submission. Idempotent if caller already holds it.
      * Returns 409 if another validator holds an active lock.
@@ -104,6 +117,20 @@ public class ValidationController {
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails caller) {
         validationService.approve(id, caller);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * POST /api/v1/validation/{id}/edit-and-approve
+     * A9: edits any field of the submission and approves it in the same action.
+     */
+    @PostMapping("/{id}/edit-and-approve")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    public ResponseEntity<Void> editAndApprove(
+            @PathVariable UUID id,
+            @Valid @RequestBody SubmissionUpdateDto dto,
+            @AuthenticationPrincipal JwtUserDetails caller) {
+        validationService.editAndApprove(id, dto, caller);
         return ResponseEntity.noContent().build();
     }
 

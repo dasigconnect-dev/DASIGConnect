@@ -225,6 +225,18 @@ public class SubmissionService {
     public SubmissionResponseDto update(UUID submissionId, SubmissionUpdateDto dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
+        submission = applySubmissionEdits(submission, dto);
+        return buildResponse(submission);
+    }
+
+    /**
+     * Applies the editable-field subset of a SubmissionUpdateDto to an already-loaded
+     * submission and saves it. Shared by the contributor-facing update() above and
+     * ValidationService's admin Edit & Approve action — callers own their own
+     * ownership/status checks before calling this.
+     */
+    Submission applySubmissionEdits(Submission submission, SubmissionUpdateDto dto) {
+        UUID submissionId = submission.getId();
 
         if (dto.getEventTitle() != null) {
             submission.setEventTitle(dto.getEventTitle());
@@ -282,8 +294,7 @@ public class SubmissionService {
             slotReservationService.reserve(submissionId, submission.getInstitution().getId(), dto.getScheduledAt());
         }
 
-        submission = submissionRepository.save(submission);
-        return buildResponse(submission);
+        return submissionRepository.save(submission);
     }
 
     /**
@@ -400,7 +411,7 @@ public class SubmissionService {
      * post: an event title, an event date, a caption, and at least one media
      * asset. Throws 422 listing everything that is still missing.
      */
-    private void assertContentComplete(Submission submission) {
+    void assertContentComplete(Submission submission) {
         List<String> missing = new java.util.ArrayList<>();
         if (submission.getEventTitle() == null || submission.getEventTitle().isBlank()) {
             missing.add("an event title");
