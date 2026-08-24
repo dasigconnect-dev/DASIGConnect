@@ -1,30 +1,40 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FailedPublication } from "../../api/resolutionApi";
 
 interface ResolutionRetryModalProps {
   item: FailedPublication | null;
   busy: boolean;
-  onConfirm: () => void;
   onConfirmWithNewSchedule: (scheduledAt: string, overrideReason?: string) => void;
   onClose: () => void;
+}
+
+function toDatetimeLocal(iso: string | null) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 export default function ResolutionRetryModal({
   item,
   busy,
-  onConfirm,
   onConfirmWithNewSchedule,
   onClose,
 }: ResolutionRetryModalProps) {
-  const [rescheduling, setRescheduling] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
+
+  useEffect(() => {
+    if (item) {
+      setScheduledAt(toDatetimeLocal(item.scheduledAt));
+      setOverrideReason("");
+    }
+  }, [item]);
 
   if (!item) return null;
 
   function handleClose() {
-    setRescheduling(false);
-    setScheduledAt("");
     setOverrideReason("");
     onClose();
   }
@@ -35,11 +45,11 @@ export default function ResolutionRetryModal({
       onClick={handleClose}
       role="dialog"
       aria-modal="true"
-      aria-label="Retry auto-publish"
+      aria-label="Retry with new schedule"
     >
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-card-header">
-          <h2 className="modal-card-title">Retry Auto-Publish?</h2>
+          <h2 className="modal-card-title">Retry With New Schedule</h2>
           <button
             type="button"
             className="modal-close-btn"
@@ -50,83 +60,56 @@ export default function ResolutionRetryModal({
           </button>
         </div>
         <div className="modal-card-body">
-          {!rescheduling ? (
-            <p>
-              This will reset the retry counter and re-queue{" "}
-              <strong>"{item.eventTitle}"</strong> for the automated publisher. It
-              will attempt to post to Facebook on the next scheduler cycle.
-            </p>
-          ) : (
-            <>
-              <p>
-                Choose a new publish time for <strong>"{item.eventTitle}"</strong>.
-                Guard rails are re-checked against the new slot.
-              </p>
-              <div className="rc-field">
-                <label className="rc-label" htmlFor="retry-new-slot">
-                  New scheduled time <span className="rc-required">*</span>
-                </label>
-                <input
-                  id="retry-new-slot"
-                  type="datetime-local"
-                  className="rc-input"
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                />
-              </div>
-              <div className="rc-field">
-                <label className="rc-label" htmlFor="retry-override-reason">
-                  Override reason (only needed if the new slot violates a guard rail)
-                </label>
-                <input
-                  id="retry-override-reason"
-                  type="text"
-                  className="rc-input"
-                  value={overrideReason}
-                  onChange={(e) => setOverrideReason(e.target.value)}
-                  placeholder="Optional"
-                />
-              </div>
-            </>
-          )}
+          <p>
+            Choose a publish time for <strong>"{item.eventTitle}"</strong> and it will
+            be re-queued for the automated publisher. Guard rails are re-checked
+            against the new slot.
+          </p>
+          <div className="rc-field">
+            <label className="rc-label" htmlFor="retry-new-slot">
+              New scheduled time <span className="rc-required">*</span>
+            </label>
+            <input
+              id="retry-new-slot"
+              type="datetime-local"
+              className="rc-input"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+            />
+          </div>
+          <div className="rc-field">
+            <label className="rc-label" htmlFor="retry-override-reason">
+              Override reason (only needed if the new slot violates a guard rail)
+            </label>
+            <input
+              id="retry-override-reason"
+              type="text"
+              className="rc-input"
+              value={overrideReason}
+              onChange={(e) => setOverrideReason(e.target.value)}
+              placeholder="Optional"
+            />
+          </div>
         </div>
         <div className="modal-card-footer">
           <button type="button" className="btn-secondary" onClick={handleClose}>
             Cancel
           </button>
-          {!rescheduling && (
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setRescheduling(true)}
-            >
-              Retry With New Schedule
-            </button>
-          )}
           <button
             type="button"
             className="btn-primary"
-            disabled={busy || (rescheduling && !scheduledAt)}
-            onClick={() => {
-              if (rescheduling) {
-                onConfirmWithNewSchedule(
-                  new Date(scheduledAt).toISOString(),
-                  overrideReason || undefined,
-                );
-              } else {
-                onConfirm();
-              }
-            }}
+            disabled={busy || !scheduledAt}
+            onClick={() =>
+              onConfirmWithNewSchedule(new Date(scheduledAt).toISOString(), overrideReason || undefined)
+            }
           >
             {busy ? (
               <>
                 <div className="spinner-ring spinner-ring-sm" />
-                {rescheduling ? "Rescheduling..." : "Queuing..."}
+                Rescheduling...
               </>
-            ) : rescheduling ? (
-              "Confirm New Schedule"
             ) : (
-              "Confirm Retry"
+              "Confirm New Schedule"
             )}
           </button>
         </div>

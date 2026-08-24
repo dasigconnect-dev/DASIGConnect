@@ -21,7 +21,6 @@ import {
 } from "./hooks/useValidationQueue";
 import { useResolutionFailures } from "../../hooks/useResolutionFailures";
 import type { FailedPublication } from "../../api/resolutionApi";
-import ResolutionFailureCard from "../resolution/ResolutionFailureCard";
 import ResolutionRetryModal from "../resolution/ResolutionRetryModal";
 import ManualPublishWorkflowPanel from "../resolution/ManualPublishWorkflowPanel";
 import "../../styles/resolution.css";
@@ -30,7 +29,7 @@ interface ValidationQueueScreenProps {
   user: User;
 }
 
-type QueueFilter = "pending" | "in_review" | "all" | "history" | "failed";
+type QueueFilter = "pending" | "in_review" | "all" | "failed";
 type SortKey = "publish_slot" | "submitted";
 type DecisionModal = "approve" | "revise" | "reject" | null;
 const MODAL_EXIT_MS = 190;
@@ -88,15 +87,12 @@ export default function ValidationQueueScreen({
 }: ValidationQueueScreenProps) {
   const toast = useToast();
   const { queue: activeQueue, loading: activeLoading, error: activeError, refresh } = useValidationQueue();
-  const [historyQueue, setHistoryQueue] = useState<SubmissionSummary[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState("");
+  const [allQueue, setAllQueue] = useState<SubmissionSummary[]>([]);
+  const [allLoading, setAllLoading] = useState(false);
+  const [allError, setAllError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<SubmissionSummary | null>(null);
   const [selectedLoading, setSelectedLoading] = useState(false);
-  // Keyed by submissionId — locks are held independently per submission and
-  // persist across selection changes, tab switches, and navigating away.
-  // Only an explicit Unlock, a successful decision, or server-side expiry clears one.
   const [locks, setLocks] = useState<Record<string, ReviewLock>>({});
   const [lockNotice, setLockNotice] = useState("");
   const [lockBusy, setLockBusy] = useState(false);
@@ -124,7 +120,6 @@ export default function ValidationQueueScreen({
     busy: failureBusy,
     activeDetail: manualPublishDetail,
     detailLoading: manualPublishDetailLoading,
-    handleRetry: handleFailureRetry,
     handleRetryWithNewSchedule: handleFailureRetryWithNewSchedule,
     handleStartManual,
     handleCancelManual,
@@ -133,19 +128,23 @@ export default function ValidationQueueScreen({
     closeWorkflowPanel,
   } = useResolutionFailures();
   const [retryItem, setRetryItem] = useState<FailedPublication | null>(null);
+  const [selectedFailureId, setSelectedFailureId] = useState<string | null>(null);
 
-  const isHistoryMode = filter === "history";
+  const isAllMode = filter === "all";
   const isFailedMode = filter === "failed";
-  const queue = isHistoryMode ? historyQueue : activeQueue;
-  const loading = isHistoryMode ? historyLoading : activeLoading;
-  const error = isHistoryMode ? historyError : activeError;
+  const selectedFailure = selectedFailureId
+    ? failures.find((f) => f.submissionId === selectedFailureId) ?? null
+    : null;
+  const queue = isAllMode ? allQueue : activeQueue;
+  const loading = isAllMode ? allLoading : activeLoading;
+  const error = isAllMode ? allError : activeError;
 
   const filteredQueue = useMemo(() => {
     const term = search.trim().toLowerCase();
     return queue
       .filter((item) => {
         const status = normalizeStatus(item.status);
-        if (filter !== "all" && filter !== "history" && status !== filter) return false;
+        if (filter !== "all" && status !== filter) return false;
         if (!term) return true;
         return [
           item.eventTitle,
@@ -165,7 +164,7 @@ export default function ValidationQueueScreen({
         const right =
           sortKey === "publish_slot" ? b.scheduledAt || "" : b.submittedAt || b.createdAt || "";
         const cmp = left.localeCompare(right);
-        return isHistoryMode ? -cmp : cmp;
+        return isAllMode ? -cmp : cmp;
       });
   }, [filter, queue, search, sortKey]);
 
@@ -198,19 +197,24 @@ export default function ValidationQueueScreen({
   );
 
   useEffect(() => {
-    if (!isHistoryMode) return;
+    if (!isAllMode) return;
     let active = true;
     queueMicrotask(() => {
       if (!active) return;
-      setHistoryLoading(true);
-      setHistoryError("");
-      getValidationQueue({ history: true })
-        .then((res) => { if (active) setHistoryQueue(res.data); })
-        .catch((err: unknown) => { if (active) setHistoryError(readApiError(err, "Unable to load submission history.")); })
-        .finally(() => { if (active) setHistoryLoading(false); });
+      setAllLoading(true);
+      setAllError("");
+      getValidationQueue({ history : true })
+        .then((res) => { if (active) setAllQueue(res.data); })
+        .catch((err: unknown) => { if (active) setAllError(readApiError(err, "Unable to load all submissions.")); })
+        .finally(() => { if (active) setAllLoading(false); });
     });
     return () => { active = false; };
-  }, [isHistoryMode]);
+  }, [isAllMode]);
+
+  useEffect(() => {
+    if (!isFailedMode || selectedFailureId || failuresLoading || failures.length === 0) return;
+    queueMicrotask(() => setSelectedFailureId(failures[0].submissionId));
+  }, [isFailedMode, failuresLoading, failures, selectedFailureId]);
 
   useEffect(() => {
     if (selectedId || loading || queue.length === 0) return;
@@ -227,7 +231,7 @@ export default function ValidationQueueScreen({
     if (next === filter) return;
     // The active review lock (and the currently open submission) persists across
     // tab switches — only explicitly opening a different submission releases it.
-    setSortKey(next === "history" ? "submitted" : "publish_slot");
+    setSortKey(next === "all" ? "submitted" : "publish_slot");
     setFilter(next);
   }
 
@@ -468,14 +472,7 @@ export default function ValidationQueueScreen({
               type="button"
               onClick={() => handleFilterChange("all")}
             >
-              All
-            </button>
-            <button
-              className={filter === "history" ? "active" : ""}
-              type="button"
-              onClick={() => handleFilterChange("history")}
-            >
-              History
+              All <span>{allQueue.length}</span>
             </button>
             <button
               className={filter === "failed" ? "active" : ""}
@@ -533,15 +530,35 @@ export default function ValidationQueueScreen({
               {!failuresLoading &&
                 !failuresError &&
                 failures.map((item) => (
-                  <ResolutionFailureCard
+                  <button
+                    className={`val-queue-item ${item.submissionId === selectedFailureId ? "active" : ""}`}
                     key={item.submissionId}
-                    item={item}
-                    busy={failureBusy === item.submissionId}
-                    onRetry={() => setRetryItem(item)}
-                    onStartManual={() => void handleStartManual(item)}
-                    onCancelManual={() => void handleCancelManual(item)}
-                    onComplete={() => openWorkflowPanel(item)}
-                  />
+                    type="button"
+                    onClick={() => setSelectedFailureId(item.submissionId)}
+                  >
+                    <div className="val-qi-head">
+                      <strong>{item.eventTitle || "Untitled submission"}</strong>
+                      <span className="val-status publish_failed">
+                        {item.manualPublishInProgress ? "Manual Session Open" : "Publish Failed"}
+                      </span>
+                    </div>
+                    <div className="val-qi-meta">
+                      <span>{item.institutionName || "Unknown institution"}</span>
+                      <i></i>
+                      <span>{item.retryCount} retry attempt{item.retryCount === 1 ? "" : "s"}</span>
+                    </div>
+                    <div className="val-qi-bottom">
+                      <span className="val-deadline">
+                        <i className="ti ti-clock"></i>
+                        {item.scheduledAt ? formatDateTime(item.scheduledAt) : "No slot"}
+                      </span>
+                      {item.lastAttemptAt && (
+                        <span className="val-media-count">
+                          <i className="ti ti-history"></i> {formatDate(item.lastAttemptAt)}
+                        </span>
+                      )}
+                    </div>
+                  </button>
                 ))}
             </>
           ) : (
@@ -600,15 +617,110 @@ export default function ValidationQueueScreen({
       </aside>
 
       <main className="val-review-panel">
-        {isFailedMode && (
+        {isFailedMode && !selectedFailure && (
           <div className="val-empty">
             <i className="ti ti-mood-sad"></i>
-            <h2>Failed publications</h2>
+            <h2>{failures.length === 0 ? "No failed publications" : "Select a failed submission"}</h2>
             <p>
-              Select Retry, Start Manual Publish, or Retry With New Schedule from a card
-              in the list to recover a failed submission.
+              {failures.length === 0
+                ? "Automated publish failures needing manual recovery will appear here."
+                : "Open an item from the list to retry it or fall back to manual publishing."}
             </p>
           </div>
+        )}
+
+        {isFailedMode && selectedFailure && (
+          <>
+            {selectedFailure.lastManualPublishAbandonedAt && (
+              <NoticeBar
+                tone="warn"
+                icon="ti-alert-triangle"
+                text={`A manual publish session was abandoned on ${formatDateTime(selectedFailure.lastManualPublishAbandonedAt)}.`}
+              />
+            )}
+
+            <div className="val-scroll">
+              <header className="val-review-header">
+                <div>
+                  <div className="val-badge-row">
+                    <span className="val-inst">{selectedFailure.institutionName || "Unknown institution"}</span>
+                    <span className="val-sub-id">{shortId(selectedFailure.submissionId)}</span>
+                  </div>
+                  <h2>{selectedFailure.eventTitle || "Untitled submission"}</h2>
+                </div>
+                <div className="val-slot-card">
+                  <span>Publish Slot</span>
+                  <strong>
+                    {selectedFailure.scheduledAt ? formatDate(selectedFailure.scheduledAt) : "Unscheduled"}
+                  </strong>
+                  <small>
+                    {selectedFailure.scheduledAt ? formatTime(selectedFailure.scheduledAt) : "No preferred time"}
+                  </small>
+                </div>
+              </header>
+
+              <section className="val-detail-grid">
+                <DetailCard icon="ti-refresh" label="Retry Attempts">
+                  {selectedFailure.retryCount}
+                </DetailCard>
+                <DetailCard icon="ti-clock-hour-4" label="Last Attempt">
+                  {selectedFailure.lastAttemptAt ? formatDateTime(selectedFailure.lastAttemptAt) : "No attempts recorded"}
+                </DetailCard>
+                {selectedFailure.lastError && (
+                  <DetailCard icon="ti-bug" label="Last Error" full muted>
+                    {selectedFailure.lastError}
+                  </DetailCard>
+                )}
+              </section>
+            </div>
+
+            <footer className="val-action-bar">
+              <span>
+                <i className="ti ti-info-circle"></i>
+                {selectedFailure.manualPublishInProgress
+                  ? "A manual publish session is already open for this submission."
+                  : "Retry automatically, or fall back to manual publishing."}
+              </span>
+              {selectedFailure.manualPublishInProgress ? (
+                <>
+                  <button
+                    className="val-btn ghost"
+                    type="button"
+                    disabled={failureBusy === selectedFailure.submissionId}
+                    onClick={() => void handleCancelManual(selectedFailure)}
+                  >
+                    <i className="ti ti-x"></i> Cancel Manual Session
+                  </button>
+                  <button
+                    className="val-btn success"
+                    type="button"
+                    onClick={() => openWorkflowPanel(selectedFailure)}
+                  >
+                    <i className="ti ti-user-check"></i> Continue Manual Publish
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className="val-btn ghost"
+                    type="button"
+                    disabled={failureBusy === selectedFailure.submissionId}
+                    onClick={() => setRetryItem(selectedFailure)}
+                  >
+                    <i className="ti ti-refresh"></i> Retry
+                  </button>
+                  <button
+                    className="val-btn success"
+                    type="button"
+                    disabled={failureBusy === selectedFailure.submissionId}
+                    onClick={() => void handleStartManual(selectedFailure)}
+                  >
+                    <i className="ti ti-user-check"></i> Start Manual Publish
+                  </button>
+                </>
+              )}
+            </footer>
+          </>
         )}
 
         {!isFailedMode && !selected && !selectedLoading && (
@@ -811,7 +923,7 @@ export default function ValidationQueueScreen({
                 <div className="val-section-head">
                   <div>
                     <i className="ti ti-history"></i>
-                    Validation History
+                    History
                   </div>
                   <span>{visibleLog.length}</span>
                 </div>
@@ -1021,9 +1133,6 @@ export default function ValidationQueueScreen({
       <ResolutionRetryModal
         item={retryItem}
         busy={retryItem ? failureBusy === retryItem.submissionId : false}
-        onConfirm={() => {
-          if (retryItem) void handleFailureRetry(retryItem).then(() => setRetryItem(null));
-        }}
         onConfirmWithNewSchedule={(scheduledAt, overrideReason) => {
           if (retryItem) {
             void handleFailureRetryWithNewSchedule(retryItem, scheduledAt, overrideReason)

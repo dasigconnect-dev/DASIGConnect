@@ -49,7 +49,6 @@ export default function ResolutionCenterScreen({ user }: ResolutionCenterScreenP
     activeDetail,
     detailLoading,
     refresh: refreshFailures,
-    handleRetry,
     handleRetryWithNewSchedule,
     handleStartManual,
     handleCancelManual,
@@ -190,9 +189,6 @@ export default function ResolutionCenterScreen({ user }: ResolutionCenterScreenP
       <ResolutionRetryModal
         item={retryItem}
         busy={retryItem ? busy === retryItem.submissionId : false}
-        onConfirm={() => {
-          if (retryItem) void handleRetry(retryItem).then(() => setRetryItem(null));
-        }}
         onConfirmWithNewSchedule={(scheduledAt, overrideReason) => {
           if (retryItem) {
             void handleRetryWithNewSchedule(retryItem, scheduledAt, overrideReason)
