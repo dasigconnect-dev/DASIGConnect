@@ -2,6 +2,7 @@ package com.dasigconnect.backend.controller;
 
 import com.dasigconnect.backend.external.ClaudeVisionClient;
 import com.dasigconnect.backend.model.dto.ai.CaptionLogRequestDto;
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.ai.CaptionRequestDto;
 import com.dasigconnect.backend.model.dto.ai.CaptionResponseDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -37,7 +38,7 @@ public class CaptionController {
 
     @PostMapping("/caption")
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'SUPER_ADMINISTRATOR')")
-    public ResponseEntity<CaptionResponseDto> generateCaption(
+    public ResponseEntity<ApiResponse<CaptionResponseDto>> generateCaption(
             @RequestBody @Valid CaptionRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
 
@@ -60,7 +61,7 @@ public class CaptionController {
             return ResponseEntity.ok()
                     .header("X-RateLimit-Remaining", String.valueOf(Math.max(remaining, 0)))
                     .header("X-RateLimit-Reset", String.valueOf(limit.resetEpochSeconds()))
-                    .body(response);
+                    .body(ApiResponse.success(response));
         } catch (ClaudeVisionClient.ClaudeApiException e) {
             String msg = e.getMessage();
             if (msg != null && msg.contains("timed out")) {

@@ -55,12 +55,12 @@ class UserControllerTest {
 
         mockMvc.perform(get("/api/v1/me"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.email").value("user@cit.edu.ph"))
-                .andExpect(jsonPath("$.firstName").value("Test"))
-                .andExpect(jsonPath("$.lastName").value("User"))
-                .andExpect(jsonPath("$.displayName").value("Test User"))
-                .andExpect(jsonPath("$.role").value("contributor"))
-                .andExpect(jsonPath("$.institutionId").value(institutionId.toString()));
+                .andExpect(jsonPath("$.data.email").value("user@cit.edu.ph"))
+                .andExpect(jsonPath("$.data.firstName").value("Test"))
+                .andExpect(jsonPath("$.data.lastName").value("User"))
+                .andExpect(jsonPath("$.data.displayName").value("Test User"))
+                .andExpect(jsonPath("$.data.role").value("contributor"))
+                .andExpect(jsonPath("$.data.institutionId").value(institutionId.toString()));
     }
 
     @Test
@@ -78,7 +78,7 @@ class UserControllerTest {
 
         mockMvc.perform(get("/api/v1/users").param("institutionId", institutionId.toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].email").value("contributor@cit.edu.ph"));
+                .andExpect(jsonPath("$.data[0].email").value("contributor@cit.edu.ph"));
     }
 
     @Test
@@ -96,8 +96,8 @@ class UserControllerTest {
 
         mockMvc.perform(get("/api/v1/users/counts").param("institutionId", institutionId.toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.contributors").value(5))
-                .andExpect(jsonPath("$.validators").value(1));
+                .andExpect(jsonPath("$.data.contributors").value(5))
+                .andExpect(jsonPath("$.data.validators").value(1));
     }
 
     @Test
@@ -117,8 +117,8 @@ class UserControllerTest {
 
         mockMvc.perform(get("/api/v1/users/{id}", userId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(userId.toString()))
-                .andExpect(jsonPath("$.email").value("contributor@cit.edu.ph"));
+                .andExpect(jsonPath("$.data.id").value(userId.toString()))
+                .andExpect(jsonPath("$.data.email").value("contributor@cit.edu.ph"));
     }
 
     @Test
@@ -136,7 +136,7 @@ class UserControllerTest {
                                 {"accountState":"inactive"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accountState").value("inactive"));
+                .andExpect(jsonPath("$.data.accountState").value("inactive"));
     }
 
     @Test
@@ -162,9 +162,9 @@ class UserControllerTest {
 
         mockMvc.perform(post("/api/v1/users/{id}/super-administrator-transfer", targetId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.targetUserId").value(targetId.toString()))
-                .andExpect(jsonPath("$.requestedBy").value(requesterId.toString()))
-                .andExpect(jsonPath("$.status").value("pending_confirmation"));
+                .andExpect(jsonPath("$.data.targetUserId").value(targetId.toString()))
+                .andExpect(jsonPath("$.data.requestedBy").value(requesterId.toString()))
+                .andExpect(jsonPath("$.data.status").value("pending_confirmation"));
     }
 
     @Test
@@ -176,8 +176,8 @@ class UserControllerTest {
 
         mockMvc.perform(post("/api/v1/users/super-administrator-transfer/confirm"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.email").value("incoming@dasigconnect.com"))
-                .andExpect(jsonPath("$.superAdministrator").value(true));
+                .andExpect(jsonPath("$.data.email").value("incoming@dasigconnect.com"))
+                .andExpect(jsonPath("$.data.superAdministrator").value(true));
     }
 
     private static UserDto userDto(UUID id, String email, UserRole role, UUID institutionId) {

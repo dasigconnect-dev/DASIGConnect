@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.resolution.FailedPublicationDto;
 import com.dasigconnect.backend.model.dto.resolution.ManualPublishCompleteDto;
 import com.dasigconnect.backend.model.dto.resolution.ManualPublishDetailDto;
@@ -55,7 +56,7 @@ public class ResolutionController {
     }
 
     @GetMapping("/failures")
-    public ResponseEntity<List<FailedPublicationDto>> listFailures() {
+    public ResponseEntity<ApiResponse<List<FailedPublicationDto>>> listFailures() {
         List<Submission> failures = submissionRepository.findPublishFailures();
         List<FailedPublicationDto> dtos = failures.stream()
                 .map(s -> {
@@ -65,12 +66,12 @@ public class ResolutionController {
                     return FailedPublicationDto.from(s, last);
                 })
                 .toList();
-        return ResponseEntity.ok(dtos);
+        return ResponseEntity.ok(ApiResponse.success(dtos));
     }
 
     /** Returns the full post-content detail needed for the manual publishing panel. */
     @GetMapping("/{id}")
-    public ResponseEntity<ManualPublishDetailDto> getDetail(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<ManualPublishDetailDto>> getDetail(@PathVariable UUID id) {
         Submission s = submissionRepository.findByIdWithInstitution(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found."));
 
@@ -82,7 +83,7 @@ public class ResolutionController {
 
         List<SubmissionMediaAsset> media =
                 submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(id);
-        return ResponseEntity.ok(ManualPublishDetailDto.from(s, media));
+        return ResponseEntity.ok(ApiResponse.success(ManualPublishDetailDto.from(s, media)));
     }
 
     @PostMapping("/{id}/retry")

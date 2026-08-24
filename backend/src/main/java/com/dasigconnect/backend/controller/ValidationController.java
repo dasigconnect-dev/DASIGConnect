@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.validation.RejectionRequestDto;
 import com.dasigconnect.backend.model.dto.validation.ReviewLockDto;
@@ -58,12 +59,12 @@ public class ValidationController {
      */
     @GetMapping("/queue")
     @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
-    public ResponseEntity<List<SubmissionSummaryDto>> getQueue(
+    public ResponseEntity<ApiResponse<List<SubmissionSummaryDto>>> getQueue(
             @RequestParam(defaultValue = "false") boolean history,
             @AuthenticationPrincipal JwtUserDetails caller) {
-        return ResponseEntity.ok(
+        return ResponseEntity.ok(ApiResponse.success(
             history ? validationService.getHistory(caller) : validationService.getQueue(caller)
-        );
+        ));
     }
 
     /**
@@ -73,11 +74,11 @@ public class ValidationController {
      */
     @PostMapping("/{id}/lock")
     @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
-    public ResponseEntity<ReviewLockDto> acquireLock(
+    public ResponseEntity<ApiResponse<ReviewLockDto>> acquireLock(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails caller) {
         ReviewLock lock = reviewLockService.acquire(id, caller);
-        return ResponseEntity.status(HttpStatus.CREATED).body(ReviewLockDto.from(lock));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(ReviewLockDto.from(lock)));
     }
 
     /**
@@ -142,7 +143,7 @@ public class ValidationController {
      */
     @GetMapping("/{id}/log")
     @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
-    public ResponseEntity<List<ValidationLogDto>> getLog(
+    public ResponseEntity<ApiResponse<List<ValidationLogDto>>> getLog(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails caller) {
         List<ValidationLogDto> log = validationLogRepository
@@ -150,6 +151,6 @@ public class ValidationController {
                 .stream()
                 .map(ValidationLogDto::from)
                 .toList();
-        return ResponseEntity.ok(log);
+        return ResponseEntity.ok(ApiResponse.success(log));
     }
 }

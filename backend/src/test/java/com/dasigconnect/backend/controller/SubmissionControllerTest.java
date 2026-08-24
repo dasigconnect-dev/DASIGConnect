@@ -59,8 +59,8 @@ class SubmissionControllerTest {
     void lookups_authenticated_returnsReferenceData() throws Exception {
         mockMvc.perform(get("/api/v1/submissions/lookups"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.allowedFileTypes").isArray())
-                .andExpect(jsonPath("$.maxMediaAssetsPerSubmission").exists());
+                .andExpect(jsonPath("$.data.allowedFileTypes").isArray())
+                .andExpect(jsonPath("$.data.maxMediaAssetsPerSubmission").exists());
     }
 
     @Test
@@ -70,8 +70,8 @@ class SubmissionControllerTest {
 
         mockMvc.perform(get("/api/v1/submissions"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].eventTitle").value("Research Expo"))
-                .andExpect(jsonPath("$[0].mediaCount").value(2));
+                .andExpect(jsonPath("$.data[0].eventTitle").value("Research Expo"))
+                .andExpect(jsonPath("$.data[0].mediaCount").value(2));
     }
 
     @Test
@@ -85,8 +85,8 @@ class SubmissionControllerTest {
                                 {"eventTitle":"Research Expo","eventDate":"2026-06-01","caption":"Caption"}
                                 """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("draft"))
-                .andExpect(jsonPath("$.eventTitle").value("Research Expo"));
+                .andExpect(jsonPath("$.data.status").value("draft"))
+                .andExpect(jsonPath("$.data.eventTitle").value("Research Expo"));
     }
 
     @Test
@@ -111,7 +111,7 @@ class SubmissionControllerTest {
                                 {"eventDate":"2026-06-01"}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fields.eventTitle").exists());
+                .andExpect(jsonPath("$.error.details.fields.eventTitle").exists());
     }
 
     @Test
@@ -122,8 +122,8 @@ class SubmissionControllerTest {
 
         mockMvc.perform(get("/api/v1/submissions/{id}", submissionId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(submissionId.toString()))
-                .andExpect(jsonPath("$.status").value("pending"));
+                .andExpect(jsonPath("$.data.id").value(submissionId.toString()))
+                .andExpect(jsonPath("$.data.status").value("pending"));
     }
 
     @Test
@@ -138,7 +138,7 @@ class SubmissionControllerTest {
                                 {"eventTitle":"Updated Expo"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(submissionId.toString()));
+                .andExpect(jsonPath("$.data.id").value(submissionId.toString()));
     }
 
     @Test
@@ -155,10 +155,9 @@ class SubmissionControllerTest {
                                 {"scheduledAt":"2026-06-01T08:00:00Z"}
                                 """))
                 .andExpect(status().is(422))
-                .andExpect(jsonPath("$.status").value(422))
-                .andExpect(jsonPath("$.error").value("Scheduled time must be at least 2 hours from now."))
-                .andExpect(jsonPath("$.summary").value("Slot rejected: GR-H2"))
-                .andExpect(jsonPath("$.violations[0].code").value("GR-H2"));
+                .andExpect(jsonPath("$.error.message").value("Scheduled time must be at least 2 hours from now."))
+                .andExpect(jsonPath("$.error.details.summary").value("Slot rejected: GR-H2"))
+                .andExpect(jsonPath("$.error.details.violations[0].code").value("GR-H2"));
     }
 
     @Test
@@ -180,7 +179,7 @@ class SubmissionControllerTest {
 
         mockMvc.perform(post("/api/v1/submissions/{id}/submit", submissionId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("pending"));
+                .andExpect(jsonPath("$.data.status").value("pending"));
     }
 
     @Test
@@ -195,8 +194,8 @@ class SubmissionControllerTest {
                                 {"scheduledAt":"2026-06-01T08:00:00Z"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.blocked").value(false))
-                .andExpect(jsonPath("$.clean").value(true));
+                .andExpect(jsonPath("$.data.blocked").value(false))
+                .andExpect(jsonPath("$.data.clean").value(true));
     }
 
     @Test
@@ -211,7 +210,7 @@ class SubmissionControllerTest {
                                 {"storageUrl":"https://storage.example/photo.jpg","fileName":"photo.jpg","fileType":"jpeg","fileSizeBytes":1024}
                                 """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(submissionId.toString()));
+                .andExpect(jsonPath("$.data.id").value(submissionId.toString()));
     }
 
     @Test
@@ -223,7 +222,7 @@ class SubmissionControllerTest {
                                 {"fileName":"photo.jpg","fileType":"jpeg","fileSizeBytes":1024}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fields.storageUrl").exists());
+                .andExpect(jsonPath("$.error.details.fields.storageUrl").exists());
     }
 
     @Test
@@ -238,7 +237,7 @@ class SubmissionControllerTest {
                                 {"mediaAssetId":"%s"}
                                 """.formatted(UUID.randomUUID())))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(submissionId.toString()));
+                .andExpect(jsonPath("$.data.id").value(submissionId.toString()));
     }
 
     private static SubmissionResponseDto responseDto(UUID id, SubmissionStatus status) {

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.media.AddAssetTagRequestDto;
 import com.dasigconnect.backend.model.dto.media.AssetTagDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetAddToDraftRequestDto;
@@ -47,7 +48,7 @@ public class MediaAssetController {
 
     @GetMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<MediaAssetListResponseDto> list(
+    public ResponseEntity<ApiResponse<MediaAssetListResponseDto>> list(
             @RequestParam(required = false) String query,
             @RequestParam(required = false) String aiCategory,
             @RequestParam(required = false) String mediaType,
@@ -58,58 +59,59 @@ public class MediaAssetController {
             @RequestParam(defaultValue = "25") int pageSize,
             @RequestParam(required = false) String scope,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(mediaAssetService.list(query, aiCategory, mediaType, uploaderId, institutionId, sort, page, pageSize, scope, user));
+        return ResponseEntity.ok(ApiResponse.success(
+                mediaAssetService.list(query, aiCategory, mediaType, uploaderId, institutionId, sort, page, pageSize, scope, user)));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<MediaAssetDetailDto> get(
+    public ResponseEntity<ApiResponse<MediaAssetDetailDto>> get(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(mediaAssetService.get(id, user));
+        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.get(id, user)));
     }
 
     @PostMapping("/{id}/use-in-new-post")
     @PreAuthorize("hasRole('CONTRIBUTOR')")
-    public ResponseEntity<SubmissionResponseDto> useInNewPost(
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> useInNewPost(
             @PathVariable UUID id,
             @Valid @RequestBody MediaAssetUseInNewPostRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(mediaAssetService.useInNewPost(id, dto, user));
+        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.useInNewPost(id, dto, user)));
     }
 
     @PostMapping("/{id}/add-to-draft")
     @PreAuthorize("hasRole('CONTRIBUTOR')")
-    public ResponseEntity<SubmissionResponseDto> addToDraft(
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> addToDraft(
             @PathVariable UUID id,
             @Valid @RequestBody MediaAssetAddToDraftRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(mediaAssetService.addToDraft(id, dto, user));
+        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.addToDraft(id, dto, user)));
     }
 
     @PostMapping("/upload-url")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<MediaAssetUploadUrlResponseDto> getUploadUrl(
+    public ResponseEntity<ApiResponse<MediaAssetUploadUrlResponseDto>> getUploadUrl(
             @Valid @RequestBody MediaAssetUploadUrlRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(mediaAssetService.createUploadUrl(dto, user));
+        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.createUploadUrl(dto, user)));
     }
 
     @PostMapping("/upload")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<MediaAssetDetailDto> upload(
+    public ResponseEntity<ApiResponse<MediaAssetDetailDto>> upload(
             @Valid @RequestBody MediaAssetUploadRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.status(201).body(mediaAssetService.upload(dto, user));
+        return ResponseEntity.status(201).body(ApiResponse.success(mediaAssetService.upload(dto, user)));
     }
 
     @PostMapping("/{id}/tags")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<AssetTagDto> addTag(
+    public ResponseEntity<ApiResponse<AssetTagDto>> addTag(
             @PathVariable UUID id,
             @Valid @RequestBody AddAssetTagRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.status(201).body(mediaAssetService.addTag(id, dto, user));
+        return ResponseEntity.status(201).body(ApiResponse.success(mediaAssetService.addTag(id, dto, user)));
     }
 
     @DeleteMapping("/{id}/tags/{tagId}")
@@ -134,9 +136,9 @@ public class MediaAssetController {
 
     @PostMapping("/bulk-delete")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<MediaAssetBulkDeleteResponseDto> bulkDelete(
+    public ResponseEntity<ApiResponse<MediaAssetBulkDeleteResponseDto>> bulkDelete(
             @Valid @RequestBody MediaAssetBulkDeleteRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(mediaAssetService.bulkDelete(dto, user));
+        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.bulkDelete(dto, user)));
     }
 }
