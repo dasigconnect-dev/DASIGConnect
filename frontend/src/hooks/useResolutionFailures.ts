@@ -5,6 +5,7 @@ import {
   getResolutionDetail,
   getResolutionFailures,
   retryPublication,
+  retryPublicationWithNewSchedule,
   startManualPublish,
   type FailedPublication,
   type ManualPublishDetail,
@@ -20,6 +21,11 @@ export interface UseResolutionFailuresResult {
   detailLoading: boolean;
   refresh: () => void;
   handleRetry: (item: FailedPublication) => Promise<void>;
+  handleRetryWithNewSchedule: (
+    item: FailedPublication,
+    scheduledAt: string,
+    overrideReason?: string,
+  ) => Promise<void>;
   handleStartManual: (item: FailedPublication) => Promise<void>;
   handleCancelManual: (item: FailedPublication) => Promise<void>;
   handleCompleteManual: (
@@ -89,6 +95,30 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
     }
   }
 
+  async function handleRetryWithNewSchedule(
+    item: FailedPublication,
+    scheduledAt: string,
+    overrideReason?: string,
+  ) {
+    setBusy(item.submissionId);
+    try {
+      await retryPublicationWithNewSchedule(item.submissionId, {
+        scheduledAt,
+        overrideReason: overrideReason || undefined,
+      });
+      toast.success(`"${item.eventTitle}" rescheduled and re-queued.`);
+      refresh();
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        "Could not reschedule this submission.";
+      toast.error(message);
+      throw err;
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleStartManual(item: FailedPublication) {
     setBusy(item.submissionId);
     try {
@@ -148,6 +178,7 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
     detailLoading,
     refresh,
     handleRetry,
+    handleRetryWithNewSchedule,
     handleStartManual,
     handleCancelManual,
     handleCompleteManual,

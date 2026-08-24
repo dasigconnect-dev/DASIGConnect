@@ -19,6 +19,7 @@ import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.resolution.FailedPublicationDto;
 import com.dasigconnect.backend.model.dto.resolution.ManualPublishCompleteDto;
 import com.dasigconnect.backend.model.dto.resolution.ManualPublishDetailDto;
+import com.dasigconnect.backend.model.dto.submission.RescheduleRequestDto;
 import com.dasigconnect.backend.model.entity.PublicationAttempt;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
@@ -28,6 +29,8 @@ import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.ManualPublishingService;
+
+import jakarta.validation.Valid;
 
 /**
  * UC-3.4 Resolution Center — administrator-only endpoints for handling
@@ -91,6 +94,15 @@ public class ResolutionController {
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails admin) {
         manualPublishingService.retry(id, admin);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/retry-with-new-schedule")
+    public ResponseEntity<Void> retryWithNewSchedule(
+            @PathVariable UUID id,
+            @Valid @RequestBody RescheduleRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails admin) {
+        manualPublishingService.retryWithNewSchedule(id, dto, admin);
         return ResponseEntity.noContent().build();
     }
 

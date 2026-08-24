@@ -50,6 +50,7 @@ export default function ResolutionCenterScreen({ user }: ResolutionCenterScreenP
     detailLoading,
     refresh: refreshFailures,
     handleRetry,
+    handleRetryWithNewSchedule,
     handleStartManual,
     handleCancelManual,
     handleCompleteManual,
@@ -191,6 +192,13 @@ export default function ResolutionCenterScreen({ user }: ResolutionCenterScreenP
         busy={retryItem ? busy === retryItem.submissionId : false}
         onConfirm={() => {
           if (retryItem) void handleRetry(retryItem).then(() => setRetryItem(null));
+        }}
+        onConfirmWithNewSchedule={(scheduledAt, overrideReason) => {
+          if (retryItem) {
+            void handleRetryWithNewSchedule(retryItem, scheduledAt, overrideReason)
+              .then(() => setRetryItem(null))
+              .catch(() => undefined);
+          }
         }}
         onClose={() => setRetryItem(null)}
       />
