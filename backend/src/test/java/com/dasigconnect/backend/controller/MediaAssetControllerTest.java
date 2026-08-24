@@ -76,10 +76,10 @@ class MediaAssetControllerTest {
 
         mockMvc.perform(get("/api/v1/media-assets").param("page", "1").param("pageSize", "25"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items[0].id").value(asset.getId().toString()))
-                .andExpect(jsonPath("$.totalCount").value(1))
-                .andExpect(jsonPath("$.page").value(1))
-                .andExpect(jsonPath("$.pageSize").value(25));
+                .andExpect(jsonPath("$.data.items[0].id").value(asset.getId().toString()))
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.pageSize").value(25));
     }
 
     @Test
@@ -125,7 +125,7 @@ class MediaAssetControllerTest {
                         {"eventTitle":"Research Expo","eventDate":"2026-06-01"}
                         """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(response.getId().toString()));
+                .andExpect(jsonPath("$.data.id").value(response.getId().toString()));
     }
 
     @Test
@@ -141,7 +141,7 @@ class MediaAssetControllerTest {
                         {"submissionId":"%s"}
                         """.formatted(UUID.randomUUID())))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(response.getId().toString()));
+                .andExpect(jsonPath("$.data.id").value(response.getId().toString()));
     }
 
     @Test
@@ -159,7 +159,7 @@ class MediaAssetControllerTest {
                         {"storageUrl":"https://storage.example/photo.jpg","fileName":"photo.jpg","fileType":"jpeg","fileSizeBytes":2048}
                         """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(assetId.toString()));
+                .andExpect(jsonPath("$.data.id").value(assetId.toString()));
     }
 
     @Test
@@ -176,8 +176,8 @@ class MediaAssetControllerTest {
                         {"label":"award"}
                         """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(tagId.toString()))
-                .andExpect(jsonPath("$.label").value("award"));
+                .andExpect(jsonPath("$.data.id").value(tagId.toString()))
+                .andExpect(jsonPath("$.data.label").value("award"));
     }
 
     @Test
@@ -216,8 +216,8 @@ class MediaAssetControllerTest {
                         {"assetIds":["%s"],"force":true}
                         """.formatted(assetId)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.deletedCount").value(1))
-                .andExpect(jsonPath("$.deletedIds[0]").value(assetId.toString()));
+                .andExpect(jsonPath("$.data.deletedCount").value(1))
+                .andExpect(jsonPath("$.data.deletedIds[0]").value(assetId.toString()));
     }
 
     private static MediaAsset mediaAsset(UUID id) {

@@ -2,6 +2,7 @@ package com.dasigconnect.backend.controller;
 
 import com.dasigconnect.backend.model.dto.auth.LoginRequestDto;
 import com.dasigconnect.backend.model.dto.auth.LoginResponseDto;
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.service.AuthService;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,10 +27,10 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponseDto> login(
+    public ResponseEntity<ApiResponse<LoginResponseDto>> login(
             @RequestBody @Valid LoginRequestDto dto,
             HttpServletRequest request) {
-        return ResponseEntity.ok(authService.login(dto, request));
+        return ResponseEntity.ok(ApiResponse.success(authService.login(dto, request)));
     }
 
     @PostMapping("/logout")
@@ -43,7 +44,7 @@ public class AuthController {
 
     @PostMapping("/refresh")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<LoginResponseDto> refresh(@AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(authService.refresh(user.userId()));
+    public ResponseEntity<ApiResponse<LoginResponseDto>> refresh(@AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(authService.refresh(user.userId())));
     }
 }

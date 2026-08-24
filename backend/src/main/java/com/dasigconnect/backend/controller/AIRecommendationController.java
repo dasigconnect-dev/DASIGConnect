@@ -3,6 +3,7 @@ package com.dasigconnect.backend.controller;
 import com.dasigconnect.backend.model.dto.ai.AiInteractionLogRequestDto;
 import com.dasigconnect.backend.model.dto.ai.MediaSuggestRequestDto;
 import com.dasigconnect.backend.model.dto.ai.MediaSuggestResultDto;
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.AIRecommendationService;
@@ -32,10 +33,10 @@ public class AIRecommendationController {
     /** Returns up to 5 similar media assets from the library using pgvector cosine search. */
     @GetMapping("/{id}/similar-media")
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
-    public ResponseEntity<List<MediaAssetSummaryDto>> getSimilarMedia(
+    public ResponseEntity<ApiResponse<List<MediaAssetSummaryDto>>> getSimilarMedia(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(aiRecommendationService.getSimilarMedia(id, user));
+        return ResponseEntity.ok(ApiResponse.success(aiRecommendationService.getSimilarMedia(id, user)));
     }
 
     /**
@@ -44,11 +45,11 @@ public class AIRecommendationController {
      */
     @PostMapping("/{id}/suggest-media")
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
-    public ResponseEntity<List<MediaSuggestResultDto>> suggestMedia(
+    public ResponseEntity<ApiResponse<List<MediaSuggestResultDto>>> suggestMedia(
             @PathVariable UUID id,
             @RequestBody MediaSuggestRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(aiRecommendationService.suggestMedia(id, dto, user));
+        return ResponseEntity.ok(ApiResponse.success(aiRecommendationService.suggestMedia(id, dto, user)));
     }
 
     /** Records a user action (accepted/dismissed) for tag_classification or media_recommendation. */
