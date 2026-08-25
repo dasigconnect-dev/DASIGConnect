@@ -58,8 +58,11 @@ public class StaleSubmissionDetectorJob {
     @Transactional
     public List<Submission> findAndMarkFailed(Instant cutoff) {
         List<Submission> missed = submissionRepository.findMissedScheduledSubmissions(cutoff);
+        missed.removeIf(s -> s.getTokenBlockedAt() != null);
         for (Submission s : missed) {
-            s.setStatus(SubmissionStatus.publish_failed);
+            boolean isDirectPost = s.getStatus() == SubmissionStatus.direct_post_scheduled
+                    || s.getStatus() == SubmissionStatus.direct_post_publishing;
+            s.setStatus(isDirectPost ? SubmissionStatus.direct_post_failed : SubmissionStatus.publish_failed);
         }
         submissionRepository.saveAll(missed);
         return missed;

@@ -4,7 +4,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
-
 import com.dasigconnect.backend.model.entity.PublicationAttempt;
 
 public interface PublicationAttemptRepository extends JpaRepository<PublicationAttempt, UUID> {
@@ -12,4 +11,6 @@ public interface PublicationAttemptRepository extends JpaRepository<PublicationA
     Optional<PublicationAttempt> findTopBySubmissionIdOrderByAttemptedAtDesc(UUID submissionId);
 
     long countBySubmissionId(UUID submissionId);
+
+    boolean existsBySubmissionIdAndErrorDetailStartingWith(UUID submissionId, String errorPrefix);
 }

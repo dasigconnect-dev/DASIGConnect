@@ -254,6 +254,34 @@ public class NotificationEventListener {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onTokenPublishingSuspended(TokenPublishingSuspendedEvent event) {
+        Submission s = event.submission();
+        String link = "/submissions/" + s.getId();
+        String msg = switch (event.stage()) {
+            case FIRST_ALERT -> "Automated publishing for '" + s.getEventTitle()
+                    + "' is suspended because the Facebook Page Access Token expired. "
+                    + "The post remains scheduled while the token is reauthorized.";
+            case ESCALATION_24H -> "Escalation: '" + s.getEventTitle()
+                    + "' has been blocked by an expired Facebook Page Access Token for 24 hours. "
+                    + "Reauthorize the token to resume automated publishing.";
+            case FINAL_FAILURE -> "Final alert: '" + s.getEventTitle()
+                    + "' has been blocked by an expired Facebook Page Access Token for 48 hours. "
+                    + "The submission was moved to Publish Failed for manual recovery.";
+        };
+        if (event.detail() != null && !event.detail().isBlank()) {
+            msg = msg + " Detail: " + event.detail();
+        }
+        for (User admin : admins()) {
+            notificationService.createNotification(admin, NotificationEventType.token_invalid, msg, link);
+            emailDeliveryService.send(admin,
+                    NotificationEventType.token_invalid.name(),
+                    "DASIGConnect - Facebook token publishing alert",
+                    msg);
+        }
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onInstitutionNoValidator(InstitutionNoValidatorEvent event) {
         String name = event.institution().getName();
         String msg = name + " has no active Validators. All pending submissions from this institution "

@@ -6,6 +6,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -66,6 +67,38 @@ public class SupabaseStorageService {
 
     public String getPublicUrl(String objectPath) {
         return supabaseUrl + "/storage/v1/object/public/" + bucket + "/" + objectPath;
+    }
+
+    public String uploadPublicObject(String objectPath, byte[] content, String contentType) {
+        if (!isConfigured()) {
+            throw new IllegalStateException("Supabase storage is not configured.");
+        }
+        try {
+            String endpoint = supabaseUrl + "/storage/v1/object/" + bucket + "/" + objectPath;
+            HttpClient client = HttpClient.newHttpClient();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(endpoint))
+                    .header("Authorization", "Bearer " + serviceRoleKey)
+                    .header("Content-Type", contentType)
+                    .header("x-upsert", "true")
+                    .PUT(HttpRequest.BodyPublishers.ofByteArray(content))
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                log.error("Supabase object upload failed {}: {}", response.statusCode(), response.body());
+                throw new IllegalStateException("Supabase Storage returned " + response.statusCode());
+            }
+            return getPublicUrl(objectPath);
+        } catch (IllegalStateException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to upload public object: " + ex.getMessage(), ex);
+        }
+    }
+
+    public String generatedWatermarkPath(UUID submissionId, UUID mediaAssetId, String extension) {
+        return "generated/watermarked/" + submissionId + "/" + mediaAssetId + "-" + System.currentTimeMillis() + "." + extension;
     }
 
     public boolean deletePublicObject(String publicUrl) {
