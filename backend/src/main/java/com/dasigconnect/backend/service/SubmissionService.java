@@ -452,21 +452,7 @@ public class SubmissionService {
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> list(JwtUserDetails user) {
-        List<Submission> submissions = switch (user.role().toLowerCase()) {
-            case "contributor" ->
-                submissionRepository
-                .findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(user.userId(), user.institutionId());
-            case "validator" ->
-                submissionRepository
-                .findByInstitutionIdOrderByCreatedAtDesc(user.institutionId());
-            case "administrator" ->
-                submissionRepository.findAllByOrderByCreatedAtDesc().stream()
-                        .filter(submission -> !isEditableStatus(submission)
-                                || submission.getContributor().getId().equals(user.userId()))
-                        .toList();
-            default ->
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Unknown role");
-        };
+        List<Submission> submissions = submissionRepository.findByContributorIdOrderByCreatedAtDesc(user.userId());
 
         return submissions.stream()
                 .map(s -> SubmissionSummaryDto.from(s, submissionMediaAssetRepository.countBySubmissionId(s.getId())))

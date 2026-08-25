@@ -329,9 +329,9 @@ class SubmissionServiceTest {
     }
 
     @Test
-    void list_contributorUsesContributorScopedQueryAndAddsMediaCount() {
+    void list_scopesToCallerAsAuthorAndAddsMediaCount() {
         Submission submission = submission(UUID.randomUUID(), SubmissionStatus.draft, Instant.now());
-        when(submissionRepository.findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(contributorId, institutionId))
+        when(submissionRepository.findByContributorIdOrderByCreatedAtDesc(contributorId))
                 .thenReturn(List.of(submission));
         when(submissionMediaAssetRepository.countBySubmissionId(submission.getId())).thenReturn(3L);
 
@@ -339,7 +339,7 @@ class SubmissionServiceTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getMediaCount()).isEqualTo(3L);
-        verify(submissionRepository).findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(contributorId, institutionId);
+        verify(submissionRepository).findByContributorIdOrderByCreatedAtDesc(contributorId);
     }
 
     @Test
