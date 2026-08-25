@@ -289,6 +289,12 @@ public class SubmissionService {
         }
 
         if (!submission.isFastTrack() && dto.getScheduledAt() != null && !dto.getScheduledAt().equals(submission.getScheduledAt())) {
+            if (guardRailsEnforced) {
+                GuardRailResult guardRailResult = guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt());
+                if (guardRailResult.isBlocked()) {
+                    throw new GuardRailViolationException(guardRailResult.getHardBlocks());
+                }
+            }
             submission.setScheduledAt(dto.getScheduledAt());
             // reserve() releases any existing held slot and creates a new one
             slotReservationService.reserve(submissionId, submission.getInstitution().getId(), dto.getScheduledAt());
