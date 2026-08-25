@@ -58,6 +58,7 @@ function isOwnInstitution(e: CalendarEvent, user: User) {
 
 function toFcEvents(events: CalendarEvent[], user: User, draggable: boolean) {
   return events.map((e) => {
+    const status = (e.status || "").toLowerCase();
     const color = visibleStatusColor(e.status, user.role, isOwnInstitution(e, user));
     return {
       id: e.id,
@@ -66,7 +67,7 @@ function toFcEvents(events: CalendarEvent[], user: User, draggable: boolean) {
       backgroundColor: color.bg,
       borderColor: color.bg,
       textColor: color.text,
-      editable: draggable && DRAGGABLE_STATUSES.includes(e.status),
+      editable: draggable && DRAGGABLE_STATUSES.includes(status),
       extendedProps: { event: e },
     };
   });
@@ -76,7 +77,8 @@ function renderEventContent(arg: EventContentArg, user: User, draggable: boolean
   const e = arg.event.extendedProps.event as CalendarEvent;
   const isOwn = isOwnInstitution(e, user);
   const color = visibleStatusColor(e.status, user.role, isOwn);
-  const isDraggable = draggable && DRAGGABLE_STATUSES.includes(e.status);
+  const status = (e.status || "").toLowerCase();
+  const isDraggable = draggable && DRAGGABLE_STATUSES.includes(status);
   return (
     <div
       className={`cal-event-pill${isDraggable ? " cal-event-draggable" : ""}`}
