@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { getSubmission, type SubmissionSummary } from "../../api/submissionApi";
+import { getSubmission, type SavedMediaAsset, type SubmissionSummary } from "../../api/submissionApi";
 import {
   acquireReviewLock,
   approveSubmission,
@@ -21,7 +21,6 @@ import {
 } from "./hooks/useValidationQueue";
 import { useResolutionFailures } from "../../hooks/useResolutionFailures";
 import type { FailedPublication } from "../../api/resolutionApi";
-import ResolutionFailureCard from "../resolution/ResolutionFailureCard";
 import ResolutionRetryModal from "../resolution/ResolutionRetryModal";
 import ManualPublishWorkflowPanel from "../resolution/ManualPublishWorkflowPanel";
 import "../../styles/resolution.css";
@@ -30,7 +29,7 @@ interface ValidationQueueScreenProps {
   user: User;
 }
 
-type QueueFilter = "pending" | "in_review" | "all" | "history" | "failed";
+type QueueFilter = "pending" | "in_review" | "all" | "failed";
 type SortKey = "publish_slot" | "submitted";
 type DecisionModal = "approve" | "revise" | "reject" | null;
 const MODAL_EXIT_MS = 190;
@@ -88,15 +87,12 @@ export default function ValidationQueueScreen({
 }: ValidationQueueScreenProps) {
   const toast = useToast();
   const { queue: activeQueue, loading: activeLoading, error: activeError, refresh } = useValidationQueue();
-  const [historyQueue, setHistoryQueue] = useState<SubmissionSummary[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState("");
+  const [allQueue, setAllQueue] = useState<SubmissionSummary[]>([]);
+  const [allLoading, setAllLoading] = useState(false);
+  const [allError, setAllError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<SubmissionSummary | null>(null);
   const [selectedLoading, setSelectedLoading] = useState(false);
-  // Keyed by submissionId — locks are held independently per submission and
-  // persist across selection changes, tab switches, and navigating away.
-  // Only an explicit Unlock, a successful decision, or server-side expiry clears one.
   const [locks, setLocks] = useState<Record<string, ReviewLock>>({});
   const [lockNotice, setLockNotice] = useState("");
   const [lockBusy, setLockBusy] = useState(false);
@@ -124,7 +120,6 @@ export default function ValidationQueueScreen({
     busy: failureBusy,
     activeDetail: manualPublishDetail,
     detailLoading: manualPublishDetailLoading,
-    handleRetry: handleFailureRetry,
     handleRetryWithNewSchedule: handleFailureRetryWithNewSchedule,
     handleStartManual,
     handleCancelManual,
@@ -133,19 +128,26 @@ export default function ValidationQueueScreen({
     closeWorkflowPanel,
   } = useResolutionFailures();
   const [retryItem, setRetryItem] = useState<FailedPublication | null>(null);
+  const [selectedFailureId, setSelectedFailureId] = useState<string | null>(null);
+  const [failureContent, setFailureContent] = useState<SubmissionSummary | null>(null);
+  const [failureContentLoading, setFailureContentLoading] = useState(false);
+  const [failureMediaIndex, setFailureMediaIndex] = useState(0);
 
-  const isHistoryMode = filter === "history";
+  const isAllMode = filter === "all";
   const isFailedMode = filter === "failed";
-  const queue = isHistoryMode ? historyQueue : activeQueue;
-  const loading = isHistoryMode ? historyLoading : activeLoading;
-  const error = isHistoryMode ? historyError : activeError;
+  const selectedFailure = selectedFailureId
+    ? failures.find((f) => f.submissionId === selectedFailureId) ?? null
+    : null;
+  const queue = isAllMode ? allQueue : activeQueue;
+  const loading = isAllMode ? allLoading : activeLoading;
+  const error = isAllMode ? allError : activeError;
 
   const filteredQueue = useMemo(() => {
     const term = search.trim().toLowerCase();
     return queue
       .filter((item) => {
         const status = normalizeStatus(item.status);
-        if (filter !== "all" && filter !== "history" && status !== filter) return false;
+        if (filter !== "all" && status !== filter) return false;
         if (!term) return true;
         return [
           item.eventTitle,
@@ -165,7 +167,7 @@ export default function ValidationQueueScreen({
         const right =
           sortKey === "publish_slot" ? b.scheduledAt || "" : b.submittedAt || b.createdAt || "";
         const cmp = left.localeCompare(right);
-        return isHistoryMode ? -cmp : cmp;
+        return isAllMode ? -cmp : cmp;
       });
   }, [filter, queue, search, sortKey]);
 
@@ -189,7 +191,6 @@ export default function ValidationQueueScreen({
   const activeLock = selected ? locks[selected.id] ?? null : null;
 
   const mediaAssets = selected?.mediaAssets ?? [];
-  const selectedMedia = mediaAssets[mediaIndex];
   const isSelfReview =
     Boolean(selected?.contributorEmail) &&
     selected?.contributorEmail?.toLowerCase() === user.email.toLowerCase();
@@ -198,19 +199,43 @@ export default function ValidationQueueScreen({
   );
 
   useEffect(() => {
-    if (!isHistoryMode) return;
+    if (!isAllMode) return;
     let active = true;
     queueMicrotask(() => {
       if (!active) return;
-      setHistoryLoading(true);
-      setHistoryError("");
-      getValidationQueue({ history: true })
-        .then((res) => { if (active) setHistoryQueue(res.data); })
-        .catch((err: unknown) => { if (active) setHistoryError(readApiError(err, "Unable to load submission history.")); })
-        .finally(() => { if (active) setHistoryLoading(false); });
+      setAllLoading(true);
+      setAllError("");
+      getValidationQueue({ history : true })
+        .then((res) => { if (active) setAllQueue(res.data); })
+        .catch((err: unknown) => { if (active) setAllError(readApiError(err, "Unable to load all submissions.")); })
+        .finally(() => { if (active) setAllLoading(false); });
     });
     return () => { active = false; };
-  }, [isHistoryMode]);
+  }, [isAllMode]);
+
+  useEffect(() => {
+    if (!isFailedMode || selectedFailureId || failuresLoading || failures.length === 0) return;
+    queueMicrotask(() => setSelectedFailureId(failures[0].submissionId));
+  }, [isFailedMode, failuresLoading, failures, selectedFailureId]);
+
+  useEffect(() => {
+    if (!selectedFailureId) {
+      queueMicrotask(() => setFailureContent(null));
+      return;
+    }
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setFailureContent(null);
+      setFailureMediaIndex(0);
+      setFailureContentLoading(true);
+      getSubmission(selectedFailureId)
+        .then((res) => { if (active) setFailureContent(res.data); })
+        .catch((err: unknown) => { if (active) toast.error(readApiError(err, "Unable to load submission content.")); })
+        .finally(() => { if (active) setFailureContentLoading(false); });
+    });
+    return () => { active = false; };
+  }, [selectedFailureId]);
 
   useEffect(() => {
     if (selectedId || loading || queue.length === 0) return;
@@ -227,7 +252,7 @@ export default function ValidationQueueScreen({
     if (next === filter) return;
     // The active review lock (and the currently open submission) persists across
     // tab switches — only explicitly opening a different submission releases it.
-    setSortKey(next === "history" ? "submitted" : "publish_slot");
+    setSortKey(next === "all" ? "submitted" : "publish_slot");
     setFilter(next);
   }
 
@@ -468,14 +493,7 @@ export default function ValidationQueueScreen({
               type="button"
               onClick={() => handleFilterChange("all")}
             >
-              All
-            </button>
-            <button
-              className={filter === "history" ? "active" : ""}
-              type="button"
-              onClick={() => handleFilterChange("history")}
-            >
-              History
+              All <span>{allQueue.length}</span>
             </button>
             <button
               className={filter === "failed" ? "active" : ""}
@@ -533,15 +551,35 @@ export default function ValidationQueueScreen({
               {!failuresLoading &&
                 !failuresError &&
                 failures.map((item) => (
-                  <ResolutionFailureCard
+                  <button
+                    className={`val-queue-item ${item.submissionId === selectedFailureId ? "active" : ""}`}
                     key={item.submissionId}
-                    item={item}
-                    busy={failureBusy === item.submissionId}
-                    onRetry={() => setRetryItem(item)}
-                    onStartManual={() => void handleStartManual(item)}
-                    onCancelManual={() => void handleCancelManual(item)}
-                    onComplete={() => openWorkflowPanel(item)}
-                  />
+                    type="button"
+                    onClick={() => setSelectedFailureId(item.submissionId)}
+                  >
+                    <div className="val-qi-head">
+                      <strong>{item.eventTitle || "Untitled submission"}</strong>
+                      <span className="val-status publish_failed">
+                        {item.manualPublishInProgress ? "Manual Session Open" : "Publish Failed"}
+                      </span>
+                    </div>
+                    <div className="val-qi-meta">
+                      <span>{item.institutionName || "Unknown institution"}</span>
+                      <i></i>
+                      <span>{item.retryCount} retry attempt{item.retryCount === 1 ? "" : "s"}</span>
+                    </div>
+                    <div className="val-qi-bottom">
+                      <span className="val-deadline">
+                        <i className="ti ti-clock"></i>
+                        {item.scheduledAt ? formatDateTime(item.scheduledAt) : "No slot"}
+                      </span>
+                      {item.lastAttemptAt && (
+                        <span className="val-media-count">
+                          <i className="ti ti-history"></i> {formatDate(item.lastAttemptAt)}
+                        </span>
+                      )}
+                    </div>
+                  </button>
                 ))}
             </>
           ) : (
@@ -600,15 +638,131 @@ export default function ValidationQueueScreen({
       </aside>
 
       <main className="val-review-panel">
-        {isFailedMode && (
+        {isFailedMode && !selectedFailure && (
           <div className="val-empty">
             <i className="ti ti-mood-sad"></i>
-            <h2>Failed publications</h2>
+            <h2>{failures.length === 0 ? "No failed publications" : "Select a failed submission"}</h2>
             <p>
-              Select Retry, Start Manual Publish, or Retry With New Schedule from a card
-              in the list to recover a failed submission.
+              {failures.length === 0
+                ? "Automated publish failures needing manual recovery will appear here."
+                : "Open an item from the list to retry it or fall back to manual publishing."}
             </p>
           </div>
+        )}
+
+        {isFailedMode && selectedFailure && (
+          <>
+            {selectedFailure.lastManualPublishAbandonedAt && (
+              <NoticeBar
+                tone="warn"
+                icon="ti-alert-triangle"
+                text={`A manual publish session was abandoned on ${formatDateTime(selectedFailure.lastManualPublishAbandonedAt)}.`}
+              />
+            )}
+
+            <div className="val-scroll">
+              <header className="val-review-header">
+                <div>
+                  <div className="val-badge-row">
+                    <span className="val-inst">{selectedFailure.institutionName || "Unknown institution"}</span>
+                    <span className="val-sub-id">{shortId(selectedFailure.submissionId)}</span>
+                  </div>
+                  <h2>{selectedFailure.eventTitle || "Untitled submission"}</h2>
+                  {failureContent?.contributorEmail && (
+                    <p>
+                      <i className="ti ti-user"></i>
+                      Submitted by <strong>{failureContent.contributorEmail}</strong>
+                    </p>
+                  )}
+                </div>
+                <div className="val-slot-card">
+                  <span>Publish Slot</span>
+                  <strong>
+                    {selectedFailure.scheduledAt ? formatDate(selectedFailure.scheduledAt) : "Unscheduled"}
+                  </strong>
+                  <small>
+                    {selectedFailure.scheduledAt ? formatTime(selectedFailure.scheduledAt) : "No preferred time"}
+                  </small>
+                </div>
+              </header>
+
+              {failureContentLoading && (
+                <p className="val-muted">Loading submission content...</p>
+              )}
+
+              {!failureContentLoading && failureContent && (
+                <>
+                  <MediaCarousel
+                    mediaAssets={failureContent.mediaAssets ?? []}
+                    mediaIndex={failureMediaIndex}
+                    onMediaIndexChange={setFailureMediaIndex}
+                  />
+                  <SubmissionDetailCards content={failureContent} />
+                </>
+              )}
+
+              <section className="val-detail-grid">
+                <DetailCard icon="ti-refresh" label="Retry Attempts">
+                  {selectedFailure.retryCount}
+                </DetailCard>
+                <DetailCard icon="ti-clock-hour-4" label="Last Attempt">
+                  {selectedFailure.lastAttemptAt ? formatDateTime(selectedFailure.lastAttemptAt) : "No attempts recorded"}
+                </DetailCard>
+                {selectedFailure.lastError && (
+                  <DetailCard icon="ti-bug" label="Last Error" full muted>
+                    {selectedFailure.lastError}
+                  </DetailCard>
+                )}
+              </section>
+            </div>
+
+            <footer className="val-action-bar">
+              <span>
+                <i className="ti ti-info-circle"></i>
+                {selectedFailure.manualPublishInProgress
+                  ? "A manual publish session is already open for this submission."
+                  : "Retry automatically, or fall back to manual publishing."}
+              </span>
+              {selectedFailure.manualPublishInProgress ? (
+                <>
+                  <button
+                    className="val-btn ghost"
+                    type="button"
+                    disabled={failureBusy === selectedFailure.submissionId}
+                    onClick={() => void handleCancelManual(selectedFailure)}
+                  >
+                    <i className="ti ti-x"></i> Cancel Manual Session
+                  </button>
+                  <button
+                    className="val-btn success"
+                    type="button"
+                    onClick={() => openWorkflowPanel(selectedFailure)}
+                  >
+                    <i className="ti ti-user-check"></i> Continue Manual Publish
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className="val-btn ghost"
+                    type="button"
+                    disabled={failureBusy === selectedFailure.submissionId}
+                    onClick={() => setRetryItem(selectedFailure)}
+                  >
+                    <i className="ti ti-refresh"></i> Retry
+                  </button>
+                  <button
+                    className="val-btn success"
+                    type="button"
+                    disabled={failureBusy === selectedFailure.submissionId}
+                    onClick={() => void handleStartManual(selectedFailure)}
+                  >
+                    <i className="ti ti-user-check"></i> Start Manual Publish
+                  </button>
+                </>
+              )}
+            </footer>
+          </>
         )}
 
         {!isFailedMode && !selected && !selectedLoading && (
@@ -667,77 +821,11 @@ export default function ValidationQueueScreen({
                 </div>
               </header>
 
-              <section className="val-media-section">
-                <div className="val-carousel">
-                  {selectedMedia ? (
-                    isImage(selectedMedia.fileType) ? (
-                      <img src={selectedMedia.storageUrl} alt={selectedMedia.fileName} />
-                    ) : (
-                      <div className="val-video-placeholder">
-                        <i className="ti ti-player-play-filled"></i>
-                        <span>{selectedMedia.fileName}</span>
-                      </div>
-                    )
-                  ) : (
-                    <div className="val-no-media">
-                      <i className="ti ti-photo-off"></i>
-                      <span>No media assets attached</span>
-                    </div>
-                  )}
-                  {mediaAssets.length > 1 && (
-                    <>
-                      <button
-                        className="val-carrow left"
-                        type="button"
-                        onClick={() =>
-                          setMediaIndex(
-                            (mediaIndex - 1 + mediaAssets.length) %
-                              mediaAssets.length,
-                          )
-                        }
-                      >
-                        <i className="ti ti-chevron-left"></i>
-                      </button>
-                      <button
-                        className="val-carrow right"
-                        type="button"
-                        onClick={() =>
-                          setMediaIndex((mediaIndex + 1) % mediaAssets.length)
-                        }
-                      >
-                        <i className="ti ti-chevron-right"></i>
-                      </button>
-                    </>
-                  )}
-                  <div className="val-carousel-meta">
-                    <span>
-                      {mediaAssets.length
-                        ? `${mediaIndex + 1} / ${mediaAssets.length}`
-                        : "0 / 0"}
-                    </span>
-                    <b>{selectedMedia?.fileType || "MEDIA"}</b>
-                  </div>
-                </div>
-                {mediaAssets.length > 0 && (
-                  <div className="val-thumbs">
-                    {mediaAssets.map((asset, index) => (
-                      <button
-                        className={index === mediaIndex ? "active" : ""}
-                        key={asset.id}
-                        type="button"
-                        onClick={() => setMediaIndex(index)}
-                        title={asset.fileName}
-                      >
-                        {isImage(asset.fileType) ? (
-                          <img src={asset.storageUrl} alt="" />
-                        ) : (
-                          <i className="ti ti-video"></i>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </section>
+              <MediaCarousel
+                mediaAssets={mediaAssets}
+                mediaIndex={mediaIndex}
+                onMediaIndexChange={setMediaIndex}
+              />
 
               {editMode ? (
                 <section className="val-detail-grid val-edit-grid">
@@ -781,37 +869,14 @@ export default function ValidationQueueScreen({
                   </label>
                 </section>
               ) : (
-                <section className="val-detail-grid">
-                  <DetailCard icon="ti-calendar-event" label="Event Date">
-                    {formatDate(selected.eventDate)}
-                  </DetailCard>
-                  <DetailCard icon="ti-sparkles" label="Tags" full>
-                    <div className="val-tag-row">
-                      {selected.tags?.length ? (
-                        selected.tags.map((tag) => <span key={tag}>{tag}</span>)
-                      ) : (
-                        <em>No tags supplied</em>
-                      )}
-                    </div>
-                  </DetailCard>
-                  <DetailCard icon="ti-brand-facebook" label="Facebook Caption" full>
-                    <p className="val-caption">
-                      {selected.caption || "No caption supplied."}
-                    </p>
-                  </DetailCard>
-                  {selected.description && (
-                    <DetailCard icon="ti-notes" label="Administrator Notes" full muted>
-                      {selected.description}
-                    </DetailCard>
-                  )}
-                </section>
+                <SubmissionDetailCards content={selected} />
               )}
 
               <section className="val-log-card">
                 <div className="val-section-head">
                   <div>
                     <i className="ti ti-history"></i>
-                    Validation History
+                    History
                   </div>
                   <span>{visibleLog.length}</span>
                 </div>
@@ -1021,9 +1086,6 @@ export default function ValidationQueueScreen({
       <ResolutionRetryModal
         item={retryItem}
         busy={retryItem ? failureBusy === retryItem.submissionId : false}
-        onConfirm={() => {
-          if (retryItem) void handleFailureRetry(retryItem).then(() => setRetryItem(null));
-        }}
         onConfirmWithNewSchedule={(scheduledAt, overrideReason) => {
           if (retryItem) {
             void handleFailureRetryWithNewSchedule(retryItem, scheduledAt, overrideReason)
@@ -1083,6 +1145,111 @@ function EditDiffView({ diffJson }: { diffJson: string }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function MediaCarousel({
+  mediaAssets,
+  mediaIndex,
+  onMediaIndexChange,
+}: {
+  mediaAssets: SavedMediaAsset[];
+  mediaIndex: number;
+  onMediaIndexChange: (index: number) => void;
+}) {
+  const selectedMedia = mediaAssets[mediaIndex];
+  return (
+    <section className="val-media-section">
+      <div className="val-carousel">
+        {selectedMedia ? (
+          isImage(selectedMedia.fileType) ? (
+            <img src={selectedMedia.storageUrl} alt={selectedMedia.fileName} />
+          ) : (
+            <div className="val-video-placeholder">
+              <i className="ti ti-player-play-filled"></i>
+              <span>{selectedMedia.fileName}</span>
+            </div>
+          )
+        ) : (
+          <div className="val-no-media">
+            <i className="ti ti-photo-off"></i>
+            <span>No media assets attached</span>
+          </div>
+        )}
+        {mediaAssets.length > 1 && (
+          <>
+            <button
+              className="val-carrow left"
+              type="button"
+              onClick={() =>
+                onMediaIndexChange((mediaIndex - 1 + mediaAssets.length) % mediaAssets.length)
+              }
+            >
+              <i className="ti ti-chevron-left"></i>
+            </button>
+            <button
+              className="val-carrow right"
+              type="button"
+              onClick={() => onMediaIndexChange((mediaIndex + 1) % mediaAssets.length)}
+            >
+              <i className="ti ti-chevron-right"></i>
+            </button>
+          </>
+        )}
+        <div className="val-carousel-meta">
+          <span>
+            {mediaAssets.length ? `${mediaIndex + 1} / ${mediaAssets.length}` : "0 / 0"}
+          </span>
+          <b>{selectedMedia?.fileType || "MEDIA"}</b>
+        </div>
+      </div>
+      {mediaAssets.length > 0 && (
+        <div className="val-thumbs">
+          {mediaAssets.map((asset, index) => (
+            <button
+              className={index === mediaIndex ? "active" : ""}
+              key={asset.id}
+              type="button"
+              onClick={() => onMediaIndexChange(index)}
+              title={asset.fileName}
+            >
+              {isImage(asset.fileType) ? (
+                <img src={asset.storageUrl} alt="" />
+              ) : (
+                <i className="ti ti-video"></i>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SubmissionDetailCards({ content }: { content: SubmissionSummary }) {
+  return (
+    <section className="val-detail-grid">
+      <DetailCard icon="ti-calendar-event" label="Event Date">
+        {formatDate(content.eventDate)}
+      </DetailCard>
+      <DetailCard icon="ti-sparkles" label="Tags" full>
+        <div className="val-tag-row">
+          {content.tags?.length ? (
+            content.tags.map((tag) => <span key={tag}>{tag}</span>)
+          ) : (
+            <em>No tags supplied</em>
+          )}
+        </div>
+      </DetailCard>
+      <DetailCard icon="ti-brand-facebook" label="Facebook Caption" full>
+        <p className="val-caption">{content.caption || "No caption supplied."}</p>
+      </DetailCard>
+      {content.description && (
+        <DetailCard icon="ti-notes" label="Administrator Notes" full muted>
+          {content.description}
+        </DetailCard>
+      )}
+    </section>
   );
 }
 

@@ -4,7 +4,6 @@ import {
   completeManualPublish,
   getResolutionDetail,
   getResolutionFailures,
-  retryPublication,
   retryPublicationWithNewSchedule,
   startManualPublish,
   type FailedPublication,
@@ -20,7 +19,6 @@ export interface UseResolutionFailuresResult {
   activeDetail: ManualPublishDetail | null;
   detailLoading: boolean;
   refresh: () => void;
-  handleRetry: (item: FailedPublication) => Promise<void>;
   handleRetryWithNewSchedule: (
     item: FailedPublication,
     scheduledAt: string,
@@ -80,19 +78,6 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
   function closeWorkflowPanel() {
     setActiveDetail(null);
     setDetailLoading(false);
-  }
-
-  async function handleRetry(item: FailedPublication) {
-    setBusy(item.submissionId);
-    try {
-      await retryPublication(item.submissionId);
-      toast.success(`Retrying "${item.eventTitle}"...`);
-      refresh();
-    } catch {
-      toast.error("Retry failed. Please try again.");
-    } finally {
-      setBusy(null);
-    }
   }
 
   async function handleRetryWithNewSchedule(
@@ -177,7 +162,6 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
     activeDetail,
     detailLoading,
     refresh,
-    handleRetry,
     handleRetryWithNewSchedule,
     handleStartManual,
     handleCancelManual,
