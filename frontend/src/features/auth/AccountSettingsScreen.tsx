@@ -1,49 +1,205 @@
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
+import type { WatermarkElement } from "../../types/watermark.types";
 import { changePassword, getMe, getPageSettings, listInstitutions, updateAccountSettings, updatePageSettings } from "../../api/authApi";
+import { deleteWatermarkOverride, getWatermarkConfiguration, saveWatermarkConfiguration } from "../../api/watermarkApi";
+import WatermarkCanvasEditor from "../settings/components/WatermarkCanvasEditor";
 import { useToast } from "../../context/ToastContext";
 
 interface Props { user: User; onProfileUpdated: () => Promise<void>; }
 
+type SettingsTab = "account" | "password" | "page";
+
 export default function AccountSettingsScreen({ user, onProfileUpdated }: Props) {
   const toast = useToast();
-  const [displayName, setDisplayName] = useState(user.displayName || user.name);
-  const [notifyInApp, setNotifyInApp] = useState(true);
-  const [notifyEmail, setNotifyEmail] = useState(true);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [watermarkEnabled, setWatermarkEnabled] = useState(false);
-  const [watermarkText, setWatermarkText] = useState("");
-  const [facebookPageId, setFacebookPageId] = useState("");
-  const [institutions, setInstitutions] = useState<{ id: string; name: string }[]>([]);
-  const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
-  const [saving, setSaving] = useState<"account" | "password" | "page" | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const canManagePage = user.role !== "contributor";
-  const pageInstitutionId = user.role === "administrator" ? user.institutionId : selectedInstitutionId || null;
+
+  // Tab State
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
+    const hash = window.location.hash.replace("#", "");
+    if (hash === "password") return "password";
+    if (hash === "page" && canManagePage) return "page";
+    return "account";
+  });
+
+  const [displayName, setDisplayName] = useState(user.displayName || user.name);
+  const [initialDisplayName, setInitialDisplayName] = useState(user.displayName || user.name);
+  const [notifyInApp, setNotifyInApp] = useState(true);
+  const [initialNotifyInApp, setInitialNotifyInApp] = useState(true);
+  const [notifyEmail, setNotifyEmail] = useState(true);
+  const [initialNotifyEmail, setInitialNotifyEmail] = useState(true);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [facebookPageId, setFacebookPageId] = useState("");
+  const [institutions, setInstitutions] = useState<{ id: string; name: string; logoUrl?: string | null }[]>([]);
+  const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
+  const [userInstitutionId, setUserInstitutionId] = useState<string | null>(user.institutionId || null);
+
+  // Watermark Studio States
+  const [watermarkEnabled, setWatermarkEnabled] = useState(true);
+  const [watermarkElements, setWatermarkElements] = useState<WatermarkElement[]>([]);
+  const [isWatermarkOverride, setIsWatermarkOverride] = useState(false);
+  const [watermarkLoading, setWatermarkLoading] = useState(false);
+  const [revertingOverride, setRevertingOverride] = useState(false);
+
+  const [saving, setSaving] = useState<"account" | "password" | "page" | "watermark" | null>(null);
+  const pageInstitutionId = user.role === "administrator" ? (userInstitutionId || user.institutionId || null) : selectedInstitutionId || null;
+
+  const currentInstitution = institutions.find((i) => i.id === pageInstitutionId);
+
+  // Display Name Validation
+  function validateDisplayName(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return "Display name cannot be empty.";
+    if (trimmed.length < 2) return "Display name must be at least 2 characters.";
+    if (trimmed.length > 60) return "Display name cannot exceed 60 characters.";
+    // Allow letters (including Filipino ñ/Ñ), numbers, spaces, hyphens, periods, and apostrophes
+    const validPattern = /^[a-zA-Z0-9\s\-'.ñÑ]+$/;
+    if (!validPattern.test(name)) {
+      return "Only letters, numbers, spaces, hyphens, periods, and apostrophes are allowed.";
+    }
+    return null;
+  }
+
+  const nameError = validateDisplayName(displayName);
+  const isNameValid = !nameError;
+  const isAccountChanged =
+    displayName.trim() !== initialDisplayName.trim() ||
+    notifyInApp !== initialNotifyInApp ||
+    notifyEmail !== initialNotifyEmail;
+
+  // Studio sub-view state
+  const [isStudioOpen, setIsStudioOpen] = useState(() => {
+    return window.location.hash === "#watermark-studio";
+  });
 
   useEffect(() => {
+    const hash = location.hash.replace("#", "");
+    if (hash === "password") {
+      setActiveTab("password");
+      setIsStudioOpen(false);
+    } else if (hash === "watermark-studio" && canManagePage) {
+      setActiveTab("page");
+      setIsStudioOpen(true);
+    } else if (hash === "page" && canManagePage) {
+      setActiveTab("page");
+      setIsStudioOpen(false);
+    } else if (hash === "account") {
+      setActiveTab("account");
+      setIsStudioOpen(false);
+    }
+  }, [location.hash, canManagePage]);
+
+  function switchTab(tab: SettingsTab) {
+    setActiveTab(tab);
+    setIsStudioOpen(false);
+    navigate(`/settings#${tab}`, { replace: true });
+  }
+
+  function openStudio() {
+    setIsStudioOpen(true);
+    navigate(`/settings#watermark-studio`, { replace: true });
+  }
+
+  function closeStudio() {
+    setIsStudioOpen(false);
+    navigate(`/settings#page`, { replace: true });
+  }
+
+  // Initial mount: load profile and super admin institutions
+  useEffect(() => {
     void getMe().then(({ data }) => {
-      setDisplayName(data.displayName || "");
+      const fullName = [data.firstName, data.lastName].filter(Boolean).join(" ");
+      const name = data.displayName || fullName || user.name || "";
+      setDisplayName(name);
+      setInitialDisplayName(name);
       setNotifyInApp(data.notifyInApp);
+      setInitialNotifyInApp(data.notifyInApp);
       setNotifyEmail(data.notifyEmail);
+      setInitialNotifyEmail(data.notifyEmail);
+      if (data.institutionId) {
+        setUserInstitutionId(data.institutionId);
+      }
     });
-    if (canManagePage) void getPageSettings(pageInstitutionId).then(({ data }) => {
-      setWatermarkEnabled(data.watermarkEnabled);
-      setWatermarkText(data.watermarkText || "");
-      setFacebookPageId(data.facebookPageId || "");
-    }).catch(() => toast.error("Unable to load Page Settings."));
-    if (user.role === "super_administrator") void listInstitutions().then(({ data }) =>
-      setInstitutions(data.map((item) => ({ id: item.id, name: item.name }))));
-  }, [canManagePage, pageInstitutionId, toast, user.role]);
+
+    if (user.role === "super_administrator") {
+      void listInstitutions().then(({ data }) =>
+        setInstitutions(
+          data.map((item) => ({
+            id: item.id,
+            name: item.name,
+            logoUrl: item.hasLogo ? `/api/v1/institutions/${item.id}/logo` : null,
+          }))
+        )
+      );
+    }
+  }, [user.name, user.role]);
+
+  // Page and Watermark settings loader (strictly tied to institution scope change)
+  useEffect(() => {
+    if (!canManagePage) return;
+
+    let isCurrent = true;
+    void getPageSettings(pageInstitutionId)
+      .then(({ data }) => {
+        if (!isCurrent) return;
+        setFacebookPageId(data.facebookPageId || "");
+      })
+      .catch(() => toast.error("Unable to load Page Settings."));
+
+    setWatermarkLoading(true);
+    void getWatermarkConfiguration(pageInstitutionId)
+      .then(({ data }) => {
+        if (!isCurrent) return;
+        setWatermarkEnabled(data.enabled);
+        setWatermarkElements(data.elements || []);
+        setIsWatermarkOverride(data.isOverride);
+      })
+      .catch(() => toast.error("Unable to load Watermark configuration."))
+      .finally(() => {
+        if (isCurrent) setWatermarkLoading(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [canManagePage, pageInstitutionId]);
 
   async function saveAccount() {
+    const cleanName = displayName.trim().replace(/\s+/g, " ");
+    const err = validateDisplayName(cleanName);
+    if (err) return toast.error(err);
+
     setSaving("account");
     try {
-      await updateAccountSettings({ displayName, notifyInApp, notifyEmail });
+      await updateAccountSettings({ displayName: cleanName, notifyInApp, notifyEmail });
+      setDisplayName(cleanName);
+      setInitialDisplayName(cleanName);
+      setInitialNotifyInApp(notifyInApp);
+      setInitialNotifyEmail(notifyEmail);
       await onProfileUpdated();
       toast.success("Account settings updated.");
-    } catch { toast.error("Unable to update account settings."); }
-    finally { setSaving(null); }
+    } catch {
+      toast.error("Unable to update account settings.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  function handleRevertDisplayName() {
+    setDisplayName(initialDisplayName);
+  }
+
+  function handleResetToOfficialName() {
+    if (user.name) {
+      setDisplayName(user.name);
+    }
   }
 
   async function savePassword() {
@@ -60,92 +216,487 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   async function savePage() {
     setSaving("page");
     try {
-      await updatePageSettings({ watermarkEnabled, watermarkText, facebookPageId }, pageInstitutionId);
-      toast.success("Page settings updated.");
-    } catch { toast.error("Unable to update Page Settings."); }
+      await updatePageSettings({ watermarkEnabled, watermarkText: "", facebookPageId }, pageInstitutionId);
+      toast.success("Facebook settings updated.");
+    } catch { toast.error("Unable to update Facebook settings."); }
     finally { setSaving(null); }
   }
 
-  return <div className="dash-body settings-page">
-    <header className="settings-page-header">
-      <div><div className="dash-greeting">Settings</div><p className="settings-page-subtitle">Manage your account, security, and publishing preferences.</p></div>
-      <span className="settings-role-badge"><i className="ti ti-shield-check" />{formatRole(user.role)}</span>
-    </header>
+  async function saveWatermark() {
+    setSaving("watermark");
+    try {
+      const { data } = await saveWatermarkConfiguration({
+        institutionId: pageInstitutionId,
+        enabled: watermarkEnabled,
+        elements: watermarkElements,
+      });
+      setWatermarkElements(data.elements || []);
+      setIsWatermarkOverride(data.isOverride);
+      toast.success(
+        pageInstitutionId
+          ? "Institution watermark configuration saved."
+          : "Network-wide default watermark saved."
+      );
+    } catch (err: unknown) {
+      const errorMsg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(errorMsg || "Unable to save watermark configuration.");
+    } finally {
+      setSaving(null);
+    }
+  }
 
-    <div className="settings-grid">
-      <section className="settings-card" id="account">
-        <SettingsHeader icon="ti ti-user-circle" title="Account Settings" description="Personalize your profile and notification delivery." />
-        <div className="settings-card-body">
-          <div className="settings-field">
-            <label htmlFor="settings-display-name">Display name</label>
-            <input id="settings-display-name" className="settings-input" value={displayName} maxLength={150} placeholder="Enter your display name" onChange={(e) => setDisplayName(e.target.value)} />
-            <span className="settings-field-hint">This name appears across your DASIGConnect workspace.</span>
-          </div>
-          <div className="settings-field">
-            <span className="settings-label">Notification preferences</span>
-            <div className="settings-toggle-list">
-              <Toggle icon="ti ti-bell" title="In-app notifications" description="Receive workflow updates inside DASIGConnect." checked={notifyInApp} onChange={setNotifyInApp} />
-              <Toggle icon="ti ti-mail" title="Email notifications" description="Receive important activity and account notices by email." checked={notifyEmail} onChange={setNotifyEmail} />
-            </div>
-          </div>
+  async function handleRevertOverride() {
+    if (!pageInstitutionId) return;
+    setRevertingOverride(true);
+    try {
+      await deleteWatermarkOverride(pageInstitutionId);
+      const { data } = await getWatermarkConfiguration(pageInstitutionId);
+      setWatermarkEnabled(data.enabled);
+      setWatermarkElements(data.elements || []);
+      setIsWatermarkOverride(false);
+      toast.success("Institution override removed. Reverted to network default.");
+    } catch {
+      toast.error("Unable to revert institution override.");
+    } finally {
+      setRevertingOverride(false);
+    }
+  }
+
+  if (isStudioOpen && canManagePage) {
+    return (
+      <div className="dash-body settings-page settings-studio-fullscreen-page">
+        {/* Topbar with back button placed above */}
+        <div className="settings-studio-topbar">
+          <button
+            type="button"
+            className="settings-studio-back-btn"
+            onClick={closeStudio}
+            title="Return to Page Settings"
+          >
+            <i className="ti ti-arrow-left" aria-hidden="true" />
+            Back to Page Settings
+          </button>
         </div>
-        <SettingsFooter label="Save Account Settings" icon="ti ti-device-floppy" busy={saving === "account"} onClick={() => void saveAccount()} />
-      </section>
 
-      <section className="settings-card" id="password">
-        <SettingsHeader icon="ti ti-lock" title="Password & Security" description="Use a strong password to protect your account." />
-        <div className="settings-card-body settings-password-grid">
-          <div className="settings-field"><label htmlFor="settings-current-password">Current password</label>
-            <input id="settings-current-password" className="settings-input" type="password" autoComplete="current-password" value={currentPassword} placeholder="Enter current password" onChange={(e) => setCurrentPassword(e.target.value)} />
-          </div>
-          <div className="settings-field"><label htmlFor="settings-new-password">New password</label>
-            <input id="settings-new-password" className="settings-input" type="password" autoComplete="new-password" value={newPassword} placeholder="At least 8 characters" onChange={(e) => setNewPassword(e.target.value)} />
-            <span className="settings-field-hint">Changing it here keeps your other signed-in sessions active.</span>
-          </div>
-        </div>
-        <SettingsFooter label="Change Password" icon="ti ti-key" busy={saving === "password"} disabled={!currentPassword || !newPassword} onClick={() => void savePassword()} />
-      </section>
-
-      {canManagePage && <section className="settings-card settings-card-wide">
-        <SettingsHeader icon="ti ti-adjustments-horizontal" title="Page Settings" description="Configure publishing identity and watermark defaults for the selected scope."
-          accent={<span className="settings-admin-chip"><i className="ti ti-crown" />Authorized access</span>} />
-        <div className="settings-card-body">
-          {user.role === "super_administrator" && <div className="settings-scope-panel">
-            <div className="settings-scope-icon"><i className="ti ti-building-community" /></div>
-            <div className="settings-scope-copy"><label htmlFor="settings-scope">Configuration scope</label><span>Choose network defaults or override one institution.</span></div>
-            <select id="settings-scope" className="settings-select" value={selectedInstitutionId} onChange={(e) => setSelectedInstitutionId(e.target.value)}>
-              <option value="">Network-wide defaults</option>
-              {institutions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </div>}
-          <div className="settings-page-columns">
-            <div className="settings-subsection">
-              <SubsectionHeader icon="ti ti-droplet" tone="purple" title="Watermark Configuration" description="Apply a consistent identity to published media." />
-              <Toggle title="Enable watermark" description="Apply the configured watermark to eligible media." checked={watermarkEnabled} onChange={setWatermarkEnabled} />
-              <div className="settings-field"><label htmlFor="settings-watermark-text">Watermark text</label>
-                <input id="settings-watermark-text" className="settings-input" value={watermarkText} maxLength={150} disabled={!watermarkEnabled} placeholder="e.g. DASIGConnect" onChange={(e) => setWatermarkText(e.target.value)} />
+        {/* Dedicated Full-Width Watermark Studio Container */}
+        <section className="settings-studio-card" id="watermark-studio">
+          <header className="settings-studio-header">
+            <div className="settings-studio-header-left">
+              <div className="settings-studio-title-group">
+                <h2>Automated Watermark Studio</h2>
+                <p>Design and position elements across square (1:1), portrait (4:5), and landscape (16:9) aspect ratios.</p>
               </div>
             </div>
-            <div className="settings-subsection">
-              <SubsectionHeader icon="ti ti-brand-facebook" tone="blue" title="Facebook Integration" description="Identify the Facebook Page used for publishing." />
-              <div className="settings-field"><label htmlFor="settings-facebook-id">Facebook Page ID</label>
-                <div className="settings-input-with-icon"><i className="ti ti-brand-facebook" /><input id="settings-facebook-id" className="settings-input" value={facebookPageId} maxLength={255} placeholder="Enter Facebook Page ID" onChange={(e) => setFacebookPageId(e.target.value)} /></div>
-                <span className="settings-field-hint">Access tokens remain secured separately.</span>
-              </div>
+
+            <div className="settings-studio-header-right">
+              {pageInstitutionId && isWatermarkOverride && (
+                <button
+                  type="button"
+                  className="wm-remove-btn"
+                  onClick={() => void handleRevertOverride()}
+                  disabled={revertingOverride || saving === "watermark"}
+                  title="Delete custom override and revert to network default"
+                >
+                  <i className={revertingOverride ? "ti ti-loader-2 settings-spinner" : "ti ti-arrow-back-up"} />
+                  Revert to Default
+                </button>
+              )}
+              <button
+                type="button"
+                className="settings-save-button"
+                disabled={saving === "watermark" || watermarkLoading}
+                onClick={() => void saveWatermark()}
+              >
+                <i className={saving === "watermark" ? "ti ti-loader-2 settings-spinner" : "ti ti-device-floppy"} />
+                {saving === "watermark"
+                  ? "Saving…"
+                  : pageInstitutionId
+                    ? "Save Institution Watermark"
+                    : "Save Network Default"}
+              </button>
             </div>
+          </header>
+
+          <div className="settings-studio-body">
+            {user.role === "super_administrator" && (
+              <div className="settings-scope-panel" style={{ marginBottom: "16px" }}>
+                <div className="settings-scope-icon">
+                  <i className="ti ti-building-community" />
+                </div>
+                <div className="settings-scope-copy">
+                  <label htmlFor="settings-scope-studio">Configuration scope</label>
+                  <span>Choose network defaults or override a specific institution.</span>
+                </div>
+                <select
+                  id="settings-scope-studio"
+                  className="settings-select"
+                  value={selectedInstitutionId}
+                  onChange={(e) => setSelectedInstitutionId(e.target.value)}
+                >
+                  <option value="">Network-wide defaults</option>
+                  {institutions.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {watermarkLoading ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "60px", color: "var(--d-muted)" }}>
+                <i className="ti ti-loader-2 settings-spinner" style={{ fontSize: "28px", marginRight: "10px" }} />
+                Loading Watermark Studio...
+              </div>
+            ) : (
+              <WatermarkCanvasEditor
+                elements={watermarkElements}
+                onChange={setWatermarkElements}
+                disabled={false}
+                institutionName={currentInstitution?.name}
+                institutionLogoUrl={currentInstitution?.logoUrl}
+              />
+            )}
           </div>
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="dash-body settings-page">
+      <header className="settings-page-header">
+        <div>
+          <div className="dash-greeting">Settings</div>
+          <p className="settings-page-subtitle">Manage your account, security, and publishing preferences.</p>
         </div>
-        <SettingsFooter label="Save Page Settings" icon="ti ti-device-floppy" busy={saving === "page"} onClick={() => void savePage()} />
-      </section>}
+        <span className="settings-role-badge">
+          <i className="ti ti-shield-check" />
+          {formatRole(user.role)}
+        </span>
+      </header>
+
+      {/* Main Settings Layout with Sidebar Navigation */}
+      <div className="settings-layout">
+        {/* Left Side Navigation */}
+        <nav className="settings-nav-sidebar" aria-label="Settings categories">
+          <div className="sidebar-nav-group">
+            <div className="sidebar-nav-label">Preferences</div>
+            <button
+              type="button"
+              className={`sidebar-link ${activeTab === "account" ? "active" : ""}`}
+              onClick={() => switchTab("account")}
+            >
+              <i className="ti ti-user-circle" />
+              <span>Account Settings</span>
+            </button>
+
+            <button
+              type="button"
+              className={`sidebar-link ${activeTab === "password" ? "active" : ""}`}
+              onClick={() => switchTab("password")}
+            >
+              <i className="ti ti-lock" />
+              <span>Password & Security</span>
+            </button>
+          </div>
+
+          {canManagePage && (
+            <div className="sidebar-nav-group" style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid var(--d-border)" }}>
+              <div className="sidebar-nav-label">Operations</div>
+              <button
+                type="button"
+                className={`sidebar-link ${activeTab === "page" ? "active" : ""}`}
+                onClick={() => switchTab("page")}
+              >
+                <i className="ti ti-adjustments-horizontal" />
+                <span>Page Settings</span>
+                <span className="sidebar-admin-tag">Admin</span>
+              </button>
+            </div>
+          )}
+        </nav>
+
+        {/* Right Main Content Area */}
+        <main className="settings-content-area">
+          {/* Tab 1: Account Settings */}
+          {activeTab === "account" && (
+            <section className="settings-card" id="account">
+              <SettingsHeader
+                icon="ti ti-user-circle"
+                title="Account Settings"
+                description="Personalize your profile and notification delivery."
+              />
+              <div className="settings-card-body">
+                <div className="settings-field">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                    <label htmlFor="settings-display-name">Display name</label>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      {displayName !== initialDisplayName && (
+                        <button
+                          type="button"
+                          className="settings-field-action-btn"
+                          onClick={handleRevertDisplayName}
+                          title="Undo changes and revert to your saved display name"
+                        >
+                          <i className="ti ti-arrow-back-up" /> Undo
+                        </button>
+                      )}
+                      {user.name && displayName !== user.name && (
+                        <button
+                          type="button"
+                          className="settings-field-action-btn"
+                          onClick={handleResetToOfficialName}
+                          title={`Reset to your registered account name (${user.name})`}
+                        >
+                          <i className="ti ti-rotate-clockwise" /> Reset to {user.name}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="settings-input-wrapper">
+                    <input
+                      id="settings-display-name"
+                      className={`settings-input ${nameError ? "is-invalid" : displayName !== initialDisplayName ? "is-modified" : ""}`}
+                      value={displayName}
+                      maxLength={60}
+                      placeholder="Enter your display name"
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      onBlur={() => setDisplayName((prev) => prev.trim().replace(/\s+/g, " "))}
+                    />
+                    <span className="settings-char-count">{displayName.length}/60</span>
+                  </div>
+
+                  {nameError ? (
+                    <span className="settings-field-hint is-error">
+                      <i className="ti ti-alert-circle" /> {nameError}
+                    </span>
+                  ) : displayName.trim() !== initialDisplayName.trim() ? (
+                    <span className="settings-field-hint is-success">
+                      <i className="ti ti-check" /> Unsaved changes. Click save below to apply.
+                    </span>
+                  ) : (
+                    <span className="settings-field-hint">
+                      This name appears across your DASIGConnect workspace. Letters, numbers, spaces, and - . ' are supported.
+                    </span>
+                  )}
+                </div>
+
+                <div className="settings-field" style={{ marginTop: "20px" }}>
+                  <span className="settings-label">Notification preferences</span>
+                  <div className="settings-toggle-list">
+                    <Toggle
+                      icon="ti ti-bell"
+                      title="In-app notifications"
+                      description="Receive workflow updates inside DASIGConnect."
+                      checked={notifyInApp}
+                      onChange={setNotifyInApp}
+                    />
+                    <Toggle
+                      icon="ti ti-mail"
+                      title="Email notifications"
+                      description="Receive important activity and account notices by email."
+                      checked={notifyEmail}
+                      onChange={setNotifyEmail}
+                    />
+                  </div>
+                </div>
+              </div>
+              <SettingsFooter
+                label="Save Account Settings"
+                icon="ti ti-device-floppy"
+                busy={saving === "account"}
+                disabled={!isNameValid || !isAccountChanged}
+                onClick={() => void saveAccount()}
+              />
+            </section>
+          )}
+
+          {/* Tab 2: Password & Security */}
+          {activeTab === "password" && (
+            <section className="settings-card" id="password">
+              <SettingsHeader
+                icon="ti ti-lock"
+                title="Password & Security"
+                description="Use a strong password to protect your account."
+              />
+              <div className="settings-card-body settings-password-grid">
+                <div className="settings-field">
+                  <label htmlFor="settings-current-password">Current password</label>
+                  <div className="settings-input-wrapper">
+                    <input
+                      id="settings-current-password"
+                      className="settings-input"
+                      type={showCurrentPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      value={currentPassword}
+                      placeholder="Enter current password"
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="settings-eye-btn"
+                      onClick={() => setShowCurrentPassword((prev) => !prev)}
+                      aria-label={showCurrentPassword ? "Hide current password" : "Show current password"}
+                    >
+                      <i className={showCurrentPassword ? "ti ti-eye-off" : "ti ti-eye"} />
+                    </button>
+                  </div>
+                </div>
+                <div className="settings-field">
+                  <label htmlFor="settings-new-password">New password</label>
+                  <div className="settings-input-wrapper">
+                    <input
+                      id="settings-new-password"
+                      className="settings-input"
+                      type={showNewPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={newPassword}
+                      placeholder="At least 8 characters"
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="settings-eye-btn"
+                      onClick={() => setShowNewPassword((prev) => !prev)}
+                      aria-label={showNewPassword ? "Hide new password" : "Show new password"}
+                    >
+                      <i className={showNewPassword ? "ti ti-eye-off" : "ti ti-eye"} />
+                    </button>
+                  </div>
+                  <span className="settings-field-hint">Changing it here keeps your other signed-in sessions active.</span>
+                </div>
+              </div>
+              <SettingsFooter
+                label="Change Password"
+                icon="ti ti-key"
+                busy={saving === "password"}
+                disabled={!currentPassword || !newPassword}
+                onClick={() => void savePassword()}
+              />
+            </section>
+          )}
+
+          {/* Tab 3: Page Settings (Admins only) */}
+          {activeTab === "page" && canManagePage && (
+            <div className="settings-page-overview-grid">
+              {user.role === "super_administrator" && (
+                <div className="settings-scope-panel settings-card-wide" style={{ marginBottom: "8px" }}>
+                  <div className="settings-scope-icon">
+                    <i className="ti ti-building-community" />
+                  </div>
+                  <div className="settings-scope-copy">
+                    <label htmlFor="settings-scope">Configuration scope</label>
+                    <span>Choose network defaults or override a specific institution.</span>
+                  </div>
+                  <select
+                    id="settings-scope"
+                    className="settings-select"
+                    value={selectedInstitutionId}
+                    onChange={(e) => setSelectedInstitutionId(e.target.value)}
+                  >
+                    <option value="">Network-wide defaults</option>
+                    {institutions.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Card 1: Automated Watermark Studio */}
+              <section className="settings-card" id="watermark-card">
+                <SettingsHeader
+                  icon="ti ti-droplet"
+                  title="Automated Watermarking"
+                  description="Brand overlay automatically applied to approved photo posts."
+                />
+                <div className="settings-card-body">
+                  <Toggle
+                    title="Enable automated watermarking"
+                    description="Apply watermarks automatically upon submission approval."
+                    checked={watermarkEnabled}
+                    onChange={setWatermarkEnabled}
+                  />
+
+                  <div className="settings-studio-summary-box">
+                    <div className="settings-summary-stat">
+                      <span className="settings-summary-stat-label">Configuration Scope</span>
+                      <span className="settings-summary-stat-val">
+                        {pageInstitutionId && isWatermarkOverride ? (
+                          <span className="wm-elements-badge is-override">
+                            <i className="ti ti-check" /> Override Active
+                          </span>
+                        ) : (
+                          <span className="wm-elements-badge">
+                            <i className="ti ti-world" /> {pageInstitutionId ? "Inheriting Default" : "Network Default"}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="settings-summary-stat">
+                      <span className="settings-summary-stat-label">Status</span>
+                      <span className={`settings-summary-stat-badge ${watermarkEnabled ? "is-active" : "is-inactive"}`}>
+                        {watermarkEnabled ? "Active" : "Disabled"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <footer className="settings-card-footer">
+                  <button
+                    type="button"
+                    className="settings-save-button"
+                    onClick={openStudio}
+                  >
+                    <i className="ti ti-palette" />
+                    Open Watermark Studio
+                  </button>
+                </footer>
+              </section>
+
+              {/* Card 2: Facebook Integration */}
+              <section className="settings-card" id="facebook-card">
+                <SettingsHeader
+                  icon="ti ti-brand-facebook"
+                  title="Facebook Integration"
+                  description="Identify the target Facebook Page used for automated publishing."
+                />
+                <div className="settings-card-body">
+                  <div className="settings-field">
+                    <label htmlFor="settings-facebook-id">Facebook Page ID</label>
+                    <div className="settings-input-with-icon">
+                      <i className="ti ti-brand-facebook" />
+                      <input
+                        id="settings-facebook-id"
+                        className="settings-input"
+                        value={facebookPageId}
+                        maxLength={255}
+                        placeholder="Enter Facebook Page ID"
+                        onChange={(e) => setFacebookPageId(e.target.value)}
+                      />
+                    </div>
+                    <span className="settings-field-hint">Access tokens and credentials remain secured separately.</span>
+                  </div>
+                </div>
+                <SettingsFooter
+                  label="Save Facebook ID"
+                  icon="ti ti-device-floppy"
+                  busy={saving === "page"}
+                  onClick={() => void savePage()}
+                />
+              </section>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
-  </div>;
+  );
 }
 
 function SettingsHeader({ icon, title, description, accent }: { icon: string; title: string; description: string; accent?: React.ReactNode }) {
   return <header className="settings-card-header"><span className="settings-card-icon"><i className={icon} /></span><div className="settings-card-heading"><h2>{title}</h2><p>{description}</p></div>{accent}</header>;
-}
-function SubsectionHeader({ icon, tone, title, description }: { icon: string; tone: string; title: string; description: string }) {
-  return <div className="settings-subsection-heading"><span className={`settings-subsection-icon settings-icon-${tone}`}><i className={icon} /></span><div><h3>{title}</h3><p>{description}</p></div></div>;
 }
 function SettingsFooter({ label, icon, busy, disabled, onClick }: { label: string; icon: string; busy: boolean; disabled?: boolean; onClick: () => void }) {
   return <footer className="settings-card-footer"><button type="button" className="settings-save-button" disabled={busy || disabled} aria-busy={busy} onClick={onClick}><i className={busy ? "ti ti-loader-2 settings-spinner" : icon} />{busy ? "Saving…" : label}</button></footer>;

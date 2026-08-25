@@ -9,8 +9,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.service.FacebookPublisherService;
 import com.dasigconnect.backend.service.PublishingQueryService;
 
@@ -61,9 +61,9 @@ public class PublishingSchedulerJob {
                     continue;
                 }
 
-                List<MediaAsset> assets = publishingQueryService.loadAssetsForSubmission(claimed.getId());
+                List<SubmissionMediaAsset> assets = publishingQueryService.loadMediaLinksForSubmission(claimed.getId());
                 // Called outside any transaction — Facebook API must not hold a DB connection
-                facebookPublisherService.publish(claimed, assets);
+                facebookPublisherService.publishMediaLinks(claimed, assets);
             } catch (Exception ex) {
                 log.error("Unexpected error publishing submission {}: {}",
                         submission.getId(), ex.getMessage(), ex);

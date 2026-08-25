@@ -16,17 +16,30 @@ public class CalendarEventDto {
     private String status;
     private Instant scheduledAt;
     private Instant publishedAt;
+    private String caption;
+    private String description;
+    private String contributorName;
+    /** True once the submission's slot reservation is permanently locked (post-approval). */
+    private boolean locked;
 
     public static CalendarEventDto full(Submission s) {
         CalendarEventDto dto = new CalendarEventDto();
         dto.id = s.getId();
         dto.title = s.getEventTitle();
-        dto.institutionId = s.getInstitution().getId();
-        dto.institutionName = s.getInstitution().getName();
-        dto.institutionCode = s.getInstitution().getCode();
-        dto.status = s.getStatus().name();
+        dto.institutionId = s.getInstitution() != null ? s.getInstitution().getId() : null;
+        dto.institutionName = s.getInstitution() != null ? s.getInstitution().getName() : null;
+        dto.institutionCode = s.getInstitution() != null ? s.getInstitution().getCode() : null;
+        dto.status = s.getStatus() != null ? s.getStatus().name() : null;
         dto.scheduledAt = s.getScheduledAt();
         dto.publishedAt = s.getPublishedAt();
+        dto.caption = s.getCaption();
+        dto.description = s.getDescription();
+        if (s.getContributor() != null) {
+            String firstName = s.getContributor().getFirstName() != null ? s.getContributor().getFirstName() : "";
+            String lastName = s.getContributor().getLastName() != null ? s.getContributor().getLastName() : "";
+            String fullName = (firstName + " " + lastName).trim();
+            dto.contributorName = fullName.isEmpty() ? s.getContributor().getEmail() : fullName;
+        }
         return dto;
     }
 
@@ -35,12 +48,15 @@ public class CalendarEventDto {
         CalendarEventDto dto = new CalendarEventDto();
         dto.id = s.getId();
         dto.title = null;
-        dto.institutionId = s.getInstitution().getId();
-        dto.institutionName = s.getInstitution().getName();
-        dto.institutionCode = s.getInstitution().getCode();
-        dto.status = s.getStatus().name();
+        dto.institutionId = s.getInstitution() != null ? s.getInstitution().getId() : null;
+        dto.institutionName = s.getInstitution() != null ? s.getInstitution().getName() : null;
+        dto.institutionCode = s.getInstitution() != null ? s.getInstitution().getCode() : null;
+        dto.status = s.getStatus() != null ? s.getStatus().name() : null;
         dto.scheduledAt = s.getScheduledAt();
         dto.publishedAt = s.getPublishedAt();
+        dto.caption = null;
+        dto.description = null;
+        dto.contributorName = null;
         return dto;
     }
 
@@ -52,4 +68,10 @@ public class CalendarEventDto {
     public String getStatus() { return status; }
     public Instant getScheduledAt() { return scheduledAt; }
     public Instant getPublishedAt() { return publishedAt; }
+    public String getCaption() { return caption; }
+    public String getDescription() { return description; }
+    public String getContributorName() { return contributorName; }
+
+    public boolean isLocked() { return locked; }
+    public void setLocked(boolean locked) { this.locked = locked; }
 }

@@ -20,6 +20,7 @@ public class MediaAssetSummaryDto {
     private UUID uploaderId;
     private String uploaderEmail;
     private String caption;
+    private boolean skipWatermark;
 
     public static MediaAssetSummaryDto from(MediaAsset asset) {
         MediaAssetSummaryDto dto = new MediaAssetSummaryDto();
@@ -41,6 +42,7 @@ public class MediaAssetSummaryDto {
     public static MediaAssetSummaryDto from(SubmissionMediaAsset link) {
         MediaAssetSummaryDto dto = from(link.getMediaAsset());
         dto.caption = link.getCaption();
+        dto.skipWatermark = link.isSkipWatermark();
         return dto;
     }
 
@@ -57,4 +59,5 @@ public class MediaAssetSummaryDto {
     public UUID getUploaderId() { return uploaderId; }
     public String getUploaderEmail() { return uploaderEmail; }
     public String getCaption() { return caption; }
+    public boolean isSkipWatermark() { return skipWatermark; }
 }

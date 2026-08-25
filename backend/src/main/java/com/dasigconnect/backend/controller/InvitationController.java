@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.controller;
 
 import com.dasigconnect.backend.model.dto.auth.LoginResponseDto;
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.invitation.AcceptInvitationRequestDto;
 import com.dasigconnect.backend.model.dto.invitation.CreateInvitationRequestDto;
 import com.dasigconnect.backend.model.dto.invitation.InvitationResponseDto;
@@ -37,34 +38,34 @@ public class InvitationController {
 
     @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
     @PostMapping
-    public ResponseEntity<InvitationResponseDto> create(
+    public ResponseEntity<ApiResponse<InvitationResponseDto>> create(
             @RequestBody @Valid CreateInvitationRequestDto dto,
             Authentication authentication) {
         JwtUserDetails inviter = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails principal
                 ? principal
                 : null;
-        return ResponseEntity.status(201).body(invitationService.createInvitation(dto, inviter));
+        return ResponseEntity.status(201).body(ApiResponse.success(invitationService.createInvitation(dto, inviter)));
     }
 
     @GetMapping("/validate")
-    public ResponseEntity<InvitationValidateResponseDto> validate(
+    public ResponseEntity<ApiResponse<InvitationValidateResponseDto>> validate(
             @RequestParam String token) {
-        return ResponseEntity.ok(invitationService.validateToken(token));
+        return ResponseEntity.ok(ApiResponse.success(invitationService.validateToken(token)));
     }
 
     @PostMapping("/accept")
-    public ResponseEntity<LoginResponseDto> accept(
+    public ResponseEntity<ApiResponse<LoginResponseDto>> accept(
             @RequestBody @Valid AcceptInvitationRequestDto dto) {
-        return ResponseEntity.ok(invitationService.acceptInvitation(dto));
+        return ResponseEntity.ok(ApiResponse.success(invitationService.acceptInvitation(dto)));
     }
 
     @PostMapping("/resend-expired")
-    public ResponseEntity<Map<String, String>> resendExpired(
+    public ResponseEntity<ApiResponse<Map<String, String>>> resendExpired(
             @RequestBody Map<String, String> request) {
         String token = request != null ? request.get("token") : null;
         String email = request != null ? request.get("email") : null;
         invitationService.resendExpiredToken(token, email);
-        return ResponseEntity.ok(Map.of("message", "A new invitation link has been sent to your email."));
+        return ResponseEntity.ok(ApiResponse.success(Map.of("message", "A new invitation link has been sent to your email.")));
     }
 
     /**
@@ -74,11 +75,11 @@ public class InvitationController {
      */
     @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
     @PostMapping("/{id}/resend")
-    public ResponseEntity<InvitationResponseDto> resend(
+    public ResponseEntity<ApiResponse<InvitationResponseDto>> resend(
             @PathVariable UUID id,
             Authentication authentication) {
         JwtUserDetails requester = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails p ? p : null;
-        return ResponseEntity.ok(invitationService.resend(id, requester));
+        return ResponseEntity.ok(ApiResponse.success(invitationService.resend(id, requester)));
     }
 
     @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
@@ -93,19 +94,19 @@ public class InvitationController {
 
     @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
     @GetMapping("/pending")
-    public ResponseEntity<List<PendingInvitationDto>> pending(
+    public ResponseEntity<ApiResponse<List<PendingInvitationDto>>> pending(
             @RequestParam UUID institutionId,
             Authentication authentication) {
         JwtUserDetails requester = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails p ? p : null;
-        return ResponseEntity.ok(invitationService.listPending(institutionId, requester));
+        return ResponseEntity.ok(ApiResponse.success(invitationService.listPending(institutionId, requester)));
     }
 
     @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
     @GetMapping("/pending/count")
-    public ResponseEntity<Map<String, Long>> pendingCount(
+    public ResponseEntity<ApiResponse<Map<String, Long>>> pendingCount(
             @RequestParam UUID institutionId,
             Authentication authentication) {
         JwtUserDetails requester = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails p ? p : null;
-        return ResponseEntity.ok(invitationService.countPending(institutionId, requester));
+        return ResponseEntity.ok(ApiResponse.success(invitationService.countPending(institutionId, requester)));
     }
 }

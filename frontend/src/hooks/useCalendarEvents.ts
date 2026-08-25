@@ -8,25 +8,30 @@ export interface UseCalendarEventsResult {
   refresh: () => void;
 }
 
+let cachedCalendarEvents: CalendarEvent[] | null = null;
+
 export function useCalendarEvents(): UseCalendarEventsResult {
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [events, setEvents] = useState<CalendarEvent[]>(() => cachedCalendarEvents ?? []);
+  const [loading, setLoading] = useState(() => cachedCalendarEvents === null);
   const [error, setError] = useState("");
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
-    queueMicrotask(() => {
+    if (!cachedCalendarEvents) {
       setLoading(true);
-      setError("");
-      getCalendarEvents(controller.signal)
-        .then((res) => setEvents(res.data))
-        .catch((err: unknown) => {
-          if ((err as { name?: string }).name === "CanceledError") return;
-          setError("Could not load calendar. Please try again.");
-        })
-        .finally(() => setLoading(false));
-    });
+    }
+    setError("");
+    getCalendarEvents(controller.signal)
+      .then((res) => {
+        cachedCalendarEvents = res.data;
+        setEvents(res.data);
+      })
+      .catch((err: unknown) => {
+        if ((err as { name?: string }).name === "CanceledError") return;
+        setError("Could not load calendar. Please try again.");
+      })
+      .finally(() => setLoading(false));
     return () => controller.abort();
   }, [tick]);
 

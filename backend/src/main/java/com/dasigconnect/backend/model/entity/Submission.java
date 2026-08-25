@@ -67,6 +67,12 @@ public class Submission {
     @Column(name = "template_id", length = 100)
     private String templateId;
 
+    @Column(name = "album_name", length = 255)
+    private String albumName;
+
+    @Column(name = "media_tags", columnDefinition = "text")
+    private String mediaTags;
+
     @Column(name = "fast_track", nullable = false)
     private boolean fastTrack;
 
@@ -96,6 +102,15 @@ public class Submission {
 
     @Column(name = "requires_manual_publishing", nullable = false)
     private boolean requiresManualPublishing;
+
+    @Column(name = "token_blocked_at")
+    private Instant tokenBlockedAt;
+
+    @Column(name = "token_escalated_24h_at")
+    private Instant tokenEscalated24hAt;
+
+    @Column(name = "token_final_failed_at")
+    private Instant tokenFinalFailedAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -223,6 +238,12 @@ public class Submission {
     public String getTemplateId() { return templateId; }
     public void setTemplateId(String templateId) { this.templateId = templateId; }
 
+    public String getAlbumName() { return albumName; }
+    public void setAlbumName(String albumName) { this.albumName = albumName; }
+
+    public String getMediaTags() { return mediaTags; }
+    public void setMediaTags(String mediaTags) { this.mediaTags = mediaTags; }
+
     public boolean isFastTrack() { return fastTrack; }
     public void setFastTrack(boolean fastTrack) { this.fastTrack = fastTrack; }
 
@@ -291,6 +312,30 @@ public class Submission {
 
     public void setRequiresManualPublishing(boolean requiresManualPublishing) {
         this.requiresManualPublishing = requiresManualPublishing;
+    }
+
+    public Instant getTokenBlockedAt() {
+        return tokenBlockedAt;
+    }
+
+    public void setTokenBlockedAt(Instant tokenBlockedAt) {
+        this.tokenBlockedAt = tokenBlockedAt;
+    }
+
+    public Instant getTokenEscalated24hAt() {
+        return tokenEscalated24hAt;
+    }
+
+    public void setTokenEscalated24hAt(Instant tokenEscalated24hAt) {
+        this.tokenEscalated24hAt = tokenEscalated24hAt;
+    }
+
+    public Instant getTokenFinalFailedAt() {
+        return tokenFinalFailedAt;
+    }
+
+    public void setTokenFinalFailedAt(Instant tokenFinalFailedAt) {
+        this.tokenFinalFailedAt = tokenFinalFailedAt;
     }
 
     public Instant getCreatedAt() {

@@ -20,6 +20,7 @@ import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
 import com.dasigconnect.backend.model.entity.NotificationEventType;
+import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
@@ -59,6 +60,9 @@ class SubmissionServiceTest {
     private SubmissionRepository submissionRepository;
 
     @Mock
+    private InstitutionRepository institutionRepository;
+
+    @Mock
     private MediaAssetRepository mediaAssetRepository;
 
     @Mock
@@ -78,6 +82,9 @@ class SubmissionServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private SupabaseStorageService supabaseStorageService;
 
     @Mock
     private EntityManager entityManager;
@@ -122,6 +129,52 @@ class SubmissionServiceTest {
         assertThat(result.getScheduledAt()).isEqualTo(scheduledAt);
         verify(slotReservationService).reserve(result.getId(), institutionId, scheduledAt);
         verify(auditLogService).record(eq(contributor), eq("SUBMISSION_CREATED"), eq(null), eq(null), eq(result.getId()), any());
+    }
+
+    @Test
+    void create_byAdministratorWithoutInstitutionId_defaultsToDasigCentralVisayas() {
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        SubmissionCreateDto dto = createDto(scheduledAt);
+        dto.setInstitutionId(null); // Omitted institution_id
+
+        UUID adminId = UUID.randomUUID();
+        User admin = user(adminId, "admin@dasigconnect.com", UserRole.super_administrator, null);
+        JwtUserDetails adminPrincipal = principal(adminId, "super_administrator", null);
+
+        UUID dasigInstId = UUID.randomUUID();
+        Institution dasigInst = new Institution();
+        dasigInst.setId(dasigInstId);
+        dasigInst.setName("DASIG Central Visayas");
+        dasigInst.setProtected(true);
+
+        when(institutionRepository.findByNameIgnoreCase("DASIG Central Visayas")).thenReturn(Optional.of(dasigInst));
+        when(entityManager.getReference(User.class, adminId)).thenReturn(admin);
+        when(entityManager.getReference(Institution.class, dasigInstId)).thenReturn(dasigInst);
+        when(submissionRepository.save(any(Submission.class))).thenAnswer(invocation -> assignSubmissionId(invocation.getArgument(0)));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(any())).thenReturn(List.of());
+
+        SubmissionResponseDto result = submissionService.create(dto, adminPrincipal);
+
+        assertThat(result.getStatus()).isEqualTo("draft");
+        verify(slotReservationService).reserve(result.getId(), dasigInstId, scheduledAt);
+    }
+
+    @Test
+    void create_byContributorWithCustomInstitutionId_ignoresPayloadAndUsesSessionInstitutionId() {
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        SubmissionCreateDto dto = createDto(scheduledAt);
+        dto.setInstitutionId(UUID.randomUUID()); // Client supplied spoofed institutionId
+
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(entityManager.getReference(Institution.class, institutionId)).thenReturn(institution);
+        when(submissionRepository.save(any(Submission.class))).thenAnswer(invocation -> assignSubmissionId(invocation.getArgument(0)));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(any())).thenReturn(List.of());
+
+        SubmissionResponseDto result = submissionService.create(dto, contributorPrincipal);
+
+        assertThat(result.getStatus()).isEqualTo("draft");
+        // Verify slot reservation uses the contributor's session institutionId, NOT the DTO's institutionId
+        verify(slotReservationService).reserve(result.getId(), institutionId, scheduledAt);
     }
 
     @Test
@@ -180,7 +233,7 @@ class SubmissionServiceTest {
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
-        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.administrator))
+        when(userRepository.findByRole(UserRole.administrator))
                 .thenReturn(List.of(validator));
 
         SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
@@ -193,7 +246,7 @@ class SubmissionServiceTest {
         verify(notificationService).createNotification(
                 eq(validator),
                 eq(NotificationEventType.submission_pending),
-                org.mockito.ArgumentMatchers.contains("submitted 'Research Expo' for review"),
+                org.mockito.ArgumentMatchers.contains("submitted 'Research Expo' for approval"),
                 eq("/submissions/" + submissionId));
     }
 
@@ -279,9 +332,9 @@ class SubmissionServiceTest {
     }
 
     @Test
-    void list_contributorUsesContributorScopedQueryAndAddsMediaCount() {
+    void list_scopesToCallerAsAuthorAndAddsMediaCount() {
         Submission submission = submission(UUID.randomUUID(), SubmissionStatus.draft, Instant.now());
-        when(submissionRepository.findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(contributorId, institutionId))
+        when(submissionRepository.findByContributorIdOrderByCreatedAtDesc(contributorId))
                 .thenReturn(List.of(submission));
         when(submissionMediaAssetRepository.countBySubmissionId(submission.getId())).thenReturn(3L);
 
@@ -289,7 +342,7 @@ class SubmissionServiceTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getMediaCount()).isEqualTo(3L);
-        verify(submissionRepository).findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(contributorId, institutionId);
+        verify(submissionRepository).findByContributorIdOrderByCreatedAtDesc(contributorId);
     }
 
     @Test
@@ -299,7 +352,7 @@ class SubmissionServiceTest {
 
         assertThatThrownBy(() -> submissionService.get(
                 submission.getId(),
-                principal(UUID.randomUUID(), "administrator", UUID.randomUUID())))
+                principal(UUID.randomUUID(), "validator", UUID.randomUUID())))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -307,13 +360,17 @@ class SubmissionServiceTest {
 
     @Test
     void evaluateSlot_delegatesToGuardRailServiceWithTenantInstitution() {
+        UUID submissionId = UUID.randomUUID();
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+
         SlotEvaluateRequestDto dto = new SlotEvaluateRequestDto();
         dto.setScheduledAt(scheduledAt);
         GuardRailResult expected = new GuardRailResult();
         when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(expected);
 
-        GuardRailResult result = submissionService.evaluateSlot(UUID.randomUUID(), dto, contributorPrincipal);
+        GuardRailResult result = submissionService.evaluateSlot(submissionId, dto, contributorPrincipal);
 
         assertThat(result).isSameAs(expected);
     }
@@ -415,6 +472,72 @@ class SubmissionServiceTest {
         verify(submissionMediaAssetRepository).saveAll(List.of(firstLink, secondLink));
     }
 
+    @Test
+    void detachAsset_permanentlyDeletesAssetThatIsNowUnattachedAndWasNeverBeyondDraft() {
+        UUID submissionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        MediaAsset asset = mediaAsset(assetId, institution);
+        SubmissionMediaAsset link = mediaLink(submission, asset, 0);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.findBySubmissionIdAndMediaAssetId(submissionId, assetId))
+                .thenReturn(Optional.of(link));
+        when(submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(List.of(assetId)))
+                .thenReturn(java.util.Set.of());
+        when(submissionMediaAssetRepository.existsByMediaAssetId(assetId)).thenReturn(false);
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(supabaseStorageService.deletePublicObject(asset.getStorageUrl())).thenReturn(true);
+
+        submissionService.detachAsset(submissionId, assetId, contributorPrincipal);
+
+        verify(submissionMediaAssetRepository).delete(link);
+        verify(mediaAssetRepository).delete(asset);
+        verify(mediaAssetRepository, never()).save(asset);
+        verify(supabaseStorageService).deletePublicObject(asset.getStorageUrl());
+    }
+
+    @Test
+    void detachAsset_keepsAssetThatWasUsedBeyondDraft() {
+        UUID submissionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        MediaAsset asset = mediaAsset(assetId, institution);
+        SubmissionMediaAsset link = mediaLink(submission, asset, 0);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.findBySubmissionIdAndMediaAssetId(submissionId, assetId))
+                .thenReturn(Optional.of(link));
+        when(submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(List.of(assetId)))
+                .thenReturn(java.util.Set.of(assetId));
+
+        submissionService.detachAsset(submissionId, assetId, contributorPrincipal);
+
+        verify(submissionMediaAssetRepository).delete(link);
+        verify(mediaAssetRepository, never()).save(any());
+    }
+
+    @Test
+    void detachAsset_keepsAssetThatIsStillAttachedElsewhere() {
+        UUID submissionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        MediaAsset asset = mediaAsset(assetId, institution);
+        SubmissionMediaAsset link = mediaLink(submission, asset, 0);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.findBySubmissionIdAndMediaAssetId(submissionId, assetId))
+                .thenReturn(Optional.of(link));
+        when(submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(List.of(assetId)))
+                .thenReturn(java.util.Set.of());
+        when(submissionMediaAssetRepository.existsByMediaAssetId(assetId)).thenReturn(true);
+
+        submissionService.detachAsset(submissionId, assetId, contributorPrincipal);
+
+        verify(submissionMediaAssetRepository).delete(link);
+        verify(mediaAssetRepository, never()).save(any());
+    }
+
     private SubmissionCreateDto createDto(Instant scheduledAt) {
         SubmissionCreateDto dto = new SubmissionCreateDto();
         dto.setEventTitle("Research Expo");
@@ -422,6 +545,7 @@ class SubmissionServiceTest {
         dto.setCaption("Caption");
         dto.setDescription("Description");
         dto.setScheduledAt(scheduledAt);
+        dto.setAlbumName("Research Expo Album");
         return dto;
     }
 
@@ -434,6 +558,7 @@ class SubmissionServiceTest {
         submission.setEventDate(LocalDate.of(2026, 6, 1));
         submission.setCaption("Caption");
         submission.setDescription("Description");
+        submission.setAlbumName("Research Expo Album");
         submission.setStatus(status);
         submission.setScheduledAt(scheduledAt);
         return submission;

@@ -23,6 +23,7 @@ export interface SavedMediaAsset {
   fileType: string;
   fileSizeBytes: number;
   caption?: string | null;
+  skipWatermark?: boolean;
 }
 
 export interface SubmissionSummary {
@@ -45,6 +46,8 @@ export interface SubmissionSummary {
   fastTrack?: boolean;
   liveEventName?: string | null;
   tags?: string[];
+  albumName?: string | null;
+  mediaTags?: string[];
   mediaAssets?: SavedMediaAsset[];
   requiresManualPublishing?: boolean;
 }
@@ -61,6 +64,8 @@ export interface SubmissionPayload {
   fastTrack?: boolean;
   liveEventName?: string | null;
   tags?: string[];
+  albumName?: string | null;
+  mediaTags?: string[];
 }
 
 export interface SubmissionLookups {
@@ -87,6 +92,22 @@ export interface GuardRailResult {
   softWarnings: GuardRailViolation[];
   blocked: boolean;
   clean: boolean;
+}
+
+export interface EngagementRecommendedSlot {
+  scheduledAt: string;
+  windowLabel: string;
+  score: number;
+  warnings: string[];
+}
+
+export interface EngagementRecommendations {
+  available: boolean;
+  source: "HISTORICAL" | "DEFAULT" | "UNAVAILABLE";
+  notice: string | null;
+  timezone: string;
+  sampleSize: number;
+  slots: EngagementRecommendedSlot[];
 }
 
 export function listSubmissions(signal?: AbortSignal) {
@@ -121,10 +142,12 @@ export function reorderSubmissionMedia(
   id: string,
   mediaAssetIds: string[],
   mediaCaptions?: Record<string, string>,
+  skipWatermarks?: Record<string, boolean>,
 ) {
   return api.patch<SubmissionSummary>(`/submissions/${id}/media/order`, {
     mediaAssetIds,
     mediaCaptions,
+    skipWatermarks,
   });
 }
 
@@ -178,6 +201,13 @@ export function getSubmissionLookups(signal?: AbortSignal) {
 
 export function validateGuardRails(scheduledAt: string, institutionId?: string | null) {
   return api.post<GuardRailResult>("/guardrails/validate", { scheduledAt, institutionId });
+}
+
+export function getEngagementRecommendations(institutionId?: string | null, signal?: AbortSignal) {
+  return api.get<EngagementRecommendations>("/engagement-recommendations", {
+    signal,
+    params: institutionId ? { institutionId } : undefined,
+  });
 }
 
 function fileTypeFromFile(file: File) {

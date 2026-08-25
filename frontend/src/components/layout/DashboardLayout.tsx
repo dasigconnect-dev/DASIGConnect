@@ -23,7 +23,7 @@ function getActiveNav(pathname: string): DashboardNavId {
   if (pathname.startsWith('/admin/resolution')) return 'resolution'
   if (pathname.startsWith('/media-repository')) return 'media-repository'
   if (pathname.startsWith('/notifications')) return 'notifications'
-  if (pathname.startsWith('/validation')) return 'submit'
+  if (pathname.startsWith('/validation')) return 'review-queue'
   if (pathname.startsWith('/submissions')) return 'submit'
   if (pathname.startsWith('/scheduler')) return 'scheduler'
   if (pathname.startsWith('/analytics')) return 'analytics'

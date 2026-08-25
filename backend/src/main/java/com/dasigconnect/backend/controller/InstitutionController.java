@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.institution.CreateInstitutionRequest;
 import com.dasigconnect.backend.model.dto.institution.InstitutionDto;
 import com.dasigconnect.backend.model.dto.institution.UpdateInstitutionRequest;
@@ -67,10 +68,10 @@ public class InstitutionController {
      * 403 Forbidden — caller is not an SUPER_ADMINISTRATOR
      */
     @PostMapping
-    public ResponseEntity<InstitutionDto> createInstitution(
+    public ResponseEntity<ApiResponse<InstitutionDto>> createInstitution(
             @Valid @RequestBody CreateInstitutionRequest request) {
         InstitutionDto created = institutionService.createInstitution(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(created));
     }
 
     /**
@@ -83,10 +84,10 @@ public class InstitutionController {
      * — caller is not an SUPER_ADMINISTRATOR
      */
     @GetMapping("/{institutionId}")
-    public ResponseEntity<InstitutionDto> getInstitution(
+    public ResponseEntity<ApiResponse<InstitutionDto>> getInstitution(
             @PathVariable UUID institutionId) {
         InstitutionDto dto = institutionService.getInstitution(institutionId);
-        return ResponseEntity.ok(dto);
+        return ResponseEntity.ok(ApiResponse.success(dto));
     }
 
     /**
@@ -95,15 +96,26 @@ public class InstitutionController {
      * Returns all institutions for Administrator dropdowns and management.
      */
     @GetMapping
-    public ResponseEntity<List<InstitutionDto>> listInstitutions() {
-        return ResponseEntity.ok(institutionService.listInstitutions());
+    public ResponseEntity<ApiResponse<List<InstitutionDto>>> listInstitutions() {
+        return ResponseEntity.ok(ApiResponse.success(institutionService.listInstitutions()));
+    }
+
+    /**
+     * GET /api/v1/institutions/public
+     *
+     * Returns all institutions for public display on the login page.
+     */
+    @GetMapping("/public")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<ApiResponse<List<InstitutionDto>>> listPublicInstitutions() {
+        return ResponseEntity.ok(ApiResponse.success(institutionService.listInstitutions()));
     }
 
     @PutMapping(value = "/{institutionId}/logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<InstitutionDto> updateLogo(
+    public ResponseEntity<ApiResponse<InstitutionDto>> updateLogo(
             @PathVariable UUID institutionId,
             @RequestParam("file") MultipartFile file) {
-        return ResponseEntity.ok(institutionService.updateLogo(institutionId, file));
+        return ResponseEntity.ok(ApiResponse.success(institutionService.updateLogo(institutionId, file)));
     }
 
     @GetMapping("/{institutionId}/logo")
@@ -123,10 +135,10 @@ public class InstitutionController {
      * new name or domain conflicts with another institution.
      */
     @PutMapping("/{institutionId}")
-    public ResponseEntity<InstitutionDto> updateInstitution(
+    public ResponseEntity<ApiResponse<InstitutionDto>> updateInstitution(
             @PathVariable UUID institutionId,
             @Valid @RequestBody UpdateInstitutionRequest request) {
-        return ResponseEntity.ok(institutionService.updateInstitution(institutionId, request));
+        return ResponseEntity.ok(ApiResponse.success(institutionService.updateInstitution(institutionId, request)));
     }
 
     /**
@@ -136,8 +148,8 @@ public class InstitutionController {
      * data retained; new invitations blocked.
      */
     @PatchMapping("/{institutionId}/deactivate")
-    public ResponseEntity<InstitutionDto> deactivateInstitution(@PathVariable UUID institutionId) {
-        return ResponseEntity.ok(institutionService.deactivateInstitution(institutionId));
+    public ResponseEntity<ApiResponse<InstitutionDto>> deactivateInstitution(@PathVariable UUID institutionId) {
+        return ResponseEntity.ok(ApiResponse.success(institutionService.deactivateInstitution(institutionId)));
     }
 
     /**
@@ -147,8 +159,8 @@ public class InstitutionController {
      * depending on whether the institution has active validators.
      */
     @PatchMapping("/{institutionId}/reactivate")
-    public ResponseEntity<InstitutionDto> reactivateInstitution(@PathVariable UUID institutionId) {
-        return ResponseEntity.ok(institutionService.reactivateInstitution(institutionId));
+    public ResponseEntity<ApiResponse<InstitutionDto>> reactivateInstitution(@PathVariable UUID institutionId) {
+        return ResponseEntity.ok(ApiResponse.success(institutionService.reactivateInstitution(institutionId)));
     }
 
     /**

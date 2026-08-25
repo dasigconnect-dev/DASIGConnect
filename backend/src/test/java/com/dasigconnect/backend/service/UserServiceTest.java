@@ -171,16 +171,16 @@ class UserServiceTest {
 
     @Test
     void countByRole_returnsContributorAndValidatorCounts() {
-        when(userRepository.countByInstitutionIdAndRole(institutionId, UserRole.contributor)).thenReturn(12L);
-        when(userRepository.countByInstitutionIdAndRole(institutionId, UserRole.administrator)).thenReturn(2L);
+        when(userRepository.countByInstitutionIdAndRoleAndAccountState(institutionId, UserRole.contributor, UserStatus.active)).thenReturn(12L);
+        when(userRepository.countByInstitutionIdAndRoleAndAccountState(institutionId, UserRole.administrator, UserStatus.active)).thenReturn(2L);
 
         Map<String, Long> result = userService.countByRole(
                 institutionId,
                 principal(UUID.randomUUID(), "administrator", institutionId));
 
         assertThat(result).containsEntry("contributors", 12L).containsEntry("validators", 2L);
-        verify(userRepository).countByInstitutionIdAndRole(institutionId, UserRole.contributor);
-        verify(userRepository).countByInstitutionIdAndRole(institutionId, UserRole.administrator);
+        verify(userRepository).countByInstitutionIdAndRoleAndAccountState(institutionId, UserRole.contributor, UserStatus.active);
+        verify(userRepository).countByInstitutionIdAndRoleAndAccountState(institutionId, UserRole.administrator, UserStatus.active);
     }
 
     @Test

@@ -1,6 +1,8 @@
 package com.dasigconnect.backend.service;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -8,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
@@ -117,6 +121,63 @@ class MediaAssetServiceTest {
         mediaAssetService.bulkDelete(dto, user(UUID.randomUUID(), "admin", null));
 
         verify(mediaAssetRepository).saveAll(List.of(first, second));
+    }
+
+    @Test
+    void list_hidesAssetAttachedOnlyToDraftSubmissionEvenFromUploader() {
+        UUID institutionId = UUID.randomUUID();
+        UUID uploaderId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, uploaderId);
+        when(mediaAssetRepository.findActiveByInstitution(institutionId)).thenReturn(List.of(asset));
+        when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(List.of(assetId)))
+                .thenReturn(Set.of(assetId));
+        when(submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(List.of(assetId))).thenReturn(Set.of());
+
+        MediaAssetListResponseDto resultForUploader = mediaAssetService.list(
+                null, null, null, null, null, null, 1, 20, null,
+                user(uploaderId, "contributor", institutionId));
+        MediaAssetListResponseDto resultForOtherUser = mediaAssetService.list(
+                null, null, null, null, null, null, 1, 20, null,
+                user(UUID.randomUUID(), "contributor", institutionId));
+
+        assertTrue(resultForUploader.getItems().isEmpty());
+        assertTrue(resultForOtherUser.getItems().isEmpty());
+    }
+
+    @Test
+    void list_showsStandaloneAssetNeverAttachedToAnySubmission() {
+        UUID institutionId = UUID.randomUUID();
+        UUID uploaderId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, uploaderId);
+        when(mediaAssetRepository.findActiveByInstitution(institutionId)).thenReturn(List.of(asset));
+        when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(List.of(assetId)))
+                .thenReturn(Set.of());
+
+        MediaAssetListResponseDto result = mediaAssetService.list(
+                null, null, null, null, null, null, 1, 20, null,
+                user(UUID.randomUUID(), "contributor", institutionId));
+
+        assertEquals(1, result.getItems().size());
+    }
+
+    @Test
+    void list_showsAssetUsedBeyondDraftToOtherUsers() {
+        UUID institutionId = UUID.randomUUID();
+        UUID uploaderId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, uploaderId);
+        when(mediaAssetRepository.findActiveByInstitution(institutionId)).thenReturn(List.of(asset));
+        when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(List.of(assetId)))
+                .thenReturn(Set.of(assetId));
+        when(submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(List.of(assetId))).thenReturn(Set.of(assetId));
+
+        MediaAssetListResponseDto result = mediaAssetService.list(
+                null, null, null, null, null, null, 1, 20, null,
+                user(UUID.randomUUID(), "contributor", institutionId));
+
+        assertEquals(1, result.getItems().size());
     }
 
     private static JwtUserDetails user(UUID userId, String role, UUID institutionId) {

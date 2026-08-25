@@ -1,4 +1,4 @@
-import { api, adminApi } from "./authApi";
+import { api } from "./authApi";
 
 // ── UC-3.4 types ─────────────────────────────────────────────────────────────
 
@@ -129,8 +129,17 @@ export function getResolutionDetail(id: string, signal?: AbortSignal) {
   return api.get<ManualPublishDetail>(`/resolution/${id}`, { signal });
 }
 
+export interface RetryWithNewSchedulePayload {
+  scheduledAt: string;
+  overrideReason?: string;
+}
+
 export function retryPublication(id: string) {
   return api.post<void>(`/resolution/${id}/retry`);
+}
+
+export function retryPublicationWithNewSchedule(id: string, payload: RetryWithNewSchedulePayload) {
+  return api.post<void>(`/resolution/${id}/retry-with-new-schedule`, payload);
 }
 
 export function startManualPublish(id: string) {
@@ -148,53 +157,53 @@ export function cancelManualPublish(id: string) {
 // ── UC-3.5 functions ──────────────────────────────────────────────────────────
 
 export function getResolutionCounts(signal?: AbortSignal) {
-  return adminApi.get<ResolutionCounts>("/admin/resolution/counts", { signal });
+  return api.get<ResolutionCounts>("/admin/resolution/counts", { signal });
 }
 
 // Cat. B — Validation Timeouts
 export function getTimeoutEscalations(signal?: AbortSignal) {
-  return adminApi.get<TimeoutEscalation[]>("/admin/resolution/timeouts", { signal });
+  return api.get<TimeoutEscalation[]>("/admin/resolution/timeouts", { signal });
 }
 
 export function approveTimeout(submissionId: string) {
-  return adminApi.post<void>(`/admin/resolution/timeouts/${submissionId}/approve`);
+  return api.post<void>(`/admin/resolution/timeouts/${submissionId}/approve`);
 }
 
 export function deferTimeout(submissionId: string) {
-  return adminApi.post<void>(`/admin/resolution/timeouts/${submissionId}/defer`);
+  return api.post<void>(`/admin/resolution/timeouts/${submissionId}/defer`);
 }
 
 export function rejectTimeout(submissionId: string, payload: TimeoutRejectPayload) {
-  return adminApi.post<void>(`/admin/resolution/timeouts/${submissionId}/reject`, payload);
+  return api.post<void>(`/admin/resolution/timeouts/${submissionId}/reject`, payload);
 }
 
 // Cat. C — Override Requests
 export function getOverrideRequests(signal?: AbortSignal) {
-  return adminApi.get<OverrideRequest[]>("/admin/resolution/overrides", { signal });
+  return api.get<OverrideRequest[]>("/admin/resolution/overrides", { signal });
 }
 
 export function approveOverride(requestId: string) {
-  return adminApi.post<void>(`/admin/resolution/overrides/${requestId}/approve`);
+  return api.post<void>(`/admin/resolution/overrides/${requestId}/approve`);
 }
 
 export function suggestOverride(requestId: string, payload: OverrideSuggestPayload) {
-  return adminApi.post<void>(`/admin/resolution/overrides/${requestId}/suggest`, payload);
+  return api.post<void>(`/admin/resolution/overrides/${requestId}/suggest`, payload);
 }
 
 export function denyOverride(requestId: string, payload: OverrideDenyPayload) {
-  return adminApi.post<void>(`/admin/resolution/overrides/${requestId}/deny`, payload);
+  return api.post<void>(`/admin/resolution/overrides/${requestId}/deny`, payload);
 }
 
 // Cat. D — Direct Post
 export function createDirectPost(payload: DirectPostPayload) {
-  return adminApi.post<DirectPostResponse>("/admin/resolution/direct-post", payload);
+  return api.post<DirectPostResponse>("/admin/resolution/direct-post", payload);
 }
 
 // Cat. E — Token Management
 export function getTokenStatuses(signal?: AbortSignal) {
-  return adminApi.get<TokenStatus[]>("/admin/resolution/tokens", { signal });
+  return api.get<TokenStatus[]>("/admin/resolution/tokens", { signal });
 }
 
 export function initOAuth(tokenId: string) {
-  return adminApi.get<{ authorizationUrl: string }>(`/admin/resolution/tokens/${tokenId}/oauth-init`);
+  return api.get<{ authorizationUrl: string }>(`/admin/resolution/tokens/${tokenId}/oauth-init`);
 }

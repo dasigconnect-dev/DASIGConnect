@@ -57,14 +57,15 @@ class CaptionControllerTest {
     }
 
     @Test
-    void generateCaption_asContributor_returnsOneSelectedVariant() throws Exception {
+    void generateCaption_asContributor_returnsThreeVariants() throws Exception {
         UUID submissionId = UUID.randomUUID();
         List<CaptionVariantDto> variants = List.of(
-                new CaptionVariantDto("professional", "Professional caption #DASIG #Innovation")
+                new CaptionVariantDto("professional", "Professional caption #DASIG #Innovation"),
+                new CaptionVariantDto("community", "Community caption #DASIG #Together"),
+                new CaptionVariantDto("energetic", "Energetic caption! #DASIG #Energy")
         );
         when(captionGenerationService.generateCaptions(
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenReturn(new CaptionResponseDto(submissionId, variants));
 
         mockMvc.perform(post("/api/v1/ai/caption")
@@ -76,17 +77,18 @@ class CaptionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(header().exists("X-RateLimit-Remaining"))
                 .andExpect(header().exists("X-RateLimit-Reset"))
-                .andExpect(jsonPath("$.submissionId").value(submissionId.toString()))
-                .andExpect(jsonPath("$.variants.length()").value(1))
-                .andExpect(jsonPath("$.variants[0].tone").value("professional"));
+                .andExpect(jsonPath("$.data.submissionId").value(submissionId.toString()))
+                .andExpect(jsonPath("$.data.variants.length()").value(3))
+                .andExpect(jsonPath("$.data.variants[0].tone").value("professional"))
+                .andExpect(jsonPath("$.data.variants[1].tone").value("community"))
+                .andExpect(jsonPath("$.data.variants[2].tone").value("energetic"));
     }
 
     @Test
     void generateCaption_asAdministrator_returnsVariants() throws Exception {
         UUID submissionId = UUID.randomUUID();
         when(captionGenerationService.generateCaptions(
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenReturn(new CaptionResponseDto(submissionId, List.of(
                         new CaptionVariantDto("professional", "Caption #DASIG")
                 )));
@@ -95,18 +97,10 @@ class CaptionControllerTest {
                 .with(authentication(adminAuth()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"submissionId":"%s","existingCaption":"Draft caption","prompt":"Make it community-focused.","tone":"community"}
+                        {"submissionId":"%s","existingCaption":"Draft caption"}
                         """.formatted(submissionId)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.variants[0].caption").value("Caption #DASIG"));
-
-        verify(captionGenerationService).generateCaptions(
-                ArgumentMatchers.eq(submissionId),
-                ArgumentMatchers.any(),
-                ArgumentMatchers.any(),
-                ArgumentMatchers.eq("Draft caption"),
-                ArgumentMatchers.eq("Make it community-focused."),
-                ArgumentMatchers.eq("community"));
+                .andExpect(jsonPath("$.data.variants[0].caption").value("Caption #DASIG"));
     }
 
     @Test
@@ -130,21 +124,9 @@ class CaptionControllerTest {
     }
 
     @Test
-    void generateCaption_promptTooLong_returns400() throws Exception {
-        mockMvc.perform(post("/api/v1/ai/caption")
-                .with(authentication(contributorAuth()))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                        {"submissionId":"%s","prompt":"%s"}
-                        """.formatted(UUID.randomUUID(), "a".repeat(281))))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
     void generateCaption_claudeTimeout_returns504() throws Exception {
         when(captionGenerationService.generateCaptions(
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenThrow(new ClaudeVisionClient.ClaudeApiException("Claude API timed out after 10 seconds."));
 
         mockMvc.perform(post("/api/v1/ai/caption")
@@ -159,8 +141,7 @@ class CaptionControllerTest {
     @Test
     void generateCaption_claudeUnavailable_returns503() throws Exception {
         when(captionGenerationService.generateCaptions(
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenThrow(new ClaudeVisionClient.ClaudeApiException("Claude API error (HTTP 500)."));
 
         mockMvc.perform(post("/api/v1/ai/caption")

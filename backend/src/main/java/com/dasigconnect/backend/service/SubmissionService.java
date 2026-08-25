@@ -45,6 +45,7 @@ import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
+import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.ReviewLockRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
@@ -74,6 +75,7 @@ public class SubmissionService {
     private static final long MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024;
 
     private final SubmissionRepository submissionRepository;
+    private final InstitutionRepository institutionRepository;
     private final MediaAssetRepository mediaAssetRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
     private final ReviewLockRepository reviewLockRepository;
@@ -94,6 +96,7 @@ public class SubmissionService {
 
     public SubmissionService(
             SubmissionRepository submissionRepository,
+            InstitutionRepository institutionRepository,
             MediaAssetRepository mediaAssetRepository,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
             ReviewLockRepository reviewLockRepository,
@@ -106,6 +109,7 @@ public class SubmissionService {
             UserRepository userRepository,
             ApplicationEventPublisher eventPublisher) {
         this.submissionRepository = submissionRepository;
+        this.institutionRepository = institutionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.reviewLockRepository = reviewLockRepository;
@@ -150,6 +154,8 @@ public class SubmissionService {
         submission.setDescription(dto.getDescription());
         submission.setStatus(SubmissionStatus.draft);
         submission.setCategory(dto.getCategory());
+        submission.setAlbumName(normalizeOptional(dto.getAlbumName()));
+        submission.setMediaTags(joinTags(dto.getMediaTags()));
         submission.setTemplateId(dto.getTemplateId() == null || dto.getTemplateId().isBlank()
                 ? null
                 : dto.getTemplateId());
@@ -219,6 +225,18 @@ public class SubmissionService {
     public SubmissionResponseDto update(UUID submissionId, SubmissionUpdateDto dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
+        submission = applySubmissionEdits(submission, dto);
+        return buildResponse(submission);
+    }
+
+    /**
+     * Applies the editable-field subset of a SubmissionUpdateDto to an already-loaded
+     * submission and saves it. Shared by the contributor-facing update() above and
+     * ValidationService's admin Edit & Approve action — callers own their own
+     * ownership/status checks before calling this.
+     */
+    Submission applySubmissionEdits(Submission submission, SubmissionUpdateDto dto) {
+        UUID submissionId = submission.getId();
 
         if (dto.getEventTitle() != null) {
             submission.setEventTitle(dto.getEventTitle());
@@ -237,6 +255,12 @@ public class SubmissionService {
         }
         if (dto.getTemplateId() != null) {
             submission.setTemplateId(dto.getTemplateId().isBlank() ? null : dto.getTemplateId());
+        }
+        if (dto.getAlbumName() != null) {
+            submission.setAlbumName(normalizeOptional(dto.getAlbumName()));
+        }
+        if (dto.getMediaTags() != null) {
+            submission.setMediaTags(joinTags(dto.getMediaTags()));
         }
         if (dto.getFastTrack() != null) {
             submission.setFastTrack(dto.getFastTrack());
@@ -270,8 +294,7 @@ public class SubmissionService {
             slotReservationService.reserve(submissionId, submission.getInstitution().getId(), dto.getScheduledAt());
         }
 
-        submission = submissionRepository.save(submission);
-        return buildResponse(submission);
+        return submissionRepository.save(submission);
     }
 
     /**
@@ -388,7 +411,7 @@ public class SubmissionService {
      * post: an event title, an event date, a caption, and at least one media
      * asset. Throws 422 listing everything that is still missing.
      */
-    private void assertContentComplete(Submission submission) {
+    void assertContentComplete(Submission submission) {
         List<String> missing = new java.util.ArrayList<>();
         if (submission.getEventTitle() == null || submission.getEventTitle().isBlank()) {
             missing.add("an event title");
@@ -401,6 +424,9 @@ public class SubmissionService {
         }
         if (submissionMediaAssetRepository.countBySubmissionId(submission.getId()) < 1) {
             missing.add("at least one media attachment");
+        }
+        if (submission.getAlbumName() == null || submission.getAlbumName().isBlank()) {
+            missing.add("an album assignment");
         }
         if (!missing.isEmpty()) {
             throw new ResponseStatusException(HttpStatusCode.valueOf(422),
@@ -426,21 +452,7 @@ public class SubmissionService {
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> list(JwtUserDetails user) {
-        List<Submission> submissions = switch (user.role().toLowerCase()) {
-            case "contributor" ->
-                submissionRepository
-                .findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(user.userId(), user.institutionId());
-            case "validator" ->
-                submissionRepository
-                .findByInstitutionIdOrderByCreatedAtDesc(user.institutionId());
-            case "administrator" ->
-                submissionRepository.findAllByOrderByCreatedAtDesc().stream()
-                        .filter(submission -> !isEditableStatus(submission)
-                                || submission.getContributor().getId().equals(user.userId()))
-                        .toList();
-            default ->
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Unknown role");
-        };
+        List<Submission> submissions = submissionRepository.findByContributorIdOrderByCreatedAtDesc(user.userId());
 
         return submissions.stream()
                 .map(s -> SubmissionSummaryDto.from(s, submissionMediaAssetRepository.countBySubmissionId(s.getId())))
@@ -536,10 +548,32 @@ public class SubmissionService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Media asset is not attached to this submission."));
 
-        submissionMediaAssetRepository.delete(link
+        boolean everPublishedBeyondDraft = !submissionMediaAssetRepository
+                .findAssetIdsUsedBeyondDraft(List.of(mediaAssetId)).isEmpty();
+
+        submissionMediaAssetRepository.delete(link);
         submissionMediaAssetRepository.flush();
-        refreshManualPublishingFlag(submission); 
+        refreshManualPublishingFlag(submission);
         log.info("Asset {} detached from submission {} by user {}", mediaAssetId, submissionId, user.userId());
+
+        // A draft-only upload that is now attached to nothing served no purpose
+        // beyond that draft — permanently delete it (row + storage object) so
+        // it never surfaces as an orphaned "standalone" asset in the Media
+        // Repository, rather than soft-deleting it into the 30-day retention
+        // queue like a deliberate library deletion. Assets that were ever
+        // used beyond draft status are left alone even if this was their
+        // last remaining attachment, since they are legitimate reusable
+        // library assets. asset_tags and media_asset_embeddings cascade-delete
+        // at the database level (ON DELETE CASCADE).
+        if (!everPublishedBeyondDraft && !submissionMediaAssetRepository.existsByMediaAssetId(mediaAssetId)) {
+            mediaAssetRepository.findActiveById(mediaAssetId).ifPresent(orphan -> {
+                String storageUrl = orphan.getStorageUrl();
+                mediaAssetRepository.delete(orphan);
+                boolean storageDeleted = supabaseStorageService.deletePublicObject(storageUrl);
+                log.info("Orphaned draft-only media asset {} permanently deleted after detach from submission {} (storageDeleted={})",
+                        mediaAssetId, submissionId, storageDeleted);
+            });
+        }
     }
 
     /**
@@ -576,6 +610,10 @@ public class SubmissionService {
             link.setDisplayOrder(index);
             if (dto.getMediaCaptions() != null && dto.getMediaCaptions().containsKey(dto.getMediaAssetIds().get(index))) {
                 link.setCaption(normalizeOptional(dto.getMediaCaptions().get(dto.getMediaAssetIds().get(index))));
+            }
+            if (dto.getSkipWatermarks() != null && dto.getSkipWatermarks().containsKey(dto.getMediaAssetIds().get(index))) {
+                boolean canSkipWatermark = link.getMediaAsset().getFileType().isImage();
+                link.setSkipWatermark(canSkipWatermark && Boolean.TRUE.equals(dto.getSkipWatermarks().get(dto.getMediaAssetIds().get(index))));
             }
         }
         submissionMediaAssetRepository.saveAll(links);
@@ -645,20 +683,18 @@ public class SubmissionService {
     }
 
     private UUID resolveSubmissionInstitutionId(UUID requestedInstitutionId, JwtUserDetails user) {
-        if ("administrator".equals(user.role())) {
-            if (requestedInstitutionId == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Select an institution scope before creating a submission.");
+        if ("administrator".equalsIgnoreCase(user.role()) || "super_administrator".equalsIgnoreCase(user.role())) {
+            if (requestedInstitutionId != null) {
+                return requestedInstitutionId;
             }
-            return requestedInstitutionId;
+            return institutionRepository.findByNameIgnoreCase("DASIG Central Visayas")
+                    .map(Institution::getId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                            "Default institution 'DASIG Central Visayas' not found."));
         }
         if (user.institutionId() == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Your account is not scoped to an institution.");
-        }
-        if (requestedInstitutionId != null && !requestedInstitutionId.equals(user.institutionId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "You cannot create submissions for another institution.");
         }
         return user.institutionId();
     }
@@ -745,6 +781,16 @@ public class SubmissionService {
 
     private static String normalizeOptional(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String joinTags(List<String> tags) {
+        if (tags == null || tags.isEmpty()) return null;
+        String joined = tags.stream()
+                .map(SubmissionService::normalizeOptional)
+                .filter(tag -> tag != null && !tag.isBlank())
+                .distinct()
+                .collect(Collectors.joining(","));
+        return joined.isBlank() ? null : joined;
     }
 
     private static String formatInstant(Instant instant) {

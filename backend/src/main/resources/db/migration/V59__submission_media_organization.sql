@@ -1,0 +1,6 @@
+ALTER TABLE submissions
+    ADD COLUMN IF NOT EXISTS album_name VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS media_tags TEXT;
+
+ALTER TABLE submission_media_assets
+    ADD COLUMN IF NOT EXISTS skip_watermark BOOLEAN NOT NULL DEFAULT FALSE;

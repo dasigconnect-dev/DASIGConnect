@@ -10,6 +10,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,11 +24,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.dasigconnect.backend.event.PostPublishedEvent;
 import com.dasigconnect.backend.event.PublishFailedEvent;
+import com.dasigconnect.backend.event.TokenPublishingSuspendedEvent;
+import com.dasigconnect.backend.event.TokenValidationFailedEvent;
 import com.dasigconnect.backend.model.entity.FacebookPageToken;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
 import com.dasigconnect.backend.model.entity.PublicationAttempt;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.repository.FacebookPageTokenRepository;
 import com.dasigconnect.backend.repository.PublicationAttemptRepository;
@@ -51,6 +58,10 @@ public class FacebookPublisherService {
 
     private static final Logger log = LoggerFactory.getLogger(FacebookPublisherService.class);
 
+    public static final String TOKEN_EXPIRED_BLOCKED_PREFIX = "TOKEN_EXPIRED_BLOCKED";
+    public static final String TOKEN_EXPIRED_24H_PREFIX = "TOKEN_EXPIRED_24H_ESCALATION";
+    public static final String TOKEN_EXPIRED_48H_PREFIX = "TOKEN_EXPIRED_48H_FAILED";
+
     private static final int MAX_RETRIES = 3;
     private static final long[] BACKOFF_MS = {5_000L, 25_000L, 125_000L};
 
@@ -65,6 +76,7 @@ public class FacebookPublisherService {
     private final PublicationAttemptRepository publicationAttemptRepository;
     private final SubmissionRepository submissionRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final WatermarkApplicationService watermarkApplicationService;
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -79,7 +91,8 @@ public class FacebookPublisherService {
             FacebookPageTokenRepository pageTokenRepository,
             PublicationAttemptRepository publicationAttemptRepository,
             SubmissionRepository submissionRepository,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            WatermarkApplicationService watermarkApplicationService) {
         this.pageAccessToken = pageAccessToken;
         this.pageId = pageId;
         this.appId = appId;
@@ -90,6 +103,7 @@ public class FacebookPublisherService {
         this.publicationAttemptRepository = publicationAttemptRepository;
         this.submissionRepository = submissionRepository;
         this.eventPublisher = eventPublisher;
+        this.watermarkApplicationService = watermarkApplicationService;
     }
 
     public boolean isConfigured() {
@@ -142,11 +156,51 @@ public class FacebookPublisherService {
             return;
         }
 
-        String token = resolveActiveToken();
-        if (token == null) {
+        publishInternal(submission, mediaAssets, Map.of(), Map.of());
+    }
+
+    public void publishMediaLinks(Submission submission, List<SubmissionMediaAsset> mediaLinks) {
+        List<MediaAsset> mediaAssets = mediaLinks.stream()
+                .map(SubmissionMediaAsset::getMediaAsset)
+                .toList();
+        Map<UUID, String> mediaCaptions = mediaLinks.stream()
+                .collect(Collectors.toMap(
+                        link -> link.getMediaAsset().getId(),
+                        link -> normalizeCaption(link.getCaption()),
+                        (left, right) -> left));
+        Map<UUID, String> photoPublishUrls = mediaLinks.stream()
+                .filter(link -> isImage(link.getMediaAsset().getFileType()))
+                .collect(Collectors.toMap(
+                        link -> link.getMediaAsset().getId(),
+                        link -> watermarkApplicationService.resolvePublishUrl(submission, link),
+                        (left, right) -> left));
+        publishInternal(submission, mediaAssets, mediaCaptions, photoPublishUrls);
+    }
+
+    public boolean hasUsableActiveToken() {
+        return isConfigured() && resolveActiveToken().status() == TokenStatus.READY;
+    }
+
+    private void publishInternal(
+            Submission submission,
+            List<MediaAsset> mediaAssets,
+            Map<UUID, String> mediaCaptions,
+            Map<UUID, String> photoPublishUrls) {
+        if (!isConfigured()) {
+            log.warn("Facebook publishing not configured - skipping submission {}.", submission.getId());
+            return;
+        }
+
+        TokenResolution tokenResolution = resolveActiveToken();
+        if (tokenResolution.status() == TokenStatus.MISSING) {
             markFailed(submission, "No active Facebook page token found.");
             return;
         }
+        if (tokenResolution.status() == TokenStatus.EXPIRED) {
+            suspendForTokenExpiry(submission, tokenResolution.message());
+            return;
+        }
+        String token = tokenResolution.token().orElseThrow();
 
         boolean hasImages = mediaAssets.stream().anyMatch(a -> isImage(a.getFileType()));
         boolean hasVideos = mediaAssets.stream().anyMatch(a -> isVideo(a.getFileType()));
@@ -160,7 +214,12 @@ public class FacebookPublisherService {
         if (hasVideos) {
             publishVideoPost(submission, mediaAssets.stream().filter(a -> isVideo(a.getFileType())).findFirst().orElseThrow(), token);
         } else if (hasImages) {
-            publishPhotoPost(submission, mediaAssets.stream().filter(a -> isImage(a.getFileType())).toList(), token);
+            publishPhotoPost(
+                    submission,
+                    mediaAssets.stream().filter(a -> isImage(a.getFileType())).toList(),
+                    mediaCaptions,
+                    photoPublishUrls,
+                    token);
         } else {
             markFailed(submission, "Submission has no media assets to publish.");
         }
@@ -168,7 +227,12 @@ public class FacebookPublisherService {
 
     // ── Photo publish (2-step) ────────────────────────────────────────────────
 
-    private void publishPhotoPost(Submission submission, List<MediaAsset> images, String token) {
+    private void publishPhotoPost(
+            Submission submission,
+            List<MediaAsset> images,
+            Map<UUID, String> mediaCaptions,
+            Map<UUID, String> photoPublishUrls,
+            String token) {
         String caption = buildPostMessage(submission);
         List<String> stagedPhotoIds = new ArrayList<>();
         String lastError = null;
@@ -179,7 +243,8 @@ public class FacebookPublisherService {
 
                 // Step 1: Stage each photo unpublished
                 for (MediaAsset image : images) {
-                    String photoId = stagePhoto(image.getStorageUrl(), token);
+                    String photoUrl = photoPublishUrls.getOrDefault(image.getId(), image.getStorageUrl());
+                    String photoId = stagePhoto(photoUrl, mediaCaptions.get(image.getId()), token);
                     stagedPhotoIds.add(photoId);
                 }
 
@@ -260,9 +325,10 @@ public class FacebookPublisherService {
 
     // ── Graph API helpers ─────────────────────────────────────────────────────
 
-    private String stagePhoto(String storageUrl, String token) throws IOException, InterruptedException {
+    private String stagePhoto(String storageUrl, String mediaCaption, String token) throws IOException, InterruptedException {
         String body = "url=" + encode(storageUrl)
                 + "&published=false"
+                + (mediaCaption == null || mediaCaption.isBlank() ? "" : "&caption=" + encode(mediaCaption))
                 + "&access_token=" + encode(token);
         String url = "https://graph.facebook.com/" + apiVersion + "/" + pageId + "/photos";
         JsonNode response = postForm(url, body);
@@ -326,6 +392,7 @@ public class FacebookPublisherService {
         s.setStatus(isDirectPost ? SubmissionStatus.admin_direct_post : SubmissionStatus.published);
         s.setPlatformPostId(postId);
         s.setPublishedAt(Instant.now());
+        clearTokenSuspension(s);
         submissionRepository.save(s);
         String postUrl = "https://www.facebook.com/" + postId.replace("_", "/posts/");
         if (isDirectPost) {
@@ -344,9 +411,50 @@ public class FacebookPublisherService {
         boolean isDirectPost = s.getStatus() == SubmissionStatus.direct_post_scheduled
                 || s.getStatus() == SubmissionStatus.direct_post_publishing;
         s.setStatus(isDirectPost ? SubmissionStatus.direct_post_failed : SubmissionStatus.publish_failed);
+        if (!isTokenFinalFailure(error)) {
+            clearTokenSuspension(s);
+        }
         submissionRepository.save(s);
         eventPublisher.publishEvent(new PublishFailedEvent(s, error));
         log.error("Submission {} publishing failed (status={}): {}", s.getId(), s.getStatus(), error);
+    }
+
+    @Transactional
+    public void suspendForTokenExpiry(Submission submission, String error) {
+        Submission s = submissionRepository.findById(submission.getId()).orElse(submission);
+        if (s.getStatus() == SubmissionStatus.publishing) {
+            s.setStatus(SubmissionStatus.scheduled);
+        } else if (s.getStatus() == SubmissionStatus.direct_post_publishing) {
+            s.setStatus(SubmissionStatus.direct_post_scheduled);
+        }
+        if (s.getTokenBlockedAt() == null) {
+            s.setTokenBlockedAt(Instant.now());
+        }
+        submissionRepository.save(s);
+        boolean firstTokenBlock = s.getTokenEscalated24hAt() == null
+                && s.getTokenFinalFailedAt() == null
+                && !publicationAttemptRepository.existsBySubmissionIdAndErrorDetailStartingWith(
+                        s.getId(),
+                        TOKEN_EXPIRED_BLOCKED_PREFIX);
+        if (firstTokenBlock) {
+            recordAttempt(s, 1, "failed", TOKEN_EXPIRED_BLOCKED_PREFIX + ": " + error, null);
+            eventPublisher.publishEvent(new TokenValidationFailedEvent());
+            eventPublisher.publishEvent(new TokenPublishingSuspendedEvent(
+                    s,
+                    TokenPublishingSuspendedEvent.Stage.FIRST_ALERT,
+                    error));
+        }
+        log.error("Submission {} publishing suspended because Facebook token is unavailable: {}", s.getId(), error);
+    }
+
+    private void clearTokenSuspension(Submission submission) {
+        submission.setTokenBlockedAt(null);
+        submission.setTokenEscalated24hAt(null);
+        submission.setTokenFinalFailedAt(null);
+    }
+
+    private static boolean isTokenFinalFailure(String error) {
+        return error != null && error.contains("not reauthorized within 48 hours");
     }
 
     @Transactional
@@ -362,17 +470,25 @@ public class FacebookPublisherService {
 
     // ── Token resolution ──────────────────────────────────────────────────────
 
-    private String resolveActiveToken() {
+    private TokenResolution resolveActiveToken() {
         return pageTokenRepository.findByPageIdAndIsActiveTrue(pageId)
                 .map(t -> {
+                    if (t.getExpiresAt() != null && !t.getExpiresAt().isAfter(Instant.now())) {
+                        return TokenResolution.expired("Facebook Page Access Token expired at " + t.getExpiresAt() + ".");
+                    }
                     try {
-                        return tokenEncryptionService.decryptToken(t.getEncryptedToken());
+                        return TokenResolution.ready(tokenEncryptionService.decryptToken(t.getEncryptedToken()));
                     } catch (Exception ex) {
                         log.error("Failed to decrypt Facebook page token: {}", ex.getMessage());
-                        return null;
+                        return TokenResolution.missing("Facebook Page Access Token could not be decrypted.");
                     }
                 })
-                .orElse(null);
+                .orElseGet(() -> TokenResolution.missing("No active Facebook page token found."));
+    }
+
+    private String resolveActiveTokenValue() {
+        TokenResolution resolved = resolveActiveToken();
+        return resolved.status() == TokenStatus.READY ? resolved.token().orElse(null) : null;
     }
 
     // ── Token health check (called by TokenHealthCheckJob) ────────────────────
@@ -383,7 +499,7 @@ public class FacebookPublisherService {
      * Used by TokenHealthCheckJob (GR-T4).
      */
     public Instant validateToken() {
-        String token = resolveActiveToken();
+        String token = resolveActiveTokenValue();
         if (token == null) return null;
 
         try {
@@ -465,11 +581,35 @@ public class FacebookPublisherService {
         return "[\"" + String.join("\",\"", ids) + "\"]";
     }
 
+    private static String normalizeCaption(String caption) {
+        return caption == null || caption.isBlank() ? "" : caption.trim();
+    }
+
     private static void sleep(long ms) {
         try {
             Thread.sleep(ms);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private enum TokenStatus {
+        READY,
+        MISSING,
+        EXPIRED
+    }
+
+    private record TokenResolution(TokenStatus status, Optional<String> token, String message) {
+        static TokenResolution ready(String token) {
+            return new TokenResolution(TokenStatus.READY, Optional.of(token), "");
+        }
+
+        static TokenResolution missing(String message) {
+            return new TokenResolution(TokenStatus.MISSING, Optional.empty(), message);
+        }
+
+        static TokenResolution expired(String message) {
+            return new TokenResolution(TokenStatus.EXPIRED, Optional.empty(), message);
         }
     }
 }

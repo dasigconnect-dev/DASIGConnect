@@ -1,31 +1,38 @@
 import axios from "axios";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
-const ADMIN_BASE_URL = BASE_URL.replace(/\/v1$/, "");
 
 export const api = axios.create({ baseURL: BASE_URL });
-export const adminApi = axios.create({ baseURL: ADMIN_BASE_URL });
 
-for (const client of [api, adminApi]) {
-  client.interceptors.response.use(
-    (response) => response,
-    (error) => {
-      const url = String(error?.config?.url || "");
-      if (error?.response?.status === 401 && !url.includes("/auth/login") && !url.includes("/auth/forgot-password")) {
-        window.dispatchEvent(new CustomEvent("dasigconnect:session-expired"));
-      }
-      return Promise.reject(error);
-    },
-  );
+function isEnvelope(body: unknown): body is { success: boolean; data: unknown; error: unknown } {
+  return typeof body === "object" && body !== null && typeof (body as { success?: unknown }).success === "boolean";
 }
+
+api.interceptors.response.use(
+  (response) => {
+    if (isEnvelope(response.data) && response.data.success) {
+      response.data = response.data.data;
+    }
+    return response;
+  },
+  (error) => {
+    const url = String(error?.config?.url || "");
+    if (error?.response?.status === 401 && !url.includes("/auth/login") && !url.includes("/auth/forgot-password")) {
+      window.dispatchEvent(new CustomEvent("dasigconnect:session-expired"));
+    }
+    const body = error?.response?.data;
+    if (isEnvelope(body) && body.error && typeof body.error === "object") {
+      body.error = (body.error as { message?: string }).message;
+    }
+    return Promise.reject(error);
+  },
+);
 
 export function setAuthToken(token: string | null) {
   if (token) {
     api.defaults.headers.common.Authorization = `Bearer ${token}`;
-    adminApi.defaults.headers.common.Authorization = `Bearer ${token}`;
   } else {
     delete api.defaults.headers.common.Authorization;
-    delete adminApi.defaults.headers.common.Authorization;
   }
 }
 
@@ -137,6 +144,8 @@ export interface InstitutionResponse {
   emailDomain: string;
   hasLogo: boolean;
   logoUpdatedAt: string | null;
+  isProtected?: boolean;
+  protected?: boolean;
 }
 
 export function createInstitution(
@@ -153,6 +162,10 @@ export function createInstitution(
 
 export function listInstitutions(signal?: AbortSignal) {
   return api.get<InstitutionResponse[]>("/institutions", { signal });
+}
+
+export function listPublicInstitutions(signal?: AbortSignal) {
+  return api.get<InstitutionResponse[]>("/institutions/public", { signal });
 }
 
 export function deleteInstitution(id: string) {

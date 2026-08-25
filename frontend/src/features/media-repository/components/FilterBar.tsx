@@ -25,14 +25,14 @@ export default function FilterBar({
   search,
   sort,
   viewMode,
-  networkView,
-  isAdmin,
+  networkView: _networkView,
+  isAdmin: _isAdmin,
   activeTags,
   tagChips,
   onSearchChange,
   onSortChange,
   onViewModeChange,
-  onNetworkViewToggle,
+  onNetworkViewToggle: _onNetworkViewToggle,
   onTagToggle,
 }: FilterBarProps) {
   return (
@@ -95,7 +95,7 @@ export default function FilterBar({
           </button>
         </div>
 
-        {isAdmin && (
+        {/* {isAdmin && (
           <button
             className="med-network-toggle"
             onClick={onNetworkViewToggle}
@@ -112,7 +112,7 @@ export default function FilterBar({
               <div className="med-toggle-knob" />
             </div>
           </button>
-        )}
+        )} */}
       </div>
 
       {tagChips.length > 0 && (

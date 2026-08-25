@@ -13,8 +13,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.event.PostPublishedManualEvent;
+import com.dasigconnect.backend.event.SubmissionRescheduledEvent;
+import com.dasigconnect.backend.exception.GuardRailViolationException;
 import com.dasigconnect.backend.exception.SubmissionNotFoundException;
+import com.dasigconnect.backend.model.dto.guardrail.GuardRailResult;
 import com.dasigconnect.backend.model.dto.resolution.ManualPublishCompleteDto;
+import com.dasigconnect.backend.model.dto.submission.RescheduleRequestDto;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
@@ -43,6 +47,8 @@ public class ManualPublishingService {
     private final SubmissionRepository submissionRepository;
     private final AuditLogService auditLogService;
     private final ApplicationEventPublisher eventPublisher;
+    private final GuardRailService guardRailService;
+    private final SlotReservationService slotReservationService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -50,10 +56,14 @@ public class ManualPublishingService {
     public ManualPublishingService(
             SubmissionRepository submissionRepository,
             AuditLogService auditLogService,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            GuardRailService guardRailService,
+            SlotReservationService slotReservationService) {
         this.submissionRepository = submissionRepository;
         this.auditLogService = auditLogService;
         this.eventPublisher = eventPublisher;
+        this.guardRailService = guardRailService;
+        this.slotReservationService = slotReservationService;
     }
 
     public void start(UUID submissionId, JwtUserDetails admin) {
@@ -145,6 +155,63 @@ public class ManualPublishingService {
         s.setManualPublishStartedAt(null);
         submissionRepository.save(s);
         log.info("Admin {} queued retry for submission {}.", admin.userId(), submissionId);
+    }
+
+    /**
+     * A8: retries a PUBLISH_FAILED submission on a newly chosen slot instead of the
+     * original one. Guard rails are re-evaluated against the new slot; a hard
+     * violation blocks the move unless the admin supplies an overrideReason.
+     */
+    public void retryWithNewSchedule(UUID submissionId, RescheduleRequestDto dto, JwtUserDetails admin) {
+        Submission s = submissionRepository.findById(submissionId)
+                .orElseThrow(() -> new SubmissionNotFoundException(submissionId));
+        if (s.getStatus() != SubmissionStatus.publish_failed) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only PUBLISH_FAILED submissions can be retried with a new schedule.");
+        }
+
+        Instant originalSlot = s.getScheduledAt();
+        Instant newSlot = dto.getScheduledAt();
+
+        GuardRailResult guardRailResult = guardRailService.validate(s.getInstitution().getId(), newSlot);
+        if (guardRailResult.isBlocked()) {
+            if (dto.getOverrideReason() == null || dto.getOverrideReason().isBlank()) {
+                throw new GuardRailViolationException(guardRailResult.getHardBlocks());
+            }
+            auditLogService.record(
+                    entityManager.getReference(User.class, admin.userId()),
+                    "MANUAL_PUBLISH_RETRY_OVERRIDE",
+                    null, null,
+                    submissionId,
+                    Map.of(
+                        "originalSlot", originalSlot != null ? originalSlot.toString() : "",
+                        "newSlot", newSlot.toString(),
+                        "overrideReason", dto.getOverrideReason(),
+                        "violations", guardRailResult.getHardBlocks().toString()
+                    )
+            );
+        }
+
+        slotReservationService.reserveLockedSlot(submissionId, s.getInstitution().getId(), newSlot);
+        s.setScheduledAt(newSlot);
+        s.setStatus(SubmissionStatus.scheduled);
+        s.setRetryCount(0);
+        s.setManualPublishStartedAt(null);
+        submissionRepository.save(s);
+
+        auditLogService.record(
+                entityManager.getReference(User.class, admin.userId()),
+                "MANUAL_PUBLISH_RETRY_NEW_SCHEDULE",
+                null, null,
+                submissionId,
+                Map.of(
+                    "originalSlot", originalSlot != null ? originalSlot.toString() : "",
+                    "newSlot", newSlot.toString()
+                )
+        );
+
+        eventPublisher.publishEvent(new SubmissionRescheduledEvent(s, originalSlot, newSlot));
+        log.info("Admin {} retried submission {} on new slot {}.", admin.userId(), submissionId, newSlot);
     }
 
     /** Called by AbandonmentDetectorJob — clears sessions open longer than 2 hours. */

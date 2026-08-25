@@ -29,12 +29,21 @@ import com.dasigconnect.backend.model.dto.institution.InstitutionDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
 import com.dasigconnect.backend.repository.InstitutionRepository;
+import com.dasigconnect.backend.repository.InvitationTokenRepository;
+import com.dasigconnect.backend.repository.UserRepository;
+import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
 class InstitutionServiceTest {
 
     @Mock
     private InstitutionRepository institutionRepository;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private InvitationTokenRepository invitationTokenRepository;
 
     @Mock
     private WorkspaceProvisionerService workspaceProvisioner;
@@ -332,6 +341,43 @@ class InstitutionServiceTest {
             assertThatThrownBy(() -> institutionService.transitionToInactive(institutionId))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("active or pending");
+        }
+    }
+
+    // ── deactivateInstitution ──────────────────────────────────────────────────
+    @Nested
+    @DisplayName("deactivateInstitution()")
+    class DeactivateInstitutionTests {
+
+        @Test
+        @DisplayName("should reject deactivation when institution is protected with 400 Bad Request")
+        void shouldRejectDeactivation_whenInstitutionIsProtected() {
+            mockInstitution.setProtected(true);
+            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+
+            assertThatThrownBy(() -> institutionService.deactivateInstitution(institutionId))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .hasMessageContaining("This institution cannot be deactivated")
+                    .extracting(ex -> ((ResponseStatusException) ex).getStatusCode().value())
+                    .isEqualTo(400);
+
+            verify(institutionRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("should deactivate when institution is not protected and has no active contributors/invitations")
+        void shouldDeactivate_whenNotProtected() {
+            mockInstitution.setProtected(false);
+            mockInstitution.setStatus(InstitutionStatus.active);
+            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+            when(userRepository.countByInstitutionId(institutionId)).thenReturn(0L);
+            when(invitationTokenRepository.countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(eq(institutionId), any())).thenReturn(0L);
+            when(institutionRepository.save(any())).thenReturn(mockInstitution);
+
+            InstitutionDto result = institutionService.deactivateInstitution(institutionId);
+
+            assertThat(mockInstitution.getStatus()).isEqualTo(InstitutionStatus.inactive);
+            verify(institutionRepository).save(mockInstitution);
         }
     }
 }
