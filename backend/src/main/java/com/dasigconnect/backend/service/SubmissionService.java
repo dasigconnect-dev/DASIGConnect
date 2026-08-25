@@ -548,10 +548,32 @@ public class SubmissionService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Media asset is not attached to this submission."));
 
+        boolean everPublishedBeyondDraft = !submissionMediaAssetRepository
+                .findAssetIdsUsedBeyondDraft(List.of(mediaAssetId)).isEmpty();
+
         submissionMediaAssetRepository.delete(link);
         submissionMediaAssetRepository.flush();
         refreshManualPublishingFlag(submission);
         log.info("Asset {} detached from submission {} by user {}", mediaAssetId, submissionId, user.userId());
+
+        // A draft-only upload that is now attached to nothing served no purpose
+        // beyond that draft — permanently delete it (row + storage object) so
+        // it never surfaces as an orphaned "standalone" asset in the Media
+        // Repository, rather than soft-deleting it into the 30-day retention
+        // queue like a deliberate library deletion. Assets that were ever
+        // used beyond draft status are left alone even if this was their
+        // last remaining attachment, since they are legitimate reusable
+        // library assets. asset_tags and media_asset_embeddings cascade-delete
+        // at the database level (ON DELETE CASCADE).
+        if (!everPublishedBeyondDraft && !submissionMediaAssetRepository.existsByMediaAssetId(mediaAssetId)) {
+            mediaAssetRepository.findActiveById(mediaAssetId).ifPresent(orphan -> {
+                String storageUrl = orphan.getStorageUrl();
+                mediaAssetRepository.delete(orphan);
+                boolean storageDeleted = supabaseStorageService.deletePublicObject(storageUrl);
+                log.info("Orphaned draft-only media asset {} permanently deleted after detach from submission {} (storageDeleted={})",
+                        mediaAssetId, submissionId, storageDeleted);
+            });
+        }
     }
 
     /**

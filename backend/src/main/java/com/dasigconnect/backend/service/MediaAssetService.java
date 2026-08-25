@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -109,8 +110,13 @@ public class MediaAssetService {
             source = mediaAssetRepository.findActiveByInstitution(user.institutionId());
         }
 
+        List<UUID> sourceIds = source.stream().map(MediaAsset::getId).toList();
+        Set<UUID> attachedAssetIds = submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(sourceIds);
+        Set<UUID> assetIdsUsedBeyondDraft = submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(sourceIds);
+
         List<MediaAsset> filtered = source
                 .stream()
+                .filter(asset -> isPublishedToRepository(asset, attachedAssetIds, assetIdsUsedBeyondDraft))
                 .filter(asset -> trimmedQuery.isBlank()
                 || containsIgnoreCase(asset.getFileName(), trimmedQuery)
                 || containsIgnoreCase(asset.getAssetCode(), trimmedQuery))
@@ -139,6 +145,9 @@ public class MediaAssetService {
         MediaAsset asset = mediaAssetRepository.findActiveById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
         if (!isAdmin(user) && !asset.getInstitution().getId().equals(user.institutionId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
+        }
+        if (!isPublishedToRepository(asset)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
         }
         List<MediaAssetUsageDto> usedIn = submissionMediaAssetRepository
@@ -314,6 +323,31 @@ public class MediaAssetService {
         return user.role() != null && user.role().toLowerCase().contains("admin");
     }
 
+    /**
+     * Media Repository visibility: an asset that is exclusively attached to
+     * an unsubmitted draft never appears in the Media Repository — not even
+     * to its uploader. It stays visible only inside that draft submission's
+     * own media picker until the submission leaves draft status, at which
+     * point it publishes into the repository for everyone in scope.
+     * Standalone assets (never attached to any submission) are unaffected.
+     */
+    private boolean isPublishedToRepository(MediaAsset asset) {
+        Set<UUID> singleAssetId = Set.of(asset.getId());
+        boolean attached = !submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(singleAssetId).isEmpty();
+        if (!attached) {
+            return true;
+        }
+        return !submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(singleAssetId).isEmpty();
+    }
+
+    private boolean isPublishedToRepository(
+            MediaAsset asset, Set<UUID> attachedAssetIds, Set<UUID> assetIdsUsedBeyondDraft) {
+        if (!attachedAssetIds.contains(asset.getId())) {
+            return true;
+        }
+        return assetIdsUsedBeyondDraft.contains(asset.getId());
+    }
+
     private boolean isValidator(JwtUserDetails user) {
         return user.role() != null && user.role().toLowerCase().contains("administrator");
     }
@@ -326,6 +360,9 @@ public class MediaAssetService {
         MediaAsset asset = mediaAssetRepository.findActiveById(assetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
         if (!isAdmin(user) && !asset.getInstitution().getId().equals(user.institutionId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
+        }
+        if (!isPublishedToRepository(asset)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
         }
         return asset;
