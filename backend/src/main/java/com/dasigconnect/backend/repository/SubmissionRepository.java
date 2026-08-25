@@ -148,6 +148,19 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         """)
     List<Submission> findPublishFailures();
 
+    @Query("""
+        SELECT s FROM Submission s
+        JOIN FETCH s.institution
+        JOIN FETCH s.contributor
+        WHERE s.tokenBlockedAt IS NOT NULL
+        AND s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled
+        )
+        ORDER BY s.tokenBlockedAt ASC
+        """)
+    List<Submission> findTokenBlockedScheduledSubmissions();
+
     /** UC-3.5 Category B: escalated PENDING/IN_REVIEW submissions due within the given window. */
     @Query("""
         SELECT s FROM Submission s

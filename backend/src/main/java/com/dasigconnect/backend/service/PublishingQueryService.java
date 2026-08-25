@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
@@ -84,5 +85,13 @@ public class PublishingQueryService {
                 .stream()
                 .map(sma -> sma.getMediaAsset())
                 .toList();
+    }
+
+    /**
+     * Returns ordered submission-media junction rows so the publishing path can
+     * read per-asset drafting metadata such as captions and watermark choices.
+     */
+    public List<SubmissionMediaAsset> loadMediaLinksForSubmission(UUID submissionId) {
+        return submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId);
     }
 }
