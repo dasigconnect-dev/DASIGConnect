@@ -306,6 +306,18 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
             {contextLabel}
           </p>
         </div>
+        {isAdmin && (
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => navigate("/admin/resolution?tab=direct-post")}
+            title="Direct Post — bypass queue and publish directly (UC-3.6)"
+            style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}
+          >
+            <i className="ti ti-bolt" aria-hidden="true" />
+            Direct Post
+          </button>
+        )}
       </div>
 
       <section className="cal-overview-grid" aria-label="Publishing metrics">
@@ -370,7 +382,6 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
           loading={loading}
           rangeLabel={rangeLabel}
           showFullDay={showFullDay}
-          isAdmin={isAdmin}
           onViewChange={switchView}
           onNavigate={navigateCalendar}
           onToggleFullDay={() => setShowFullDay((value) => !value)}
@@ -378,7 +389,6 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
             beginCalendarTransition();
             refresh();
           }}
-          onDirectPost={() => navigate("/admin/resolution?tab=direct-post")}
         />
       </div>
 
