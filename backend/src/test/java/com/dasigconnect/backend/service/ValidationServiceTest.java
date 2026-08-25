@@ -157,6 +157,70 @@ class ValidationServiceTest {
     }
 
     @Test
+    void approve_fastTrackSubmission_skipsSlotConfirmationAndFlagsAuditLog() {
+        // Fast-Track (Live Event) submissions never get a slot reservation created
+        // (see SubmissionService.create()), so confirming one would throw
+        // IllegalStateException and roll back the whole approval. Approve must skip
+        // slot confirmation for fast-track submissions and flag the audit log.
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
+
+        Submission submission = new Submission();
+        submission.setId(UUID.randomUUID());
+        submission.setStatus(SubmissionStatus.pending);
+        submission.setFastTrack(true);
+
+        Institution institution = new Institution();
+        institution.setId(submissionInstitutionId);
+        submission.setInstitution(institution);
+
+        User contributor = new User();
+        contributor.setId(contributorId);
+        submission.setContributor(contributor);
+
+        User adminUser = new User();
+        adminUser.setId(adminId);
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(adminUser));
+
+        assertThatCode(() -> validationService.approve(submission.getId(), admin)).doesNotThrowAnyException();
+
+        verify(slotReservationService, org.mockito.Mockito.never()).confirm(any());
+        ArgumentCaptor<ValidationLog> captor = ArgumentCaptor.forClass(ValidationLog.class);
+        verify(validationLogRepository).save(captor.capture());
+        assertThat(captor.getValue().isFastTrack()).isTrue();
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.scheduled);
+    }
+
+    @Test
+    void approve_standardSubmission_stillConfirmsSlot() {
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
+
+        Submission submission = new Submission();
+        submission.setId(UUID.randomUUID());
+        submission.setStatus(SubmissionStatus.pending);
+        submission.setFastTrack(false);
+
+        Institution institution = new Institution();
+        institution.setId(submissionInstitutionId);
+        submission.setInstitution(institution);
+
+        User contributor = new User();
+        contributor.setId(contributorId);
+        submission.setContributor(contributor);
+
+        User adminUser = new User();
+        adminUser.setId(adminId);
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(adminUser));
+
+        validationService.approve(submission.getId(), admin);
+
+        verify(slotReservationService).confirm(submission.getId());
+    }
+
+    @Test
     void editAndApprove_capturesFieldDiffAndLogsEditedAction() {
         JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
 
@@ -194,6 +258,40 @@ class ValidationServiceTest {
         ValidationLog entry = captor.getValue();
         assertThat(entry.getAction()).isEqualTo(ValidationAction.edited_and_approved);
         assertThat(entry.getEditDiff()).contains("Original Title").contains("Edited Title");
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.scheduled);
+    }
+
+    @Test
+    void editAndApprove_fastTrackSubmission_skipsSlotConfirmation() {
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
+
+        Submission submission = new Submission();
+        submission.setId(UUID.randomUUID());
+        submission.setStatus(SubmissionStatus.pending);
+        submission.setEventTitle("Original Title");
+        submission.setFastTrack(true);
+
+        Institution institution = new Institution();
+        institution.setId(submissionInstitutionId);
+        submission.setInstitution(institution);
+
+        User contributor = new User();
+        contributor.setId(contributorId);
+        submission.setContributor(contributor);
+
+        User adminUser = new User();
+        adminUser.setId(adminId);
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(adminUser));
+        when(submissionService.applySubmissionEdits(any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SubmissionUpdateDto dto = new SubmissionUpdateDto();
+
+        assertThatCode(() -> validationService.editAndApprove(submission.getId(), dto, admin))
+                .doesNotThrowAnyException();
+
+        verify(slotReservationService, org.mockito.Mockito.never()).confirm(any());
         assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.scheduled);
     }
 }

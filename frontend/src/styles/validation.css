@@ -314,6 +314,12 @@
   margin-top: 8px;
 }
 
+.val-deadline.val-live {
+  background: var(--val-red-dim);
+  color: var(--val-red);
+  font-weight: 700;
+}
+
 .val-deadline,
 .val-media-count {
   display: inline-flex;
@@ -459,6 +465,18 @@
   border: 1px solid var(--val-purple-bdr);
   background: var(--val-purple-dim);
   padding: 11px 14px;
+}
+
+.val-slot-card.val-live {
+  border-color: var(--val-red-bdr);
+  background: var(--val-red-dim);
+}
+
+.val-slot-card.val-live span {
+  color: var(--val-red);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .val-slot-card span {

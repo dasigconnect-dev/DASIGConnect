@@ -634,10 +634,17 @@ export default function ValidationQueueScreen({
                       <span>{formatDate(item.submittedAt || item.createdAt || item.eventDate)}</span>
                     </div>
                     <div className="val-qi-bottom">
-                      <span className="val-deadline">
-                        <i className="ti ti-clock"></i>
-                        {item.scheduledAt ? formatDateTime(item.scheduledAt) : "No slot"}
-                      </span>
+                      {item.fastTrack ? (
+                        <span className="val-deadline val-live">
+                          <i className="ti ti-broadcast"></i>
+                          Live Event
+                        </span>
+                      ) : (
+                        <span className="val-deadline">
+                          <i className="ti ti-clock"></i>
+                          {item.scheduledAt ? formatDateTime(item.scheduledAt) : "No slot"}
+                        </span>
+                      )}
                       <span className="val-media-count">
                         <i className="ti ti-photo"></i> {item.mediaCount ?? 0}
                       </span>
@@ -818,19 +825,28 @@ export default function ValidationQueueScreen({
                     Submitted by <strong>{selected.contributorEmail}</strong>
                   </p>
                 </div>
-                <div className="val-slot-card">
-                  <span>Publish Slot</span>
-                  <strong>
-                    {selected.scheduledAt
-                      ? formatDate(selected.scheduledAt)
-                      : "Unscheduled"}
-                  </strong>
-                  <small>
-                    {selected.scheduledAt
-                      ? formatTime(selected.scheduledAt)
-                      : "No preferred time"}
-                  </small>
-                </div>
+                {selected.fastTrack ? (
+                  <div className="val-slot-card val-live">
+                    <span>
+                      <i className="ti ti-broadcast"></i> Live
+                    </span>
+                    <strong>Publishes immediately</strong>
+                  </div>
+                ) : (
+                  <div className="val-slot-card">
+                    <span>Publish Slot</span>
+                    <strong>
+                      {selected.scheduledAt
+                        ? formatDate(selected.scheduledAt)
+                        : "Unscheduled"}
+                    </strong>
+                    <small>
+                      {selected.scheduledAt
+                        ? formatTime(selected.scheduledAt)
+                        : "No preferred time"}
+                    </small>
+                  </div>
+                )}
               </header>
 
               <MediaCarousel
@@ -913,6 +929,7 @@ export default function ValidationQueueScreen({
                         <strong>
                           {formatAction(entry.action)}
                           {entry.selfReview && <span className="val-log-flag">Self-review</span>}
+                          {entry.fastTrack && <span className="val-log-flag">Fast-Track</span>}
                         </strong>
                         <span>
                           {entry.validatorEmail} · {formatDateTime(entry.createdAt)}
