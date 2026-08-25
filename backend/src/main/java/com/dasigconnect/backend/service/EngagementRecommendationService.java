@@ -80,12 +80,14 @@ public class EngagementRecommendationService {
     private List<RecommendedSlotDto> buildSlots(List<PeakWindow> windows, UUID institutionId) {
         List<RecommendedSlotDto> slots = new ArrayList<>();
         LocalDate today = LocalDate.now(PAGE_ZONE);
+        Instant now = Instant.now();
         for (int offset = 0; offset <= 30 && slots.size() < MAX_SLOTS; offset++) {
             LocalDate date = today.plusDays(offset);
             for (PeakWindow window : windows) {
                 if (date.getDayOfWeek() != window.day()) continue;
                 Instant candidate = LocalDateTime.of(date, LocalTime.of(window.hour(), 0))
                         .atZone(PAGE_ZONE).toInstant();
+                if (!candidate.isAfter(now)) continue;
                 GuardRailResult guardRails = guardRailService.validate(institutionId, candidate);
                 if (guardRails.isBlocked()) continue;
                 List<String> warnings = guardRails.getSoftWarnings().stream()
