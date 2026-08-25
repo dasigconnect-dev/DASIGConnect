@@ -109,22 +109,27 @@ public class ValidationService {
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
 
-        submission.setStatus(SubmissionStatus.scheduled);
-        submissionRepository.save(submission);
-
-        slotReservationService.confirm(submissionId);
+        if (submission.isFastTrack()) {
+            submission.setStatus(SubmissionStatus.publishing);
+            submission.setScheduledAt(null);
+            submissionRepository.save(submission);
+        } else {
+            submission.setStatus(SubmissionStatus.scheduled);
+            submissionRepository.save(submission);
+            slotReservationService.confirm(submissionId);
+        }
         reviewLockService.release(submissionId, caller);
 
         User validator = loadUser(caller.userId());
         logAction(submission, validator, ValidationAction.approved, null, null, selfReview, null);
 
         eventPublisher.publishEvent(new SubmissionApprovedEvent(submission));
-        log.info("Submission approved: submission={} validator={}", submissionId, caller.userId());
+        log.info("Submission approved (fastTrack={}): submission={} validator={}", submission.isFastTrack(), submissionId, caller.userId());
     }
 
     /**
      * Edits a submission's content and approves it in the same action: transitions
-     * to SCHEDULED, confirms slot, releases lock. Records a before/after diff of any
+     * to SCHEDULED (or PUBLISHING if fast-track), confirms slot, releases lock. Records a before/after diff of any
      * edited fields alongside the approval action (A9/A10).
      * A5: self-review is allowed but distinctly flagged in the audit log.
      */
@@ -139,10 +144,15 @@ public class ValidationService {
         submissionService.assertContentComplete(submission);
         String editDiff = buildEditDiff(before, snapshotEditableFields(submission));
 
-        submission.setStatus(SubmissionStatus.scheduled);
-        submissionRepository.save(submission);
-
-        slotReservationService.confirm(submissionId);
+        if (submission.isFastTrack()) {
+            submission.setStatus(SubmissionStatus.publishing);
+            submission.setScheduledAt(null);
+            submissionRepository.save(submission);
+        } else {
+            submission.setStatus(SubmissionStatus.scheduled);
+            submissionRepository.save(submission);
+            slotReservationService.confirm(submissionId);
+        }
         reviewLockService.release(submissionId, caller);
 
         User validator = loadUser(caller.userId());
