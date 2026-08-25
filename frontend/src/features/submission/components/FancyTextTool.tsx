@@ -35,7 +35,7 @@ interface Props {
   onPreviewStateChange?: (active: boolean) => void;
 }
 
-const CAPTION_LIMIT = 500;
+const CAPTION_WORD_LIMIT = 2000;
 const PREVIEW_TEXT_LIMIT = 54;
 const UPPER_A = "A".codePointAt(0)!;
 const LOWER_A = "a".codePointAt(0)!;
@@ -145,6 +145,7 @@ export default function FancyTextTool({
 
         return {
           ...style,
+          replacement,
           replacementLength: replacement.length,
           preview: selectedText ? formatPreviewText(replacement) : replacement,
         };
@@ -300,10 +301,10 @@ export default function FancyTextTool({
           <div className="fancy-text-options">
             {previews.map((style) => {
               const nextLength =
-                activeCaption.length -
-                selectedText.length +
-                style.replacementLength;
-              const exceedsLimit = nextLength > CAPTION_LIMIT;
+                countWords(activeCaption.slice(0, effectiveSelection.start)) +
+                countWords(style.replacement) +
+                countWords(activeCaption.slice(effectiveSelection.end));
+              const exceedsLimit = nextLength > CAPTION_WORD_LIMIT;
               const disabledStyle = !canUseSelection || exceedsLimit;
 
               return (
@@ -314,7 +315,7 @@ export default function FancyTextTool({
                   disabled={disabledStyle}
                   title={
                     exceedsLimit
-                      ? "Styled text would exceed the caption limit"
+                      ? "Styled text would exceed the caption word limit"
                       : style.title
                   }
                   onMouseDown={(event) => event.preventDefault()}
@@ -340,6 +341,10 @@ export default function FancyTextTool({
       )}
     </div>
   );
+}
+
+function countWords(value: string): number {
+  return value.trim().match(/\S+/g)?.length ?? 0;
 }
 
 function transformFancyText(text: string, styleId: FancyTextStyleId): string {

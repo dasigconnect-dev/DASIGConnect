@@ -112,6 +112,13 @@ export interface CaptionResponse {
   rateLimitReset?: number;
 }
 
+interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
+  error?: unknown;
+  timestamp?: string;
+}
+
 export type CaptionAction =
   | "use"
   | "use_then_edited"
@@ -125,7 +132,7 @@ export async function suggestCaption(
   prompt?: string,
   tone?: CaptionTone
 ): Promise<CaptionResponse> {
-  const res = await api.post<{ submissionId: string; variants: CaptionVariant[] }>(
+  const res = await api.post<ApiEnvelope<CaptionResponse> | CaptionResponse>(
     "/ai/caption",
     {
       submissionId,
@@ -152,9 +159,10 @@ export async function suggestCaption(
   if (res.status !== 200) {
     throw new Error("unavailable");
   }
+  const body = "data" in res.data ? res.data.data : res.data;
 
   return {
-    ...res.data,
+    ...body,
     rateLimitRemaining: remaining != null ? Number(remaining) : undefined,
     rateLimitReset: reset != null ? Number(reset) : undefined,
   };
