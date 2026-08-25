@@ -193,10 +193,13 @@ export default function CalendarView({
         scrollTime={`${Math.max(new Date().getHours() - 1, showFullDay ? 0 : 6).toString().padStart(2, "0")}:00:00`}
         nowIndicator
         editable={draggable}
+        eventStartEditable={draggable}
+        eventDurationEditable={false}
+        eventResizableFromStart={false}
         eventDrop={handleEventDrop}
-        dragScroll={true}
+        dragScroll={false}
         dragRevertDuration={200}
-        eventDragMinDistance={3}
+        eventDragMinDistance={4}
       />
     </div>
   );
