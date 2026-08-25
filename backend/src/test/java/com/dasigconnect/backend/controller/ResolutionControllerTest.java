@@ -77,8 +77,8 @@ class ResolutionControllerTest {
 
         mockMvc.perform(get("/api/v1/resolution/failures"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$.length()").value(0));
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 
     @Test
@@ -91,9 +91,9 @@ class ResolutionControllerTest {
 
         mockMvc.perform(get("/api/v1/resolution/failures"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].submissionId").value(s.getId().toString()))
-                .andExpect(jsonPath("$[0].eventTitle").value("Tech Summit 2026"));
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].submissionId").value(s.getId().toString()))
+                .andExpect(jsonPath("$.data[0].eventTitle").value("Tech Summit 2026"));
     }
 
     // ── GET /{id} ─────────────────────────────────────────────────────────────
@@ -110,11 +110,11 @@ class ResolutionControllerTest {
 
         mockMvc.perform(get("/api/v1/resolution/{id}", id))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.submissionId").value(id.toString()))
-                .andExpect(jsonPath("$.eventTitle").value("Tech Summit 2026"))
-                .andExpect(jsonPath("$.status").value("publish_failed"))
-                .andExpect(jsonPath("$.mediaAssets").isArray())
-                .andExpect(jsonPath("$.mediaAssets.length()").value(1));
+                .andExpect(jsonPath("$.data.submissionId").value(id.toString()))
+                .andExpect(jsonPath("$.data.eventTitle").value("Tech Summit 2026"))
+                .andExpect(jsonPath("$.data.status").value("publish_failed"))
+                .andExpect(jsonPath("$.data.mediaAssets").isArray())
+                .andExpect(jsonPath("$.data.mediaAssets.length()").value(1));
     }
 
     @Test

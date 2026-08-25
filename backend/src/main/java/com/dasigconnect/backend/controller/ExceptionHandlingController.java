@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.exception.DirectPostRequestDto;
 import com.dasigconnect.backend.model.dto.exception.DirectPostResponseDto;
 import com.dasigconnect.backend.model.dto.exception.OAuthInitResponseDto;
@@ -38,10 +39,10 @@ import com.dasigconnect.backend.service.ValidationTimeoutService;
 /**
  * UC-3.5 Administrator Exception Handling — umbrella controller for all
  * Resolution Center exception-handling endpoints.
- * Base path: /api/admin/resolution
+ * Base path: /api/v1/admin/resolution
  */
 @RestController
-@RequestMapping("/api/admin/resolution")
+@RequestMapping("/api/v1/admin/resolution")
 @PreAuthorize("hasRole('SUPER_ADMINISTRATOR')")
 public class ExceptionHandlingController {
 
@@ -70,11 +71,11 @@ public class ExceptionHandlingController {
     // ── Tab badge counts ──────────────────────────────────────────────────────
 
     @GetMapping("/counts")
-    public ResponseEntity<ResolutionCountsDto> getCounts() {
+    public ResponseEntity<ApiResponse<ResolutionCountsDto>> getCounts() {
         long failures = submissionRepository.findPublishFailures().size();
         long timeouts = validationTimeoutService.getEscalated().size();
         long overrides = overrideRequestRepository.countByDecision(OverrideRequestDecision.pending);
-        return ResponseEntity.ok(new ResolutionCountsDto(failures, timeouts, overrides));
+        return ResponseEntity.ok(ApiResponse.success(new ResolutionCountsDto(failures, timeouts, overrides)));
     }
 
     // ── Category A — API Failures (retry handled by existing ResolutionController) ──
@@ -86,8 +87,8 @@ public class ExceptionHandlingController {
     // ── Category B — Validation Timeouts ─────────────────────────────────────
 
     @GetMapping("/timeouts")
-    public ResponseEntity<List<TimeoutEscalationDto>> listTimeouts() {
-        return ResponseEntity.ok(validationTimeoutService.getEscalated());
+    public ResponseEntity<ApiResponse<List<TimeoutEscalationDto>>> listTimeouts() {
+        return ResponseEntity.ok(ApiResponse.success(validationTimeoutService.getEscalated()));
     }
 
     @PostMapping("/timeouts/{id}/approve")
@@ -118,8 +119,8 @@ public class ExceptionHandlingController {
     // ── Category C — Override Requests ───────────────────────────────────────
 
     @GetMapping("/overrides")
-    public ResponseEntity<List<OverrideRequestDto>> listOverrides() {
-        return ResponseEntity.ok(overrideRequestService.getPendingRequests());
+    public ResponseEntity<ApiResponse<List<OverrideRequestDto>>> listOverrides() {
+        return ResponseEntity.ok(ApiResponse.success(overrideRequestService.getPendingRequests()));
     }
 
     @PostMapping("/overrides/{id}/approve")
@@ -151,7 +152,7 @@ public class ExceptionHandlingController {
     // ── Category D — Direct Post ──────────────────────────────────────────────
 
     @PostMapping("/direct-post")
-    public ResponseEntity<DirectPostResponseDto> createDirectPost(
+    public ResponseEntity<ApiResponse<DirectPostResponseDto>> createDirectPost(
             @RequestBody DirectPostRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails admin) {
 
@@ -166,21 +167,21 @@ public class ExceptionHandlingController {
         }
 
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new DirectPostResponseDto(s.getId(), s.getStatus().name(), hadGrH1Warning));
+                .body(ApiResponse.success(new DirectPostResponseDto(s.getId(), s.getStatus().name(), hadGrH1Warning)));
     }
 
     // ── Category E — Token Management ────────────────────────────────────────
 
     @GetMapping("/tokens")
-    public ResponseEntity<List<TokenStatusDto>> listTokens() {
-        return ResponseEntity.ok(tokenManagementService.getAllTokenStatuses());
+    public ResponseEntity<ApiResponse<List<TokenStatusDto>>> listTokens() {
+        return ResponseEntity.ok(ApiResponse.success(tokenManagementService.getAllTokenStatuses()));
     }
 
     @GetMapping("/tokens/{tokenId}/oauth-init")
-    public ResponseEntity<OAuthInitResponseDto> oauthInit(
+    public ResponseEntity<ApiResponse<OAuthInitResponseDto>> oauthInit(
             @PathVariable UUID tokenId,
             @AuthenticationPrincipal JwtUserDetails admin) {
-        return ResponseEntity.ok(tokenManagementService.initOAuth(tokenId, admin));
+        return ResponseEntity.ok(ApiResponse.success(tokenManagementService.initOAuth(tokenId, admin)));
     }
 
     @GetMapping("/tokens/oauth-callback")

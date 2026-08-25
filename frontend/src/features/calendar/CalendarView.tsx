@@ -80,7 +80,7 @@ function renderEventContent(arg: EventContentArg, user: User, draggable: boolean
   return (
     <div
       className={`cal-event-pill${isDraggable ? " cal-event-draggable" : ""}`}
-      title={`${eventInstitution(e)} - ${eventTitle(e)}${isDraggable ? " (drag to reschedule)" : ""}`}
+      title={`${eventInstitution(e)} - ${eventTitle(e)}${e.locked ? " (slot locked)" : ""}${isDraggable ? " (drag to reschedule)" : ""}`}
     >
       {isDraggable && (
         <span className="cal-event-drag-handle" aria-hidden="true">
@@ -88,6 +88,11 @@ function renderEventContent(arg: EventContentArg, user: User, draggable: boolean
         </span>
       )}
       <span className="cal-event-dot" style={{ background: color.text }} />
+      {e.locked && (
+        <span className="cal-event-lock" title="Slot permanently locked" aria-hidden="true">
+          <i className="ti ti-lock" />
+        </span>
+      )}
       <span className="cal-event-main">
         <span className="cal-event-title">{eventTitle(e)}</span>
         <span className="cal-event-meta">

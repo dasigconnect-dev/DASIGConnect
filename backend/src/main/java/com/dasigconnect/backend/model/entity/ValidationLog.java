@@ -12,6 +12,8 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "validation_logs")
@@ -37,6 +39,13 @@ public class ValidationLog {
 
     @Column(name = "rejection_reason", length = 100)
     private String rejectionReason;
+
+    @Column(name = "is_self_review", nullable = false)
+    private boolean selfReview;
+
+    @Column(name = "edit_diff", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String editDiff;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -66,6 +75,12 @@ public class ValidationLog {
 
     public String getRejectionReason() { return rejectionReason; }
     public void setRejectionReason(String rejectionReason) { this.rejectionReason = rejectionReason; }
+
+    public boolean isSelfReview() { return selfReview; }
+    public void setSelfReview(boolean selfReview) { this.selfReview = selfReview; }
+
+    public String getEditDiff() { return editDiff; }
+    public void setEditDiff(String editDiff) { this.editDiff = editDiff; }
 
     public Instant getCreatedAt() { return createdAt; }
 }

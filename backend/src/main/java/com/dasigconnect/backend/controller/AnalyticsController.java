@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.dasigconnect.backend.model.dto.analytics.AnalyticsReportDto;
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.analytics.AnalyticsSummaryDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.MetricsAggregatorService;
@@ -36,11 +37,11 @@ public class AnalyticsController {
     }
 
     @GetMapping("/summary")
-    public ResponseEntity<AnalyticsSummaryDto> summary(
+    public ResponseEntity<ApiResponse<AnalyticsSummaryDto>> summary(
             @RequestParam(defaultValue = "30d") String range,
             @RequestParam(required = false) UUID institutionId,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(metricsAggregatorService.summary(range, institutionId, user));
+        return ResponseEntity.ok(ApiResponse.success(metricsAggregatorService.summary(range, institutionId, user)));
     }
 
     @GetMapping(value = "/export/{metric}", produces = "text/csv")
@@ -58,11 +59,11 @@ public class AnalyticsController {
     }
 
     @GetMapping("/report/{metric}")
-    public ResponseEntity<AnalyticsReportDto> report(
+    public ResponseEntity<ApiResponse<AnalyticsReportDto>> report(
             @PathVariable String metric,
             @RequestParam(defaultValue = "30d") String range,
             @RequestParam(required = false) UUID institutionId,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(metricsAggregatorService.report(metric, range, institutionId, user));
+        return ResponseEntity.ok(ApiResponse.success(metricsAggregatorService.report(metric, range, institutionId, user)));
     }
 }

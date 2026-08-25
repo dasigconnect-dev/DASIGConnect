@@ -42,7 +42,7 @@ class PasswordControllerTest {
                                 {"email":"not-an-email"}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fields.email").exists());
+                .andExpect(jsonPath("$.error.details.fields.email").exists());
     }
 
     @Test
@@ -71,7 +71,7 @@ class PasswordControllerTest {
                                 {"token":"sometoken","newPassword":"short"}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fields.newPassword").exists());
+                .andExpect(jsonPath("$.error.details.fields.newPassword").exists());
     }
 
     @Test
@@ -82,6 +82,6 @@ class PasswordControllerTest {
                                 {"newPassword":"newpassword123"}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fields.token").exists());
+                .andExpect(jsonPath("$.error.details.fields.token").exists());
     }
 }

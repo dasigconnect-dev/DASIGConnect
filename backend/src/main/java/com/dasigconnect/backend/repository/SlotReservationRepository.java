@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.repository;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -111,4 +112,12 @@ public interface SlotReservationRepository extends JpaRepository<SlotReservation
     @Modifying
     @Query("DELETE FROM SlotReservation r WHERE r.institution.id = :institutionId")
     void deleteByInstitutionId(@Param("institutionId") UUID institutionId);
+
+    /** UC-2.4 calendar: which of these submissions have a permanently locked slot. */
+    @Query("""
+        SELECT r.submission.id FROM SlotReservation r
+        WHERE r.submission.id IN :submissionIds
+        AND r.status = com.dasigconnect.backend.model.entity.SlotReservationStatus.locked
+    """)
+    List<UUID> findLockedSubmissionIds(@Param("submissionIds") Collection<UUID> submissionIds);
 }

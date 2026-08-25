@@ -60,10 +60,10 @@ class AnalyticsControllerTest {
 
         mockMvc.perform(get("/api/v1/analytics/summary"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.range").value("30d"))
-                .andExpect(jsonPath("$.averagePostingDelay.value").value(2.5))
-                .andExpect(jsonPath("$.contentCompleteness.targetMet").value(true))
-                .andExpect(jsonPath("$.operationalHealth.publishingSuccessRate").value(95.0));
+                .andExpect(jsonPath("$.data.range").value("30d"))
+                .andExpect(jsonPath("$.data.averagePostingDelay.value").value(2.5))
+                .andExpect(jsonPath("$.data.contentCompleteness.targetMet").value(true))
+                .andExpect(jsonPath("$.data.operationalHealth.publishingSuccessRate").value(95.0));
     }
 
     @Test

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.GetMapping;
 
 import com.dasigconnect.backend.model.dto.calendar.CalendarEventDto;
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.submission.RescheduleRequestDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -36,17 +37,17 @@ public class CalendarController {
 
     @GetMapping("/calendar")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<List<CalendarEventDto>> getCalendar(
+    public ResponseEntity<ApiResponse<List<CalendarEventDto>>> getCalendar(
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(calendarService.getCalendarEvents(user));
+        return ResponseEntity.ok(ApiResponse.success(calendarService.getCalendarEvents(user)));
     }
 
     @PatchMapping("/submissions/{id}/reschedule")
     @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
-    public ResponseEntity<SubmissionResponseDto> reschedule(
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> reschedule(
             @PathVariable UUID id,
             @RequestBody @Valid RescheduleRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(submissionService.reschedule(id, dto, user));
+        return ResponseEntity.ok(ApiResponse.success(submissionService.reschedule(id, dto, user)));
     }
 }

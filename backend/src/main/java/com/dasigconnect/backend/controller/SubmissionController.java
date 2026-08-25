@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.guardrail.GuardRailResult;
 import com.dasigconnect.backend.model.dto.submission.AttachAssetDto;
 import com.dasigconnect.backend.model.dto.submission.AttachMediaDto;
@@ -54,8 +55,8 @@ public class SubmissionController {
      */
     @GetMapping("/lookups")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<SubmissionLookupsDto> lookups() {
-        return ResponseEntity.ok(new SubmissionLookupsDto());
+    public ResponseEntity<ApiResponse<SubmissionLookupsDto>> lookups() {
+        return ResponseEntity.ok(ApiResponse.success(new SubmissionLookupsDto()));
     }
 
     /**
@@ -63,9 +64,9 @@ public class SubmissionController {
      */
     @GetMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<List<SubmissionSummaryDto>> list(
+    public ResponseEntity<ApiResponse<List<SubmissionSummaryDto>>> list(
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(submissionService.list(user));
+        return ResponseEntity.ok(ApiResponse.success(submissionService.list(user)));
     }
 
     /**
@@ -74,10 +75,10 @@ public class SubmissionController {
      */
     @PostMapping
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
-    public ResponseEntity<SubmissionResponseDto> create(
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> create(
             @Valid @RequestBody SubmissionCreateDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(submissionService.create(dto, user));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(submissionService.create(dto, user)));
     }
 
     /**
@@ -86,10 +87,10 @@ public class SubmissionController {
      */
     @GetMapping("/{id}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<SubmissionResponseDto> get(
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> get(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(submissionService.get(id, user));
+        return ResponseEntity.ok(ApiResponse.success(submissionService.get(id, user)));
     }
 
     /**
@@ -98,11 +99,11 @@ public class SubmissionController {
      */
     @PatchMapping("/{id}")
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
-    public ResponseEntity<SubmissionResponseDto> update(
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> update(
             @PathVariable UUID id,
             @Valid @RequestBody SubmissionUpdateDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(submissionService.update(id, dto, user));
+        return ResponseEntity.ok(ApiResponse.success(submissionService.update(id, dto, user)));
     }
 
     /**
@@ -124,10 +125,10 @@ public class SubmissionController {
      */
     @PostMapping("/{id}/submit")
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
-    public ResponseEntity<SubmissionResponseDto> submit(
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> submit(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(submissionService.submit(id, user));
+        return ResponseEntity.ok(ApiResponse.success(submissionService.submit(id, user)));
     }
 
     /**
@@ -137,11 +138,11 @@ public class SubmissionController {
      */
     @PostMapping("/{id}/evaluate-slot")
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
-    public ResponseEntity<GuardRailResult> evaluateSlot(
+    public ResponseEntity<ApiResponse<GuardRailResult>> evaluateSlot(
             @PathVariable UUID id,
             @Valid @RequestBody SlotEvaluateRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(submissionService.evaluateSlot(id, dto, user));
+        return ResponseEntity.ok(ApiResponse.success(submissionService.evaluateSlot(id, dto, user)));
     }
 
     /**
@@ -151,11 +152,11 @@ public class SubmissionController {
      */
     @PostMapping("/{id}/media/upload-url")
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
-    public ResponseEntity<SignedUploadUrlResponse> getSignedUploadUrl(
+    public ResponseEntity<ApiResponse<SignedUploadUrlResponse>> getSignedUploadUrl(
             @PathVariable UUID id,
             @Valid @RequestBody SignedUploadUrlRequest dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(submissionService.createSignedUploadUrl(id, dto, user));
+        return ResponseEntity.ok(ApiResponse.success(submissionService.createSignedUploadUrl(id, dto, user)));
     }
 
     /**
@@ -166,11 +167,11 @@ public class SubmissionController {
      */
     @PostMapping("/{id}/media")
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
-    public ResponseEntity<SubmissionResponseDto> attachMedia(
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> attachMedia(
             @PathVariable UUID id,
             @Valid @RequestBody AttachMediaDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(submissionService.attachMedia(id, dto, user));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(submissionService.attachMedia(id, dto, user)));
     }
 
     /**
@@ -179,11 +180,11 @@ public class SubmissionController {
      */
     @PatchMapping("/{id}/media/order")
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
-    public ResponseEntity<SubmissionResponseDto> reorderMedia(
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> reorderMedia(
             @PathVariable UUID id,
             @Valid @RequestBody SubmissionMediaOrderDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(submissionService.reorderMedia(id, dto, user));
+        return ResponseEntity.ok(ApiResponse.success(submissionService.reorderMedia(id, dto, user)));
     }
 
     /**
@@ -193,11 +194,11 @@ public class SubmissionController {
      */
     @PostMapping("/{id}/assets")
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
-    public ResponseEntity<SubmissionResponseDto> attachAsset(
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> attachAsset(
             @PathVariable UUID id,
             @Valid @RequestBody AttachAssetDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(submissionService.attachAsset(id, dto, user));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(submissionService.attachAsset(id, dto, user)));
     }
 
     @DeleteMapping("/{id}/assets/{assetId}")

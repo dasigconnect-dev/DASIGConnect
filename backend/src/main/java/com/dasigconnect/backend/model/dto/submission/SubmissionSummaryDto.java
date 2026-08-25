@@ -19,6 +19,7 @@ public class SubmissionSummaryDto {
     private Instant submittedAt;
     private Instant createdAt;
     private UUID institutionId;
+    private String institutionName;
     private String contributorEmail;
     private long mediaCount;
     private String category;
@@ -40,6 +41,7 @@ public class SubmissionSummaryDto {
         dto.submittedAt = s.getSubmittedAt();
         dto.createdAt = s.getCreatedAt();
         dto.institutionId = s.getInstitution().getId();
+        dto.institutionName = s.getInstitution().getName();
         dto.contributorEmail = s.getContributor().getEmail();
         dto.mediaCount = mediaCount;
         dto.category = s.getCategory();
@@ -90,6 +92,10 @@ public class SubmissionSummaryDto {
 
     public UUID getInstitutionId() {
         return institutionId;
+    }
+
+    public String getInstitutionName() {
+        return institutionName;
     }
 
     public String getContributorEmail() {

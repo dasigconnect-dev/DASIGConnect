@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.user.ReassignContributorRequest;
 import com.dasigconnect.backend.model.dto.user.SuperAdministratorTransferResponseDto;
 import com.dasigconnect.backend.model.dto.user.UpdateUserStatusRequestDto;
@@ -52,16 +53,16 @@ public class UserController {
      */
     @GetMapping("/me")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<UserDto> me(@AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(userService.getProfile(user));
+    public ResponseEntity<ApiResponse<UserDto>> me(@AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.getProfile(user)));
     }
 
     @PatchMapping("/me/settings")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<UserDto> updateMySettings(
+    public ResponseEntity<ApiResponse<UserDto>> updateMySettings(
             @RequestBody @Valid UpdateAccountSettingsRequestDto request,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(userService.updateSettings(user, request));
+        return ResponseEntity.ok(ApiResponse.success(userService.updateSettings(user, request)));
     }
 
     /**
@@ -70,27 +71,27 @@ public class UserController {
      */
     @GetMapping("/users")
     @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
-    public ResponseEntity<List<UserDto>> listUsers(
+    public ResponseEntity<ApiResponse<List<UserDto>>> listUsers(
             @RequestParam UUID institutionId,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(userService.listByInstitution(institutionId, user));
+        return ResponseEntity.ok(ApiResponse.success(userService.listByInstitution(institutionId, user)));
     }
 
     @GetMapping("/users/{id}")
     @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
-    public ResponseEntity<UserDto> getUser(
+    public ResponseEntity<ApiResponse<UserDto>> getUser(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(userService.getById(id, user));
+        return ResponseEntity.ok(ApiResponse.success(userService.getById(id, user)));
     }
 
     @PatchMapping("/users/{id}/status")
     @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
-    public ResponseEntity<UserDto> updateStatus(
+    public ResponseEntity<ApiResponse<UserDto>> updateStatus(
             @PathVariable UUID id,
             @RequestBody @Valid UpdateUserStatusRequestDto request,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(userService.updateStatus(id, request.accountState(), user));
+        return ResponseEntity.ok(ApiResponse.success(userService.updateStatus(id, request.accountState(), user)));
     }
 
     /**
@@ -101,20 +102,20 @@ public class UserController {
      */
     @PatchMapping("/users/{id}/institution")
     @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
-    public ResponseEntity<UserDto> reassignInstitution(
+    public ResponseEntity<ApiResponse<UserDto>> reassignInstitution(
             @PathVariable UUID id,
             @RequestBody @Valid ReassignContributorRequest request,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(userService.reassignContributor(id, request.getTargetInstitutionId(), user));
+        return ResponseEntity.ok(ApiResponse.success(userService.reassignContributor(id, request.getTargetInstitutionId(), user)));
     }
 
     @PutMapping(value = "/users/{id}/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<UserDto> updateAvatar(
+    public ResponseEntity<ApiResponse<UserDto>> updateAvatar(
             @PathVariable UUID id,
             @RequestParam("file") MultipartFile file,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(userService.updateAvatar(id, file, user));
+        return ResponseEntity.ok(ApiResponse.success(userService.updateAvatar(id, file, user)));
     }
 
     @GetMapping("/users/{id}/avatar")
@@ -129,26 +130,26 @@ public class UserController {
 
     @DeleteMapping("/users/{id}")
     @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
-    public ResponseEntity<java.util.Map<String, String>> removeUser(
+    public ResponseEntity<ApiResponse<java.util.Map<String, String>>> removeUser(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
         String action = userService.removeUser(id, user);
-        return ResponseEntity.ok(java.util.Map.of("action", action));
+        return ResponseEntity.ok(ApiResponse.success(java.util.Map.of("action", action)));
     }
 
     @PostMapping("/users/{id}/super-administrator-transfer")
     @PreAuthorize("hasRole('SUPER_ADMINISTRATOR')")
-    public ResponseEntity<SuperAdministratorTransferResponseDto> requestSuperAdministratorTransfer(
+    public ResponseEntity<ApiResponse<SuperAdministratorTransferResponseDto>> requestSuperAdministratorTransfer(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(userService.requestSuperAdministratorTransfer(id, user));
+        return ResponseEntity.ok(ApiResponse.success(userService.requestSuperAdministratorTransfer(id, user)));
     }
 
     @PostMapping("/users/super-administrator-transfer/confirm")
     @PreAuthorize("hasRole('ADMINISTRATOR')")
-    public ResponseEntity<UserDto> confirmSuperAdministratorTransfer(
+    public ResponseEntity<ApiResponse<UserDto>> confirmSuperAdministratorTransfer(
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(userService.confirmSuperAdministratorTransfer(user));
+        return ResponseEntity.ok(ApiResponse.success(userService.confirmSuperAdministratorTransfer(user)));
     }
 
     /**
@@ -157,9 +158,9 @@ public class UserController {
      */
     @GetMapping("/users/counts")
     @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
-    public ResponseEntity<Map<String, Long>> userCounts(
+    public ResponseEntity<ApiResponse<Map<String, Long>>> userCounts(
             @RequestParam UUID institutionId,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(userService.countByRole(institutionId, user));
+        return ResponseEntity.ok(ApiResponse.success(userService.countByRole(institutionId, user)));
     }
 }

@@ -15,6 +15,7 @@ public class SubmissionResponseDto {
     private UUID contributorId;
     private String contributorEmail;
     private UUID institutionId;
+    private String institutionName;
     private String eventTitle;
     private LocalDate eventDate;
     private String caption;
@@ -45,6 +46,7 @@ public class SubmissionResponseDto {
         dto.contributorId = s.getContributor().getId();
         dto.contributorEmail = s.getContributor().getEmail();
         dto.institutionId = s.getInstitution().getId();
+        dto.institutionName = s.getInstitution().getName();
         dto.eventTitle = s.getEventTitle();
         dto.eventDate = s.getEventDate();
         dto.caption = s.getCaption();
@@ -89,6 +91,10 @@ public class SubmissionResponseDto {
 
     public UUID getInstitutionId() {
         return institutionId;
+    }
+
+    public String getInstitutionName() {
+        return institutionName;
     }
 
     public String getEventTitle() {

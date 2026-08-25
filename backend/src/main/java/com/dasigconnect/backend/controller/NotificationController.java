@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.notification.NotificationDto;
 import com.dasigconnect.backend.model.dto.notification.NotificationPageDto;
 import com.dasigconnect.backend.model.dto.notification.NotificationUnreadCountDto;
@@ -37,16 +38,16 @@ public class NotificationController {
 
     @GetMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<List<NotificationDto>> list(
+    public ResponseEntity<ApiResponse<List<NotificationDto>>> list(
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(notificationService.list(user));
+        return ResponseEntity.ok(ApiResponse.success(notificationService.list(user)));
     }
 
     @GetMapping("/unread-count")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<NotificationUnreadCountDto> unreadCount(
+    public ResponseEntity<ApiResponse<NotificationUnreadCountDto>> unreadCount(
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(new NotificationUnreadCountDto(notificationService.unreadCount(user)));
+        return ResponseEntity.ok(ApiResponse.success(new NotificationUnreadCountDto(notificationService.unreadCount(user))));
     }
 
     @PatchMapping("/{id}/read")
@@ -68,11 +69,11 @@ public class NotificationController {
 
     @GetMapping("/history")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<NotificationPageDto> history(
+    public ResponseEntity<ApiResponse<NotificationPageDto>> history(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int pageSize,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(notificationService.history(page, pageSize, user));
+        return ResponseEntity.ok(ApiResponse.success(notificationService.history(page, pageSize, user)));
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
