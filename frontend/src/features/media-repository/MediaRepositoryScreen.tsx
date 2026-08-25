@@ -85,7 +85,7 @@ function putToSupabase(
 export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenProps) {
   const toast = useToast();
   const navigate = useNavigate();
-  const isAdmin = user.role === "super_administrator";
+  const isAdmin = user.role === "administrator" || user.role === "super_administrator";
 
   const [networkView, setNetworkView] = useState(isAdmin);
   const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
@@ -249,9 +249,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   function canDeleteAsset(asset: MediaAsset) {
     if (isAdmin) return true;
-    if (user.role === "administrator") {
-      return Boolean(user.institutionId && asset.institutionId === user.institutionId);
-    }
     if (user.role === "contributor") {
       return Boolean(asset.uploaderName && asset.uploaderName.toLowerCase() === user.email.toLowerCase());
     }
@@ -501,7 +498,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       </div>
 
       {/* Network View bar */}
-      {isAdmin && (
+      {/* {isAdmin && (
         <div className={`med-network-bar${networkView ? " visible" : ""}`}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" />
@@ -512,7 +509,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
             <strong>Network View active</strong> — Showing assets across all DASIG member institutions. This session is being logged in the access audit log (BR-MED-01).
           </span>
         </div>
-      )}
+      )} */}
 
       {isAdmin && (
         <div className="med-institution-filter" role="tablist" aria-label="Institution media categories">
