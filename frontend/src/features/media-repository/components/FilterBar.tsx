@@ -25,14 +25,14 @@ export default function FilterBar({
   search,
   sort,
   viewMode,
-  networkView,
-  isAdmin,
+  networkView: _networkView,
+  isAdmin: _isAdmin,
   activeTags,
   tagChips,
   onSearchChange,
   onSortChange,
   onViewModeChange,
-  onNetworkViewToggle,
+  onNetworkViewToggle: _onNetworkViewToggle,
   onTagToggle,
 }: FilterBarProps) {
   return (
