@@ -5,10 +5,12 @@ interface CalendarToolbarProps {
   loading: boolean;
   rangeLabel: string;
   showFullDay: boolean;
+  isAdmin?: boolean;
   onViewChange: (view: CalendarViewMode) => void;
   onNavigate: (action: "prev" | "today" | "next") => void;
   onToggleFullDay: () => void;
   onRefresh: () => void;
+  onDirectPost?: () => void;
 }
 
 export default function CalendarToolbar({
@@ -16,10 +18,12 @@ export default function CalendarToolbar({
   loading,
   rangeLabel,
   showFullDay,
+  isAdmin,
   onViewChange,
   onNavigate,
   onToggleFullDay,
   onRefresh,
+  onDirectPost,
 }: CalendarToolbarProps) {
   return (
     <div className="screen-actions cal-toolbar">
@@ -87,6 +91,17 @@ export default function CalendarToolbar({
           )}
           {loading ? "Refreshing" : "Refresh"}
         </button>
+        {isAdmin && onDirectPost && (
+          <button
+            type="button"
+            className="btn-primary cal-direct-post-btn"
+            onClick={onDirectPost}
+            title="Direct Post — bypass queue and publish directly (UC-3.6)"
+          >
+            <i className="ti ti-bolt" aria-hidden="true" />
+            Direct Post
+          </button>
+        )}
       </div>
     </div>
   );

@@ -207,6 +207,14 @@ export default function CalendarEventDetailModal({
                     {formatDatetime(event.scheduledAt)}
                   </span>
                 </div>
+                {submissionDetail?.submittedAt && (
+                  <div className="cal-detail-row">
+                    <span className="cal-detail-label">Submitted</span>
+                    <span className="cal-detail-value">
+                      {formatDatetime(submissionDetail.submittedAt)}
+                    </span>
+                  </div>
+                )}
                 {event.publishedAt && (
                   <div className="cal-detail-row">
                     <span className="cal-detail-label">Published</span>

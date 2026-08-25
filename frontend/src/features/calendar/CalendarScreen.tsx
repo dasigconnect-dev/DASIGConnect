@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import FullCalendar from "@fullcalendar/react";
 import type { DatesSetArg } from "@fullcalendar/core";
 import { createPortal } from "react-dom";
@@ -21,6 +22,7 @@ interface CalendarScreenProps {
 }
 
 export default function CalendarScreen({ user }: CalendarScreenProps) {
+  const navigate = useNavigate();
   const calendarRef = useRef<FullCalendar>(null);
   const { events, loading, error, refresh } = useCalendarEvents();
   const toast = useToast();
@@ -368,6 +370,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
           loading={loading}
           rangeLabel={rangeLabel}
           showFullDay={showFullDay}
+          isAdmin={isAdmin}
           onViewChange={switchView}
           onNavigate={navigateCalendar}
           onToggleFullDay={() => setShowFullDay((value) => !value)}
@@ -375,6 +378,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
             beginCalendarTransition();
             refresh();
           }}
+          onDirectPost={() => navigate("/admin/resolution?tab=direct-post")}
         />
       </div>
 
