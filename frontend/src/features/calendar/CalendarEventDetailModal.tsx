@@ -47,8 +47,12 @@ export default function CalendarEventDetailModal({
     };
   }, [event, onClose]);
 
+  const isContributor = user.role !== "administrator" && user.role !== "super_administrator";
+  const isOwnInstitution = Boolean(user.institutionId && event?.institutionId && user.institutionId === event.institutionId);
+  const isCrossInstitutionIsolated = isContributor && !isOwnInstitution;
+
   useEffect(() => {
-    if (!event) {
+    if (!event || isCrossInstitutionIsolated) {
       setSubmissionDetail(null);
       setDetailError(false);
       setDetailLoading(false);
@@ -73,7 +77,7 @@ export default function CalendarEventDetailModal({
       });
 
     return () => controller.abort();
-  }, [event]);
+  }, [event, isCrossInstitutionIsolated]);
 
   useLayoutEffect(() => {
     if (!event) return;
@@ -84,9 +88,9 @@ export default function CalendarEventDetailModal({
 
   const mediaAssets = submissionDetail?.mediaAssets ?? [];
   const caption = submissionDetail?.caption?.trim();
-  const isOwnInstitution = Boolean(user.institutionId && event.institutionId && user.institutionId === event.institutionId);
   const displayStatus = visibleCalendarStatus(event.status, user.role, isOwnInstitution);
   const displayColor = visibleStatusColor(event.status, user.role, isOwnInstitution);
+  const isPendingApproval = (event.status || "").toLowerCase() === "pending" || (event.status || "").toLowerCase() === "in_review";
 
   return createPortal(
     <div
@@ -103,7 +107,7 @@ export default function CalendarEventDetailModal({
         <div className="cal-drawer-header">
           <div>
             <p className="cal-detail-kicker">Publishing workflow detail</p>
-            <h2>{event.title ?? "Reserved publishing slot"}</h2>
+            <h2>{isCrossInstitutionIsolated ? "Reserved publishing slot" : (event.title ?? "Reserved publishing slot")}</h2>
             <div className="cal-drawer-header-meta">
               <span>{event.institutionName}</span>
               <span>{formatDatetime(event.scheduledAt)}</span>
@@ -138,72 +142,147 @@ export default function CalendarEventDetailModal({
             <p>{workflowHint(displayStatus)}</p>
           </section>
 
-          <section className="cal-drawer-section">
-            <div className="cal-modal-section-label">Primary Details</div>
-            <div className="cal-detail-row">
-              <span className="cal-detail-label">Institution</span>
-              <span className="cal-detail-value">
-                {event.institutionName}
-                {event.institutionCode && (
-                  <span className="cal-detail-code">
-                    {" "}({event.institutionCode})
+          {isCrossInstitutionIsolated ? (
+            <section className="cal-drawer-section" style={{ marginTop: "14px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "12px",
+                  padding: "16px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "12px",
+                  color: "#334155",
+                }}
+              >
+                <i className="ti ti-shield-lock" style={{ fontSize: "24px", color: "#1877f2", flexShrink: 0 }} />
+                <div>
+                  <strong style={{ display: "block", fontSize: "14px", marginBottom: "4px" }}>
+                    Content Privacy Protected (UC-3.1 A1)
+                  </strong>
+                  <p style={{ margin: 0, fontSize: "12px", lineHeight: 1.45, color: "#64748b" }}>
+                    To preserve member institution privacy across the shared network, detailed captions, media files, and contributor identities from other institutions are kept confidential.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ marginTop: "16px" }}>
+                <div className="cal-modal-section-label">Slot Timing Information</div>
+                <div className="cal-detail-row">
+                  <span className="cal-detail-label">Institution</span>
+                  <span className="cal-detail-value">{event.institutionName}</span>
+                </div>
+                <div className="cal-detail-row">
+                  <span className="cal-detail-label">Reserved Time</span>
+                  <span className="cal-detail-value">{formatDatetime(event.scheduledAt)}</span>
+                </div>
+                <div className="cal-detail-row">
+                  <span className="cal-detail-label">State</span>
+                  <span className="cal-detail-value">{visibleStatusLabel(event.status, user.role, isOwnInstitution)}</span>
+                </div>
+              </div>
+            </section>
+          ) : (
+            <>
+              <section className="cal-drawer-section">
+                <div className="cal-modal-section-label">Primary Details</div>
+                <div className="cal-detail-row">
+                  <span className="cal-detail-label">Institution</span>
+                  <span className="cal-detail-value">
+                    {event.institutionName}
+                    {event.institutionCode && (
+                      <span className="cal-detail-code">
+                        {" "}({event.institutionCode})
+                      </span>
+                    )}
                   </span>
+                </div>
+                <DetailRow
+                  label="Contributor"
+                  value={event.contributorName || submissionDetail?.contributorEmail || (isOwnInstitution ? "Your institution workspace" : "Available in submission record")}
+                />
+                <div className="cal-detail-row">
+                  <span className="cal-detail-label">Scheduled</span>
+                  <span className="cal-detail-value">
+                    {formatDatetime(event.scheduledAt)}
+                  </span>
+                </div>
+                {event.publishedAt && (
+                  <div className="cal-detail-row">
+                    <span className="cal-detail-label">Published</span>
+                    <span className="cal-detail-value">
+                      {formatDatetime(event.publishedAt)}
+                    </span>
+                  </div>
                 )}
-              </span>
-            </div>
-            <DetailRow label="Contributor" value={user.role === "super_administrator" ? "Available in submission record" : "Your institution workspace"} />
-            <div className="cal-detail-row">
-              <span className="cal-detail-label">Scheduled</span>
-              <span className="cal-detail-value">
-                {formatDatetime(event.scheduledAt)}
-              </span>
-            </div>
-            {event.publishedAt && (
-              <div className="cal-detail-row">
-                <span className="cal-detail-label">Published</span>
-                <span className="cal-detail-value">
-                  {formatDatetime(event.publishedAt)}
-                </span>
-              </div>
-            )}
-          </section>
+              </section>
 
-          <details className="cal-drawer-disclosure" open>
-            <summary>Workflow Notes</summary>
-            <div className="cal-modal-section-label">Workflow Notes</div>
-            <div className="cal-detail-row">
-              <span className="cal-detail-label">Next Step</span>
-              <span className="cal-detail-value">{workflowCopy(displayStatus)}</span>
-            </div>
-            <div className="cal-detail-row">
-              <span className="cal-detail-label">Caption</span>
-              <span className="cal-detail-value cal-detail-muted">
-                {detailLoading
-                  ? "Loading caption..."
-                  : caption || "No caption attached to this scheduled post."}
-              </span>
-            </div>
-          </details>
+              {isPendingApproval && (user.role === "administrator" || user.role === "super_administrator") && (
+                <section style={{ marginTop: "12px", marginBottom: "12px" }}>
+                  <a
+                    href="/validation/queue"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "12px 16px",
+                      background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
+                      border: "1px solid #bfdbfe",
+                      borderRadius: "10px",
+                      color: "#1d4ed8",
+                      textDecoration: "none",
+                      fontWeight: 600,
+                      fontSize: "13px",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <i className="ti ti-checklist" style={{ fontSize: "16px" }} />
+                      <span>Review in Approval Queue (UC-2.4)</span>
+                    </div>
+                    <i className="ti ti-arrow-right" />
+                  </a>
+                </section>
+              )}
 
-          <details className="cal-drawer-disclosure" open>
-            <summary>Media Preview</summary>
-            <CalendarMediaPreview
-              assets={mediaAssets}
-              loading={detailLoading}
-              error={detailError}
-            />
-          </details>
+              <details className="cal-drawer-disclosure" open>
+                <summary>Workflow Notes</summary>
+                <div className="cal-modal-section-label">Workflow Notes</div>
+                <div className="cal-detail-row">
+                  <span className="cal-detail-label">Next Step</span>
+                  <span className="cal-detail-value">{workflowCopy(displayStatus)}</span>
+                </div>
+                <div className="cal-detail-row">
+                  <span className="cal-detail-label">Caption</span>
+                  <span className="cal-detail-value cal-detail-muted">
+                    {detailLoading
+                      ? "Loading caption..."
+                      : caption || "No caption attached to this scheduled post."}
+                  </span>
+                </div>
+              </details>
 
-          {user.role === "super_administrator" && (
-            <details className="cal-drawer-disclosure">
-              <summary>Metadata</summary>
-              <div className="cal-detail-row">
-                <span className="cal-detail-label">ID</span>
-                <span className="cal-detail-value cal-detail-mono">
-                  {event.id}
-                </span>
-              </div>
-            </details>
+              <details className="cal-drawer-disclosure" open>
+                <summary>Media Preview</summary>
+                <CalendarMediaPreview
+                  assets={mediaAssets}
+                  loading={detailLoading}
+                  error={detailError}
+                />
+              </details>
+
+              {user.role === "super_administrator" && (
+                <details className="cal-drawer-disclosure">
+                  <summary>Metadata</summary>
+                  <div className="cal-detail-row">
+                    <span className="cal-detail-label">ID</span>
+                    <span className="cal-detail-value cal-detail-mono">
+                      {event.id}
+                    </span>
+                  </div>
+                </details>
+              )}
+            </>
           )}
         </div>
       </aside>
