@@ -194,6 +194,9 @@ export default function CalendarView({
         nowIndicator
         editable={draggable}
         eventDrop={handleEventDrop}
+        dragScroll={true}
+        dragRevertDuration={200}
+        eventDragMinDistance={3}
       />
     </div>
   );

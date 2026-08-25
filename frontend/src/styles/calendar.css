@@ -1031,12 +1031,11 @@
   border-radius: 9px !important;
   border: 1px solid rgba(10, 22, 40, 0.04) !important;
   box-shadow: 0 3px 8px rgba(10, 22, 40, 0.055);
-  transition: transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+  transition: box-shadow 120ms ease, opacity 120ms ease;
 }
 
-.fc-event:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 9px 18px rgba(10, 22, 40, 0.10);
+.fc-event:not(.fc-event-dragging):not(.fc-event-mirror):hover {
+  box-shadow: 0 8px 16px rgba(10, 22, 40, 0.10);
 }
 
 .fc .fc-timegrid-event {
@@ -1045,8 +1044,7 @@
   box-shadow: 0 8px 16px rgba(10, 22, 40, 0.10);
 }
 
-.fc .fc-timegrid-event:hover {
-  transform: translateY(-1px);
+.fc .fc-timegrid-event:not(.fc-event-dragging):not(.fc-event-mirror):hover {
   box-shadow: 0 12px 22px rgba(10, 22, 40, 0.14);
 }
 
@@ -2178,26 +2176,40 @@
    ============================================================ */
 
 .cal-event-draggable {
-  cursor: grab;
+  cursor: grab !important;
+  user-select: none;
 }
 
 .cal-event-draggable:active {
-  cursor: grabbing;
+  cursor: grabbing !important;
 }
 
 .cal-event-drag-handle {
   display: inline-flex;
   align-items: center;
   margin-right: 3px;
-  opacity: 0.55;
+  opacity: 0.65;
   font-size: 11px;
   flex-shrink: 0;
+  cursor: grab;
 }
 
-/* FullCalendar adds .fc-dragging when actively dragging */
+/* FullCalendar dragging element and mirror */
+.fc-event-dragging,
+.fc-event-mirror,
+.fc-event.fc-event-mirror,
+.fc-daygrid-event.fc-event-mirror {
+  transition: none !important;
+  transform: none !important;
+  pointer-events: none !important;
+  z-index: 9999 !important;
+  opacity: 0.94 !important;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.22) !important;
+}
+
 .fc-dragging .cal-event-pill {
   box-shadow: 0 8px 24px rgba(37, 99, 235, 0.22);
-  opacity: 0.9;
+  opacity: 0.92;
 }
 
 /* ---- Reschedule confirmation modal ---- */
