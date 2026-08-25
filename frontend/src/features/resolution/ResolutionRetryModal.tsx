@@ -26,10 +26,11 @@ export default function ResolutionRetryModal({
   const [overrideReason, setOverrideReason] = useState("");
 
   useEffect(() => {
-    if (item) {
+    if (!item) return;
+    queueMicrotask(() => {
       setScheduledAt(toDatetimeLocal(item.scheduledAt));
       setOverrideReason("");
-    }
+    });
   }, [item]);
 
   if (!item) return null;

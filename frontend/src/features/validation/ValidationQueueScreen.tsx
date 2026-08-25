@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { getSubmission, type SubmissionSummary } from "../../api/submissionApi";
+import { getSubmission, type SavedMediaAsset, type SubmissionSummary } from "../../api/submissionApi";
 import {
   acquireReviewLock,
   approveSubmission,
@@ -129,6 +129,9 @@ export default function ValidationQueueScreen({
   } = useResolutionFailures();
   const [retryItem, setRetryItem] = useState<FailedPublication | null>(null);
   const [selectedFailureId, setSelectedFailureId] = useState<string | null>(null);
+  const [failureContent, setFailureContent] = useState<SubmissionSummary | null>(null);
+  const [failureContentLoading, setFailureContentLoading] = useState(false);
+  const [failureMediaIndex, setFailureMediaIndex] = useState(0);
 
   const isAllMode = filter === "all";
   const isFailedMode = filter === "failed";
@@ -188,7 +191,6 @@ export default function ValidationQueueScreen({
   const activeLock = selected ? locks[selected.id] ?? null : null;
 
   const mediaAssets = selected?.mediaAssets ?? [];
-  const selectedMedia = mediaAssets[mediaIndex];
   const isSelfReview =
     Boolean(selected?.contributorEmail) &&
     selected?.contributorEmail?.toLowerCase() === user.email.toLowerCase();
@@ -215,6 +217,25 @@ export default function ValidationQueueScreen({
     if (!isFailedMode || selectedFailureId || failuresLoading || failures.length === 0) return;
     queueMicrotask(() => setSelectedFailureId(failures[0].submissionId));
   }, [isFailedMode, failuresLoading, failures, selectedFailureId]);
+
+  useEffect(() => {
+    if (!selectedFailureId) {
+      queueMicrotask(() => setFailureContent(null));
+      return;
+    }
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setFailureContent(null);
+      setFailureMediaIndex(0);
+      setFailureContentLoading(true);
+      getSubmission(selectedFailureId)
+        .then((res) => { if (active) setFailureContent(res.data); })
+        .catch((err: unknown) => { if (active) toast.error(readApiError(err, "Unable to load submission content.")); })
+        .finally(() => { if (active) setFailureContentLoading(false); });
+    });
+    return () => { active = false; };
+  }, [selectedFailureId]);
 
   useEffect(() => {
     if (selectedId || loading || queue.length === 0) return;
@@ -647,6 +668,12 @@ export default function ValidationQueueScreen({
                     <span className="val-sub-id">{shortId(selectedFailure.submissionId)}</span>
                   </div>
                   <h2>{selectedFailure.eventTitle || "Untitled submission"}</h2>
+                  {failureContent?.contributorEmail && (
+                    <p>
+                      <i className="ti ti-user"></i>
+                      Submitted by <strong>{failureContent.contributorEmail}</strong>
+                    </p>
+                  )}
                 </div>
                 <div className="val-slot-card">
                   <span>Publish Slot</span>
@@ -658,6 +685,21 @@ export default function ValidationQueueScreen({
                   </small>
                 </div>
               </header>
+
+              {failureContentLoading && (
+                <p className="val-muted">Loading submission content...</p>
+              )}
+
+              {!failureContentLoading && failureContent && (
+                <>
+                  <MediaCarousel
+                    mediaAssets={failureContent.mediaAssets ?? []}
+                    mediaIndex={failureMediaIndex}
+                    onMediaIndexChange={setFailureMediaIndex}
+                  />
+                  <SubmissionDetailCards content={failureContent} />
+                </>
+              )}
 
               <section className="val-detail-grid">
                 <DetailCard icon="ti-refresh" label="Retry Attempts">
@@ -779,77 +821,11 @@ export default function ValidationQueueScreen({
                 </div>
               </header>
 
-              <section className="val-media-section">
-                <div className="val-carousel">
-                  {selectedMedia ? (
-                    isImage(selectedMedia.fileType) ? (
-                      <img src={selectedMedia.storageUrl} alt={selectedMedia.fileName} />
-                    ) : (
-                      <div className="val-video-placeholder">
-                        <i className="ti ti-player-play-filled"></i>
-                        <span>{selectedMedia.fileName}</span>
-                      </div>
-                    )
-                  ) : (
-                    <div className="val-no-media">
-                      <i className="ti ti-photo-off"></i>
-                      <span>No media assets attached</span>
-                    </div>
-                  )}
-                  {mediaAssets.length > 1 && (
-                    <>
-                      <button
-                        className="val-carrow left"
-                        type="button"
-                        onClick={() =>
-                          setMediaIndex(
-                            (mediaIndex - 1 + mediaAssets.length) %
-                              mediaAssets.length,
-                          )
-                        }
-                      >
-                        <i className="ti ti-chevron-left"></i>
-                      </button>
-                      <button
-                        className="val-carrow right"
-                        type="button"
-                        onClick={() =>
-                          setMediaIndex((mediaIndex + 1) % mediaAssets.length)
-                        }
-                      >
-                        <i className="ti ti-chevron-right"></i>
-                      </button>
-                    </>
-                  )}
-                  <div className="val-carousel-meta">
-                    <span>
-                      {mediaAssets.length
-                        ? `${mediaIndex + 1} / ${mediaAssets.length}`
-                        : "0 / 0"}
-                    </span>
-                    <b>{selectedMedia?.fileType || "MEDIA"}</b>
-                  </div>
-                </div>
-                {mediaAssets.length > 0 && (
-                  <div className="val-thumbs">
-                    {mediaAssets.map((asset, index) => (
-                      <button
-                        className={index === mediaIndex ? "active" : ""}
-                        key={asset.id}
-                        type="button"
-                        onClick={() => setMediaIndex(index)}
-                        title={asset.fileName}
-                      >
-                        {isImage(asset.fileType) ? (
-                          <img src={asset.storageUrl} alt="" />
-                        ) : (
-                          <i className="ti ti-video"></i>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </section>
+              <MediaCarousel
+                mediaAssets={mediaAssets}
+                mediaIndex={mediaIndex}
+                onMediaIndexChange={setMediaIndex}
+              />
 
               {editMode ? (
                 <section className="val-detail-grid val-edit-grid">
@@ -893,30 +869,7 @@ export default function ValidationQueueScreen({
                   </label>
                 </section>
               ) : (
-                <section className="val-detail-grid">
-                  <DetailCard icon="ti-calendar-event" label="Event Date">
-                    {formatDate(selected.eventDate)}
-                  </DetailCard>
-                  <DetailCard icon="ti-sparkles" label="Tags" full>
-                    <div className="val-tag-row">
-                      {selected.tags?.length ? (
-                        selected.tags.map((tag) => <span key={tag}>{tag}</span>)
-                      ) : (
-                        <em>No tags supplied</em>
-                      )}
-                    </div>
-                  </DetailCard>
-                  <DetailCard icon="ti-brand-facebook" label="Facebook Caption" full>
-                    <p className="val-caption">
-                      {selected.caption || "No caption supplied."}
-                    </p>
-                  </DetailCard>
-                  {selected.description && (
-                    <DetailCard icon="ti-notes" label="Administrator Notes" full muted>
-                      {selected.description}
-                    </DetailCard>
-                  )}
-                </section>
+                <SubmissionDetailCards content={selected} />
               )}
 
               <section className="val-log-card">
@@ -1192,6 +1145,111 @@ function EditDiffView({ diffJson }: { diffJson: string }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function MediaCarousel({
+  mediaAssets,
+  mediaIndex,
+  onMediaIndexChange,
+}: {
+  mediaAssets: SavedMediaAsset[];
+  mediaIndex: number;
+  onMediaIndexChange: (index: number) => void;
+}) {
+  const selectedMedia = mediaAssets[mediaIndex];
+  return (
+    <section className="val-media-section">
+      <div className="val-carousel">
+        {selectedMedia ? (
+          isImage(selectedMedia.fileType) ? (
+            <img src={selectedMedia.storageUrl} alt={selectedMedia.fileName} />
+          ) : (
+            <div className="val-video-placeholder">
+              <i className="ti ti-player-play-filled"></i>
+              <span>{selectedMedia.fileName}</span>
+            </div>
+          )
+        ) : (
+          <div className="val-no-media">
+            <i className="ti ti-photo-off"></i>
+            <span>No media assets attached</span>
+          </div>
+        )}
+        {mediaAssets.length > 1 && (
+          <>
+            <button
+              className="val-carrow left"
+              type="button"
+              onClick={() =>
+                onMediaIndexChange((mediaIndex - 1 + mediaAssets.length) % mediaAssets.length)
+              }
+            >
+              <i className="ti ti-chevron-left"></i>
+            </button>
+            <button
+              className="val-carrow right"
+              type="button"
+              onClick={() => onMediaIndexChange((mediaIndex + 1) % mediaAssets.length)}
+            >
+              <i className="ti ti-chevron-right"></i>
+            </button>
+          </>
+        )}
+        <div className="val-carousel-meta">
+          <span>
+            {mediaAssets.length ? `${mediaIndex + 1} / ${mediaAssets.length}` : "0 / 0"}
+          </span>
+          <b>{selectedMedia?.fileType || "MEDIA"}</b>
+        </div>
+      </div>
+      {mediaAssets.length > 0 && (
+        <div className="val-thumbs">
+          {mediaAssets.map((asset, index) => (
+            <button
+              className={index === mediaIndex ? "active" : ""}
+              key={asset.id}
+              type="button"
+              onClick={() => onMediaIndexChange(index)}
+              title={asset.fileName}
+            >
+              {isImage(asset.fileType) ? (
+                <img src={asset.storageUrl} alt="" />
+              ) : (
+                <i className="ti ti-video"></i>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SubmissionDetailCards({ content }: { content: SubmissionSummary }) {
+  return (
+    <section className="val-detail-grid">
+      <DetailCard icon="ti-calendar-event" label="Event Date">
+        {formatDate(content.eventDate)}
+      </DetailCard>
+      <DetailCard icon="ti-sparkles" label="Tags" full>
+        <div className="val-tag-row">
+          {content.tags?.length ? (
+            content.tags.map((tag) => <span key={tag}>{tag}</span>)
+          ) : (
+            <em>No tags supplied</em>
+          )}
+        </div>
+      </DetailCard>
+      <DetailCard icon="ti-brand-facebook" label="Facebook Caption" full>
+        <p className="val-caption">{content.caption || "No caption supplied."}</p>
+      </DetailCard>
+      {content.description && (
+        <DetailCard icon="ti-notes" label="Administrator Notes" full muted>
+          {content.description}
+        </DetailCard>
+      )}
+    </section>
   );
 }
 
