@@ -1,8 +1,8 @@
 import type { AnalyticsExportMetric, AnalyticsSummaryDto } from "../../../api/analyticsApi";
 import { formatNumber, formatPercent } from "../analyticsUtils";
-import AIPerformancePanel from "./AIPerformancePanel";
 import CategoryPerformancePanel from "./CategoryPerformancePanel";
 import ContentIssuesPanel from "./ContentIssuesPanel";
+import FacebookEngagementPanel from "./FacebookEngagementPanel";
 import RoleMetricPanel from "./RoleMetricPanel";
 import StatusBreakdownPanel from "./StatusBreakdownPanel";
 
@@ -17,7 +17,7 @@ export default function ContributorAnalyticsView({ summary, onOpenReport }: Read
       <div className="analytics-stack">
         {summary.contributorAnalytics && (
           <RoleMetricPanel
-            title="My Submission Quality"
+            title="Institution Submission Quality"
             metrics={[
               ["Submitted", formatNumber(summary.contributorAnalytics.submittedPosts)],
               ["Published", formatNumber(summary.contributorAnalytics.publishedPosts)],
@@ -30,9 +30,9 @@ export default function ContributorAnalyticsView({ summary, onOpenReport }: Read
         <CategoryPerformancePanel rows={summary.topCategories} />
       </div>
       <div className="analytics-stack">
-        <AIPerformancePanel
-          data={summary.aiPerformance}
-          onOpenReport={() => onOpenReport("ai-performance")}
+        <FacebookEngagementPanel
+          data={summary.facebookEngagement}
+          onOpenReport={() => onOpenReport("facebook-engagement")}
         />
         <ContentIssuesPanel rows={summary.contentIssues} />
       </div>

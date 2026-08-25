@@ -2,17 +2,19 @@ import { useState } from "react";
 import type { User } from "../../types/auth.types";
 import type { AnalyticsExportMetric, AnalyticsRange } from "../../api/analyticsApi";
 import { useAnalyticsSummary } from "./hooks/useAnalyticsSummary";
+import { useSubmissionLookups } from "../../hooks/useSubmissions";
 import AdminAnalyticsPanel from "./components/AdminAnalyticsPanel";
 import AIPerformancePanel from "./components/AIPerformancePanel";
 import ContributorAnalyticsView from "./components/ContributorAnalyticsView";
 import ContributorBreakdownTable from "./components/ContributorBreakdownTable";
+import FacebookEngagementPanel from "./components/FacebookEngagementPanel";
 import FullReportModal from "./components/FullReportModal";
 import KpiTileGroup from "./components/KpiTileGroup";
 import OperationalHealthPanel from "./components/OperationalHealthPanel";
 import PostsByInstitutionChart from "./components/PostsByInstitutionChart";
-import ValidatorAnalyticsView from "./components/ValidatorAnalyticsView";
+import RoleMetricPanel from "./components/RoleMetricPanel";
 import BrandedSelect from "../../components/ui/BrandedSelect";
-import { formatDateRange, formatDateTime } from "./analyticsUtils";
+import { formatDateRange, formatDateTime, formatNumber } from "./analyticsUtils";
 import "../../styles/analytics.css";
 
 interface Props {
@@ -28,9 +30,9 @@ const RANGES: Array<{ value: AnalyticsRange; label: string }> = [
 
 const SECTION_LABELS: Record<string, string> = {
   contributor: "Submission Quality",
-  validator: "Review Workload",
   admin: "Network Activity",
   administrator: "Network Activity",
+  super_administrator: "Network Activity",
 };
 
 export default function AnalyticsDashboardPage({ user }: Props) {
@@ -39,16 +41,18 @@ export default function AnalyticsDashboardPage({ user }: Props) {
     setRange,
     institutionId,
     setInstitutionId,
+    category,
+    setCategory,
     summary,
     loading,
     error,
     refresh,
   } = useAnalyticsSummary("30d");
+  const { lookups } = useSubmissionLookups();
   const [reportMetric, setReportMetric] = useState<AnalyticsExportMetric | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const role = summary?.scopeRole ?? user.role;
   const isAdminView = summary?.adminView ?? (role === "administrator" || role === "super_administrator");
-  const isValidatorView = role === "administrator";
   const isContributorView = role === "contributor";
   const sectionLabel = SECTION_LABELS[role] ?? "Details";
 
@@ -95,6 +99,20 @@ export default function AnalyticsDashboardPage({ user }: Props) {
                     value: item.institutionId,
                     label: item.institutionName,
                   })),
+                ]}
+              />
+            </label>
+          )}
+          {lookups.categories.length > 0 && (
+            <label className="analytics-filter">
+              <span>Category</span>
+              <BrandedSelect
+                value={category ?? ""}
+                onChange={(value) => setCategory(value || null)}
+                ariaLabel="Filter analytics by content category"
+                options={[
+                  { value: "", label: "All categories" },
+                  ...lookups.categories.map((item) => ({ value: item, label: item })),
                 ]}
               />
             </label>
@@ -152,18 +170,20 @@ export default function AnalyticsDashboardPage({ user }: Props) {
             <ContributorAnalyticsView summary={summary} onOpenReport={setReportMetric} />
           )}
 
-          {isValidatorView && (
-            <ValidatorAnalyticsView summary={summary} onOpenReport={setReportMetric} />
-          )}
-
           {isAdminView && (
             <div className="analytics-main-grid">
               <PostsByInstitutionChart rows={summary.postsByInstitution} />
               <div className="analytics-stack">
                 {summary.adminAnalytics && <AdminAnalyticsPanel summary={summary} />}
-                <AIPerformancePanel
-                  data={summary.aiPerformance}
-                  onOpenReport={() => setReportMetric("ai-performance")}
+                {summary.aiPerformance && (
+                  <AIPerformancePanel
+                    data={summary.aiPerformance}
+                    onOpenReport={() => setReportMetric("ai-performance")}
+                  />
+                )}
+                <FacebookEngagementPanel
+                  data={summary.facebookEngagement}
+                  onOpenReport={() => setReportMetric("facebook-engagement")}
                 />
                 {summary.operationalHealth && (
                   <OperationalHealthPanel
@@ -178,8 +198,20 @@ export default function AnalyticsDashboardPage({ user }: Props) {
           {isAdminView && summary.selectedInstitutionId && (
             <>
               <div className="analytics-section-label">
-                <h2>Contributor Breakdown</h2>
+                <h2>Institution Drilldown</h2>
               </div>
+              {summary.validatorAnalytics && (
+                <RoleMetricPanel
+                  title="Review Workload"
+                  metrics={[
+                    ["Submission volume", formatNumber(summary.validatorAnalytics.institutionSubmissionVolume)],
+                    ["Pending review", formatNumber(summary.validatorAnalytics.pendingReviewCount)],
+                    ["In review", formatNumber(summary.validatorAnalytics.inReviewCount)],
+                    ["Avg turnaround (days)", summary.validatorAnalytics.averageValidationTurnaroundDays.toFixed(1)],
+                    ["Queue aging (24h+)", formatNumber(summary.validatorAnalytics.queueAgingOver24Hours)],
+                  ]}
+                />
+              )}
               <ContributorBreakdownTable rows={summary.contributorBreakdown} />
             </>
           )}
@@ -190,6 +222,7 @@ export default function AnalyticsDashboardPage({ user }: Props) {
         metric={reportMetric}
         range={range}
         institutionId={institutionId}
+        category={category}
         busy={exportBusy}
         onBusyChange={setExportBusy}
         onClose={() => setReportMetric(null)}

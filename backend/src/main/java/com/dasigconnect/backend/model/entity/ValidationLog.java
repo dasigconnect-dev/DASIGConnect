@@ -43,6 +43,9 @@ public class ValidationLog {
     @Column(name = "is_self_review", nullable = false)
     private boolean selfReview;
 
+    @Column(name = "is_fast_track", nullable = false)
+    private boolean fastTrack;
+
     @Column(name = "edit_diff", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
     private String editDiff;
@@ -78,6 +81,9 @@ public class ValidationLog {
 
     public boolean isSelfReview() { return selfReview; }
     public void setSelfReview(boolean selfReview) { this.selfReview = selfReview; }
+
+    public boolean isFastTrack() { return fastTrack; }
+    public void setFastTrack(boolean fastTrack) { this.fastTrack = fastTrack; }
 
     public String getEditDiff() { return editDiff; }
     public void setEditDiff(String editDiff) { this.editDiff = editDiff; }

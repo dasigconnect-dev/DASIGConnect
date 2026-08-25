@@ -101,6 +101,10 @@ public class ValidationService {
 
     /**
      * Approves a submission: transitions to SCHEDULED, confirms slot, releases lock.
+     * Live Event Fast-Track submissions never have a slot reservation (see
+     * SubmissionService.create()), so slot confirmation is skipped for them —
+     * publishing immediately is handled downstream by FastTrackPublishingListener
+     * reacting to SubmissionApprovedEvent.
      * A5: self-review is allowed but distinctly flagged in the audit log.
      */
     public void approve(UUID submissionId, JwtUserDetails caller) {
@@ -112,11 +116,14 @@ public class ValidationService {
         submission.setStatus(SubmissionStatus.scheduled);
         submissionRepository.save(submission);
 
-        slotReservationService.confirm(submissionId);
+        if (!submission.isFastTrack()) {
+            slotReservationService.confirm(submissionId);
+        }
         reviewLockService.release(submissionId, caller);
 
         User validator = loadUser(caller.userId());
-        logAction(submission, validator, ValidationAction.approved, null, null, selfReview, null);
+        logAction(submission, validator, ValidationAction.approved, null, null,
+                selfReview, submission.isFastTrack(), null);
 
         eventPublisher.publishEvent(new SubmissionApprovedEvent(submission));
         log.info("Submission approved: submission={} validator={}", submissionId, caller.userId());
@@ -142,11 +149,14 @@ public class ValidationService {
         submission.setStatus(SubmissionStatus.scheduled);
         submissionRepository.save(submission);
 
-        slotReservationService.confirm(submissionId);
+        if (!submission.isFastTrack()) {
+            slotReservationService.confirm(submissionId);
+        }
         reviewLockService.release(submissionId, caller);
 
         User validator = loadUser(caller.userId());
-        logAction(submission, validator, ValidationAction.edited_and_approved, null, null, selfReview, editDiff);
+        logAction(submission, validator, ValidationAction.edited_and_approved, null, null,
+                selfReview, submission.isFastTrack(), editDiff);
 
         eventPublisher.publishEvent(new SubmissionApprovedEvent(submission, editDiff != null));
         log.info("Submission edited and approved: submission={} validator={}", submissionId, caller.userId());
@@ -172,7 +182,8 @@ public class ValidationService {
         reviewLockService.release(submissionId, caller);
 
         User validator = loadUser(caller.userId());
-        logAction(submission, validator, ValidationAction.needs_revision, remarks, null, selfReview, null);
+        logAction(submission, validator, ValidationAction.needs_revision, remarks, null,
+                selfReview, submission.isFastTrack(), null);
 
         eventPublisher.publishEvent(new RevisionRequestedEvent(submission, remarks));
         log.info("Revision requested: submission={} validator={}", submissionId, caller.userId());
@@ -199,7 +210,8 @@ public class ValidationService {
         reviewLockService.release(submissionId, caller);
 
         User validator = loadUser(caller.userId());
-        logAction(submission, validator, ValidationAction.rejected, null, fullReason, selfReview, null);
+        logAction(submission, validator, ValidationAction.rejected, null, fullReason,
+                selfReview, submission.isFastTrack(), null);
 
         eventPublisher.publishEvent(new SubmissionRejectedEvent(submission, fullReason));
         log.info("Submission rejected: submission={} reason={} validator={}", submissionId, reasonCode, caller.userId());
@@ -296,7 +308,7 @@ public class ValidationService {
 
     private void logAction(Submission submission, User validator,
             ValidationAction action, String remarks, String rejectionReason,
-            boolean selfReview, String editDiff) {
+            boolean selfReview, boolean fastTrack, String editDiff) {
         ValidationLog entry = new ValidationLog();
         entry.setSubmission(submission);
         entry.setValidator(validator);
@@ -304,6 +316,7 @@ public class ValidationService {
         entry.setRemarks(remarks);
         entry.setRejectionReason(rejectionReason);
         entry.setSelfReview(selfReview);
+        entry.setFastTrack(fastTrack);
         entry.setEditDiff(editDiff);
         validationLogRepository.save(entry);
     }

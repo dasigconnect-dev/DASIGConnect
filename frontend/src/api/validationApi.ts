@@ -19,6 +19,7 @@ export interface ValidationLog {
   remarks?: string | null;
   rejectionReason?: string | null;
   selfReview?: boolean;
+  fastTrack?: boolean;
   editDiff?: string | null;
   createdAt: string;
 }

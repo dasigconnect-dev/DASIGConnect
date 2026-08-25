@@ -87,6 +87,60 @@ public class FacebookEngagementAnalyticsClient {
         return samples;
     }
 
+    /**
+     * Fetches reactions/comments/shares (and best-effort reach) for a single
+     * Facebook post by its platform post ID. Reactions/comments/shares use the
+     * same `/posts` fields already proven working by
+     * {@link #fetchRecentPostEngagement()}; reach comes from a separate
+     * Insights call that is allowed to fail (the Page token may not have
+     * read_insights granted) without failing the whole fetch.
+     */
+    public PostEngagement fetchPostEngagement(String postId) throws IOException, InterruptedException {
+        String token = resolveToken();
+        if (postId == null || postId.isBlank() || token == null || token.isBlank()) {
+            throw new IOException("Facebook engagement analytics is not configured.");
+        }
+        String fields = "reactions.limit(0).summary(true),comments.limit(0).summary(true),shares";
+        String url = "https://graph.facebook.com/" + apiVersion + "/" + encode(postId)
+                + "?fields=" + encode(fields) + "&access_token=" + encode(token);
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(java.time.Duration.ofSeconds(8)).GET().build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Facebook analytics returned HTTP " + response.statusCode());
+        }
+        JsonNode root = objectMapper.readTree(response.body());
+        if (root.has("error")) {
+            throw new IOException("Facebook analytics request failed for post " + postId + ".");
+        }
+        long reactions = root.path("reactions").path("summary").path("total_count").asLong(0);
+        long comments = root.path("comments").path("summary").path("total_count").asLong(0);
+        long shares = root.path("shares").path("count").asLong(0);
+        Long reach = fetchReach(postId, token);
+        return new PostEngagement(reach, reactions, comments, shares);
+    }
+
+    private Long fetchReach(String postId, String token) {
+        try {
+            String url = "https://graph.facebook.com/" + apiVersion + "/" + encode(postId)
+                    + "/insights?metric=post_impressions_unique&access_token=" + encode(token);
+            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                    .timeout(java.time.Duration.ofSeconds(8)).GET().build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                return null;
+            }
+            JsonNode root = objectMapper.readTree(response.body());
+            if (root.has("error")) {
+                return null;
+            }
+            JsonNode values = root.path("data").path(0).path("values").path(0).path("value");
+            return values.isMissingNode() ? null : values.asLong();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private String resolveToken() {
         return tokenRepository.findByPageIdAndIsActiveTrue(pageId)
                 .map(FacebookPageToken::getEncryptedToken)
@@ -109,4 +163,7 @@ public class FacebookEngagementAnalyticsClient {
     }
 
     public record EngagementSample(Instant publishedAt, double engagementScore) {}
+
+    /** reach may be null when the Insights call fails or is unavailable (missing read_insights permission). */
+    public record PostEngagement(Long reach, long reactions, long comments, long shares) {}
 }

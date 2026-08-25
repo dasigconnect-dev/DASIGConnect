@@ -106,6 +106,15 @@ export interface AdminAnalyticsDto {
   adminDirectPosts: number;
 }
 
+export interface FacebookEngagementSummaryDto {
+  averageReach: number;
+  totalReactions: number;
+  totalComments: number;
+  totalShares: number;
+  sampleSize: number;
+  pendingCount: number;
+}
+
 export interface AnalyticsSummaryDto {
   range: AnalyticsRange | string;
   periodStart: string;
@@ -125,9 +134,10 @@ export interface AnalyticsSummaryDto {
   topCategories: CategoryPerformanceDto[];
   contributorAnalytics: ContributorAnalyticsDto | null;
   validatorAnalytics: ValidatorAnalyticsDto | null;
-  aiPerformance: AiPerformanceDto;
+  aiPerformance: AiPerformanceDto | null;
   adminAnalytics: AdminAnalyticsDto | null;
   operationalHealth: OperationalHealthDto | null;
+  facebookEngagement: FacebookEngagementSummaryDto;
 }
 
 export interface DailyAnalyticsPointDto {
@@ -164,11 +174,17 @@ export type AnalyticsExportMetric =
   | "content-completeness"
   | "posts-by-institution"
   | "ai-performance"
-  | "operational-health";
+  | "operational-health"
+  | "facebook-engagement";
 
-export function getAnalyticsSummary(range: AnalyticsRange, institutionId?: string | null, signal?: AbortSignal) {
+export function getAnalyticsSummary(
+  range: AnalyticsRange,
+  institutionId?: string | null,
+  category?: string | null,
+  signal?: AbortSignal,
+) {
   return api.get<AnalyticsSummaryDto>("/analytics/summary", {
-    params: { range, ...(institutionId ? { institutionId } : {}) },
+    params: { range, ...(institutionId ? { institutionId } : {}), ...(category ? { category } : {}) },
     signal,
   });
 }
@@ -177,10 +193,11 @@ export function getAnalyticsReport(
   metric: AnalyticsExportMetric,
   range: AnalyticsRange,
   institutionId?: string | null,
+  category?: string | null,
   signal?: AbortSignal,
 ) {
   return api.get<AnalyticsReportDto>(`/analytics/report/${metric}`, {
-    params: { range, ...(institutionId ? { institutionId } : {}) },
+    params: { range, ...(institutionId ? { institutionId } : {}), ...(category ? { category } : {}) },
     signal,
   });
 }
@@ -189,9 +206,10 @@ export async function downloadAnalyticsCsv(
   metric: AnalyticsExportMetric,
   range: AnalyticsRange,
   institutionId?: string | null,
+  category?: string | null,
 ) {
   const response = await api.get<string>(`/analytics/export/${metric}`, {
-    params: { range, ...(institutionId ? { institutionId } : {}) },
+    params: { range, ...(institutionId ? { institutionId } : {}), ...(category ? { category } : {}) },
     responseType: "text",
   });
   const blob = new Blob([response.data], { type: "text/csv;charset=utf-8" });

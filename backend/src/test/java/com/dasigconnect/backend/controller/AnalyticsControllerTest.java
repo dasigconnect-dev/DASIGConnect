@@ -56,7 +56,7 @@ class AnalyticsControllerTest {
     @Test
     @WithMockUser
     void summary_authenticated_returnsAnalyticsPayload() throws Exception {
-        when(metricsAggregatorService.summary(eq("30d"), any(), any())).thenReturn(summaryDto());
+        when(metricsAggregatorService.summary(eq("30d"), any(), any(), any())).thenReturn(summaryDto());
 
         mockMvc.perform(get("/api/v1/analytics/summary"))
                 .andExpect(status().isOk())
@@ -69,7 +69,7 @@ class AnalyticsControllerTest {
     @Test
     @WithMockUser
     void export_authenticated_returnsCsvAttachment() throws Exception {
-        when(metricsAggregatorService.export(eq("posting-delay"), eq("30d"), any(), any()))
+        when(metricsAggregatorService.export(eq("posting-delay"), eq("30d"), any(), any(), any()))
                 .thenReturn(new CsvExport("posting-delay.csv", "\"submission_id\"\r\n\"abc\"\r\n"));
 
         mockMvc.perform(get("/api/v1/analytics/export/posting-delay"))
@@ -100,6 +100,7 @@ class AnalyticsControllerTest {
                 null,
                 new AiPerformanceDto(0, 0, 0, 0, 0, 0, 0, 0, 0, true),
                 new AdminAnalyticsDto(1, 4, 1),
-                new OperationalHealthDto(12, 0, 0, 0, 0, 20, 19, 95.0, 19, 100.0, 4));
+                new OperationalHealthDto(12, 0, 0, 0, 0, 20, 19, 95.0, 19, 100.0, 4),
+                new com.dasigconnect.backend.model.dto.analytics.FacebookEngagementSummaryDto(0, 0, 0, 0, 0, 0));
     }
 }
