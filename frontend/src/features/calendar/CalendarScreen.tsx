@@ -77,9 +77,26 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
   }
 
   function handleEventDrop(info: CalendarDropInfo) {
+    const originalDate = new Date(info.event.scheduledAt);
+    const isSameDay =
+      originalDate.getFullYear() === info.newStart.getFullYear() &&
+      originalDate.getMonth() === info.newStart.getMonth() &&
+      originalDate.getDate() === info.newStart.getDate();
+
+    if (isSameDay) {
+      info.revert();
+      setTimeout(() => {
+        document.querySelectorAll(".fc-event-mirror").forEach((el) => el.remove());
+      }, 0);
+      return;
+    }
+
     const minAllowed = new Date(Date.now() + 60 * 60 * 1000);
     if (info.newStart <= minAllowed) {
       info.revert();
+      setTimeout(() => {
+        document.querySelectorAll(".fc-event-mirror").forEach((el) => el.remove());
+      }, 0);
       toast.error(
         info.newStart <= new Date()
           ? "Cannot reschedule to a time in the past."
@@ -98,12 +115,18 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
       reason,
     );
     setPendingReschedule(null);
+    setTimeout(() => {
+      document.querySelectorAll(".fc-event-mirror").forEach((el) => el.remove());
+    }, 0);
     refresh();
   }
 
   function handleRescheduleCancel() {
     pendingReschedule?.revert();
     setPendingReschedule(null);
+    setTimeout(() => {
+      document.querySelectorAll(".fc-event-mirror").forEach((el) => el.remove());
+    }, 0);
   }
 
   function handleDatesSet(arg: DatesSetArg) {

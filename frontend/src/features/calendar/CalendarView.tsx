@@ -134,6 +134,13 @@ export default function CalendarView({
     eventElsRef.current.delete(info.event.id);
   }
 
+  function handleEventDragStop() {
+    // Clean up any stray FullCalendar drag mirrors that might linger in DOM
+    setTimeout(() => {
+      document.querySelectorAll(".fc-event-mirror").forEach((el) => el.remove());
+    }, 0);
+  }
+
   function handleEventDrop(arg: EventDropArg) {
     if (!onEventDrop || !arg.event.start) {
       arg.revert();
@@ -196,9 +203,10 @@ export default function CalendarView({
         eventStartEditable={draggable}
         eventDurationEditable={false}
         eventResizableFromStart={false}
+        eventDragStop={handleEventDragStop}
         eventDrop={handleEventDrop}
         dragScroll={false}
-        dragRevertDuration={200}
+        dragRevertDuration={0}
         eventDragMinDistance={4}
       />
     </div>
