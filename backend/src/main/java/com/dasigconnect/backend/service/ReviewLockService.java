@@ -206,6 +206,8 @@ public class ReviewLockService {
 
         // Administrators can access any submission; validators are institution-scoped
         if (!"super_administrator".equals(caller.role())
+                && caller.institutionId() != null
+                && submission.getInstitution() != null
                 && !submission.getInstitution().getId().equals(caller.institutionId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Submission not found.");

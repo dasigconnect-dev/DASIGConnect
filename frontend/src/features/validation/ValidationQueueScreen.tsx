@@ -13,6 +13,9 @@ import {
 } from "../../api/validationApi";
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
+import { getWatermarkConfiguration } from "../../api/watermarkApi";
+import type { WatermarkConfiguration } from "../../types/watermark.types";
+import WatermarkOverlay from "../../components/watermark/WatermarkOverlay";
 import {
   useValidationLog,
   useValidationQueue,
@@ -138,6 +141,15 @@ export default function ValidationQueueScreen({
     selected && !REVIEWABLE_STATUSES.has(normalizeStatus(selected.status ?? "")),
   );
   const canAct = Boolean(selected && activeLock && !isSelfReview && !isTerminalStatus);
+
+  const [watermarkConfig, setWatermarkConfig] = useState<WatermarkConfiguration | null>(null);
+  const [showWatermarkPreview, setShowWatermarkPreview] = useState<boolean>(true);
+
+  useEffect(() => {
+    void getWatermarkConfiguration()
+      .then((res) => setWatermarkConfig(res.data))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!isHistoryMode) return;
@@ -497,10 +509,41 @@ export default function ValidationQueueScreen({
               </header>
 
               <section className="val-media-section">
+                {watermarkConfig?.enabled && (
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
+                    <button
+                      type="button"
+                      className={`val-wm-toggle-btn ${showWatermarkPreview ? "active" : ""}`}
+                      onClick={() => setShowWatermarkPreview((prev) => !prev)}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "5px 12px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        borderRadius: "20px",
+                        border: showWatermarkPreview ? "1px solid #93c5fd" : "1px solid #cbd5e1",
+                        background: showWatermarkPreview ? "#eff6ff" : "#f8fafc",
+                        color: showWatermarkPreview ? "#1d4ed8" : "#64748b",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <i className={`ti ${showWatermarkPreview ? "ti-badge-filled" : "ti-badge"}`} />
+                      <span>{showWatermarkPreview ? "Watermark Preview: ON" : "Watermark Preview: OFF"}</span>
+                    </button>
+                  </div>
+                )}
                 <div className="val-carousel">
                   {selectedMedia ? (
                     isImage(selectedMedia.fileType) ? (
-                      <img src={selectedMedia.storageUrl} alt={selectedMedia.fileName} />
+                      <div style={{ position: "relative", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <img src={selectedMedia.storageUrl} alt={selectedMedia.fileName} />
+                        {showWatermarkPreview && watermarkConfig?.enabled && (
+                          <WatermarkOverlay elements={watermarkConfig.elements} />
+                        )}
+                      </div>
                     ) : (
                       <div className="val-video-placeholder">
                         <i className="ti ti-player-play-filled"></i>
