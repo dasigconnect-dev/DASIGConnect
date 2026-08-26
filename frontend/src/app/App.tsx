@@ -31,6 +31,7 @@ import RecentActivityScreen from "../features/dashboard/RecentActivityScreen";
 import SubmissionScreen from "../features/submission/SubmissionScreen";
 import ValidationQueueScreen from "../features/validation/ValidationQueueScreen";
 import InstitutionManagementScreen from "../features/institution-management/InstitutionManagementScreen";
+import AdministratorManagementScreen from "../features/administrator-management/AdministratorManagementScreen";
 import CalendarScreen from "../features/calendar/CalendarScreen";
 import MediaRepositoryScreen from "../features/media-repository/MediaRepositoryScreen";
 import NotificationsScreen from "../features/notifications/NotificationsScreen";
@@ -727,8 +728,19 @@ function App() {
             }
           />
           <Route
+            path="/admin/administrator-management"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
+                <AdministratorManagementScreen
+                  user={currentUser!}
+                  onProfileUpdated={refreshCurrentUserProfile}
+                />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin/user-management/*"
-            element={<Navigate to="/admin/institution-management" replace />}
+            element={<Navigate to="/admin/administrator-management" replace />}
           />
           <Route
             path="/validation/queue"

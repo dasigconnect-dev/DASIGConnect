@@ -11,6 +11,8 @@ interface InvitationComposerProps {
   selectedInstitution: InstitutionOption | null
   canChooseRole: boolean
   sending: boolean
+  /** Network-wide invites (e.g. administrators) that are not bound to an institution workspace. */
+  networkWide?: boolean
   onDraftChange: (value: string) => void
   onAddChip: (email: string) => void
   onRemoveChip: (index: number) => void
@@ -22,7 +24,9 @@ function composerSubtitle(
   canChooseRole: boolean,
   _institution: InstitutionOption | null,
   role: InviteRole,
+  networkWide: boolean,
 ) {
+  if (networkWide) return 'Invite administrators with network-wide access. Activation links expire after 72 hours.'
   if (canChooseRole) return 'Invite contributors or administrators securely into this institution workspace.'
   if (role === 'contributor') return 'Invite contributors securely into this institution workspace.'
   return 'Invite contributors securely into this institution workspace.'
@@ -35,6 +39,7 @@ export default function InvitationComposer({
   selectedInstitution,
   canChooseRole,
   sending,
+  networkWide = false,
   onDraftChange,
   onAddChip,
   onRemoveChip,
@@ -55,7 +60,7 @@ export default function InvitationComposer({
           <div>
             <div className="um-composer-title">Send Invitations</div>
             <div className="um-composer-subtitle">
-              {composerSubtitle(canChooseRole, selectedInstitution, role)}
+              {composerSubtitle(canChooseRole, selectedInstitution, role, networkWide)}
             </div>
           </div>
         </div>
@@ -90,7 +95,11 @@ export default function InvitationComposer({
             onAdd={onAddChip}
             onRemove={onRemoveChip}
             disabled={sending}
-            placeholder="name@institution.edu.ph, office@institution.edu.ph"
+            placeholder={
+              networkWide
+                ? 'administrator@example.edu.ph, office@example.edu.ph'
+                : 'name@institution.edu.ph, office@institution.edu.ph'
+            }
             inputId="invitation-recipient-input"
           />
           {invalidRecipientCount > 0 && (
@@ -173,7 +182,12 @@ export default function InvitationComposer({
           <button
             type="submit"
             className="um-send-btn"
-            disabled={sending || recipientCount === 0 || !selectedInstitution || (canChooseRole && role === null)}
+            disabled={
+              sending ||
+              recipientCount === 0 ||
+              (!networkWide && !selectedInstitution) ||
+              (canChooseRole && role === null)
+            }
           >
             {sending ? (
               <>

@@ -221,6 +221,13 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       visible: isAdministrator,
     },
     {
+      id: 'user-management',
+      icon: 'ti ti-shield-check',
+      label: 'Administrator Management',
+      path: '/admin/administrator-management',
+      visible: isAdministrator,
+    },
+    {
       id: 'media-repository',
       icon: 'ti ti-photo',
       label: 'Media Repository',
@@ -259,7 +266,7 @@ function groupDashboardNavItems(items: DashboardNavItem[]) {
     },
     {
       label: 'Operations',
-      items: items.filter((item) => ['institution-management', 'scheduler', 'analytics'].includes(item.id)),
+      items: items.filter((item) => ['institution-management', 'user-management', 'scheduler', 'analytics'].includes(item.id)),
     },
   ].filter((group) => group.items.length > 0)
 }
