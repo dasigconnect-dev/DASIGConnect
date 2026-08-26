@@ -50,6 +50,9 @@ export interface UserProfileResponse {
   displayName: string | null;
   role: string;
   accountState: string;
+  superAdministrator: boolean;
+  superAdminTransferRequestedBy: string | null;
+  superAdminTransferExpiresAt: string | null;
   institutionId: string | null;
   institutionName: string | null;
   createdAt: string;
@@ -217,6 +220,16 @@ export function listUsers(institutionId: string) {
   });
 }
 
+export function listAdministrators() {
+  return api.get<UserProfileResponse[]>("/users/administrators", {}).then((response) => {
+    response.data = response.data.map((user) => ({
+      ...user,
+      avatarUrl: user.hasAvatar ? getUserAvatarUrl(user.id, user.avatarUpdatedAt) : null,
+    }));
+    return response;
+  });
+}
+
 export function updateUserStatus(
   id: string,
   accountState: "active" | "inactive" | "cancelled",
@@ -259,6 +272,10 @@ export function listPendingInvitations(institutionId: string) {
   });
 }
 
+export function listPendingAdministratorInvitations() {
+  return api.get<PendingInvitationResponse[]>("/invitations/pending/administrators");
+}
+
 export function getPendingInvitationCount(institutionId: string) {
   return api.get<{ pendingInvitations: number }>("/invitations/pending/count", {
     params: { institutionId },
@@ -287,11 +304,26 @@ export function cancelInvitation(id: string) {
   return api.delete(`/invitations/${id}`);
 }
 
+export interface SuperAdministratorTransferResponse {
+  targetUserId: string;
+  requestedByUserId: string;
+  expiresAt: string;
+  status: string;
+}
+
+export function requestSuperAdministratorTransfer(id: string) {
+  return api.post<SuperAdministratorTransferResponse>(`/users/${id}/super-administrator-transfer`);
+}
+
+export function confirmSuperAdministratorTransfer() {
+  return api.post<UserProfileResponse>("/users/super-administrator-transfer/confirm");
+}
+
 export interface InvitationResponse {
   id: string;
   recipientEmail: string;
   assignedRole: string;
-  institutionId: string;
+  institutionId: string | null;
   expiresAt: string;
   createdAt: string;
   emailDelivered: boolean;

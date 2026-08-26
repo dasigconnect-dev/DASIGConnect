@@ -199,6 +199,25 @@ class InvitationControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMINISTRATOR")
+    void pendingAdministrators_asAdministrator_returnsPendingAdministratorInvitations() throws Exception {
+        UUID invitationId = UUID.randomUUID();
+        when(invitationService.listPendingAdministrators(any())).thenReturn(List.of(new PendingInvitationDto(
+                invitationId,
+                "admin@example.com",
+                UserRole.administrator,
+                null,
+                Instant.now().plusSeconds(3600),
+                Instant.now())));
+
+        mockMvc.perform(get("/api/v1/invitations/pending/administrators"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(invitationId.toString()))
+                .andExpect(jsonPath("$.data[0].recipientEmail").value("admin@example.com"))
+                .andExpect(jsonPath("$.data[0].institutionId").doesNotExist());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMINISTRATOR")
     void pendingCount_asValidator_returnsCount() throws Exception {
         when(invitationService.countPending(any(), any())).thenReturn(Map.of("pendingInvitations", 3L));
 

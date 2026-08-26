@@ -15,6 +15,7 @@ interface InstitutionUsersCardProps {
   onCancelInvitation: (user: UserProfileResponse) => void
   onResendInvitation?: (user: UserProfileResponse) => void
   onReassign?: (user: UserProfileResponse) => void
+  onRequestSuperAdminTransfer?: (user: UserProfileResponse) => void
   resendingUserId?: string | null
   showRoleControls?: boolean
   showInstitutionColumn?: boolean
@@ -41,6 +42,7 @@ export default function InstitutionUsersCard({
   onCancelInvitation,
   onResendInvitation,
   onReassign,
+  onRequestSuperAdminTransfer,
   resendingUserId = null,
   showRoleControls = true,
   showInstitutionColumn = true,
@@ -127,7 +129,7 @@ export default function InstitutionUsersCard({
           <div className="um-filter-pills-wrap">
             {showRoleControls && (
               <div className="um-filter-pills" role="group" aria-label="Filter by role">
-                {(['all', 'validator', 'contributor'] as RoleFilter[]).map((r) => (
+                {(['all', 'administrator', 'contributor'] as RoleFilter[]).map((r) => (
                   <button
                     key={r}
                     type="button"
@@ -289,6 +291,13 @@ export default function InstitutionUsersCard({
                               label: 'Reassign institution',
                               icon: 'ti ti-building-community',
                               onClick: () => onReassign(managedUser),
+                            }
+                          : null,
+                        onRequestSuperAdminTransfer && canRequestSuperAdminTransfer(currentUser, managedUser)
+                          ? {
+                              label: 'Transfer Super Administrator',
+                              icon: 'ti ti-shield-up',
+                              onClick: () => onRequestSuperAdminTransfer(managedUser),
                             }
                           : null,
                       ].filter((item): item is NonNullable<typeof item> => item !== null)
@@ -492,5 +501,19 @@ function canToggleUserStatus(currentUser: User | null, managedUser: UserProfileR
   if (!currentUser) return false
   const state = managedUser.accountState.toLowerCase()
   if (state !== 'active' && state !== 'inactive') return false
+  const targetRole = managedUser.role.toLowerCase()
+  if (targetRole === 'administrator' || targetRole === 'super_administrator') {
+    return currentUser.role === 'super_administrator' && currentUser.email.toLowerCase() !== managedUser.email.toLowerCase()
+  }
   return currentUser.role === 'super_administrator' || currentUser.role === 'administrator'
+}
+
+function canRequestSuperAdminTransfer(currentUser: User | null, managedUser: UserProfileResponse) {
+  return Boolean(
+    currentUser &&
+      currentUser.role === 'super_administrator' &&
+      managedUser.role.toLowerCase() === 'administrator' &&
+      managedUser.accountState.toLowerCase() === 'active' &&
+      currentUser.email.toLowerCase() !== managedUser.email.toLowerCase(),
+  )
 }
