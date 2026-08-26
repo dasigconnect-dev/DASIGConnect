@@ -214,50 +214,40 @@ export default function ValidationQueueScreen({
   useEffect(() => {
     if (!isAllMode) return;
     let active = true;
-    setAllLoading(true);
-    setAllError("");
-    getValidationQueue({ history: true })
-      .then((res) => {
-        if (active) setAllQueue(res.data);
-      })
-      .catch((err: unknown) => {
-        if (active) setAllError(readApiError(err, "Unable to load all submissions."));
-      })
-      .finally(() => {
-        if (active) setAllLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+    queueMicrotask(() => {
+      if (!active) return;
+      setAllLoading(true);
+      setAllError("");
+      getValidationQueue({ history : true })
+        .then((res) => { if (active) setAllQueue(res.data); })
+        .catch((err: unknown) => { if (active) setAllError(readApiError(err, "Unable to load all submissions.")); })
+        .finally(() => { if (active) setAllLoading(false); });
+    });
+    return () => { active = false; };
   }, [isAllMode]);
 
   useEffect(() => {
     if (!isFailedMode || selectedFailureId || failuresLoading || failures.length === 0) return;
-    setSelectedFailureId(failures[0].submissionId);
+    queueMicrotask(() => setSelectedFailureId(failures[0].submissionId));
   }, [isFailedMode, failuresLoading, failures, selectedFailureId]);
 
   useEffect(() => {
     if (!selectedFailureId) {
-      setFailureContent(null);
+      queueMicrotask(() => setFailureContent(null));
       return;
     }
     let active = true;
-    setFailureContent(null);
-    setFailureMediaIndex(0);
-    setFailureContentLoading(true);
-    getSubmission(selectedFailureId)
-      .then((res) => {
-        if (active) setFailureContent(res.data);
-      })
-      .catch((err: unknown) => {
-        if (active) toast.error(readApiError(err, "Unable to load submission content."));
-      })
-      .finally(() => {
-        if (active) setFailureContentLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+    queueMicrotask(() => {
+      if (!active) return;
+      setFailureContent(null);
+      setFailureMediaIndex(0);
+      setFailureContentLoading(true);
+      getSubmission(selectedFailureId)
+        .then((res) => { if (active) setFailureContent(res.data); })
+        .catch((err: unknown) => { if (active) toast.error(readApiError(err, "Unable to load submission content.")); })
+        .finally(() => { if (active) setFailureContentLoading(false); });
+    });
+    return () => { active = false; };
   }, [selectedFailureId]);
 
   useEffect(() => {
@@ -685,7 +675,7 @@ export default function ValidationQueueScreen({
             aria-label="Expand queue list"
           >
             <i className="ti ti-chevrons-right" />
-            <span>Show Queue ({isFailedMode ? failures.length : filteredQueue.length})</span>
+            <span>Show Queue</span>
           </button>
         )}
         {isFailedMode && !selectedFailure && (
