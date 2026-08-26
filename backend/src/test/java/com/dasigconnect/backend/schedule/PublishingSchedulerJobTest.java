@@ -14,8 +14,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.service.FacebookPublisherService;
 import com.dasigconnect.backend.service.PublishingQueryService;
@@ -44,10 +44,10 @@ class PublishingSchedulerJobTest {
 
         job.run();
 
-        verify(publishingQueryService, never()).loadAssetsForSubmission(due.getId());
-        verify(facebookPublisherService, never()).publish(
+        verify(publishingQueryService, never()).loadMediaLinksForSubmission(due.getId());
+        verify(facebookPublisherService, never()).publishMediaLinks(
                 org.mockito.ArgumentMatchers.any(Submission.class),
-                org.mockito.ArgumentMatchers.<List<MediaAsset>>any());
+                org.mockito.ArgumentMatchers.<List<SubmissionMediaAsset>>any());
     }
 
     @Test
@@ -57,7 +57,7 @@ class PublishingSchedulerJobTest {
         UUID submissionId = UUID.randomUUID();
         Submission due = submission(submissionId, SubmissionStatus.scheduled);
         Submission claimed = submission(submissionId, SubmissionStatus.publishing);
-        List<MediaAsset> assets = List.of(new MediaAsset());
+        List<SubmissionMediaAsset> assets = List.of(new SubmissionMediaAsset());
 
         when(facebookPublisherService.isConfigured()).thenReturn(true);
         when(publishingQueryService.loadDueSubmissions(
@@ -65,11 +65,11 @@ class PublishingSchedulerJobTest {
                 org.mockito.ArgumentMatchers.any(Instant.class)))
                 .thenReturn(List.of(due));
         when(publishingQueryService.claimForPublishing(due)).thenReturn(Optional.of(claimed));
-        when(publishingQueryService.loadAssetsForSubmission(submissionId)).thenReturn(assets);
+        when(publishingQueryService.loadMediaLinksForSubmission(submissionId)).thenReturn(assets);
 
         job.run();
 
-        verify(facebookPublisherService).publish(claimed, assets);
+        verify(facebookPublisherService).publishMediaLinks(claimed, assets);
     }
 
     private static Submission submission(UUID id, SubmissionStatus status) {

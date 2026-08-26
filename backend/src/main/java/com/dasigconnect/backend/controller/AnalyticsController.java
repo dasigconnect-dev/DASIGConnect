@@ -40,8 +40,9 @@ public class AnalyticsController {
     public ResponseEntity<ApiResponse<AnalyticsSummaryDto>> summary(
             @RequestParam(defaultValue = "30d") String range,
             @RequestParam(required = false) UUID institutionId,
+            @RequestParam(required = false) String category,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(metricsAggregatorService.summary(range, institutionId, user)));
+        return ResponseEntity.ok(ApiResponse.success(metricsAggregatorService.summary(range, institutionId, category, user)));
     }
 
     @GetMapping(value = "/export/{metric}", produces = "text/csv")
@@ -49,8 +50,9 @@ public class AnalyticsController {
             @PathVariable String metric,
             @RequestParam(defaultValue = "30d") String range,
             @RequestParam(required = false) UUID institutionId,
+            @RequestParam(required = false) String category,
             @AuthenticationPrincipal JwtUserDetails user) {
-        CsvExport export = metricsAggregatorService.export(metric, range, institutionId, user);
+        CsvExport export = metricsAggregatorService.export(metric, range, institutionId, category, user);
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
@@ -63,7 +65,8 @@ public class AnalyticsController {
             @PathVariable String metric,
             @RequestParam(defaultValue = "30d") String range,
             @RequestParam(required = false) UUID institutionId,
+            @RequestParam(required = false) String category,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(metricsAggregatorService.report(metric, range, institutionId, user)));
+        return ResponseEntity.ok(ApiResponse.success(metricsAggregatorService.report(metric, range, institutionId, category, user)));
     }
 }

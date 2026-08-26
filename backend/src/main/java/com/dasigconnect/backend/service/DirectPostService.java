@@ -191,8 +191,8 @@ public class DirectPostService {
             log.info("Immediate direct post {} was already claimed for publishing.", submissionId);
             return;
         }
-        List<MediaAsset> assets = publishingQueryService.loadAssetsForSubmission(submissionId);
-        facebookPublisherService.publish(claimed, assets);
+        List<SubmissionMediaAsset> assets = publishingQueryService.loadMediaLinksForSubmission(submissionId);
+        facebookPublisherService.publishMediaLinks(claimed, assets);
     }
 
     /**
