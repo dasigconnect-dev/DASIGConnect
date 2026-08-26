@@ -28,12 +28,15 @@ import { useFacebookPreviewData } from "../../hooks/useFacebookPreviewData";
 import { fileMediaKey, savedMediaKey } from "../../hooks/useMediaReorder";
 import type { User } from "../../types/auth.types";
 import type { SubmissionMediaItem } from "../../types/media";
+import type { CaptionTone } from "../../api/aiApi";
 import { useToast } from "../../context/ToastContext";
 import MediaAssetsPicker from "../../components/media/MediaAssetsPicker";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import AiCaptionButton from "./components/AiCaptionButton";
+import AiCaptionPromptDialog from "./components/AiCaptionPromptDialog";
 import AiCaptionSuggestion from "./components/AiCaptionSuggestion";
+import FancyTextTool, { type FancyTextSelection } from "./components/FancyTextTool";
 import AlbumCombobox from "../../components/ui/AlbumCombobox";
 import "../../styles/dasig-loader.css";
 
@@ -41,8 +44,10 @@ import type { CenterMode, FormState, ModalState, PendingLeaveAction, ProgressSte
 import { initialForm, postTemplates, statusLabels, submissionDetailsMemoryCache } from "./constants";
 import {
   appendHashtagToCaption,
+  CAPTION_WORD_LIMIT,
   captionTone,
   captionsForSavedIds,
+  countWords,
   dateToInputValue,
   defaultMediaTags,
   effectiveMediaTags,
@@ -80,6 +85,7 @@ import {
   sortFilesByOrder,
   sortSavedAssetsByOrder,
   toPayload,
+  trimToWordLimit,
   upsertSubmission,
 } from "./utils";
 import {
@@ -100,6 +106,8 @@ import { InPageFacebookPreview } from "./components/InPageFacebookPreview";
 import { CalendarDateField } from "./components/CalendarDateField";
 import { TimePickerField } from "./components/TimePickerField";
 import { SubmissionCardMedia } from "./components/SubmissionCardMedia";
+
+const AUTO_SAVE_DELAY_MS = 1200;
 
 interface SubmissionScreenProps {
   user: User;
@@ -169,6 +177,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [institutionsLoading, setInstitutionsLoading] = useState(false);
   const [institutionsError, setInstitutionsError] = useState("");
   const [activeStep, setActiveStep] = useState<ProgressStep>("media");
+  const [captionSelection, setCaptionSelection] = useState<FancyTextSelection>({
+    start: 0,
+    end: 0,
+  });
+  const [captionPromptOpen, setCaptionPromptOpen] = useState(false);
+  const [fancyTextPreviewActive, setFancyTextPreviewActive] = useState(false);
   const isAdminComposer = user.role === "administrator" || user.role === "super_administrator";
   const isMySubmissionsPage = location.pathname === "/submissions";
   const selectedInstitutionId = isAdminComposer ? form.institutionId : user.institutionId || "";
@@ -677,6 +691,46 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setSaveState("idle");
   }
 
+  function captureCaptionSelection(element: HTMLTextAreaElement) {
+    setCaptionSelection({
+      start: element.selectionStart,
+      end: element.selectionEnd,
+    });
+  }
+
+  function restoreCaptionSelection(nextSelection: FancyTextSelection) {
+    setCaptionSelection(nextSelection);
+
+    window.requestAnimationFrame(() => {
+      const textarea = captionRef.current;
+      if (!textarea) return;
+
+      textarea.focus();
+      textarea.setSelectionRange(nextSelection.start, nextSelection.end);
+    });
+  }
+
+  function updateCaptionSelection(
+    nextCaption: string,
+    nextSelection: FancyTextSelection,
+  ) {
+    updateField("caption", trimToWordLimit(nextCaption));
+    restoreCaptionSelection(nextSelection);
+  }
+
+  function updateCaption(nextCaption: string) {
+    const limitedCaption = trimToWordLimit(nextCaption);
+    if (limitedCaption !== nextCaption) {
+      toast.warning(`Caption is limited to ${CAPTION_WORD_LIMIT} words.`);
+    }
+    updateField("caption", limitedCaption);
+  }
+
+  async function handleAiCaptionPromptSubmit(prompt: string, tone: CaptionTone) {
+    const generated = await aiCaption.suggest(prompt, tone, undefined, form.caption);
+    if (generated) setCaptionPromptOpen(false);
+  }
+
   function updateFastTrack(value: boolean) {
     if (value && !form.fastTrack && (form.scheduledDate || form.scheduledTime)) {
       setModal("fast-track-switch");
@@ -921,11 +975,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
   }
 
-  async function saveDraft() {
+  async function saveDraft(options: { silent?: boolean } = {}) {
     if (isReadOnlySubmission) return false;
     if (busy) return false;
     if (isAdminComposer && !form.institutionId) {
-      toast.error("Select an institution scope before saving this draft.");
+      if (!options.silent) {
+        toast.error("Select an institution scope before saving this draft.");
+      }
       setActiveStep("details");
       return false;
     }
@@ -999,15 +1055,28 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setSaveState("saved");
       setMediaUploadFailed(false);
       cleanSignatureRef.current = getDirtySignature(nextForm);
-      toast.success("Draft saved.");
+      if (!options.silent) toast.success("Draft saved.");
       return true;
     } catch (err: unknown) {
       setSaveState("idle");
       if (form.files.length > 0) setMediaUploadFailed(true);
-      toast.error(getErrorMessage(err, "Draft could not be saved."));
+      if (!options.silent) {
+        toast.error(getErrorMessage(err, "Draft could not be saved."));
+      }
       return false;
     }
   }
+
+  useEffect(() => {
+    if (!isDirty || busy || fancyTextPreviewActive) return;
+    if (isAdminComposer && !form.institutionId) return;
+
+    const timer = window.setTimeout(() => {
+      void saveDraft({ silent: true });
+    }, AUTO_SAVE_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [busy, fancyTextPreviewActive, form, isAdminComposer, isDirty, scheduledAt]);
 
   async function handleSave() {
     await saveDraft();
@@ -1906,13 +1975,27 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             <Field
               label="Caption"
               action={
-                canUseAiCaption && !form.fastTrack ? (
-                  <AiCaptionButton
-                    state={aiCaption.state}
-                    canSuggest={aiCaption.canSuggest}
-                    rateLimitReset={aiCaption.rateLimitReset}
-                    onSuggest={aiCaption.suggest}
-                  />
+                !isReadOnlySubmission ? (
+                  <div className="sub-caption-actions">
+                    <FancyTextTool
+                      caption={form.caption}
+                      selection={captionSelection}
+                      disabled={isReadOnlySubmission}
+                      onReplaceSelection={updateCaptionSelection}
+                      onPreviewSelection={updateCaptionSelection}
+                      onRestoreSelection={restoreCaptionSelection}
+                      onPreviewStateChange={setFancyTextPreviewActive}
+                    />
+                    {canUseAiCaption && !form.fastTrack && (
+                      <AiCaptionButton
+                        state={aiCaption.state}
+                        canSuggest={aiCaption.canSuggest}
+                        rateLimitReset={aiCaption.rateLimitReset}
+                        notice={aiCaption.notice}
+                        onSuggest={() => setCaptionPromptOpen(true)}
+                      />
+                    )}
+                  </div>
                 ) : undefined
               }
             >
@@ -1923,11 +2006,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   rows={4}
                   readOnly={isReadOnlySubmission}
                   value={form.caption}
-                  onChange={(event) => updateField("caption", event.target.value)}
+                  onChange={(event) => {
+                    updateCaption(event.target.value);
+                    captureCaptionSelection(event.currentTarget);
+                  }}
+                  onClick={(event) => captureCaptionSelection(event.currentTarget)}
+                  onKeyUp={(event) => captureCaptionSelection(event.currentTarget)}
+                  onSelect={(event) => captureCaptionSelection(event.currentTarget)}
                   placeholder="Write a compelling caption for the DASIG Facebook page..."
                 />
                 <span className={`sub-caption-counter ${captionTone(form.caption)}`}>
-                  {form.caption.length} / 500
+                  {countWords(form.caption)} / {CAPTION_WORD_LIMIT} words
                 </span>
               </div>
               {canUseAiCaption && !form.fastTrack && aiCaption.variants && (
@@ -1935,7 +2024,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   variants={aiCaption.variants}
                   onApply={(caption, tone, action) => {
                     if (!canUseAiCaption) return;
-                    updateField("caption", caption);
+                    updateCaption(caption);
                     aiCaption.logApply(tone, action);
                   }}
                   onDismissOne={aiCaption.logDismissOne}
@@ -1944,9 +2033,18 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 />
               )}
               <div className="sub-finput-hint">
-                Captions between 150-500 characters perform best on Facebook.
-                Include relevant tags.
+                Captions can contain up to {CAPTION_WORD_LIMIT} words. Include relevant tags.
               </div>
+              {canUseAiCaption && !form.fastTrack && (
+                <AiCaptionPromptDialog
+                  open={captionPromptOpen}
+                  state={aiCaption.state}
+                  hasImageAssets={hasImageAssets}
+                  existingCaption={form.caption}
+                  onClose={() => setCaptionPromptOpen(false)}
+                  onSubmit={(prompt, tone) => void handleAiCaptionPromptSubmit(prompt, tone)}
+                />
+              )}
             </Field>
 
             <Field label="Tags">

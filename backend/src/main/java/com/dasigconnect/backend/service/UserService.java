@@ -3,6 +3,7 @@ package com.dasigconnect.backend.service;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -107,6 +108,22 @@ public class UserService {
         validateInstitutionScope(institutionId, requester);
 
         return userRepository.findByInstitutionIdOrderByCreatedAtDesc(institutionId)
+                .stream()
+                .map(UserDto::from)
+                .toList();
+    }
+
+    /**
+     * Lists network administrator accounts for UC-1.1. Administrator accounts
+     * are network-scoped, not institution-scoped, so they need a dedicated query.
+     */
+    public List<UserDto> listAdministrators(JwtUserDetails requester) {
+        if (!isAdministratorRole(requester)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only administrators and super administrators can access administrator accounts.");
+        }
+        return userRepository.findByRolesOrderByCreatedAtDesc(
+                        EnumSet.of(UserRole.administrator, UserRole.super_administrator))
                 .stream()
                 .map(UserDto::from)
                 .toList();
@@ -478,6 +495,13 @@ public class UserService {
     private void validateCanManageUser(User target, JwtUserDetails requester) {
         UUID institutionId = target.getInstitution() != null ? target.getInstitution().getId() : null;
         validateInstitutionScope(institutionId, requester);
+        if (target.getRole() == UserRole.administrator || target.getRole() == UserRole.super_administrator) {
+            User requesterAccount = requireActiveSuperAdministrator(requester);
+            if (requesterAccount.getId().equals(target.getId())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Super Administrator cannot manage their own administrator account status");
+            }
+        }
     }
 
     private void validateCanRemoveUser(User target, JwtUserDetails requester) {

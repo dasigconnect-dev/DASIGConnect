@@ -10,7 +10,7 @@ public class CaptionRequestDto {
     private UUID submissionId;
 
     /** The contributor's current draft caption. Null or blank = generate from scratch. */
-    @Size(max = 500)
+    @Size(max = 16000)
     private String existingCaption;
 
     /** Optional contributor instructions for tone, focus, length, or details to include. */

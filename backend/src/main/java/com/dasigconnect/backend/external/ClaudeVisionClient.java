@@ -48,6 +48,8 @@ public class ClaudeVisionClient {
     private static final int MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB — Anthropic hard limit
     private static final int DEFAULT_CAPTION_MAX_TOKENS = 512;
     private static final int MAX_CAPTION_MAX_TOKENS = 4096;
+    public static final int MAX_REQUESTED_CAPTION_WORDS = 2000;
+    private static final int MAX_WORD_COUNT_ATTEMPTS = 3;
     private static final Pattern WORD_COUNT_PATTERN = Pattern.compile(
             "\\b(?:around\\s+|about\\s+|approximately\\s+|approx\\.?\\s+|at\\s+least\\s+|up\\s+to\\s+|minimum\\s+of\\s+|maximum\\s+of\\s+|max\\s+of\\s+)?(\\d{2,4})\\s*(?:-|\\s)?words?\\b",
             Pattern.CASE_INSENSITIVE);
@@ -88,47 +90,58 @@ public class ClaudeVisionClient {
             throw new ClaudeApiException("Anthropic API key is not configured.");
         }
 
-        String payload = buildPayload(
-                imageUrls,
-                mediaMetadata,
-                eventTitle,
-                eventDate,
-                institutionName,
-                category,
-                existingCaption,
-                prompt,
-                targetTone);
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(API_URL))
-                .header("x-api-key", apiKey)
-                .header("anthropic-version", ANTHROPIC_VERSION)
-                .header("content-type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(payload))
-                .timeout(Duration.ofSeconds(30))
-                .build();
-
-        HttpResponse<String> response;
-        try {
-            response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        } catch (java.net.http.HttpTimeoutException e) {
-            throw new ClaudeApiException("Claude API timed out after 30 seconds.");
-        } catch (Exception e) {
-            throw new ClaudeApiException("Claude API request failed: " + e.getMessage());
+        int requestedWords = extractRequestedWordCount(prompt);
+        if (requestedWords > MAX_REQUESTED_CAPTION_WORDS) {
+            throw new ClaudeApiException("Requested caption word count exceeds " + MAX_REQUESTED_CAPTION_WORDS + " words.");
         }
 
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            log.warn("Claude API returned status {}: {}", response.statusCode(), response.body());
-            throw new ClaudeApiException("Claude API error (HTTP " + response.statusCode() + ").");
+        WordCountRange requestedRange = wordCountRange(requestedWords);
+        List<CaptionVariantDto> lastVariants = List.of();
+        String correctionInstruction = null;
+        int attempts = requestedWords > 0 ? MAX_WORD_COUNT_ATTEMPTS : 1;
+
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            String payload = buildPayload(
+                    imageUrls,
+                    mediaMetadata,
+                    eventTitle,
+                    eventDate,
+                    institutionName,
+                    category,
+                    existingCaption,
+                    prompt,
+                    targetTone,
+                    correctionInstruction);
+
+            List<CaptionVariantDto> variants = parseVariants(sendCaptionRequest(payload));
+            lastVariants = variants;
+            if (requestedRange == null || variants.stream()
+                    .allMatch(variant -> requestedRange.contains(countWords(variant.getCaption())))) {
+                return variants;
+            }
+
+            CaptionVariantDto first = variants.get(0);
+            int actualWords = countWords(first.getCaption());
+            correctionInstruction = """
+
+                The previous caption had %d words, which is outside the required range.
+                Rewrite it now to contain %d-%d words. Do not summarize shorter than this range.
+                Keep the same factual context, selected tone, and JSON-only response format.\
+                """.formatted(actualWords, requestedRange.min(), requestedRange.max());
         }
 
-        return parseVariants(response.body());
+        int actualWords = lastVariants.isEmpty() ? 0 : countWords(lastVariants.get(0).getCaption());
+        throw new ClaudeApiException(
+                "Claude caption did not meet requested word count. Requested "
+                        + requestedRange.min() + "-" + requestedRange.max()
+                        + " words, received " + actualWords + " words.");
     }
 
     private String buildPayload(List<String> imageUrls, String mediaMetadata,
                                 String eventTitle, String eventDate,
                                 String institutionName, String category,
-                                String existingCaption, String prompt, String targetTone) {
+                                String existingCaption, String prompt, String targetTone,
+                                String correctionInstruction) {
         try {
             var contentArray = objectMapper.createArrayNode();
 
@@ -160,7 +173,8 @@ public class ClaudeVisionClient {
                     prompt,
                     normalizeCaptionTone(targetTone),
                     mediaMetadata,
-                    imgCount > 0));
+                    imgCount > 0,
+                    correctionInstruction));
             contentArray.add(textBlock);
 
             var message = objectMapper.createObjectNode();
@@ -181,6 +195,33 @@ public class ClaudeVisionClient {
         } catch (Exception e) {
             throw new ClaudeApiException("Failed to build Claude API payload: " + e.getMessage());
         }
+    }
+
+    private String sendCaptionRequest(String payload) {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL))
+                .header("x-api-key", apiKey)
+                .header("anthropic-version", ANTHROPIC_VERSION)
+                .header("content-type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(payload))
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> response;
+        try {
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (java.net.http.HttpTimeoutException e) {
+            throw new ClaudeApiException("Claude API timed out after 30 seconds.");
+        } catch (Exception e) {
+            throw new ClaudeApiException("Claude API request failed: " + e.getMessage());
+        }
+
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            log.warn("Claude API returned status {}: {}", response.statusCode(), response.body());
+            throw new ClaudeApiException("Claude API error (HTTP " + response.statusCode() + ").");
+        }
+
+        return response.body();
     }
 
     public record PreparedImage(byte[] bytes, String mediaType) {}
@@ -283,10 +324,13 @@ public class ClaudeVisionClient {
 
     private String buildPrompt(String eventTitle, String eventDate, String institutionName,
                                String category, String existingCaption, String prompt,
-                               String targetTone, String mediaMetadata, boolean hasImages) {
+                               String targetTone, String mediaMetadata, boolean hasImages,
+                               String correctionInstruction) {
         boolean hasCaptionInput = existingCaption != null && !existingCaption.isBlank();
         boolean hasPrompt = prompt != null && !prompt.isBlank();
         boolean hasMediaMetadata = mediaMetadata != null && !mediaMetadata.isBlank();
+        int requestedWords = extractRequestedWordCount(prompt);
+        WordCountRange requestedRange = wordCountRange(requestedWords);
 
         String imageGuidance = """
             You will receive up to 4 images. Some may be title cards, intro slides, or \
@@ -322,9 +366,8 @@ public class ClaudeVisionClient {
                 Contributor prompt: "%s"
                 Use the contributor prompt as the primary creative direction for tone, focus, \
                 wording style, language, hashtag count, sentence count, and requested word count. \
-                If the contributor asks for an exact or approximate number of words, apply that \
-                requested word count to the caption as closely as possible, even when it \
-                differs from the default caption length guidance. Only override the contributor \
+                If the contributor asks for an exact or approximate number of words, treat that \
+                as a hard output requirement, not a loose suggestion. Only override the contributor \
                 prompt when it conflicts with DASIG/DOST public-sector scope, factual integrity, \
                 respectful language, privacy, safety, or the required JSON response format.\
                 """.formatted(prompt)
@@ -333,6 +376,18 @@ public class ClaudeVisionClient {
                 No contributor prompt was provided. Create a general-purpose caption in the \
                 selected tone.\
                 """;
+
+        String wordCountGuidance = requestedRange != null
+                ? """
+
+                Required word-count range: %d-%d words.
+                Count words before finalizing the caption. The caption must land inside this \
+                range. Do not return a shorter summary when the contributor asks for this length.\
+                """.formatted(requestedRange.min(), requestedRange.max())
+                : """
+
+                Maximum caption length: %d words. Do not exceed this cap.\
+                """.formatted(MAX_REQUESTED_CAPTION_WORDS);
 
         String captionTask = hasCaptionInput
             ? """
@@ -371,6 +426,8 @@ public class ClaudeVisionClient {
             %s
             %s
             %s
+            %s
+            %s
 
             Selected tone: "%s"
 
@@ -386,7 +443,8 @@ public class ClaudeVisionClient {
             for them or when they improve specificity.
             - Do not invent missing event dates, institution names, categories, names, awards, \
             numbers, or official claims.
-            - If no contributor length or word-count instruction is provided, default to 80-280 characters.
+            - If no contributor length or word-count instruction is provided, default to a concise Facebook caption.
+            - Never exceed %d words.
             - If no contributor hashtag instruction is provided, include 2-3 relevant hashtags.
             - No offensive, discriminatory, sexual, violent, or otherwise inappropriate content.
 
@@ -394,7 +452,16 @@ public class ClaudeVisionClient {
             [
               {"tone": "%s", "caption": "..."}
             ]
-            """.formatted(mediaGuidance, selectedMediaContext, promptGuidance, captionTask, targetTone, targetTone);
+            """.formatted(
+                mediaGuidance,
+                selectedMediaContext,
+                promptGuidance,
+                wordCountGuidance,
+                correctionInstruction == null ? "" : correctionInstruction,
+                captionTask,
+                targetTone,
+                MAX_REQUESTED_CAPTION_WORDS,
+                targetTone);
     }
 
     private static String buildSubmissionContext(String eventTitle, String eventDate,
@@ -420,7 +487,8 @@ public class ClaudeVisionClient {
             return DEFAULT_CAPTION_MAX_TOKENS;
         }
 
-        int estimatedTokens = (int) Math.ceil(requestedWords * 1.6) + 400;
+        int cappedWords = Math.min(requestedWords, MAX_REQUESTED_CAPTION_WORDS);
+        int estimatedTokens = (int) Math.ceil(cappedWords * 1.6) + 400;
         return Math.min(MAX_CAPTION_MAX_TOKENS, Math.max(DEFAULT_CAPTION_MAX_TOKENS, estimatedTokens));
     }
 
@@ -433,7 +501,7 @@ public class ClaudeVisionClient {
         };
     }
 
-    static int extractRequestedWordCount(String prompt) {
+    public static int extractRequestedWordCount(String prompt) {
         if (prompt == null || prompt.isBlank()) return 0;
         Matcher matcher = WORD_COUNT_PATTERN.matcher(prompt);
         int largest = 0;
@@ -441,6 +509,26 @@ public class ClaudeVisionClient {
             largest = Math.max(largest, Integer.parseInt(matcher.group(1)));
         }
         return largest;
+    }
+
+    static WordCountRange wordCountRange(int requestedWords) {
+        if (requestedWords <= 0) return null;
+        int cappedWords = Math.min(requestedWords, MAX_REQUESTED_CAPTION_WORDS);
+        int tolerance = Math.max(3, (int) Math.ceil(cappedWords * 0.05));
+        return new WordCountRange(
+                Math.max(1, cappedWords - tolerance),
+                Math.min(MAX_REQUESTED_CAPTION_WORDS, cappedWords + tolerance));
+    }
+
+    static int countWords(String value) {
+        if (value == null || value.isBlank()) return 0;
+        return value.trim().split("\\s+").length;
+    }
+
+    record WordCountRange(int min, int max) {
+        boolean contains(int value) {
+            return value >= min && value <= max;
+        }
     }
 
     private List<CaptionVariantDto> parseVariants(String responseBody) {

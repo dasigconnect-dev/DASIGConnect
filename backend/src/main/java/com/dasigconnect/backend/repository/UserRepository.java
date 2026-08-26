@@ -1,10 +1,13 @@
 package com.dasigconnect.backend.repository;
 
 import java.util.List;
+import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
@@ -32,4 +35,12 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     boolean existsByInstitutionIdAndAccountState(UUID institutionId, UserStatus accountState);
 
     List<User> findByRole(UserRole role);
+
+    @Query("""
+            select user
+            from User user
+            where user.role in :roles
+            order by user.createdAt desc
+            """)
+    List<User> findByRolesOrderByCreatedAtDesc(@Param("roles") Collection<UserRole> roles);
 }

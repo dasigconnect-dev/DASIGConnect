@@ -20,9 +20,25 @@ class ClaudeVisionClientTest {
     }
 
     @Test
+    void determineCaptionMaxTokens_capsOverLimitRequests() {
+        assertThat(ClaudeVisionClient.determineCaptionMaxTokens("Write a 5000-word caption."))
+                .isLessThanOrEqualTo(4096);
+    }
+
+    @Test
     void extractRequestedWordCount_supportsHyphenatedWordCount() {
         assertThat(ClaudeVisionClient.extractRequestedWordCount("Write a 500-word caption for students."))
                 .isEqualTo(500);
+    }
+
+    @Test
+    void wordCountRange_forOneHundredWordsIsTight() {
+        var range = ClaudeVisionClient.wordCountRange(100);
+
+        assertThat(range.contains(76)).isFalse();
+        assertThat(range.contains(95)).isTrue();
+        assertThat(range.contains(105)).isTrue();
+        assertThat(range.contains(106)).isFalse();
     }
 
     @Test

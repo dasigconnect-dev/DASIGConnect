@@ -50,6 +50,15 @@ public class CaptionGenerationService {
      */
     public CaptionResponseDto generateCaptions(UUID submissionId, UUID userId, UUID institutionId,
                                                String existingCaption, String prompt, String tone) {
+        int requestedWords = ClaudeVisionClient.extractRequestedWordCount(prompt);
+        if (requestedWords > ClaudeVisionClient.MAX_REQUESTED_CAPTION_WORDS) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "AI captions are limited to "
+                            + ClaudeVisionClient.MAX_REQUESTED_CAPTION_WORDS
+                            + " requested words.");
+        }
+
         // Step 1: Fetch submission data in a short read-only transaction
         SubmissionContext ctx = loadSubmissionContext(submissionId, institutionId);
 

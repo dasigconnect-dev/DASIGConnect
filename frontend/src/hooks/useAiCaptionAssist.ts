@@ -46,6 +46,7 @@ export function useAiCaptionAssist(
   const [variants, setVariants] = useState<CaptionVariant[] | null>(null);
   const [rateLimitReset, setRateLimitReset] = useState<number | null>(null);
   const [lastPrompt, setLastPrompt] = useState("");
+  const [lastTone, setLastTone] = useState<CaptionTone>("professional");
   const [notice, setNotice] = useState<string | null>(null);
   const cooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -62,6 +63,7 @@ export function useAiCaptionAssist(
     if (cooldownRef.current) clearTimeout(cooldownRef.current);
     const normalizedPrompt = prompt.trim();
     setLastPrompt(normalizedPrompt);
+    setLastTone(tone);
     setNotice(null);
     setState("loading");
 
@@ -73,7 +75,7 @@ export function useAiCaptionAssist(
         tone,
       );
       const generatedVariant = response.variants[0] ?? null;
-      setVariants(null);
+      setVariants(response.variants.length > 0 ? response.variants : null);
       setState("idle");
       return generatedVariant;
     } catch (err) {
@@ -104,7 +106,7 @@ export function useAiCaptionAssist(
   function regenerate() {
     setVariants(null);
     if (submissionId) logCaptionInteraction(submissionId, "re_generate");
-    void suggest(lastPrompt);
+    void suggest(lastPrompt, lastTone);
   }
 
   function logApply(
