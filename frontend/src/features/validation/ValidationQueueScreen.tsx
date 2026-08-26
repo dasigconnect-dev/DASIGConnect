@@ -483,18 +483,15 @@ export default function ValidationQueueScreen({
             <div>
               <h1>Review Queue</h1>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span className="val-count">{isFailedMode ? failures.length : filteredQueue.length}</span>
-              <button
-                type="button"
-                className="val-collapse-btn"
-                onClick={() => setIsPanelCollapsed(true)}
-                title="Collapse queue panel (<<)"
-                aria-label="Collapse queue list"
-              >
-                <i className="ti ti-chevrons-left" />
-              </button>
-            </div>
+            <button
+              type="button"
+              className="val-collapse-btn"
+              onClick={() => setIsPanelCollapsed(true)}
+              title="Collapse queue panel (<<)"
+              aria-label="Collapse queue list"
+            >
+              <i className="ti ti-chevrons-left" />
+            </button>
           </div>
 
           <div className="val-tabs" role="tablist" aria-label="Queue filters">
