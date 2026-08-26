@@ -176,11 +176,15 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("from") Instant from,
             @Param("to") Instant to);
 
-    /** Calendar API (admin): all submissions with a scheduled slot, any status. */
+    /**
+     * Calendar API (admin): all submissions that have a calendar position, any
+     * status. A scheduled slot OR a publish timestamp counts — the latter covers
+     * Live Event / Fast-Track posts that publish without ever reserving a slot.
+     */
     @Query("""
         SELECT s FROM Submission s
-        WHERE s.scheduledAt IS NOT NULL
-        ORDER BY s.scheduledAt ASC
+        WHERE s.scheduledAt IS NOT NULL OR s.publishedAt IS NOT NULL
+        ORDER BY COALESCE(s.scheduledAt, s.publishedAt) ASC
         """)
     List<Submission> findAllWithScheduledSlot();
 
@@ -192,7 +196,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
      */
     @Query("""
         SELECT s FROM Submission s
-        WHERE s.scheduledAt IS NOT NULL
+        WHERE (s.scheduledAt IS NOT NULL OR s.publishedAt IS NOT NULL)
         AND s.status IN (
             com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
             com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled,
@@ -202,7 +206,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             com.dasigconnect.backend.model.entity.SubmissionStatus.published_manual,
             com.dasigconnect.backend.model.entity.SubmissionStatus.admin_direct_post
         )
-        ORDER BY s.scheduledAt ASC
+        ORDER BY COALESCE(s.scheduledAt, s.publishedAt) ASC
         """)
     List<Submission> findAllCalendarVisibleSlots();
 

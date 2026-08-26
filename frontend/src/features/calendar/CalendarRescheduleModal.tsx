@@ -46,8 +46,7 @@ export default function CalendarRescheduleModal({
       const message =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       setApiError(
-        message ||
-          "Reschedule failed — the new slot may be taken, or this submission cannot be moved in its current state.",
+        message || "Reschedule failed — the slot may be taken or this post can't be moved.",
       );
       setBusy(false);
     }
@@ -85,15 +84,6 @@ export default function CalendarRescheduleModal({
         </div>
 
         <div className="modal-card-body cal-reschedule-body">
-          <div className="cal-reschedule-warning" role="alert">
-            <i className="ti ti-info-circle" aria-hidden="true" />
-            <p>
-              Rescheduling moves the institution&rsquo;s publishing slot. The contributor may have
-              planned around the original date. This change is written to the audit log and cannot
-              be undone without another reschedule.
-            </p>
-          </div>
-
           <div className="cal-reschedule-diff" aria-label="Schedule change">
             <div className="cal-reschedule-diff-col">
               <span className="cal-reschedule-diff-label">Original</span>
@@ -111,31 +101,21 @@ export default function CalendarRescheduleModal({
           <div className="cal-reschedule-reason-group">
             <label htmlFor="cal-reschedule-reason" className="cal-reschedule-reason-label">
               <span className="cal-reschedule-reason-title">
-                Reason for rescheduling
+                Reason
                 <span className="cal-reschedule-required" aria-hidden="true"> *</span>
-              </span>
-              <span className="cal-reschedule-reason-hint">
-                Required · minimum {MIN_REASON_LEN} characters · saved to the audit log
               </span>
             </label>
             <textarea
               id="cal-reschedule-reason"
               className={`cal-reschedule-reason-input${reasonTrimmed.length >= MIN_REASON_LEN ? " is-valid" : ""}`}
               rows={3}
-              placeholder="Explain why this submission is being rescheduled…"
+              placeholder="Why is this being rescheduled?"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               disabled={busy}
               autoFocus
             />
             <div className="cal-reschedule-reason-footer">
-              <span className={`cal-reschedule-reason-hint-inline${reasonTrimmed.length >= MIN_REASON_LEN ? " is-valid" : ""}`}>
-                {reasonTrimmed.length >= MIN_REASON_LEN ? (
-                  <><i className="ti ti-circle-check" aria-hidden="true" /> Reason accepted</>
-                ) : reasonTrimmed.length > 0 ? (
-                  `${MIN_REASON_LEN - reasonTrimmed.length} more character${MIN_REASON_LEN - reasonTrimmed.length === 1 ? "" : "s"} needed`
-                ) : null}
-              </span>
               <span
                 className={`cal-reschedule-char-count${reasonTrimmed.length >= MIN_REASON_LEN ? " is-valid" : ""}`}
               >
@@ -159,7 +139,6 @@ export default function CalendarRescheduleModal({
             onClick={onCancel}
             disabled={busy}
           >
-            <i className="ti ti-arrow-back-up" aria-hidden="true" />
             Cancel
           </button>
           <button
@@ -167,23 +146,15 @@ export default function CalendarRescheduleModal({
             className={`btn-danger cal-reschedule-confirm-btn${!canConfirm && !busy ? " cal-reschedule-confirm-locked" : ""}`}
             onClick={handleConfirm}
             disabled={!canConfirm}
-            title={!canConfirm && !busy ? `Enter at least ${MIN_REASON_LEN} characters to confirm` : undefined}
+            title={!canConfirm && !busy ? `Enter at least ${MIN_REASON_LEN} characters` : undefined}
           >
             {busy ? (
               <>
                 <i className="ti ti-loader-2 cal-reschedule-spin" aria-hidden="true" />
                 Rescheduling…
               </>
-            ) : !canConfirm ? (
-              <>
-                <i className="ti ti-lock" aria-hidden="true" />
-                Confirm Reschedule
-              </>
             ) : (
-              <>
-                <i className="ti ti-calendar-event" aria-hidden="true" />
-                Confirm Reschedule
-              </>
+              "Confirm"
             )}
           </button>
         </div>

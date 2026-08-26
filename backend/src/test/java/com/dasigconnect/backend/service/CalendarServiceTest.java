@@ -173,9 +173,9 @@ class CalendarServiceTest {
         assertThat(dasigEvent.getDescription()).isEqualTo("Event description for DASIG Regional Assembly");
         assertThat(dasigEvent.getInstitutionId()).isEqualTo(dasigCentralVisayasId);
 
-        // Other institution: masked (timing-only, content masked)
+        // Other institution: masked (timing and title visible, sensitive content masked)
         CalendarEventDto otherEvent = results.stream().filter(e -> e.getId().equals(otherSub.getId())).findFirst().orElseThrow();
-        assertThat(otherEvent.getTitle()).isNull();
+        assertThat(otherEvent.getTitle()).isEqualTo("UP Hackathon");
         assertThat(otherEvent.getCaption()).isNull();
         assertThat(otherEvent.getDescription()).isNull();
         assertThat(otherEvent.getContributorName()).isNull();
