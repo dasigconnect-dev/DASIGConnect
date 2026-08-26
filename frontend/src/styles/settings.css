@@ -452,6 +452,118 @@
   padding-left: 38px;
 }
 
+/* Messenger Integration Card */
+.settings-messenger-connected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--r);
+  gap: 12px;
+}
+
+.settings-messenger-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-messenger-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.2);
+}
+
+.settings-messenger-badge-text strong {
+  display: block;
+  font-size: 13px;
+  color: #166534;
+}
+
+.settings-messenger-badge-text span {
+  font-size: 11px;
+  color: #15803d;
+}
+
+.settings-messenger-disconnect-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #dc2626;
+  background: #fff;
+  border: 1px solid #fca5a5;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.settings-messenger-disconnect-btn:hover {
+  background: #fef2f2;
+  border-color: #ef4444;
+}
+
+.settings-messenger-box {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-messenger-code-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #0f172a;
+  color: #38bdf8;
+  padding: 14px 18px;
+  border-radius: var(--r);
+  font-family: 'JetBrains Mono', monospace, sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.settings-messenger-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #1e293b;
+  color: #f1f5f9;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.settings-messenger-copy-btn:hover {
+  background: #334155;
+  color: #fff;
+}
+
+.settings-messenger-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--d-muted);
+  line-height: 1.5;
+}
+
+.settings-messenger-steps ol {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.settings-messenger-steps li {
+  margin-bottom: 4px;
+}
+
 @keyframes settings-spin {
   to {
     transform: rotate(360deg);

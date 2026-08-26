@@ -103,6 +103,56 @@ public class ClaudeVisionClient {
         return parseVariants(response.body());
     }
 
+    /**
+     * Generates a plain-text completion for system alerts / suggestions.
+     */
+    public String generateText(String systemPrompt, String userPrompt) {
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new ClaudeApiException("Anthropic API key is not configured.");
+        }
+        try {
+            var messagesArray = objectMapper.createArrayNode();
+            var message = objectMapper.createObjectNode();
+            message.put("role", "user");
+            message.put("content", userPrompt);
+            messagesArray.add(message);
+
+            var root = objectMapper.createObjectNode();
+            root.put("model", model);
+            root.put("max_tokens", 512);
+            if (systemPrompt != null && !systemPrompt.isBlank()) {
+                root.put("system", systemPrompt);
+            }
+            root.set("messages", messagesArray);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(API_URL))
+                    .header("x-api-key", apiKey)
+                    .header("anthropic-version", ANTHROPIC_VERSION)
+                    .header("content-type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(root)))
+                    .timeout(Duration.ofSeconds(20))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                log.warn("Claude API returned status {}: {}", response.statusCode(), response.body());
+                throw new ClaudeApiException("Claude API error (HTTP " + response.statusCode() + ").");
+            }
+
+            JsonNode responseRoot = objectMapper.readTree(response.body());
+            JsonNode content = responseRoot.path("content");
+            if (content.isArray() && content.size() > 0) {
+                return content.get(0).path("text").asText("");
+            }
+            return "";
+        } catch (ClaudeApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ClaudeApiException("Failed to generate text from Claude: " + e.getMessage());
+        }
+    }
+
     private String buildPayload(List<String> imageUrls, String eventTitle, String existingCaption) {
         try {
             var contentArray = objectMapper.createArrayNode();

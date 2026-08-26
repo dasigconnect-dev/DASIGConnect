@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { User } from "../../types/auth.types";
 import { changePassword, getMe, getPageSettings, listInstitutions, updateAccountSettings, updatePageSettings } from "../../api/authApi";
+import { createMessengerLinkCode, disconnectMessenger, getMessengerConnectionStatus, type MessengerConnection, type MessengerLinkCode } from "../../api/messengerApi";
 import { useToast } from "../../context/ToastContext";
 
 interface Props { user: User; onProfileUpdated: () => Promise<void>; }
@@ -17,9 +18,22 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [facebookPageId, setFacebookPageId] = useState("");
   const [institutions, setInstitutions] = useState<{ id: string; name: string }[]>([]);
   const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
-  const [saving, setSaving] = useState<"account" | "password" | "page" | null>(null);
+  const [saving, setSaving] = useState<"account" | "password" | "page" | "messenger" | null>(null);
+  
+  // Messenger integration state
+  const [messengerStatus, setMessengerStatus] = useState<MessengerConnection | null>(null);
+  const [linkCode, setLinkCode] = useState<MessengerLinkCode | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+
   const canManagePage = user.role !== "contributor";
   const pageInstitutionId = user.role === "administrator" ? user.institutionId : selectedInstitutionId || null;
+
+  const loadMessenger = () => {
+    if (!canManagePage) return;
+    getMessengerConnectionStatus()
+      .then((data) => setMessengerStatus(data))
+      .catch(() => setMessengerStatus(null));
+  };
 
   useEffect(() => {
     void getMe().then(({ data }) => {
@@ -27,11 +41,14 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       setNotifyInApp(data.notifyInApp);
       setNotifyEmail(data.notifyEmail);
     });
-    if (canManagePage) void getPageSettings(pageInstitutionId).then(({ data }) => {
-      setWatermarkEnabled(data.watermarkEnabled);
-      setWatermarkText(data.watermarkText || "");
-      setFacebookPageId(data.facebookPageId || "");
-    }).catch(() => toast.error("Unable to load Page Settings."));
+    if (canManagePage) {
+      loadMessenger();
+      void getPageSettings(pageInstitutionId).then(({ data }) => {
+        setWatermarkEnabled(data.watermarkEnabled);
+        setWatermarkText(data.watermarkText || "");
+        setFacebookPageId(data.facebookPageId || "");
+      }).catch(() => toast.error("Unable to load Page Settings."));
+    }
     if (user.role === "super_administrator") void listInstitutions().then(({ data }) =>
       setInstitutions(data.map((item) => ({ id: item.id, name: item.name }))));
   }, [canManagePage, pageInstitutionId, toast, user.role]);
@@ -64,6 +81,44 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       toast.success("Page settings updated.");
     } catch { toast.error("Unable to update Page Settings."); }
     finally { setSaving(null); }
+  }
+
+  async function generateMessengerCode() {
+    setSaving("messenger");
+    try {
+      const res = await createMessengerLinkCode();
+      setLinkCode(res);
+      setCopiedCode(false);
+      toast.success("Messenger link code generated. Send it to the official Page.");
+    } catch {
+      toast.error("Unable to generate Messenger link code.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleDisconnectMessenger() {
+    if (!window.confirm("Are you sure you want to disconnect Facebook Messenger alerts?")) return;
+    setSaving("messenger");
+    try {
+      await disconnectMessenger();
+      setMessengerStatus({ connected: false, enabled: false, linkedAt: null });
+      setLinkCode(null);
+      toast.success("Facebook Messenger disconnected.");
+    } catch {
+      toast.error("Unable to disconnect Messenger.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  function handleCopyCode() {
+    if (!linkCode) return;
+    void navigator.clipboard.writeText(linkCode.code).then(() => {
+      setCopiedCode(true);
+      toast.success("Code copied to clipboard!");
+      setTimeout(() => setCopiedCode(false), 3000);
+    });
   }
 
   return <div className="dash-body settings-page">
@@ -136,6 +191,83 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
           </div>
         </div>
         <SettingsFooter label="Save Page Settings" icon="ti ti-device-floppy" busy={saving === "page"} onClick={() => void savePage()} />
+      </section>}
+
+      {canManagePage && <section className="settings-card settings-card-wide" id="messenger">
+        <SettingsHeader
+          icon="ti ti-brand-messenger"
+          title="Facebook Messenger Alerts"
+          description="Receive instant alerts for submissions, schedule warnings, and critical publishing events directly on Messenger."
+          accent={messengerStatus?.connected
+            ? <span className="settings-admin-chip" style={{ background: "#dcfce7", color: "#166534" }}><i className="ti ti-circle-check" />Connected</span>
+            : <span className="settings-admin-chip"><i className="ti ti-plug" />Integration</span>}
+        />
+        <div className="settings-card-body">
+          {messengerStatus?.connected ? (
+            <div className="settings-messenger-connected">
+              <div className="settings-messenger-badge">
+                <span className="settings-messenger-status-dot" />
+                <div className="settings-messenger-badge-text">
+                  <strong>Messenger Account Linked & Active</strong>
+                  <span>Connected {messengerStatus.linkedAt ? new Date(messengerStatus.linkedAt).toLocaleDateString() : ""} — Real-time alerts enabled</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="settings-messenger-disconnect-btn"
+                disabled={saving === "messenger"}
+                onClick={() => void handleDisconnectMessenger()}
+              >
+                <i className="ti ti-plug-connected-x" /> Disconnect
+              </button>
+            </div>
+          ) : (
+            <div className="settings-messenger-box">
+              <div className="settings-messenger-steps">
+                <p>Link your personal Facebook Messenger to receive automated real-time alerts (T-01, T-06, T-11) directly from DASIGConnect.</p>
+                <ol>
+                  <li>Click <strong>Generate Link Code</strong> below to receive a secure 10-minute code.</li>
+                  <li>Open Facebook Messenger and send the exact command to the official DASIGConnect Page.</li>
+                  <li>DASIGConnect will verify the code and immediately confirm your connection.</li>
+                </ol>
+              </div>
+
+              {linkCode ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <div className="settings-messenger-code-container">
+                    <span>{linkCode.code}</span>
+                    <button type="button" className="settings-messenger-copy-btn" onClick={handleCopyCode}>
+                      <i className={copiedCode ? "ti ti-check" : "ti ti-copy"} />
+                      {copiedCode ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "var(--d-muted)" }}>
+                    <span>Expires in 10 minutes</span>
+                    <button
+                      type="button"
+                      style={{ background: "none", border: "none", color: "var(--d-blue)", cursor: "pointer", textDecoration: "underline", fontSize: "11px" }}
+                      onClick={loadMessenger}
+                    >
+                      Check Connection Status
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <button
+                    type="button"
+                    className="settings-save-button"
+                    style={{ display: "inline-flex", alignItems: "center", gap: "8px", width: "auto" }}
+                    disabled={saving === "messenger"}
+                    onClick={() => void generateMessengerCode()}
+                  >
+                    <i className="ti ti-key" /> Generate Link Code
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </section>}
     </div>
   </div>;
