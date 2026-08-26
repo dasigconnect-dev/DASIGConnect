@@ -77,6 +77,13 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success(userService.listByInstitution(institutionId, user)));
     }
 
+    @GetMapping("/users/administrators")
+    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
+    public ResponseEntity<ApiResponse<List<UserDto>>> listAdministrators(
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.listAdministrators(user)));
+    }
+
     @GetMapping("/users/{id}")
     @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
     public ResponseEntity<ApiResponse<UserDto>> getUser(
