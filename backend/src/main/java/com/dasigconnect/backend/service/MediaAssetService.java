@@ -15,6 +15,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.model.dto.media.AddAssetTagRequestDto;
 import com.dasigconnect.backend.model.dto.media.AssetTagDto;
+import com.dasigconnect.backend.model.dto.media.MediaAlbumDto;
+import com.dasigconnect.backend.model.dto.media.MediaAlbumRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetAddToDraftRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
@@ -30,12 +33,14 @@ import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.entity.AssetTag;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAsset;
+import com.dasigconnect.backend.model.entity.MediaAlbum;
 import com.dasigconnect.backend.model.entity.MediaFileType;
 import com.dasigconnect.backend.model.entity.MediaAssetStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlResponseDto;
 import com.dasigconnect.backend.repository.AssetTagRepository;
+import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
@@ -54,6 +59,7 @@ public class MediaAssetService {
     private final SubmissionRepository submissionRepository;
     private final SubmissionMediaAssetRepository submissionMediaAssetRepository;
     private final AssetTagRepository assetTagRepository;
+    private final MediaAlbumRepository mediaAlbumRepository;
     private final MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     private final SubmissionService submissionService;
     private final SupabaseStorageService supabaseStorageService;
@@ -67,6 +73,7 @@ public class MediaAssetService {
             SubmissionRepository submissionRepository,
             SubmissionMediaAssetRepository submissionMediaAssetRepository,
             AssetTagRepository assetTagRepository,
+            MediaAlbumRepository mediaAlbumRepository,
             MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
             SubmissionService submissionService,
             SupabaseStorageService supabaseStorageService,
@@ -75,6 +82,7 @@ public class MediaAssetService {
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.assetTagRepository = assetTagRepository;
+        this.mediaAlbumRepository = mediaAlbumRepository;
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
         this.submissionService = submissionService;
         this.supabaseStorageService = supabaseStorageService;
@@ -251,10 +259,22 @@ public class MediaAssetService {
         } catch (IllegalArgumentException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported file type: " + dto.getFileType());
         }
+        if (dto.getFileSizeBytes() > 50L * 1024L * 1024L) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File exceeds the 50 MB limit.");
+        }
+
+        List<String> manualTags = normalizeTags(dto.getTags());
+        if (manualTags.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one media tag is required.");
+        }
+
+        UUID institutionId = resolveTargetInstitutionId(dto.getInstitutionId(), user);
+        MediaAlbum album = resolveAlbum(dto, institutionId, user.userId());
 
         MediaAsset asset = new MediaAsset();
-        asset.setInstitution(entityManager.getReference(Institution.class, user.institutionId()));
+        asset.setInstitution(entityManager.getReference(Institution.class, institutionId));
         asset.setUploader(entityManager.getReference(User.class, user.userId()));
+        asset.setMediaAlbum(album);
         asset.setAssetCode(generateAssetCode());
         asset.setStorageUrl(dto.getStorageUrl());
         asset.setFileName(dto.getFileName());
@@ -262,6 +282,7 @@ public class MediaAssetService {
         asset.setFileSizeBytes(dto.getFileSizeBytes());
         asset.setStatus(MediaAssetStatus.PROCESSING);
         asset = mediaAssetRepository.save(asset);
+        List<AssetTagDto> savedTags = saveManualTags(asset, manualTags);
 
         // Trigger async classification + embedding — never blocks the upload response
         final UUID savedId = asset.getId();
@@ -275,7 +296,58 @@ public class MediaAssetService {
             log.warn("Failed to trigger AI classification for asset {}: {}", savedId, e.getMessage());
         }
 
-        return MediaAssetDetailDto.from(asset, List.of(), List.of());
+        return MediaAssetDetailDto.from(asset, List.of(), savedTags);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MediaAlbumDto> listAlbums(UUID requestedInstitutionId, JwtUserDetails user) {
+        UUID institutionId = resolveTargetInstitutionId(requestedInstitutionId, user);
+        return mediaAlbumRepository.findByInstitutionIdOrderByName(institutionId)
+                .stream()
+                .map(MediaAlbumDto::from)
+                .toList();
+    }
+
+    public MediaAlbumDto createAlbum(MediaAlbumRequestDto dto, JwtUserDetails user) {
+        UUID institutionId = resolveTargetInstitutionId(dto.getInstitutionId(), user);
+        String name = normalizeRequiredAlbumName(dto.getName());
+        if (mediaAlbumRepository.existsByInstitutionIdAndNameIgnoreCase(institutionId, name)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Album already exists.");
+        }
+        MediaAlbum album = new MediaAlbum();
+        album.setInstitution(entityManager.getReference(Institution.class, institutionId));
+        album.setName(name);
+        album.setCreatedBy(user.userId());
+        return MediaAlbumDto.from(mediaAlbumRepository.save(album));
+    }
+
+    public MediaAlbumDto renameAlbum(UUID albumId, MediaAlbumRequestDto dto, JwtUserDetails user) {
+        UUID institutionId = resolveTargetInstitutionId(dto.getInstitutionId(), user);
+        MediaAlbum album = mediaAlbumRepository.findById(albumId)
+                .filter(a -> a.getInstitution().getId().equals(institutionId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Album not found."));
+        String name = normalizeRequiredAlbumName(dto.getName());
+        mediaAlbumRepository.findByInstitutionIdAndNameIgnoreCase(institutionId, name)
+                .filter(existing -> !existing.getId().equals(albumId))
+                .ifPresent(existing -> {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Album already exists.");
+                });
+        album.setName(name);
+        return MediaAlbumDto.from(mediaAlbumRepository.save(album));
+    }
+
+    public MediaAssetDetailDto updateAlbum(UUID assetId, MediaAssetAlbumRequestDto dto, JwtUserDetails user) {
+        MediaAsset asset = loadAsset(assetId, user);
+        if (dto.getAlbumId() == null) {
+            asset.setMediaAlbum(null);
+            return MediaAssetDetailDto.from(mediaAssetRepository.save(asset), List.of(), currentTags(assetId));
+        }
+
+        MediaAlbum album = mediaAlbumRepository.findById(dto.getAlbumId())
+                .filter(a -> a.getInstitution().getId().equals(asset.getInstitution().getId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selected album was not found."));
+        asset.setMediaAlbum(album);
+        return MediaAssetDetailDto.from(mediaAssetRepository.save(asset), List.of(), currentTags(assetId));
     }
 
     public AssetTagDto addTag(UUID assetId, AddAssetTagRequestDto dto, JwtUserDetails user) {
@@ -321,6 +393,94 @@ public class MediaAssetService {
 
     private boolean isAdmin(JwtUserDetails user) {
         return user.role() != null && user.role().toLowerCase().contains("admin");
+    }
+
+    private UUID resolveTargetInstitutionId(UUID requestedInstitutionId, JwtUserDetails user) {
+        if (isAdmin(user) && requestedInstitutionId != null) {
+            return requestedInstitutionId;
+        }
+        if (user.institutionId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Institution scope is required for media library uploads.");
+        }
+        return user.institutionId();
+    }
+
+    private MediaAlbum resolveAlbum(MediaAssetUploadRequestDto dto, UUID institutionId, UUID createdBy) {
+        if (dto.getAlbumId() != null) {
+            return mediaAlbumRepository.findById(dto.getAlbumId())
+                    .filter(album -> album.getInstitution().getId().equals(institutionId))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selected album was not found."));
+        }
+
+        if (dto.isAutoMatchAlbum()) {
+            return autoMatchAlbum(dto, institutionId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "No confident album match found. Select an album or create a new one."));
+        }
+
+        String albumName = normalizeRequiredAlbumName(dto.getAlbumName());
+        return mediaAlbumRepository.findByInstitutionIdAndNameIgnoreCase(institutionId, albumName)
+                .orElseGet(() -> {
+                    MediaAlbum album = new MediaAlbum();
+                    album.setInstitution(entityManager.getReference(Institution.class, institutionId));
+                    album.setName(albumName);
+                    album.setCreatedBy(createdBy);
+                    return mediaAlbumRepository.save(album);
+                });
+    }
+
+    private java.util.Optional<MediaAlbum> autoMatchAlbum(MediaAssetUploadRequestDto dto, UUID institutionId) {
+        List<MediaAlbum> albums = mediaAlbumRepository.findByInstitutionIdOrderByName(institutionId);
+        if (albums.isEmpty()) {
+            return java.util.Optional.empty();
+        }
+        Set<String> cues = new LinkedHashSet<>(normalizeTags(dto.getTags()).stream().map(String::toLowerCase).toList());
+        String fileName = dto.getFileName() == null ? "" : dto.getFileName().toLowerCase();
+        return albums.stream()
+                .filter(album -> {
+                    String name = album.getName().toLowerCase();
+                    return cues.stream().anyMatch(tag -> !tag.isBlank() && (name.contains(tag) || tag.contains(name)))
+                            || (!name.isBlank() && fileName.contains(name));
+                })
+                .findFirst();
+    }
+
+    private String normalizeRequiredAlbumName(String raw) {
+        String name = raw == null ? "" : raw.trim();
+        if (name.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Album is required.");
+        }
+        return name;
+    }
+
+    private List<String> normalizeTags(List<String> raw) {
+        if (raw == null) return List.of();
+        return raw.stream()
+                .map(tag -> tag == null ? "" : tag.trim())
+                .filter(tag -> !tag.isBlank())
+                .distinct()
+                .limit(20)
+                .toList();
+    }
+
+    private List<AssetTagDto> saveManualTags(MediaAsset asset, List<String> labels) {
+        List<AssetTagDto> saved = new ArrayList<>();
+        for (String label : labels) {
+            AssetTag tag = new AssetTag();
+            tag.setMediaAsset(asset);
+            tag.setLabel(label);
+            tag.setSource("manual");
+            saved.add(AssetTagDto.from(assetTagRepository.save(tag)));
+        }
+        return saved;
+    }
+
+    private List<AssetTagDto> currentTags(UUID assetId) {
+        return assetTagRepository
+                .findByMediaAssetIdOrderByCreatedAtAsc(assetId)
+                .stream()
+                .map(AssetTagDto::from)
+                .toList();
     }
 
     /**

@@ -29,6 +29,8 @@ export interface MediaAsset {
   uploaderName?: string;
   uploadedAt: string;
   status: MediaAssetStatus;
+  albumId?: string;
+  albumName?: string;
   aiTags?: AiTag[];
   usedIn?: MediaUsage[];
   widthPx?: number;
@@ -58,6 +60,19 @@ export interface MediaAssetRegisterRequest {
   fileName: string;
   fileType: string;
   fileSizeBytes: number;
+  institutionId?: string | null;
+  albumId?: string | null;
+  albumName?: string;
+  autoMatchAlbum?: boolean;
+  tags: string[];
+}
+
+export interface MediaAlbum {
+  id: string;
+  institutionId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface MediaAssetPageResponse {
@@ -69,6 +84,8 @@ interface MediaAssetPageResponse {
     fileType: string;
     fileSizeBytes: number;
     aiCategory?: string | null;
+    albumId?: string | null;
+    albumName?: string | null;
     createdAt: string;
     institutionId?: string | null;
     institutionName?: string | null;
@@ -112,6 +129,8 @@ function rawToAsset(raw: MediaAssetPageResponse["items"][0]): MediaAsset {
     uploaderName: raw.uploaderEmail ?? undefined,
     uploadedAt: raw.createdAt,
     status: "ready" as const,
+    albumId: raw.albumId ?? undefined,
+    albumName: raw.albumName ?? undefined,
     aiTags: raw.aiCategory ? [{ label: raw.aiCategory, confidence: 100 }] : [],
   };
 }
@@ -166,6 +185,8 @@ interface MediaAssetDetailResponse {
   fileType: string;
   fileSizeBytes: number;
   aiCategory?: string | null;
+  albumId?: string | null;
+  albumName?: string | null;
   aiConfidence?: number | null;
   createdAt: string;
   institutionId?: string | null;
@@ -209,6 +230,8 @@ function mapDetailToAsset(raw: MediaAssetDetailResponse): MediaAsset {
     uploaderName: raw.uploaderEmail ?? undefined,
     uploadedAt: raw.createdAt,
     status: "ready",
+    albumId: raw.albumId ?? undefined,
+    albumName: raw.albumName ?? undefined,
     aiTags: aiTags.length > 0 ? aiTags : undefined,
     usedIn: (raw.usedIn ?? []).map((u) => ({
       submissionId: u.submissionId,
@@ -243,4 +266,23 @@ export function getMediaAssetUploadUrl(payload: MediaAssetUploadUrlRequest) {
 
 export function registerMediaAsset(payload: MediaAssetRegisterRequest) {
   return api.post<MediaAsset>("/media-assets/upload", payload);
+}
+
+export function listMediaAlbums(institutionId?: string | null) {
+  return api.get<MediaAlbum[]>("/media-assets/albums", {
+    params: institutionId ? { institutionId } : undefined,
+  });
+}
+
+export function createMediaAlbum(name: string, institutionId?: string | null) {
+  return api.post<MediaAlbum>("/media-assets/albums", { name, institutionId });
+}
+
+export function renameMediaAlbum(id: string, name: string, institutionId?: string | null) {
+  return api.post<MediaAlbum>(`/media-assets/albums/${id}`, { name, institutionId });
+}
+
+export function updateMediaAssetAlbum(id: string, albumId: string | null) {
+  return api.post<MediaAssetDetailResponse>(`/media-assets/${id}/album`, { albumId })
+    .then((res) => ({ ...res, data: mapDetailToAsset(res.data) }));
 }

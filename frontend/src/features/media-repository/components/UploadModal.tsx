@@ -1,25 +1,119 @@
 import { createPortal } from "react-dom";
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { MediaAlbum } from "../../../api/mediaApi";
+
+type AlbumMode = "existing" | "auto" | "new";
+
+export interface UploadMetadata {
+  albumId?: string | null;
+  albumName?: string;
+  autoMatchAlbum: boolean;
+  tags: string[];
+}
 
 interface UploadModalProps {
   open: boolean;
   institutionName: string;
   onClose: () => void;
-  onUpload: (file: File, onProgress?: (pct: number) => void) => Promise<void>;
+  albums: MediaAlbum[];
+  onCreateAlbum: (name: string) => Promise<MediaAlbum>;
+  onUpload: (file: File, metadata: UploadMetadata, onProgress?: (pct: number) => void) => Promise<void>;
 }
 
-export default function UploadModal({ open, institutionName, onClose, onUpload }: UploadModalProps) {
-  if (!open) return null;
+const ACCEPTED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm"]);
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
+export default function UploadModal({ open, institutionName, onClose, albums, onCreateAlbum, onUpload }: UploadModalProps) {
   const [dragOver, setDragOver] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [albumMode, setAlbumMode] = useState<AlbumMode>(albums.length > 0 ? "existing" : "new");
+  const [selectedAlbumId, setSelectedAlbumId] = useState(albums[0]?.id ?? "");
+  const [newAlbumName, setNewAlbumName] = useState("");
+  const [tagsInput, setTagsInput] = useState("");
+  const [inlineError, setInlineError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    if (albums.length > 0 && !selectedAlbumId) {
+      setSelectedAlbumId(albums[0].id);
+    }
+    if (albums.length === 0 && albumMode === "existing") {
+      setAlbumMode("new");
+    }
+  }, [albumMode, albums, open, selectedAlbumId]);
+
+  const tags = useMemo(
+    () => tagsInput.split(",").map((tag) => tag.trim()).filter(Boolean),
+    [tagsInput],
+  );
+
+  const autoMatchedAlbum = useMemo(() => {
+    if (albumMode !== "auto") return null;
+    const cues = new Set(tags.map((tag) => tag.toLowerCase()));
+    for (const file of selectedFiles) {
+      const name = file.name.toLowerCase();
+      name
+        .replace(/\.[^.]+$/, "")
+        .split(/[^a-z0-9]+/i)
+        .map((part) => part.trim().toLowerCase())
+        .filter(Boolean)
+        .forEach((part) => cues.add(part));
+    }
+
+    return albums.find((album) => {
+      const albumName = album.name.trim().toLowerCase();
+      if (!albumName) return false;
+      const albumWords = albumName.split(/[^a-z0-9]+/i).filter(Boolean);
+      return [...cues].some((cue) =>
+        cue === albumName ||
+        albumName.includes(cue) ||
+        cue.includes(albumName) ||
+        albumWords.some((word) => word === cue),
+      );
+    }) ?? null;
+  }, [albumMode, albums, selectedFiles, tags]);
+
+  const fileError = useMemo(() => {
+    for (const file of selectedFiles) {
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+      if (!ACCEPTED_EXTENSIONS.has(ext)) {
+        return `${file.name} is unsupported. Accepted formats: JPG, PNG, WEBP, GIF, MP4, MOV, WEBM.`;
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        return `${file.name} is ${(file.size / (1024 * 1024)).toFixed(1)} MB, over the 50 MB limit.`;
+      }
+    }
+    return "";
+  }, [selectedFiles]);
+
+  const metadataError = useMemo(() => {
+    if (albumMode === "existing" && !selectedAlbumId) return "Select an album or create a new one.";
+    if (albumMode === "auto" && !autoMatchedAlbum) return "No confident album match found. Select an album or create a new one.";
+    if (albumMode === "new" && !newAlbumName.trim()) return "Enter a new album name.";
+    if (tags.length === 0) return "Add at least one media tag.";
+    return "";
+  }, [albumMode, autoMatchedAlbum, newAlbumName, selectedAlbumId, tags.length]);
+
+  const canUpload = selectedFiles.length > 0 && !fileError && !metadataError && !uploading;
 
   function handleFilesSelect(files: File[]) {
     setSelectedFiles(files);
     setProgress(0);
+    setInlineError("");
+  }
+
+  function resetForm() {
+    setDragOver(false);
+    setSelectedFiles([]);
+    setProgress(0);
+    setInlineError("");
+    setNewAlbumName("");
+    setTagsInput("");
+    setAlbumMode(albums.length > 0 ? "existing" : "new");
+    setSelectedAlbumId(albums[0]?.id ?? "");
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -37,38 +131,60 @@ export default function UploadModal({ open, institutionName, onClose, onUpload }
 
   async function handleUpload() {
     if (selectedFiles.length === 0) return;
+    if (fileError || metadataError) {
+      setInlineError(fileError || metadataError);
+      return;
+    }
     setUploading(true);
     setProgress(0);
     try {
+      let albumId: string | null | undefined =
+        albumMode === "existing" ? selectedAlbumId : albumMode === "auto" ? autoMatchedAlbum?.id : null;
+      let albumName = albumMode === "new" ? newAlbumName.trim() : "";
+      if (albumMode === "new") {
+        const created = await onCreateAlbum(albumName);
+        albumId = created.id;
+        albumName = created.name;
+      } else if (albumMode === "auto" && autoMatchedAlbum) {
+        albumName = autoMatchedAlbum.name;
+      }
+
+      const metadata: UploadMetadata = {
+        albumId,
+        albumName,
+        autoMatchAlbum: albumMode === "auto",
+        tags,
+      };
       const total = selectedFiles.length;
       for (const [index, file] of selectedFiles.entries()) {
         const completedBase = (index / total) * 100;
-        await onUpload(file, (pct) => {
+        await onUpload(file, metadata, (pct) => {
           setProgress(Math.round(completedBase + pct / total));
         });
       }
       setProgress(100);
       setTimeout(() => {
-        setSelectedFiles([]);
-        setProgress(0);
+        resetForm();
         setUploading(false);
         onClose();
       }, 600);
     } catch {
       setUploading(false);
       setProgress(0);
+      setInlineError("Upload failed. Check your album, tags, or connection and try again.");
     }
   }
 
   function handleClose() {
     if (uploading) return;
-    setSelectedFiles([]);
-    setProgress(0);
+    resetForm();
     onClose();
   }
 
   const selectedCount = selectedFiles.length;
   const uploadLabel = selectedCount > 1 ? `Upload ${selectedCount} Assets` : "Upload Asset";
+
+  if (!open) return null;
 
   const modal = (
     <div className={`med-modal-overlay${open ? " open" : ""}`} onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}>
@@ -140,6 +256,95 @@ export default function UploadModal({ open, institutionName, onClose, onUpload }
             </div>
           )}
 
+          {selectedCount > 0 && (
+            <div className="med-upload-organize">
+              <div className="med-upload-section-title">Album</div>
+              <div className="med-upload-choice-row" role="radiogroup" aria-label="Album assignment">
+                <button
+                  className={`med-upload-choice${albumMode === "existing" ? " active" : ""}`}
+                  type="button"
+                  onClick={() => setAlbumMode("existing")}
+                  disabled={uploading || albums.length === 0}
+                >
+                  Existing Album
+                </button>
+                <button
+                  className={`med-upload-choice${albumMode === "auto" ? " active" : ""}`}
+                  type="button"
+                  onClick={() => setAlbumMode("auto")}
+                  disabled={uploading || albums.length === 0}
+                >
+                  Auto-Match
+                </button>
+                <button
+                  className={`med-upload-choice${albumMode === "new" ? " active" : ""}`}
+                  type="button"
+                  onClick={() => setAlbumMode("new")}
+                  disabled={uploading}
+                >
+                  Create New
+                </button>
+              </div>
+
+              {albumMode === "existing" && (
+                <select
+                  className="med-upload-input"
+                  value={selectedAlbumId}
+                  onChange={(event) => setSelectedAlbumId(event.target.value)}
+                  disabled={uploading}
+                >
+                  <option value="">Select album</option>
+                  {albums.map((album) => (
+                    <option key={album.id} value={album.id}>{album.name}</option>
+                  ))}
+                </select>
+              )}
+
+              {albumMode === "auto" && (
+                <div className={`med-upload-note${autoMatchedAlbum ? " success" : ""}`}>
+                  {autoMatchedAlbum ? (
+                    <>
+                      Matched to <strong>{autoMatchedAlbum.name}</strong>. Upload will use this album.
+                    </>
+                  ) : (
+                    "No confident match yet. Use a tag or filename related to an existing album, or select/create an album."
+                  )}
+                </div>
+              )}
+
+              {albumMode === "new" && (
+                <input
+                  className="med-upload-input"
+                  value={newAlbumName}
+                  onChange={(event) => setNewAlbumName(event.target.value)}
+                  placeholder="New album name"
+                  disabled={uploading}
+                />
+              )}
+
+              <div className="med-upload-section-title with-tip">
+                Tags
+                <span className="med-upload-tip" title="Tip: using the event name as a tag improves search results.">?</span>
+              </div>
+              <input
+                className="med-upload-input"
+                value={tagsInput}
+                onChange={(event) => setTagsInput(event.target.value)}
+                placeholder="Enter tags separated by commas"
+                disabled={uploading}
+              />
+              {tags.length > 0 && (
+                <div className="med-upload-tags">
+                  {tags.map((tag) => <span key={tag}>{tag}</span>)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {(fileError || inlineError) && (
+            <div className="med-upload-error">{inlineError || fileError}</div>
+          )}
+
           <div className="med-upload-specs">
             <div className="med-spec-item">
               <div className="med-spec-label">Accepted Formats</div>
@@ -168,7 +373,8 @@ export default function UploadModal({ open, institutionName, onClose, onUpload }
             className="med-btn med-btn-primary"
             onClick={() => void handleUpload()}
             type="button"
-            disabled={selectedCount === 0 || uploading}
+            disabled={!canUpload}
+            aria-disabled={!canUpload}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="16,16 12,12 8,16" />

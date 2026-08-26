@@ -27,6 +27,7 @@ import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.AssetTagRepository;
+import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
@@ -45,6 +46,8 @@ class MediaAssetServiceTest {
     @Mock
     private MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     @Mock
+    private MediaAlbumRepository mediaAlbumRepository;
+    @Mock
     private AssetTagRepository assetTagRepository;
     @Mock
     private SubmissionService submissionService;
@@ -62,6 +65,7 @@ class MediaAssetServiceTest {
                 submissionRepository,
                 submissionMediaAssetRepository,
                 assetTagRepository,
+                mediaAlbumRepository,
                 mediaAssetEmbeddingRepository,
                 submissionService,
                 supabaseStorageService,

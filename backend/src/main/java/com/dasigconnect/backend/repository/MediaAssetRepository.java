@@ -82,9 +82,41 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     Optional<String> findEmbeddingById(@Param("id") UUID id);
 
     @Query(value = """
-        SELECT * FROM media_assets
+        SELECT
+          id,
+          institution_id,
+          uploader_id,
+          asset_code,
+          storage_url,
+          media_album_id,
+          file_name,
+          file_type,
+          file_size_bytes,
+          ai_category,
+          ai_confidence,
+          ai_description,
+          asset_type,
+          visible_objects,
+          specific_subjects,
+          visual_style,
+          dominant_colors,
+          possible_use_cases,
+          ai_tags,
+          excluded_categories,
+          ai_classified_at,
+          ai_classification_model,
+          embedding_generated_at,
+          embedding_model,
+          reclassified_at,
+          status,
+          deleted_at,
+          deleted_by_user_id,
+          purged_at,
+          created_at
+        FROM media_assets
         WHERE deleted_at IS NULL
           AND (status IS NULL OR status IN ('PROCESSING', 'FAILED') OR embedding IS NULL)
+        ORDER BY created_at ASC
         LIMIT 10
         """, nativeQuery = true)
     List<MediaAsset> findNeedingEmbedding();

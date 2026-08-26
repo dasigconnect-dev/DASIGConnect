@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
-import type { MediaAsset } from "../../../api/mediaApi";
+import { useEffect, useState } from "react";
+import type { MediaAlbum, MediaAsset } from "../../../api/mediaApi";
 import { formatFileSize, formatUploadDate, formatResolution, formatFileTypeName, isVideoType } from "../utils";
 
 interface AssetDetailPanelProps {
@@ -20,6 +21,9 @@ interface AssetDetailPanelProps {
   onRequestDelete: () => void;
   canBulkDelete?: boolean;
   onRequestBulkDelete?: () => void;
+  albums?: MediaAlbum[];
+  onUpdateAlbum?: (assetId: string, albumId: string | null) => void;
+  onRenameAlbum?: (album: MediaAlbum) => void;
 }
 
 const submissionStatusLabel: Record<string, string> = {
@@ -60,8 +64,18 @@ export default function AssetDetailPanel({
   onRequestDelete,
   canBulkDelete = false,
   onRequestBulkDelete,
+  albums = [],
+  onUpdateAlbum,
+  onRenameAlbum,
 }: AssetDetailPanelProps) {
   const newPostCount = selectionMode ? selectedAssets.length : asset ? 1 : 0;
+  const [albumSelection, setAlbumSelection] = useState("");
+  const currentAlbum = albums.find((album) => album.id === asset?.albumId);
+
+  useEffect(() => {
+    setAlbumSelection(asset?.albumId ?? "");
+  }, [asset?.albumId, asset?.id]);
+
   const panel = (
     <div className={`med-panel${open ? " open" : ""}`} role="dialog" aria-modal="true" aria-label="Asset Detail">
       <div className="med-panel-header">
@@ -195,6 +209,10 @@ export default function AssetDetailPanel({
                   <div className="med-meta-val">{formatUploadDate(asset.uploadedAt)}</div>
                 </div>
                 <div>
+                  <div className="med-meta-key">Album</div>
+                  <div className="med-meta-val">{asset.albumName || "No album assigned"}</div>
+                </div>
+                <div>
                   <div className="med-meta-key">File Size</div>
                   <div className="med-meta-val">{formatFileSize(asset.fileSizeBytes)}</div>
                 </div>
@@ -202,6 +220,51 @@ export default function AssetDetailPanel({
                   <div className="med-meta-key">Resolution</div>
                   <div className="med-meta-val">{formatResolution(asset)}</div>
                 </div>
+              </div>
+            </div>
+
+            {/* Album Organization */}
+            <div>
+              <div className="med-panel-section-label">Album Organization</div>
+              <div className="med-album-manage">
+                <select
+                  className="med-album-select"
+                  value={albumSelection}
+                  onChange={(event) => setAlbumSelection(event.target.value)}
+                >
+                  <option value="">No album</option>
+                  {albums.map((album) => (
+                    <option key={album.id} value={album.id}>{album.name}</option>
+                  ))}
+                </select>
+                <div className="med-album-actions">
+                  <button
+                    className="med-btn med-btn-ghost med-btn-sm"
+                    type="button"
+                    onClick={() => onUpdateAlbum?.(asset.id, albumSelection || null)}
+                    disabled={!onUpdateAlbum || albumSelection === (asset.albumId ?? "")}
+                  >
+                    Apply
+                  </button>
+                  <button
+                    className="med-btn med-btn-ghost med-btn-sm"
+                    type="button"
+                    onClick={() => onUpdateAlbum?.(asset.id, null)}
+                    disabled={!onUpdateAlbum || !asset.albumId}
+                  >
+                    Remove
+                  </button>
+                </div>
+                {currentAlbum && (
+                  <button
+                    className="med-inline-link"
+                    type="button"
+                    onClick={() => onRenameAlbum?.(currentAlbum)}
+                    disabled={!onRenameAlbum}
+                  >
+                    Rename current album
+                  </button>
+                )}
               </div>
             </div>
 

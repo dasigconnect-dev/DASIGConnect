@@ -4,10 +4,15 @@ import type { User } from "../../types/auth.types";
 import type { MediaAsset, MediaUsage } from "../../api/mediaApi";
 import {
   bulkDeleteMediaAssets,
+  createMediaAlbum,
   deleteMediaAsset,
   getMediaAsset,
   getMediaAssetUploadUrl,
+  listMediaAlbums,
   registerMediaAsset,
+  renameMediaAlbum,
+  updateMediaAssetAlbum,
+  type MediaAlbum,
 } from "../../api/mediaApi";
 import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
 import {
@@ -22,7 +27,7 @@ import type { SortOption, ViewMode, DeleteTier } from "./types";
 import AssetCard from "./components/AssetCard";
 import FilterBar from "./components/FilterBar";
 import AssetDetailPanel from "./components/AssetDetailPanel";
-import UploadModal from "./components/UploadModal";
+import UploadModal, { type UploadMetadata } from "./components/UploadModal";
 import DeleteModal from "./components/DeleteModal";
 import AddToDraftModal from "./components/AddToDraftModal";
 import "../../styles/media-repository.css";
@@ -120,6 +125,14 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [busyDraftId, setBusyDraftId] = useState<string | null>(null);
 
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [albums, setAlbums] = useState<MediaAlbum[]>([]);
+  const [albumModal, setAlbumModal] = useState<
+    | { mode: "create"; album: null }
+    | { mode: "rename"; album: MediaAlbum }
+    | null
+  >(null);
+  const [albumName, setAlbumName] = useState("");
+  const [savingAlbum, setSavingAlbum] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTier, setDeleteTier] = useState<DeleteTier | null>(null);
@@ -160,6 +173,19 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       controller.abort();
     };
   }, [isAdmin, toast]);
+
+  const targetInstitutionId = isAdmin ? selectedInstitutionId : user.institutionId;
+
+  useEffect(() => {
+    if (!uploadOpen && !panelOpen) return;
+    if (!targetInstitutionId) {
+      setAlbums([]);
+      return;
+    }
+    listMediaAlbums(targetInstitutionId)
+      .then((res) => setAlbums(res.data ?? []))
+      .catch(() => toast.error("Could not load media albums."));
+  }, [panelOpen, targetInstitutionId, toast, uploadOpen]);
 
   const filteredAssets = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -319,7 +345,97 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     });
   }
 
-  async function handleUpload(file: File, onProgress?: (pct: number) => void) {
+  async function handleCreateAlbum(name: string) {
+    if (!targetInstitutionId) {
+      const message = "Select an institution before creating an album.";
+      toast.error(message);
+      throw new Error(message);
+    }
+    const { data } = await createMediaAlbum(name, targetInstitutionId);
+    setAlbums((prev) => [...prev.filter((album) => album.id !== data.id), data]
+      .sort((a, b) => a.name.localeCompare(b.name)));
+    return data;
+  }
+
+  function openCreateAlbumModal() {
+    if (!targetInstitutionId) {
+      toast.error("Select an institution before creating an album.");
+      return;
+    }
+    setAlbumName("");
+    setAlbumModal({ mode: "create", album: null });
+  }
+
+  function openRenameAlbumModal(album: MediaAlbum) {
+    setAlbumName(album.name);
+    setAlbumModal({ mode: "rename", album });
+  }
+
+  function closeAlbumModal() {
+    if (savingAlbum) return;
+    setAlbumModal(null);
+    setAlbumName("");
+  }
+
+  async function handleSaveAlbum() {
+    const name = albumName.trim();
+    if (!albumModal || !name) return;
+    if (albumModal.mode === "rename" && name === albumModal.album.name) {
+      closeAlbumModal();
+      return;
+    }
+
+    setSavingAlbum(true);
+    try {
+      if (albumModal.mode === "create") {
+        await handleCreateAlbum(name);
+        toast.success("Album created.");
+      } else {
+        const { data } = await renameMediaAlbum(albumModal.album.id, name, targetInstitutionId);
+        setAlbums((prev) => prev.map((item) => item.id === data.id ? data : item)
+          .sort((a, b) => a.name.localeCompare(b.name)));
+        setAssets((prev) => prev.map((asset) =>
+          asset.albumId === data.id ? { ...asset, albumName: data.name } : asset
+        ));
+        setSelectedAsset((prev) =>
+          prev?.albumId === data.id ? { ...prev, albumName: data.name } : prev
+        );
+        toast.success("Album renamed.");
+      }
+      closeAlbumModal();
+    } catch (err: unknown) {
+      const message = err instanceof Error
+        ? err.message
+        : albumModal.mode === "create"
+          ? "Could not create album."
+          : "Could not rename album.";
+      toast.error(message);
+    } finally {
+      setSavingAlbum(false);
+    }
+  }
+
+  async function handleRenameAlbum(album: MediaAlbum) {
+    openRenameAlbumModal(album);
+  }
+
+  async function handleUpdateAssetAlbum(assetId: string, albumId: string | null) {
+    try {
+      const { data } = await updateMediaAssetAlbum(assetId, albumId);
+      setAssets((prev) => prev.map((asset) => asset.id === data.id ? { ...asset, ...data } : asset));
+      setSelectedAsset(data);
+      toast.success(albumId ? "Asset moved to album." : "Asset removed from album.");
+    } catch {
+      toast.error("Could not update the album assignment.");
+    }
+  }
+
+  async function handleUpload(file: File, metadata: UploadMetadata, onProgress?: (pct: number) => void) {
+    if (!targetInstitutionId) {
+      const message = "Select an institution before uploading to the media library.";
+      toast.error(message);
+      throw new Error(message);
+    }
     if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
       const message = `${file.name} is ${(file.size / (1024 * 1024)).toFixed(1)} MB — over the ${MAX_UPLOAD_MB} MB limit.`;
       toast.error(message);
@@ -343,6 +459,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         fileName: file.name,
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
+        institutionId: targetInstitutionId,
+        albumId: metadata.albumId,
+        albumName: metadata.albumName,
+        autoMatchAlbum: metadata.autoMatchAlbum,
+        tags: metadata.tags,
       });
       onProgress?.(100);
 
@@ -488,6 +609,13 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
             Upload Asset
           </button>
           <button
+            className="med-btn med-btn-ghost med-btn-sm"
+            onClick={openCreateAlbumModal}
+            type="button"
+          >
+            New Album
+          </button>
+          <button
             className="med-btn med-btn-primary med-btn-sm"
             onClick={() => navigate("/submissions/new")}
             type="button"
@@ -618,13 +746,18 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onRequestDelete={openSingleDeleteModal}
         canBulkDelete={canBulkDelete}
         onRequestBulkDelete={openBulkDeleteModal}
+        albums={albums}
+        onUpdateAlbum={(assetId, albumId) => void handleUpdateAssetAlbum(assetId, albumId)}
+        onRenameAlbum={(album) => void handleRenameAlbum(album)}
       />
 
       {/* Upload Modal (portal) */}
       <UploadModal
         open={uploadOpen}
         institutionName={user.inst}
+        albums={albums}
         onClose={() => setUploadOpen(false)}
+        onCreateAlbum={handleCreateAlbum}
         onUpload={handleUpload}
       />
 
@@ -653,6 +786,101 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onNewPostInstead={() => { setAddToDraftOpen(false); handleNewPost(); }}
       />
 
+      <AlbumNameModal
+        open={albumModal !== null}
+        mode={albumModal?.mode ?? "create"}
+        value={albumName}
+        saving={savingAlbum}
+        onChange={setAlbumName}
+        onClose={closeAlbumModal}
+        onSubmit={() => void handleSaveAlbum()}
+      />
+
+    </div>
+  );
+}
+
+function AlbumNameModal({
+  open,
+  mode,
+  value,
+  saving,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  mode: "create" | "rename";
+  value: string;
+  saving: boolean;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  const title = mode === "create" ? "New Album" : "Rename Album";
+  const description = mode === "create"
+    ? "Create an album for organizing uploaded media assets."
+    : "Update this album name across the media library.";
+  const actionLabel = mode === "create" ? "Create Album" : "Save Changes";
+  const disabled = saving || value.trim().length === 0;
+
+  return (
+    <div className="med-modal-overlay" role="presentation">
+      <form
+        className="med-modal-card med-album-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!disabled) onSubmit();
+        }}
+      >
+        <div className="med-modal-header">
+          <div>
+            <span className="med-modal-title">{title}</span>
+            <p className="med-album-modal-sub">{description}</p>
+          </div>
+          <button
+            className="med-modal-close"
+            type="button"
+            onClick={onClose}
+            aria-label="Close album modal"
+            disabled={saving}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="med-modal-body">
+          <label className="med-form-label" htmlFor="media-album-name">Album name</label>
+          <input
+            id="media-album-name"
+            className="med-form-input"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="e.g. Startup Summit 2026"
+            autoFocus
+            maxLength={80}
+            disabled={saving}
+          />
+          <p className="med-album-modal-hint">Use a clear event or campaign name so assets are easier to find later.</p>
+        </div>
+
+        <div className="med-modal-footer">
+          <button className="med-btn med-btn-ghost" type="button" onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+          <button className="med-btn med-btn-primary" type="submit" disabled={disabled}>
+            {saving ? "Saving..." : actionLabel}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

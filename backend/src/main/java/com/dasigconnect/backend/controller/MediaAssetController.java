@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.controller;
 
 import java.util.UUID;
+import java.util.List;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -17,6 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.media.AddAssetTagRequestDto;
 import com.dasigconnect.backend.model.dto.media.AssetTagDto;
+import com.dasigconnect.backend.model.dto.media.MediaAlbumDto;
+import com.dasigconnect.backend.model.dto.media.MediaAlbumRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetAddToDraftRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
@@ -103,6 +107,40 @@ public class MediaAssetController {
             @Valid @RequestBody MediaAssetUploadRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.status(201).body(ApiResponse.success(mediaAssetService.upload(dto, user)));
+    }
+
+    @GetMapping("/albums")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<List<MediaAlbumDto>>> listAlbums(
+            @RequestParam(required = false) UUID institutionId,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.listAlbums(institutionId, user)));
+    }
+
+    @PostMapping("/albums")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<MediaAlbumDto>> createAlbum(
+            @Valid @RequestBody MediaAlbumRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.status(201).body(ApiResponse.success(mediaAssetService.createAlbum(dto, user)));
+    }
+
+    @PostMapping("/albums/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<MediaAlbumDto>> renameAlbum(
+            @PathVariable UUID id,
+            @Valid @RequestBody MediaAlbumRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.renameAlbum(id, dto, user)));
+    }
+
+    @PostMapping("/{id}/album")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<MediaAssetDetailDto>> updateAlbum(
+            @PathVariable UUID id,
+            @Valid @RequestBody MediaAssetAlbumRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.updateAlbum(id, dto, user)));
     }
 
     @PostMapping("/{id}/tags")
