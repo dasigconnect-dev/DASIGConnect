@@ -214,40 +214,50 @@ export default function ValidationQueueScreen({
   useEffect(() => {
     if (!isAllMode) return;
     let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      setAllLoading(true);
-      setAllError("");
-      getValidationQueue({ history : true })
-        .then((res) => { if (active) setAllQueue(res.data); })
-        .catch((err: unknown) => { if (active) setAllError(readApiError(err, "Unable to load all submissions.")); })
-        .finally(() => { if (active) setAllLoading(false); });
-    });
-    return () => { active = false; };
+    setAllLoading(true);
+    setAllError("");
+    getValidationQueue({ history: true })
+      .then((res) => {
+        if (active) setAllQueue(res.data);
+      })
+      .catch((err: unknown) => {
+        if (active) setAllError(readApiError(err, "Unable to load all submissions."));
+      })
+      .finally(() => {
+        if (active) setAllLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [isAllMode]);
 
   useEffect(() => {
     if (!isFailedMode || selectedFailureId || failuresLoading || failures.length === 0) return;
-    queueMicrotask(() => setSelectedFailureId(failures[0].submissionId));
+    setSelectedFailureId(failures[0].submissionId);
   }, [isFailedMode, failuresLoading, failures, selectedFailureId]);
 
   useEffect(() => {
     if (!selectedFailureId) {
-      queueMicrotask(() => setFailureContent(null));
+      setFailureContent(null);
       return;
     }
     let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      setFailureContent(null);
-      setFailureMediaIndex(0);
-      setFailureContentLoading(true);
-      getSubmission(selectedFailureId)
-        .then((res) => { if (active) setFailureContent(res.data); })
-        .catch((err: unknown) => { if (active) toast.error(readApiError(err, "Unable to load submission content.")); })
-        .finally(() => { if (active) setFailureContentLoading(false); });
-    });
-    return () => { active = false; };
+    setFailureContent(null);
+    setFailureMediaIndex(0);
+    setFailureContentLoading(true);
+    getSubmission(selectedFailureId)
+      .then((res) => {
+        if (active) setFailureContent(res.data);
+      })
+      .catch((err: unknown) => {
+        if (active) toast.error(readApiError(err, "Unable to load submission content."));
+      })
+      .finally(() => {
+        if (active) setFailureContentLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [selectedFailureId]);
 
   useEffect(() => {
