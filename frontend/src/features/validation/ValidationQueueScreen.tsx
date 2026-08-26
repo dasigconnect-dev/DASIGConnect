@@ -711,10 +711,16 @@ export default function ValidationQueueScreen({
 
               {!failureContentLoading && failureContent && (
                 <>
-                  <MediaCarousel
+                  <FacebookPostPreviewCard
+                    submission={failureContent}
+                    editMode={false}
+                    editForm={emptyEditForm()}
                     mediaAssets={failureContent.mediaAssets ?? []}
                     mediaIndex={failureMediaIndex}
                     onMediaIndexChange={setFailureMediaIndex}
+                    watermarkConfig={watermarkConfig}
+                    showWatermarkPreview={showWatermarkPreview}
+                    onToggleWatermark={() => setShowWatermarkPreview((prev) => !prev)}
                   />
                   <SubmissionDetailCards content={failureContent} />
                 </>
@@ -849,7 +855,10 @@ export default function ValidationQueueScreen({
                 )}
               </header>
 
-              <MediaCarousel
+              <FacebookPostPreviewCard
+                submission={selected}
+                editMode={editMode}
+                editForm={editForm}
                 mediaAssets={mediaAssets}
                 mediaIndex={mediaIndex}
                 onMediaIndexChange={setMediaIndex}
@@ -1180,7 +1189,10 @@ function EditDiffView({ diffJson }: { diffJson: string }) {
   );
 }
 
-function MediaCarousel({
+function FacebookPostPreviewCard({
+  submission,
+  editMode,
+  editForm,
   mediaAssets,
   mediaIndex,
   onMediaIndexChange,
@@ -1188,6 +1200,9 @@ function MediaCarousel({
   showWatermarkPreview = true,
   onToggleWatermark,
 }: {
+  submission: SubmissionSummary;
+  editMode: boolean;
+  editForm: EditFormState;
   mediaAssets: SavedMediaAsset[];
   mediaIndex: number;
   onMediaIndexChange: (index: number) => void;
@@ -1196,87 +1211,129 @@ function MediaCarousel({
   onToggleWatermark?: () => void;
 }) {
   const selectedMedia = mediaAssets[mediaIndex];
+  const pageName = submission.institutionName || "DASIG Central Visayas";
+  const displayTitle = editMode ? editForm.eventTitle : submission.eventTitle;
+  const displayCaption = editMode ? editForm.caption : submission.caption;
+  const displayTags: string[] = editMode
+    ? editForm.tags.split(",").map((t: string) => t.trim()).filter(Boolean)
+    : (submission.tags || []);
+
+  const formattedTags: string[] = displayTags.map((t: string) => (t.startsWith("#") ? t : `#${t}`));
+
   return (
-    <section className="val-media-section">
-      {watermarkConfig?.enabled && onToggleWatermark && (
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
-          <button
-            type="button"
-            className={`val-wm-toggle-btn ${showWatermarkPreview ? "active" : ""}`}
-            onClick={onToggleWatermark}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "5px 12px",
-              fontSize: "12px",
-              fontWeight: 600,
-              borderRadius: "20px",
-              border: showWatermarkPreview ? "1px solid #93c5fd" : "1px solid #cbd5e1",
-              background: showWatermarkPreview ? "#eff6ff" : "#f8fafc",
-              color: showWatermarkPreview ? "#1d4ed8" : "#64748b",
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-            }}
-          >
-            <i className={`ti ${showWatermarkPreview ? "ti-badge-filled" : "ti-badge"}`} />
-            <span>{showWatermarkPreview ? "Watermark Preview: ON" : "Watermark Preview: OFF"}</span>
-          </button>
+    <article className="val-fb-card" aria-label="Facebook Post Preview">
+      {/* 1. Meta / Facebook Page Header */}
+      <div className="val-fb-header">
+        <div className="val-fb-author">
+          <div className="val-fb-avatar" aria-hidden="true">
+            <i className="ti ti-brand-facebook" />
+          </div>
+          <div className="val-fb-author-meta">
+            <div className="val-fb-author-name">
+              <strong>{pageName}</strong>
+              <i className="ti ti-circle-check-filled val-fb-verified" title="Verified Network Page" />
+            </div>
+            <div className="val-fb-time-row">
+              <span>
+                {submission.fastTrack
+                  ? "Live Event Fast-Track"
+                  : submission.scheduledAt
+                  ? `Scheduled • ${formatDate(submission.scheduledAt)} at ${formatTime(submission.scheduledAt)}`
+                  : "Unscheduled Draft"}
+              </span>
+              <span className="val-fb-dot">·</span>
+              <i className="ti ti-world" title="Public on Facebook" />
+            </div>
+          </div>
         </div>
-      )}
-      <div className="val-carousel">
+
+        <div className="val-fb-header-actions">
+          {watermarkConfig?.enabled && onToggleWatermark && (
+            <button
+              type="button"
+              className={`val-wm-toggle-btn ${showWatermarkPreview ? "active" : ""}`}
+              onClick={onToggleWatermark}
+              title="Toggle watermark overlay on media preview"
+            >
+              <i className={`ti ${showWatermarkPreview ? "ti-badge-filled" : "ti-badge"}`} />
+              <span>{showWatermarkPreview ? "Watermark: ON" : "Watermark: OFF"}</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 2. Facebook Post Caption & Message */}
+      <div className="val-fb-body">
+        {displayTitle && <h3 className="val-fb-title">{displayTitle}</h3>}
+        {displayCaption ? (
+          <p className="val-fb-text">{displayCaption}</p>
+        ) : (
+          <p className="val-fb-text val-fb-text-empty">No caption supplied.</p>
+        )}
+        {formattedTags.length > 0 && (
+          <div className="val-fb-hashtags">
+            {formattedTags.map((tag: string) => (
+              <span key={tag} className="val-fb-hashtag">{tag}</span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 3. Media Frame with live Watermark */}
+      <div className="val-fb-media-frame">
         {selectedMedia ? (
           isImage(selectedMedia.fileType) ? (
-            <div style={{ position: "relative", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div className="val-fb-image-wrapper">
               <img src={selectedMedia.storageUrl} alt={selectedMedia.fileName} />
               {showWatermarkPreview && watermarkConfig?.enabled && (
                 <WatermarkOverlay elements={watermarkConfig.elements} />
               )}
             </div>
           ) : (
-            <div className="val-video-placeholder">
-              <i className="ti ti-player-play-filled"></i>
-              <span>{selectedMedia.fileName}</span>
+            <div className="val-fb-video-wrapper">
+              <video src={selectedMedia.storageUrl} controls playsInline />
             </div>
           )
         ) : (
-          <div className="val-no-media">
-            <i className="ti ti-photo-off"></i>
+          <div className="val-fb-no-media">
+            <i className="ti ti-photo-off" />
             <span>No media assets attached</span>
           </div>
         )}
+
         {mediaAssets.length > 1 && (
           <>
             <button
-              className="val-carrow left"
+              className="val-fb-arrow left"
               type="button"
+              aria-label="Previous media"
               onClick={() =>
                 onMediaIndexChange((mediaIndex - 1 + mediaAssets.length) % mediaAssets.length)
               }
             >
-              <i className="ti ti-chevron-left"></i>
+              <i className="ti ti-chevron-left" />
             </button>
             <button
-              className="val-carrow right"
+              className="val-fb-arrow right"
               type="button"
+              aria-label="Next media"
               onClick={() => onMediaIndexChange((mediaIndex + 1) % mediaAssets.length)}
             >
-              <i className="ti ti-chevron-right"></i>
+              <i className="ti ti-chevron-right" />
             </button>
+            <div className="val-fb-counter">
+              {mediaIndex + 1} / {mediaAssets.length}
+            </div>
           </>
         )}
-        <div className="val-carousel-meta">
-          <span>
-            {mediaAssets.length ? `${mediaIndex + 1} / ${mediaAssets.length}` : "0 / 0"}
-          </span>
-          <b>{selectedMedia?.fileType || "MEDIA"}</b>
-        </div>
       </div>
-      {mediaAssets.length > 0 && (
-        <div className="val-thumbs">
+
+      {/* Multi-Photo Thumbnails */}
+      {mediaAssets.length > 1 && (
+        <div className="val-fb-thumbs">
           {mediaAssets.map((asset, index) => (
             <button
-              className={index === mediaIndex ? "active" : ""}
+              className={`val-fb-thumb ${index === mediaIndex ? "active" : ""}`}
               key={asset.id}
               type="button"
               onClick={() => onMediaIndexChange(index)}
@@ -1285,13 +1342,44 @@ function MediaCarousel({
               {isImage(asset.fileType) ? (
                 <img src={asset.storageUrl} alt="" />
               ) : (
-                <i className="ti ti-video"></i>
+                <div className="val-fb-thumb-video"><i className="ti ti-video" /></div>
               )}
             </button>
           ))}
         </div>
       )}
-    </section>
+
+      {/* 4. Facebook Engagement & Interaction Bar */}
+      <div className="val-fb-footer">
+        <div className="val-fb-reactions-row">
+          <div className="val-fb-reactions">
+            <span className="val-fb-rx-icon rx-like"><i className="ti ti-thumb-up-filled" /></span>
+            <span className="val-fb-rx-icon rx-heart"><i className="ti ti-heart-filled" /></span>
+            <span className="val-fb-rx-count">24</span>
+          </div>
+          <div className="val-fb-counts">
+            <span>5 comments</span>
+            <span>·</span>
+            <span>2 shares</span>
+          </div>
+        </div>
+
+        <div className="val-fb-action-buttons">
+          <button type="button" className="val-fb-action-btn" disabled>
+            <i className="ti ti-thumb-up" />
+            <span>Like</span>
+          </button>
+          <button type="button" className="val-fb-action-btn" disabled>
+            <i className="ti ti-message" />
+            <span>Comment</span>
+          </button>
+          <button type="button" className="val-fb-action-btn" disabled>
+            <i className="ti ti-share" />
+            <span>Share</span>
+          </button>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -1309,9 +1397,6 @@ function SubmissionDetailCards({ content }: { content: SubmissionSummary }) {
             <em>No tags supplied</em>
           )}
         </div>
-      </DetailCard>
-      <DetailCard icon="ti-brand-facebook" label="Facebook Caption" full>
-        <p className="val-caption">{content.caption || "No caption supplied."}</p>
       </DetailCard>
       {content.description && (
         <DetailCard icon="ti-notes" label="Administrator Notes" full muted>

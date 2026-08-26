@@ -501,117 +501,367 @@
   color: var(--val-muted);
 }
 
-.val-media-section {
-  margin-bottom: 18px;
-}
-
-.val-carousel {
-  position: relative;
-  border-radius: 14px;
+/* ── Realistic Facebook Post Preview Card ─────────────────────────────────────── */
+.val-fb-card {
+  background: var(--val-surface);
+  border: 1px solid var(--val-border);
+  border-radius: 12px;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.05);
+  margin-bottom: 20px;
   overflow: hidden;
-  min-height: 300px;
-  aspect-ratio: 16 / 9;
-  max-height: 420px;
-  background: linear-gradient(135deg, #1a2e4a, #0c1d3d);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.val-carousel img {
+.val-fb-card:hover {
+  border-color: var(--val-border-2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.val-fb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  gap: 12px;
+}
+
+.val-fb-author {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.val-fb-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1877f2, #0d5ec4);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(24, 119, 242, 0.35);
+}
+
+.val-fb-author-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.val-fb-author-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.val-fb-author-name strong {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--val-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.val-fb-verified {
+  color: #1877f2;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.val-fb-time-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--val-muted);
+  font-weight: 500;
+}
+
+.val-fb-dot {
+  font-weight: 700;
+}
+
+.val-fb-time-row i {
+  font-size: 11px;
+}
+
+.val-fb-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.val-fb-body {
+  padding: 4px 16px 12px;
+}
+
+.val-fb-title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--val-text);
+  line-height: 1.35;
+}
+
+.val-fb-text {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--val-text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.val-fb-text-empty {
+  color: var(--val-muted);
+  font-style: italic;
+}
+
+.val-fb-hashtags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.val-fb-hashtag {
+  color: #1877f2;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: default;
+}
+
+.val-fb-media-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 280px;
+  max-height: 480px;
+  background: #08172f;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.val-fb-image-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.val-fb-image-wrapper img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   display: block;
-  background: #08172f;
 }
 
-.val-video-placeholder,
-.val-no-media {
+.val-fb-video-wrapper {
+  width: 100%;
   height: 100%;
-  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: black;
+}
+
+.val-fb-video-wrapper video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.val-fb-no-media {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(255, 255, 255, 0.65);
 }
 
-.val-video-placeholder i,
-.val-no-media i {
-  font-size: 58px;
+.val-fb-no-media i {
+  font-size: 52px;
 }
 
-.val-carrow {
+.val-fb-arrow {
   position: absolute;
   top: 50%;
-  z-index: 4;
-  width: 38px;
-  height: 38px;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--val-text);
   transform: translateY(-50%);
+  z-index: 6;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1c2e4a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: background 0.15s ease, transform 0.15s ease;
 }
 
-.val-carrow.left { left: 12px; }
-.val-carrow.right { right: 12px; }
+.val-fb-arrow:hover {
+  background: #ffffff;
+  transform: translateY(-50%) scale(1.08);
+}
 
-.val-carousel-meta {
+.val-fb-arrow.left { left: 12px; }
+.val-fb-arrow.right { right: 12px; }
+
+.val-fb-counter {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  padding: 24px 14px 10px;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.72), transparent);
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.val-carousel-meta b {
-  border-radius: 5px;
-  background: rgba(24, 119, 242, 0.82);
+  bottom: 12px;
+  right: 12px;
+  z-index: 6;
+  background: rgba(0, 0, 0, 0.72);
   color: white;
-  padding: 3px 8px;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  backdrop-filter: blur(4px);
 }
 
-.val-thumbs {
+.val-fb-thumbs {
   display: flex;
-  gap: 7px;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--val-surface-2);
+  border-top: 1px solid var(--val-border);
   overflow-x: auto;
-  padding: 10px 0 2px;
 }
 
-.val-thumbs button {
-  flex: 0 0 auto;
-  width: 58px;
-  height: 48px;
+.val-fb-thumb {
+  width: 54px;
+  height: 44px;
+  border-radius: 6px;
   border: 2px solid transparent;
-  border-radius: 7px;
   overflow: hidden;
-  background: #10233f;
-  color: white;
+  background: #0f172a;
   cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
-.val-thumbs button.active {
-  border-color: var(--val-blue);
-  box-shadow: 0 0 0 2px var(--val-blue-dim);
+.val-fb-thumb.active {
+  border-color: #1877f2;
+  box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.25);
 }
 
-.val-thumbs img {
+.val-fb-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
+
+.val-fb-thumb-video {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 18px;
+}
+
+.val-fb-footer {
+  padding: 8px 16px 6px;
+  background: var(--val-surface);
+  border-top: 1px solid var(--val-border);
+}
+
+.val-fb-reactions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--val-border);
+  font-size: 12.5px;
+  color: var(--val-muted);
+}
+
+.val-fb-reactions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.val-fb-rx-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: white;
+  font-size: 10px;
+}
+
+.val-fb-rx-icon.rx-like {
+  background: #1877f2;
+}
+
+.val-fb-rx-icon.rx-heart {
+  background: #fa383e;
+  margin-left: -6px;
+}
+
+.val-fb-rx-count {
+  margin-left: 4px;
+  font-weight: 600;
+  color: var(--val-text-2);
+}
+
+.val-fb-counts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.val-fb-action-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.val-fb-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--val-muted);
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 6px;
+  cursor: default;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.val-fb-action-btn i {
+  font-size: 16px;
+}
+
 
 .val-detail-grid {
   display: grid;
