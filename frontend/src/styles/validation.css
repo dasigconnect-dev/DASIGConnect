@@ -1011,21 +1011,68 @@
   z-index: 10;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 14px 20px;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 24px;
   border-top: 1px solid var(--val-border);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 -4px 18px rgba(12, 29, 61, 0.06);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 -4px 20px rgba(12, 29, 61, 0.05);
 }
 
-.val-action-bar span {
-  margin-right: auto;
+.val-action-status {
   display: flex;
   align-items: center;
-  gap: 7px;
-  color: var(--val-muted);
-  font-size: 12.5px;
+  min-width: 0;
+}
+
+.val-action-lock-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.val-action-edit-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.val-action-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.val-action-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.val-action-divider {
+  width: 1px;
+  height: 22px;
+  background: #e2e8f0;
+  margin: 0 4px;
 }
 
 .val-action-bar--readonly {
@@ -1033,45 +1080,99 @@
   background: #f8fafc;
 }
 
-.val-action-bar--readonly span {
-  color: #64748b;
-  font-size: 13px;
-  margin-right: 0;
-}
-
 .val-btn,
 .val-modal-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  min-height: 38px;
-  border: 0;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
   border-radius: 8px;
-  padding: 0 15px;
-  color: white;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 900;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .val-btn:disabled {
-  opacity: 0.45;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
+/* Primary Button (Approve / Confirm) */
+.val-btn-primary,
 .val-btn.success,
-.val-modal-actions .success { background: var(--val-green); }
-.val-btn.warn,
-.val-modal-actions .warn { background: var(--val-amber); }
-.val-btn.danger,
-.val-modal-actions .danger { background: var(--val-red); }
+.val-modal-actions .success {
+  background: #1877f2;
+  color: #ffffff;
+  border: 1px solid #166fe5;
+  box-shadow: 0 1px 3px rgba(24, 119, 242, 0.25);
+}
+
+.val-btn-primary:hover:not(:disabled),
+.val-btn.success:hover:not(:disabled) {
+  background: #166fe5;
+  box-shadow: 0 2px 6px rgba(24, 119, 242, 0.35);
+}
+
+/* Secondary Button (Neutral Action / Request Revision) */
+.val-btn-secondary,
+.val-modal-actions .warn {
+  background: #ffffff;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.val-btn-secondary:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+/* Blue Outline (Edit & Approve) */
+.val-btn-blue-outline {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.val-btn-blue-outline:hover:not(:disabled) {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
+/* Destructive Outline (Reject) */
+.val-btn-danger-outline,
+.val-modal-actions .danger {
+  background: #ffffff;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.val-btn-danger-outline:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #f87171;
+  color: #b91c1c;
+}
+
+/* Subtle / Ghost (Unlock) */
+.val-btn-subtle,
 .val-btn.ghost,
 .val-modal-actions .ghost {
-  color: var(--val-muted);
-  background: var(--val-surface-2);
-  border: 1px solid var(--val-border);
+  background: transparent;
+  color: #64748b;
+  border: 1px solid transparent;
+}
+
+.val-btn-subtle:hover:not(:disabled),
+.val-btn.ghost:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #1e293b;
 }
 
 .val-edit-grid {

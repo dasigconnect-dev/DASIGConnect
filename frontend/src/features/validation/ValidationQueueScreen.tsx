@@ -954,93 +954,116 @@ export default function ValidationQueueScreen({
 
             {isTerminalStatus ? (
               <footer className="val-action-bar val-action-bar--readonly">
-                <span>
-                  <i className="ti ti-eye"></i>
-                  Read-only — this submission is {statusLabel[normalizeStatus(selected?.status ?? "")] ?? selected?.status ?? "in a terminal state"} and can no longer be acted on.
-                </span>
+                <div className="val-action-status">
+                  <span className="val-action-hint">
+                    <i className="ti ti-eye" />
+                    Read-only — this submission is {statusLabel[normalizeStatus(selected?.status ?? "")] ?? selected?.status ?? "in a terminal state"}.
+                  </span>
+                </div>
               </footer>
             ) : editMode ? (
               <footer className="val-action-bar">
-                <span>
-                  <i className="ti ti-pencil"></i>
-                  Editing — changes are saved together with the approval action.
-                </span>
-                <button
-                  className="val-btn ghost"
-                  type="button"
-                  disabled={editSaving}
-                  onClick={handleCancelEdit}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="val-btn success"
-                  type="button"
-                  disabled={editSaving}
-                  onClick={() => void handleSaveAndApprove()}
-                >
-                  <i className="ti ti-circle-check"></i>
-                  {editSaving ? "Saving..." : "Save & Approve"}
-                </button>
+                <div className="val-action-status">
+                  <span className="val-action-edit-pill">
+                    <i className="ti ti-pencil" />
+                    Editing submission content
+                  </span>
+                </div>
+                <div className="val-action-group">
+                  <button
+                    className="val-btn val-btn-secondary"
+                    type="button"
+                    disabled={editSaving}
+                    onClick={handleCancelEdit}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="val-btn val-btn-primary"
+                    type="button"
+                    disabled={editSaving}
+                    onClick={() => void handleSaveAndApprove()}
+                  >
+                    <i className="ti ti-check" />
+                    <span>{editSaving ? "Saving..." : "Save & Approve"}</span>
+                  </button>
+                </div>
               </footer>
             ) : activeLock ? (
               <footer className="val-action-bar">
-                <span>
-                  <i className="ti ti-info-circle"></i>
-                  Record your decision. Actions are permanent and logged.
-                </span>
-                <button
-                  className="val-btn ghost"
-                  type="button"
-                  disabled={lockBusy}
-                  onClick={() => void handleReleaseLock()}
-                >
-                  <i className="ti ti-lock-open"></i> Unlock
-                </button>
-                <button
-                  className="val-btn danger"
-                  type="button"
-                  onClick={() => openDecisionModal("reject")}
-                >
-                  <i className="ti ti-ban"></i> Reject
-                </button>
-                <button
-                  className="val-btn warn"
-                  type="button"
-                  onClick={() => openDecisionModal("revise")}
-                >
-                  <i className="ti ti-pencil-exclamation"></i> Request Revision
-                </button>
-                <button
-                  className="val-btn ghost"
-                  type="button"
-                  onClick={handleStartEdit}
-                >
-                  <i className="ti ti-pencil"></i> Edit & Approve
-                </button>
-                <button
-                  className="val-btn success"
-                  type="button"
-                  onClick={() => openDecisionModal("approve")}
-                >
-                  <i className="ti ti-circle-check"></i> Approve
-                </button>
+                <div className="val-action-status">
+                  <span className="val-action-lock-pill">
+                    <i className="ti ti-lock-check" />
+                    Review in progress
+                  </span>
+                </div>
+                <div className="val-action-group">
+                  <button
+                    className="val-btn val-btn-subtle"
+                    type="button"
+                    disabled={lockBusy}
+                    onClick={() => void handleReleaseLock()}
+                    title="Release lock and return to queue"
+                  >
+                    <i className="ti ti-lock-open" />
+                    <span>Unlock</span>
+                  </button>
+
+                  <div className="val-action-divider" />
+
+                  <button
+                    className="val-btn val-btn-danger-outline"
+                    type="button"
+                    onClick={() => openDecisionModal("reject")}
+                  >
+                    <i className="ti ti-ban" />
+                    <span>Reject</span>
+                  </button>
+                  <button
+                    className="val-btn val-btn-secondary"
+                    type="button"
+                    onClick={() => openDecisionModal("revise")}
+                  >
+                    <i className="ti ti-pencil-exclamation" />
+                    <span>Request Revision</span>
+                  </button>
+                  <button
+                    className="val-btn val-btn-blue-outline"
+                    type="button"
+                    onClick={handleStartEdit}
+                  >
+                    <i className="ti ti-pencil" />
+                    <span>Edit & Approve</span>
+                  </button>
+                  <button
+                    className="val-btn val-btn-primary"
+                    type="button"
+                    onClick={() => openDecisionModal("approve")}
+                  >
+                    <i className="ti ti-check" />
+                    <span>Approve</span>
+                  </button>
+                </div>
               </footer>
             ) : (
               <footer className="val-action-bar">
-                <span>
-                  <i className="ti ti-info-circle"></i>
-                  Acquire a review lock to record a decision.
-                </span>
-                <button
-                  className="val-btn success"
-                  type="button"
-                  disabled={lockBusy}
-                  onClick={() => void handleAcquireLock()}
-                >
-                  <i className="ti ti-lock"></i>
-                  {lockBusy ? "Locking..." : "Review"}
-                </button>
+                <div className="val-action-status">
+                  <span className="val-action-hint">
+                    <i className="ti ti-info-circle" />
+                    Acquire review lock to record a decision.
+                  </span>
+                </div>
+                <div className="val-action-group">
+                  <button
+                    className="val-btn val-btn-primary"
+                    type="button"
+                    disabled={lockBusy}
+                    onClick={() => void handleAcquireLock()}
+                  >
+                    <i className="ti ti-lock" />
+                    <span>{lockBusy ? "Locking..." : "Start Review"}</span>
+                  </button>
+                </div>
               </footer>
             )}
           </>
