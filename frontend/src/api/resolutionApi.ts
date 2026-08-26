@@ -5,6 +5,7 @@ import { api } from "./authApi";
 export interface FailedPublication {
   submissionId: string;
   eventTitle: string;
+  status: string;
   institutionId: string;
   institutionName: string;
   scheduledAt: string | null;

@@ -79,9 +79,10 @@ public class ResolutionController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found."));
 
         if (s.getStatus() != SubmissionStatus.publish_failed
-                && s.getStatus() != SubmissionStatus.scheduled) {
+                && s.getStatus() != SubmissionStatus.scheduled
+                && s.getStatus() != SubmissionStatus.missed_review) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Submission is not eligible for manual publishing.");
+                    "Submission is not eligible for the resolution workflow.");
         }
 
         List<SubmissionMediaAsset> media =

@@ -76,6 +76,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         SELECT s FROM Submission s
         WHERE s.status IN (
             com.dasigconnect.backend.model.entity.SubmissionStatus.needs_revision,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.missed_review,
             com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
             com.dasigconnect.backend.model.entity.SubmissionStatus.publishing,
             com.dasigconnect.backend.model.entity.SubmissionStatus.publish_failed,
@@ -133,6 +134,23 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         """)
     List<Submission> findMissedScheduledSubmissions(@Param("cutoff") Instant cutoff);
 
+    /**
+     * StaleSubmissionDetectorJob (GR-T9 / UC-2.4 A6): PENDING / IN_REVIEW submissions
+     * whose scheduled publication time has already passed — they missed their review
+     * window and must be transitioned to MISSED_REVIEW.
+     */
+    @Query("""
+        SELECT s FROM Submission s
+        WHERE s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review
+        )
+        AND s.scheduledAt IS NOT NULL
+        AND s.scheduledAt < :cutoff
+        ORDER BY s.scheduledAt ASC
+        """)
+    List<Submission> findMissedReviewSubmissions(@Param("cutoff") Instant cutoff);
+
     /** Resolution Center: PUBLISH_FAILED and DIRECT_POST_FAILED submissions sorted newest-scheduled first. */
     @Query("SELECT s FROM Submission s JOIN FETCH s.institution JOIN FETCH s.contributor WHERE s.id = :id")
     java.util.Optional<Submission> findByIdWithInstitution(@Param("id") UUID id);
@@ -142,7 +160,8 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         JOIN FETCH s.institution
         WHERE s.status IN (
             com.dasigconnect.backend.model.entity.SubmissionStatus.publish_failed,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_failed
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_failed,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.missed_review
         )
         ORDER BY s.scheduledAt DESC
         """)
@@ -183,10 +202,33 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
      */
     @Query("""
         SELECT s FROM Submission s
-        WHERE s.scheduledAt IS NOT NULL OR s.publishedAt IS NOT NULL
+        WHERE (s.scheduledAt IS NOT NULL OR s.publishedAt IS NOT NULL)
+        AND s.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.missed_review
+        AND s.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
         ORDER BY COALESCE(s.scheduledAt, s.publishedAt) ASC
         """)
     List<Submission> findAllWithScheduledSlot();
+
+    /**
+     * Calendar API (contributor/validator): the caller's OWN authored submissions
+     * that are in a workflow state — publish/direct-post failures, still pending or
+     * in review, or missed review. These are shown in full only to the author so
+     * they can track their own pipeline; other viewers never see them.
+     */
+    @Query("""
+        SELECT s FROM Submission s
+        WHERE s.contributor.id = :contributorId
+        AND s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.publish_failed,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_failed,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.missed_review
+        )
+        AND (s.scheduledAt IS NOT NULL OR s.publishedAt IS NOT NULL)
+        ORDER BY COALESCE(s.scheduledAt, s.publishedAt) ASC
+        """)
+    List<Submission> findOwnCalendarWorkflowSlots(@Param("contributorId") UUID contributorId);
 
     /**
      * Calendar API (contributor/validator): all institutions' submissions that are in a

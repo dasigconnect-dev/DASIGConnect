@@ -21,6 +21,8 @@ public class CalendarEventDto {
     private String contributorName;
     /** True once the submission's slot reservation is permanently locked (post-approval). */
     private boolean locked;
+    /** True when this event is the viewer's own authored submission (own-workflow bucket). */
+    private boolean mine;
 
     public static CalendarEventDto full(Submission s) {
         CalendarEventDto dto = new CalendarEventDto();
@@ -78,4 +80,7 @@ public class CalendarEventDto {
 
     public boolean isLocked() { return locked; }
     public void setLocked(boolean locked) { this.locked = locked; }
+
+    public boolean isMine() { return mine; }
+    public void setMine(boolean mine) { this.mine = mine; }
 }

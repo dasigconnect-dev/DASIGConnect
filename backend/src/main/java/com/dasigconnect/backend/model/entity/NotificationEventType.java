@@ -7,6 +7,7 @@ public enum NotificationEventType {
     submission_rejected,
     submission_scheduled,
     submission_publish_failed,
+    submission_missed_review,
     submission_published,
     submission_published_manual,
     validation_timeout,

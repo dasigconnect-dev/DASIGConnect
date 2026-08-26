@@ -164,6 +164,33 @@ public class NotificationEventListener {
                 s.getContributor(), NotificationEventType.submission_publish_failed, contributorMsg, link);
     }
 
+    // ── UC-2.4 A6 — Submission missed its review window (MISSED_REVIEW) ───────
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onSubmissionMissedReview(SubmissionMissedReviewEvent event) {
+        Submission s = event.submission();
+        String slot = s.getScheduledAt() != null ? fmt(s.getScheduledAt()) : "unknown";
+        String link = "/submissions/" + s.getId();
+
+        String adminMsg = "'" + s.getEventTitle() + "' missed its scheduled publication time ("
+                + slot + ") without review. Its slot has been released — assign a new schedule to"
+                + " send it back to the approval queue.";
+        for (User admin : admins()) {
+            notificationService.createNotification(admin, NotificationEventType.submission_missed_review, adminMsg, link);
+            emailDeliveryService.send(admin,
+                    NotificationEventType.submission_missed_review.name(),
+                    "DASIGConnect — Submission missed its review window",
+                    adminMsg);
+        }
+
+        String contributorMsg = "Your submission '" + s.getEventTitle()
+                + "' missed its scheduled slot before it could be reviewed. An Administrator will"
+                + " reschedule it for a fresh review.";
+        notificationService.createNotification(
+                s.getContributor(), NotificationEventType.submission_missed_review, contributorMsg, link);
+    }
+
     // ── T9 — Override approved ────────────────────────────────────────────────
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
