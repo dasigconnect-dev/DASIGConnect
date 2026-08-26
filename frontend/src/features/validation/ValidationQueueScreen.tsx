@@ -26,6 +26,8 @@ import { useResolutionFailures } from "../../hooks/useResolutionFailures";
 import type { FailedPublication } from "../../api/resolutionApi";
 import ResolutionRetryModal from "../resolution/ResolutionRetryModal";
 import ManualPublishWorkflowPanel from "../resolution/ManualPublishWorkflowPanel";
+import PageLoader from "../../components/common/PageLoader";
+import "../../styles/dasig-loader.css";
 import "../../styles/resolution.css";
 
 interface ValidationQueueScreenProps {
@@ -475,6 +477,10 @@ export default function ValidationQueueScreen({
     }
   }
 
+  if (loading && queue.length === 0 && !error) {
+    return <PageLoader />;
+  }
+
   return (
     <div className={`val-page ${isPanelCollapsed ? "is-queue-collapsed" : ""}`}>
       <aside className="val-queue-panel">
@@ -726,11 +732,9 @@ export default function ValidationQueueScreen({
                 </div>
               </header>
 
-              {failureContentLoading && (
-                <p className="val-muted">Loading submission content...</p>
-              )}
-
-              {!failureContentLoading && failureContent && (
+              {failureContentLoading ? (
+                <PanelContentLoader text="Loading submission details" />
+              ) : failureContent ? (
                 <>
                   <FacebookPostPreviewCard
                     submission={failureContent}
@@ -745,7 +749,7 @@ export default function ValidationQueueScreen({
                   />
                   <SubmissionDetailCards content={failureContent} />
                 </>
-              )}
+              ) : null}
 
               <section className="val-detail-grid">
                 <DetailCard icon="ti-refresh" label="Retry Attempts">
@@ -876,101 +880,107 @@ export default function ValidationQueueScreen({
                 )}
               </header>
 
-              <FacebookPostPreviewCard
-                submission={selected}
-                editMode={editMode}
-                editForm={editForm}
-                mediaAssets={mediaAssets}
-                mediaIndex={mediaIndex}
-                onMediaIndexChange={setMediaIndex}
-                watermarkConfig={watermarkConfig}
-                showWatermarkPreview={showWatermarkPreview}
-                onToggleWatermark={() => setShowWatermarkPreview((prev) => !prev)}
-              />
-
-              {editMode ? (
-                <section className="val-detail-grid val-edit-grid">
-                  <label className="val-edit-field">
-                    <span>Event Title</span>
-                    <input
-                      value={editForm.eventTitle}
-                      onChange={(e) => setEditForm({ ...editForm, eventTitle: e.target.value })}
-                    />
-                  </label>
-                  <label className="val-edit-field">
-                    <span>Event Date</span>
-                    <input
-                      type="date"
-                      value={editForm.eventDate}
-                      onChange={(e) => setEditForm({ ...editForm, eventDate: e.target.value })}
-                    />
-                  </label>
-                  <label className="val-edit-field full">
-                    <span>Tags (comma-separated)</span>
-                    <input
-                      value={editForm.tags}
-                      onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
-                    />
-                  </label>
-                  <label className="val-edit-field full">
-                    <span>Facebook Caption</span>
-                    <textarea
-                      rows={4}
-                      value={editForm.caption}
-                      onChange={(e) => setEditForm({ ...editForm, caption: e.target.value })}
-                    />
-                  </label>
-                  <label className="val-edit-field full">
-                    <span>Administrator Notes</span>
-                    <textarea
-                      rows={3}
-                      value={editForm.description}
-                      onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                    />
-                  </label>
-                </section>
+              {selectedLoading ? (
+                <PanelContentLoader text="Loading submission details" />
               ) : (
-                <SubmissionDetailCards content={selected} />
-              )}
+                <>
+                  <FacebookPostPreviewCard
+                    submission={selected}
+                    editMode={editMode}
+                    editForm={editForm}
+                    mediaAssets={mediaAssets}
+                    mediaIndex={mediaIndex}
+                    onMediaIndexChange={setMediaIndex}
+                    watermarkConfig={watermarkConfig}
+                    showWatermarkPreview={showWatermarkPreview}
+                    onToggleWatermark={() => setShowWatermarkPreview((prev) => !prev)}
+                  />
 
-              <section className="val-log-card">
-                <div className="val-section-head">
-                  <div>
-                    <i className="ti ti-history"></i>
-                    History
-                  </div>
-                  <span>{visibleLog.length}</span>
-                </div>
-                {logLoading && <p className="val-muted">Loading audit log...</p>}
-                {!logLoading && visibleLog.length === 0 && (
-                  <p className="val-muted">
-                    {isTerminalStatus
-                      ? "No validation actions recorded — this submission was not reviewed through the validation workflow."
-                      : "No approval, revision, rejection, or timeout actions recorded yet."}
-                  </p>
-                )}
-                {!logLoading &&
-                  visibleLog.map((entry) => (
-                    <div className="val-log-item" key={entry.id}>
-                      <div className="val-log-dot">
-                        <i className={`ti ${logIcon(entry.action)}`}></i>
-                      </div>
+                  {editMode ? (
+                    <section className="val-detail-grid val-edit-grid">
+                      <label className="val-edit-field">
+                        <span>Event Title</span>
+                        <input
+                          value={editForm.eventTitle}
+                          onChange={(e) => setEditForm({ ...editForm, eventTitle: e.target.value })}
+                        />
+                      </label>
+                      <label className="val-edit-field">
+                        <span>Event Date</span>
+                        <input
+                          type="date"
+                          value={editForm.eventDate}
+                          onChange={(e) => setEditForm({ ...editForm, eventDate: e.target.value })}
+                        />
+                      </label>
+                      <label className="val-edit-field full">
+                        <span>Tags (comma-separated)</span>
+                        <input
+                          value={editForm.tags}
+                          onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
+                        />
+                      </label>
+                      <label className="val-edit-field full">
+                        <span>Facebook Caption</span>
+                        <textarea
+                          rows={4}
+                          value={editForm.caption}
+                          onChange={(e) => setEditForm({ ...editForm, caption: e.target.value })}
+                        />
+                      </label>
+                      <label className="val-edit-field full">
+                        <span>Administrator Notes</span>
+                        <textarea
+                          rows={3}
+                          value={editForm.description}
+                          onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                        />
+                      </label>
+                    </section>
+                  ) : (
+                    <SubmissionDetailCards content={selected} />
+                  )}
+
+                  <section className="val-log-card">
+                    <div className="val-section-head">
                       <div>
-                        <strong>
-                          {formatAction(entry.action)}
-                          {entry.selfReview && <span className="val-log-flag">Self-review</span>}
-                          {entry.fastTrack && <span className="val-log-flag">Fast-Track</span>}
-                        </strong>
-                        <span>
-                          {entry.validatorEmail} · {formatDateTime(entry.createdAt)}
-                        </span>
-                        {entry.remarks && <p>{entry.remarks}</p>}
-                        {entry.rejectionReason && <p>{entry.rejectionReason}</p>}
-                        {entry.editDiff && <EditDiffView diffJson={entry.editDiff} />}
+                        <i className="ti ti-history"></i>
+                        History
                       </div>
+                      <span>{visibleLog.length}</span>
                     </div>
-                  ))}
-              </section>
+                    {logLoading && <p className="val-muted">Loading audit log...</p>}
+                    {!logLoading && visibleLog.length === 0 && (
+                      <p className="val-muted">
+                        {isTerminalStatus
+                          ? "No validation actions recorded — this submission was not reviewed through the validation workflow."
+                          : "No approval, revision, rejection, or timeout actions recorded yet."}
+                      </p>
+                    )}
+                    {!logLoading &&
+                      visibleLog.map((entry) => (
+                        <div className="val-log-item" key={entry.id}>
+                          <div className="val-log-dot">
+                            <i className={`ti ${logIcon(entry.action)}`}></i>
+                          </div>
+                          <div>
+                            <strong>
+                              {formatAction(entry.action)}
+                              {entry.selfReview && <span className="val-log-flag">Self-review</span>}
+                              {entry.fastTrack && <span className="val-log-flag">Fast-Track</span>}
+                            </strong>
+                            <span>
+                              {entry.validatorEmail} · {formatDateTime(entry.createdAt)}
+                            </span>
+                            {entry.remarks && <p>{entry.remarks}</p>}
+                            {entry.rejectionReason && <p>{entry.rejectionReason}</p>}
+                            {entry.editDiff && <EditDiffView diffJson={entry.editDiff} />}
+                          </div>
+                        </div>
+                      ))}
+                  </section>
+                </>
+              )}
             </div>
 
             {isTerminalStatus ? (
@@ -1212,6 +1222,37 @@ function NoticeBar({
     <div className={`val-notice ${tone}`}>
       <i className={`ti ${icon}`}></i>
       <span>{text}</span>
+    </div>
+  );
+}
+
+function PanelContentLoader({ text = "Loading submission details..." }: { text?: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "360px",
+        width: "100%",
+        padding: "64px 24px",
+      }}
+      role="status"
+      aria-label={text}
+    >
+      <div className="dc-dot-triangle-container">
+        <div className="dc-dot-triangle-label">
+          <span>{text}</span>
+          <span className="dc-dot-triangle-label-dots">
+            <span className="dc-dot-triangle-dot-char">.</span>
+            <span className="dc-dot-triangle-dot-char">.</span>
+            <span className="dc-dot-triangle-dot-char">.</span>
+          </span>
+        </div>
+        <div className="loader-stage" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className="loader-dots" />
+        </div>
+      </div>
     </div>
   );
 }
