@@ -314,6 +314,12 @@
   margin-top: 8px;
 }
 
+.val-deadline.val-live {
+  background: var(--val-red-dim);
+  color: var(--val-red);
+  font-weight: 700;
+}
+
 .val-deadline,
 .val-media-count {
   display: inline-flex;
@@ -459,6 +465,18 @@
   border: 1px solid var(--val-purple-bdr);
   background: var(--val-purple-dim);
   padding: 11px 14px;
+}
+
+.val-slot-card.val-live {
+  border-color: var(--val-red-bdr);
+  background: var(--val-red-dim);
+}
+
+.val-slot-card.val-live span {
+  color: var(--val-red);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .val-slot-card span {
@@ -799,10 +817,89 @@
 .val-modal-actions .warn { background: var(--val-amber); }
 .val-btn.danger,
 .val-modal-actions .danger { background: var(--val-red); }
+.val-btn.ghost,
 .val-modal-actions .ghost {
   color: var(--val-muted);
   background: var(--val-surface-2);
   border: 1px solid var(--val-border);
+}
+
+.val-edit-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.val-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border-radius: 10px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  padding: 12px 14px;
+}
+
+.val-edit-field.full {
+  grid-column: 1 / -1;
+}
+
+.val-edit-field span {
+  color: var(--val-muted);
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.val-edit-field input,
+.val-edit-field textarea {
+  border: 1px solid var(--val-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--val-text-2);
+}
+
+.val-log-flag {
+  margin-left: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--val-amber);
+  color: var(--val-amber);
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.val-edit-diff {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.val-edit-diff-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.val-edit-diff-field {
+  color: var(--val-muted);
+  font-weight: 800;
+  min-width: 90px;
+}
+
+.val-edit-diff-from {
+  text-decoration: line-through;
+  color: var(--val-red);
+}
+
+.val-edit-diff-to {
+  color: var(--val-green);
+  font-weight: 700;
 }
 
 .val-modal-overlay {

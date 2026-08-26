@@ -408,6 +408,19 @@ public class InvitationService {
     }
 
     @Transactional(readOnly = true)
+    public List<PendingInvitationDto> listPendingAdministrators(JwtUserDetails requester) {
+        if (!isAdministrator(requester)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only administrators and super administrators can view administrator invitations");
+        }
+        return invitationTokenRepository
+                .findPendingNetworkRoleInvitations(UserRole.administrator, Instant.now())
+                .stream()
+                .map(PendingInvitationDto::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public Map<String, Long> countPending(UUID institutionId, JwtUserDetails requester) {
         validateInstitutionScope(institutionId, requester);
         return Map.of(

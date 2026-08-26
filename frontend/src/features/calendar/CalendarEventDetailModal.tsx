@@ -130,6 +130,11 @@ export default function CalendarEventDetailModal({
             >
               {visibleStatusLabel(event.status, user.role, isOwnInstitution)}
             </span>
+            {event.locked && (
+              <span className="status-badge cal-locked-badge">
+                <i className="ti ti-lock" /> Slot Locked
+              </span>
+            )}
             <p>{workflowHint(displayStatus)}</p>
           </section>
 

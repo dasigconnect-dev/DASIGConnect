@@ -75,6 +75,7 @@ public class SubmissionService {
 
     private static final int MAX_MEDIA_PER_SUBMISSION = 10;
     private static final long MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024;
+    private static final int MAX_CAPTION_WORDS = 2000;
 
     private final SubmissionRepository submissionRepository;
     private final InstitutionRepository institutionRepository;
@@ -152,6 +153,7 @@ public class SubmissionService {
         submission.setInstitution(institution);
         submission.setEventTitle(dto.getEventTitle());
         submission.setEventDate(dto.getEventDate());
+        validateCaptionWordLimit(dto.getCaption(), HttpStatus.BAD_REQUEST);
         submission.setCaption(dto.getCaption());
         submission.setDescription(dto.getDescription());
         submission.setStatus(SubmissionStatus.draft);
@@ -227,6 +229,18 @@ public class SubmissionService {
     public SubmissionResponseDto update(UUID submissionId, SubmissionUpdateDto dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
+        submission = applySubmissionEdits(submission, dto);
+        return buildResponse(submission);
+    }
+
+    /**
+     * Applies the editable-field subset of a SubmissionUpdateDto to an already-loaded
+     * submission and saves it. Shared by the contributor-facing update() above and
+     * ValidationService's admin Edit & Approve action — callers own their own
+     * ownership/status checks before calling this.
+     */
+    Submission applySubmissionEdits(Submission submission, SubmissionUpdateDto dto) {
+        UUID submissionId = submission.getId();
 
         if (dto.getEventTitle() != null) {
             submission.setEventTitle(dto.getEventTitle());
@@ -235,6 +249,7 @@ public class SubmissionService {
             submission.setEventDate(dto.getEventDate());
         }
         if (dto.getCaption() != null) {
+            validateCaptionWordLimit(dto.getCaption(), HttpStatus.BAD_REQUEST);
             submission.setCaption(dto.getCaption());
         }
         if (dto.getDescription() != null) {
@@ -284,8 +299,7 @@ public class SubmissionService {
             slotReservationService.reserve(submissionId, submission.getInstitution().getId(), dto.getScheduledAt());
         }
 
-        submission = submissionRepository.save(submission);
-        return buildResponse(submission);
+        return submissionRepository.save(submission);
     }
 
     /**
@@ -379,7 +393,7 @@ public class SubmissionService {
      * post: an event title, an event date, a caption, and at least one media
      * asset. Throws 422 listing everything that is still missing.
      */
-    private void assertContentComplete(Submission submission) {
+    void assertContentComplete(Submission submission) {
         List<String> missing = new java.util.ArrayList<>();
         if (submission.getEventTitle() == null || submission.getEventTitle().isBlank()) {
             missing.add("an event title");
@@ -389,6 +403,8 @@ public class SubmissionService {
         }
         if (submission.getCaption() == null || submission.getCaption().isBlank()) {
             missing.add("a caption");
+        } else {
+            validateCaptionWordLimit(submission.getCaption(), HttpStatus.UNPROCESSABLE_ENTITY);
         }
         if (submissionMediaAssetRepository.countBySubmissionId(submission.getId()) < 1) {
             missing.add("at least one media attachment");
@@ -420,21 +436,7 @@ public class SubmissionService {
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> list(JwtUserDetails user) {
-        List<Submission> submissions = switch (user.role().toLowerCase()) {
-            case "contributor" ->
-                submissionRepository
-                .findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(user.userId(), user.institutionId());
-            case "validator" ->
-                submissionRepository
-                .findByInstitutionIdOrderByCreatedAtDesc(user.institutionId());
-            case "administrator" ->
-                submissionRepository.findAllByOrderByCreatedAtDesc().stream()
-                        .filter(submission -> !isEditableStatus(submission)
-                                || submission.getContributor().getId().equals(user.userId()))
-                        .toList();
-            default ->
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Unknown role");
-        };
+        List<Submission> submissions = submissionRepository.findByContributorIdOrderByCreatedAtDesc(user.userId());
 
         return submissions.stream()
                 .map(s -> SubmissionSummaryDto.from(s, submissionMediaAssetRepository.countBySubmissionId(s.getId())))
@@ -530,10 +532,32 @@ public class SubmissionService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Media asset is not attached to this submission."));
 
+        boolean everPublishedBeyondDraft = !submissionMediaAssetRepository
+                .findAssetIdsUsedBeyondDraft(List.of(mediaAssetId)).isEmpty();
+
         submissionMediaAssetRepository.delete(link);
         submissionMediaAssetRepository.flush();
         refreshManualPublishingFlag(submission);
         log.info("Asset {} detached from submission {} by user {}", mediaAssetId, submissionId, user.userId());
+
+        // A draft-only upload that is now attached to nothing served no purpose
+        // beyond that draft — permanently delete it (row + storage object) so
+        // it never surfaces as an orphaned "standalone" asset in the Media
+        // Repository, rather than soft-deleting it into the 30-day retention
+        // queue like a deliberate library deletion. Assets that were ever
+        // used beyond draft status are left alone even if this was their
+        // last remaining attachment, since they are legitimate reusable
+        // library assets. asset_tags and media_asset_embeddings cascade-delete
+        // at the database level (ON DELETE CASCADE).
+        if (!everPublishedBeyondDraft && !submissionMediaAssetRepository.existsByMediaAssetId(mediaAssetId)) {
+            mediaAssetRepository.findActiveById(mediaAssetId).ifPresent(orphan -> {
+                String storageUrl = orphan.getStorageUrl();
+                mediaAssetRepository.delete(orphan);
+                boolean storageDeleted = supabaseStorageService.deletePublicObject(storageUrl);
+                log.info("Orphaned draft-only media asset {} permanently deleted after detach from submission {} (storageDeleted={})",
+                        mediaAssetId, submissionId, storageDeleted);
+            });
+        }
     }
 
     /**
@@ -673,7 +697,7 @@ public class SubmissionService {
 
     private void assertReadAccess(Submission submission, JwtUserDetails user) {
         switch (user.role().toLowerCase()) {
-            case "administrator" -> {
+            case "administrator", "super_administrator" -> {
                 if (isEditableStatus(submission)
                         && !submission.getContributor().getId().equals(user.userId())) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied.");
@@ -741,6 +765,18 @@ public class SubmissionService {
 
     private static String normalizeOptional(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static void validateCaptionWordLimit(String caption, HttpStatus status) {
+        if (countWords(caption) <= MAX_CAPTION_WORDS) return;
+        throw new ResponseStatusException(
+                status,
+                "Caption must not exceed " + MAX_CAPTION_WORDS + " words.");
+    }
+
+    private static int countWords(String value) {
+        if (value == null || value.isBlank()) return 0;
+        return value.trim().split("\\s+").length;
     }
 
     private static String joinTags(List<String> tags) {

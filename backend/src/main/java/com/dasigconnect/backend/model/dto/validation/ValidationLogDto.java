@@ -14,6 +14,9 @@ public class ValidationLogDto {
     private String action;
     private String remarks;
     private String rejectionReason;
+    private boolean selfReview;
+    private boolean fastTrack;
+    private String editDiff;
     private Instant createdAt;
 
     public static ValidationLogDto from(ValidationLog entry) {
@@ -25,6 +28,9 @@ public class ValidationLogDto {
         dto.action = entry.getAction().name();
         dto.remarks = entry.getRemarks();
         dto.rejectionReason = entry.getRejectionReason();
+        dto.selfReview = entry.isSelfReview();
+        dto.fastTrack = entry.isFastTrack();
+        dto.editDiff = entry.getEditDiff();
         dto.createdAt = entry.getCreatedAt();
         return dto;
     }
@@ -36,5 +42,8 @@ public class ValidationLogDto {
     public String getAction() { return action; }
     public String getRemarks() { return remarks; }
     public String getRejectionReason() { return rejectionReason; }
+    public boolean isSelfReview() { return selfReview; }
+    public boolean isFastTrack() { return fastTrack; }
+    public String getEditDiff() { return editDiff; }
     public Instant getCreatedAt() { return createdAt; }
 }

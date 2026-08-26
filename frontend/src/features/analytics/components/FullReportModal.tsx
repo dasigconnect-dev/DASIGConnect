@@ -12,6 +12,7 @@ interface Props {
   metric: AnalyticsExportMetric | null;
   range: AnalyticsRange;
   institutionId?: string | null;
+  category?: string | null;
   busy: boolean;
   onBusyChange: (busy: boolean) => void;
   onClose: () => void;
@@ -23,6 +24,7 @@ const REPORT_LABELS: Record<AnalyticsExportMetric, string> = {
   "posts-by-institution": "Posts by Institution Report",
   "ai-performance": "AI Performance Report",
   "operational-health": "Operational Health Report",
+  "facebook-engagement": "Facebook Engagement Report",
 };
 
 const REPORT_ICONS: Record<AnalyticsExportMetric, string> = {
@@ -31,6 +33,7 @@ const REPORT_ICONS: Record<AnalyticsExportMetric, string> = {
   "posts-by-institution": "ti ti-speakerphone",
   "ai-performance": "ti ti-robot",
   "operational-health": "ti ti-activity",
+  "facebook-engagement": "ti ti-thumb-up",
 };
 
 const REPORT_UNITS: Record<AnalyticsExportMetric, string> = {
@@ -39,6 +42,7 @@ const REPORT_UNITS: Record<AnalyticsExportMetric, string> = {
   "posts-by-institution": "posts",
   "ai-performance": "events",
   "operational-health": "percent",
+  "facebook-engagement": "reach",
 };
 
 type ActiveTab = "daily" | "submissions";
@@ -47,6 +51,7 @@ export default function FullReportModal({
   metric,
   range,
   institutionId,
+  category,
   busy,
   onBusyChange,
   onClose,
@@ -57,7 +62,9 @@ export default function FullReportModal({
   // Tab is bound to the metric it was chosen for — auto-resets to "daily" when metric changes
   const [tabEntry, setTabEntry] = useState<{ forMetric: string; tab: ActiveTab } | null>(null);
   const activeTab: ActiveTab = tabEntry?.forMetric === metric ? tabEntry.tab : "daily";
-  const requestKey = metric ? `${metric}:${range}:${institutionId ?? "network"}:${refreshKey}` : "";
+  const requestKey = metric
+    ? `${metric}:${range}:${institutionId ?? "network"}:${category ?? "all"}:${refreshKey}`
+    : "";
 
   function switchTab(tab: ActiveTab) {
     if (metric) setTabEntry({ forMetric: metric, tab });
@@ -66,8 +73,8 @@ export default function FullReportModal({
   useEffect(() => {
     if (!metric) return;
     const controller = new AbortController();
-    const activeKey = `${metric}:${range}:${institutionId ?? "network"}:${refreshKey}`;
-    getAnalyticsReport(metric, range, institutionId, controller.signal)
+    const activeKey = `${metric}:${range}:${institutionId ?? "network"}:${category ?? "all"}:${refreshKey}`;
+    getAnalyticsReport(metric, range, institutionId, category, controller.signal)
       .then((res) => {
         setReport(res.data);
         setError(null);
@@ -78,7 +85,7 @@ export default function FullReportModal({
         }
       });
     return () => controller.abort();
-  }, [metric, range, institutionId, refreshKey]);
+  }, [metric, range, institutionId, category, refreshKey]);
 
   const maxDailyValue = useMemo(
     () => Math.max(...(report?.dailyBreakdown ?? []).map((point) => point.value), 1),
@@ -99,7 +106,7 @@ export default function FullReportModal({
     if (!metric) return;
     onBusyChange(true);
     try {
-      await downloadAnalyticsCsv(metric, range, institutionId);
+      await downloadAnalyticsCsv(metric, range, institutionId, category);
     } finally {
       onBusyChange(false);
     }

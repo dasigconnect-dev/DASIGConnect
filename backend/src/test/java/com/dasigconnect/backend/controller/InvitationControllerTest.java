@@ -70,9 +70,9 @@ class InvitationControllerTest {
                                 {"recipientEmail":"user@example.com","institutionId":"%s","assignedRole":"contributor"}
                                 """.formatted(INSTITUTION_ID)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.recipientEmail").value("user@example.com"))
-                .andExpect(jsonPath("$.assignedRole").value("contributor"))
-                .andExpect(jsonPath("$.emailDelivered").value(true));
+                .andExpect(jsonPath("$.data.recipientEmail").value("user@example.com"))
+                .andExpect(jsonPath("$.data.assignedRole").value("contributor"))
+                .andExpect(jsonPath("$.data.emailDelivered").value(true));
     }
 
     @Test
@@ -84,7 +84,7 @@ class InvitationControllerTest {
                                 {"institutionId":"%s","assignedRole":"contributor"}
                                 """.formatted(INSTITUTION_ID)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fields.recipientEmail").exists());
+                .andExpect(jsonPath("$.error.details.fields.recipientEmail").exists());
     }
 
     @Test
@@ -123,8 +123,8 @@ class InvitationControllerTest {
 
         mockMvc.perform(get("/api/v1/invitations/validate").param("token", "sometoken"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.recipientEmail").value("user@example.com"))
-                .andExpect(jsonPath("$.institutionName").value("CIT-U"));
+                .andExpect(jsonPath("$.data.recipientEmail").value("user@example.com"))
+                .andExpect(jsonPath("$.data.institutionName").value("CIT-U"));
     }
 
     @Test
@@ -138,7 +138,7 @@ class InvitationControllerTest {
                                 {"token":"sometoken","firstName":"Mark","lastName":"Camoro","password":"password123"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").value("new.jwt.token"));
+                .andExpect(jsonPath("$.data.accessToken").value("new.jwt.token"));
     }
 
     @Test
@@ -149,7 +149,7 @@ class InvitationControllerTest {
                                 {"token":"sometoken","firstName":"Mark","lastName":"Camoro","password":"short"}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fields.password").exists());
+                .andExpect(jsonPath("$.error.details.fields.password").exists());
     }
 
     @Test
@@ -160,7 +160,7 @@ class InvitationControllerTest {
                                 {"token":"sometoken","lastName":"Camoro","password":"password123"}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fields.firstName").exists());
+                .andExpect(jsonPath("$.error.details.fields.firstName").exists());
     }
 
     @Test
@@ -175,8 +175,8 @@ class InvitationControllerTest {
 
         mockMvc.perform(post("/api/v1/invitations/{id}/resend", invitationId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.recipientEmail").value("user@example.com"))
-                .andExpect(jsonPath("$.emailDelivered").value(true));
+                .andExpect(jsonPath("$.data.recipientEmail").value("user@example.com"))
+                .andExpect(jsonPath("$.data.emailDelivered").value(true));
     }
 
     @Test
@@ -193,8 +193,27 @@ class InvitationControllerTest {
 
         mockMvc.perform(get("/api/v1/invitations/pending").param("institutionId", INSTITUTION_ID.toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(invitationId.toString()))
-                .andExpect(jsonPath("$[0].recipientEmail").value("user@example.com"));
+                .andExpect(jsonPath("$.data[0].id").value(invitationId.toString()))
+                .andExpect(jsonPath("$.data[0].recipientEmail").value("user@example.com"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMINISTRATOR")
+    void pendingAdministrators_asAdministrator_returnsPendingAdministratorInvitations() throws Exception {
+        UUID invitationId = UUID.randomUUID();
+        when(invitationService.listPendingAdministrators(any())).thenReturn(List.of(new PendingInvitationDto(
+                invitationId,
+                "admin@example.com",
+                UserRole.administrator,
+                null,
+                Instant.now().plusSeconds(3600),
+                Instant.now())));
+
+        mockMvc.perform(get("/api/v1/invitations/pending/administrators"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(invitationId.toString()))
+                .andExpect(jsonPath("$.data[0].recipientEmail").value("admin@example.com"))
+                .andExpect(jsonPath("$.data[0].institutionId").doesNotExist());
     }
 
     @Test
@@ -204,6 +223,6 @@ class InvitationControllerTest {
 
         mockMvc.perform(get("/api/v1/invitations/pending/count").param("institutionId", INSTITUTION_ID.toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.pendingInvitations").value(3));
+                .andExpect(jsonPath("$.data.pendingInvitations").value(3));
     }
 }

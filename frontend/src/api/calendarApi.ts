@@ -9,6 +9,7 @@ export interface CalendarEvent {
   status: string;
   scheduledAt: string;
   publishedAt: string | null;
+  locked: boolean;
 }
 
 export function getCalendarEvents(signal?: AbortSignal) {

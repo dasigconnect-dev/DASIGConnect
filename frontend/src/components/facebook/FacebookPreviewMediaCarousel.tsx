@@ -1,6 +1,9 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FacebookPreviewMediaItem } from "../../types/facebook";
 import FacebookPreviewEmptyState from "./FacebookPreviewEmptyState";
+import { getWatermarkConfiguration } from "../../api/watermarkApi";
+import type { WatermarkConfiguration } from "../../types/watermark.types";
+import WatermarkOverlay from "../watermark/WatermarkOverlay";
 
 interface FacebookPreviewMediaCarouselProps {
   mediaItems: FacebookPreviewMediaItem[];
@@ -15,10 +18,17 @@ export default function FacebookPreviewMediaCarousel({
   onActiveIndexChange,
   size = "compact",
 }: FacebookPreviewMediaCarouselProps) {
+  const [watermarkConfig, setWatermarkConfig] = useState<WatermarkConfiguration | null>(null);
   const touchStartX = useRef<number | null>(null);
   const currentIndex = clampIndex(activeIndex, mediaItems.length);
   const current = mediaItems[currentIndex];
   const hasMultiple = mediaItems.length > 1;
+
+  useEffect(() => {
+    void getWatermarkConfiguration()
+      .then((res) => setWatermarkConfig(res.data))
+      .catch(() => undefined);
+  }, []);
 
   function goTo(index: number) {
     if (!onActiveIndexChange || mediaItems.length === 0) return;
@@ -63,7 +73,12 @@ export default function FacebookPreviewMediaCarousel({
           )}
           </>
         ) : current.type === "image" ? (
-          <img src={current.url} alt={current.alt} />
+          <div style={{ position: "relative", width: "100%", height: "100%" }}>
+            <img src={current.url} alt={current.alt} />
+            {watermarkConfig?.enabled && !current.skipWatermark && (
+              <WatermarkOverlay elements={watermarkConfig.elements} />
+            )}
+          </div>
         ) : (
           <FacebookPreviewEmptyState />
         )}

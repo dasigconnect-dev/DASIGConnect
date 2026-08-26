@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.controller;
 
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.settings.PageSettingsDto;
 import com.dasigconnect.backend.model.dto.settings.UpdatePageSettingsRequestDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -19,15 +20,15 @@ public class PageSettingsController {
     public PageSettingsController(PageSettingsService service) { this.service = service; }
 
     @GetMapping
-    public ResponseEntity<PageSettingsDto> get(@RequestParam(required = false) UUID institutionId,
+    public ResponseEntity<ApiResponse<PageSettingsDto>> get(@RequestParam(required = false) UUID institutionId,
             @AuthenticationPrincipal JwtUserDetails actor) {
-        return ResponseEntity.ok(service.get(institutionId, actor));
+        return ResponseEntity.ok(ApiResponse.success(service.get(institutionId, actor)));
     }
 
     @PutMapping
-    public ResponseEntity<PageSettingsDto> update(@RequestParam(required = false) UUID institutionId,
+    public ResponseEntity<ApiResponse<PageSettingsDto>> update(@RequestParam(required = false) UUID institutionId,
             @RequestBody @Valid UpdatePageSettingsRequestDto request,
             @AuthenticationPrincipal JwtUserDetails actor) {
-        return ResponseEntity.ok(service.update(institutionId, request, actor));
+        return ResponseEntity.ok(ApiResponse.success(service.update(institutionId, request, actor)));
     }
 }

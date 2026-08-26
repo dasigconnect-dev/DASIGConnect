@@ -170,6 +170,29 @@ class UserServiceTest {
     }
 
     @Test
+    void listAdministrators_returnsNetworkAdministratorAccounts() {
+        User admin = user(UUID.randomUUID(), "admin@dasigconnect.com", UserRole.administrator, null);
+        User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.super_administrator, null);
+        superAdmin.setSuperAdministrator(true);
+        when(userRepository.findByRolesOrderByCreatedAtDesc(any())).thenReturn(List.of(superAdmin, admin));
+
+        List<UserDto> result = userService.listAdministrators(
+                principal(UUID.randomUUID(), "administrator", null));
+
+        assertThat(result).extracting(UserDto::getEmail)
+                .containsExactly("super@dasigconnect.com", "admin@dasigconnect.com");
+    }
+
+    @Test
+    void listAdministrators_contributorIsForbidden() {
+        assertThatThrownBy(() -> userService.listAdministrators(
+                principal(userId, "contributor", institutionId)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
     void countByRole_returnsContributorAndValidatorCounts() {
         when(userRepository.countByInstitutionIdAndRoleAndAccountState(institutionId, UserRole.contributor, UserStatus.active)).thenReturn(12L);
         when(userRepository.countByInstitutionIdAndRoleAndAccountState(institutionId, UserRole.administrator, UserStatus.active)).thenReturn(2L);
@@ -231,13 +254,15 @@ class UserServiceTest {
     }
 
     @Test
-    void updateStatus_administratorCanManageAdministrator() {
+    void updateStatus_standardAdministratorCannotManageAdministrator() {
         User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.administrator, institution);
         when(userRepository.findById(validator.getId())).thenReturn(Optional.of(validator));
-        when(userRepository.save(validator)).thenReturn(validator);
 
-        assertThat(userService.updateStatus(validator.getId(), UserStatus.inactive,
-                principal(UUID.randomUUID(), "administrator", institutionId)).getAccountState()).isEqualTo("inactive");
+        assertThatThrownBy(() -> userService.updateStatus(validator.getId(), UserStatus.inactive,
+                principal(UUID.randomUUID(), "administrator", institutionId)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test
@@ -301,13 +326,16 @@ class UserServiceTest {
     }
 
     @Test
-    void updateStatus_regularAdministratorCanDeactivateAdministratorAndRevokesSessions() {
+    void updateStatus_superAdministratorCanDeactivateAdministratorAndRevokesSessions() {
         User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.administrator, null);
+        User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.super_administrator, null);
+        superAdmin.setSuperAdministrator(true);
         when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        when(userRepository.findById(superAdmin.getId())).thenReturn(Optional.of(superAdmin));
         when(userRepository.save(targetAdmin)).thenReturn(targetAdmin);
 
         UserDto result = userService.updateStatus(targetAdmin.getId(), UserStatus.inactive,
-                principal(UUID.randomUUID(), "administrator", null));
+                principal(superAdmin.getId(), "super_administrator", null));
 
         assertThat(result.getAccountState()).isEqualTo("inactive");
         verify(jwtService).invalidateUserTokens(targetAdmin.getId());

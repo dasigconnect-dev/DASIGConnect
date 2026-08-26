@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.controller;
 
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.engagement.EngagementRecommendationDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.EngagementRecommendationService;
@@ -22,9 +23,9 @@ public class EngagementRecommendationController {
     }
 
     @GetMapping
-    public ResponseEntity<EngagementRecommendationDto> recommendations(
+    public ResponseEntity<ApiResponse<EngagementRecommendationDto>> recommendations(
             @RequestParam(required = false) java.util.UUID institutionId,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(service.recommend(user, institutionId));
+        return ResponseEntity.ok(ApiResponse.success(service.recommend(user, institutionId)));
     }
 }

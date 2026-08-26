@@ -4,7 +4,7 @@ import {
   completeManualPublish,
   getResolutionDetail,
   getResolutionFailures,
-  retryPublication,
+  retryPublicationWithNewSchedule,
   startManualPublish,
   type FailedPublication,
   type ManualPublishDetail,
@@ -19,7 +19,11 @@ export interface UseResolutionFailuresResult {
   activeDetail: ManualPublishDetail | null;
   detailLoading: boolean;
   refresh: () => void;
-  handleRetry: (item: FailedPublication) => Promise<void>;
+  handleRetryWithNewSchedule: (
+    item: FailedPublication,
+    scheduledAt: string,
+    overrideReason?: string,
+  ) => Promise<void>;
   handleStartManual: (item: FailedPublication) => Promise<void>;
   handleCancelManual: (item: FailedPublication) => Promise<void>;
   handleCompleteManual: (
@@ -76,14 +80,25 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
     setDetailLoading(false);
   }
 
-  async function handleRetry(item: FailedPublication) {
+  async function handleRetryWithNewSchedule(
+    item: FailedPublication,
+    scheduledAt: string,
+    overrideReason?: string,
+  ) {
     setBusy(item.submissionId);
     try {
-      await retryPublication(item.submissionId);
-      toast.success(`Retrying "${item.eventTitle}"...`);
+      await retryPublicationWithNewSchedule(item.submissionId, {
+        scheduledAt,
+        overrideReason: overrideReason || undefined,
+      });
+      toast.success(`"${item.eventTitle}" rescheduled and re-queued.`);
       refresh();
-    } catch {
-      toast.error("Retry failed. Please try again.");
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        "Could not reschedule this submission.";
+      toast.error(message);
+      throw err;
     } finally {
       setBusy(null);
     }
@@ -147,7 +162,7 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
     activeDetail,
     detailLoading,
     refresh,
-    handleRetry,
+    handleRetryWithNewSchedule,
     handleStartManual,
     handleCancelManual,
     handleCompleteManual,

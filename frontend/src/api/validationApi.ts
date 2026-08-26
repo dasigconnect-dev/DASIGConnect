@@ -18,11 +18,24 @@ export interface ValidationLog {
   action: string;
   remarks?: string | null;
   rejectionReason?: string | null;
+  selfReview?: boolean;
+  fastTrack?: boolean;
+  editDiff?: string | null;
   createdAt: string;
 }
 
 export interface RevisionPayload {
   remarks: string;
+}
+
+export interface EditAndApprovePayload {
+  eventTitle?: string;
+  eventDate?: string;
+  caption?: string;
+  description?: string;
+  category?: string;
+  tags?: string[];
+  scheduledAt?: string;
 }
 
 export interface RejectionPayload {
@@ -45,6 +58,10 @@ export function getValidationQueue(options?: { history?: boolean; signal?: Abort
   });
 }
 
+export function getReviewLockStatus(submissionId: string, signal?: AbortSignal) {
+  return api.get<ReviewLock | null>(`/validation/${submissionId}/lock`, { signal });
+}
+
 export function acquireReviewLock(submissionId: string) {
   return api.post<ReviewLock>(`/validation/${submissionId}/lock`);
 }
@@ -55,6 +72,13 @@ export function releaseReviewLock(submissionId: string) {
 
 export function approveSubmission(submissionId: string) {
   return api.post<void>(`/validation/${submissionId}/approve`);
+}
+
+export function editAndApproveSubmission(
+  submissionId: string,
+  payload: EditAndApprovePayload,
+) {
+  return api.post<void>(`/validation/${submissionId}/edit-and-approve`, payload);
 }
 
 export function requestSubmissionRevision(

@@ -22,6 +22,7 @@ import com.dasigconnect.backend.model.dto.analytics.AnalyticsReportDto;
 import com.dasigconnect.backend.model.dto.analytics.AnalyticsSummaryDto;
 import com.dasigconnect.backend.model.dto.analytics.ContributorBreakdownDto;
 import com.dasigconnect.backend.model.dto.analytics.ContributorAnalyticsDto;
+import com.dasigconnect.backend.model.dto.analytics.FacebookEngagementSummaryDto;
 import com.dasigconnect.backend.model.dto.analytics.KpiMetricDto;
 import com.dasigconnect.backend.model.dto.analytics.OperationalHealthDto;
 import com.dasigconnect.backend.model.dto.analytics.ValidatorAnalyticsDto;
@@ -30,6 +31,7 @@ import com.dasigconnect.backend.repository.AnalyticsRepository.AiStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.AnalyticsScope;
 import com.dasigconnect.backend.repository.AnalyticsRepository.CompletenessStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.ContributorStats;
+import com.dasigconnect.backend.repository.AnalyticsRepository.FacebookEngagementStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.OperationalStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.PostingDelayStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.PublishedPostStats;
@@ -51,14 +53,14 @@ public class MetricsAggregatorService {
 
     @Cacheable(
             cacheNames = CacheConfig.ANALYTICS_SUMMARY_CACHE,
-            key = "#range + ':' + #institutionId + ':' + #user.role() + ':' + #user.userId() + ':' + #user.institutionId()")
-    public AnalyticsSummaryDto summary(String range, UUID institutionId, JwtUserDetails user) {
+            key = "#range + ':' + #institutionId + ':' + #category + ':' + #user.role() + ':' + #user.userId() + ':' + #user.institutionId()")
+    public AnalyticsSummaryDto summary(String range, UUID institutionId, String category, JwtUserDetails user) {
         ReportingPeriod period = resolvePeriod(range);
         ReportingPeriod previousPeriod = previousPeriod(period);
-        AnalyticsScope scope = scopeFor(user, institutionId);
-        boolean adminView = "super_administrator".equals(scope.role());
-        boolean validatorView = "administrator".equals(scope.role());
+        AnalyticsScope scope = scopeFor(user, institutionId, category);
+        boolean adminView = isAdmin(scope.role());
         boolean contributorView = "contributor".equals(scope.role());
+        boolean institutionDrilldown = adminView && scope.institutionId() != null;
 
         PostingDelayStats delay = analyticsRepository.averagePostingDelay(period.start(), period.end(), scope);
         PostingDelayStats previousDelay = analyticsRepository.averagePostingDelay(
@@ -69,19 +71,19 @@ public class MetricsAggregatorService {
         PublishedPostStats posts = analyticsRepository.publishedPostStats(period.start(), period.end(), scope);
         PublishedPostStats previousPosts = analyticsRepository.publishedPostStats(
                 previousPeriod.start(), previousPeriod.end(), scope);
-        AiStats ai = analyticsRepository.aiPerformance(period.start(), period.end(), scope);
 
         double completenessRate = percent(completeness.completeCount(), completeness.totalCount());
         double previousCompletenessRate = percent(
                 previousCompleteness.completeCount(), previousCompleteness.totalCount());
         double postsPerMonth = postsPerMonth(posts.totalCount(), period.days());
-        List<ContributorBreakdownDto> contributorBreakdown = validatorView || (adminView && scope.institutionId() != null)
+        List<ContributorBreakdownDto> contributorBreakdown = institutionDrilldown
                 ? analyticsRepository.contributorBreakdown(period.start(), period.end(), scope)
                 : List.of();
         ContributorAnalyticsDto contributorAnalytics = null;
         ValidatorAnalyticsDto validatorAnalytics = null;
         AdminAnalyticsDto adminAnalytics = null;
         OperationalHealthDto operationalHealth = null;
+        AiPerformanceDto aiPerformanceDto = null;
         if (contributorView) {
             ContributorStats contributor = analyticsRepository.contributorStats(period.start(), period.end(), scope);
             contributorAnalytics = new ContributorAnalyticsDto(
@@ -91,7 +93,7 @@ public class MetricsAggregatorService {
                     contributor.rejectedOrRevisionCount(),
                     round(percent(contributor.rejectedOrRevisionCount(), contributor.submittedCount())));
         }
-        if (validatorView) {
+        if (institutionDrilldown) {
             ValidatorStats validator = analyticsRepository.validatorStats(
                     period.start(), period.end(), Instant.now(), scope);
             validatorAnalytics = new ValidatorAnalyticsDto(
@@ -102,6 +104,9 @@ public class MetricsAggregatorService {
                     validator.queueAgingCount());
         }
         if (adminView) {
+            AiStats ai = analyticsRepository.aiPerformance(period.start(), period.end(), scope);
+            aiPerformanceDto = aiPerformance(ai);
+
             OperationalStats operational = analyticsRepository.operationalHealth(
                     period.start(), period.end(), Instant.now(), scope);
             double publishingSuccessRate = percent(operational.successCount(), operational.attemptCount());
@@ -122,6 +127,15 @@ public class MetricsAggregatorService {
                     operational.adminActionCount(),
                     posts.adminDirectCount());
         }
+
+        FacebookEngagementStats engagement = analyticsRepository.facebookEngagement(period.start(), period.end(), scope);
+        FacebookEngagementSummaryDto facebookEngagement = new FacebookEngagementSummaryDto(
+                round(engagement.averageReach()),
+                engagement.totalReactions(),
+                engagement.totalComments(),
+                engagement.totalShares(),
+                engagement.sampleSize(),
+                engagement.pendingCount());
 
         return new AnalyticsSummaryDto(
                 period.label(),
@@ -175,14 +189,15 @@ public class MetricsAggregatorService {
                 analyticsRepository.topCategories(period.start(), period.end(), scope),
                 contributorAnalytics,
                 validatorAnalytics,
-                aiPerformance(ai),
+                aiPerformanceDto,
                 adminAnalytics,
-                operationalHealth);
+                operationalHealth,
+                facebookEngagement);
     }
 
-    public CsvExport export(String metric, String range, UUID institutionId, JwtUserDetails user) {
+    public CsvExport export(String metric, String range, UUID institutionId, String category, JwtUserDetails user) {
         ReportingPeriod period = resolvePeriod(range);
-        AnalyticsScope scope = scopeFor(user, institutionId);
+        AnalyticsScope scope = scopeFor(user, institutionId, category);
         String normalizedMetric = normalizeMetric(metric);
         assertMetricAllowed(normalizedMetric, scope);
         List<Map<String, Object>> rows = analyticsRepository.exportRows(
@@ -193,9 +208,9 @@ public class MetricsAggregatorService {
         return new CsvExport(csvFilename(normalizedMetric, period, scope), toCsv(rows));
     }
 
-    public AnalyticsReportDto report(String metric, String range, UUID institutionId, JwtUserDetails user) {
+    public AnalyticsReportDto report(String metric, String range, UUID institutionId, String category, JwtUserDetails user) {
         ReportingPeriod period = resolvePeriod(range);
-        AnalyticsScope scope = scopeFor(user, institutionId);
+        AnalyticsScope scope = scopeFor(user, institutionId, category);
         String normalizedMetric = normalizeMetric(metric);
         assertMetricAllowed(normalizedMetric, scope);
         return new AnalyticsReportDto(
@@ -223,23 +238,22 @@ public class MetricsAggregatorService {
                 totalEvents < 20);
     }
 
-    private AnalyticsScope scopeFor(JwtUserDetails user, UUID institutionId) {
+    private boolean isAdmin(String role) {
+        return "administrator".equals(role) || "super_administrator".equals(role);
+    }
+
+    private AnalyticsScope scopeFor(JwtUserDetails user, UUID institutionId, String category) {
         String role = user.role() == null ? "" : user.role().toLowerCase(Locale.ROOT);
+        String normalizedCategory = category == null || category.isBlank() ? null : category.trim();
         return switch (role) {
-            case "super_administrator" -> new AnalyticsScope("super_administrator", institutionId, null);
-            case "administrator" -> {
-                if (institutionId != null) {
-                    throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                            "Institution analytics filters are available to administrators only.");
-                }
-                yield new AnalyticsScope("administrator", user.institutionId(), null);
-            }
+            case "administrator", "super_administrator" ->
+                    new AnalyticsScope(role, institutionId, null, normalizedCategory);
             case "contributor" -> {
                 if (institutionId != null) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                             "Institution analytics filters are available to administrators only.");
                 }
-                yield new AnalyticsScope("contributor", user.institutionId(), user.userId());
+                yield new AnalyticsScope("contributor", user.institutionId(), user.userId(), normalizedCategory);
             }
             default -> throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Unsupported analytics role.");
         };
@@ -285,11 +299,13 @@ public class MetricsAggregatorService {
                 "content-completeness",
                 "posts-by-institution",
                 "ai-performance",
-                "operational-health").contains(normalized)) {
+                "operational-health",
+                "facebook-engagement").contains(normalized)) {
             return normalized;
         }
         throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Unsupported export metric. Use posting-delay, content-completeness, posts-by-institution, ai-performance, or operational-health.");
+                "Unsupported export metric. Use posting-delay, content-completeness, posts-by-institution, "
+                        + "ai-performance, operational-health, or facebook-engagement.");
     }
 
     private String toCsv(List<Map<String, Object>> rows) {
@@ -321,9 +337,9 @@ public class MetricsAggregatorService {
     }
 
     private void assertMetricAllowed(String metric, AnalyticsScope scope) {
-        if ("operational-health".equals(metric) && !"super_administrator".equals(scope.role())) {
+        if (("operational-health".equals(metric) || "ai-performance".equals(metric)) && !isAdmin(scope.role())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Operational health analytics are available to administrators only.");
+                    "This analytics metric is available to administrators only.");
         }
     }
 
@@ -347,12 +363,11 @@ public class MetricsAggregatorService {
 
     private String csvFilename(String metric, ReportingPeriod period, AnalyticsScope scope) {
         String role = switch (scope.role()) {
-            case "super_administrator" -> "Super Administrator";
-            case "administrator" -> "Administrator";
+            case "super_administrator", "administrator" -> "Administrator";
             case "contributor" -> "Contributor";
             default -> "User";
         };
-        String scopeLabel = "super_administrator".equals(scope.role()) ? "Network" : "Institution";
+        String scopeLabel = scope.institutionId() == null && isAdmin(scope.role()) ? "Network" : "Institution";
         return "DASIGConnect_Analytics_%s_%s_%s_%s.csv".formatted(
                 role,
                 scopeLabel,

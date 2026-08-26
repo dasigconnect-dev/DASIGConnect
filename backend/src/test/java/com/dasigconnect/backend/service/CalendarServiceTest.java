@@ -20,8 +20,11 @@ import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.repository.InstitutionRepository;
+import com.dasigconnect.backend.repository.SlotReservationRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
+
+import static org.mockito.ArgumentMatchers.any;
 
 @ExtendWith(MockitoExtension.class)
 class CalendarServiceTest {
@@ -31,6 +34,9 @@ class CalendarServiceTest {
 
     @Mock
     private InstitutionRepository institutionRepository;
+
+    @Mock
+    private SlotReservationRepository slotReservationRepository;
 
     @InjectMocks
     private CalendarService calendarService;
@@ -64,6 +70,8 @@ class CalendarServiceTest {
         otherInstitution.setId(otherInstId);
         otherInstitution.setName("University of the Philippines Cebu");
         otherInstitution.setCode("UP-Cebu");
+
+        when(slotReservationRepository.findLockedSubmissionIds(any())).thenReturn(List.of());
     }
 
     private Submission createSubmission(UUID id, String title, Institution institution, SubmissionStatus status) {
@@ -100,6 +108,40 @@ class CalendarServiceTest {
         assertThat(results.get(0).getTitle()).isEqualTo("CIT Tech Fest");
         assertThat(results.get(0).getCaption()).isEqualTo("Event caption for CIT Tech Fest");
         assertThat(results.get(1).getTitle()).isEqualTo("UP Hackathon");
+    }
+
+    @Test
+    @DisplayName("Administrator receives full event details for all institutions (network-wide role)")
+    void getCalendarEvents_asAdministrator_returnsFullEventsForAll() {
+        Submission s1 = createSubmission(UUID.randomUUID(), "CIT Tech Fest", myInstitution, SubmissionStatus.scheduled);
+        Submission s2 = createSubmission(UUID.randomUUID(), "UP Hackathon", otherInstitution, SubmissionStatus.scheduled);
+        when(submissionRepository.findAllWithScheduledSlot()).thenReturn(List.of(s1, s2));
+
+        // Administrator accounts always have a null institutionId — this must not
+        // fall through to the masked/scoped calendar path.
+        JwtUserDetails adminUser = createPrincipal(UUID.randomUUID(), "administrator", null);
+        List<CalendarEventDto> results = calendarService.getCalendarEvents(adminUser);
+
+        assertThat(results).hasSize(2);
+        assertThat(results.get(0).getTitle()).isEqualTo("CIT Tech Fest");
+        assertThat(results.get(1).getTitle()).isEqualTo("UP Hackathon");
+    }
+
+    @Test
+    @DisplayName("Locked slot reservations are reflected on the calendar event")
+    void getCalendarEvents_lockedReservation_marksEventLocked() {
+        Submission locked = createSubmission(UUID.randomUUID(), "CIT Tech Fest", myInstitution, SubmissionStatus.scheduled);
+        Submission unlocked = createSubmission(UUID.randomUUID(), "UP Hackathon", otherInstitution, SubmissionStatus.scheduled);
+        when(submissionRepository.findAllWithScheduledSlot()).thenReturn(List.of(locked, unlocked));
+        when(slotReservationRepository.findLockedSubmissionIds(any())).thenReturn(List.of(locked.getId()));
+
+        JwtUserDetails adminUser = createPrincipal(UUID.randomUUID(), "super_administrator", null);
+        List<CalendarEventDto> results = calendarService.getCalendarEvents(adminUser);
+
+        CalendarEventDto lockedEvent = results.stream().filter(e -> e.getId().equals(locked.getId())).findFirst().orElseThrow();
+        CalendarEventDto unlockedEvent = results.stream().filter(e -> e.getId().equals(unlocked.getId())).findFirst().orElseThrow();
+        assertThat(lockedEvent.isLocked()).isTrue();
+        assertThat(unlockedEvent.isLocked()).isFalse();
     }
 
     @Test

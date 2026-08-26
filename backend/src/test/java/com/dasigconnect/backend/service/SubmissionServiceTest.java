@@ -84,6 +84,9 @@ class SubmissionServiceTest {
     private UserRepository userRepository;
 
     @Mock
+    private SupabaseStorageService supabaseStorageService;
+
+    @Mock
     private EntityManager entityManager;
 
     @Mock
@@ -327,9 +330,9 @@ class SubmissionServiceTest {
     }
 
     @Test
-    void list_contributorUsesContributorScopedQueryAndAddsMediaCount() {
+    void list_scopesToCallerAsAuthorAndAddsMediaCount() {
         Submission submission = submission(UUID.randomUUID(), SubmissionStatus.draft, Instant.now());
-        when(submissionRepository.findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(contributorId, institutionId))
+        when(submissionRepository.findByContributorIdOrderByCreatedAtDesc(contributorId))
                 .thenReturn(List.of(submission));
         when(submissionMediaAssetRepository.countBySubmissionId(submission.getId())).thenReturn(3L);
 
@@ -337,7 +340,7 @@ class SubmissionServiceTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getMediaCount()).isEqualTo(3L);
-        verify(submissionRepository).findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(contributorId, institutionId);
+        verify(submissionRepository).findByContributorIdOrderByCreatedAtDesc(contributorId);
     }
 
     @Test
@@ -465,6 +468,72 @@ class SubmissionServiceTest {
         assertThat(secondLink.getDisplayOrder()).isZero();
         assertThat(firstLink.getDisplayOrder()).isEqualTo(1);
         verify(submissionMediaAssetRepository).saveAll(List.of(firstLink, secondLink));
+    }
+
+    @Test
+    void detachAsset_permanentlyDeletesAssetThatIsNowUnattachedAndWasNeverBeyondDraft() {
+        UUID submissionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        MediaAsset asset = mediaAsset(assetId, institution);
+        SubmissionMediaAsset link = mediaLink(submission, asset, 0);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.findBySubmissionIdAndMediaAssetId(submissionId, assetId))
+                .thenReturn(Optional.of(link));
+        when(submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(List.of(assetId)))
+                .thenReturn(java.util.Set.of());
+        when(submissionMediaAssetRepository.existsByMediaAssetId(assetId)).thenReturn(false);
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(supabaseStorageService.deletePublicObject(asset.getStorageUrl())).thenReturn(true);
+
+        submissionService.detachAsset(submissionId, assetId, contributorPrincipal);
+
+        verify(submissionMediaAssetRepository).delete(link);
+        verify(mediaAssetRepository).delete(asset);
+        verify(mediaAssetRepository, never()).save(asset);
+        verify(supabaseStorageService).deletePublicObject(asset.getStorageUrl());
+    }
+
+    @Test
+    void detachAsset_keepsAssetThatWasUsedBeyondDraft() {
+        UUID submissionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        MediaAsset asset = mediaAsset(assetId, institution);
+        SubmissionMediaAsset link = mediaLink(submission, asset, 0);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.findBySubmissionIdAndMediaAssetId(submissionId, assetId))
+                .thenReturn(Optional.of(link));
+        when(submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(List.of(assetId)))
+                .thenReturn(java.util.Set.of(assetId));
+
+        submissionService.detachAsset(submissionId, assetId, contributorPrincipal);
+
+        verify(submissionMediaAssetRepository).delete(link);
+        verify(mediaAssetRepository, never()).save(any());
+    }
+
+    @Test
+    void detachAsset_keepsAssetThatIsStillAttachedElsewhere() {
+        UUID submissionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        MediaAsset asset = mediaAsset(assetId, institution);
+        SubmissionMediaAsset link = mediaLink(submission, asset, 0);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.findBySubmissionIdAndMediaAssetId(submissionId, assetId))
+                .thenReturn(Optional.of(link));
+        when(submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(List.of(assetId)))
+                .thenReturn(java.util.Set.of());
+        when(submissionMediaAssetRepository.existsByMediaAssetId(assetId)).thenReturn(true);
+
+        submissionService.detachAsset(submissionId, assetId, contributorPrincipal);
+
+        verify(submissionMediaAssetRepository).delete(link);
+        verify(mediaAssetRepository, never()).save(any());
     }
 
     private SubmissionCreateDto createDto(Instant scheduledAt) {

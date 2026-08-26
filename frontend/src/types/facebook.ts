@@ -8,6 +8,7 @@ export interface FacebookPreviewMediaItem {
   type: FacebookPreviewMediaType;
   alt: string;
   fileName?: string;
+  skipWatermark?: boolean;
 }
 
 export interface FacebookPreviewPage {

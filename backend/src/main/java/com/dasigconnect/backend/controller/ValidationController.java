@@ -16,7 +16,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
 import com.dasigconnect.backend.model.dto.validation.RejectionRequestDto;
 import com.dasigconnect.backend.model.dto.validation.ReviewLockDto;
 import com.dasigconnect.backend.model.dto.validation.RevisionRequestDto;
@@ -58,12 +60,24 @@ public class ValidationController {
      */
     @GetMapping("/queue")
     @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
-    public ResponseEntity<List<SubmissionSummaryDto>> getQueue(
+    public ResponseEntity<ApiResponse<List<SubmissionSummaryDto>>> getQueue(
             @RequestParam(defaultValue = "false") boolean history,
             @AuthenticationPrincipal JwtUserDetails caller) {
-        return ResponseEntity.ok(
+        return ResponseEntity.ok(ApiResponse.success(
             history ? validationService.getHistory(caller) : validationService.getQueue(caller)
-        );
+        ));
+    }
+
+    /**
+     * GET /api/v1/validation/{id}/lock
+     * Read-only lock status check — does not acquire or extend anything. Used by the
+     * frontend to restore lock UI state after a page refresh. data is null if unlocked.
+     */
+    @GetMapping("/{id}/lock")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    public ResponseEntity<ApiResponse<ReviewLockDto>> getLockStatus(@PathVariable UUID id) {
+        ReviewLockDto dto = reviewLockService.getActiveLock(id).map(ReviewLockDto::from).orElse(null);
+        return ResponseEntity.ok(ApiResponse.success(dto));
     }
 
     /**
@@ -73,11 +87,11 @@ public class ValidationController {
      */
     @PostMapping("/{id}/lock")
     @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
-    public ResponseEntity<ReviewLockDto> acquireLock(
+    public ResponseEntity<ApiResponse<ReviewLockDto>> acquireLock(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails caller) {
         ReviewLock lock = reviewLockService.acquire(id, caller);
-        return ResponseEntity.status(HttpStatus.CREATED).body(ReviewLockDto.from(lock));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(ReviewLockDto.from(lock)));
     }
 
     /**
@@ -103,6 +117,20 @@ public class ValidationController {
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails caller) {
         validationService.approve(id, caller);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * POST /api/v1/validation/{id}/edit-and-approve
+     * A9: edits any field of the submission and approves it in the same action.
+     */
+    @PostMapping("/{id}/edit-and-approve")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    public ResponseEntity<Void> editAndApprove(
+            @PathVariable UUID id,
+            @Valid @RequestBody SubmissionUpdateDto dto,
+            @AuthenticationPrincipal JwtUserDetails caller) {
+        validationService.editAndApprove(id, dto, caller);
         return ResponseEntity.noContent().build();
     }
 
@@ -142,7 +170,7 @@ public class ValidationController {
      */
     @GetMapping("/{id}/log")
     @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
-    public ResponseEntity<List<ValidationLogDto>> getLog(
+    public ResponseEntity<ApiResponse<List<ValidationLogDto>>> getLog(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails caller) {
         List<ValidationLogDto> log = validationLogRepository
@@ -150,6 +178,6 @@ public class ValidationController {
                 .stream()
                 .map(ValidationLogDto::from)
                 .toList();
-        return ResponseEntity.ok(log);
+        return ResponseEntity.ok(ApiResponse.success(log));
     }
 }
