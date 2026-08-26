@@ -713,7 +713,7 @@ public class SubmissionService {
 
     private void assertReadAccess(Submission submission, JwtUserDetails user) {
         switch (user.role().toLowerCase()) {
-            case "administrator" -> {
+            case "administrator", "super_administrator" -> {
                 if (isEditableStatus(submission)
                         && !submission.getContributor().getId().equals(user.userId())) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied.");
