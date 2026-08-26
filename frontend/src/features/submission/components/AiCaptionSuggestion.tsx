@@ -117,7 +117,7 @@ function SuggestionRow({
             className="ai-sugg-use-btn"
             onClick={(e) => {
               e.preventDefault();
-              onApply(variant.caption, "use");
+              onApply(variant.caption.slice(0, 500), "use");
             }}
           >
             Use
@@ -139,7 +139,9 @@ function SuggestionRow({
             <textarea
               className="ai-sugg-edit-area"
               value={editText}
-              onChange={(e) => setEditText(e.target.value)}
+              onChange={(e) =>
+                setEditText(e.target.value.slice(0, 500))
+              }
               rows={3}
               autoFocus
             />
@@ -149,7 +151,7 @@ function SuggestionRow({
 
           <div className="ai-sugg-expanded-footer">
             <span className="ai-sugg-char-count">
-              {(editing ? editText : variant.caption).length} chars
+              {(editing ? editText : variant.caption).length} / 500
             </span>
             {editing ? (
               <>
@@ -158,7 +160,7 @@ function SuggestionRow({
                   className="ai-sugg-use-btn"
                   onClick={(e) => {
                     e.preventDefault();
-                    onApply(editText, "use_then_edited");
+                    onApply(editText.slice(0, 500), "use_then_edited");
                     setEditing(false);
                   }}
                 >

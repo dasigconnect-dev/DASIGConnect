@@ -65,8 +65,7 @@ class CaptionControllerTest {
                 new CaptionVariantDto("energetic", "Energetic caption! #DASIG #Energy")
         );
         when(captionGenerationService.generateCaptions(
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenReturn(new CaptionResponseDto(submissionId, variants));
 
         mockMvc.perform(post("/api/v1/ai/caption")
@@ -89,8 +88,7 @@ class CaptionControllerTest {
     void generateCaption_asAdministrator_returnsVariants() throws Exception {
         UUID submissionId = UUID.randomUUID();
         when(captionGenerationService.generateCaptions(
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenReturn(new CaptionResponseDto(submissionId, List.of(
                         new CaptionVariantDto("professional", "Caption #DASIG")
                 )));
@@ -128,8 +126,7 @@ class CaptionControllerTest {
     @Test
     void generateCaption_claudeTimeout_returns504() throws Exception {
         when(captionGenerationService.generateCaptions(
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenThrow(new ClaudeVisionClient.ClaudeApiException("Claude API timed out after 10 seconds."));
 
         mockMvc.perform(post("/api/v1/ai/caption")
@@ -144,8 +141,7 @@ class CaptionControllerTest {
     @Test
     void generateCaption_claudeUnavailable_returns503() throws Exception {
         when(captionGenerationService.generateCaptions(
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
-                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenThrow(new ClaudeVisionClient.ClaudeApiException("Claude API error (HTTP 500)."));
 
         mockMvc.perform(post("/api/v1/ai/caption")
