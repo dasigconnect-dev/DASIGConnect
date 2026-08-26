@@ -102,6 +102,14 @@ public class InvitationController {
     }
 
     @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
+    @GetMapping("/pending/administrators")
+    public ResponseEntity<ApiResponse<List<PendingInvitationDto>>> pendingAdministrators(
+            Authentication authentication) {
+        JwtUserDetails requester = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails p ? p : null;
+        return ResponseEntity.ok(ApiResponse.success(invitationService.listPendingAdministrators(requester)));
+    }
+
+    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
     @GetMapping("/pending/count")
     public ResponseEntity<ApiResponse<Map<String, Long>>> pendingCount(
             @RequestParam UUID institutionId,

@@ -552,6 +552,28 @@ class InvitationServiceTest {
     }
 
     @Test
+    void listPendingAdministrators_returnsNetworkAdministratorInvitations() {
+        InvitationToken token = buildToken(false, false, UserRole.administrator);
+        token.setInstitution(null);
+        when(invitationTokenRepository.findPendingNetworkRoleInvitations(
+                eq(UserRole.administrator), any())).thenReturn(List.of(token));
+
+        List<PendingInvitationDto> result = invitationService.listPendingAdministrators(adminPrincipal);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).assignedRole()).isEqualTo(UserRole.administrator);
+        assertThat(result.get(0).institutionId()).isNull();
+    }
+
+    @Test
+    void listPendingAdministrators_contributorIsForbidden() {
+        assertThatThrownBy(() -> invitationService.listPendingAdministrators(principal("contributor", institutionId)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(403);
+    }
+
+    @Test
     void countPending_validatorCannotCountOtherInstitution() {
         assertThatThrownBy(() -> invitationService.countPending(UUID.randomUUID(), principal("validator", institutionId)))
                 .isInstanceOf(ResponseStatusException.class)

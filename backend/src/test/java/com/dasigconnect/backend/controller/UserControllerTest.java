@@ -82,6 +82,18 @@ class UserControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMINISTRATOR")
+    void listAdministrators_asAdministrator_returnsAdministrators() throws Exception {
+        when(userService.listAdministrators(any())).thenReturn(List.of(userDto(
+                UUID.randomUUID(), "admin@dasigconnect.com", UserRole.administrator, null)));
+
+        mockMvc.perform(get("/api/v1/users/administrators"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].email").value("admin@dasigconnect.com"))
+                .andExpect(jsonPath("$.data[0].role").value("administrator"));
+    }
+
+    @Test
     @WithMockUser(roles = "CONTRIBUTOR")
     void listUsers_asContributor_returns403() throws Exception {
         mockMvc.perform(get("/api/v1/users").param("institutionId", UUID.randomUUID().toString()))

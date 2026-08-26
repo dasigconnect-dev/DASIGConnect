@@ -74,7 +74,7 @@ public class SubmissionController {
      * is provided, reserves the slot.
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<ApiResponse<SubmissionResponseDto>> create(
             @Valid @RequestBody SubmissionCreateDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
@@ -98,7 +98,7 @@ public class SubmissionController {
      * NEEDS_REVISION submission. Supports 60-second auto-save.
      */
     @PatchMapping("/{id}")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<ApiResponse<SubmissionResponseDto>> update(
             @PathVariable UUID id,
             @Valid @RequestBody SubmissionUpdateDto dto,
@@ -111,7 +111,7 @@ public class SubmissionController {
      * its slot reservation.
      */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<Void> delete(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
@@ -124,7 +124,7 @@ public class SubmissionController {
      * NEEDS_REVISION → PENDING. Re-validates guard rails before accepting.
      */
     @PostMapping("/{id}/submit")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<ApiResponse<SubmissionResponseDto>> submit(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
@@ -137,7 +137,7 @@ public class SubmissionController {
      * SlotPicker component.
      */
     @PostMapping("/{id}/evaluate-slot")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<ApiResponse<GuardRailResult>> evaluateSlot(
             @PathVariable UUID id,
             @Valid @RequestBody SlotEvaluateRequestDto dto,
@@ -151,7 +151,7 @@ public class SubmissionController {
      * key or storage RLS policies.
      */
     @PostMapping("/{id}/media/upload-url")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<ApiResponse<SignedUploadUrlResponse>> getSignedUploadUrl(
             @PathVariable UUID id,
             @Valid @RequestBody SignedUploadUrlRequest dto,
@@ -166,7 +166,7 @@ public class SubmissionController {
      * fileSizeBytes here.
      */
     @PostMapping("/{id}/media")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<ApiResponse<SubmissionResponseDto>> attachMedia(
             @PathVariable UUID id,
             @Valid @RequestBody AttachMediaDto dto,
@@ -179,7 +179,7 @@ public class SubmissionController {
      * media already attached to a DRAFT or NEEDS_REVISION submission.
      */
     @PatchMapping("/{id}/media/order")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<ApiResponse<SubmissionResponseDto>> reorderMedia(
             @PathVariable UUID id,
             @Valid @RequestBody SubmissionMediaOrderDto dto,
@@ -193,7 +193,7 @@ public class SubmissionController {
      * AssetPickerModal.
      */
     @PostMapping("/{id}/assets")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<ApiResponse<SubmissionResponseDto>> attachAsset(
             @PathVariable UUID id,
             @Valid @RequestBody AttachAssetDto dto,
@@ -202,7 +202,7 @@ public class SubmissionController {
     }
 
     @DeleteMapping("/{id}/assets/{assetId}")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
     public ResponseEntity<Void> detachAsset(
             @PathVariable UUID id,
             @PathVariable UUID assetId,
