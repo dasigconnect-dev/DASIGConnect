@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ManualPublishDetail } from "../../api/resolutionApi";
 
 const FACEBOOK_PAGE_URL = "https://www.facebook.com/DostDasig";
@@ -156,9 +157,9 @@ export default function ManualPublishWorkflowPanel({
         .join(" ") || detail.contributorEmail
     : null;
 
-  return (
+  return createPortal(
     <div
-      className="modal-backdrop"
+      className="val-modal-overlay"
       onClick={handleClose}
       role="dialog"
       aria-modal="true"
@@ -426,6 +427,7 @@ export default function ManualPublishWorkflowPanel({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
