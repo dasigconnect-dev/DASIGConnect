@@ -96,6 +96,7 @@ export function logAiInteraction(
 // ─── UC-3.2 Caption Generation ───────────────────────────────────────────────
 
 export type CaptionTone = "professional" | "community" | "energetic";
+export const AI_CAPTION_PROMPT_MAX_LENGTH = 280;
 
 export interface CaptionVariant {
   tone: CaptionTone;
@@ -111,6 +112,15 @@ export interface CaptionResponse {
   rateLimitReset?: number;
 }
 
+interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
+  error?: {
+    message?: string;
+  } | null;
+  timestamp?: string;
+}
+
 export type CaptionAction =
   | "use"
   | "use_then_edited"
@@ -120,14 +130,18 @@ export type CaptionAction =
 
 export async function suggestCaption(
   submissionId: string,
-  existingCaption?: string
+  existingCaption?: string,
+  prompt?: string,
+  tone?: CaptionTone
 ): Promise<CaptionResponse> {
-  const res = await api.post<{ submissionId: string; variants: CaptionVariant[] }>(
+  const res = await api.post<ApiEnvelope<CaptionResponse> | CaptionResponse>(
     "/ai/caption",
     {
       submissionId,
       // Only send if non-empty — backend treats null/absent as "generate from scratch"
       ...(existingCaption?.trim() ? { existingCaption: existingCaption.trim() } : {}),
+      ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
+      ...(tone ? { tone } : {}),
     },
     { validateStatus: () => true }
   );
@@ -145,11 +159,18 @@ export async function suggestCaption(
     throw new Error("timeout");
   }
   if (res.status !== 200) {
-    throw new Error("unavailable");
+    const message =
+      "error" in res.data &&
+      res.data.error?.message &&
+      typeof res.data.error.message === "string"
+        ? res.data.error.message
+        : "unavailable";
+    throw new Error(message);
   }
+  const body = "data" in res.data ? res.data.data : res.data;
 
   return {
-    ...res.data,
+    ...body,
     rateLimitRemaining: remaining != null ? Number(remaining) : undefined,
     rateLimitReset: reset != null ? Number(reset) : undefined,
   };
