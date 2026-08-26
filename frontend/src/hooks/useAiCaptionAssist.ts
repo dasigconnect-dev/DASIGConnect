@@ -19,81 +19,43 @@ export interface UseAiCaptionAssistReturn {
   variants: CaptionVariant[] | null;
   rateLimitReset: number | null;
   canSuggest: boolean;
-  notice: string | null;
-  suggest: (
-    prompt?: string,
-    tone?: CaptionTone,
-    submissionIdOverride?: string,
-    existingCaptionOverride?: string,
-  ) => Promise<CaptionVariant | null>;
+  suggest: () => void;
   dismissAll: () => void;
   regenerate: () => void;
   logApply: (tone: CaptionTone, action?: "use" | "use_then_edited") => void;
-  logApplyForSubmission: (
-    submissionIdOverride: string,
-    tone: CaptionTone,
-    action?: "use" | "use_then_edited",
-  ) => void;
   logDismissOne: (tone: CaptionTone) => void;
 }
 
 export function useAiCaptionAssist(
   submissionId: string | null,
-  _hasImageAssets: boolean,
+  hasImageAssets: boolean,
   existingCaption?: string
 ): UseAiCaptionAssistReturn {
   const [state, setState] = useState<AiCaptionState>("idle");
   const [variants, setVariants] = useState<CaptionVariant[] | null>(null);
   const [rateLimitReset, setRateLimitReset] = useState<number | null>(null);
-  const [lastPrompt, setLastPrompt] = useState("");
-  const [lastTone, setLastTone] = useState<CaptionTone>("professional");
-  const [notice, setNotice] = useState<string | null>(null);
   const cooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const canSuggest = !!submissionId;
+  const canSuggest = !!submissionId && hasImageAssets;
 
-  async function suggest(
-    prompt = "",
-    tone: CaptionTone = "professional",
-    submissionIdOverride?: string,
-    existingCaptionOverride?: string,
-  ) {
-    const targetSubmissionId = submissionIdOverride ?? submissionId;
-    if (!targetSubmissionId || state === "loading") return null;
+  async function suggest() {
+    if (!canSuggest || state === "loading") return;
     if (cooldownRef.current) clearTimeout(cooldownRef.current);
-    const normalizedPrompt = prompt.trim();
-    setLastPrompt(normalizedPrompt);
-    setLastTone(tone);
-    setNotice(null);
     setState("loading");
 
     try {
-      const response = await suggestCaption(
-        targetSubmissionId,
-        existingCaptionOverride ?? existingCaption,
-        normalizedPrompt,
-        tone,
-      );
-      const generatedVariant = response.variants[0] ?? null;
-      setVariants(response.variants.length > 0 ? response.variants : null);
+      const response = await suggestCaption(submissionId!, existingCaption);
+      setVariants(response.variants);
       setState("idle");
-      return generatedVariant;
     } catch (err) {
       if (isRateLimitError(err)) {
         setRateLimitReset(err.rateLimitReset ?? null);
         setState("rate-limited");
-        return null;
+        return;
       }
       const msg = err instanceof Error ? err.message : "";
-      const timedOut = msg === "timeout";
-      setNotice(
-        timedOut
-          ? "AI request timed out. Retry or continue editing manually."
-          : "AI caption service is unavailable. You can still write captions manually.",
-      );
-      setState(timedOut ? "error-timeout" : "error-unavailable");
+      setState(msg === "timeout" ? "error-timeout" : "error-unavailable");
       cooldownRef.current = setTimeout(() => setState("idle"), 5000);
-      return null;
     }
   }
 
@@ -106,7 +68,7 @@ export function useAiCaptionAssist(
   function regenerate() {
     setVariants(null);
     if (submissionId) logCaptionInteraction(submissionId, "re_generate");
-    void suggest(lastPrompt, lastTone);
+    suggest();
   }
 
   function logApply(
@@ -114,15 +76,6 @@ export function useAiCaptionAssist(
     action: "use" | "use_then_edited" = "use"
   ) {
     if (submissionId) logCaptionInteraction(submissionId, action, tone);
-    setVariants(null);
-  }
-
-  function logApplyForSubmission(
-    submissionIdOverride: string,
-    tone: CaptionTone,
-    action: "use" | "use_then_edited" = "use",
-  ) {
-    logCaptionInteraction(submissionIdOverride, action, tone);
     setVariants(null);
   }
 
@@ -140,12 +93,10 @@ export function useAiCaptionAssist(
     variants,
     rateLimitReset,
     canSuggest,
-    notice,
     suggest,
     dismissAll,
     regenerate,
     logApply,
-    logApplyForSubmission,
     logDismissOne,
   };
 }

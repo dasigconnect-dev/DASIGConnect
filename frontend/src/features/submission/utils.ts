@@ -17,8 +17,6 @@ import {
 } from "./constants";
 import type { FormState, ProgressStep, ReadinessCheck } from "./types";
 
-export const CAPTION_WORD_LIMIT = 2000;
-
 export function isDraftStatus(status: SubmissionStatus) {
   return status === "draft" || status === "needs_revision";
 }
@@ -192,16 +190,6 @@ export function isDirtyDraft(form: FormState) {
       Object.values(form.mediaSkipWatermark ?? {}).some(Boolean) ||
       form.pendingAssetIds.length,
   );
-}
-
-export function countWords(value: string) {
-  return value.trim().match(/\S+/g)?.length ?? 0;
-}
-
-export function trimToWordLimit(value: string, limit = CAPTION_WORD_LIMIT) {
-  const words = value.trim().match(/\S+/g);
-  if (!words || words.length <= limit) return value;
-  return words.slice(0, limit).join(" ");
 }
 
 export function getDirtySignature(form: FormState) {
@@ -451,7 +439,7 @@ export function getReadinessChecklist(
       title: "Caption",
       target: "caption",
       pass: Boolean(form.caption.trim()),
-      sub: form.caption.trim() ? `${countWords(form.caption)} words` : "Required",
+      sub: form.caption.trim() ? `${form.caption.length} characters` : "Required",
     },
     {
       title: "Media attachment",
@@ -503,7 +491,7 @@ export function getReadinessChecklist(
       title: "Caption length",
       target: "captionLength",
       pass: captionTone(form.caption) === "ok",
-      sub: `${countWords(form.caption)} / ${CAPTION_WORD_LIMIT} words`,
+      sub: `${form.caption.length} / 500 characters`,
     },
     {
       title: "Tags in caption",
@@ -641,9 +629,8 @@ export function isWithinPublishWindow(timeValue: string) {
 }
 
 export function captionTone(caption: string) {
-  const words = countWords(caption);
-  if (words > 0 && words <= CAPTION_WORD_LIMIT) return "ok";
-  if (words === 0) return "";
+  if (caption.length >= 150 && caption.length <= 500) return "ok";
+  if (caption.length === 0) return "";
   return "warn";
 }
 

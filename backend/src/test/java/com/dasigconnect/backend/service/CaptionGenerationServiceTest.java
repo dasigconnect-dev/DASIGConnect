@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -57,7 +58,7 @@ class CaptionGenerationServiceTest {
         Submission s = submission(submissionId, institutionId);
         SubmissionMediaAsset sma = imageJunction(s, imageAsset(UUID.randomUUID()));
 
-        when(submissionRepository.findByIdWithInstitution(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(List.of(sma));
 
@@ -66,65 +67,18 @@ class CaptionGenerationServiceTest {
                 new CaptionVariantDto("community", "Community caption #DASIG"),
                 new CaptionVariantDto("energetic", "Energetic caption! #DASIG")
         );
-        when(claudeVisionClient.generateCaptions(
-                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(variants);
+        when(claudeVisionClient.generateCaptions(any(), any(), any())).thenReturn(variants);
         when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        CaptionResponseDto result = service.generateCaptions(
-                submissionId, userId, institutionId, null, "Focus on student innovation.", "community");
+        CaptionResponseDto result = service.generateCaptions(submissionId, userId, institutionId, null);
 
         assertThat(result.getSubmissionId()).isEqualTo(submissionId);
         assertThat(result.getVariants()).hasSize(3);
         assertThat(result.getVariants().get(0).getTone()).isEqualTo("professional");
-        verify(claudeVisionClient).generateCaptions(
-                any(),
-                any(),
-                eq("Science Fair 2026"),
-                eq("2026-07-01"),
-                eq("CIT-U"),
-                eq("Hackathon"),
-                any(),
-                eq("Focus on student innovation."),
-                eq("community"));
     }
 
     @Test
-    void generateCaptions_withClassifiedImages_usesMetadataWithoutImageRescan() {
-        UUID submissionId = UUID.randomUUID();
-        UUID institutionId = UUID.randomUUID();
-
-        Submission s = submission(submissionId, institutionId);
-        MediaAsset classifiedImage = imageAsset(UUID.randomUUID());
-        classifiedImage.setAiCategory("Event");
-        classifiedImage.setAiDescription("Students demonstrating robotics prototypes at a DOST innovation fair.");
-        classifiedImage.setVisibleObjects(new String[]{"students", "robotics kits", "presentation booth"});
-        classifiedImage.setAiTags(new String[]{"innovation", "students", "robotics"});
-
-        when(submissionRepository.findByIdWithInstitution(submissionId)).thenReturn(Optional.of(s));
-        when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
-                .thenReturn(List.of(imageJunction(s, classifiedImage)));
-        when(claudeVisionClient.generateCaptions(
-                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
-                new CaptionVariantDto("professional", "Metadata caption #DASIG")
-        ));
-        when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-
-        service.generateCaptions(submissionId, UUID.randomUUID(), institutionId, null, "Use selected media.", "energetic");
-
-        verify(claudeVisionClient).generateCaptions(
-                eq(List.of()),
-                org.mockito.ArgumentMatchers.contains("Students demonstrating robotics prototypes"),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                eq("Use selected media."),
-                eq("energetic"));
-    }
-
-    @Test
-    void generateCaptions_noImages_generatesTextOnlyVariants() {
+    void generateCaptions_noImages_throwsUnprocessableEntity() {
         UUID submissionId = UUID.randomUUID();
         UUID institutionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -132,61 +86,33 @@ class CaptionGenerationServiceTest {
         Submission s = submission(submissionId, institutionId);
         SubmissionMediaAsset videoSma = videoJunction(s, videoAsset(UUID.randomUUID()));
 
-        when(submissionRepository.findByIdWithInstitution(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(List.of(videoSma));
-        when(claudeVisionClient.generateCaptions(
-                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
-                new CaptionVariantDto("professional", "Text-only caption #DASIG")
-        ));
-        when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        CaptionResponseDto result = service.generateCaptions(
-                submissionId, userId, institutionId, "Existing draft", "Make it concise.", "professional");
+        assertThatThrownBy(() -> service.generateCaptions(submissionId, userId, institutionId, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode().value())
+                        .isEqualTo(422));
 
-        assertThat(result.getVariants()).hasSize(1);
-        verify(claudeVisionClient).generateCaptions(
-                eq(List.of()),
-                any(),
-                eq("Science Fair 2026"),
-                eq("2026-07-01"),
-                eq("CIT-U"),
-                eq("Hackathon"),
-                eq("Existing draft"),
-                eq("Make it concise."),
-                eq("professional"));
+        verify(claudeVisionClient, never()).generateCaptions(any(), any(), any());
     }
 
     @Test
-    void generateCaptions_noMedia_generatesTextOnlyVariants() {
+    void generateCaptions_noMedia_throwsUnprocessableEntity() {
         UUID submissionId = UUID.randomUUID();
         UUID institutionId = UUID.randomUUID();
 
         Submission s = submission(submissionId, institutionId);
 
-        when(submissionRepository.findByIdWithInstitution(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(List.of());
-        when(claudeVisionClient.generateCaptions(
-                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
-                new CaptionVariantDto("community", "Community caption #DASIG")
-        ));
-        when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        CaptionResponseDto result = service.generateCaptions(
-                submissionId, UUID.randomUUID(), institutionId, null, "Write a general announcement.", "community");
-
-        assertThat(result.getVariants()).hasSize(1);
-        verify(claudeVisionClient).generateCaptions(
-                eq(List.of()),
-                any(),
-                eq("Science Fair 2026"),
-                eq("2026-07-01"),
-                eq("CIT-U"),
-                eq("Hackathon"),
-                any(),
-                eq("Write a general announcement."),
-                eq("community"));
+        assertThatThrownBy(() -> service.generateCaptions(submissionId, UUID.randomUUID(), institutionId, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode().value())
+                        .isEqualTo(422));
     }
 
     @Test
@@ -197,9 +123,9 @@ class CaptionGenerationServiceTest {
 
         Submission s = submission(submissionId, institutionId);
 
-        when(submissionRepository.findByIdWithInstitution(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
 
-        assertThatThrownBy(() -> service.generateCaptions(submissionId, UUID.randomUUID(), differentInstitutionId, null, null, null))
+        assertThatThrownBy(() -> service.generateCaptions(submissionId, UUID.randomUUID(), differentInstitutionId, null))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                         .isEqualTo(HttpStatus.FORBIDDEN));
@@ -213,17 +139,16 @@ class CaptionGenerationServiceTest {
         Submission s = submission(submissionId, institutionId);
         SubmissionMediaAsset sma = imageJunction(s, imageAsset(UUID.randomUUID()));
 
-        when(submissionRepository.findByIdWithInstitution(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(List.of(sma));
-        when(claudeVisionClient.generateCaptions(
-                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
+        when(claudeVisionClient.generateCaptions(any(), any(), any())).thenReturn(List.of(
                 new CaptionVariantDto("professional", "Caption #DASIG")
         ));
         when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         // null institutionId = administrator bypasses institution check
-        CaptionResponseDto result = service.generateCaptions(submissionId, UUID.randomUUID(), null, null, null, null);
+        CaptionResponseDto result = service.generateCaptions(submissionId, UUID.randomUUID(), null, null);
 
         assertThat(result.getSubmissionId()).isEqualTo(submissionId);
     }
@@ -231,9 +156,9 @@ class CaptionGenerationServiceTest {
     @Test
     void generateCaptions_submissionNotFound_throwsNotFound() {
         UUID submissionId = UUID.randomUUID();
-        when(submissionRepository.findByIdWithInstitution(submissionId)).thenReturn(Optional.empty());
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.generateCaptions(submissionId, UUID.randomUUID(), UUID.randomUUID(), null, null, null))
+        assertThatThrownBy(() -> service.generateCaptions(submissionId, UUID.randomUUID(), UUID.randomUUID(), null))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                         .isEqualTo(HttpStatus.NOT_FOUND));
@@ -253,16 +178,15 @@ class CaptionGenerationServiceTest {
                 imageJunction(s, imageAsset(UUID.randomUUID()))
         );
 
-        when(submissionRepository.findByIdWithInstitution(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(fiveImages);
-        when(claudeVisionClient.generateCaptions(
-                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
+        when(claudeVisionClient.generateCaptions(any(), any(), any())).thenReturn(List.of(
                 new CaptionVariantDto("professional", "Caption #DASIG")
         ));
         when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        service.generateCaptions(submissionId, UUID.randomUUID(), institutionId, null, null, null);
+        service.generateCaptions(submissionId, UUID.randomUUID(), institutionId, null);
 
         // Claude client must receive at most 4 URLs
         verify(claudeVisionClient).generateCaptions(
@@ -270,12 +194,6 @@ class CaptionGenerationServiceTest {
                         .map(sma -> sma.getMediaAsset().getStorageUrl())
                         .limit(4)
                         .toList()),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
-                any(),
                 any(),
                 any());
     }
@@ -320,7 +238,6 @@ class CaptionGenerationServiceTest {
         s.setId(id);
         s.setEventTitle("Science Fair 2026");
         s.setEventDate(LocalDate.of(2026, 7, 1));
-        s.setCategory("Hackathon");
         s.setStatus(SubmissionStatus.draft);
         s.setContributor(contributor);
         s.setInstitution(institution);
