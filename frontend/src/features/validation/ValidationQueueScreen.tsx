@@ -99,6 +99,7 @@ export default function ValidationQueueScreen({
   const [locks, setLocks] = useState<Record<string, ReviewLock>>({});
   const [lockNotice, setLockNotice] = useState("");
   const [lockBusy, setLockBusy] = useState(false);
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [filter, setFilter] = useState<QueueFilter>("pending");
   const [sortKey, setSortKey] = useState<SortKey>("publish_slot");
   const [search, setSearch] = useState("");
@@ -475,14 +476,25 @@ export default function ValidationQueueScreen({
   }
 
   return (
-    <div className="val-page">
+    <div className={`val-page ${isPanelCollapsed ? "is-queue-collapsed" : ""}`}>
       <aside className="val-queue-panel">
         <div className="val-queue-header">
           <div className="val-title-row">
             <div>
               <h1>Review Queue</h1>
             </div>
-            <span className="val-count">{isFailedMode ? failures.length : filteredQueue.length}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span className="val-count">{isFailedMode ? failures.length : filteredQueue.length}</span>
+              <button
+                type="button"
+                className="val-collapse-btn"
+                onClick={() => setIsPanelCollapsed(true)}
+                title="Collapse queue panel (<<)"
+                aria-label="Collapse queue list"
+              >
+                <i className="ti ti-chevrons-left" />
+              </button>
+            </div>
           </div>
 
           <div className="val-tabs" role="tablist" aria-label="Queue filters">
@@ -657,6 +669,18 @@ export default function ValidationQueueScreen({
       </aside>
 
       <main className="val-review-panel">
+        {isPanelCollapsed && (
+          <button
+            type="button"
+            className="val-expand-btn"
+            onClick={() => setIsPanelCollapsed(false)}
+            title="Expand queue panel (>>)"
+            aria-label="Expand queue list"
+          >
+            <i className="ti ti-chevrons-right" />
+            <span>Show Queue ({isFailedMode ? failures.length : filteredQueue.length})</span>
+          </button>
+        )}
         {isFailedMode && !selectedFailure && (
           <div className="val-empty">
             <i className="ti ti-mood-sad"></i>
