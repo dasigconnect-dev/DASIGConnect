@@ -1081,6 +1081,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
   useEffect(() => {
     if (!isDirty || busy || fancyTextPreviewActive) return;
+    // Never auto-create a draft. The first save must be explicit (Save Draft /
+    // Submit / advancing to the Media step); autosave only persists edits to a
+    // draft that already exists.
+    if (!form.id) return;
     if (isAdminComposer && !form.institutionId) return;
 
     const timer = window.setTimeout(() => {
@@ -1246,9 +1250,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (isReadOnlySubmission || busy) return;
     setDeleting(true);
     if (!form.id) {
-      resetComposer();
       setModal(null);
       setDeleting(false);
+      exitSubmission();
       return;
     }
 
@@ -1257,9 +1261,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setSubmissions((current) =>
         current.filter((item) => item.id !== form.id),
       );
-      resetComposer();
       setModal(null);
       toast.info("Draft deleted.");
+      exitSubmission();
     } catch (err: unknown) {
       toast.error(getErrorMessage(err, "Draft could not be deleted."));
     } finally {
