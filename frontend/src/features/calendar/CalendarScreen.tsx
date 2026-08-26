@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import FullCalendar from "@fullcalendar/react";
 import type { DatesSetArg } from "@fullcalendar/core";
 import { createPortal } from "react-dom";
@@ -9,6 +8,7 @@ import type { User } from "../../types/auth.types";
 import { useCalendarEvents } from "../../hooks/useCalendarEvents";
 import { useToast } from "../../context/ToastContext";
 import BrandedSelect from "../../components/ui/BrandedSelect";
+import MultiSelect from "../../components/ui/MultiSelect";
 import CalendarView, { type CalendarDropInfo } from "./CalendarView";
 import CalendarEventDetailModal from "./CalendarEventDetailModal";
 import CalendarRescheduleModal from "./CalendarRescheduleModal";
@@ -22,7 +22,6 @@ interface CalendarScreenProps {
 }
 
 export default function CalendarScreen({ user }: CalendarScreenProps) {
-  const navigate = useNavigate();
   const calendarRef = useRef<FullCalendar>(null);
   const { events, loading, error, refresh } = useCalendarEvents();
   const toast = useToast();
@@ -34,8 +33,8 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
     end: Date;
   } | null>(null);
   const [showFullDay, setShowFullDay] = useState(false);
-  const [institutionFilter, setInstitutionFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [institutionFilters, setInstitutionFilters] = useState<string[]>([]);
+  const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState("all");
   const [activeMetric, setActiveMetric] = useState<MetricKey | null>(null);
   const [highlightedEventId, setHighlightedEventId] = useState<string | null>(null);
@@ -80,12 +79,17 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
 
   function handleEventDrop(info: CalendarDropInfo) {
     const originalDate = new Date(info.event.scheduledAt);
-    const isSameDay =
+    // Only treat it as a no-op when the drop lands on the exact same slot.
+    // (Month view keeps the time, so a same-day drop is unchanged; week view
+    // drags change the time-of-day and must be allowed through.)
+    const isUnchanged =
       originalDate.getFullYear() === info.newStart.getFullYear() &&
       originalDate.getMonth() === info.newStart.getMonth() &&
-      originalDate.getDate() === info.newStart.getDate();
+      originalDate.getDate() === info.newStart.getDate() &&
+      originalDate.getHours() === info.newStart.getHours() &&
+      originalDate.getMinutes() === info.newStart.getMinutes();
 
-    if (isSameDay) {
+    if (isUnchanged) {
       info.revert();
       setTimeout(() => {
         document.querySelectorAll(".fc-event-mirror").forEach((el) => el.remove());
@@ -152,37 +156,50 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
   const filteredEvents = useMemo(() => {
     const now = new Date();
     return events.filter((event) => matchesFilters(event, {
-      institutionFilter,
-      statusFilter,
+      institutionFilters,
+      statusFilters,
       dateFilter,
       now,
       user,
     }));
-  }, [events, institutionFilter, statusFilter, dateFilter, user]);
+  }, [events, institutionFilters, statusFilters, dateFilter, user]);
+
+  // KPI cards + drill-down reflect the institution and date-range filters, but
+  // not the status filter (each card is already its own status bucket).
+  const scopedEvents = useMemo(() => {
+    const now = new Date();
+    return events.filter((event) => matchesFilters(event, {
+      institutionFilters,
+      statusFilters: [],
+      dateFilter,
+      now,
+      user,
+    }));
+  }, [events, institutionFilters, dateFilter, user]);
 
   const metrics = useMemo(() => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfToday = new Date(startOfToday.getTime() + 86400000);
     return {
-      scheduled: events.filter((event) => {
+      scheduled: scopedEvents.filter((event) => {
         const status = visibleEventStatus(event, user);
         return ["scheduled", "direct_post_scheduled"].includes(status);
       }).length,
-      published: events.filter((event) => ["published", "published_manual"].includes(visibleEventStatus(event, user))).length,
-      failed: events.filter((event) => visibleEventStatus(event, user).includes("failed")).length,
-      attention: events.filter((event) => ["pending", "in_review", "needs_revision", "rejected"].includes(visibleEventStatus(event, user))).length,
-      today: events.filter((event) => {
+      published: scopedEvents.filter((event) => ["published", "published_manual"].includes(visibleEventStatus(event, user))).length,
+      failed: scopedEvents.filter((event) => visibleEventStatus(event, user).includes("failed")).length,
+      attention: scopedEvents.filter((event) => ["pending", "in_review", "needs_revision", "rejected"].includes(visibleEventStatus(event, user))).length,
+      today: scopedEvents.filter((event) => {
         const date = new Date(event.scheduledAt);
         return date >= startOfToday && date < endOfToday;
       }).length,
     };
-  }, [events, user]);
+  }, [scopedEvents, user]);
 
   const metricEvents = useMemo(() => {
     if (!activeMetric) return [];
-    return events.filter((event) => matchesMetric(event, activeMetric, user));
-  }, [activeMetric, events, user]);
+    return scopedEvents.filter((event) => matchesMetric(event, activeMetric, user));
+  }, [activeMetric, scopedEvents, user]);
 
   useEffect(() => {
     if (!activeMetric) return;
@@ -240,13 +257,15 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
   useEffect(() => {
     beginCalendarTransition();
     endCalendarTransition();
-  }, [institutionFilter, statusFilter, dateFilter]);
+  }, [institutionFilters, statusFilters, dateFilter]);
 
   useEffect(() => {
-    if (user.role === "contributor" && statusFilter === "attention") {
-      setStatusFilter("all");
-    }
-  }, [statusFilter, user.role]);
+    if (user.role !== "contributor") return;
+    setStatusFilters((prev) => {
+      const next = prev.filter((v) => v !== "attention" && v !== "failed");
+      return next.length === prev.length ? prev : next;
+    });
+  }, [user.role]);
 
   useEffect(() => () => {
     if (transitionTimeoutRef.current) {
@@ -273,14 +292,12 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
       ? [{ value: user.institutionId, label: myInstitutionLabel }]
       : [];
   const institutionOptions = [
-    { value: "all", label: "All institutions" },
     ...myInstitutionEntry,
     ...institutions
       .filter(([id]) => isAdmin || id !== user.institutionId)
       .map(([id, name]) => ({ value: id, label: name })),
   ];
   const statusOptions = [
-    { value: "all", label: "All statuses" },
     { value: "scheduled", label: "Scheduled" },
     { value: "published", label: "Published" },
     ...(isAdmin
@@ -297,27 +314,46 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
     { value: "30d", label: "Next 30 days" },
   ];
 
+  function clearFilters() {
+    setInstitutionFilters([]);
+    setStatusFilters([]);
+    setDateFilter("all");
+  }
+
   return (
     <div className="screen-root">
-      <div className="screen-header">
+      <div className="screen-header cal-screen-header">
         <div>
           <h1 className="screen-title">Master Calendar</h1>
           <p className="screen-subtitle">
             {contextLabel}
           </p>
         </div>
-        {isAdmin && (
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => navigate("/admin/resolution?tab=direct-post")}
-            title="Direct Post — bypass queue and publish directly (UC-3.6)"
-            style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}
-          >
-            <i className="ti ti-bolt" aria-hidden="true" />
-            Direct Post
-          </button>
-        )}
+        <div className="cal-header-filters" aria-label="Calendar filters">
+          <MultiSelect
+            values={institutionFilters}
+            options={institutionOptions}
+            onChange={setInstitutionFilters}
+            placeholder="All institutions"
+            ariaLabel="Filter calendar by institution"
+            className="cal-filter-select"
+          />
+          <MultiSelect
+            values={statusFilters}
+            options={statusOptions}
+            onChange={setStatusFilters}
+            placeholder="All statuses"
+            ariaLabel="Filter calendar by status"
+            className="cal-filter-select"
+          />
+          <BrandedSelect
+            value={dateFilter}
+            options={dateOptions}
+            onChange={setDateFilter}
+            ariaLabel="Filter calendar by date range"
+            className="cal-filter-select"
+          />
+        </div>
       </div>
 
       <section className="cal-overview-grid" aria-label="Publishing metrics">
@@ -330,50 +366,6 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
           <MetricCard metric="attention" icon="ti ti-alert-triangle" label="Needs Attention" value={metrics.attention} tone="orange" onOpen={setActiveMetric} />
         )}
         <MetricCard metric="today" icon="ti ti-sun" label="Upcoming Today" value={metrics.today} tone="purple" onOpen={setActiveMetric} />
-      </section>
-
-      <section className="cal-filter-bar" aria-label="Calendar filters">
-        <div className="cal-filter-field">
-          <span className="cal-filter-label">Institution</span>
-          <BrandedSelect
-            value={institutionFilter}
-            options={institutionOptions}
-            onChange={setInstitutionFilter}
-            ariaLabel="Filter calendar by institution"
-            className="cal-filter-select"
-          />
-        </div>
-        <div className="cal-filter-field">
-          <span className="cal-filter-label">Status</span>
-          <BrandedSelect
-            value={statusFilter}
-            options={statusOptions}
-            onChange={setStatusFilter}
-            ariaLabel="Filter calendar by status"
-            className="cal-filter-select"
-          />
-        </div>
-        <div className="cal-filter-field">
-          <span className="cal-filter-label">Date Range</span>
-          <BrandedSelect
-            value={dateFilter}
-            options={dateOptions}
-            onChange={setDateFilter}
-            ariaLabel="Filter calendar by date range"
-            className="cal-filter-select"
-          />
-        </div>
-        <button
-          type="button"
-          className="btn-secondary btn-sm"
-          onClick={() => {
-            setInstitutionFilter("all");
-            setStatusFilter("all");
-            setDateFilter("all");
-          }}
-        >
-          Clear filters
-        </button>
       </section>
 
       <div className="cal-toolbar-row">
@@ -438,39 +430,23 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
         onApplyFilter={(metric) => {
           if (metric === "today") {
             setDateFilter("today");
-            setStatusFilter("all");
+            setStatusFilters([]);
           } else {
-            setStatusFilter(metric);
+            setStatusFilters([metric]);
             setDateFilter("all");
           }
           setPendingFilterNavigation(true);
           setActiveMetric(null);
         }}
         onOpenEvent={(event) => {
-          ensureEventVisible(event, {
-            institutionFilter,
-            statusFilter,
-            dateFilter,
-            user,
-            setInstitutionFilter,
-            setStatusFilter,
-            setDateFilter,
-          });
+          clearFilters();
           setPendingNavigation({ date: new Date(event.scheduledAt), highlightId: event.id });
           setScrollTargetId(event.id);
           setSelected(event);
           setActiveMetric(null);
         }}
         onJumpToEvent={(event) => {
-          ensureEventVisible(event, {
-            institutionFilter,
-            statusFilter,
-            dateFilter,
-            user,
-            setInstitutionFilter,
-            setStatusFilter,
-            setDateFilter,
-          });
+          clearFilters();
           setPendingNavigation({ date: new Date(event.scheduledAt), highlightId: event.id });
           setScrollTargetId(event.id);
           setActiveMetric(null);
@@ -548,9 +524,8 @@ function CalendarMetricResultsPanel({
             <div className="cal-results-icon">
               <i className="ti ti-calendar-search" aria-hidden="true" />
             </div>
-            <p className="cal-detail-kicker">Workflow drill-down</p>
             <h2>{title}</h2>
-            <span>{events.length} related schedule{events.length === 1 ? "" : "s"}</span>
+            <span>{events.length} related post{events.length === 1 ? "" : "s"}</span>
           </div>
           <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close">
             <i className="ti ti-x" />
@@ -618,21 +593,29 @@ function matchesMetric(event: CalendarEvent, metric: MetricKey, user: User) {
 function matchesFilters(
   event: CalendarEvent,
   options: {
-    institutionFilter: string;
-    statusFilter: string;
+    institutionFilters: string[];
+    statusFilters: string[];
     dateFilter: string;
     now: Date;
     user: User;
   },
 ) {
-  const status = visibleEventStatus(event, options.user);
   const scheduledAt = new Date(event.scheduledAt);
-  if (options.institutionFilter !== "all" && event.institutionId !== options.institutionFilter) return false;
-  if (options.statusFilter === "scheduled" && !["scheduled", "direct_post_scheduled"].includes(status)) return false;
-  if (options.statusFilter === "published" && !["published", "published_manual"].includes(status)) return false;
-  if (options.statusFilter === "failed" && !status.includes("failed")) return false;
-  if (options.statusFilter === "attention" && !["pending", "in_review", "needs_revision", "rejected"].includes(status)) return false;
-  if (!matchesDateFilter(scheduledAt, options.dateFilter, options.now)) return false;
+  if (
+    options.institutionFilters.length > 0 &&
+    (!event.institutionId || !options.institutionFilters.includes(event.institutionId))
+  ) {
+    return false;
+  }
+  if (
+    options.statusFilters.length > 0 &&
+    !options.statusFilters.includes(statusFilterForEvent(event, options.user))
+  ) {
+    return false;
+  }
+  if (!matchesDateFilter(scheduledAt, options.dateFilter, options.now)) {
+    return false;
+  }
   return true;
 }
 
@@ -653,45 +636,6 @@ function statusFilterForEvent(event: CalendarEvent, user: User) {
   if (value.includes("failed")) return "failed";
   if (["pending", "in_review", "needs_revision", "rejected"].includes(value)) return "attention";
   return "all";
-}
-
-function ensureEventVisible(
-  event: CalendarEvent,
-  options: {
-    institutionFilter: string;
-    statusFilter: string;
-    dateFilter: string;
-    user: User;
-    setInstitutionFilter: (value: string) => void;
-    setStatusFilter: (value: string) => void;
-    setDateFilter: (value: string) => void;
-  },
-) {
-  const now = new Date();
-  let nextInstitution = options.institutionFilter;
-  if (event.institutionId && options.institutionFilter !== "all" && event.institutionId !== options.institutionFilter) {
-    nextInstitution = event.institutionId;
-  }
-
-  let nextStatus = options.statusFilter;
-  if (!matchesFilters(event, {
-    institutionFilter: nextInstitution,
-    statusFilter: options.statusFilter,
-    dateFilter: "all",
-    now,
-    user: options.user,
-  })) {
-    nextStatus = statusFilterForEvent(event, options.user);
-  }
-
-  let nextDate = options.dateFilter;
-  if (!matchesDateFilter(new Date(event.scheduledAt), options.dateFilter, now)) {
-    nextDate = "all";
-  }
-
-  if (nextInstitution !== options.institutionFilter) options.setInstitutionFilter(nextInstitution);
-  if (nextStatus !== options.statusFilter) options.setStatusFilter(nextStatus);
-  if (nextDate !== options.dateFilter) options.setDateFilter(nextDate);
 }
 
 function findEarliestEventDate(events: CalendarEvent[]) {

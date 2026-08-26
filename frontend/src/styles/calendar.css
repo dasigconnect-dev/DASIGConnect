@@ -286,6 +286,62 @@
   z-index: 4200;
 }
 
+/* ---- Filters docked in the screen header ---- */
+.cal-screen-header {
+  align-items: flex-start;
+}
+
+.cal-header-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  position: relative;
+  z-index: 30;
+}
+
+.cal-header-filters .dc-select.cal-filter-select {
+  width: auto;
+  min-width: 158px;
+}
+
+.cal-header-filters .dc-select.cal-filter-select .dc-select-trigger {
+  min-height: 36px;
+}
+
+.cal-filter-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--cal-line);
+  border-radius: var(--r-sm);
+  background: var(--d-surface);
+  color: var(--d-muted);
+  font-family: var(--ff-body);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease;
+}
+
+.cal-filter-clear:hover {
+  color: var(--d-text);
+  border-color: #c8d8ee;
+}
+
+@media (max-width: 720px) {
+  .cal-header-filters {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .cal-header-filters .dc-select.cal-filter-select {
+    flex: 1 1 158px;
+  }
+}
+
 .dc-select.cal-filter-select .dc-select-trigger {
   min-height: 38px;
   border: 1.5px solid #d7e2f2;
@@ -944,25 +1000,53 @@
 
 .fc .fc-daygrid-day-frame {
   padding: 3px;
+  min-height: 118px;
 }
 
 .fc .fc-daygrid-day-top {
   padding: 3px 4px 0;
 }
 
+/* Day number + per-day scheduled/published badge */
+.fc .fc-daygrid-day-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cal-daycell-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+}
+
+.cal-daycell-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #eaf2ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .fc .fc-day-today {
   background: #f5f9ff !important;
 }
 
-.fc .fc-day-today .fc-daygrid-day-number {
+.fc .fc-day-today .fc-daygrid-day-number .cal-daycell-num {
   background: var(--d-blue);
   color: #fff;
   min-width: 24px;
   height: 24px;
   border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .fc .fc-timegrid-slot {
