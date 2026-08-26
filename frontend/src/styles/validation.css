@@ -51,26 +51,24 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1px solid var(--val-border);
-  background: var(--val-surface-2);
-  color: var(--val-muted);
+  border: 0;
+  background: transparent;
+  color: #1877f2;
   cursor: pointer;
-  transition: all 0.15s ease;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.15s ease, transform 0.15s ease;
   flex-shrink: 0;
 }
 
 .val-collapse-btn:hover {
-  background: #eff6ff;
-  color: #1877f2;
-  border-color: #bfdbfe;
-  transform: translateX(-1px);
+  background: transparent;
+  color: #0c5ec4;
+  transform: translateX(-2px);
 }
 
 .val-collapse-btn i {
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .val-expand-btn {
