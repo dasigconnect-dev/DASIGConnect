@@ -86,6 +86,7 @@ public class EngagementRecommendationService {
                 if (date.getDayOfWeek() != window.day()) continue;
                 Instant candidate = LocalDateTime.of(date, LocalTime.of(window.hour(), 0))
                         .atZone(PAGE_ZONE).toInstant();
+                if (!candidate.isAfter(Instant.now())) continue;
                 GuardRailResult guardRails = guardRailService.validate(institutionId, candidate);
                 if (guardRails.isBlocked()) continue;
                 List<String> warnings = guardRails.getSoftWarnings().stream()
