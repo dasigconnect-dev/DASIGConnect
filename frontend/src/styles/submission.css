@@ -5060,3 +5060,210 @@ textarea.sub-finput {
   .sub-engagement-slots { grid-template-columns: 1fr; }
   .sub-engagement-heading { align-items: flex-start; flex-direction: column; }
 }
+
+/* ============================================================
+   Read-only submission view (published / scheduled / pending)
+   Static presentation — intentionally no input affordances.
+   ============================================================ */
+.sub-workspace.is-readonly {
+  grid-template-columns: 1fr var(--sub-guard-w);
+}
+
+.sub-form-canvas.sub-ro {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sub-ro-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--sub-border);
+}
+.sub-ro-tab {
+  padding: 10px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--sub-muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.sub-ro-tab:hover {
+  color: var(--sub-text);
+}
+.sub-ro-tab.is-active {
+  color: var(--sub-text);
+  border-bottom-color: var(--sub-accent, #2563eb);
+}
+
+.sub-ro-card {
+  background: var(--sub-surface);
+  border: 1px solid var(--sub-border);
+  border-radius: 14px;
+  padding: 20px 22px;
+}
+
+.sub-ro-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-family: var(--sub-display);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--sub-text);
+}
+
+.sub-ro-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--sub-surface-2);
+  border: 1px solid var(--sub-border);
+  color: var(--sub-muted);
+  font-family: var(--sub-body, inherit);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sub-ro-dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sub-ro-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--sub-border);
+}
+.sub-ro-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.sub-ro-row dt {
+  margin: 0;
+  color: var(--sub-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.sub-ro-row dd {
+  margin: 0;
+  color: var(--sub-text);
+  font-size: 14px;
+}
+
+.sub-ro-field {
+  margin-top: 16px;
+}
+.sub-ro-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--sub-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sub-ro-caption {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--sub-surface-2);
+  border: 1px solid var(--sub-border);
+  border-radius: 10px;
+  color: var(--sub-text);
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.sub-ro-value {
+  margin: 0;
+  color: var(--sub-text);
+  font-size: 14px;
+}
+.sub-ro-value.is-empty {
+  color: var(--sub-muted-2);
+}
+
+.sub-ro-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sub-ro-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--sub-surface-2);
+  border: 1px solid var(--sub-border);
+  color: var(--sub-text-2);
+  font-size: 12.5px;
+}
+
+.sub-ro-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.sub-ro-media {
+  margin: 0;
+  border: 1px solid var(--sub-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--sub-surface-2);
+}
+.sub-ro-media img,
+.sub-ro-media video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  background: #0c1d3d;
+}
+.sub-ro-media figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px 8px;
+}
+.sub-ro-media-name {
+  color: var(--sub-muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sub-ro-media-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--sub-accent, #2563eb);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.sub-ro-media-link:hover {
+  text-decoration: underline;
+}
+.sub-ro-media-link i {
+  font-size: 13px;
+}
+
+@media (max-width: 980px) {
+  .sub-workspace.is-readonly {
+    grid-template-columns: 1fr;
+  }
+  .sub-ro-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

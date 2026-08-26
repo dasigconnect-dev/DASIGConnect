@@ -34,6 +34,7 @@ import BrandedSelect from "../../components/ui/BrandedSelect";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import AiCaptionButton from "./components/AiCaptionButton";
 import AiCaptionSuggestion from "./components/AiCaptionSuggestion";
+import SubmissionReadOnlyBody from "./components/SubmissionReadOnlyView";
 import AlbumCombobox from "../../components/ui/AlbumCombobox";
 import "../../styles/dasig-loader.css";
 
@@ -914,8 +915,19 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setSaveState("saved");
       setMediaUploadFailed(false);
       cleanSignatureRef.current = getDirtySignature(nextForm);
-    } catch {
-      toast.error("Could not load submission detail.");
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } }).response?.status;
+      if (status === 403) {
+        toast.error(
+          getErrorMessage(err, "You do not have access to this submission."),
+        );
+      } else if (status === 404) {
+        toast.error("This submission no longer exists.");
+      } else {
+        toast.error(getErrorMessage(err, "Could not load submission detail."));
+      }
+      // Don't strand the user on a half-populated editor — return to the list.
+      exitSubmission();
     } finally {
       setHydratingId(null);
     }
@@ -1377,7 +1389,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         <main className="sub-list-page">
           <section className="sub-list-head">
             <div>
-              <div className="sub-sidebar-eyebrow">Workspace</div>
               <h1 className="sub-list-title">My Submissions</h1>
               <p className="sub-list-subtitle">
                 View drafts, submitted posts, and published content before opening the composer.
@@ -1395,7 +1406,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 ) : (
                   <i className="ti ti-refresh"></i>
                 )}
-                Refresh
               </button>
               <button
                 className="sub-list-new"
@@ -1668,7 +1678,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         </div>
       )}
 
-      <div className="sub-workspace">
+      <div className={`sub-workspace${isReadOnlySubmission ? " is-readonly" : ""}`}>
+        {!isReadOnlySubmission && (
         <aside className="sub-sidebar sub-template-sidebar">
           {!form.fastTrack && (
             <section className="sub-sidebar-templates" aria-label="Post templates">
@@ -1712,28 +1723,29 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             </section>
           )}
         </aside>
+        )}
 
-        <main className="sub-form-canvas">
+        <main className={`sub-form-canvas${isReadOnlySubmission ? " sub-ro" : ""}`}>
           <div className="sub-form-page-head">
             <div>
               <h1 className="sub-form-page-title">
                 {centerMode === "preview"
                   ? "Facebook Preview"
                   : isReadOnlySubmission
-                    ? "Submitted Preview"
+                    ? `${statusLabels[form.status]} submission`
                     : "Submit Content"}
               </h1>
-              <p className="sub-form-page-sub">
-                {centerMode === "preview"
-                  ? "Review how followers will see this post before sending it for approval."
-                  : isReadOnlySubmission
-                    ? "Preview the content exactly as it was submitted."
+              {!isReadOnlySubmission && (
+                <p className="sub-form-page-sub">
+                  {centerMode === "preview"
+                    ? "Review how followers will see this post before sending it for approval."
                     : "Prepare event media, caption, tags, and a preferred publishing slot."}
-              </p>
+                </p>
+              )}
               {isReadOnlySubmission && (
                 <div className="sub-readonly-note">
                   <i className="ti ti-eye"></i>
-                  Viewing {statusLabels[form.status]} submission
+                  Read-only — this submission can no longer be edited
                 </div>
               )}
             </div>
@@ -1826,6 +1838,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               onSaveDraft={() => void handleSave()}
               onSubmitForReview={() => setModal("submit")}
               onEditDetails={handleEditPreviewDetails}
+            />
+          ) : isReadOnlySubmission ? (
+            <SubmissionReadOnlyBody
+              form={form}
+              scheduledAt={scheduledAt}
+              mediaItems={pickerItems}
+              captionHashtags={captionHashtags}
+              mediaTags={effectiveMediaTags(form)}
+              facebookPreview={facebookPreview}
+              activeMediaIndex={activeMediaIndex}
+              onMediaIndexChange={setActiveMediaIndex}
             />
           ) : (
             <>
@@ -2247,7 +2270,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   idle={item.idle}
                   title={item.title}
                   sub={item.sub}
-                  onClick={() => handleReadinessJump(item.target)}
+                  onClick={isReadOnlySubmission ? undefined : () => handleReadinessJump(item.target)}
                 />
               ))}
             </GuardSection>
@@ -2264,7 +2287,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   idle={item.idle}
                   title={item.title}
                   sub={item.sub}
-                  onClick={() => handleReadinessJump(item.target)}
+                  onClick={isReadOnlySubmission ? undefined : () => handleReadinessJump(item.target)}
                 />
               ))}
             </GuardSection>
