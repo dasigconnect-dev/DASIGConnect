@@ -9,6 +9,9 @@ export interface CalendarEvent {
   status: string;
   scheduledAt: string;
   publishedAt: string | null;
+  caption?: string | null;
+  description?: string | null;
+  contributorName?: string | null;
   locked: boolean;
 }
 

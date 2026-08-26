@@ -189,6 +189,7 @@ class SubmissionServiceTest {
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+        when(guardRailService.validate(any(), any())).thenReturn(new GuardRailResult(List.of(), List.of()));
 
         SubmissionResponseDto result = submissionService.update(submissionId, dto, contributorPrincipal);
 
