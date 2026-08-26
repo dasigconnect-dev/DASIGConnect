@@ -115,7 +115,9 @@ export interface CaptionResponse {
 interface ApiEnvelope<T> {
   success: boolean;
   data: T;
-  error?: unknown;
+  error?: {
+    message?: string;
+  } | null;
   timestamp?: string;
 }
 
@@ -157,7 +159,13 @@ export async function suggestCaption(
     throw new Error("timeout");
   }
   if (res.status !== 200) {
-    throw new Error("unavailable");
+    const message =
+      "error" in res.data &&
+      res.data.error?.message &&
+      typeof res.data.error.message === "string"
+        ? res.data.error.message
+        : "unavailable";
+    throw new Error(message);
   }
   const body = "data" in res.data ? res.data.data : res.data;
 
