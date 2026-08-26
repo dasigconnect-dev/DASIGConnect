@@ -27,6 +27,8 @@ interface InstitutionUsersCardProps {
   onAvatarUpload?: (user: UserProfileResponse, file: File) => void
   showFilterPills?: boolean
   userColumnLabel?: string
+  /** Render the title/count/description + headerAction row above the filter bar. */
+  showHeader?: boolean
 }
 
 type RoleFilter = 'all' | 'administrator' | 'contributor'
@@ -54,6 +56,7 @@ export default function InstitutionUsersCard({
   onAvatarUpload,
   showFilterPills = true,
   userColumnLabel = 'User',
+  showHeader = true,
 }: InstitutionUsersCardProps) {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
@@ -104,25 +107,27 @@ export default function InstitutionUsersCard({
   return (
     <>
       <section
-        className={`um-data-card${variant === 'directory' ? ' is-directory' : ''}${loading ? ' is-busy' : ''}`}
+        className={`um-data-card${variant === 'directory' ? ' is-directory' : ''}${showHeader ? '' : ' is-headerless'}${loading ? ' is-busy' : ''}`}
         aria-busy={loading}
         style={{ marginBottom: '16px' }}
       >
-      <div className="um-data-card-header">
-        <div className="um-data-card-heading">
-          <div className="um-data-card-title-group">
-            <h2 className="um-data-card-title">{title}</h2>
-            <span className="um-data-card-count">{activeUsersCount}</span>
-            {loading && users.length > 0 && (
-              <span className="um-refresh-pill">
-                <InlineSpinner /> Refreshing
-              </span>
-            )}
+      {showHeader && (
+        <div className="um-data-card-header">
+          <div className="um-data-card-heading">
+            <div className="um-data-card-title-group">
+              <h2 className="um-data-card-title">{title}</h2>
+              <span className="um-data-card-count">{activeUsersCount}</span>
+              {loading && users.length > 0 && (
+                <span className="um-refresh-pill">
+                  <InlineSpinner /> Refreshing
+                </span>
+              )}
+            </div>
+            {description && <p className="um-data-card-description">{description}</p>}
           </div>
-          {description && <p className="um-data-card-description">{description}</p>}
+          {headerAction && <div className="um-data-card-action">{headerAction}</div>}
         </div>
-        {headerAction && <div className="um-data-card-action">{headerAction}</div>}
-      </div>
+      )}
 
       <div className={`um-filter-bar um-users-filter-bar${showFilterPills ? '' : ' is-search-only'}`}>
         {showFilterPills && (
@@ -316,7 +321,12 @@ export default function InstitutionUsersCard({
                             onUpload={onAvatarUpload}
                           />
                           <div>
-                            <strong>{displayName}</strong>
+                            <strong>
+                              {displayName}
+                              {currentUser?.email.toLowerCase() === managedUser.email.toLowerCase() && (
+                                <span className="um-you-pill">You</span>
+                              )}
+                            </strong>
                             <span className="um-user-email">{managedUser.email}</span>
                           </div>
                         </div>

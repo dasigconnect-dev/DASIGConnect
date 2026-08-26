@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import {
   cancelInvitation,
   confirmSuperAdministratorTransfer,
@@ -17,8 +18,8 @@ import { getUserDisplayName } from '../../lib/userIdentity'
 import ConfirmDialog from '../user-management/components/ConfirmDialog'
 import DeliveryIssuesAlert from '../user-management/components/DeliveryIssuesAlert'
 import InstitutionUsersCard from '../user-management/components/InstitutionUsersCard'
+import InvitationComposer from '../user-management/components/InvitationComposer'
 import { SkeletonBlock } from '../user-management/components/LoadingPrimitives'
-import PendingInvitationsCard from '../user-management/components/PendingInvitationsCard'
 import type { InviteResults } from '../user-management/types'
 
 interface AdministratorManagementScreenProps {
@@ -34,21 +35,35 @@ interface ConfirmDialogState {
   onConfirm: () => void
 }
 
+// Survives route unmount so switching screens shows cached data instead of a
+// full reload; the mount effect still refetches quietly in the background.
+const memoryCache: {
+  administrators: UserProfileResponse[] | null
+  pendingInvitations: PendingInvitationResponse[]
+} = { administrators: null, pendingInvitations: [] }
+
 export default function AdministratorManagementScreen({
   user,
   onProfileUpdated,
 }: AdministratorManagementScreenProps) {
   const toast = useToast()
-  const [administrators, setAdministrators] = useState<UserProfileResponse[]>([])
-  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitationResponse[]>([])
-  const [loading, setLoading] = useState(true)
+  const [administrators, setAdministrators] = useState<UserProfileResponse[]>(
+    () => memoryCache.administrators ?? [],
+  )
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitationResponse[]>(
+    () => memoryCache.pendingInvitations,
+  )
+  const [loading, setLoading] = useState(() => memoryCache.administrators === null)
   const [error, setError] = useState('')
-  const [email, setEmail] = useState('')
+
+  // Invitation modal state (mirrors Institution Management contributor invite)
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [emailChips, setEmailChips] = useState<string[]>([])
+  const [emailDraft, setEmailDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [inviteResults, setInviteResults] = useState<InviteResults | null>(null)
+
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
-  const [resendingInvitationId, setResendingInvitationId] = useState<string | null>(null)
-  const [cancellingInvitationId, setCancellingInvitationId] = useState<string | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
 
   const currentAdminRecord = useMemo(
@@ -61,8 +76,36 @@ export default function AdministratorManagementScreen({
     void loadAdministratorManagement()
   }, [])
 
+  // Keep the cross-route cache in sync with the latest lists (incl. mutations).
+  useEffect(() => {
+    if (loading) return
+    memoryCache.administrators = administrators
+    memoryCache.pendingInvitations = pendingInvitations
+  }, [loading, administrators, pendingInvitations])
+
+  useEffect(() => {
+    if (!showInviteModal || typeof document === 'undefined') return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !sending) {
+        handleCloseInviteModal()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [showInviteModal, sending])
+
   async function loadAdministratorManagement() {
-    setLoading(true)
+    if (memoryCache.administrators === null) {
+      setLoading(true)
+    }
     setError('')
     const [adminsResult, pendingResult] = await Promise.allSettled([
       listAdministrators(),
@@ -94,51 +137,102 @@ export default function AdministratorManagementScreen({
     setLoading(false)
   }
 
-  async function handleInviteAdministrator(event: FormEvent<HTMLFormElement>) {
+  function handleOpenInviteModal() {
+    setEmailChips([])
+    setEmailDraft('')
+    setInviteResults(null)
+    setShowInviteModal(true)
+  }
+
+  function handleCloseInviteModal() {
+    if (sending) return
+    setShowInviteModal(false)
+    setEmailChips([])
+    setEmailDraft('')
+    setInviteResults(null)
+  }
+
+  async function handleSendInvitations(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const recipientEmail = email.trim().toLowerCase()
     setInviteResults(null)
 
-    if (!isValidEmail(recipientEmail)) {
+    const inviteEmails = emailChips
+    if (inviteEmails.length === 0) {
       setInviteResults({
-        total: 1,
+        total: 0,
         success: [],
-        failed: [{ email: recipientEmail || 'Invite', reason: 'Enter a valid administrator email.' }],
+        failed: [{ email: 'Batch', reason: 'Add at least one administrator email.' }],
+      })
+      return
+    }
+
+    if (inviteEmails.length > 15) {
+      setInviteResults({
+        total: inviteEmails.length,
+        success: [],
+        failed: [{ email: 'Batch', reason: 'Batch exceeds maximum of 15 invitations.' }],
       })
       return
     }
 
     setSending(true)
+    const success: string[] = []
+    const failed: InviteResults['failed'] = []
     try {
-      const response = await inviteUser({
-        recipientEmail,
-        institutionId: null,
-        assignedRole: 'administrator',
-      })
-      setEmail('')
-      if (response.data.emailDelivered) {
-        toast.success('Administrator invitation sent.')
-      } else {
-        setInviteResults({
-          total: 1,
-          success: [],
-          failed: [{
-            email: recipientEmail,
-            reason: 'Invitation created, but email delivery failed.',
-            invitationUrl: response.data.invitationUrl,
-          }],
-        })
+      for (const rawEmail of inviteEmails) {
+        const recipientEmail = rawEmail.trim().toLowerCase()
+        if (!isValidEmail(recipientEmail)) {
+          failed.push({ email: recipientEmail || 'Invite', reason: 'Enter a valid administrator email.' })
+          continue
+        }
+        try {
+          const response = await inviteUser({
+            recipientEmail,
+            institutionId: null,
+            assignedRole: 'administrator',
+          })
+          if (response.data.emailDelivered) {
+            success.push(recipientEmail)
+          } else {
+            failed.push({
+              email: recipientEmail,
+              reason: 'Invitation created, but email delivery failed.',
+              invitationUrl: response.data.invitationUrl,
+            })
+          }
+        } catch (err: unknown) {
+          failed.push({ email: recipientEmail, reason: getApiErrorMessage(err, 'Invitation failed.') })
+        }
       }
+
+      if (failed.length === 0) {
+        toast.success(
+          `${success.length} administrator invitation${success.length === 1 ? '' : 's'} sent.`,
+        )
+      } else {
+        if (success.length > 0) {
+          toast.info(
+            `${success.length} of ${inviteEmails.length} invitation${inviteEmails.length === 1 ? '' : 's'} sent.`,
+          )
+        }
+        setInviteResults({ total: inviteEmails.length, success, failed })
+      }
+      setEmailChips([])
+      setEmailDraft('')
       await loadAdministratorManagement()
-    } catch (err: unknown) {
-      setInviteResults({
-        total: 1,
-        success: [],
-        failed: [{ email: recipientEmail, reason: getApiErrorMessage(err, 'Invitation failed.') }],
-      })
+      if (failed.length === 0) {
+        setShowInviteModal(false)
+      }
     } finally {
       setSending(false)
     }
+  }
+
+  function handleResubmitFailed() {
+    if (!inviteResults) return
+    setEmailChips(inviteResults.failed.map((item) => item.email).filter(isValidEmail))
+    setEmailDraft('')
+    setInviteResults(null)
   }
 
   function handleToggleUserStatus(managedUser: UserProfileResponse) {
@@ -247,28 +341,22 @@ export default function AdministratorManagementScreen({
   }
 
   async function handleResendInvitation(id: string) {
-    setResendingInvitationId(id)
     try {
       await resendInvitation(id)
       toast.success('Invitation resent.')
       await loadAdministratorManagement()
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to resend invitation.'))
-    } finally {
-      setResendingInvitationId(null)
     }
   }
 
   async function handleCancelInvitation(id: string) {
-    setCancellingInvitationId(id)
     try {
       await cancelInvitation(id)
       toast.success('Invitation cancelled.')
       await loadAdministratorManagement()
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to cancel invitation.'))
-    } finally {
-      setCancellingInvitationId(null)
     }
   }
 
@@ -290,14 +378,86 @@ export default function AdministratorManagementScreen({
     }
   }
 
+  const initializing = loading && administrators.length === 0 && pendingInvitations.length === 0
+
+  const inviteAdministratorModal =
+    showInviteModal && typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            className="dash-modal-backdrop im-modal-backdrop"
+            onClick={handleCloseInviteModal}
+            role="presentation"
+          >
+            <div
+              className="dash-modal-card im-invite-modal-card"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="am-invite-modal-title"
+              aria-describedby="am-invite-modal-subtitle"
+            >
+              <div className="dash-modal-header im-modal-header">
+                <div>
+                  <div id="am-invite-modal-title" className="dash-modal-title">
+                    Invite Administrator
+                  </div>
+                  <div id="am-invite-modal-subtitle" className="dash-modal-sub">
+                    Send a single-use activation link for a network-wide Administrator account.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="dash-modal-close"
+                  onClick={handleCloseInviteModal}
+                  aria-label="Close invite administrator modal"
+                  disabled={sending}
+                >
+                  <i className="ti ti-x" aria-hidden="true"></i>
+                </button>
+              </div>
+
+              <InvitationComposer
+                chips={emailChips}
+                emailDraft={emailDraft}
+                role="administrator"
+                selectedInstitution={null}
+                canChooseRole={false}
+                networkWide
+                sending={sending}
+                onDraftChange={setEmailDraft}
+                onAddChip={(email) => {
+                  if (!emailChips.includes(email.toLowerCase())) {
+                    setEmailChips((prev) => [...prev, email.toLowerCase()])
+                  }
+                }}
+                onRemoveChip={(index) =>
+                  setEmailChips((prev) => prev.filter((_, i) => i !== index))
+                }
+                onRoleChange={() => {}}
+                onSubmit={(event) => void handleSendInvitations(event)}
+              />
+
+              {inviteResults && (
+                <DeliveryIssuesAlert results={inviteResults} onResubmitFailed={handleResubmitFailed} />
+              )}
+            </div>
+          </div>,
+          document.body,
+        )
+      : null
+
   return (
     <div className="um-screen">
       <main className="um-body">
-        <header className="um-page-header">
+        <header className="im-page-header">
           <div>
             <h1>Administrator Management</h1>
-            <p>Invite administrators and manage network-level administrator accounts.</p>
+            <p>Invite and manage network-level administrator accounts.</p>
           </div>
+          <button type="button" className="im-add-btn" onClick={handleOpenInviteModal}>
+            <i className="ti ti-user-plus" aria-hidden="true"></i>
+            Invite Administrator
+          </button>
         </header>
 
         {pendingTransfer && (
@@ -320,58 +480,7 @@ export default function AdministratorManagementScreen({
           </div>
         )}
 
-        <section className="um-data-card">
-          <div className="um-data-card-header">
-            <div className="um-data-card-heading">
-              <div className="um-data-card-title-group">
-                <h2 className="um-data-card-title">Invite New Administrator</h2>
-              </div>
-              <p className="um-data-card-description">Administrator invitations are network-wide and expire after 72 hours.</p>
-            </div>
-          </div>
-          <form className="um-composer-form" onSubmit={(event) => void handleInviteAdministrator(event)}>
-            <div className="um-composer-section um-recipient-section">
-              <div className="um-section-head">
-                <div>
-                  <label className="um-composer-label" htmlFor="administrator-invite-email">
-                    Administrator Email
-                  </label>
-                  <div className="um-composer-label-hint">
-                    Send a single-use activation link for a network-wide Administrator account.
-                  </div>
-                </div>
-              </div>
-              <input
-                id="administrator-invite-email"
-                className="um-chip-input"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="administrator@example.edu.ph"
-                disabled={sending}
-                aria-label="Administrator email"
-              />
-            </div>
-            <div className="um-composer-footer">
-              <button type="submit" className="um-send-btn" disabled={sending || !email.trim()}>
-                <i className={sending ? 'ti ti-loader-2 um-spin' : 'ti ti-send'} aria-hidden="true"></i>
-                {sending ? 'Sending...' : 'Send Invitation'}
-              </button>
-            </div>
-          </form>
-          {inviteResults && (
-            <DeliveryIssuesAlert
-              results={inviteResults}
-              onResubmitFailed={() => {
-                const failed = inviteResults.failed.find((item) => isValidEmail(item.email))
-                if (failed) setEmail(failed.email)
-                setInviteResults(null)
-              }}
-            />
-          )}
-        </section>
-
-        {loading && administrators.length === 0 ? (
+        {initializing ? (
           <SkeletonBlock className="um-skeleton-line is-wide" />
         ) : (
           <>
@@ -380,27 +489,18 @@ export default function AdministratorManagementScreen({
               users={administrators}
               loading={loading}
               updatingUserId={updatingUserId}
+              resendingUserId={updatingUserId}
               onToggleUserStatus={handleToggleUserStatus}
               onDeleteUser={handleDeleteUser}
               onCancelInvitation={handleCancelInvitationFromUser}
               onResendInvitation={handleResendInvitationFromUser}
               onRequestSuperAdminTransfer={handleRequestTransfer}
-              showRoleControls
-              showInstitutionColumn={false}
-              title="Administrator Accounts"
-              description="Network administrators can invite users and manage content workflows. Only the Super Administrator can remove or reactivate Administrator accounts."
-              userColumnLabel="Administrator"
-            />
-
-            <PendingInvitationsCard
-              invitations={pendingInvitations}
-              institutions={[]}
-              loading={loading}
-              resendingInvitationId={resendingInvitationId}
-              cancellingInvitationId={cancellingInvitationId}
-              onResend={(id) => void handleResendInvitation(id)}
-              onCancelInvitation={(id) => void handleCancelInvitation(id)}
               showRoleControls={false}
+              showInstitutionColumn={false}
+              showFilterPills
+              showHeader={false}
+              variant="directory"
+              userColumnLabel="Administrator"
             />
           </>
         )}
@@ -416,6 +516,7 @@ export default function AdministratorManagementScreen({
           onCancel={() => setConfirmDialog(null)}
         />
       )}
+      {inviteAdministratorModal}
     </div>
   )
 }
