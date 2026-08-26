@@ -55,14 +55,9 @@ export function useValidationQueue() {
 
   useEffect(() => {
     const controller = new AbortController();
-    let active = true;
-
-    queueMicrotask(() => {
-      if (active) void refresh(controller.signal);
-    });
+    void refresh(controller.signal);
 
     return () => {
-      active = false;
       controller.abort();
     };
   }, [refresh]);
@@ -99,14 +94,9 @@ export function useValidationLog(submissionId?: string | null) {
 
   useEffect(() => {
     const controller = new AbortController();
-    let active = true;
-
-    queueMicrotask(() => {
-      if (active) void refresh(controller.signal);
-    });
+    void refresh(controller.signal);
 
     return () => {
-      active = false;
       controller.abort();
     };
   }, [refresh]);
