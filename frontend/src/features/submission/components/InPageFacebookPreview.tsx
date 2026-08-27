@@ -70,7 +70,7 @@ export function InPageFacebookPreview({
         />
       </div>
 
-      <div className="sub-preview-footer">
+      {/* <div className="sub-preview-footer">
         <div className="sub-preview-guidance" role="status">
           <i className="ti ti-shield-check" aria-hidden="true" />
           <span>
@@ -114,7 +114,7 @@ export function InPageFacebookPreview({
             {isSubmitting ? "Submitting..." : "Submit for Approval"}
           </button>
         )}
-      </div>
+      </div> */}
     </section>
   );
 }
