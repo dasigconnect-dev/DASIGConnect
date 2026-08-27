@@ -318,9 +318,15 @@ public class SystemHealthService {
 
     private OperationalMetricDto editAndApproveRate(Instant start) {
         try {
+            // An "edited approval" is an approval whose log entry carries a
+            // before/after edit_diff (admin edited during review — A10). The legacy
+            // edited_and_approved action is still counted for historical rows.
             Map<String, Object> row = jdbcTemplate.queryForMap("""
                     SELECT COUNT(*) AS approvals,
-                           COUNT(CASE WHEN action = 'edited_and_approved' THEN 1 END) AS edited
+                           COUNT(*) FILTER (
+                               WHERE action = 'edited_and_approved'
+                                  OR (action = 'approved' AND edit_diff IS NOT NULL)
+                           ) AS edited
                     FROM validation_logs
                     WHERE created_at >= ?
                       AND action IN ('approved', 'edited_and_approved')
@@ -331,9 +337,10 @@ public class SystemHealthService {
                 return noSampleMetric("edit_approve_rate", "Edit & Approve rate", "percent",
                         "No approval decisions were recorded in the last 30 days.");
             }
-            double rate = approvals == 0 ? 0 : round(edited * 100.0 / approvals);
+            double rate = round(edited * 100.0 / approvals);
             return metric("edit_approve_rate", "Edit & Approve rate", rate, "percent", approvals,
-                    HealthStatus.HEALTHY, "Share of approvals completed through Edit & Approve in the last 30 days.");
+                    HealthStatus.HEALTHY,
+                    "Share of approvals where the Administrator edited the submission before approving, over the last 30 days.");
         } catch (Exception ex) {
             return unavailableMetric("edit_approve_rate", "Edit & Approve rate", "percent", ex);
         }

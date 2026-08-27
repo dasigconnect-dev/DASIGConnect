@@ -268,8 +268,9 @@ class ValidationServiceTest {
     @Test
     void approve_afterSessionEdit_recordsEditedApprovalAndFiresEditedEvent() {
         // A10/A11: approving after one or more standalone edits this session records
-        // the terminal action as edited_and_approved with the combined diff and
-        // notifies the contributor that changes were made.
+        // the terminal action as `approved` with the combined before/after diff
+        // attached (marking it an edited approval) and notifies the contributor
+        // that changes were made.
         JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
 
         Submission submission = new Submission();
@@ -303,7 +304,7 @@ class ValidationServiceTest {
         ArgumentCaptor<ValidationLog> captor = ArgumentCaptor.forClass(ValidationLog.class);
         verify(validationLogRepository).save(captor.capture());
         ValidationLog entry = captor.getValue();
-        assertThat(entry.getAction()).isEqualTo(ValidationAction.edited_and_approved);
+        assertThat(entry.getAction()).isEqualTo(ValidationAction.approved);
         assertThat(entry.getEditDiff()).contains("caption").contains("old").contains("new");
         assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.scheduled);
 

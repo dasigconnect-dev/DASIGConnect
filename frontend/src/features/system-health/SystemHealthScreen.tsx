@@ -19,27 +19,32 @@ import "../../styles/system-health.css";
 interface Props {
   user: User;
 }
+const CACHE_TTL_MS = 60_000;
+let cachedSummary: SystemHealthSummary | null = null;
+let cachedTokens: TokenStatus[] = [];
+let cachedAt = 0;
 
 export default function SystemHealthScreen({ user }: Props) {
   const toast = useToast();
-  const [summary, setSummary] = useState<SystemHealthSummary | null>(null);
-  const [tokens, setTokens] = useState<TokenStatus[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<SystemHealthSummary | null>(cachedSummary);
+  const [tokens, setTokens] = useState<TokenStatus[]>(cachedTokens);
+  const [loading, setLoading] = useState(!cachedSummary);
   const [exporting, setExporting] = useState(false);
   const [busyTokenId, setBusyTokenId] = useState<string | null>(null);
-  const [error, setError] = useState("");
 
   const isSuperAdmin = user.role === "super_administrator";
 
   useEffect(() => {
+    if (cachedSummary && Date.now() - cachedAt < CACHE_TTL_MS) {
+      return;
+    }
     const controller = new AbortController();
-    void load(controller.signal);
+    void load(controller.signal, Boolean(cachedSummary));
     return () => controller.abort();
   }, []);
 
-  async function load(signal?: AbortSignal) {
-    setLoading(true);
-    setError("");
+  async function load(signal?: AbortSignal, background = false) {
+    if (!background) setLoading(true);
     try {
       const [summaryResponse, tokenResponse] = await Promise.allSettled([
         getSystemHealthSummary(signal),
@@ -48,21 +53,20 @@ export default function SystemHealthScreen({ user }: Props) {
 
       if (summaryResponse.status === "fulfilled") {
         setSummary(summaryResponse.value.data);
-      } else {
-        setSummary(null);
+        cachedSummary = summaryResponse.value.data;
+        cachedAt = Date.now();
       }
-
+  
       if (tokenResponse.status === "fulfilled") {
         setTokens(tokenResponse.value.data);
-      } else {
-        setTokens([]);
+        cachedTokens = tokenResponse.value.data;
       }
 
-      if (summaryResponse.status === "rejected") {
-        setError("Unable to load system health metrics.");
+      if (summaryResponse.status === "rejected" && !cachedSummary) {
+        toast.error("Unable to load system health metrics.");
       }
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }
 
@@ -120,13 +124,6 @@ export default function SystemHealthScreen({ user }: Props) {
           <p>Infrastructure status, API health, scheduled jobs, and operational analytics.</p>
         </div>
       </header>
-
-      {error && (
-        <div className="sys-alert sys-alert-error" role="alert">
-          <i className="ti ti-alert-circle" aria-hidden="true"></i>
-          <span>{error}</span>
-        </div>
-      )}
 
       {loading && !summary ? (
         <div className="sys-loading">
