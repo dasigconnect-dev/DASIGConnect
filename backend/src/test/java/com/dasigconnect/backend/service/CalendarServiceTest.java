@@ -181,5 +181,48 @@ class CalendarServiceTest {
         assertThat(otherEvent.getContributorName()).isNull();
         assertThat(otherEvent.getInstitutionId()).isEqualTo(otherInstId);
         assertThat(otherEvent.getScheduledAt()).isEqualTo(Instant.parse("2026-08-25T10:00:00Z"));
+
+        // Network-bucket events are never flagged as the viewer's own.
+        assertThat(results).allSatisfy(e -> assertThat(e.isMine()).isFalse());
+    }
+
+    @Test
+    @DisplayName("Contributor also sees own pending / failed / missed-review submissions in full, flagged mine")
+    void getCalendarEvents_asContributor_includesOwnWorkflowSubmissions_markedMine() {
+        UUID contributorId = UUID.randomUUID();
+
+        Submission scheduledNetwork =
+                createSubmission(UUID.randomUUID(), "CIT Tech Fest", myInstitution, SubmissionStatus.scheduled);
+        Submission ownPending =
+                createSubmission(UUID.randomUUID(), "My Pending Post", myInstitution, SubmissionStatus.pending);
+        Submission ownFailed =
+                createSubmission(UUID.randomUUID(), "My Failed Post", myInstitution, SubmissionStatus.publish_failed);
+        Submission ownMissedReview =
+                createSubmission(UUID.randomUUID(), "My Missed Review", myInstitution, SubmissionStatus.missed_review);
+
+        when(institutionRepository.findByNameIgnoreCase("DASIG Central Visayas")).thenReturn(Optional.of(dasigInstitution));
+        when(submissionRepository.findAllCalendarVisibleSlots()).thenReturn(List.of(scheduledNetwork));
+        when(submissionRepository.findOwnCalendarWorkflowSlots(contributorId))
+                .thenReturn(List.of(ownPending, ownFailed, ownMissedReview));
+
+        JwtUserDetails contributorUser = createPrincipal(contributorId, "contributor", myInstId);
+        List<CalendarEventDto> results = calendarService.getCalendarEvents(contributorUser);
+
+        assertThat(results).hasSize(4);
+
+        CalendarEventDto pendingEvent =
+                results.stream().filter(e -> e.getId().equals(ownPending.getId())).findFirst().orElseThrow();
+        assertThat(pendingEvent.isMine()).isTrue();
+        assertThat(pendingEvent.getStatus()).isEqualTo("pending");
+        assertThat(pendingEvent.getCaption()).isEqualTo("Event caption for My Pending Post");
+
+        CalendarEventDto missedReviewEvent =
+                results.stream().filter(e -> e.getId().equals(ownMissedReview.getId())).findFirst().orElseThrow();
+        assertThat(missedReviewEvent.isMine()).isTrue();
+        assertThat(missedReviewEvent.getStatus()).isEqualTo("missed_review");
+
+        CalendarEventDto networkEvent =
+                results.stream().filter(e -> e.getId().equals(scheduledNetwork.getId())).findFirst().orElseThrow();
+        assertThat(networkEvent.isMine()).isFalse();
     }
 }

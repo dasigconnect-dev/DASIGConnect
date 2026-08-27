@@ -215,8 +215,7 @@ public class SlotReservationService {
      * A reservation is stale when the linked submission: - Is still in DRAFT
      * state - Has not been updated in the last 7 days
      *
-     * This method is called by the GR-T2 @Scheduled cron job (to be created in
-     * the schedule package). It runs daily.
+     * Invoked daily by {@code schedule/StaleDraftSlotReleaseJob} (GR-T2).
      *
      * @return list of submission IDs whose slots were released
      */

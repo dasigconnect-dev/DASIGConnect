@@ -98,6 +98,7 @@ export default function AssetCard({
       <div className="med-card-body">
         <div className="med-card-code">{asset.code}</div>
         <div className="med-card-title">{asset.title}</div>
+        {asset.albumName && <div className="med-card-album">{asset.albumName}</div>}
         <div className="med-card-meta">
           {!listView && (
             <div className="med-card-meta-left">

@@ -20,16 +20,22 @@ class TenantScopeServiceTest {
     private EntityManager entityManager;
 
     @Mock
+    private Query userQuery;
+
+    @Mock
     private Query institutionQuery;
 
     @Mock
     private Query roleQuery;
 
     @Test
-    void bindTenantScopeSetsInstitutionAndRoleSessionConfig() {
+    void bindTenantScopeSetsUserInstitutionAndRoleSessionConfig() {
+        UUID userId = UUID.randomUUID();
         UUID institutionId = UUID.randomUUID();
         when(entityManager.createNativeQuery("SELECT set_config(:key, :value, false)"))
-                .thenReturn(institutionQuery, roleQuery);
+                .thenReturn(userQuery, institutionQuery, roleQuery);
+        when(userQuery.setParameter("key", "app.current_user_id")).thenReturn(userQuery);
+        when(userQuery.setParameter("value", userId.toString())).thenReturn(userQuery);
         when(institutionQuery.setParameter("key", "app.current_institution_id")).thenReturn(institutionQuery);
         when(institutionQuery.setParameter("value", institutionId.toString())).thenReturn(institutionQuery);
         when(roleQuery.setParameter("key", "app.current_role")).thenReturn(roleQuery);
@@ -37,9 +43,13 @@ class TenantScopeServiceTest {
 
         TenantScopeService service = tenantScopeService();
 
-        service.bindTenantScope(institutionId, "contributor");
+        service.bindTenantScope(userId, institutionId, "contributor");
 
-        InOrder inOrder = inOrder(entityManager, institutionQuery, roleQuery);
+        InOrder inOrder = inOrder(entityManager, userQuery, institutionQuery, roleQuery);
+        inOrder.verify(entityManager).createNativeQuery("SELECT set_config(:key, :value, false)");
+        inOrder.verify(userQuery).setParameter("key", "app.current_user_id");
+        inOrder.verify(userQuery).setParameter("value", userId.toString());
+        inOrder.verify(userQuery).getSingleResult();
         inOrder.verify(entityManager).createNativeQuery("SELECT set_config(:key, :value, false)");
         inOrder.verify(institutionQuery).setParameter("key", "app.current_institution_id");
         inOrder.verify(institutionQuery).setParameter("value", institutionId.toString());
@@ -53,7 +63,9 @@ class TenantScopeServiceTest {
     @Test
     void bindTenantScopeUsesEmptyStringsForNullValues() {
         when(entityManager.createNativeQuery("SELECT set_config(:key, :value, false)"))
-                .thenReturn(institutionQuery, roleQuery);
+                .thenReturn(userQuery, institutionQuery, roleQuery);
+        when(userQuery.setParameter("key", "app.current_user_id")).thenReturn(userQuery);
+        when(userQuery.setParameter("value", "")).thenReturn(userQuery);
         when(institutionQuery.setParameter("key", "app.current_institution_id")).thenReturn(institutionQuery);
         when(institutionQuery.setParameter("value", "")).thenReturn(institutionQuery);
         when(roleQuery.setParameter("key", "app.current_role")).thenReturn(roleQuery);
@@ -61,16 +73,38 @@ class TenantScopeServiceTest {
 
         TenantScopeService service = tenantScopeService();
 
-        service.bindTenantScope(null, null);
+        service.bindTenantScope(null, null, null);
 
-        InOrder inOrder = inOrder(entityManager, institutionQuery, roleQuery);
-        inOrder.verify(entityManager).createNativeQuery("SELECT set_config(:key, :value, false)");
+        InOrder inOrder = inOrder(entityManager, userQuery, institutionQuery, roleQuery);
+        inOrder.verify(userQuery).setParameter("key", "app.current_user_id");
+        inOrder.verify(userQuery).setParameter("value", "");
+        inOrder.verify(userQuery).getSingleResult();
         inOrder.verify(institutionQuery).setParameter("key", "app.current_institution_id");
         inOrder.verify(institutionQuery).setParameter("value", "");
         inOrder.verify(institutionQuery).getSingleResult();
-        inOrder.verify(entityManager).createNativeQuery("SELECT set_config(:key, :value, false)");
         inOrder.verify(roleQuery).setParameter("key", "app.current_role");
         inOrder.verify(roleQuery).setParameter("value", "");
+        inOrder.verify(roleQuery).getSingleResult();
+    }
+
+    @Test
+    void bindTenantScopeMapsSuperAdministratorToAdministratorForRls() {
+        when(entityManager.createNativeQuery("SELECT set_config(:key, :value, false)"))
+                .thenReturn(userQuery, institutionQuery, roleQuery);
+        when(userQuery.setParameter("key", "app.current_user_id")).thenReturn(userQuery);
+        when(userQuery.setParameter("value", "")).thenReturn(userQuery);
+        when(institutionQuery.setParameter("key", "app.current_institution_id")).thenReturn(institutionQuery);
+        when(institutionQuery.setParameter("value", "")).thenReturn(institutionQuery);
+        when(roleQuery.setParameter("key", "app.current_role")).thenReturn(roleQuery);
+        when(roleQuery.setParameter("value", "administrator")).thenReturn(roleQuery);
+
+        TenantScopeService service = tenantScopeService();
+
+        service.bindTenantScope(null, null, "super_administrator");
+
+        InOrder inOrder = inOrder(entityManager, roleQuery);
+        inOrder.verify(roleQuery).setParameter("key", "app.current_role");
+        inOrder.verify(roleQuery).setParameter("value", "administrator");
         inOrder.verify(roleQuery).getSingleResult();
     }
 

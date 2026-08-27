@@ -24,6 +24,8 @@ export interface SavedMediaAsset {
   fileSizeBytes: number;
   caption?: string | null;
   skipWatermark?: boolean;
+  /** MediaAssetStatus name. "STAGED" = uploaded to this draft, not yet bound to an institution. */
+  status?: string;
 }
 
 export interface SubmissionSummary {
@@ -37,6 +39,7 @@ export interface SubmissionSummary {
   description?: string;
   status: SubmissionStatus;
   scheduledAt?: string;
+  publishedAt?: string;
   submittedAt?: string;
   createdAt?: string;
   updatedAt?: string;

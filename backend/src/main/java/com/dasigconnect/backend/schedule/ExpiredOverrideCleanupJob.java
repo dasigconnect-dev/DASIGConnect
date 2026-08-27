@@ -6,6 +6,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.dasigconnect.backend.service.OverrideRequestService;
+import com.dasigconnect.backend.service.ScheduledJobHealthService;
+
+import java.time.Instant;
 
 /**
  * UC-3.5 Category C — auto-dismisses expired override requests.
@@ -20,16 +23,27 @@ public class ExpiredOverrideCleanupJob {
     private static final Logger log = LoggerFactory.getLogger(ExpiredOverrideCleanupJob.class);
 
     private final OverrideRequestService overrideRequestService;
+    private final ScheduledJobHealthService scheduledJobHealthService;
 
-    public ExpiredOverrideCleanupJob(OverrideRequestService overrideRequestService) {
+    public ExpiredOverrideCleanupJob(
+            OverrideRequestService overrideRequestService,
+            ScheduledJobHealthService scheduledJobHealthService) {
         this.overrideRequestService = overrideRequestService;
+        this.scheduledJobHealthService = scheduledJobHealthService;
     }
 
     @Scheduled(cron = "0 */5 * * * *", zone = "UTC")
     public void run() {
-        int dismissed = overrideRequestService.dismissExpiredRequests();
-        if (dismissed > 0) {
-            log.info("ExpiredOverrideCleanupJob: dismissed {} expired override request(s).", dismissed);
+        Instant startedAt = Instant.now();
+        try {
+            int dismissed = overrideRequestService.dismissExpiredRequests();
+            if (dismissed > 0) {
+                log.info("ExpiredOverrideCleanupJob: dismissed {} expired override request(s).", dismissed);
+            }
+            scheduledJobHealthService.recordSuccess("ExpiredOverrideCleanupJob", startedAt);
+        } catch (Exception ex) {
+            log.error("ExpiredOverrideCleanupJob failed: {}", ex.getMessage(), ex);
+            scheduledJobHealthService.recordFailure("ExpiredOverrideCleanupJob", startedAt, ex);
         }
     }
 }

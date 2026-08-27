@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -27,19 +28,35 @@ public class EmbeddingReconciliationJob {
     private final MediaAssetRepository mediaAssetRepository;
     private final AssetTagRepository assetTagRepository;
     private final AIClassificationService aiClassificationService;
+    private final com.dasigconnect.backend.service.ScheduledJobHealthService scheduledJobHealthService;
 
     public EmbeddingReconciliationJob(MediaAssetRepository mediaAssetRepository,
                                       AssetTagRepository assetTagRepository,
-                                      AIClassificationService aiClassificationService) {
+                                      AIClassificationService aiClassificationService,
+                                      com.dasigconnect.backend.service.ScheduledJobHealthService scheduledJobHealthService) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.assetTagRepository = assetTagRepository;
         this.aiClassificationService = aiClassificationService;
+        this.scheduledJobHealthService = scheduledJobHealthService;
     }
 
     @Scheduled(fixedDelay = 300_000)
     public void reconcile() {
+        Instant startedAt = Instant.now();
+        try {
+            reconcilePendingEmbeddings();
+            scheduledJobHealthService.recordSuccess("EmbeddingReconciliationJob", startedAt);
+        } catch (Exception ex) {
+            log.error("EmbeddingReconciliationJob failed: {}", ex.getMessage(), ex);
+            scheduledJobHealthService.recordFailure("EmbeddingReconciliationJob", startedAt, ex);
+        }
+    }
+
+    private void reconcilePendingEmbeddings() {
         List<MediaAsset> pending = mediaAssetRepository.findNeedingEmbedding();
-        if (pending.isEmpty()) return;
+        if (pending.isEmpty()) {
+            return;
+        }
 
         log.info("EmbeddingReconciliationJob: found {} assets needing embedding", pending.size());
 

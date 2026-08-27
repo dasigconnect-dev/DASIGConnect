@@ -4,7 +4,7 @@ import { getSubmission, type SavedMediaAsset, type SubmissionSummary } from "../
 import {
   acquireReviewLock,
   approveSubmission,
-  editAndApproveSubmission,
+  editSubmission,
   getReviewLockStatus,
   getValidationQueue,
   rejectSubmission,
@@ -75,6 +75,7 @@ const statusLabel: Record<string, string> = {
   pending: "Pending",
   in_review: "In Review",
   needs_revision: "Needs Revision",
+  missed_review: "Missed Review",
   scheduled: "Scheduled",
   publishing: "Publishing",
   published: "Published",
@@ -116,6 +117,8 @@ export default function ValidationQueueScreen({
   const [editMode, setEditMode] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editForm, setEditForm] = useState<EditFormState>(emptyEditForm());
+  const [editedThisSession, setEditedThisSession] = useState(false);
+  const { log, loading: logLoading, refresh: refreshLog } = useValidationLog(selectedId);
   const modalExitTimer = useRef<number | null>(null);
   const openRequestRef = useRef(0);
 
@@ -138,7 +141,6 @@ export default function ValidationQueueScreen({
   const [failureContent, setFailureContent] = useState<SubmissionSummary | null>(null);
   const [failureContentLoading, setFailureContentLoading] = useState(false);
   const [failureMediaIndex, setFailureMediaIndex] = useState(0);
-  const { log, loading: logLoading } = useValidationLog(selectedId);
   const { log: failureLog, loading: failureLogLoading } = useValidationLog(selectedFailureId);
 
   const isAllMode = filter === "all";
@@ -184,10 +186,16 @@ export default function ValidationQueueScreen({
           .some((value) => value!.toLowerCase().includes(term));
       })
       .sort((a, b) => {
+        // Live Event / Fast-Track submissions never reserve a slot — once
+        // published their publish time IS their slot, so fall back to it.
         const left =
-          sortKey === "publish_slot" ? a.scheduledAt || "" : a.submittedAt || a.createdAt || "";
+          sortKey === "publish_slot"
+            ? a.scheduledAt || a.publishedAt || ""
+            : a.submittedAt || a.createdAt || "";
         const right =
-          sortKey === "publish_slot" ? b.scheduledAt || "" : b.submittedAt || b.createdAt || "";
+          sortKey === "publish_slot"
+            ? b.scheduledAt || b.publishedAt || ""
+            : b.submittedAt || b.createdAt || "";
         const cmp = left.localeCompare(right);
         return isAllMode ? -cmp : cmp;
       });
@@ -330,6 +338,7 @@ export default function ValidationQueueScreen({
     setMediaIndex(0);
     setLockNotice("");
     setEditMode(false);
+    setEditedThisSession(false);
 
     try {
       const detail = await getSubmission(summary.id);
@@ -459,11 +468,11 @@ export default function ValidationQueueScreen({
     setEditMode(false);
   }
 
-  async function handleSaveAndApprove() {
+  async function handleSaveEdit() {
     if (!selected) return;
     setEditSaving(true);
     try {
-      await editAndApproveSubmission(selected.id, {
+      await editSubmission(selected.id, {
         eventTitle: editForm.eventTitle,
         eventDate: editForm.eventDate || undefined,
         caption: editForm.caption,
@@ -472,14 +481,17 @@ export default function ValidationQueueScreen({
           ? editForm.tags.split(",").map((t) => t.trim()).filter(Boolean)
           : undefined,
       });
-      toast.success("Submission updated and approved.");
+      // A9: the submission stays IN_REVIEW — re-render the edited content and
+      // keep the panel + lock open so the Administrator can still pick a
+      // terminal action.
+      const detail = await getSubmission(selected.id);
+      setSelected(detail.data);
       setEditMode(false);
-      clearLockFor(selected.id);
-      setSelected(null);
-      setSelectedId(null);
-      await refresh();
+      setEditedThisSession(true);
+      await refreshLog();
+      toast.success("Changes saved — choose a terminal action.");
     } catch (err: unknown) {
-      toast.error(readApiError(err, "Edit & Approve failed."));
+      toast.error(readApiError(err, "Saving the edit failed."));
     } finally {
       setEditSaving(false);
     }
@@ -667,8 +679,12 @@ export default function ValidationQueueScreen({
                   >
                     <div className="val-qi-head">
                       <strong>{item.eventTitle || "Untitled submission"}</strong>
-                      <span className="val-status publish_failed">
-                        {item.manualPublishInProgress ? "Manual Session Open" : "Publish Failed"}
+                      <span className={`val-status ${normalizeStatus(item.status)}`}>
+                        {item.status === "missed_review"
+                          ? "Missed Review"
+                          : item.manualPublishInProgress
+                            ? "Manual Session Open"
+                            : statusLabel[normalizeStatus(item.status)] || "Publish Failed"}
                       </span>
                     </div>
                     <div className="val-qi-meta">
@@ -733,12 +749,16 @@ export default function ValidationQueueScreen({
                       {item.fastTrack ? (
                         <span className="val-deadline val-live">
                           <i className="ti ti-broadcast"></i>
-                          Live Event
+                          {item.publishedAt ? `Live · ${formatDateTime(item.publishedAt)}` : "Live Event"}
                         </span>
                       ) : (
                         <span className="val-deadline">
                           <i className="ti ti-clock"></i>
-                          {item.scheduledAt ? formatDateTime(item.scheduledAt) : "No slot"}
+                          {item.scheduledAt
+                            ? formatDateTime(item.scheduledAt)
+                            : item.publishedAt
+                              ? formatDateTime(item.publishedAt)
+                              : "No slot"}
                         </span>
                       )}
                       <span className="val-media-count">
@@ -839,14 +859,26 @@ export default function ValidationQueueScreen({
                 <span className="val-action-hint">
                   <i className="ti ti-info-circle" />
                   <span>
-                    {selectedFailure.manualPublishInProgress
-                      ? "A manual publish session is already open for this submission."
-                      : "Retry automatically, or fall back to manual publishing."}
+                    {selectedFailure.status === "missed_review"
+                      ? "This submission missed its review window. Assign a new schedule to send it back to the approval queue."
+                      : selectedFailure.manualPublishInProgress
+                        ? "A manual publish session is already open for this submission."
+                        : "Retry automatically, or fall back to manual publishing."}
                   </span>
                 </span>
               </div>
               <div className="val-action-group">
-                {selectedFailure.manualPublishInProgress ? (
+                {selectedFailure.status === "missed_review" ? (
+                  <button
+                    className="val-btn val-btn-primary"
+                    type="button"
+                    disabled={failureBusy === selectedFailure.submissionId}
+                    onClick={() => setRetryItem(selectedFailure)}
+                  >
+                    <i className="ti ti-calendar-plus" />
+                    <span>Retry with New Schedule</span>
+                  </button>
+                ) : selectedFailure.manualPublishInProgress ? (
                   <>
                     <button
                       className="val-btn val-btn-danger-outline"
@@ -1015,7 +1047,7 @@ export default function ValidationQueueScreen({
                 <div className="val-action-status">
                   <span className="val-action-edit-pill">
                     <i className="ti ti-pencil" />
-                    Editing submission content
+                    Editing — saving keeps In Review; select a terminal action after.
                   </span>
                 </div>
                 <div className="val-action-group">
@@ -1031,10 +1063,10 @@ export default function ValidationQueueScreen({
                     className="val-btn val-btn-primary"
                     type="button"
                     disabled={editSaving}
-                    onClick={() => void handleSaveAndApprove()}
+                    onClick={() => void handleSaveEdit()}
                   >
-                    <i className="ti ti-check" />
-                    <span>{editSaving ? "Saving..." : "Save & Approve"}</span>
+                    <i className="ti ti-device-floppy" />
+                    <span>{editSaving ? "Saving..." : "Save Changes"}</span>
                   </button>
                 </div>
               </footer>
@@ -1082,7 +1114,7 @@ export default function ValidationQueueScreen({
                     onClick={handleStartEdit}
                   >
                     <i className="ti ti-pencil" />
-                    <span>Edit & Approve</span>
+                    <span>Edit</span>
                   </button>
                   <button
                     className="val-btn val-btn-primary"
@@ -1124,7 +1156,11 @@ export default function ValidationQueueScreen({
           icon="ti-circle-check"
           tone="success"
           title="Approve submission?"
-          body="The submission will move to Scheduled and its publish slot will be permanently locked."
+          body={
+            editedThisSession
+              ? "The submission will move to Scheduled and its publish slot will be permanently locked. This will be recorded as an edited approval and the contributor is notified that you made changes."
+              : "The submission will move to Scheduled and its publish slot will be permanently locked."
+          }
           confirmLabel={decisionBusy ? "Approving..." : "Approve"}
           exiting={modalClosing}
           confirmBusy={decisionBusy}
@@ -1847,6 +1883,7 @@ function shortId(id: string) {
 
 function logIcon(action: string) {
   if (action.includes("approved")) return "ti-circle-check";
+  if (action.includes("edited")) return "ti-pencil";
   if (action.includes("revision")) return "ti-pencil-exclamation";
   if (action.includes("rejected")) return "ti-ban";
   if (action.includes("lock")) return "ti-lock";

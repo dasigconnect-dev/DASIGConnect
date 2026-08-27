@@ -5,6 +5,8 @@ export interface BrandedSelectOption {
   value: string;
   label: string;
   disabled?: boolean;
+  /** Optional short pill shown after the label (e.g. an institution code). */
+  badge?: string;
 }
 
 interface BrandedSelectProps {
@@ -124,6 +126,7 @@ export default function BrandedSelect({
       >
         <span className={selectedLabel ? "" : "placeholder"}>
           {selectedLabel || placeholder}
+          {selected?.badge && <span className="dc-select-badge">{selected.badge}</span>}
         </span>
         <i
           className={`ti ${loading ? "ti-loader-2 dc-select-spin" : "ti-chevron-down"}`}
@@ -156,7 +159,10 @@ export default function BrandedSelect({
                 disabled={option.disabled}
                 onClick={() => handleSelect(option.value)}
               >
-                <span>{option.label}</span>
+                <span className="dc-select-option-label">
+                  {option.label}
+                  {option.badge && <span className="dc-select-badge">{option.badge}</span>}
+                </span>
                 {isSelected && !isDefaultOption && (
                   <i className="ti ti-check" aria-hidden="true" />
                 )}

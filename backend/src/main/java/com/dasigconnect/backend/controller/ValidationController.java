@@ -121,16 +121,17 @@ public class ValidationController {
     }
 
     /**
-     * POST /api/v1/validation/{id}/edit-and-approve
-     * A9: edits any field of the submission and approves it in the same action.
+     * POST /api/v1/validation/{id}/edit
+     * A9: applies a direct inline edit to any editable field. The submission stays
+     * IN_REVIEW — the Administrator must still choose a terminal action afterwards.
      */
-    @PostMapping("/{id}/edit-and-approve")
+    @PostMapping("/{id}/edit")
     @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
-    public ResponseEntity<Void> editAndApprove(
+    public ResponseEntity<Void> edit(
             @PathVariable UUID id,
             @Valid @RequestBody SubmissionUpdateDto dto,
             @AuthenticationPrincipal JwtUserDetails caller) {
-        validationService.editAndApprove(id, dto, caller);
+        validationService.edit(id, dto, caller);
         return ResponseEntity.noContent().build();
     }
 

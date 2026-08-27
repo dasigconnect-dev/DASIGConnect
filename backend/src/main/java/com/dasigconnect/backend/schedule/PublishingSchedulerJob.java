@@ -31,23 +31,41 @@ public class PublishingSchedulerJob {
 
     private final PublishingQueryService publishingQueryService;
     private final FacebookPublisherService facebookPublisherService;
+    private final com.dasigconnect.backend.service.ScheduledJobHealthService scheduledJobHealthService;
 
     public PublishingSchedulerJob(
             PublishingQueryService publishingQueryService,
-            FacebookPublisherService facebookPublisherService) {
+            FacebookPublisherService facebookPublisherService,
+            com.dasigconnect.backend.service.ScheduledJobHealthService scheduledJobHealthService) {
         this.publishingQueryService = publishingQueryService;
         this.facebookPublisherService = facebookPublisherService;
+        this.scheduledJobHealthService = scheduledJobHealthService;
     }
 
     @Scheduled(cron = "0 * * * * *", zone = "UTC")
     public void run() {
-        if (!facebookPublisherService.isConfigured()) return;
+        Instant startedAt = Instant.now();
+        try {
+            publishDueSubmissions();
+            scheduledJobHealthService.recordSuccess("PublishingSchedulerJob", startedAt);
+        } catch (Exception ex) {
+            log.error("PublishingSchedulerJob failed: {}", ex.getMessage(), ex);
+            scheduledJobHealthService.recordFailure("PublishingSchedulerJob", startedAt, ex);
+        }
+    }
+
+    private void publishDueSubmissions() {
+        if (!facebookPublisherService.isConfigured()) {
+            return;
+        }
 
         Instant now = Instant.now();
         Instant windowStart = now.minus(5, ChronoUnit.MINUTES);
 
         List<Submission> due = publishingQueryService.loadDueSubmissions(windowStart, now);
-        if (due.isEmpty()) return;
+        if (due.isEmpty()) {
+            return;
+        }
 
         log.info("PublishingSchedulerJob: {} submission(s) due for publishing.", due.size());
 
