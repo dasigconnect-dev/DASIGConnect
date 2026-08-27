@@ -25,19 +25,19 @@ import com.dasigconnect.backend.service.MessengerDeliveryService;
 import com.dasigconnect.backend.service.NotificationService;
 
 /**
- * Dispatches in-app, email, and Facebook Messenger notifications for
- * system lifecycle events (T-01 through T-12, plus operational events).
- * Each handler runs in its own transaction after the triggering transaction
- * commits (AFTER_COMMIT / REQUIRES_NEW), ensuring notification delivery
- * never blocks or rolls back core business transactions.
+ * Dispatches in-app, email, and Facebook Messenger notifications for system
+ * lifecycle events (T-01 through T-12, plus operational events). Each handler
+ * runs in its own transaction after the triggering transaction commits
+ * (AFTER_COMMIT / REQUIRES_NEW), ensuring notification delivery never blocks or
+ * rolls back core business transactions.
  */
 @Component
 public class NotificationEventListener {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationEventListener.class);
 
-    private static final DateTimeFormatter SLOT_FMT =
-            DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm 'UTC'");
+    private static final DateTimeFormatter SLOT_FMT
+            = DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm 'UTC'");
 
     private final NotificationService notificationService;
     private final UserRepository userRepository;
@@ -59,7 +59,6 @@ public class NotificationEventListener {
     }
 
     // ── T-01 — New Draft Submitted (DRAFT → PENDING) ──────────────────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onSubmissionPending(SubmissionPendingEvent event) {
@@ -80,7 +79,6 @@ public class NotificationEventListener {
     }
 
     // ── T-02 — Post Approved & Scheduled (PENDING → SCHEDULED) ────────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onSubmissionApproved(SubmissionApprovedEvent event) {
@@ -102,7 +100,6 @@ public class NotificationEventListener {
     }
 
     // ── T-03 — Post Rejected (PENDING → REJECTED) ─────────────────────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onSubmissionRejected(SubmissionRejectedEvent event) {
@@ -121,7 +118,6 @@ public class NotificationEventListener {
     }
 
     // ── Revision Requested (PENDING → NEEDS_REVISION) ─────────────────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onRevisionRequested(RevisionRequestedEvent event) {
@@ -141,7 +137,6 @@ public class NotificationEventListener {
     }
 
     // ── T-04 — Post Published (Automated via Graph API) ───────────────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onPostPublished(PostPublishedEvent event) {
@@ -153,7 +148,6 @@ public class NotificationEventListener {
     }
 
     // ── T-05 — Post Published (Manual Fallback) ───────────────────────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onPostPublishedManual(PostPublishedManualEvent event) {
@@ -173,7 +167,6 @@ public class NotificationEventListener {
     }
 
     // ── T-06 — Automated Publishing Failed (PUBLISH_FAILED) ───────────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onPublishFailed(PublishFailedEvent event) {
@@ -214,7 +207,6 @@ public class NotificationEventListener {
     }
 
     // ── UC-2.4 A6 — Submission missed its review window (MISSED_REVIEW) ───────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onSubmissionMissedReview(SubmissionMissedReviewEvent event) {
@@ -241,7 +233,6 @@ public class NotificationEventListener {
     }
 
     // ── T-07 — Empty Schedule Warning ─────────────────────────────────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onEmptySchedule(EmptyScheduleEvent event) {
@@ -268,7 +259,6 @@ public class NotificationEventListener {
     }
 
     // ── T-08 — Token Expiry Warning (GR-T3) ───────────────────────────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onTokenExpiryWarning(TokenExpiryWarningEvent event) {
@@ -285,7 +275,6 @@ public class NotificationEventListener {
     }
 
     // ── T-09 — Token Validation Failure (GR-T4) ───────────────────────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onTokenValidationFailed(TokenValidationFailedEvent event) {
@@ -303,22 +292,24 @@ public class NotificationEventListener {
     }
 
     // ── Token Publishing Suspended Alert (Suspension Lifecycle) ───────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onTokenPublishingSuspended(TokenPublishingSuspendedEvent event) {
         Submission s = event.submission();
         String link = "/submissions/" + s.getId();
         String msg = switch (event.stage()) {
-            case FIRST_ALERT -> "Automated publishing for '" + s.getEventTitle()
-                    + "' is suspended because the Facebook Page Access Token expired. "
-                    + "The post remains scheduled while the token is reauthorized.";
-            case ESCALATION_24H -> "Escalation: '" + s.getEventTitle()
-                    + "' has been blocked by an expired Facebook Page Access Token for 24 hours. "
-                    + "Reauthorize the token to resume automated publishing.";
-            case FINAL_FAILURE -> "Final alert: '" + s.getEventTitle()
-                    + "' has been blocked by an expired Facebook Page Access Token for 48 hours. "
-                    + "The submission was moved to Publish Failed for manual recovery.";
+            case FIRST_ALERT ->
+                "Automated publishing for '" + s.getEventTitle()
+                + "' is suspended because the Facebook Page Access Token expired. "
+                + "The post remains scheduled while the token is reauthorized.";
+            case ESCALATION_24H ->
+                "Escalation: '" + s.getEventTitle()
+                + "' has been blocked by an expired Facebook Page Access Token for 24 hours. "
+                + "Reauthorize the token to resume automated publishing.";
+            case FINAL_FAILURE ->
+                "Final alert: '" + s.getEventTitle()
+                + "' has been blocked by an expired Facebook Page Access Token for 48 hours. "
+                + "The submission was moved to Publish Failed for manual recovery.";
         };
         if (event.detail() != null && !event.detail().isBlank()) {
             msg = msg + " Detail: " + event.detail();
@@ -333,7 +324,6 @@ public class NotificationEventListener {
     }
 
     // ── T-10 — Administrator rescheduled a post ────────────────────────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onSubmissionRescheduled(SubmissionRescheduledEvent event) {
@@ -345,7 +335,6 @@ public class NotificationEventListener {
     }
 
     // ── T-11 — Fast-Track Live Event Submission ───────────────────────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onFastTrackSubmission(FastTrackSubmissionEvent event) {
@@ -370,7 +359,6 @@ public class NotificationEventListener {
     }
 
     // ── T-12 — Embedding Reconciliation Failure Digest ────────────────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onEmbeddingFailureDigest(EmbeddingFailureDigestEvent event) {
@@ -389,7 +377,6 @@ public class NotificationEventListener {
     }
 
     // ── Additional Operational Events ─────────────────────────────────────────
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onOverrideApproved(OverrideApprovedEvent event) {
@@ -481,14 +468,17 @@ public class NotificationEventListener {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
     private List<User> institutionAdmins(java.util.UUID institutionId) {
-        if (institutionId == null) return List.of();
+        if (institutionId == null) {
+            return List.of();
+        }
         return userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.administrator);
     }
 
     private List<User> institutionContributors(java.util.UUID institutionId) {
-        if (institutionId == null) return List.of();
+        if (institutionId == null) {
+            return List.of();
+        }
         return userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.contributor);
     }
 
@@ -497,12 +487,16 @@ public class NotificationEventListener {
     }
 
     private static String fmt(Instant instant) {
-        if (instant == null) return "TBD";
+        if (instant == null) {
+            return "TBD";
+        }
         return ZonedDateTime.ofInstant(instant, ZoneOffset.UTC).format(SLOT_FMT);
     }
 
     private static String truncate(String text, int maxLen) {
-        if (text == null) return "";
+        if (text == null) {
+            return "";
+        }
         return text.length() <= maxLen ? text : text.substring(0, maxLen);
     }
 }
