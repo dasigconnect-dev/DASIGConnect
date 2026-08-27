@@ -188,7 +188,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
       }).length,
       published: scopedEvents.filter((event) => ["published", "published_manual"].includes(visibleEventStatus(event, user))).length,
       failed: scopedEvents.filter((event) => visibleEventStatus(event, user).includes("failed")).length,
-      attention: scopedEvents.filter((event) => ["pending", "in_review", "needs_revision", "rejected"].includes(visibleEventStatus(event, user))).length,
+      attention: scopedEvents.filter((event) => ["pending", "in_review", "needs_revision", "rejected", "missed_review"].includes(visibleEventStatus(event, user))).length,
       today: scopedEvents.filter((event) => {
         const date = new Date(event.scheduledAt);
         return date >= startOfToday && date < endOfToday;
@@ -404,7 +404,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
             onDatesSet={handleDatesSet}
             onEventDrop={isAdmin ? handleEventDrop : undefined}
           />
-          <CalendarLegend user={user} />
+          <CalendarLegend />
         </>
       )}
 
@@ -575,7 +575,12 @@ const METRIC_LABELS: Record<MetricKey, string> = {
 };
 
 function visibleEventStatus(event: CalendarEvent, user: User) {
-  return visibleCalendarStatus(event.status, user.role, event.institutionId === user.institutionId);
+  return visibleCalendarStatus(
+    event.status,
+    user.role,
+    event.institutionId === user.institutionId,
+    event.mine,
+  );
 }
 
 function matchesMetric(event: CalendarEvent, metric: MetricKey, user: User) {
@@ -583,7 +588,7 @@ function matchesMetric(event: CalendarEvent, metric: MetricKey, user: User) {
   if (metric === "scheduled") return ["scheduled", "direct_post_scheduled"].includes(status);
   if (metric === "published") return ["published", "published_manual"].includes(status);
   if (metric === "failed") return status.includes("failed");
-  if (metric === "attention") return ["pending", "in_review", "needs_revision", "rejected"].includes(status);
+  if (metric === "attention") return ["pending", "in_review", "needs_revision", "rejected", "missed_review"].includes(status);
   const date = new Date(event.scheduledAt);
   const now = new Date();
   return date >= new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -634,7 +639,7 @@ function statusFilterForEvent(event: CalendarEvent, user: User) {
   if (["scheduled", "direct_post_scheduled"].includes(value)) return "scheduled";
   if (["published", "published_manual"].includes(value)) return "published";
   if (value.includes("failed")) return "failed";
-  if (["pending", "in_review", "needs_revision", "rejected"].includes(value)) return "attention";
+  if (["pending", "in_review", "needs_revision", "rejected", "missed_review"].includes(value)) return "attention";
   return "all";
 }
 

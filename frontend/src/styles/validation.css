@@ -286,6 +286,53 @@
   border-color: var(--val-blue-bdr);
 }
 
+/* Approved & waiting on the calendar */
+.val-status.scheduled,
+.val-status.direct_post_scheduled,
+.val-status.publishing,
+.val-status.direct_post_publishing {
+  color: #4338ca;
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+/* Live on the DASIG Page */
+.val-status.published,
+.val-status.published_manual,
+.val-status.admin_direct_post {
+  color: var(--val-green);
+  background: var(--val-green-dim);
+  border-color: var(--val-green-bdr);
+}
+
+/* Sent back for edits */
+.val-status.needs_revision {
+  color: var(--val-purple);
+  background: var(--val-purple-dim);
+  border-color: var(--val-purple-bdr);
+}
+
+/* Missed its review window (past the scheduled slot, unreviewed) */
+.val-status.missed_review {
+  color: #b45309;
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+/* Failed / terminal-negative */
+.val-status.publish_failed,
+.val-status.direct_post_failed {
+  color: var(--val-red);
+  background: var(--val-red-dim);
+  border-color: var(--val-red-bdr);
+}
+
+.val-status.rejected {
+  color: #be123c;
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
 .val-qi-meta,
 .val-qi-bottom {
   display: flex;

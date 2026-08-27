@@ -34,6 +34,10 @@ public class MediaAsset {
     @Column(name = "storage_url", nullable = false, columnDefinition = "text")
     private String storageUrl;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "media_album_id")
+    private MediaAlbum mediaAlbum;
+
     @Column(name = "file_name", nullable = false, length = 255)
     private String fileName;
 
@@ -132,6 +136,9 @@ public class MediaAsset {
 
     public String getStorageUrl() { return storageUrl; }
     public void setStorageUrl(String storageUrl) { this.storageUrl = storageUrl; }
+
+    public MediaAlbum getMediaAlbum() { return mediaAlbum; }
+    public void setMediaAlbum(MediaAlbum mediaAlbum) { this.mediaAlbum = mediaAlbum; }
 
     public String getFileName() { return fileName; }
     public void setFileName(String fileName) { this.fileName = fileName; }

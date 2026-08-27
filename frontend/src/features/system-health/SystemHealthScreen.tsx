@@ -1,0 +1,454 @@
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  downloadSystemHealthSnapshot,
+  getSystemHealthSummary,
+  getSystemHealthTokens,
+  initSystemHealthOAuth,
+  type BackgroundJobHealth,
+  type ExternalServiceHealth,
+  type HealthStatus,
+  type OperationalMetric,
+  type StorageMetric,
+  type SystemHealthSummary,
+  type TokenStatus,
+} from "../../api/systemHealthApi";
+import { useToast } from "../../context/ToastContext";
+import type { User } from "../../types/auth.types";
+import "../../styles/system-health.css";
+
+interface Props {
+  user: User;
+}
+const CACHE_TTL_MS = 60_000;
+let cachedSummary: SystemHealthSummary | null = null;
+let cachedTokens: TokenStatus[] = [];
+let cachedAt = 0;
+
+export default function SystemHealthScreen({ user }: Props) {
+  const toast = useToast();
+  const [summary, setSummary] = useState<SystemHealthSummary | null>(cachedSummary);
+  const [tokens, setTokens] = useState<TokenStatus[]>(cachedTokens);
+  const [loading, setLoading] = useState(!cachedSummary);
+  const [exporting, setExporting] = useState(false);
+  const [busyTokenId, setBusyTokenId] = useState<string | null>(null);
+
+  const isSuperAdmin = user.role === "super_administrator";
+
+  useEffect(() => {
+    if (cachedSummary && Date.now() - cachedAt < CACHE_TTL_MS) {
+      return;
+    }
+    const controller = new AbortController();
+    void load(controller.signal, Boolean(cachedSummary));
+    return () => controller.abort();
+  }, []);
+
+  async function load(signal?: AbortSignal, background = false) {
+    if (!background) setLoading(true);
+    try {
+      const [summaryResponse, tokenResponse] = await Promise.allSettled([
+        getSystemHealthSummary(signal),
+        getSystemHealthTokens(signal),
+      ]);
+
+      if (summaryResponse.status === "fulfilled") {
+        setSummary(summaryResponse.value.data);
+        cachedSummary = summaryResponse.value.data;
+        cachedAt = Date.now();
+      }
+  
+      if (tokenResponse.status === "fulfilled") {
+        setTokens(tokenResponse.value.data);
+        cachedTokens = tokenResponse.value.data;
+      }
+
+      if (summaryResponse.status === "rejected" && !cachedSummary) {
+        toast.error("Unable to load system health metrics.");
+      }
+    } finally {
+      if (!background) setLoading(false);
+    }
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      await downloadSystemHealthSnapshot();
+      toast.success("System health snapshot exported.");
+    } catch {
+      toast.error("Unable to export system health snapshot.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleReauthorize(token: TokenStatus) {
+    setBusyTokenId(token.id);
+    try {
+      const response = await initSystemHealthOAuth(token.id);
+      window.open(response.data.authorizationUrl, "_blank", "noopener,noreferrer");
+      toast.info("Facebook OAuth opened in a new tab.");
+    } catch {
+      toast.error("Unable to start Facebook reauthorization.");
+    } finally {
+      setBusyTokenId(null);
+    }
+  }
+
+  const topLine = useMemo(() => {
+    if (!summary) return [];
+    return [
+      ["Warnings", summary.warningCount],
+      ["Unhealthy", summary.unhealthyCount],
+      ["Unavailable", summary.unavailableCount],
+    ] as const;
+  }, [summary]);
+
+  return (
+    <main className="sys-health-screen">
+      <header className="sys-health-header">
+        <div className="sys-health-title-block">
+          <div className="sys-health-title-row">
+            <h1>System Health</h1>
+            <div className="sys-health-actions">
+              <button type="button" className="btn-secondary" onClick={() => void load()} disabled={loading}>
+                <i className={loading ? "ti ti-loader-2 sys-spin" : "ti ti-refresh"} aria-hidden="true"></i>
+                Refresh
+              </button>
+              <button type="button" className="btn-primary" onClick={() => void handleExport()} disabled={exporting}>
+                <i className={exporting ? "ti ti-loader-2 sys-spin" : "ti ti-download"} aria-hidden="true"></i>
+                Export Snapshot
+              </button>
+            </div>
+          </div>
+          <p>Infrastructure status, API health, scheduled jobs, and operational analytics.</p>
+        </div>
+      </header>
+
+      {loading && !summary ? (
+        <div className="sys-loading">
+          <div className="spinner-ring"></div>
+          <span>Loading system health...</span>
+        </div>
+      ) : summary ? (
+        <>
+          <section className={`sys-overview sys-status-${summary.overallStatus.toLowerCase()}`}>
+            <div>
+              <span className="sys-eyebrow">Overall Status</span>
+              <strong>{labelStatus(summary.overallStatus)}</strong>
+              <p>Last refreshed {formatDate(summary.generatedAt)}</p>
+            </div>
+            <div className="sys-overview-metrics">
+              {topLine.map(([label, value]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <Section title="Storage Capacity" icon="ti ti-database">
+            <div className="sys-grid sys-grid-2">
+              {summary.storage.map((item) => (
+                <StorageCard item={item} key={item.name} />
+              ))}
+            </div>
+          </Section>
+
+          <Section title="API Connection Status" icon="ti ti-plug-connected">
+            <div className="sys-grid sys-grid-4">
+              {summary.externalServices.map((item) => (
+                <ServiceCard item={item} key={item.service} />
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Facebook Token Reauthorization" icon="ti ti-brand-facebook">
+            <TokenTable
+              tokens={tokens}
+              busyTokenId={busyTokenId}
+              canReauthorize={isSuperAdmin || user.role === "administrator"}
+              onReauthorize={handleReauthorize}
+            />
+          </Section>
+
+          <Section title="Background Job Health" icon="ti ti-clock-cog">
+            <JobTable jobs={summary.backgroundJobs} />
+          </Section>
+
+          <Section title="Operational Health Metrics" icon="ti ti-activity">
+            <div className="sys-operational-grid">
+              {summary.operationalMetrics.map((item) => (
+                <MetricCard item={item} key={item.key} />
+              ))}
+            </div>
+          </Section>
+        </>
+      ) : (
+        <div className="sys-empty">
+          <i className="ti ti-alert-triangle" aria-hidden="true"></i>
+          <span>System health data is unavailable.</span>
+        </div>
+      )}
+    </main>
+  );
+}
+
+function Section({ title, icon, children }: { title: string; icon: string; children: ReactNode }) {
+  return (
+    <section className="sys-section">
+      <div className="sys-section-header">
+        <h2>
+          <i className={icon} aria-hidden="true"></i>
+          {title}
+        </h2>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function StorageCard({ item }: { item: StorageMetric }) {
+  return (
+    <article className="sys-card">
+      <div className="sys-card-top">
+        <h3>{item.name}</h3>
+        <StatusBadge status={item.status} />
+      </div>
+      <div className="sys-storage-value">{formatBytes(item.usedBytes)} / {formatBytes(item.limitBytes)}</div>
+      <div className="sys-meter" aria-label={`${item.usedPercent}% used`}>
+        <span style={{ width: `${Math.min(item.usedPercent, 100)}%` }}></span>
+      </div>
+      <p>{item.usedPercent}% used. Warning threshold is {item.warningThresholdPercent}%.</p>
+    </article>
+  );
+}
+
+function ServiceCard({ item }: { item: ExternalServiceHealth }) {
+  return (
+    <article className="sys-card">
+      <div className="sys-card-top">
+        <h3>{item.service}</h3>
+        <StatusBadge status={item.status} />
+      </div>
+      <p>{item.detail}</p>
+      {item.expiresAt && <small>Expires {formatDate(item.expiresAt)}</small>}
+    </article>
+  );
+}
+
+function MetricCard({ item }: { item: OperationalMetric }) {
+  const unavailable = item.status === "UNAVAILABLE";
+  const noActivity = isNoActivityMetric(item);
+  return (
+    <article className={`sys-card sys-metric-card sys-metric-${item.status.toLowerCase()}`}>
+      <div className="sys-metric-heading">
+        <span className="sys-metric-icon">
+          <i className={metricIcon(item.key)} aria-hidden="true"></i>
+        </span>
+        <div>
+          <h3>{item.label}</h3>
+          <small>{metricWindowLabel(item.key)}</small>
+        </div>
+        <StatusBadge status={item.status} />
+      </div>
+      <strong>{unavailable ? "No data" : noActivity ? "No activity" : formatMetricValue(item)}</strong>
+      <p>{item.detail}</p>
+      <div className="sys-metric-foot">
+        <span>{metricThresholdLabel(item.key)}</span>
+        <span>{sampleLabel(item)}</span>
+      </div>
+    </article>
+  );
+}
+
+function JobTable({ jobs }: { jobs: BackgroundJobHealth[] }) {
+  return (
+    <div className="sys-table-wrap">
+      <table className="sys-table">
+        <thead>
+          <tr>
+            <th>Job</th>
+            <th>Status</th>
+            <th>Last Started</th>
+            <th>Last Success</th>
+            <th>Duration</th>
+            <th>Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          {jobs.map((job) => (
+            <tr key={job.jobName}>
+              <td>{formatJobName(job.jobName)}</td>
+              <td><StatusBadge status={job.status} /></td>
+              <td>{formatDate(job.lastStartedAt)}</td>
+              <td>{formatDate(job.lastSuccessAt)}</td>
+              <td>{job.lastDurationMs == null ? "-" : `${job.lastDurationMs} ms`}</td>
+              <td>{safeJobDetail(job)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TokenTable({
+  tokens,
+  busyTokenId,
+  canReauthorize,
+  onReauthorize,
+}: {
+  tokens: TokenStatus[];
+  busyTokenId: string | null;
+  canReauthorize: boolean;
+  onReauthorize: (token: TokenStatus) => void;
+}) {
+  if (tokens.length === 0) {
+    return <div className="sys-empty-inline">No Facebook Page Access Token is configured.</div>;
+  }
+  return (
+    <div className="sys-table-wrap">
+      <table className="sys-table">
+        <thead>
+          <tr>
+            <th>Page</th>
+            <th>Status</th>
+            <th>Expires</th>
+            <th>Last Validated</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tokens.map((token) => (
+            <tr key={token.id}>
+              <td>
+                <span className="sys-token-page">Facebook Page</span>
+                <small className="sys-token-id">Identifier ending {token.pageId.slice(-4) || "----"}</small>
+              </td>
+              <td><StatusBadge status={tokenStatusToHealth(token.tokenStatus)} /></td>
+              <td>{formatDate(token.expiresAt)}</td>
+              <td>{formatDate(token.lastValidatedAt)}</td>
+              <td>
+                <button
+                  type="button"
+                  className="sys-icon-btn"
+                  disabled={!canReauthorize || busyTokenId === token.id}
+                  onClick={() => onReauthorize(token)}
+                  title="Reauthorize Facebook token"
+                >
+                  <i className={busyTokenId === token.id ? "ti ti-loader-2 sys-spin" : "ti ti-refresh"} aria-hidden="true"></i>
+                  Reauthorize
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: HealthStatus }) {
+  return <span className={`sys-badge sys-badge-${status.toLowerCase()}`}>{labelStatus(status)}</span>;
+}
+
+function tokenStatusToHealth(status: TokenStatus["tokenStatus"]): HealthStatus {
+  if (status === "ACTIVE") return "HEALTHY";
+  if (status === "EXPIRING") return "WARNING";
+  return "UNHEALTHY";
+}
+
+function labelStatus(status: HealthStatus) {
+  return status.toLowerCase().replace("_", " ");
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("en-PH", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function formatMetricValue(item: OperationalMetric) {
+  if (item.unit === "percent") return `${item.value}%`;
+  if (item.unit === "hours") return `${item.value}h`;
+  return `${item.value}`;
+}
+
+function metricIcon(key: string) {
+  switch (key) {
+    case "approval_turnaround_time":
+      return "ti ti-hourglass";
+    case "edit_approve_rate":
+      return "ti ti-edit";
+    case "manual_fallback_resolution_rate":
+      return "ti ti-tool";
+    case "publish_success_rate":
+      return "ti ti-send-check";
+    case "live_event_fast_track_volume":
+      return "ti ti-bolt";
+    default:
+      return "ti ti-chart-bar";
+  }
+}
+
+function metricWindowLabel(key: string) {
+  if (key === "live_event_fast_track_volume") return "Last 30 days";
+  return "Rolling 30-day metric";
+}
+
+function metricThresholdLabel(key: string) {
+  switch (key) {
+    case "approval_turnaround_time":
+      return "Warns above 24h";
+    case "manual_fallback_resolution_rate":
+      return "Target 80%+";
+    case "publish_success_rate":
+      return "Target 95%+";
+    case "edit_approve_rate":
+      return "Measured for visibility";
+    case "live_event_fast_track_volume":
+      return "Volume indicator";
+    default:
+      return "Operational signal";
+  }
+}
+
+function sampleLabel(item: OperationalMetric) {
+  if (item.status === "UNAVAILABLE") return "No current sample";
+  if (isNoActivityMetric(item)) return "No records in period";
+  if (item.key === "live_event_fast_track_volume") return `${item.sampleSize} fast-track submission${item.sampleSize === 1 ? "" : "s"}`;
+  return `${item.sampleSize} record${item.sampleSize === 1 ? "" : "s"}`;
+}
+
+function isNoActivityMetric(item: OperationalMetric) {
+  return item.sampleSize === 0 && item.key !== "live_event_fast_track_volume";
+}
+
+function formatJobName(jobName: string) {
+  if (!/[a-z][A-Z]/.test(jobName) && !jobName.endsWith("Job")) return jobName;
+  return jobName.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s?Job$/, "");
+}
+
+function safeJobDetail(job: BackgroundJobHealth) {
+  if (job.lastError) return "Last run failed. Review server logs for details.";
+  return job.detail;
+}

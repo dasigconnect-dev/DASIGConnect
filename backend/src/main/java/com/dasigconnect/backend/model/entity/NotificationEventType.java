@@ -7,6 +7,7 @@ public enum NotificationEventType {
     submission_rejected,
     submission_scheduled,
     submission_publish_failed,
+    submission_missed_review,
     submission_published,
     submission_published_manual,
     validation_timeout,
@@ -19,5 +20,8 @@ public enum NotificationEventType {
     submission_rescheduled,
     token_expiring,
     token_invalid,
+    empty_schedule_warning,
+    fast_track_submission,
+    embedding_failure_digest,
     generic
 }

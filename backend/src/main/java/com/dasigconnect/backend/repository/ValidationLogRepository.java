@@ -14,5 +14,8 @@ public interface ValidationLogRepository extends JpaRepository<ValidationLog, UU
     @Query("SELECT vl FROM ValidationLog vl JOIN FETCH vl.validator WHERE vl.submission.id = :submissionId ORDER BY vl.createdAt DESC")
     List<ValidationLog> findBySubmissionIdOrderByCreatedAtDesc(@Param("submissionId") UUID submissionId);
 
+    @Query("SELECT vl FROM ValidationLog vl WHERE vl.submission.id = :submissionId ORDER BY vl.createdAt ASC")
+    List<ValidationLog> findBySubmissionIdOrderByCreatedAtAsc(@Param("submissionId") UUID submissionId);
+
     boolean existsByValidatorId(UUID validatorId);
 }
