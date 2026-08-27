@@ -62,6 +62,9 @@ class ValidationServiceTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private AuditLogService auditLogService;
+
     @InjectMocks
     private ValidationService validationService;
 

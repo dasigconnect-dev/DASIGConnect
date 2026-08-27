@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { getTokenStatuses, initOAuth, type TokenStatus } from "../../api/resolutionApi";
 import { useToast } from "../../context/ToastContext";
 
@@ -39,6 +40,7 @@ interface Props {
 
 export default function SystemAuditTab({ refreshSignal, onIssueCount, tokenSectionRef }: Props) {
   const toast = useToast();
+  const navigate = useNavigate();
   const [tokens, setTokens] = useState<TokenStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -215,13 +217,21 @@ export default function SystemAuditTab({ refreshSignal, onIssueCount, tokenSecti
         </div>
 
         <div className="rc-audit-placeholder">
-          <i className="ti ti-database" aria-hidden="true" />
-          <span>Audit log viewer</span>
+          <i className="ti ti-clipboard-list" aria-hidden="true" />
+          <span>Comprehensive Audit Log Review</span>
           <p>
-            The filterable audit log endpoint is available from the Analytics Dashboard
-            under Administrator workload metrics, or directly from the backend at{" "}
-            <code>/api/v1/audit-log</code>.
+            Review all immutable system actions, filter by date, actor, or action category,
+            inspect before/after diffs, and export governance reports for DOST Region 7.
           </p>
+          <button
+            type="button"
+            className="btn-primary"
+            style={{ marginTop: "12px", display: "inline-flex", alignItems: "center", gap: "6px" }}
+            onClick={() => navigate("/admin/audit-log")}
+          >
+            <i className="ti ti-history" />
+            Open Audit Log Review
+          </button>
         </div>
       </section>
     </div>
