@@ -15,6 +15,7 @@ import com.dasigconnect.backend.event.SubmissionMissedReviewEvent;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.repository.SubmissionRepository;
+import com.dasigconnect.backend.service.ScheduledJobHealthService;
 import com.dasigconnect.backend.service.SlotReservationService;
 import org.springframework.context.ApplicationEventPublisher;
 
@@ -40,20 +41,23 @@ public class StaleSubmissionDetectorJob {
     private final SubmissionRepository submissionRepository;
     private final SlotReservationService slotReservationService;
     private final ApplicationEventPublisher eventPublisher;
+    private final ScheduledJobHealthService scheduledJobHealthService;
 
     public StaleSubmissionDetectorJob(
             SubmissionRepository submissionRepository,
             SlotReservationService slotReservationService,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            ScheduledJobHealthService scheduledJobHealthService) {
         this.submissionRepository = submissionRepository;
         this.slotReservationService = slotReservationService;
         this.eventPublisher = eventPublisher;
+        this.scheduledJobHealthService = scheduledJobHealthService;
     }
 
     @Scheduled(cron = "0 */5 * * * *", zone = "UTC")
     public void run() {
-        Instant cutoff = Instant.now().minus(5, ChronoUnit.MINUTES);
-
+        Instant startedAt = Instant.now();
+        Instant cutoff = startedAt.minus(5, ChronoUnit.MINUTES);
         try {
             List<Submission> missed = findAndMarkFailed(cutoff);
             if (!missed.isEmpty()) {
@@ -62,8 +66,10 @@ public class StaleSubmissionDetectorJob {
                     eventPublisher.publishEvent(new PublishFailedEvent(s, "Publish window missed — server was unavailable during the scheduled time."));
                 }
             }
+            scheduledJobHealthService.recordSuccess("StaleSubmissionDetectorJob", startedAt);
         } catch (Exception ex) {
             log.error("StaleSubmissionDetectorJob (publish-failed sweep) failed: {}", ex.getMessage(), ex);
+            scheduledJobHealthService.recordFailure("StaleSubmissionDetectorJob", startedAt, ex);
         }
 
         try {

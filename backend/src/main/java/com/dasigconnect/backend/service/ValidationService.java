@@ -124,9 +124,12 @@ public class ValidationService {
         }
         reviewLockService.release(submissionId, caller);
 
+        // The terminal action is always `approved`; when the submission was edited
+        // during this review session the combined before/after diff is attached to
+        // the same log entry (A10 — "Edited by Admin"), which is what marks it as an
+        // edited approval for governance and the edit-&-approve-rate KPI.
         User validator = loadUser(caller.userId());
-        logAction(submission, validator,
-                edited ? ValidationAction.edited_and_approved : ValidationAction.approved,
+        logAction(submission, validator, ValidationAction.approved,
                 null, null, selfReview, submission.isFastTrack(), sessionEditDiff);
 
         eventPublisher.publishEvent(new SubmissionApprovedEvent(submission, edited));

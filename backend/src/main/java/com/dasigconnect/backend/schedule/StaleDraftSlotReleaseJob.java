@@ -1,6 +1,8 @@
 package com.dasigconnect.backend.schedule;
 
 import com.dasigconnect.backend.service.SlotReservationService;
+import com.dasigconnect.backend.service.ScheduledJobHealthService;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -28,9 +30,13 @@ public class StaleDraftSlotReleaseJob {
     private static final Logger log = LoggerFactory.getLogger(StaleDraftSlotReleaseJob.class);
 
     private final SlotReservationService slotReservationService;
+    private final ScheduledJobHealthService scheduledJobHealthService;
 
-    public StaleDraftSlotReleaseJob(SlotReservationService slotReservationService) {
+    public StaleDraftSlotReleaseJob(
+            SlotReservationService slotReservationService,
+            ScheduledJobHealthService scheduledJobHealthService) {
         this.slotReservationService = slotReservationService;
+        this.scheduledJobHealthService = scheduledJobHealthService;
     }
 
     /**
@@ -40,6 +46,7 @@ public class StaleDraftSlotReleaseJob {
      */
     @Scheduled(cron = "0 0 2 * * *", zone = "UTC")
     public void releaseStaleSlots() {
+        Instant startedAt = Instant.now();
         log.info("GR-T2: Starting stale draft slot release job");
         try {
             List<UUID> released = slotReservationService.releaseStaleHeldReservations();
@@ -48,8 +55,10 @@ public class StaleDraftSlotReleaseJob {
             } else {
                 log.info("GR-T2: Released {} stale slot(s) for submissions: {}", released.size(), released);
             }
+            scheduledJobHealthService.recordSuccess("StaleDraftSlotReleaseJob", startedAt);
         } catch (Exception ex) {
             log.error("GR-T2: Slot release job failed with exception", ex);
+            scheduledJobHealthService.recordFailure("StaleDraftSlotReleaseJob", startedAt, ex);
         }
     }
 }

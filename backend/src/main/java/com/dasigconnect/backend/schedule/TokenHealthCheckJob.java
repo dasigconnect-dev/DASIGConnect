@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import com.dasigconnect.backend.event.TokenExpiryWarningEvent;
 import com.dasigconnect.backend.event.TokenValidationFailedEvent;
 import com.dasigconnect.backend.service.FacebookPublisherService;
+import com.dasigconnect.backend.service.ScheduledJobHealthService;
 
 /**
  * GR-T4: Runs daily at 08:00 UTC. Validates the Facebook Page Access Token
@@ -28,17 +29,24 @@ public class TokenHealthCheckJob {
 
     private final FacebookPublisherService facebookPublisherService;
     private final ApplicationEventPublisher eventPublisher;
+    private final ScheduledJobHealthService scheduledJobHealthService;
 
     public TokenHealthCheckJob(
             FacebookPublisherService facebookPublisherService,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            ScheduledJobHealthService scheduledJobHealthService) {
         this.facebookPublisherService = facebookPublisherService;
         this.eventPublisher = eventPublisher;
+        this.scheduledJobHealthService = scheduledJobHealthService;
     }
 
     @Scheduled(cron = "0 0 8 * * *", zone = "UTC")
     public void run() {
-        if (!facebookPublisherService.isConfigured()) return;
+        Instant startedAt = Instant.now();
+        if (!facebookPublisherService.isConfigured()) {
+            scheduledJobHealthService.recordSuccess("TokenHealthCheckJob", startedAt);
+            return;
+        }
 
         try {
             Instant expiresAt = facebookPublisherService.validateToken();
@@ -46,6 +54,8 @@ public class TokenHealthCheckJob {
             if (expiresAt == null) {
                 log.error("TokenHealthCheckJob: token validation failed — emitting critical alert.");
                 eventPublisher.publishEvent(new TokenValidationFailedEvent());
+                scheduledJobHealthService.recordFailure("TokenHealthCheckJob", startedAt,
+                        new IllegalStateException("Facebook token validation failed."));
                 return;
             }
 
@@ -56,8 +66,10 @@ public class TokenHealthCheckJob {
             } else {
                 log.info("TokenHealthCheckJob: token is valid, expires in {} day(s).", daysUntilExpiry);
             }
+            scheduledJobHealthService.recordSuccess("TokenHealthCheckJob", startedAt);
         } catch (Exception ex) {
             log.error("TokenHealthCheckJob failed unexpectedly: {}", ex.getMessage(), ex);
+            scheduledJobHealthService.recordFailure("TokenHealthCheckJob", startedAt, ex);
         }
     }
 }

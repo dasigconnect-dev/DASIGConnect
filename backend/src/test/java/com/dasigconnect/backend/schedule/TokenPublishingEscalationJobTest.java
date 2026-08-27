@@ -23,6 +23,7 @@ import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.service.FacebookPublisherService;
 import com.dasigconnect.backend.service.PublishingQueryService;
+import com.dasigconnect.backend.service.ScheduledJobHealthService;
 
 @ExtendWith(MockitoExtension.class)
 class TokenPublishingEscalationJobTest {
@@ -38,6 +39,9 @@ class TokenPublishingEscalationJobTest {
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private ScheduledJobHealthService scheduledJobHealthService;
 
     @Test
     void run_retriesBlockedSubmissionsWhenTokenIsUsableAgain() {
@@ -108,7 +112,8 @@ class TokenPublishingEscalationJobTest {
                 submissionRepository,
                 publishingQueryService,
                 facebookPublisherService,
-                eventPublisher);
+                eventPublisher,
+                scheduledJobHealthService);
     }
 
     private static Submission submission() {

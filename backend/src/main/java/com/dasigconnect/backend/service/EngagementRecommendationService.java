@@ -93,7 +93,7 @@ public class EngagementRecommendationService {
                 }
                 Instant candidate = LocalDateTime.of(date, LocalTime.of(window.hour(), 0))
                         .atZone(PAGE_ZONE).toInstant();
-                if (!candidate.isAfter(Instant.now())) {
+                if (!candidate.isAfter(now)) {
                     continue;
                 }
                 GuardRailResult guardRails = guardRailService.validate(institutionId, candidate);

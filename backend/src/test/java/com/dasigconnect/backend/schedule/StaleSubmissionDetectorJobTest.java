@@ -18,6 +18,7 @@ import com.dasigconnect.backend.event.SubmissionMissedReviewEvent;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.repository.SubmissionRepository;
+import com.dasigconnect.backend.service.ScheduledJobHealthService;
 import com.dasigconnect.backend.service.SlotReservationService;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,6 +33,7 @@ class StaleSubmissionDetectorJobTest {
     @Mock private SubmissionRepository submissionRepository;
     @Mock private SlotReservationService slotReservationService;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private ScheduledJobHealthService scheduledJobHealthService;
 
     @InjectMocks private StaleSubmissionDetectorJob job;
 

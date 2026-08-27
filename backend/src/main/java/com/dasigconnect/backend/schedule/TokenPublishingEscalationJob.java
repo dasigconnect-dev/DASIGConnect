@@ -16,6 +16,7 @@ import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.service.FacebookPublisherService;
 import com.dasigconnect.backend.service.PublishingQueryService;
+import com.dasigconnect.backend.service.ScheduledJobHealthService;
 
 /**
  * UC-3.2 A3: escalates submissions suspended by Facebook token expiry.
@@ -34,28 +35,34 @@ public class TokenPublishingEscalationJob {
     private final PublishingQueryService publishingQueryService;
     private final FacebookPublisherService facebookPublisherService;
     private final ApplicationEventPublisher eventPublisher;
+    private final ScheduledJobHealthService scheduledJobHealthService;
 
     public TokenPublishingEscalationJob(
             SubmissionRepository submissionRepository,
             PublishingQueryService publishingQueryService,
             FacebookPublisherService facebookPublisherService,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            ScheduledJobHealthService scheduledJobHealthService) {
         this.submissionRepository = submissionRepository;
         this.publishingQueryService = publishingQueryService;
         this.facebookPublisherService = facebookPublisherService;
         this.eventPublisher = eventPublisher;
+        this.scheduledJobHealthService = scheduledJobHealthService;
     }
 
     @Scheduled(cron = "0 */5 * * * *", zone = "UTC")
     public void run() {
+        Instant startedAt = Instant.now();
         try {
             List<Submission> blocked = submissionRepository.findTokenBlockedScheduledSubmissions();
             if (blocked.isEmpty()) {
+                scheduledJobHealthService.recordSuccess("TokenPublishingEscalationJob", startedAt);
                 return;
             }
 
             if (facebookPublisherService.hasUsableActiveToken()) {
                 retryBlockedSubmissions(blocked);
+                scheduledJobHealthService.recordSuccess("TokenPublishingEscalationJob", startedAt);
                 return;
             }
 
@@ -73,8 +80,10 @@ public class TokenPublishingEscalationJob {
                     escalateAfterTwentyFourHours(submission);
                 }
             }
+            scheduledJobHealthService.recordSuccess("TokenPublishingEscalationJob", startedAt);
         } catch (Exception ex) {
             log.error("TokenPublishingEscalationJob failed: {}", ex.getMessage(), ex);
+            scheduledJobHealthService.recordFailure("TokenPublishingEscalationJob", startedAt, ex);
         }
     }
 
