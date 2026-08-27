@@ -97,9 +97,12 @@ export function isDefaultInstitution(institution: InstitutionResponse) {
 
 export function savedAssetToPickerItem(asset: SavedMediaAsset): SubmissionMediaItem {
   const isVideo = ["mp4", "mov", "webm"].includes(asset.fileType.toLowerCase());
+  // A STAGED asset was uploaded to this draft from the user's device, not picked
+  // from the library — keep that provenance when the draft is reopened.
+  const staged = asset.status === "STAGED";
   return {
-    clientId: `library-${asset.id}`,
-    source: "library",
+    clientId: `${staged ? "staged" : "library"}-${asset.id}`,
+    source: staged ? "upload" : "library",
     assetId: asset.id,
     previewUrl: asset.storageUrl,
     mediaType: isVideo ? "video" : "image",

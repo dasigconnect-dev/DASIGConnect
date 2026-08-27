@@ -178,9 +178,19 @@ public class AIRecommendationService {
     @Transactional
     public void logInteraction(UUID submissionId, UUID institutionId, String type, String actionTaken) {
         try {
+            // Admin composers have no institution of their own — fall back to the
+            // submission's institution (ai_interaction_log.institution_id is NOT NULL).
+            UUID resolvedInstitutionId = institutionId != null ? institutionId
+                    : submissionRepository.findById(submissionId)
+                            .map(s -> s.getInstitution() != null ? s.getInstitution().getId() : null)
+                            .orElse(null);
+            if (resolvedInstitutionId == null) {
+                log.warn("Skipping AI interaction log for submission {}: no institution context", submissionId);
+                return;
+            }
             AiInteractionLog entry = new AiInteractionLog();
             entry.setSubmissionId(submissionId);
-            entry.setInstitutionId(institutionId);
+            entry.setInstitutionId(resolvedInstitutionId);
             entry.setInteractionType(type);
             entry.setActionTaken(actionTaken);
             aiInteractionLogRepository.save(entry);

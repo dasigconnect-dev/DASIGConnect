@@ -23,7 +23,7 @@ public class WorkspaceProvisionerService {
         log.info("Provisioning workspace for institution: {} ({})",
                 institution.getName(), institution.getId());
 
-        tenantScopeService.bindTenantScope(institution.getId(), "super_administrator");
+        tenantScopeService.bindTenantScope(null, institution.getId(), "super_administrator");
 
         log.info("Workspace provisioned successfully for institution {}", institution.getId());
     }

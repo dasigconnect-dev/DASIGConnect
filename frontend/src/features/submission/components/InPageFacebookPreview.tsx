@@ -9,17 +9,9 @@ export function InPageFacebookPreview({
   caption,
   mediaItems,
   activeMediaIndex,
-  canSaveDraft,
-  canSubmitForReview,
-  submitDisabledReason,
-  isSaving,
-  isSubmitting,
   reorderDisabled,
   onMediaIndexChange,
   onReorderMedia,
-  onSaveDraft,
-  onSubmitForReview,
-  onEditDetails,
 }: {
   pageName: string;
   pageAvatarUrl?: string;

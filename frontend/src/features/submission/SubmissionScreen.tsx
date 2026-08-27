@@ -763,6 +763,63 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setSaveState("idle");
   }
 
+  // Admin "Posting As" change. On an unsaved composer it's a free switch. On a
+  // saved draft, files uploaded to this draft are STAGED (no institution yet) and
+  // are kept; only assets picked from the previous institution's library are
+  // dropped (they stay in that library). The reserved slot is per-institution, so
+  // the schedule is cleared too. Mirrored server-side by
+  // SubmissionService.maybeRehomeSubmission on the next save.
+  function handlePostingInstitutionChange(nextInstitutionId: string) {
+    if (!nextInstitutionId || nextInstitutionId === form.institutionId) return;
+
+    if (!form.id) {
+      updateField("institutionId", nextInstitutionId);
+      return;
+    }
+
+    const droppedAssets = form.savedAssets.filter((asset) => asset.status !== "STAGED");
+    const keptAssets = form.savedAssets.filter((asset) => asset.status === "STAGED");
+    const droppedCount = droppedAssets.length + form.pendingAssetIds.length;
+    const hasSchedule = Boolean(form.scheduledDate || form.scheduledTime);
+
+    if (droppedCount > 0 || hasSchedule) {
+      const parts = [
+        droppedCount > 0
+          ? `remove ${droppedCount} item${droppedCount === 1 ? "" : "s"} you picked from the current institution's library`
+          : null,
+        hasSchedule ? "clear the preferred schedule" : null,
+      ]
+        .filter(Boolean)
+        .join(" and ");
+      const confirmed = window.confirm(
+        `Changing the institution will ${parts}. Files you uploaded to this draft are kept. Continue?`,
+      );
+      if (!confirmed) return;
+    }
+
+    const droppedIds = new Set(droppedAssets.map((asset) => asset.id));
+    const droppedKeys = new Set(droppedAssets.map((asset) => savedMediaKey(asset.id)));
+
+    setForm((current) => ({
+      ...current,
+      institutionId: nextInstitutionId,
+      savedAssets: keptAssets,
+      mediaOrder: current.mediaOrder.filter((key) => !droppedKeys.has(key)),
+      pendingAssetIds: [],
+      removedAssetIds: [],
+      scheduledDate: "",
+      scheduledTime: "",
+    }));
+    setPickerItems((current) =>
+      current.filter((item) => !(item.assetId != null && droppedIds.has(item.assetId))),
+    );
+    setSaveState("idle");
+    const targetName =
+      institutions.find((institution) => institution.id === nextInstitutionId)?.name ??
+      "the selected institution";
+    toast.info(`Save the draft to move it to ${targetName}.`);
+  }
+
   function captureCaptionSelection(element: HTMLTextAreaElement) {
     setCaptionSelection({
       start: element.selectionStart,
@@ -2159,11 +2216,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                       ? `${institution.name} (Default)`
                       : institution.name,
                   }))}
-                  disabled={isReadOnlySubmission || Boolean(form.id)}
+                  disabled={isReadOnlySubmission}
                   loading={institutionsLoading}
                   ariaLabel="Posting As"
                   className={`sub-posting-select${selectedPostingIsDefault ? " is-default" : ""}`}
-                  onChange={(value) => updateField("institutionId", value)}
+                  onChange={handlePostingInstitutionChange}
                 />
                 {/* {selectedPostingIsDefault && (
                   <div className="sub-inline-default-note">
