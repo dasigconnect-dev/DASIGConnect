@@ -21,6 +21,12 @@ import {
 } from "../../api/submissionApi";
 import { getMediaAsset, listMediaAlbums } from "../../api/mediaApi";
 import {
+  createPostTemplate,
+  deletePostTemplate,
+  listPostTemplates,
+  type PostTemplate as ApiPostTemplate,
+} from "../../api/postTemplateApi";
+import {
   useSubmissionLookups,
   useSubmissions,
 } from "../../hooks/useSubmissions";
@@ -48,7 +54,6 @@ import {
   CAPTION_WORD_LIMIT,
   captionTone,
   captionsForSavedIds,
-  countWords,
   dateToInputValue,
   defaultMediaTags,
   effectiveMediaTags,
@@ -114,6 +119,33 @@ interface SubmissionScreenProps {
   user: User;
 }
 
+const templateIcons: Record<string, string> = {
+  "event-announcement": "ti ti-calendar-event",
+  "event-recap": "ti ti-confetti",
+  "competition-call": "ti ti-trophy",
+  "partner-spotlight": "ti ti-building-community",
+};
+
+type ComposerTemplate = (typeof postTemplates)[number] & {
+  custom?: boolean;
+  sourceSubmissionId?: string | null;
+  createdAt?: string;
+};
+
+function apiTemplateToComposerTemplate(template: ApiPostTemplate): ComposerTemplate {
+  return {
+    id: template.id,
+    name: template.name,
+    target: template.target,
+    category: template.category,
+    tags: template.tags ?? [],
+    caption: template.caption,
+    custom: true,
+    sourceSubmissionId: template.sourceSubmissionId ?? null,
+    createdAt: template.createdAt,
+  };
+}
+
 export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -158,6 +190,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [captionMediaKey, setCaptionMediaKey] = useState<string | null>(null);
   const [hashtagInput, setHashtagInput] = useState("");
   const [mediaTagInput, setMediaTagInput] = useState("");
+  const [customTemplates, setCustomTemplates] = useState<ComposerTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const [pendingLeaveAction, setPendingLeaveAction] =
     useState<PendingLeaveAction>(null);
   const [centerMode, setCenterMode] = useState<CenterMode>("edit");
@@ -249,6 +286,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     readiness.requiredComplete === readiness.required.length &&
     recommendedWarnings.length > 0;
   const captionHashtags = useMemo(() => extractHashtags(form.caption), [form.caption]);
+  const composerTemplates = useMemo<ComposerTemplate[]>(
+    () => [...postTemplates, ...customTemplates],
+    [customTemplates],
+  );
   const captionMediaItem = useMemo(
     () => pickerItems.find((item) => pickerMediaKey(item) === captionMediaKey),
     [captionMediaKey, pickerItems],
@@ -310,6 +351,21 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       .finally(() => setInstitutionsLoading(false));
     return () => controller.abort();
   }, [isAdminComposer]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setTemplatesLoading(true);
+    listPostTemplates(controller.signal)
+      .then((response) => {
+        setCustomTemplates((response.data ?? []).map(apiTemplateToComposerTemplate));
+      })
+      .catch((err: unknown) => {
+        if ((err as { name?: string })?.name === "CanceledError") return;
+        toast.error("Could not load saved templates.");
+      })
+      .finally(() => setTemplatesLoading(false));
+    return () => controller.abort();
+  }, [toast]);
 
   useEffect(() => {
     if (!selectedInstitutionId) {
@@ -737,7 +793,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   function updateCaption(nextCaption: string) {
     const limitedCaption = trimToWordLimit(nextCaption);
     if (limitedCaption !== nextCaption) {
-      toast.warning(`Caption is limited to ${CAPTION_WORD_LIMIT} words.`);
+      toast.warning(`Caption is limited to ${CAPTION_WORD_LIMIT} characters.`);
     }
     updateField("caption", limitedCaption);
   }
@@ -778,7 +834,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function applyTemplate(templateId: string) {
-    const template = postTemplates.find((item) => item.id === templateId);
+    const template = composerTemplates.find((item) => item.id === templateId);
     if (!template || isReadOnlySubmission) return;
     if (!hasMedia) {
       toast.warning("Add at least one media file before choosing a post template.");
@@ -795,6 +851,80 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }));
     setSaveState("idle");
     toast.info(`${template.name} template applied.`);
+  }
+
+  function clearTemplate() {
+    if (isReadOnlySubmission) return;
+    setForm((current) => ({
+      ...current,
+      selectedTemplateId: null,
+      caption: "",
+      tags: [],
+    }));
+    setSaveState("idle");
+  }
+
+  function openSaveTemplateModal() {
+    if (isReadOnlySubmission) return;
+    if (!form.caption.trim()) {
+      toast.warning("Add a caption before saving this submission as a template.");
+      return;
+    }
+    setTemplateName(form.eventTitle.trim() ? `${form.eventTitle.trim()} Template` : "My Template");
+    setTemplateSaveOpen(true);
+  }
+
+  async function saveCustomTemplate() {
+    const name = templateName.trim();
+    if (!name) {
+      toast.warning("Template name is required.");
+      return;
+    }
+    const savedTags = Array.from(
+      new Set(
+        captionHashtags
+          .map((tag) => tag.replace(/^#/, "").trim())
+          .filter(Boolean),
+      ),
+    ).slice(0, 4);
+    setSavingTemplate(true);
+    try {
+      const response = await createPostTemplate({
+        name,
+        target: form.eventTitle.trim()
+          ? `Saved from ${form.eventTitle.trim()}`
+          : "Saved from submission",
+        category: form.category || "Custom",
+        tags: savedTags.length > 0 ? savedTags : ["Custom"],
+        caption: form.caption,
+        sourceSubmissionId: form.id,
+        institutionId: selectedInstitutionId || null,
+      });
+      const template = apiTemplateToComposerTemplate(response.data);
+      setCustomTemplates((current) => [template, ...current]);
+      setForm((current) => ({ ...current, selectedTemplateId: template.id }));
+      setTemplateSaveOpen(false);
+      toast.success("Template saved.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not save template."));
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
+  async function deleteCustomTemplate(templateId: string) {
+    try {
+      await deletePostTemplate(templateId);
+      setCustomTemplates((current) => current.filter((template) => template.id !== templateId));
+      setForm((current) =>
+        current.selectedTemplateId === templateId
+          ? { ...current, selectedTemplateId: null }
+          : current,
+      );
+      toast.success("Template deleted.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Could not delete template."));
+    }
   }
 
   function addHashtagToCaption() {
@@ -1781,18 +1911,26 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   </div>
                 </div>
                 {form.selectedTemplateId && (
-                  <button
-                    className="sub-sidebar-template-clear"
-                    type="button"
-                    disabled={isReadOnlySubmission}
-                    onClick={() => updateField("selectedTemplateId", null)}
-                  >
-                    Clear
-                  </button>
+                  <div className="sub-sidebar-template-actions">
+                    <button
+                      className="sub-sidebar-template-clear"
+                      type="button"
+                      disabled={isReadOnlySubmission}
+                      onClick={clearTemplate}
+                    >
+                      Clear
+                    </button>
+                  </div>
                 )}
               </div>
+              {templatesLoading && (
+                <div className="sub-sidebar-template-loading">
+                  <i className="ti ti-loader-2 sub-spin" aria-hidden="true" />
+                  Loading saved templates
+                </div>
+              )}
               <div className="sub-sidebar-template-list">
-                {postTemplates.map((template) => (
+                {composerTemplates.map((template) => (
                   <button
                     key={template.id}
                     type="button"
@@ -1803,10 +1941,58 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     title={!hasMedia ? "Add media first before choosing a template." : undefined}
                     onClick={() => applyTemplate(template.id)}
                   >
-                    <span className="sub-sidebar-template-name">{template.name}</span>
-                    <span className="sub-sidebar-template-target">{template.target}</span>
+                    <span className="sub-sidebar-template-main">
+                      <span className="sub-sidebar-template-icon" aria-hidden="true">
+                        <i className={templateIcons[template.id] ?? "ti ti-template"} />
+                      </span>
+                      <span className="sub-sidebar-template-copy">
+                        <span className="sub-sidebar-template-name">{template.name}</span>
+                        <span className="sub-sidebar-template-target">{template.target}</span>
+                      </span>
+                      {template.custom && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                      className="sub-sidebar-template-delete"
+                          aria-label={`Delete ${template.name} template`}
+                          title="Delete template"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void deleteCustomTemplate(template.id);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            event.stopPropagation();
+                            void deleteCustomTemplate(template.id);
+                          }}
+                        >
+                          <i className="ti ti-trash" aria-hidden="true" />
+                        </span>
+                      )}
+                    </span>
+                    <span className="sub-sidebar-template-preview">
+                      {template.caption}
+                    </span>
+                    <span className="sub-sidebar-template-tags">
+                      {template.tags.slice(0, 3).map((tag) => (
+                        <span key={tag}>{tag}</span>
+                      ))}
+                    </span>
                   </button>
                 ))}
+              </div>
+              <div className="sub-sidebar-template-footer">
+                <button
+                  className="sub-sidebar-template-save"
+                  type="button"
+                  disabled={isReadOnlySubmission || savingTemplate || !form.caption.trim()}
+                  title={!form.caption.trim() ? "Add a caption before saving as a template." : undefined}
+                  onClick={openSaveTemplateModal}
+                >
+                  <i className="ti ti-plus" aria-hidden="true" />
+                  Save as Template
+                </button>
               </div>
             </section>
           )}
@@ -2058,7 +2244,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   placeholder="Write a compelling caption for the DASIG Facebook page..."
                 />
                 <span className={`sub-caption-counter ${captionTone(form.caption)}`}>
-                  {countWords(form.caption)} / {CAPTION_WORD_LIMIT} words
+                  {Array.from(form.caption).length} / {CAPTION_WORD_LIMIT} characters
                 </span>
               </div>
               {canUseAiCaption && !form.fastTrack && aiCaption.variants && (
@@ -2075,7 +2261,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 />
               )}
               <div className="sub-finput-hint">
-                Captions can contain up to {CAPTION_WORD_LIMIT} words. Include relevant tags.
+                Captions can contain up to {CAPTION_WORD_LIMIT} characters. Include relevant tags.
               </div>
               {canUseAiCaption && !form.fastTrack && (
                 <AiCaptionPromptDialog
@@ -2437,6 +2623,82 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           </div>
         </aside>
       </div>
+
+      {templateSaveOpen && (
+        <div
+          className="sub-modal-overlay"
+          role="presentation"
+          onMouseDown={() => setTemplateSaveOpen(false)}
+        >
+          <div
+            className="sub-modal sub-template-save-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="template-save-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              className="sub-modal-close"
+              type="button"
+              onClick={() => setTemplateSaveOpen(false)}
+              aria-label="Close save template"
+            >
+              <i className="ti ti-x" aria-hidden />
+            </button>
+            <div className="sub-template-save-head">
+              <div className="sub-template-save-icon">
+                <i className="ti ti-template" aria-hidden />
+              </div>
+              <div>
+                <div className="sub-modal-title" id="template-save-title">Save Post Template</div>
+                <div className="sub-modal-desc">
+                  Turn this submission caption into a reusable template for future posts.
+                </div>
+              </div>
+            </div>
+            <div className="sub-template-save-grid">
+              <div className="sub-template-save-fields">
+                <label className="sub-template-save-field">
+                  <span>Template Name</span>
+                  <input
+                    className="sub-finput"
+                    value={templateName}
+                    onChange={(event) => setTemplateName(event.target.value)}
+                    maxLength={80}
+                    placeholder="Example: Scholarship announcement"
+                    autoFocus
+                  />
+                </label>
+                <div className="sub-template-save-meta">
+                  <span>{Array.from(form.caption).length} characters</span>
+                  <span>{captionHashtags.length} tag(s)</span>
+                </div>
+              </div>
+              <div className="sub-template-save-preview">
+                <span>Template Content</span>
+                <p>{form.caption}</p>
+              </div>
+            </div>
+            <div className="sub-modal-actions">
+              <button
+                className="sub-modal-btn cancel"
+                type="button"
+                onClick={() => setTemplateSaveOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="sub-modal-btn info"
+                type="button"
+                disabled={savingTemplate}
+                onClick={() => void saveCustomTemplate()}
+              >
+                {savingTemplate ? "Saving..." : "Save Template"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {captionMediaItem && captionMediaKey && (
         <div
