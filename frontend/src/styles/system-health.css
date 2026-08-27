@@ -6,11 +6,18 @@
 }
 
 .sys-health-header {
+  margin-bottom: 18px;
+}
+
+.sys-health-title-block {
+  min-width: 0;
+}
+
+.sys-health-title-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
 }
 
 .sys-health-header h1 {
@@ -197,10 +204,76 @@
   background: #2563eb;
 }
 
+.sys-operational-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.sys-metric-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 230px;
+  border-top-width: 4px;
+}
+
+.sys-metric-healthy { border-top-color: #16a34a; }
+.sys-metric-warning { border-top-color: #d97706; }
+.sys-metric-unhealthy { border-top-color: #dc2626; }
+.sys-metric-unavailable { border-top-color: #64748b; }
+
+.sys-metric-heading {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.sys-metric-heading h3 {
+  line-height: 1.25;
+}
+
+.sys-metric-heading small {
+  margin-top: 4px;
+  font-size: 0.75rem;
+}
+
+.sys-metric-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  color: #1f2a44;
+  background: #eef4ff;
+}
+
 .sys-metric-card strong {
   display: block;
   margin-top: 14px;
   font-size: 1.45rem;
+}
+
+.sys-metric-card p {
+  flex: 1 1 auto;
+}
+
+.sys-metric-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #edf1f7;
+  color: #667085;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.sys-metric-foot span:last-child {
+  text-align: right;
 }
 
 .sys-badge {
@@ -268,8 +341,15 @@
   border-bottom: 0;
 }
 
-.sys-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+.sys-token-page {
+  display: block;
+  font-weight: 750;
+}
+
+.sys-token-id {
+  display: block;
+  margin-top: 3px;
+  color: #667085;
 }
 
 .sys-icon-btn {
@@ -309,7 +389,8 @@
 
 @media (max-width: 1180px) {
   .sys-grid-4,
-  .sys-grid-5 {
+  .sys-grid-5,
+  .sys-operational-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -319,7 +400,7 @@
     padding: 16px;
   }
 
-  .sys-health-header,
+  .sys-health-title-row,
   .sys-overview {
     grid-template-columns: 1fr;
     display: grid;
@@ -336,7 +417,8 @@
   .sys-overview-metrics,
   .sys-grid-2,
   .sys-grid-4,
-  .sys-grid-5 {
+  .sys-grid-5,
+  .sys-operational-grid {
     grid-template-columns: 1fr;
   }
 }

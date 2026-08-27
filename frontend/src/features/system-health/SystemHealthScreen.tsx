@@ -103,19 +103,21 @@ export default function SystemHealthScreen({ user }: Props) {
   return (
     <main className="sys-health-screen">
       <header className="sys-health-header">
-        <div>
-          <h1>System Health</h1>
+        <div className="sys-health-title-block">
+          <div className="sys-health-title-row">
+            <h1>System Health</h1>
+            <div className="sys-health-actions">
+              <button type="button" className="btn-secondary" onClick={() => void load()} disabled={loading}>
+                <i className={loading ? "ti ti-loader-2 sys-spin" : "ti ti-refresh"} aria-hidden="true"></i>
+                Refresh
+              </button>
+              <button type="button" className="btn-primary" onClick={() => void handleExport()} disabled={exporting}>
+                <i className={exporting ? "ti ti-loader-2 sys-spin" : "ti ti-download"} aria-hidden="true"></i>
+                Export Snapshot
+              </button>
+            </div>
+          </div>
           <p>Infrastructure status, API health, scheduled jobs, and operational analytics.</p>
-        </div>
-        <div className="sys-health-actions">
-          <button type="button" className="btn-secondary" onClick={() => void load()} disabled={loading}>
-            <i className="ti ti-refresh" aria-hidden="true"></i>
-            Refresh
-          </button>
-          <button type="button" className="btn-primary" onClick={() => void handleExport()} disabled={exporting}>
-            <i className={exporting ? "ti ti-loader-2 sys-spin" : "ti ti-download"} aria-hidden="true"></i>
-            Export Snapshot
-          </button>
         </div>
       </header>
 
@@ -179,7 +181,7 @@ export default function SystemHealthScreen({ user }: Props) {
           </Section>
 
           <Section title="Operational Health Metrics" icon="ti ti-activity">
-            <div className="sys-grid sys-grid-5">
+            <div className="sys-operational-grid">
               {summary.operationalMetrics.map((item) => (
                 <MetricCard item={item} key={item.key} />
               ))}
@@ -240,15 +242,25 @@ function ServiceCard({ item }: { item: ExternalServiceHealth }) {
 }
 
 function MetricCard({ item }: { item: OperationalMetric }) {
+  const unavailable = item.status === "UNAVAILABLE";
   return (
-    <article className="sys-card sys-metric-card">
-      <div className="sys-card-top">
-        <h3>{item.label}</h3>
+    <article className={`sys-card sys-metric-card sys-metric-${item.status.toLowerCase()}`}>
+      <div className="sys-metric-heading">
+        <span className="sys-metric-icon">
+          <i className={metricIcon(item.key)} aria-hidden="true"></i>
+        </span>
+        <div>
+          <h3>{item.label}</h3>
+          <small>{metricWindowLabel(item.key)}</small>
+        </div>
         <StatusBadge status={item.status} />
       </div>
-      <strong>{formatMetricValue(item)}</strong>
+      <strong>{unavailable ? "No data" : formatMetricValue(item)}</strong>
       <p>{item.detail}</p>
-      <small>Sample size: {item.sampleSize}</small>
+      <div className="sys-metric-foot">
+        <span>{metricThresholdLabel(item.key)}</span>
+        <span>{sampleLabel(item)}</span>
+      </div>
     </article>
   );
 }
@@ -270,12 +282,12 @@ function JobTable({ jobs }: { jobs: BackgroundJobHealth[] }) {
         <tbody>
           {jobs.map((job) => (
             <tr key={job.jobName}>
-              <td>{job.jobName}</td>
+              <td>{formatJobName(job.jobName)}</td>
               <td><StatusBadge status={job.status} /></td>
               <td>{formatDate(job.lastStartedAt)}</td>
               <td>{formatDate(job.lastSuccessAt)}</td>
               <td>{job.lastDurationMs == null ? "-" : `${job.lastDurationMs} ms`}</td>
-              <td>{job.lastError || job.detail}</td>
+              <td>{safeJobDetail(job)}</td>
             </tr>
           ))}
         </tbody>
@@ -303,7 +315,7 @@ function TokenTable({
       <table className="sys-table">
         <thead>
           <tr>
-            <th>Page ID</th>
+            <th>Page</th>
             <th>Status</th>
             <th>Expires</th>
             <th>Last Validated</th>
@@ -313,7 +325,10 @@ function TokenTable({
         <tbody>
           {tokens.map((token) => (
             <tr key={token.id}>
-              <td className="sys-mono">{token.pageId}</td>
+              <td>
+                <span className="sys-token-page">Facebook Page</span>
+                <small className="sys-token-id">Identifier ending {token.pageId.slice(-4) || "----"}</small>
+              </td>
               <td><StatusBadge status={tokenStatusToHealth(token.tokenStatus)} /></td>
               <td>{formatDate(token.expiresAt)}</td>
               <td>{formatDate(token.lastValidatedAt)}</td>
@@ -378,4 +393,59 @@ function formatMetricValue(item: OperationalMetric) {
   if (item.unit === "percent") return `${item.value}%`;
   if (item.unit === "hours") return `${item.value}h`;
   return `${item.value}`;
+}
+
+function metricIcon(key: string) {
+  switch (key) {
+    case "approval_turnaround_time":
+      return "ti ti-hourglass";
+    case "edit_approve_rate":
+      return "ti ti-edit";
+    case "manual_fallback_resolution_rate":
+      return "ti ti-tool";
+    case "publish_success_rate":
+      return "ti ti-send-check";
+    case "live_event_fast_track_volume":
+      return "ti ti-bolt";
+    default:
+      return "ti ti-chart-bar";
+  }
+}
+
+function metricWindowLabel(key: string) {
+  if (key === "live_event_fast_track_volume") return "Last 30 days";
+  return "Rolling 30-day metric";
+}
+
+function metricThresholdLabel(key: string) {
+  switch (key) {
+    case "approval_turnaround_time":
+      return "Warns above 24h";
+    case "manual_fallback_resolution_rate":
+      return "Target 80%+";
+    case "publish_success_rate":
+      return "Target 95%+";
+    case "edit_approve_rate":
+      return "Measured for visibility";
+    case "live_event_fast_track_volume":
+      return "Volume indicator";
+    default:
+      return "Operational signal";
+  }
+}
+
+function sampleLabel(item: OperationalMetric) {
+  if (item.status === "UNAVAILABLE") return "No current sample";
+  if (item.key === "live_event_fast_track_volume") return `${item.sampleSize} fast-track submission${item.sampleSize === 1 ? "" : "s"}`;
+  return `${item.sampleSize} record${item.sampleSize === 1 ? "" : "s"}`;
+}
+
+function formatJobName(jobName: string) {
+  if (!/[a-z][A-Z]/.test(jobName) && !jobName.endsWith("Job")) return jobName;
+  return jobName.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s?Job$/, "");
+}
+
+function safeJobDetail(job: BackgroundJobHealth) {
+  if (job.lastError) return "Last run failed. Review server logs for details.";
+  return job.detail;
 }

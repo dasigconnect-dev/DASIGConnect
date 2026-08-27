@@ -178,7 +178,7 @@ public class SystemHealthService {
                     "PostgreSQL database size relative to configured platform tier limit.");
         } catch (Exception ex) {
             return new StorageMetricDto("Database storage", HealthStatus.UNAVAILABLE, 0, databaseLimitBytes,
-                    0, storageWarningThreshold, "Database storage metric unavailable: " + ex.getMessage());
+                    0, storageWarningThreshold, "Database storage metric could not be retrieved.");
         }
     }
 
@@ -191,7 +191,7 @@ public class SystemHealthService {
                     "Tracked media asset bytes relative to configured platform tier limit.");
         } catch (Exception ex) {
             return new StorageMetricDto("Media storage", HealthStatus.UNAVAILABLE, 0, mediaLimitBytes,
-                    0, storageWarningThreshold, "Media storage metric unavailable: " + ex.getMessage());
+                    0, storageWarningThreshold, "Media storage metric could not be retrieved.");
         }
     }
 
@@ -222,11 +222,11 @@ public class SystemHealthService {
             Long seconds = mostUrgent.getExpiresAt() == null ? null
                     : Duration.between(Instant.now(), mostUrgent.getExpiresAt()).getSeconds();
             return service("Facebook Graph API", status,
-                    "Page token status: " + mostUrgent.getTokenStatus() + " for page " + mostUrgent.getPageId() + ".",
+                    "Facebook Page token is " + tokenStatusLabel(mostUrgent.getTokenStatus()) + ".",
                     mostUrgent.getExpiresAt(), seconds);
         } catch (Exception ex) {
             return service("Facebook Graph API", HealthStatus.UNAVAILABLE,
-                    "Facebook token status unavailable: " + ex.getMessage(), null, null);
+                    "Facebook token status could not be retrieved.", null, null);
         }
     }
 
@@ -242,9 +242,12 @@ public class SystemHealthService {
                     .build();
             HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
             HealthStatus status = response.statusCode() >= 500 ? HealthStatus.UNHEALTHY : HealthStatus.HEALTHY;
-            return service(service, status, "Reachability probe returned HTTP " + response.statusCode() + ".", null, null);
+            String detail = status == HealthStatus.UNHEALTHY
+                    ? "Service endpoint reported an unhealthy response."
+                    : "Service endpoint responded to the reachability probe.";
+            return service(service, status, detail, null, null);
         } catch (Exception ex) {
-            return service(service, HealthStatus.UNAVAILABLE, "Reachability probe failed: " + ex.getMessage(), null, null);
+            return service(service, HealthStatus.UNAVAILABLE, "Reachability probe could not be completed.", null, null);
         }
     }
 
@@ -256,7 +259,7 @@ public class SystemHealthService {
                         "SMTP connection succeeded.", null, null);
             } catch (Exception ex) {
                 return service("Email Service Provider", HealthStatus.UNAVAILABLE,
-                        "SMTP connection unavailable: " + ex.getMessage(), null, null);
+                        "SMTP connection could not be verified.", null, null);
             }
         }
         return service("Email Service Provider", HealthStatus.UNAVAILABLE,
@@ -264,8 +267,9 @@ public class SystemHealthService {
     }
 
     private BackgroundJobHealthDto toJobDto(String jobName, ScheduledJobRun run) {
+        String displayName = jobDisplayName(jobName);
         if (run == null) {
-            return new BackgroundJobHealthDto(jobName, HealthStatus.UNAVAILABLE,
+            return new BackgroundJobHealthDto(displayName, HealthStatus.UNAVAILABLE,
                     null, null, null, null, null, "No recorded run yet.");
         }
         boolean failed = "FAILED".equalsIgnoreCase(run.getStatus());
@@ -274,7 +278,7 @@ public class SystemHealthService {
                 : run.getStartedAt().isBefore(staleCutoff) ? HealthStatus.WARNING
                 : HealthStatus.HEALTHY;
         return new BackgroundJobHealthDto(
-                jobName,
+                displayName,
                 status,
                 run.getStartedAt(),
                 failed ? null : run.getCompletedAt(),
@@ -296,6 +300,10 @@ public class SystemHealthService {
                     """, start);
             double value = number(row.get("value"));
             long sample = longNumber(row.get("sample_size"));
+            if (sample == 0) {
+                return noSampleMetric("approval_turnaround_time", "Approval turnaround time", "hours",
+                        "No approvals were recorded in the last 30 days.");
+            }
             return metric("approval_turnaround_time", "Approval turnaround time", value, "hours", sample,
                     value > 24 ? HealthStatus.WARNING : HealthStatus.HEALTHY,
                     "Average time from submission to approval in the last 30 days.");
@@ -315,6 +323,10 @@ public class SystemHealthService {
                     """, start);
             long approvals = longNumber(row.get("approvals"));
             long edited = longNumber(row.get("edited"));
+            if (approvals == 0) {
+                return noSampleMetric("edit_approve_rate", "Edit & Approve rate", "percent",
+                        "No approval decisions were recorded in the last 30 days.");
+            }
             double rate = approvals == 0 ? 0 : round(edited * 100.0 / approvals);
             return metric("edit_approve_rate", "Edit & Approve rate", rate, "percent", approvals,
                     HealthStatus.HEALTHY, "Share of approvals completed through Edit & Approve in the last 30 days.");
@@ -334,6 +346,10 @@ public class SystemHealthService {
                     """, start);
             long started = longNumber(row.get("started"));
             long completed = longNumber(row.get("completed"));
+            if (started == 0) {
+                return noSampleMetric("manual_fallback_resolution_rate", "Manual fallback resolution rate", "percent",
+                        "No manual publishing fallback workflows were started in the last 30 days.");
+            }
             double rate = started == 0 ? 100 : round(completed * 100.0 / started);
             return metric("manual_fallback_resolution_rate", "Manual fallback resolution rate", rate, "percent", started,
                     rate < 80 ? HealthStatus.WARNING : HealthStatus.HEALTHY,
@@ -353,6 +369,10 @@ public class SystemHealthService {
                     """, start);
             long attempts = longNumber(row.get("attempts"));
             long successes = longNumber(row.get("successes"));
+            if (attempts == 0) {
+                return noSampleMetric("publish_success_rate", "Publish success rate", "percent",
+                        "No publishing attempts were recorded in the last 30 days.");
+            }
             double rate = attempts == 0 ? 100 : round(successes * 100.0 / attempts);
             return metric("publish_success_rate", "Publish success rate", rate, "percent", attempts,
                     rate < 95 ? HealthStatus.WARNING : HealthStatus.HEALTHY,
@@ -387,7 +407,11 @@ public class SystemHealthService {
     }
 
     private OperationalMetricDto unavailableMetric(String key, String label, String unit, Exception ex) {
-        return metric(key, label, 0, unit, 0, HealthStatus.UNAVAILABLE, "Metric unavailable: " + ex.getMessage());
+        return metric(key, label, 0, unit, 0, HealthStatus.UNAVAILABLE, "Metric could not be retrieved.");
+    }
+
+    private OperationalMetricDto noSampleMetric(String key, String label, String unit, String detail) {
+        return metric(key, label, 0, unit, 0, HealthStatus.UNAVAILABLE, detail);
     }
 
     private static int count(List<HealthStatus> statuses, HealthStatus status) {
@@ -400,6 +424,32 @@ public class SystemHealthService {
             case "EXPIRING" -> 1;
             case "ACTIVE" -> 2;
             default -> 3;
+        };
+    }
+
+    private static String tokenStatusLabel(String status) {
+        return switch (status) {
+            case "ACTIVE" -> "active";
+            case "EXPIRING" -> "nearing expiry";
+            case "EXPIRED" -> "expired";
+            case "INVALID" -> "invalid";
+            default -> "unavailable";
+        };
+    }
+
+    private static String jobDisplayName(String jobName) {
+        return switch (jobName) {
+            case "PublishingSchedulerJob" -> "Publishing Scheduler";
+            case "StaleSubmissionDetectorJob" -> "Stale Submission Detector";
+            case "EmbeddingReconciliationJob" -> "Embedding Reconciliation";
+            case "MediaAssetRetentionPurgeJob" -> "Media Asset Retention Purge";
+            case "StaleDraftSlotReleaseJob" -> "Stale Draft Slot Release";
+            case "TokenHealthCheckJob" -> "Token Health Check";
+            case "TokenPublishingEscalationJob" -> "Token Publishing Escalation";
+            case "SocialEngagementSyncJob" -> "Social Engagement Sync";
+            case "AbandonmentDetectorJob" -> "Abandonment Detector";
+            case "ExpiredOverrideCleanupJob" -> "Expired Override Cleanup";
+            default -> jobName.replaceAll("(?<=[a-z])(?=[A-Z])", " ").replace(" Job", "");
         };
     }
 
