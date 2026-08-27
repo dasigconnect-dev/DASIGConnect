@@ -21,6 +21,8 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -30,6 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class SystemHealthService {
+
+    private static final Logger log = LoggerFactory.getLogger(SystemHealthService.class);
 
     private static final List<String> EXPECTED_JOBS = List.of(
             "PublishingSchedulerJob",
@@ -407,11 +411,12 @@ public class SystemHealthService {
     }
 
     private OperationalMetricDto unavailableMetric(String key, String label, String unit, Exception ex) {
+        log.warn("System health operational metric '{}' could not be retrieved: {}", key, ex.getMessage());
         return metric(key, label, 0, unit, 0, HealthStatus.UNAVAILABLE, "Metric could not be retrieved.");
     }
 
     private OperationalMetricDto noSampleMetric(String key, String label, String unit, String detail) {
-        return metric(key, label, 0, unit, 0, HealthStatus.UNAVAILABLE, detail);
+        return metric(key, label, 0, unit, 0, HealthStatus.HEALTHY, detail);
     }
 
     private static int count(List<HealthStatus> statuses, HealthStatus status) {

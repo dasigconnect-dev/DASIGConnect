@@ -11,6 +11,7 @@
 
 .sys-health-title-block {
   min-width: 0;
+  width: 100%;
 }
 
 .sys-health-title-row {
@@ -36,8 +37,10 @@
 .sys-health-actions {
   display: flex;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  align-items: center;
+  flex: 0 0 auto;
 }
 
 .sys-alert,
@@ -408,10 +411,12 @@
 
   .sys-health-actions {
     justify-content: stretch;
+    width: 100%;
   }
 
   .sys-health-actions button {
-    flex: 1 1 150px;
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .sys-overview-metrics,

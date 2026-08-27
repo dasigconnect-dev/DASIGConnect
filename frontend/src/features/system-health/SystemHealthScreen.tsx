@@ -243,6 +243,7 @@ function ServiceCard({ item }: { item: ExternalServiceHealth }) {
 
 function MetricCard({ item }: { item: OperationalMetric }) {
   const unavailable = item.status === "UNAVAILABLE";
+  const noActivity = isNoActivityMetric(item);
   return (
     <article className={`sys-card sys-metric-card sys-metric-${item.status.toLowerCase()}`}>
       <div className="sys-metric-heading">
@@ -255,7 +256,7 @@ function MetricCard({ item }: { item: OperationalMetric }) {
         </div>
         <StatusBadge status={item.status} />
       </div>
-      <strong>{unavailable ? "No data" : formatMetricValue(item)}</strong>
+      <strong>{unavailable ? "No data" : noActivity ? "No activity" : formatMetricValue(item)}</strong>
       <p>{item.detail}</p>
       <div className="sys-metric-foot">
         <span>{metricThresholdLabel(item.key)}</span>
@@ -436,8 +437,13 @@ function metricThresholdLabel(key: string) {
 
 function sampleLabel(item: OperationalMetric) {
   if (item.status === "UNAVAILABLE") return "No current sample";
+  if (isNoActivityMetric(item)) return "No records in period";
   if (item.key === "live_event_fast_track_volume") return `${item.sampleSize} fast-track submission${item.sampleSize === 1 ? "" : "s"}`;
   return `${item.sampleSize} record${item.sampleSize === 1 ? "" : "s"}`;
+}
+
+function isNoActivityMetric(item: OperationalMetric) {
+  return item.sampleSize === 0 && item.key !== "live_event_fast_track_volume";
 }
 
 function formatJobName(jobName: string) {
