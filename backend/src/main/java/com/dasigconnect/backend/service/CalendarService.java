@@ -1,6 +1,9 @@
 package com.dasigconnect.backend.service;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -65,23 +68,44 @@ public class CalendarService {
                 .map(Institution::getId)
                 .orElse(null);
 
-        List<Submission> all = submissionRepository.findAllCalendarVisibleSlots();
-        Set<UUID> lockedIds = lockedSubmissionIds(all);
-        return all.stream()
-                .map(s -> {
-                    UUID submissionInstId = s.getInstitution() != null ? s.getInstitution().getId() : null;
-                    boolean ownInstitution = user.institutionId() != null
-                            && user.institutionId().equals(submissionInstId);
-                    boolean isDasigCentralVisayas = dasigCentralVisayasId != null
-                            && dasigCentralVisayasId.equals(submissionInstId);
+        // 1. Network bucket: scheduled / published variants for every institution —
+        //    full for own institution + DASIG Central Visayas, masked elsewhere.
+        List<Submission> network = submissionRepository.findAllCalendarVisibleSlots();
 
-                    CalendarEventDto dto = (ownInstitution || isDasigCentralVisayas)
-                            ? CalendarEventDto.full(s)
-                            : CalendarEventDto.masked(s);
-                    dto.setLocked(lockedIds.contains(s.getId()));
-                    return dto;
-                })
-                .toList();
+        // 2. Own-workflow bucket: the caller's own failed / pending / in-review /
+        //    missed-review submissions, always in full.
+        List<Submission> ownWorkflow = user.userId() != null
+                ? submissionRepository.findOwnCalendarWorkflowSlots(user.userId())
+                : List.of();
+
+        List<Submission> combined = new ArrayList<>(network);
+        combined.addAll(ownWorkflow);
+        Set<UUID> lockedIds = lockedSubmissionIds(combined);
+
+        Map<UUID, CalendarEventDto> byId = new LinkedHashMap<>();
+
+        for (Submission s : network) {
+            UUID submissionInstId = s.getInstitution() != null ? s.getInstitution().getId() : null;
+            boolean ownInstitution = user.institutionId() != null
+                    && user.institutionId().equals(submissionInstId);
+            boolean isDasigCentralVisayas = dasigCentralVisayasId != null
+                    && dasigCentralVisayasId.equals(submissionInstId);
+
+            CalendarEventDto dto = (ownInstitution || isDasigCentralVisayas)
+                    ? CalendarEventDto.full(s)
+                    : CalendarEventDto.masked(s);
+            dto.setLocked(lockedIds.contains(s.getId()));
+            byId.put(s.getId(), dto);
+        }
+
+        for (Submission s : ownWorkflow) {
+            CalendarEventDto dto = CalendarEventDto.full(s);
+            dto.setMine(true);
+            dto.setLocked(lockedIds.contains(s.getId()));
+            byId.put(s.getId(), dto); // own-workflow entry wins on the (impossible) id clash
+        }
+
+        return List.copyOf(byId.values());
     }
 
     private Set<UUID> lockedSubmissionIds(List<Submission> submissions) {

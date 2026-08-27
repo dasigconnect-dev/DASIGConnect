@@ -23,6 +23,10 @@ public class MediaAlbum {
     @JoinColumn(name = "institution_id", nullable = false)
     private Institution institution;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_album_id")
+    private MediaAlbum parentAlbum;
+
     @Column(nullable = false, length = 255)
     private String name;
 
@@ -53,6 +57,9 @@ public class MediaAlbum {
 
     public Institution getInstitution() { return institution; }
     public void setInstitution(Institution institution) { this.institution = institution; }
+
+    public MediaAlbum getParentAlbum() { return parentAlbum; }
+    public void setParentAlbum(MediaAlbum parentAlbum) { this.parentAlbum = parentAlbum; }
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }

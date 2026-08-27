@@ -10,6 +10,7 @@ public class FailedPublicationDto {
 
     private UUID submissionId;
     private String eventTitle;
+    private String status;
     private UUID institutionId;
     private String institutionName;
     private Instant scheduledAt;
@@ -23,6 +24,7 @@ public class FailedPublicationDto {
         FailedPublicationDto dto = new FailedPublicationDto();
         dto.submissionId = s.getId();
         dto.eventTitle = s.getEventTitle();
+        dto.status = s.getStatus().name();
         dto.institutionId = s.getInstitution().getId();
         dto.institutionName = s.getInstitution().getName();
         dto.scheduledAt = s.getScheduledAt();
@@ -38,6 +40,7 @@ public class FailedPublicationDto {
 
     public UUID getSubmissionId() { return submissionId; }
     public String getEventTitle() { return eventTitle; }
+    public String getStatus() { return status; }
     public UUID getInstitutionId() { return institutionId; }
     public String getInstitutionName() { return institutionName; }
     public Instant getScheduledAt() { return scheduledAt; }

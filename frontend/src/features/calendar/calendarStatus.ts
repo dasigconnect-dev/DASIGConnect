@@ -9,6 +9,7 @@ export const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   pending: { bg: "#fff7ed", text: "#c2410c" },
   in_review: { bg: "#fff7ed", text: "#c2410c" },
   needs_revision: { bg: "#fff7ed", text: "#c2410c" },
+  missed_review: { bg: "#fef3c7", text: "#b45309" },
   rejected: { bg: "#fef2f2", text: "#b91c1c" },
 };
 
@@ -23,6 +24,7 @@ export const STATUS_LABELS: Record<string, string> = {
   pending: "Needs Attention",
   in_review: "Needs Attention",
   needs_revision: "Needs Attention",
+  missed_review: "Missed Review",
   rejected: "Rejected",
 };
 
@@ -40,8 +42,17 @@ export function canSeePrivateCalendarStatus(role: string, isOwnInstitution: bool
   return role === "super_administrator" || (role === "administrator" && isOwnInstitution);
 }
 
-export function visibleCalendarStatus(status: string, role: string, isOwnInstitution: boolean) {
+export function visibleCalendarStatus(
+  status: string,
+  role: string,
+  isOwnInstitution: boolean,
+  isMine = false,
+) {
   const value = status.toLowerCase();
+  // The viewer's own authored submissions always show their real status.
+  if (isMine) {
+    return value;
+  }
   if (PRIVATE_WORKFLOW_STATUSES.has(value) && !canSeePrivateCalendarStatus(role, isOwnInstitution)) {
     return "scheduled";
   }
@@ -51,10 +62,20 @@ export function visibleCalendarStatus(status: string, role: string, isOwnInstitu
   return value;
 }
 
-export function visibleStatusColor(status: string, role: string, isOwnInstitution: boolean) {
-  return statusColor(visibleCalendarStatus(status, role, isOwnInstitution));
+export function visibleStatusColor(
+  status: string,
+  role: string,
+  isOwnInstitution: boolean,
+  isMine = false,
+) {
+  return statusColor(visibleCalendarStatus(status, role, isOwnInstitution, isMine));
 }
 
-export function visibleStatusLabel(status: string, role: string, isOwnInstitution: boolean) {
-  return statusLabel(visibleCalendarStatus(status, role, isOwnInstitution));
+export function visibleStatusLabel(
+  status: string,
+  role: string,
+  isOwnInstitution: boolean,
+  isMine = false,
+) {
+  return statusLabel(visibleCalendarStatus(status, role, isOwnInstitution, isMine));
 }

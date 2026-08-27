@@ -13,6 +13,8 @@ export interface CalendarEvent {
   description?: string | null;
   contributorName?: string | null;
   locked: boolean;
+  /** True when this event is the viewer's own authored submission (own-workflow bucket). */
+  mine: boolean;
 }
 
 export function getCalendarEvents(signal?: AbortSignal) {

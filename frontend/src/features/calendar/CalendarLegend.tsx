@@ -1,5 +1,4 @@
 import { STATUS_COLORS, STATUS_LABELS } from "./calendarStatus";
-import type { User } from "../../types/auth.types";
 
 const LEGEND_STATUSES = [
   "scheduled",
@@ -8,16 +7,16 @@ const LEGEND_STATUSES = [
   "publish_failed",
   "admin_direct_post",
   "pending",
+  "missed_review",
 ];
 
-export default function CalendarLegend({ user }: { user: User }) {
-  const statuses = user.role === "contributor"
-    ? LEGEND_STATUSES.filter((status) => status !== "pending")
-    : LEGEND_STATUSES;
-
+export default function CalendarLegend() {
+  // Every role can now see workflow states on the calendar — contributors and
+  // validators for their own submissions, admins for all — so the full legend
+  // applies to everyone.
   return (
     <div className="cal-legend">
-      {statuses.map((status) => (
+      {LEGEND_STATUSES.map((status) => (
         <div key={status} className="cal-legend-item">
           <span className="cal-legend-dot" style={{ background: STATUS_COLORS[status].text }} />
           <span>{STATUS_LABELS[status]}</span>

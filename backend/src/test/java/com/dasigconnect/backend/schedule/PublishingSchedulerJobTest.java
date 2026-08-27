@@ -19,6 +19,7 @@ import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.service.FacebookPublisherService;
 import com.dasigconnect.backend.service.PublishingQueryService;
+import com.dasigconnect.backend.service.ScheduledJobHealthService;
 
 @ExtendWith(MockitoExtension.class)
 class PublishingSchedulerJobTest {
@@ -29,10 +30,13 @@ class PublishingSchedulerJobTest {
     @Mock
     private FacebookPublisherService facebookPublisherService;
 
+    @Mock
+    private ScheduledJobHealthService scheduledJobHealthService;
+
     @Test
     void run_skipsSubmissionWhenClaimAlreadyTaken() {
         PublishingSchedulerJob job =
-                new PublishingSchedulerJob(publishingQueryService, facebookPublisherService);
+                new PublishingSchedulerJob(publishingQueryService, facebookPublisherService, scheduledJobHealthService);
         Submission due = submission(UUID.randomUUID(), SubmissionStatus.scheduled);
 
         when(facebookPublisherService.isConfigured()).thenReturn(true);
@@ -53,7 +57,7 @@ class PublishingSchedulerJobTest {
     @Test
     void run_publishesOnlyAfterClaimSucceeds() {
         PublishingSchedulerJob job =
-                new PublishingSchedulerJob(publishingQueryService, facebookPublisherService);
+                new PublishingSchedulerJob(publishingQueryService, facebookPublisherService, scheduledJobHealthService);
         UUID submissionId = UUID.randomUUID();
         Submission due = submission(submissionId, SubmissionStatus.scheduled);
         Submission claimed = submission(submissionId, SubmissionStatus.publishing);

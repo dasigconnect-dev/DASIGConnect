@@ -37,6 +37,7 @@ export interface SubmissionSummary {
   description?: string;
   status: SubmissionStatus;
   scheduledAt?: string;
+  publishedAt?: string;
   submittedAt?: string;
   createdAt?: string;
   updatedAt?: string;

@@ -292,6 +292,43 @@ class ManualPublishingServiceTest {
         verify(submissionRepository, never()).save(any());
     }
 
+    @Test
+    void retryWithNewSchedule_missedReview_returnsToPendingApproval() {
+        Submission s = submission(submissionId, SubmissionStatus.missed_review);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(guardRailService.validate(any(), any())).thenReturn(new GuardRailResult());
+
+        RescheduleRequestDto dto = new RescheduleRequestDto();
+        Instant newSlot = Instant.now().plusSeconds(7200);
+        dto.setScheduledAt(newSlot);
+
+        service.retryWithNewSchedule(submissionId, dto, admin);
+
+        assertThat(s.getStatus()).isEqualTo(SubmissionStatus.pending);
+        assertThat(s.getScheduledAt()).isEqualTo(newSlot);
+        assertThat(s.getSubmittedAt()).isNotNull();
+        verify(slotReservationService).reserve(submissionId, s.getInstitution().getId(), newSlot);
+        verify(auditLogService).record(any(), eq("MISSED_REVIEW_RETRY_NEW_SCHEDULE"), any(), any(), eq(submissionId), any());
+    }
+
+    @Test
+    void retryWithNewSchedule_missedReview_blockedWithoutOverride_throwsGuardRailViolation() {
+        Submission s = submission(submissionId, SubmissionStatus.missed_review);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+        when(guardRailService.validate(any(), any())).thenReturn(new GuardRailResult(
+                java.util.List.of(new com.dasigconnect.backend.model.dto.guardrail.GuardRailViolation("GR-H2", "Too soon")),
+                java.util.List.of()));
+
+        RescheduleRequestDto dto = new RescheduleRequestDto();
+        dto.setScheduledAt(Instant.now().plusSeconds(60));
+
+        assertThatThrownBy(() -> service.retryWithNewSchedule(submissionId, dto, admin))
+                .isInstanceOf(GuardRailViolationException.class);
+
+        verify(submissionRepository, never()).save(any());
+    }
+
     // ── clearAbandoned() ─────────────────────────────────────────────────────────
 
     @Test

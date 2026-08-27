@@ -70,7 +70,16 @@ export interface MediaAssetRegisterRequest {
 export interface MediaAlbum {
   id: string;
   institutionId: string;
+  institutionCode: string;
+  institutionName: string;
+  parentAlbumId: string | null;
   name: string;
+  childAlbumCount: number;
+  assetCount: number;
+  /** Whether the requesting user may delete this folder (admin, or its creator). */
+  canDelete: boolean;
+  /** True when this folder belongs to the shared default institution. */
+  shared: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -135,18 +144,40 @@ function rawToAsset(raw: MediaAssetPageResponse["items"][0]): MediaAsset {
   };
 }
 
-export function listMediaAssets(params?: { networkView?: boolean; institutionId?: string | null }, signal?: AbortSignal) {
+export function listMediaAssets(
+  params?: { networkView?: boolean; institutionId?: string | null; albumId?: string | null },
+  signal?: AbortSignal,
+) {
   const scope = params?.networkView ? "network" : undefined;
   const institutionId = params?.institutionId ?? undefined;
+  const albumId = params?.albumId ?? undefined;
   return api
     .get<MediaAssetPageResponse>("/media-assets", {
-      params: { ...(scope ? { scope } : {}), ...(institutionId ? { institutionId } : {}) },
+      params: {
+        ...(scope ? { scope } : {}),
+        ...(institutionId ? { institutionId } : {}),
+        ...(albumId ? { albumId } : {}),
+      },
       signal,
     })
     .then((response) => ({
       ...response,
       data: (response.data.items ?? []).map(rawToAsset),
     }));
+}
+
+/** Meaning-based asset search (Voyage embedding + pgvector, with keyword fallback). */
+export function semanticSearchMediaAssets(
+  query: string,
+  institutionId?: string | null,
+  signal?: AbortSignal,
+) {
+  return api
+    .get<MediaAssetPageResponse>("/media-assets/search", {
+      params: { query, ...(institutionId ? { institutionId } : {}) },
+      signal,
+    })
+    .then((response) => (response.data.items ?? []).map(rawToAsset));
 }
 
 export async function searchMediaAssets(
@@ -275,12 +306,37 @@ export function listMediaAlbums(institutionId?: string | null, signal?: AbortSig
   });
 }
 
-export function createMediaAlbum(name: string, institutionId?: string | null) {
-  return api.post<MediaAlbum>("/media-assets/albums", { name, institutionId });
+export function createMediaAlbum(
+  name: string,
+  institutionId?: string | null,
+  parentAlbumId?: string | null,
+) {
+  return api.post<MediaAlbum>("/media-assets/albums", { name, institutionId, parentAlbumId });
 }
 
 export function renameMediaAlbum(id: string, name: string, institutionId?: string | null) {
   return api.post<MediaAlbum>(`/media-assets/albums/${id}`, { name, institutionId });
+}
+
+/** Walk/create a folder path and return its leaf album. Backs "Upload folder". */
+export function ensureMediaAlbumPath(
+  institutionId: string | null | undefined,
+  segments: string[],
+) {
+  return api.post<MediaAlbum>("/media-assets/albums/ensure-path", { institutionId, segments });
+}
+
+/** Re-parent an album. `parentAlbumId` null moves it to the institution root. */
+export function moveMediaAlbum(
+  id: string,
+  parentAlbumId: string | null,
+  institutionId?: string | null,
+) {
+  return api.patch<MediaAlbum>(`/media-assets/albums/${id}/parent`, { parentAlbumId, institutionId });
+}
+
+export function deleteMediaAlbum(id: string) {
+  return api.delete<void>(`/media-assets/albums/${id}`);
 }
 
 export function updateMediaAssetAlbum(id: string, albumId: string | null) {
