@@ -1,6 +1,8 @@
-import { useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SubmissionMediaItem } from "../../types/media";
 import { useMediaLibraryAssets } from "../../hooks/useMediaLibraryAssets";
+import { listMediaAlbums, type MediaAlbum } from "../../api/mediaApi";
+import { buildAlbumOptions } from "../../features/media-repository/albumTree";
 import MediaAssetGrid, { type GridAsset } from "./MediaAssetGrid";
 import BrandedSelect from "../ui/BrandedSelect";
 
@@ -8,6 +10,10 @@ interface MediaLibraryTabProps {
   alreadyAddedIds: Set<string>;
   onAddItems: (items: SubmissionMediaItem[]) => void;
   disabled?: boolean;
+  /** Scope the library to a specific institution (network-wide admins). */
+  institutionId?: string;
+  /** Show a folder/album filter dropdown above the grid. */
+  showAlbumFilter?: boolean;
 }
 
 const CATEGORY_OPTIONS = [
@@ -30,6 +36,8 @@ export default function MediaLibraryTab({
   alreadyAddedIds,
   onAddItems,
   disabled,
+  institutionId,
+  showAlbumFilter,
 }: MediaLibraryTabProps) {
   const {
     assets,
@@ -43,14 +51,34 @@ export default function MediaLibraryTab({
     setAiCategory,
     mediaType,
     setMediaType,
+    albumId,
+    setAlbumId,
     loadMore,
     retry,
     selectedIds,
     toggleSelect,
     clearSelection,
-  } = useMediaLibraryAssets();
+  } = useMediaLibraryAssets({ institutionId });
 
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const [albums, setAlbums] = useState<MediaAlbum[]>([]);
+  useEffect(() => {
+    if (!showAlbumFilter) return;
+    const controller = new AbortController();
+    listMediaAlbums(institutionId, controller.signal)
+      .then((res) => setAlbums(res.data ?? []))
+      .catch(() => setAlbums([]));
+    return () => controller.abort();
+  }, [showAlbumFilter, institutionId]);
+
+  const albumOptions = useMemo(
+    () => [
+      { value: "", label: "All folders" },
+      ...buildAlbumOptions(albums).map((o) => ({ value: o.id, label: o.label })),
+    ],
+    [albums],
+  );
 
   const pendingSelected = [...selectedIds].filter((id) => !alreadyAddedIds.has(id));
 
@@ -114,6 +142,17 @@ export default function MediaLibraryTab({
           ariaLabel="Filter by media type"
           disabled={disabled}
         />
+
+        {showAlbumFilter && (
+          <BrandedSelect
+            className="mlt-select"
+            value={albumId}
+            options={albumOptions}
+            onChange={setAlbumId}
+            ariaLabel="Filter by folder"
+            disabled={disabled || albumOptions.length <= 1}
+          />
+        )}
       </div>
 
       {totalCount > 0 && (

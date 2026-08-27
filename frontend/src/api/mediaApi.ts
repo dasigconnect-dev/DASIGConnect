@@ -110,6 +110,7 @@ interface MediaAssetPageResponse {
 export interface MediaAssetSearchParams {
   networkView?: boolean;
   institutionId?: string | null;
+  albumId?: string | null;
   query?: string;
   aiCategory?: string;
   mediaType?: "image" | "video";
@@ -188,6 +189,7 @@ export async function searchMediaAssets(
   const queryParams: Record<string, string | number | undefined> = {
     scope: params.networkView ? "network" : undefined,
     institutionId: params.institutionId ?? undefined,
+    albumId: params.albumId ?? undefined,
     query: params.query || undefined,
     aiCategory: params.aiCategory || undefined,
     mediaType: params.mediaType || undefined,

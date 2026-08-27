@@ -10,6 +10,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,6 +18,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
+import com.dasigconnect.backend.model.dto.submission.AttachAssetDto;
+import com.dasigconnect.backend.model.dto.submission.AttachMediaDto;
+import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlRequest;
+import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlResponse;
+import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
 import com.dasigconnect.backend.model.dto.validation.RejectionRequestDto;
@@ -133,6 +140,56 @@ public class ValidationController {
             @AuthenticationPrincipal JwtUserDetails caller) {
         validationService.edit(id, dto, caller);
         return ResponseEntity.noContent().build();
+    }
+
+    // ── A9: media edits during review (admin only) ──────────────────────────
+
+    @PostMapping("/{id}/media/upload-url")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    public ResponseEntity<ApiResponse<SignedUploadUrlResponse>> reviewMediaUploadUrl(
+            @PathVariable UUID id,
+            @Valid @RequestBody SignedUploadUrlRequest dto,
+            @AuthenticationPrincipal JwtUserDetails caller) {
+        return ResponseEntity.ok(ApiResponse.success(validationService.reviewMediaUploadUrl(id, dto, caller)));
+    }
+
+    @PostMapping("/{id}/media")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> attachReviewMedia(
+            @PathVariable UUID id,
+            @Valid @RequestBody AttachMediaDto dto,
+            @AuthenticationPrincipal JwtUserDetails caller) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(validationService.attachReviewMedia(id, dto, caller)));
+    }
+
+    @PostMapping("/{id}/assets")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> attachReviewLibraryAsset(
+            @PathVariable UUID id,
+            @Valid @RequestBody AttachAssetDto dto,
+            @AuthenticationPrincipal JwtUserDetails caller) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(validationService.attachReviewLibraryAsset(id, dto.getMediaAssetId(), caller)));
+    }
+
+    @DeleteMapping("/{id}/assets/{assetId}")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    public ResponseEntity<Void> detachReviewMedia(
+            @PathVariable UUID id,
+            @PathVariable UUID assetId,
+            @AuthenticationPrincipal JwtUserDetails caller) {
+        validationService.detachReviewMedia(id, assetId, caller);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/media/order")
+    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> reorderReviewMedia(
+            @PathVariable UUID id,
+            @Valid @RequestBody SubmissionMediaOrderDto dto,
+            @AuthenticationPrincipal JwtUserDetails caller) {
+        return ResponseEntity.ok(ApiResponse.success(validationService.reorderReviewMedia(id, dto, caller)));
     }
 
     /**

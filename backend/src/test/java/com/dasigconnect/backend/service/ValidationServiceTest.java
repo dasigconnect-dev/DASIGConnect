@@ -268,6 +268,52 @@ class ValidationServiceTest {
         verify(eventPublisher, org.mockito.Mockito.never()).publishEvent(any());
     }
 
+    private Submission inReviewSubmission() {
+        Submission submission = new Submission();
+        submission.setId(UUID.randomUUID());
+        submission.setStatus(SubmissionStatus.in_review);
+        Institution institution = new Institution();
+        institution.setId(submissionInstitutionId);
+        submission.setInstitution(institution);
+        User contributor = new User();
+        contributor.setId(contributorId);
+        submission.setContributor(contributor);
+        return submission;
+    }
+
+    @Test
+    void detachReviewMedia_onInReview_delegatesAndLogsEdited() {
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
+        Submission submission = inReviewSubmission();
+        UUID assetId = UUID.randomUUID();
+        User adminUser = new User();
+        adminUser.setId(adminId);
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(adminUser));
+
+        validationService.detachReviewMedia(submission.getId(), assetId, admin);
+
+        verify(reviewLockService).assertCallerHoldsLock(submission.getId(), admin);
+        verify(submissionService).detachAssetFrom(submission, assetId);
+        ArgumentCaptor<ValidationLog> log = ArgumentCaptor.forClass(ValidationLog.class);
+        verify(validationLogRepository).save(log.capture());
+        assertThat(log.getValue().getAction()).isEqualTo(ValidationAction.edited);
+    }
+
+    @Test
+    void reorderReviewMedia_rejectsSubmissionThatIsNotReviewable() {
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
+        Submission submission = inReviewSubmission();
+        submission.setStatus(SubmissionStatus.scheduled);
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                validationService.reorderReviewMedia(submission.getId(),
+                        new com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto(), admin))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        verify(submissionService, org.mockito.Mockito.never()).reorderMediaOf(any(), any());
+    }
+
     @Test
     void approve_afterSessionEdit_recordsEditedApprovalAndFiresEditedEvent() {
         // A10/A11: approving after one or more standalone edits this session records

@@ -1042,7 +1042,7 @@
   font-weight: 800;
   padding: 2px 7px;
 }
-.sub-template-save-modal {
+.sub-modal.sub-template-save-modal {
   width: min(1100px, calc(100vw - 56px));
   max-width: 1100px;
   text-align: left;
