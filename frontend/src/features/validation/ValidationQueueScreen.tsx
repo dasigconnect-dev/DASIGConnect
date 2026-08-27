@@ -167,10 +167,16 @@ export default function ValidationQueueScreen({
           .some((value) => value!.toLowerCase().includes(term));
       })
       .sort((a, b) => {
+        // Live Event / Fast-Track submissions never reserve a slot — once
+        // published their publish time IS their slot, so fall back to it.
         const left =
-          sortKey === "publish_slot" ? a.scheduledAt || "" : a.submittedAt || a.createdAt || "";
+          sortKey === "publish_slot"
+            ? a.scheduledAt || a.publishedAt || ""
+            : a.submittedAt || a.createdAt || "";
         const right =
-          sortKey === "publish_slot" ? b.scheduledAt || "" : b.submittedAt || b.createdAt || "";
+          sortKey === "publish_slot"
+            ? b.scheduledAt || b.publishedAt || ""
+            : b.submittedAt || b.createdAt || "";
         const cmp = left.localeCompare(right);
         return isAllMode ? -cmp : cmp;
       });
@@ -577,12 +583,12 @@ export default function ValidationQueueScreen({
                   >
                     <div className="val-qi-head">
                       <strong>{item.eventTitle || "Untitled submission"}</strong>
-                      <span className={`val-status ${item.status === "missed_review" ? "needs_revision" : "publish_failed"}`}>
+                      <span className={`val-status ${normalizeStatus(item.status)}`}>
                         {item.status === "missed_review"
                           ? "Missed Review"
                           : item.manualPublishInProgress
                             ? "Manual Session Open"
-                            : "Publish Failed"}
+                            : statusLabel[normalizeStatus(item.status)] || "Publish Failed"}
                       </span>
                     </div>
                     <div className="val-qi-meta">
@@ -647,12 +653,16 @@ export default function ValidationQueueScreen({
                       {item.fastTrack ? (
                         <span className="val-deadline val-live">
                           <i className="ti ti-broadcast"></i>
-                          Live Event
+                          {item.publishedAt ? `Live · ${formatDateTime(item.publishedAt)}` : "Live Event"}
                         </span>
                       ) : (
                         <span className="val-deadline">
                           <i className="ti ti-clock"></i>
-                          {item.scheduledAt ? formatDateTime(item.scheduledAt) : "No slot"}
+                          {item.scheduledAt
+                            ? formatDateTime(item.scheduledAt)
+                            : item.publishedAt
+                              ? formatDateTime(item.publishedAt)
+                              : "No slot"}
                         </span>
                       )}
                       <span className="val-media-count">
@@ -851,20 +861,31 @@ export default function ValidationQueueScreen({
                     <span>
                       <i className="ti ti-broadcast"></i> Live
                     </span>
-                    <strong>Publishes immediately</strong>
+                    {selected.publishedAt ? (
+                      <>
+                        <strong>{formatDate(selected.publishedAt)}</strong>
+                        <small>Published {formatTime(selected.publishedAt)}</small>
+                      </>
+                    ) : (
+                      <strong>Publishes immediately</strong>
+                    )}
                   </div>
                 ) : (
                   <div className="val-slot-card">
-                    <span>Publish Slot</span>
+                    <span>{selected.publishedAt ? "Published" : "Publish Slot"}</span>
                     <strong>
                       {selected.scheduledAt
                         ? formatDate(selected.scheduledAt)
-                        : "Unscheduled"}
+                        : selected.publishedAt
+                          ? formatDate(selected.publishedAt)
+                          : "Unscheduled"}
                     </strong>
                     <small>
                       {selected.scheduledAt
                         ? formatTime(selected.scheduledAt)
-                        : "No preferred time"}
+                        : selected.publishedAt
+                          ? formatTime(selected.publishedAt)
+                          : "No preferred time"}
                     </small>
                   </div>
                 )}
