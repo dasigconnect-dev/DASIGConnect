@@ -2064,7 +2064,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   {saveState === "saving" ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
                 </button>
               )}
-              <button
+              {/* <button
                 className="sub-btn-primary"
                 type="button"
                 onClick={() => setModal("submit")}
@@ -2072,7 +2072,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 title={previewValidation.blockingErrors[0]}
               >
                 {submitting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-send"></i>} Submit for Approval
-              </button>
+              </button> */}
             </div>
             )}
             {isReadOnlySubmission && form.status === "pending" && (
@@ -2165,12 +2165,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   className={`sub-posting-select${selectedPostingIsDefault ? " is-default" : ""}`}
                   onChange={(value) => updateField("institutionId", value)}
                 />
-                {selectedPostingIsDefault && (
+                {/* {selectedPostingIsDefault && (
                   <div className="sub-inline-default-note">
                     <i className="ti ti-sparkles" aria-hidden="true"></i>
                     Default institution for network-wide DASIG announcements.
                   </div>
-                )}
+                )} */}
                 {institutionsError && (
                   <div className="sub-inline-note">{institutionsError}</div>
                 )}
