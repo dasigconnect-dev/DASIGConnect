@@ -3,10 +3,18 @@ package com.dasigconnect.backend.model.dto.submission;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 import jakarta.validation.constraints.Size;
 
 public class SubmissionUpdateDto {
+
+    /**
+     * Target institution scope. Only honoured for admin composers and only while
+     * the submission is still an editable draft; a change re-homes the draft and
+     * detaches any media attached from the previous institution.
+     */
+    private UUID institutionId;
 
     @Size(max = 255, message = "Event title must not exceed 255 characters")
     private String eventTitle;
@@ -36,6 +44,14 @@ public class SubmissionUpdateDto {
     private String liveEventName;
 
     private List<String> tags;
+
+    public UUID getInstitutionId() {
+        return institutionId;
+    }
+
+    public void setInstitutionId(UUID institutionId) {
+        this.institutionId = institutionId;
+    }
 
     public String getEventTitle() {
         return eventTitle;

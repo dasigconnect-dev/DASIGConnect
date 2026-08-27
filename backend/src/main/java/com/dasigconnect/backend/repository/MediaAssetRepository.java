@@ -35,7 +35,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         """, nativeQuery = true)
     List<MediaAsset> findReadyByInstitution(@Param("institutionId") UUID institutionId);
 
-    @Query("SELECT m FROM MediaAsset m WHERE m.deletedAt IS NULL ORDER BY m.createdAt DESC")
+    // Excludes STAGED rows (draft uploads not yet bound to an institution) so they
+    // never surface in the admin network-wide Media Repository view.
+    @Query("SELECT m FROM MediaAsset m WHERE m.deletedAt IS NULL AND m.status <> com.dasigconnect.backend.model.entity.MediaAssetStatus.STAGED ORDER BY m.createdAt DESC")
     List<MediaAsset> findAllActive();
 
     long countByMediaAlbumIdAndDeletedAtIsNull(UUID mediaAlbumId);
@@ -154,6 +156,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
           created_at
         FROM media_assets
         WHERE deleted_at IS NULL
+          AND status IS DISTINCT FROM 'STAGED'
           AND (status IS NULL OR status IN ('PROCESSING', 'FAILED') OR embedding IS NULL)
         ORDER BY created_at ASC
         LIMIT 10

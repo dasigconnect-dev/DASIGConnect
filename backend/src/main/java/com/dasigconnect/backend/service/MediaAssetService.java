@@ -280,6 +280,10 @@ public class MediaAssetService {
     public MediaAssetDetailDto get(UUID id, JwtUserDetails user) {
         MediaAsset asset = mediaAssetRepository.findActiveById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
+        // A STAGED draft upload has no institution and is not a library asset.
+        if (asset.getInstitution() == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
+        }
         if (!isAdmin(user) && !visibleInstitutionIds(user).contains(asset.getInstitution().getId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
         }

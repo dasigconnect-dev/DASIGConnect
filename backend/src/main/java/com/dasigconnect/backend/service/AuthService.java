@@ -42,7 +42,7 @@ public class AuthService {
     @Transactional
     public LoginResponseDto login(LoginRequestDto dto, HttpServletRequest request) {
         // Temporarily elevate scope to administrator to bypass RLS during authentication lookup
-        tenantScopeService.bindTenantScope(null, "super_administrator");
+        tenantScopeService.bindTenantScope(null, null, "super_administrator");
 
         User user = userRepository.findByEmail(dto.email())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
