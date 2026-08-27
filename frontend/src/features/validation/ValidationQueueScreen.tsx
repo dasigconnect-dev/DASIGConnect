@@ -676,29 +676,41 @@ export default function ValidationQueueScreen({
                     key={item.submissionId}
                     type="button"
                     onClick={() => setSelectedFailureId(item.submissionId)}
+                    title={`${item.eventTitle || "Untitled submission"} • ${item.institutionName || "Unknown institution"}`}
                   >
                     <div className="val-qi-head">
-                      <strong>{item.eventTitle || "Untitled submission"}</strong>
+                      <strong className="val-qi-title" title={item.eventTitle || "Untitled submission"}>
+                        {item.eventTitle || "Untitled submission"}
+                      </strong>
                       <span className={`val-status ${normalizeStatus(item.status)}`}>
                         {item.status === "missed_review"
                           ? "Missed Review"
                           : item.manualPublishInProgress
-                            ? "Manual Session Open"
+                            ? "Manual Session"
                             : statusLabel[normalizeStatus(item.status)] || "Publish Failed"}
                       </span>
                     </div>
-                    <div className="val-qi-meta">
-                      <span>{item.institutionName || "Unknown institution"}</span>
-                      <i></i>
-                      <span>{item.retryCount} retry attempt{item.retryCount === 1 ? "" : "s"}</span>
-                    </div>
-                    <div className="val-qi-bottom">
-                      <span className="val-deadline">
-                        <i className="ti ti-clock"></i>
-                        {item.scheduledAt ? formatDateTime(item.scheduledAt) : "No slot"}
+
+                    <div className="val-qi-institution">
+                      <i className="ti ti-building" aria-hidden="true" />
+                      <span title={item.institutionName || "Unknown institution"}>
+                        {item.institutionName || "Unknown institution"}
                       </span>
+                    </div>
+
+                    <div className="val-qi-bottom">
+                      <div className="val-qi-bottom-left">
+                        <span className="val-deadline">
+                          <i className="ti ti-clock"></i>
+                          <span>{item.scheduledAt ? formatDateTime(item.scheduledAt) : "No slot"}</span>
+                        </span>
+                        <span className="val-qi-date">
+                          {item.retryCount} attempt{item.retryCount === 1 ? "" : "s"}
+                        </span>
+                      </div>
+
                       {item.lastAttemptAt && (
-                        <span className="val-media-count">
+                        <span className="val-media-count" title={`Last attempt: ${formatDate(item.lastAttemptAt)}`}>
                           <i className="ti ti-history"></i> {formatDate(item.lastAttemptAt)}
                         </span>
                       )}
@@ -731,37 +743,49 @@ export default function ValidationQueueScreen({
                     key={item.id}
                     type="button"
                     onClick={() => void openSubmission(item)}
+                    title={`${item.eventTitle || "Untitled submission"} • ${item.institutionName || "Unknown institution"}`}
                   >
                     <div className="val-qi-head">
-                      <strong>{item.eventTitle || "Untitled submission"}</strong>
+                      <strong className="val-qi-title" title={item.eventTitle || "Untitled submission"}>
+                        {item.eventTitle || "Untitled submission"}
+                      </strong>
                       <span className={`val-status ${normalizeStatus(item.status)}`}>
                         {statusLabel[normalizeStatus(item.status)] || item.status}
                       </span>
                     </div>
-                    <div className="val-qi-meta">
-                      <span>{item.institutionName || "Unknown institution"}</span>
-                      <i></i>
-                      <span>{item.contributorEmail || "Unknown contributor"}</span>
-                      <i></i>
-                      <span>{formatDate(item.submittedAt || item.createdAt || item.eventDate)}</span>
+
+                    <div className="val-qi-institution">
+                      <i className="ti ti-building" aria-hidden="true" />
+                      <span title={item.institutionName || "Unknown institution"}>
+                        {item.institutionName || "Unknown institution"}
+                      </span>
                     </div>
+
                     <div className="val-qi-bottom">
-                      {item.fastTrack ? (
-                        <span className="val-deadline val-live">
-                          <i className="ti ti-broadcast"></i>
-                          {item.publishedAt ? `Live · ${formatDateTime(item.publishedAt)}` : "Live Event"}
+                      <div className="val-qi-bottom-left">
+                        {item.fastTrack ? (
+                          <span className="val-deadline val-live">
+                            <i className="ti ti-broadcast"></i>
+                            <span>{item.publishedAt ? `Live · ${formatDateTime(item.publishedAt)}` : "Live Event"}</span>
+                          </span>
+                        ) : (
+                          <span className="val-deadline">
+                            <i className="ti ti-clock"></i>
+                            <span>
+                              {item.scheduledAt
+                                ? formatDateTime(item.scheduledAt)
+                                : item.publishedAt
+                                  ? formatDateTime(item.publishedAt)
+                                  : "No slot"}
+                            </span>
+                          </span>
+                        )}
+                        <span className="val-qi-date">
+                          {formatDate(item.submittedAt || item.createdAt || item.eventDate)}
                         </span>
-                      ) : (
-                        <span className="val-deadline">
-                          <i className="ti ti-clock"></i>
-                          {item.scheduledAt
-                            ? formatDateTime(item.scheduledAt)
-                            : item.publishedAt
-                              ? formatDateTime(item.publishedAt)
-                              : "No slot"}
-                        </span>
-                      )}
-                      <span className="val-media-count">
+                      </div>
+
+                      <span className="val-media-count" title={`${item.mediaCount ?? 0} media files`}>
                         <i className="ti ti-photo"></i> {item.mediaCount ?? 0}
                       </span>
                     </div>
