@@ -268,9 +268,10 @@ export function registerMediaAsset(payload: MediaAssetRegisterRequest) {
   return api.post<MediaAsset>("/media-assets/upload", payload);
 }
 
-export function listMediaAlbums(institutionId?: string | null) {
+export function listMediaAlbums(institutionId?: string | null, signal?: AbortSignal) {
   return api.get<MediaAlbum[]>("/media-assets/albums", {
     params: institutionId ? { institutionId } : undefined,
+    signal,
   });
 }
 

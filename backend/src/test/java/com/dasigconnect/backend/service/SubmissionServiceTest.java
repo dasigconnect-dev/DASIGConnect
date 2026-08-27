@@ -89,6 +89,9 @@ class SubmissionServiceTest {
     @Mock
     private EntityManager entityManager;
 
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private SubmissionService submissionService;
 
@@ -189,6 +192,7 @@ class SubmissionServiceTest {
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+        when(guardRailService.validate(any(), any())).thenReturn(new GuardRailResult(List.of(), List.of()));
 
         SubmissionResponseDto result = submissionService.update(submissionId, dto, contributorPrincipal);
 
@@ -241,13 +245,8 @@ class SubmissionServiceTest {
         assertThat(result.getStatus()).isEqualTo("pending");
         assertThat(result.getSubmittedAt()).isNotNull();
         verify(auditLogService).record(eq(contributor), eq("SUBMISSION_SUBMITTED"), eq(null), eq(null), eq(submissionId), any());
-        // T1 — contributor does NOT receive a notification; validators receive the spec message
-        verify(notificationService, never()).createNotification(eq(contributor), any(), any(), any());
-        verify(notificationService).createNotification(
-                eq(validator),
-                eq(NotificationEventType.submission_pending),
-                org.mockito.ArgumentMatchers.contains("submitted 'Research Expo' for approval"),
-                eq("/submissions/" + submissionId));
+        // T1 — event is published for asynchronous multi-channel notification delivery (T-01)
+        verify(eventPublisher).publishEvent(any(com.dasigconnect.backend.event.SubmissionPendingEvent.class));
     }
 
     @Test

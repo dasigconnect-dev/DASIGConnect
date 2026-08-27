@@ -19,6 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import org.springframework.context.ApplicationEventPublisher;
 
+import com.dasigconnect.backend.event.FastTrackSubmissionEvent;
+import com.dasigconnect.backend.event.SubmissionPendingEvent;
 import com.dasigconnect.backend.event.SubmissionRescheduledEvent;
 import com.dasigconnect.backend.exception.GuardRailViolationException;
 import com.dasigconnect.backend.exception.MediaAssetNotFoundException;
@@ -292,6 +294,12 @@ public class SubmissionService {
         }
 
         if (!submission.isFastTrack() && dto.getScheduledAt() != null && !dto.getScheduledAt().equals(submission.getScheduledAt())) {
+            if (guardRailsEnforced) {
+                GuardRailResult guardRailResult = guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt());
+                if (guardRailResult.isBlocked()) {
+                    throw new GuardRailViolationException(guardRailResult.getHardBlocks());
+                }
+            }
             submission.setScheduledAt(dto.getScheduledAt());
             // reserve() releases any existing held slot and creates a new one
             slotReservationService.reserve(submissionId, submission.getInstitution().getId(), dto.getScheduledAt());
@@ -373,36 +381,13 @@ public class SubmissionService {
                         ? Map.of("scheduledAt", submission.getScheduledAt().toString())
                         : Map.of());
 
-        // T1 — notify all institution validators (spec: contributor does not receive T1)
-        try {
-            String contributorEmail = submission.getContributor().getEmail();
-            String scheduledPart = submission.getScheduledAt() != null
-                    ? " — scheduled for " + formatInstant(submission.getScheduledAt())
-                    : "";
-            String t1Message = fastTrack
-                    ? "URGENT Fast-Track submission: " + contributorEmail + " submitted '"
-                            + submission.getEventTitle() + "' for immediate approval."
-                    : contributorEmail + " submitted '" + submission.getEventTitle()
-                            + "' for approval" + scheduledPart + ".";
-            String submissionLink = "/submissions/" + submissionId;
-
-            List<User> administrators = userRepository.findByRole(UserRole.administrator);
-            for (User administrator : administrators) {
-                notificationService.createNotification(
-                        administrator,
-                        NotificationEventType.submission_pending,
-                        t1Message,
-                        submissionLink);
-                if (fastTrack) {
-                    emailDeliveryService.send(
-                            administrator,
-                            "T-11_FAST_TRACK_SUBMISSION",
-                            "URGENT: Fast-Track submission needs approval",
-                            t1Message + "\n\nOpen DASIGConnect: " + submissionLink);
-                }
+        // T-01 / T-11 — notify institution administrators via domain events
+        if (eventPublisher != null) {
+            if (fastTrack) {
+                eventPublisher.publishEvent(new FastTrackSubmissionEvent(submission));
+            } else {
+                eventPublisher.publishEvent(new SubmissionPendingEvent(submission));
             }
-        } catch (Exception e) {
-            log.warn("T1 notifications skipped for submission {} — {}", submissionId, e.getMessage());
         }
 
         log.info("Submission {} → PENDING by user {}", submissionId, user.userId());

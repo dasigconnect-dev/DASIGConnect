@@ -5,6 +5,7 @@ interface AlbumComboboxProps {
   existingAlbums?: string[];
   readOnly?: boolean;
   placeholder?: string;
+  autoMatchLabel?: string;
   onChange: (value: string) => void;
   onAutoMatch: () => void;
 }
@@ -14,6 +15,7 @@ export default function AlbumCombobox({
   existingAlbums = [],
   readOnly,
   placeholder,
+  autoMatchLabel = "Auto-Match from Event Title",
   onChange,
   onAutoMatch,
 }: AlbumComboboxProps) {
@@ -86,7 +88,7 @@ export default function AlbumCombobox({
               setOpen(false);
             }}
           >
-            <i className="ti ti-sparkles" /> Auto-Match from Event Title
+            <i className="ti ti-sparkles" /> {autoMatchLabel}
           </button>
 
           {showCreate && (

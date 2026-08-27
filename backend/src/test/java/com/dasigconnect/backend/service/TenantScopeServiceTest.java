@@ -74,6 +74,25 @@ class TenantScopeServiceTest {
         inOrder.verify(roleQuery).getSingleResult();
     }
 
+    @Test
+    void bindTenantScopeMapsSuperAdministratorToAdministratorForRls() {
+        when(entityManager.createNativeQuery("SELECT set_config(:key, :value, false)"))
+                .thenReturn(institutionQuery, roleQuery);
+        when(institutionQuery.setParameter("key", "app.current_institution_id")).thenReturn(institutionQuery);
+        when(institutionQuery.setParameter("value", "")).thenReturn(institutionQuery);
+        when(roleQuery.setParameter("key", "app.current_role")).thenReturn(roleQuery);
+        when(roleQuery.setParameter("value", "administrator")).thenReturn(roleQuery);
+
+        TenantScopeService service = tenantScopeService();
+
+        service.bindTenantScope(null, "super_administrator");
+
+        InOrder inOrder = inOrder(entityManager, institutionQuery, roleQuery);
+        inOrder.verify(roleQuery).setParameter("key", "app.current_role");
+        inOrder.verify(roleQuery).setParameter("value", "administrator");
+        inOrder.verify(roleQuery).getSingleResult();
+    }
+
     private TenantScopeService tenantScopeService() {
         TenantScopeService service = new TenantScopeService();
         ReflectionTestUtils.setField(service, "entityManager", entityManager);

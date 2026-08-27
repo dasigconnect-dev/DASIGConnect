@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { MediaAsset, MediaUsage } from "../../api/mediaApi";
 import {
@@ -116,6 +116,33 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   // so there is no reason to restore a stale sessionStorage selection.
   useEffect(() => {
     clearSelection();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Deep link: ?asset=<id> opens that asset's detail panel (e.g. from a
+  // read-only submission's "View in library" link). Consume the param after.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const assetId = searchParams.get("asset");
+    if (!assetId) return;
+    let active = true;
+    getMediaAsset(assetId)
+      .then((res) => {
+        if (!active) return;
+        setSelectedAsset(res.data);
+        setPanelOpen(true);
+      })
+      .catch(() => {
+        if (active) toast.error("That media asset could not be opened.");
+      })
+      .finally(() => {
+        const next = new URLSearchParams(searchParams);
+        next.delete("asset");
+        setSearchParams(next, { replace: true });
+      });
+    return () => {
+      active = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

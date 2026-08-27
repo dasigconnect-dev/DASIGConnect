@@ -179,4 +179,20 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         WHERE id = :id
         """, nativeQuery = true)
     void purgeAiProfile(@Param("id") UUID id);
+
+    @Query(value = """
+        SELECT COUNT(*) FROM media_assets
+        WHERE deleted_at IS NULL
+          AND status = 'FAILED'
+        """, nativeQuery = true)
+    long countFailedAssets();
+
+    @Query(value = """
+        SELECT file_name FROM media_assets
+        WHERE deleted_at IS NULL
+          AND status = 'FAILED'
+        ORDER BY created_at DESC
+        LIMIT 5
+        """, nativeQuery = true)
+    List<String> findSampleFailedFilenames();
 }

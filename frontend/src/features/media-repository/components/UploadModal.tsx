@@ -1,8 +1,7 @@
 import { createPortal } from "react-dom";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { MediaAlbum } from "../../../api/mediaApi";
-
-type AlbumMode = "existing" | "auto" | "new";
+import AlbumCombobox from "../../../components/ui/AlbumCombobox";
 
 export interface UploadMetadata {
   albumId?: string | null;
@@ -28,30 +27,26 @@ export default function UploadModal({ open, institutionName, onClose, albums, on
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
-  const [albumMode, setAlbumMode] = useState<AlbumMode>(albums.length > 0 ? "existing" : "new");
-  const [selectedAlbumId, setSelectedAlbumId] = useState(albums[0]?.id ?? "");
-  const [newAlbumName, setNewAlbumName] = useState("");
+  const [albumInput, setAlbumInput] = useState("");
+  const [autoMatched, setAutoMatched] = useState(false);
   const [tagsInput, setTagsInput] = useState("");
   const [inlineError, setInlineError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    if (albums.length > 0 && !selectedAlbumId) {
-      setSelectedAlbumId(albums[0].id);
-    }
-    if (albums.length === 0 && albumMode === "existing") {
-      setAlbumMode("new");
-    }
-  }, [albumMode, albums, open, selectedAlbumId]);
 
   const tags = useMemo(
     () => tagsInput.split(",").map((tag) => tag.trim()).filter(Boolean),
     [tagsInput],
   );
 
+  const albumNames = useMemo(() => albums.map((album) => album.name), [albums]);
+
+  const resolvedExistingAlbum = useMemo(() => {
+    const trimmed = albumInput.trim().toLowerCase();
+    if (!trimmed) return null;
+    return albums.find((album) => album.name.trim().toLowerCase() === trimmed) ?? null;
+  }, [albumInput, albums]);
+
   const autoMatchedAlbum = useMemo(() => {
-    if (albumMode !== "auto") return null;
     const cues = new Set(tags.map((tag) => tag.toLowerCase()));
     for (const file of selectedFiles) {
       const name = file.name.toLowerCase();
@@ -74,7 +69,7 @@ export default function UploadModal({ open, institutionName, onClose, albums, on
         albumWords.some((word) => word === cue),
       );
     }) ?? null;
-  }, [albumMode, albums, selectedFiles, tags]);
+  }, [albums, selectedFiles, tags]);
 
   const fileError = useMemo(() => {
     for (const file of selectedFiles) {
@@ -90,12 +85,10 @@ export default function UploadModal({ open, institutionName, onClose, albums, on
   }, [selectedFiles]);
 
   const metadataError = useMemo(() => {
-    if (albumMode === "existing" && !selectedAlbumId) return "Select an album or create a new one.";
-    if (albumMode === "auto" && !autoMatchedAlbum) return "No confident album match found. Select an album or create a new one.";
-    if (albumMode === "new" && !newAlbumName.trim()) return "Enter a new album name.";
+    if (!albumInput.trim()) return "Select an existing album or type a name to create one.";
     if (tags.length === 0) return "Add at least one media tag.";
     return "";
-  }, [albumMode, autoMatchedAlbum, newAlbumName, selectedAlbumId, tags.length]);
+  }, [albumInput, tags.length]);
 
   const canUpload = selectedFiles.length > 0 && !fileError && !metadataError && !uploading;
 
@@ -110,10 +103,25 @@ export default function UploadModal({ open, institutionName, onClose, albums, on
     setSelectedFiles([]);
     setProgress(0);
     setInlineError("");
-    setNewAlbumName("");
+    setAlbumInput("");
+    setAutoMatched(false);
     setTagsInput("");
-    setAlbumMode(albums.length > 0 ? "existing" : "new");
-    setSelectedAlbumId(albums[0]?.id ?? "");
+  }
+
+  function handleAlbumChange(value: string) {
+    setAlbumInput(value);
+    setAutoMatched(false);
+    setInlineError("");
+  }
+
+  function handleAutoMatchAlbum() {
+    if (autoMatchedAlbum) {
+      setAlbumInput(autoMatchedAlbum.name);
+      setAutoMatched(true);
+      setInlineError("");
+    } else {
+      setInlineError("No confident album match from tags or filenames. Type an album name instead.");
+    }
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -138,21 +146,18 @@ export default function UploadModal({ open, institutionName, onClose, albums, on
     setUploading(true);
     setProgress(0);
     try {
-      let albumId: string | null | undefined =
-        albumMode === "existing" ? selectedAlbumId : albumMode === "auto" ? autoMatchedAlbum?.id : null;
-      let albumName = albumMode === "new" ? newAlbumName.trim() : "";
-      if (albumMode === "new") {
-        const created = await onCreateAlbum(albumName);
+      let albumId: string | null | undefined = resolvedExistingAlbum?.id ?? null;
+      let albumName = resolvedExistingAlbum?.name ?? albumInput.trim();
+      if (!resolvedExistingAlbum) {
+        const created = await onCreateAlbum(albumInput.trim());
         albumId = created.id;
         albumName = created.name;
-      } else if (albumMode === "auto" && autoMatchedAlbum) {
-        albumName = autoMatchedAlbum.name;
       }
 
       const metadata: UploadMetadata = {
         albumId,
         albumName,
-        autoMatchAlbum: albumMode === "auto",
+        autoMatchAlbum: autoMatched,
         tags,
       };
       const total = selectedFiles.length;
@@ -259,68 +264,25 @@ export default function UploadModal({ open, institutionName, onClose, albums, on
           {selectedCount > 0 && (
             <div className="med-upload-organize">
               <div className="med-upload-section-title">Album</div>
-              <div className="med-upload-choice-row" role="radiogroup" aria-label="Album assignment">
-                <button
-                  className={`med-upload-choice${albumMode === "existing" ? " active" : ""}`}
-                  type="button"
-                  onClick={() => setAlbumMode("existing")}
-                  disabled={uploading || albums.length === 0}
-                >
-                  Existing Album
-                </button>
-                <button
-                  className={`med-upload-choice${albumMode === "auto" ? " active" : ""}`}
-                  type="button"
-                  onClick={() => setAlbumMode("auto")}
-                  disabled={uploading || albums.length === 0}
-                >
-                  Auto-Match
-                </button>
-                <button
-                  className={`med-upload-choice${albumMode === "new" ? " active" : ""}`}
-                  type="button"
-                  onClick={() => setAlbumMode("new")}
-                  disabled={uploading}
-                >
-                  Create New
-                </button>
-              </div>
+              <AlbumCombobox
+                value={albumInput}
+                existingAlbums={albumNames}
+                readOnly={uploading}
+                placeholder="Search, select, or create an album"
+                autoMatchLabel="Auto-Match from Tags & Filenames"
+                onChange={handleAlbumChange}
+                onAutoMatch={handleAutoMatchAlbum}
+              />
 
-              {albumMode === "existing" && (
-                <select
-                  className="med-upload-input"
-                  value={selectedAlbumId}
-                  onChange={(event) => setSelectedAlbumId(event.target.value)}
-                  disabled={uploading}
-                >
-                  <option value="">Select album</option>
-                  {albums.map((album) => (
-                    <option key={album.id} value={album.id}>{album.name}</option>
-                  ))}
-                </select>
-              )}
-
-              {albumMode === "auto" && (
-                <div className={`med-upload-note${autoMatchedAlbum ? " success" : ""}`}>
-                  {autoMatchedAlbum ? (
-                    <>
-                      Matched to <strong>{autoMatchedAlbum.name}</strong>. Upload will use this album.
-                    </>
-                  ) : (
-                    "No confident match yet. Use a tag or filename related to an existing album, or select/create an album."
-                  )}
+              {autoMatched && resolvedExistingAlbum ? (
+                <div className="med-upload-note success">
+                  Auto-matched to <strong>{resolvedExistingAlbum.name}</strong>. Upload will use this album.
                 </div>
-              )}
-
-              {albumMode === "new" && (
-                <input
-                  className="med-upload-input"
-                  value={newAlbumName}
-                  onChange={(event) => setNewAlbumName(event.target.value)}
-                  placeholder="New album name"
-                  disabled={uploading}
-                />
-              )}
+              ) : albumInput.trim() && !resolvedExistingAlbum ? (
+                <div className="med-upload-note">
+                  New album <strong>"{albumInput.trim()}"</strong> will be created on upload.
+                </div>
+              ) : null}
 
               <div className="med-upload-section-title with-tip">
                 Tags

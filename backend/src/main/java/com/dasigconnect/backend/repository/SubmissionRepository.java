@@ -176,11 +176,15 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("from") Instant from,
             @Param("to") Instant to);
 
-    /** Calendar API (admin): all submissions with a scheduled slot, any status. */
+    /**
+     * Calendar API (admin): all submissions that have a calendar position, any
+     * status. A scheduled slot OR a publish timestamp counts — the latter covers
+     * Live Event / Fast-Track posts that publish without ever reserving a slot.
+     */
     @Query("""
         SELECT s FROM Submission s
-        WHERE s.scheduledAt IS NOT NULL
-        ORDER BY s.scheduledAt ASC
+        WHERE s.scheduledAt IS NOT NULL OR s.publishedAt IS NOT NULL
+        ORDER BY COALESCE(s.scheduledAt, s.publishedAt) ASC
         """)
     List<Submission> findAllWithScheduledSlot();
 
@@ -192,7 +196,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
      */
     @Query("""
         SELECT s FROM Submission s
-        WHERE s.scheduledAt IS NOT NULL
+        WHERE (s.scheduledAt IS NOT NULL OR s.publishedAt IS NOT NULL)
         AND s.status IN (
             com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
             com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled,
@@ -202,7 +206,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             com.dasigconnect.backend.model.entity.SubmissionStatus.published_manual,
             com.dasigconnect.backend.model.entity.SubmissionStatus.admin_direct_post
         )
-        ORDER BY s.scheduledAt ASC
+        ORDER BY COALESCE(s.scheduledAt, s.publishedAt) ASC
         """)
     List<Submission> findAllCalendarVisibleSlots();
 
@@ -222,4 +226,49 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         AND s.manualPublishStartedAt < :cutoff
         """)
     List<Submission> findAbandonedManualPublishes(@Param("cutoff") Instant cutoff);
+
+    /** T-07: Count upcoming scheduled posts for an institution in a time window. */
+    @Query("""
+        SELECT COUNT(s) FROM Submission s
+        WHERE s.institution.id = :institutionId
+          AND s.status IN (
+              com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
+              com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled
+          )
+          AND s.scheduledAt BETWEEN :from AND :to
+        """)
+    long countUpcomingScheduledByInstitution(
+            @Param("institutionId") UUID institutionId,
+            @Param("from") Instant from,
+            @Param("to") Instant to);
+
+    /** T-07 / A6: Find historical published post titles for an institution. */
+    @Query("""
+        SELECT s.eventTitle FROM Submission s
+        WHERE s.institution.id = :institutionId
+          AND s.status IN (
+              com.dasigconnect.backend.model.entity.SubmissionStatus.published,
+              com.dasigconnect.backend.model.entity.SubmissionStatus.published_manual
+          )
+        ORDER BY s.createdAt DESC
+        LIMIT 10
+        """)
+    List<String> findRecentAndHistoricalPostTitles(@Param("institutionId") UUID institutionId);
+
+    /** T-07 / A6: Find distinct categories used recently across other partner institutions. */
+    @Query("""
+        SELECT DISTINCT s.category FROM Submission s
+        WHERE s.institution.id != :institutionId
+          AND s.category IS NOT NULL
+          AND s.category != ''
+          AND s.status IN (
+              com.dasigconnect.backend.model.entity.SubmissionStatus.published,
+              com.dasigconnect.backend.model.entity.SubmissionStatus.published_manual,
+              com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled
+          )
+          AND s.createdAt >= :since
+        """)
+    List<String> findRecentCategoriesFromOtherInstitutions(
+            @Param("institutionId") UUID institutionId,
+            @Param("since") Instant since);
 }

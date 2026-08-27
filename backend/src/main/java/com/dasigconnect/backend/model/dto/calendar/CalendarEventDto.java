@@ -30,7 +30,9 @@ public class CalendarEventDto {
         dto.institutionName = s.getInstitution() != null ? s.getInstitution().getName() : null;
         dto.institutionCode = s.getInstitution() != null ? s.getInstitution().getCode() : null;
         dto.status = s.getStatus() != null ? s.getStatus().name() : null;
-        dto.scheduledAt = s.getScheduledAt();
+        // Fall back to the publish time so Live Event / Fast-Track posts (which
+        // never reserve a slot) still have a calendar position.
+        dto.scheduledAt = s.getScheduledAt() != null ? s.getScheduledAt() : s.getPublishedAt();
         dto.publishedAt = s.getPublishedAt();
         dto.caption = s.getCaption();
         dto.description = s.getDescription();
@@ -43,16 +45,18 @@ public class CalendarEventDto {
         return dto;
     }
 
-    /** For cross-institution slots visible to contributors/validators: timing only, content masked. */
+    /** For cross-institution slots visible to contributors/validators: timing and title visible, sensitive content (caption, media, description, contributor) masked. */
     public static CalendarEventDto masked(Submission s) {
         CalendarEventDto dto = new CalendarEventDto();
         dto.id = s.getId();
-        dto.title = null;
+        dto.title = s.getEventTitle();
         dto.institutionId = s.getInstitution() != null ? s.getInstitution().getId() : null;
         dto.institutionName = s.getInstitution() != null ? s.getInstitution().getName() : null;
         dto.institutionCode = s.getInstitution() != null ? s.getInstitution().getCode() : null;
         dto.status = s.getStatus() != null ? s.getStatus().name() : null;
-        dto.scheduledAt = s.getScheduledAt();
+        // Fall back to the publish time so Live Event / Fast-Track posts (which
+        // never reserve a slot) still have a calendar position.
+        dto.scheduledAt = s.getScheduledAt() != null ? s.getScheduledAt() : s.getPublishedAt();
         dto.publishedAt = s.getPublishedAt();
         dto.caption = null;
         dto.description = null;
