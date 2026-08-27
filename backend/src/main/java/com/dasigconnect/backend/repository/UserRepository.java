@@ -43,4 +43,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
             order by user.createdAt desc
             """)
     List<User> findByRolesOrderByCreatedAtDesc(@Param("roles") Collection<UserRole> roles);
+
+    /** Batch load with institution eagerly fetched — avoids an N+1 when rendering lists. */
+    @Query("select user from User user left join fetch user.institution where user.id in :ids")
+    List<User> findAllByIdWithInstitution(@Param("ids") Collection<UUID> ids);
 }

@@ -4,6 +4,7 @@ import com.dasigconnect.backend.model.dto.audit.AuditEntityType;
 import com.dasigconnect.backend.model.dto.audit.AuditLogCategory;
 import com.dasigconnect.backend.model.dto.audit.AuditLogDto;
 import com.dasigconnect.backend.model.dto.audit.AuditLogFilterCriteria;
+import com.dasigconnect.backend.model.dto.audit.AuditLogPageDto;
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.service.AuditLogService;
 import java.time.Instant;
@@ -37,7 +38,7 @@ public class AuditLogController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<Page<AuditLogDto>>> getAuditLogs(
+    public ResponseEntity<ApiResponse<AuditLogPageDto>> getAuditLogs(
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) UUID actorId,
@@ -62,7 +63,7 @@ public class AuditLogController {
         Pageable pageable = PageRequest.of(clampedPage, clampedSize, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<AuditLogDto> results = auditLogService.searchAuditLogs(criteria, pageable);
-        return ResponseEntity.ok(ApiResponse.success(results));
+        return ResponseEntity.ok(ApiResponse.success(AuditLogPageDto.from(results)));
     }
 
     @GetMapping("/categories")

@@ -17,6 +17,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -135,6 +136,15 @@ public class GlobalExceptionHandler {
             response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
         }
         log.debug("Async request timed out (SSE stream expired)");
+    }
+
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleClientDisconnect(AsyncRequestNotUsableException ex) {
+        // The client (browser/axios) closed the connection before the response
+        // finished writing — e.g. React unmounts the view and aborts the fetch,
+        // or the user navigates away mid-request. Not a server fault: the
+        // response is already committed so nothing can be sent. Absorb quietly.
+        log.debug("Client disconnected before the response was fully written: {}", ex.getMessage());
     }
 
     @ExceptionHandler(AccessDeniedException.class)

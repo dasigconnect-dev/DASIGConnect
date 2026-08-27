@@ -22,7 +22,6 @@ import com.dasigconnect.backend.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +38,9 @@ class AuditLogServiceTest {
 
     @Mock
     private AuditLogRepository auditLogRepository;
+
+    @Mock
+    private AuditLogWriter auditLogWriter;
 
     @Mock
     private SubmissionRepository submissionRepository;
@@ -63,6 +65,7 @@ class AuditLogServiceTest {
         objectMapper = new ObjectMapper();
         auditLogService = new AuditLogService(
                 auditLogRepository,
+                auditLogWriter,
                 submissionRepository,
                 userRepository,
                 mediaAssetRepository,
@@ -78,7 +81,7 @@ class AuditLogServiceTest {
         Submission submission = new Submission();
         submission.setId(submissionId);
         submission.setEventTitle("DOST Science Week");
-        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionRepository.findAllById(any())).thenReturn(List.of(submission));
 
         User actor = new User();
         actor.setId(UUID.randomUUID());
@@ -86,6 +89,7 @@ class AuditLogServiceTest {
         actor.setFirstName("Maria");
         actor.setLastName("Clara");
         actor.setRole(UserRole.administrator);
+        when(userRepository.findAllByIdWithInstitution(any())).thenReturn(List.of(actor));
 
         AuditLog log = new AuditLog();
         log.setId(UUID.randomUUID());
@@ -120,7 +124,7 @@ class AuditLogServiceTest {
     @Test
     void searchAuditLogs_whenEntityDeleted_returnsFallbackLabel() {
         UUID missingId = UUID.randomUUID();
-        when(submissionRepository.findById(missingId)).thenReturn(Optional.empty());
+        when(submissionRepository.findAllById(any())).thenReturn(List.of());
 
         AuditLog log = new AuditLog();
         log.setId(UUID.randomUUID());

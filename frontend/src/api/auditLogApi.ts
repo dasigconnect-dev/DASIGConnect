@@ -104,12 +104,6 @@ export interface AuditMetadataOptions {
   entityTypes: CategoryOption[];
 }
 
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  message?: string;
-}
-
 export async function getAuditLogs(
   params: AuditLogFilterParams = {},
   signal?: AbortSignal
@@ -128,13 +122,15 @@ export async function getAuditLogs(
   if (params.size !== undefined) query.append("size", String(params.size));
 
   const url = `/audit-log${query.toString() ? `?${query.toString()}` : ""}`;
-  const response = await api.get<ApiResponse<AuditLogPageResponse>>(url, { signal });
-  return response.data.data;
+  // The shared `api` instance's response interceptor already unwraps the
+  // { success, data, error } envelope, so `response.data` IS the page.
+  const response = await api.get<AuditLogPageResponse>(url, { signal });
+  return response.data;
 }
 
 export async function getAuditCategories(signal?: AbortSignal): Promise<AuditMetadataOptions> {
-  const response = await api.get<ApiResponse<AuditMetadataOptions>>("/audit-log/categories", { signal });
-  return response.data.data;
+  const response = await api.get<AuditMetadataOptions>("/audit-log/categories", { signal });
+  return response.data;
 }
 
 export async function downloadAuditLogCsv(params: AuditLogFilterParams = {}): Promise<void> {

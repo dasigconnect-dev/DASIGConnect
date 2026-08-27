@@ -106,6 +106,7 @@ export default function AuditLogScreen({ user: _user }: Props) {
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [exporting, setExporting] = useState(false);
   const [metadataOptions, setMetadataOptions] = useState<AuditMetadataOptions | null>(null);
 
@@ -136,17 +137,39 @@ export default function AuditLogScreen({ user: _user }: Props) {
   const loadData = useCallback(
     async (signal?: AbortSignal) => {
       setLoading(true);
+      setLoadError("");
       try {
         const response = await getAuditLogs(filterParams, signal);
         if (signal?.aborted) return;
         setLogs(response.content || []);
         setTotalElements(response.totalElements || 0);
         setTotalPages(response.totalPages || 0);
+        setLoadError("");
       } catch (err: unknown) {
-        if ((err as { name?: string }).name === "CanceledError") return;
-        toast.error("Unable to load audit logs. Please try again.");
+        // A cancelled request must never surface as an error. Axios reports this
+        // as "CanceledError" / code "ERR_CANCELED"; the fetch adapter throws a
+        // DOMException named "AbortError". The surest signal is the signal itself.
+        const e = err as { name?: string; code?: string };
+        if (
+          signal?.aborted ||
+          e?.name === "CanceledError" ||
+          e?.name === "AbortError" ||
+          e?.code === "ERR_CANCELED"
+        ) {
+          return;
+        }
+        const status = (err as { response?: { status?: number } }).response?.status;
+        const message =
+          status === 403
+            ? "You do not have permission to view the audit log."
+            : "Unable to load audit logs. The server may be unavailable — try again.";
+        setLoadError(message);
+        setLogs([]);
+        setTotalElements(0);
+        setTotalPages(0);
+        toast.error(message);
       } finally {
-        setLoading(false);
+        if (!signal?.aborted) setLoading(false);
       }
     },
     [filterParams, toast]
@@ -413,7 +436,23 @@ export default function AuditLogScreen({ user: _user }: Props) {
           </div>
         )}
 
-        {!loading && logs.length === 0 && (
+        {!loading && loadError && logs.length === 0 && (
+          <div className="audit-state-container">
+            <i className="ti ti-alert-triangle" />
+            <h3>Could Not Load the Audit Log</h3>
+            <p>{loadError}</p>
+            <button
+              type="button"
+              className="audit-export-btn"
+              onClick={() => void loadData()}
+            >
+              <i className="ti ti-refresh" />
+              Retry
+            </button>
+          </div>
+        )}
+
+        {!loading && !loadError && logs.length === 0 && (
           <div className="audit-state-container">
             <i className="ti ti-search-off" />
             <h3>No Audit Entries Found</h3>

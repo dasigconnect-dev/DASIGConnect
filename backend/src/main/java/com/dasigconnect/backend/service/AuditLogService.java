@@ -26,22 +26,23 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -53,6 +54,7 @@ public class AuditLogService {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH).withZone(PHT_ZONE);
 
     private final AuditLogRepository auditLogRepository;
+    private final AuditLogWriter auditLogWriter;
     private final SubmissionRepository submissionRepository;
     private final UserRepository userRepository;
     private final MediaAssetRepository mediaAssetRepository;
@@ -62,6 +64,7 @@ public class AuditLogService {
 
     public AuditLogService(
             AuditLogRepository auditLogRepository,
+            AuditLogWriter auditLogWriter,
             SubmissionRepository submissionRepository,
             UserRepository userRepository,
             MediaAssetRepository mediaAssetRepository,
@@ -69,6 +72,7 @@ public class AuditLogService {
             FacebookPageTokenRepository facebookPageTokenRepository,
             ObjectMapper objectMapper) {
         this.auditLogRepository = auditLogRepository;
+        this.auditLogWriter = auditLogWriter;
         this.submissionRepository = submissionRepository;
         this.userRepository = userRepository;
         this.mediaAssetRepository = mediaAssetRepository;
@@ -77,7 +81,15 @@ public class AuditLogService {
         this.objectMapper = objectMapper;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    /**
+     * Writes one audit entry in its own ({@code REQUIRES_NEW}) transaction so a
+     * failure here can never roll back — or be rolled back by — the business
+     * action that triggered it. Persistence failures are logged and swallowed: a
+     * missing audit row is bad, but blocking the underlying admin action because
+     * of it would be worse. Not {@code @Transactional} itself — the new
+     * transaction lives in {@link AuditLogWriter} so this try/catch can catch a
+     * failed commit too.
+     */
     public AuditLog record(
             User actor,
             String action,
@@ -85,14 +97,20 @@ public class AuditLogService {
             String userAgent,
             UUID resourceId,
             Map<String, ?> metadata) {
-        AuditLog auditLog = new AuditLog();
-        auditLog.setActor(actor);
-        auditLog.setAction(action);
-        auditLog.setIpAddress(ipAddress);
-        auditLog.setUserAgent(userAgent);
-        auditLog.setResourceId(resourceId);
-        auditLog.setMetadata(toJson(metadata));
-        return auditLogRepository.save(auditLog);
+        try {
+            AuditLog auditLog = new AuditLog();
+            auditLog.setActor(actor);
+            auditLog.setAction(action);
+            auditLog.setIpAddress(ipAddress);
+            auditLog.setUserAgent(userAgent);
+            auditLog.setResourceId(resourceId);
+            auditLog.setMetadata(toJson(metadata));
+            return auditLogWriter.save(auditLog);
+        } catch (RuntimeException ex) {
+            log.warn("Failed to write audit entry action={} resourceId={}: {}",
+                    action, resourceId, ex.toString());
+            return null;
+        }
     }
 
     public AuditLog recordSystemAction(String action, UUID resourceId, Map<String, ?> metadata) {
@@ -102,8 +120,88 @@ public class AuditLogService {
     @Transactional(readOnly = true)
     public Page<AuditLogDto> searchAuditLogs(AuditLogFilterCriteria criteria, Pageable pageable) {
         Specification<AuditLog> spec = buildSpecification(criteria);
-        Page<AuditLog> page = auditLogRepository.findAll(spec, pageable);
-        return page.map(this::mapToDto);
+        Page<AuditLog> page;
+        try {
+            page = auditLogRepository.findAll(spec, pageable);
+        } catch (RuntimeException ex) {
+            log.error("Audit log query failed (criteria={}): {}", criteria, ex.toString(), ex);
+            throw ex;
+        }
+        Lookups lookups = buildLookups(page.getContent());
+        return page.map(entry -> mapToDtoSafe(entry, lookups));
+    }
+
+    /**
+     * Batch-resolves every actor and referenced entity for a page of audit rows
+     * in a handful of {@code IN (...)} queries instead of one findById per row —
+     * the old per-row lookups made a 20-row page dozens of round trips to the
+     * (remote) database, slow enough that the client would give up mid-response.
+     */
+    private Lookups buildLookups(List<AuditLog> rows) {
+        Set<UUID> actorIds = new HashSet<>();
+        Map<AuditEntityType, Set<UUID>> byType = new HashMap<>();
+        for (AuditLog row : rows) {
+            if (row.getActor() != null && row.getActor().getId() != null) {
+                actorIds.add(row.getActor().getId());
+            }
+            if (row.getResourceId() != null) {
+                byType.computeIfAbsent(AuditEntityType.fromAction(row.getAction()), k -> new HashSet<>())
+                        .add(row.getResourceId());
+            }
+        }
+
+        Map<UUID, User> users = new HashMap<>();
+        Set<UUID> userIds = new HashSet<>(actorIds);
+        userIds.addAll(byType.getOrDefault(AuditEntityType.USER, Set.of()));
+        if (!userIds.isEmpty()) {
+            userRepository.findAllByIdWithInstitution(userIds).forEach(u -> users.put(u.getId(), u));
+        }
+
+        return new Lookups(
+                users,
+                indexById(byType.get(AuditEntityType.SUBMISSION), submissionRepository::findAllById, Submission::getId),
+                indexById(byType.get(AuditEntityType.MEDIA_ASSET), mediaAssetRepository::findAllById, MediaAsset::getId),
+                indexById(byType.get(AuditEntityType.INSTITUTION), institutionRepository::findAllById, Institution::getId));
+    }
+
+    private <T> Map<UUID, T> indexById(Set<UUID> ids,
+                                       Function<Collection<UUID>, List<T>> loader,
+                                       Function<T, UUID> idOf) {
+        if (ids == null || ids.isEmpty()) return Map.of();
+        return loader.apply(ids).stream().collect(Collectors.toMap(idOf, Function.identity(), (a, b) -> a));
+    }
+
+    private record Lookups(
+            Map<UUID, User> users,
+            Map<UUID, Submission> submissions,
+            Map<UUID, MediaAsset> mediaAssets,
+            Map<UUID, Institution> institutions) {}
+
+    /** Never let one unmappable row fail the whole page. */
+    private AuditLogDto mapToDtoSafe(AuditLog entry, Lookups lookups) {
+        try {
+            return mapToDto(entry, lookups);
+        } catch (RuntimeException ex) {
+            UUID id = entry != null ? entry.getId() : null;
+            String action = entry != null ? entry.getAction() : null;
+            log.warn("Failed to map audit entry id={} action={}: {}", id, action, ex.toString());
+            AuditLogCategory category = AuditLogCategory.fromAction(action);
+            return new AuditLogDto(
+                    id,
+                    entry != null ? entry.getCreatedAt() : null,
+                    action,
+                    formatActionLabel(action),
+                    category,
+                    category.getLabel(),
+                    null,
+                    new AuditLogDto.EntityRefDto(null, AuditEntityType.SYSTEM,
+                            AuditEntityType.SYSTEM.getLabel(), "—", true, null),
+                    new AuditLogDto.ClientInfoDto(null, null),
+                    formatActionLabel(action),
+                    Collections.emptyMap(),
+                    entry != null ? entry.getMetadata() : null,
+                    Collections.emptyList());
+        }
     }
 
     @Transactional(readOnly = true)
@@ -115,12 +213,14 @@ public class AuditLogService {
             entries = entries.subList(0, 5000);
         }
 
+        Lookups lookups = buildLookups(entries);
+
         StringBuilder sb = new StringBuilder();
         // CSV Header
         sb.append("Log ID,Timestamp (PHT),Actor Name,Actor Email,Actor Role,Action Category,Action Type,Entity Type,Entity ID,Entity Reference,Summary / Justification,IP Address\n");
 
         for (AuditLog entry : entries) {
-            AuditLogDto dto = mapToDto(entry);
+            AuditLogDto dto = mapToDtoSafe(entry, lookups);
             sb.append(escapeCsv(dto.id() != null ? dto.id().toString() : "")).append(",");
             sb.append(escapeCsv(dto.timestamp() != null ? PHT_FORMATTER.format(dto.timestamp()) : "")).append(",");
             sb.append(escapeCsv(dto.actor() != null ? dto.actor().name() : "System / Automated")).append(",");
@@ -254,16 +354,17 @@ public class AuditLogService {
         return actions;
     }
 
-    private AuditLogDto mapToDto(AuditLog logEntry) {
+    private AuditLogDto mapToDto(AuditLog logEntry, Lookups lookups) {
         String action = logEntry.getAction();
         AuditLogCategory category = AuditLogCategory.fromAction(action);
         String categoryLabel = category.getLabel();
         String actionLabel = formatActionLabel(action);
 
-        // Actor resolution
+        // Actor resolution (from the batch-loaded map, never a lazy proxy)
         AuditLogDto.ActorDto actorDto = null;
-        if (logEntry.getActor() != null) {
-            User u = logEntry.getActor();
+        UUID actorId = logEntry.getActor() != null ? logEntry.getActor().getId() : null;
+        User u = actorId != null ? lookups.users().get(actorId) : null;
+        if (u != null) {
             String name = resolveUserName(u);
             String role = u.getRole() != null ? u.getRole().name() : "USER";
             if (u.isSuperAdministrator()) {
@@ -274,7 +375,7 @@ public class AuditLogService {
         }
 
         // Entity resolution
-        AuditLogDto.EntityRefDto entityDto = resolveEntity(logEntry.getResourceId(), action);
+        AuditLogDto.EntityRefDto entityDto = resolveEntity(logEntry.getResourceId(), action, lookups);
 
         // Client info
         AuditLogDto.ClientInfoDto clientInfo = new AuditLogDto.ClientInfoDto(
@@ -314,7 +415,7 @@ public class AuditLogService {
         return full.isBlank() ? user.getEmail() : full;
     }
 
-    private AuditLogDto.EntityRefDto resolveEntity(UUID resourceId, String action) {
+    private AuditLogDto.EntityRefDto resolveEntity(UUID resourceId, String action, Lookups lookups) {
         AuditEntityType type = AuditEntityType.fromAction(action);
         if (resourceId == null) {
             return new AuditLogDto.EntityRefDto(null, type, type.getLabel(), "System Record", true, null);
@@ -322,9 +423,8 @@ public class AuditLogService {
 
         switch (type) {
             case SUBMISSION -> {
-                Optional<Submission> opt = submissionRepository.findById(resourceId);
-                if (opt.isPresent()) {
-                    Submission s = opt.get();
+                Submission s = lookups.submissions().get(resourceId);
+                if (s != null) {
                     String label = s.getEventTitle() != null && !s.getEventTitle().isBlank()
                             ? s.getEventTitle()
                             : (s.getCaption() != null && s.getCaption().length() > 30 ? s.getCaption().substring(0, 30) + "..." : "Submission #" + resourceId.toString().substring(0, 8));
@@ -333,26 +433,23 @@ public class AuditLogService {
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "[Entity no longer available]", false, null);
             }
             case USER -> {
-                Optional<User> opt = userRepository.findById(resourceId);
-                if (opt.isPresent()) {
-                    User u = opt.get();
+                User u = lookups.users().get(resourceId);
+                if (u != null) {
                     return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), resolveUserName(u), true, "/admin/administrator-management");
                 }
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "[Entity no longer available]", false, null);
             }
             case MEDIA_ASSET -> {
-                Optional<MediaAsset> opt = mediaAssetRepository.findById(resourceId);
-                if (opt.isPresent()) {
-                    MediaAsset m = opt.get();
+                MediaAsset m = lookups.mediaAssets().get(resourceId);
+                if (m != null) {
                     String label = m.getFileName() != null ? m.getFileName() : "Media Asset #" + resourceId.toString().substring(0, 8);
                     return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), label, true, "/media-repository");
                 }
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "[Entity no longer available]", false, null);
             }
             case INSTITUTION -> {
-                Optional<Institution> opt = institutionRepository.findById(resourceId);
-                if (opt.isPresent()) {
-                    Institution inst = opt.get();
+                Institution inst = lookups.institutions().get(resourceId);
+                if (inst != null) {
                     return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), inst.getName(), true, "/admin/institution-management");
                 }
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "[Entity no longer available]", false, null);
