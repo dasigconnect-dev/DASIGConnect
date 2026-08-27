@@ -21,6 +21,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Query("SELECT m FROM MediaAsset m WHERE m.institution.id = :institutionId AND m.deletedAt IS NULL ORDER BY m.createdAt DESC")
     List<MediaAsset> findActiveByInstitution(@Param("institutionId") UUID institutionId);
 
+    @Query("SELECT m FROM MediaAsset m WHERE m.institution.id IN :institutionIds AND m.deletedAt IS NULL ORDER BY m.createdAt DESC")
+    List<MediaAsset> findActiveByInstitutionIds(@Param("institutionIds") java.util.Collection<UUID> institutionIds);
+
     @Query(value = """
         SELECT * FROM media_assets
         WHERE institution_id = :institutionId
@@ -32,6 +35,31 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     @Query("SELECT m FROM MediaAsset m WHERE m.deletedAt IS NULL ORDER BY m.createdAt DESC")
     List<MediaAsset> findAllActive();
+
+    long countByMediaAlbumIdAndDeletedAtIsNull(UUID mediaAlbumId);
+
+    /** Re-home the active assets in a set of albums to another institution. */
+    @Modifying
+    @Query(value = "UPDATE media_assets SET institution_id = :institutionId WHERE media_album_id IN :albumIds AND deleted_at IS NULL", nativeQuery = true)
+    void rehomeAssetsInAlbums(@Param("institutionId") UUID institutionId, @Param("albumIds") java.util.Collection<UUID> albumIds);
+
+    /** [albumId, assetCount] pairs for every album in the institution that holds active assets. */
+    @Query("""
+            SELECT m.mediaAlbum.id, COUNT(m)
+            FROM MediaAsset m
+            WHERE m.institution.id = :institutionId AND m.deletedAt IS NULL AND m.mediaAlbum IS NOT NULL
+            GROUP BY m.mediaAlbum.id
+            """)
+    List<Object[]> countActiveAssetsByAlbum(@Param("institutionId") UUID institutionId);
+
+    /** Same as {@link #countActiveAssetsByAlbum} but across every institution (admin network view). */
+    @Query("""
+            SELECT m.mediaAlbum.id, COUNT(m)
+            FROM MediaAsset m
+            WHERE m.deletedAt IS NULL AND m.mediaAlbum IS NOT NULL
+            GROUP BY m.mediaAlbum.id
+            """)
+    List<Object[]> countActiveAssetsByAlbumAllInstitutions();
 
     boolean existsByAssetCode(String assetCode);
     boolean existsByUploaderId(UUID uploaderId);
@@ -82,9 +110,41 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     Optional<String> findEmbeddingById(@Param("id") UUID id);
 
     @Query(value = """
-        SELECT * FROM media_assets
+        SELECT
+          id,
+          institution_id,
+          uploader_id,
+          asset_code,
+          storage_url,
+          media_album_id,
+          file_name,
+          file_type,
+          file_size_bytes,
+          ai_category,
+          ai_confidence,
+          ai_description,
+          asset_type,
+          visible_objects,
+          specific_subjects,
+          visual_style,
+          dominant_colors,
+          possible_use_cases,
+          ai_tags,
+          excluded_categories,
+          ai_classified_at,
+          ai_classification_model,
+          embedding_generated_at,
+          embedding_model,
+          reclassified_at,
+          status,
+          deleted_at,
+          deleted_by_user_id,
+          purged_at,
+          created_at
+        FROM media_assets
         WHERE deleted_at IS NULL
           AND (status IS NULL OR status IN ('PROCESSING', 'FAILED') OR embedding IS NULL)
+        ORDER BY created_at ASC
         LIMIT 10
         """, nativeQuery = true)
     List<MediaAsset> findNeedingEmbedding();
@@ -105,6 +165,32 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     @Query("SELECT m FROM MediaAsset m WHERE m.id IN :ids AND m.deletedAt IS NULL")
     List<MediaAsset> findActiveByIds(@Param("ids") List<UUID> ids);
+
+    /** [idText, cosineScore] for the nearest ready assets across the given institutions. */
+    @Query(value = """
+        SELECT CAST(id AS text), 1 - (embedding <=> CAST(:queryVector AS vector)) AS score
+        FROM media_assets
+        WHERE institution_id IN (:institutionIds)
+          AND deleted_at IS NULL
+          AND status = 'READY'
+          AND embedding IS NOT NULL
+        ORDER BY embedding <=> CAST(:queryVector AS vector)
+        LIMIT 60
+        """, nativeQuery = true)
+    List<Object[]> findTopSimilarInInstitutions(@Param("institutionIds") java.util.Collection<UUID> institutionIds,
+                                                @Param("queryVector") String queryVectorJson);
+
+    /** [idText, cosineScore] for the nearest ready assets network-wide (admin). */
+    @Query(value = """
+        SELECT CAST(id AS text), 1 - (embedding <=> CAST(:queryVector AS vector)) AS score
+        FROM media_assets
+        WHERE deleted_at IS NULL
+          AND status = 'READY'
+          AND embedding IS NOT NULL
+        ORDER BY embedding <=> CAST(:queryVector AS vector)
+        LIMIT 60
+        """, nativeQuery = true)
+    List<Object[]> findTopSimilarAllInstitutions(@Param("queryVector") String queryVectorJson);
 
     @Modifying
     @Transactional
