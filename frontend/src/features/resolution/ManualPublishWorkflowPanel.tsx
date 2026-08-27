@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ManualPublishDetail } from "../../api/resolutionApi";
 
 const FACEBOOK_PAGE_URL = "https://www.facebook.com/DostDasig";
@@ -106,44 +107,43 @@ export default function ManualPublishWorkflowPanel({
     }
   }, [detail]);
 
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, []);
+
   if (!detail && !loading) return null;
 
-  function handleClose() {
-    setPostUrl("");
-    setNotes("");
-    setPostUrlError("");
-    setCopied(false);
-    onClose();
-  }
-
-  function handleCopyCaption() {
-    if (!detail?.caption) return;
-    void navigator.clipboard.writeText(detail.caption).then(() => {
-      setCopied(true);
-      if (copyTimer.current) clearTimeout(copyTimer.current);
-      copyTimer.current = setTimeout(() => setCopied(false), 2000);
-    });
-  }
-
-  function handleUrlChange(value: string) {
-    setPostUrl(value);
-    if (urlInvalid(value)) {
-      setPostUrlError(
-        "Please enter a valid Facebook post URL (e.g., https://www.facebook.com/...).",
-      );
+  function handleUrlChange(val: string) {
+    setPostUrl(val);
+    if (val.trim().length > 0 && !val.trim().startsWith("https://www.facebook.com/")) {
+      setPostUrlError("URL must start with https://www.facebook.com/");
     } else {
       setPostUrlError("");
     }
   }
 
-  function handleConfirm() {
-    if (urlInvalid(postUrl)) {
-      setPostUrlError(
-        "Please enter a valid Facebook post URL (e.g., https://www.facebook.com/...).",
-      );
-      return;
+  async function handleCopyCaption() {
+    if (!detail?.caption) return;
+    try {
+      await navigator.clipboard.writeText(detail.caption);
+      setCopied(true);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // clipboard API unavailable
     }
+  }
+
+  function handleConfirm() {
+    if (urlInvalid(postUrl)) return;
     onConfirm(postUrl.trim() || undefined, notes.trim() || undefined);
+  }
+
+  function handleClose() {
+    if (busy) return;
+    onClose();
   }
 
   const images = detail?.mediaAssets.filter((a) => isImageType(a.fileType)) ?? [];
@@ -156,51 +156,86 @@ export default function ManualPublishWorkflowPanel({
         .join(" ") || detail.contributorEmail
     : null;
 
-  return (
+  return createPortal(
     <div
-      className="modal-backdrop"
+      className="val-modal-overlay"
       onClick={handleClose}
       role="dialog"
       aria-modal="true"
       aria-label="Manual publish workflow"
     >
       <div
-        className="modal-card res-workflow-card"
+        className="val-modal res-workflow-card"
+        style={{
+          maxWidth: "640px",
+          width: "100%",
+          maxHeight: "calc(100vh - 48px)",
+          display: "flex",
+          flexDirection: "column",
+          padding: 0,
+          overflow: "hidden",
+          textAlign: "left",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="modal-card-header">
-          <div className="res-workflow-header-inner">
-            <div>
-              <p className="res-workflow-kicker">Manual Publishing Workflow</p>
-              <h2 className="modal-card-title">
-                {detail ? detail.eventTitle : "Loading..."}
-              </h2>
-            </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "18px 24px",
+            borderBottom: "1px solid var(--val-border, #e2e8f0)",
+            background: "var(--val-surface, #ffffff)",
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, flex: 1, marginRight: "12px" }}>
+            <span style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--val-muted, #64748b)" }}>
+              Manual Publishing Workflow
+            </span>
+            <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "var(--val-text, #0f172a)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {detail ? detail.eventTitle : "Loading..."}
+            </h3>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
             {remaining !== null && (
               <div
-                className={`res-workflow-timer${remaining < 10 * 60 * 1000 ? " res-workflow-timer-urgent" : ""}`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  padding: "4px 10px",
+                  borderRadius: "20px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  background: remaining < 10 * 60 * 1000 ? "#fffbeb" : "#f1f5f9",
+                  color: remaining < 10 * 60 * 1000 ? "#b45309" : "#475569",
+                  border: `1px solid ${remaining < 10 * 60 * 1000 ? "#fde68a" : "#e2e8f0"}`,
+                }}
               >
                 <i className="ti ti-clock" aria-hidden="true" />
                 <span>{formatCountdown(remaining)}</span>
               </div>
             )}
+            <button
+              type="button"
+              className="val-collapse-btn"
+              onClick={handleClose}
+              aria-label="Close"
+              style={{ color: "#64748b" }}
+            >
+              <i className="ti ti-x" aria-hidden="true" />
+            </button>
           </div>
-          <button
-            type="button"
-            className="modal-close-btn"
-            onClick={handleClose}
-            aria-label="Close"
-          >
-            <i className="ti ti-x" aria-hidden="true" />
-          </button>
         </div>
 
         {/* Body */}
-        <div className="modal-card-body res-workflow-body">
+        <div style={{ overflowY: "auto", flex: 1, padding: 0 }}>
           {loading && (
-            <div className="res-workflow-loading">
-              <div className="spinner-ring spinner-ring-sm" />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", padding: "48px 24px", color: "var(--val-muted)" }}>
+              <i className="ti ti-loader-2 val-spin" style={{ fontSize: "20px" }} />
               <span>Loading submission details...</span>
             </div>
           )}
@@ -209,54 +244,47 @@ export default function ManualPublishWorkflowPanel({
             <>
               {/* Abandonment note (A2) */}
               {detail.lastManualPublishAbandonedAt && (
-                <div className="res-workflow-abandoned-note">
-                  <i className="ti ti-info-circle" aria-hidden="true" />
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", padding: "12px 24px", background: "#fffbeb", borderBottom: "1px solid #fde68a", color: "#92400e", fontSize: "13px" }}>
+                  <i className="ti ti-info-circle" style={{ marginTop: "2px", flexShrink: 0 }} />
                   <span>
                     A manual publishing attempt was started at{" "}
-                    <strong>
-                      {formatAbandonedAt(detail.lastManualPublishAbandonedAt)}
-                    </strong>{" "}
-                    and abandoned. The submission is still awaiting manual
-                    publication.
+                    <strong>{formatAbandonedAt(detail.lastManualPublishAbandonedAt)}</strong> and abandoned. The submission is still awaiting manual publication.
                   </span>
                 </div>
               )}
 
               {/* Submission meta */}
-              <div className="res-workflow-meta-row">
-                <div className="res-workflow-meta-item">
-                  <span className="res-workflow-meta-label">Scheduled</span>
-                  <span className="res-workflow-meta-value">
-                    {formatDatetime(detail.scheduledAt)}
-                  </span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "16px 24px", padding: "14px 24px", background: "var(--val-surface-2, #f8fafc)", borderBottom: "1px solid var(--val-border, #e2e8f0)" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                  <span style={{ fontSize: "10.5px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--val-muted)" }}>Scheduled</span>
+                  <strong style={{ fontSize: "13px", color: "var(--val-text)" }}>{formatDatetime(detail.scheduledAt)}</strong>
                 </div>
-                <div className="res-workflow-meta-item">
-                  <span className="res-workflow-meta-label">Contributor</span>
-                  <span className="res-workflow-meta-value">
-                    {contributorName}
-                  </span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                  <span style={{ fontSize: "10.5px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--val-muted)" }}>Contributor</span>
+                  <strong style={{ fontSize: "13px", color: "var(--val-text)" }}>{contributorName}</strong>
                 </div>
-                <div className="res-workflow-meta-item">
-                  <span className="res-workflow-meta-label">Submission ID</span>
-                  <span className="res-workflow-meta-value res-workflow-meta-id">
-                    {detail.submissionId.slice(0, 8)}…
-                  </span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                  <span style={{ fontSize: "10.5px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--val-muted)" }}>Submission ID</span>
+                  <strong style={{ fontSize: "13px", fontFamily: "monospace", color: "var(--val-text)" }}>{detail.submissionId.slice(0, 8)}…</strong>
                 </div>
               </div>
 
               {/* Step 1 — Copy Content */}
-              <section className="res-workflow-step">
-                <div className="res-workflow-step-label">
-                  <span className="res-workflow-step-num">1</span>
+              <section style={{ padding: "18px 24px", borderBottom: "1px solid var(--val-border, #e2e8f0)", display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 700, color: "var(--val-text)" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "50%", background: "#1877f2", color: "white", fontSize: "12px", fontWeight: 800 }}>1</span>
                   Copy Content
                 </div>
 
                 {detail.caption ? (
-                  <div className="res-workflow-caption-block">
-                    <p className="res-workflow-caption-text">{detail.caption}</p>
+                  <div style={{ background: "var(--val-surface-2, #f8fafc)", border: "1px solid var(--val-border, #e2e8f0)", borderRadius: "10px", padding: "14px" }}>
+                    <p style={{ margin: "0 0 10px", fontSize: "13.5px", lineHeight: 1.5, color: "var(--val-text-2, #334155)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      {detail.caption}
+                    </p>
                     <button
                       type="button"
-                      className="btn-secondary btn-sm res-workflow-copy-btn"
+                      className="val-btn val-btn-secondary"
+                      style={{ fontSize: "12.5px", height: "32px", padding: "0 12px" }}
                       onClick={handleCopyCaption}
                     >
                       {copied ? (
@@ -273,11 +301,11 @@ export default function ManualPublishWorkflowPanel({
                     </button>
                   </div>
                 ) : (
-                  <p className="res-workflow-no-caption">No caption set.</p>
+                  <p style={{ margin: 0, color: "var(--val-muted)", fontStyle: "italic", fontSize: "13px" }}>No caption set.</p>
                 )}
 
                 {images.length > 0 && (
-                  <div className="res-workflow-media-grid">
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
                     {images.map((img) => (
                       <a
                         key={img.id}
@@ -285,29 +313,32 @@ export default function ManualPublishWorkflowPanel({
                         target="_blank"
                         rel="noopener noreferrer"
                         download={img.fileName}
-                        className="res-workflow-thumb-link"
+                        style={{
+                          width: "72px",
+                          height: "72px",
+                          borderRadius: "8px",
+                          overflow: "hidden",
+                          border: "1px solid var(--val-border, #cbd5e1)",
+                          display: "block",
+                          position: "relative",
+                        }}
                         title={`Download ${img.fileName}`}
                       >
                         <img
                           src={img.storageUrl}
                           alt={img.fileName}
-                          className="res-workflow-thumb"
+                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                         />
-                        <span className="res-workflow-thumb-overlay">
-                          <i className="ti ti-download" aria-hidden="true" />
-                        </span>
                       </a>
                     ))}
                   </div>
                 )}
 
                 {videos.length > 0 && (
-                  <div className="res-workflow-video-list">
-                    <p className="res-workflow-video-note">
-                      <i className="ti ti-info-circle" aria-hidden="true" />
-                      This submission contains a video file. Download it to your
-                      device, then upload it manually when creating the Facebook
-                      post.
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "4px" }}>
+                    <p style={{ margin: 0, padding: "8px 12px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", fontSize: "12.5px", color: "#1e40af" }}>
+                      <i className="ti ti-info-circle" style={{ marginRight: "6px" }} />
+                      This submission contains a video. Download it to your device, then upload it manually when creating the Facebook post.
                     </p>
                     {videos.map((vid) => (
                       <a
@@ -316,11 +347,12 @@ export default function ManualPublishWorkflowPanel({
                         target="_blank"
                         rel="noopener noreferrer"
                         download={vid.fileName}
-                        className="res-workflow-video-link btn-secondary btn-sm"
+                        className="val-btn val-btn-secondary"
+                        style={{ alignSelf: "flex-start", fontSize: "12.5px" }}
                       >
                         <i className="ti ti-video" aria-hidden="true" />
                         {vid.fileName}
-                        <i className="ti ti-download" aria-hidden="true" />
+                        <i className="ti ti-download" aria-hidden="true" style={{ marginLeft: "4px" }} />
                       </a>
                     ))}
                   </div>
@@ -328,66 +360,79 @@ export default function ManualPublishWorkflowPanel({
               </section>
 
               {/* Step 2 — Post to Facebook */}
-              <section className="res-workflow-step">
-                <div className="res-workflow-step-label">
-                  <span className="res-workflow-step-num">2</span>
+              <section style={{ padding: "18px 24px", borderBottom: "1px solid var(--val-border, #e2e8f0)", display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 700, color: "var(--val-text)" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "50%", background: "#1877f2", color: "white", fontSize: "12px", fontWeight: 800 }}>2</span>
                   Post to Facebook
                 </div>
                 <a
                   href={FACEBOOK_PAGE_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn-primary btn-sm res-workflow-fb-btn"
+                  className="val-btn val-btn-primary"
+                  style={{ textDecoration: "none", width: "100%", justifyContent: "center", height: "40px", fontSize: "14px" }}
                 >
                   <i className="ti ti-brand-facebook" aria-hidden="true" />
-                  Open DASIG Facebook Page →
+                  <span>Open DASIG Facebook Page →</span>
                   <i className="ti ti-external-link" aria-hidden="true" />
                 </a>
               </section>
 
               {/* Step 3 — Record Details */}
-              <section className="res-workflow-step">
-                <div className="res-workflow-step-label">
-                  <span className="res-workflow-step-num">3</span>
+              <section style={{ padding: "18px 24px", display: "flex", flexDirection: "column", gap: "14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 700, color: "var(--val-text)" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "50%", background: "#1877f2", color: "white", fontSize: "12px", fontWeight: 800 }}>3</span>
                   Record Details
                 </div>
 
-                <div className="form-field">
-                  <label htmlFor="res-wf-post-url" className="form-label">
-                    Live Post URL{" "}
-                    <span className="form-label-optional">(optional)</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <label htmlFor="res-wf-post-url" style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--val-text-2)" }}>
+                    Live Post URL <span style={{ fontWeight: 400, color: "var(--val-muted)" }}>(optional)</span>
                   </label>
                   <input
                     id="res-wf-post-url"
                     type="url"
-                    className={`form-input${postUrlError ? " input-error" : ""}`}
                     placeholder="https://www.facebook.com/permalink/..."
                     value={postUrl}
                     onChange={(e) => handleUrlChange(e.target.value)}
-                    aria-invalid={postUrlError ? "true" : "false"}
-                    aria-describedby={
-                      postUrlError ? "res-wf-post-url-error" : undefined
-                    }
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      borderRadius: "8px",
+                      border: `1px solid ${postUrlError ? "var(--val-red, #dc2626)" : "var(--val-border, #cbd5e1)"}`,
+                      background: "var(--val-surface, #ffffff)",
+                      color: "var(--val-text, #0f172a)",
+                      fontSize: "13.5px",
+                      boxSizing: "border-box",
+                    }}
                   />
                   {postUrlError && (
-                    <p id="res-wf-post-url-error" className="field-error">
+                    <p style={{ margin: 0, color: "var(--val-red, #dc2626)", fontSize: "12px" }}>
                       {postUrlError}
                     </p>
                   )}
                 </div>
 
-                <div className="form-field">
-                  <label htmlFor="res-wf-notes" className="form-label">
-                    Admin Notes{" "}
-                    <span className="form-label-optional">(optional)</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <label htmlFor="res-wf-notes" style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--val-text-2)" }}>
+                    Admin Notes <span style={{ fontWeight: 400, color: "var(--val-muted)" }}>(optional)</span>
                   </label>
                   <textarea
                     id="res-wf-notes"
-                    className="form-input form-textarea"
                     placeholder="Any notes about this manual publish..."
                     rows={3}
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--val-border, #cbd5e1)",
+                      background: "var(--val-surface, #ffffff)",
+                      color: "var(--val-text, #0f172a)",
+                      fontSize: "13.5px",
+                      boxSizing: "border-box",
+                    }}
                   />
                 </div>
               </section>
@@ -396,36 +441,47 @@ export default function ManualPublishWorkflowPanel({
         </div>
 
         {/* Footer */}
-        <div className="modal-card-footer">
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "16px 24px",
+            borderTop: "1px solid var(--val-border, #e2e8f0)",
+            background: "var(--val-surface, #ffffff)",
+            flexShrink: 0,
+          }}
+        >
           <button
             type="button"
-            className="btn-danger btn-sm"
+            className="val-btn val-btn-danger-outline"
             disabled={busy || loading}
             onClick={onCancel}
           >
             <i className="ti ti-x" aria-hidden="true" />
-            Cancel Session
+            <span>Cancel Session</span>
           </button>
           <button
             type="button"
-            className="btn-primary"
+            className="val-btn val-btn-primary"
             disabled={confirmDisabled}
             onClick={handleConfirm}
           >
             {busy ? (
               <>
-                <div className="spinner-ring spinner-ring-sm" />
-                Saving...
+                <i className="ti ti-loader-2 val-spin" />
+                <span>Saving...</span>
               </>
             ) : (
               <>
                 <i className="ti ti-circle-check" aria-hidden="true" />
-                Mark as Published
+                <span>Mark as Published</span>
               </>
             )}
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

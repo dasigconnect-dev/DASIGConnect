@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { getSubmission, type SavedMediaAsset, type SubmissionSummary } from "../../api/submissionApi";
 import {
@@ -12,6 +12,7 @@ import {
   requestSubmissionRevision,
   type RejectionReasonCode,
   type ReviewLock,
+  type ValidationLog,
 } from "../../api/validationApi";
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
@@ -26,6 +27,7 @@ import { useResolutionFailures } from "../../hooks/useResolutionFailures";
 import type { FailedPublication } from "../../api/resolutionApi";
 import ResolutionRetryModal from "../resolution/ResolutionRetryModal";
 import ManualPublishWorkflowPanel from "../resolution/ManualPublishWorkflowPanel";
+import "../../styles/dasig-loader.css";
 import "../../styles/resolution.css";
 
 interface ValidationQueueScreenProps {
@@ -100,8 +102,9 @@ export default function ValidationQueueScreen({
   const [locks, setLocks] = useState<Record<string, ReviewLock>>({});
   const [lockNotice, setLockNotice] = useState("");
   const [lockBusy, setLockBusy] = useState(false);
-  const [filter, setFilter] = useState<QueueFilter>("pending");
-  const [sortKey, setSortKey] = useState<SortKey>("publish_slot");
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  const [filter, setFilter] = useState<QueueFilter>("all");
+  const [sortKey, setSortKey] = useState<SortKey>("submitted");
   const [search, setSearch] = useState("");
   const [mediaIndex, setMediaIndex] = useState(0);
   const [renderedModal, setRenderedModal] = useState<DecisionModal>(null);
@@ -117,6 +120,7 @@ export default function ValidationQueueScreen({
   const [editedThisSession, setEditedThisSession] = useState(false);
   const { log, loading: logLoading, refresh: refreshLog } = useValidationLog(selectedId);
   const modalExitTimer = useRef<number | null>(null);
+  const openRequestRef = useRef(0);
 
   const {
     failures,
@@ -137,15 +141,30 @@ export default function ValidationQueueScreen({
   const [failureContent, setFailureContent] = useState<SubmissionSummary | null>(null);
   const [failureContentLoading, setFailureContentLoading] = useState(false);
   const [failureMediaIndex, setFailureMediaIndex] = useState(0);
+  const { log: failureLog, loading: failureLogLoading } = useValidationLog(selectedFailureId);
 
   const isAllMode = filter === "all";
   const isFailedMode = filter === "failed";
+  const filteredFailures = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return failures;
+    return failures.filter((item) =>
+      [item.eventTitle, item.institutionName, item.lastError]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term)),
+    );
+  }, [failures, search]);
   const selectedFailure = selectedFailureId
-    ? failures.find((f) => f.submissionId === selectedFailureId) ?? null
+    ? filteredFailures.find((f) => f.submissionId === selectedFailureId) ?? null
     : null;
-  const queue = isAllMode ? allQueue : activeQueue;
-  const loading = isAllMode ? allLoading : activeLoading;
-  const error = isAllMode ? allError : activeError;
+  const combinedQueue = useMemo(() => {
+    const submissions = new Map<string, SubmissionSummary>();
+    [...activeQueue, ...allQueue].forEach((item) => submissions.set(item.id, item));
+    return Array.from(submissions.values());
+  }, [activeQueue, allQueue]);
+  const queue = isAllMode ? combinedQueue : activeQueue;
+  const loading = isAllMode ? activeLoading || allLoading : activeLoading;
+  const error = isAllMode ? activeError || allError : activeError;
 
   const filteredQueue = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -180,17 +199,7 @@ export default function ValidationQueueScreen({
         const cmp = left.localeCompare(right);
         return isAllMode ? -cmp : cmp;
       });
-  }, [filter, queue, search, sortKey]);
-
-  const visibleLog = useMemo(
-    () =>
-      log.filter(
-        (entry) =>
-          entry.action !== "lock_acquired" &&
-          entry.action !== "lock_released",
-      ),
-    [log],
-  );
+  }, [filter, isAllMode, queue, search, sortKey]);
 
   const pendingCount = activeQueue.filter(
     (item) => normalizeStatus(item.status) === "pending",
@@ -211,6 +220,7 @@ export default function ValidationQueueScreen({
 
   const [watermarkConfig, setWatermarkConfig] = useState<WatermarkConfiguration | null>(null);
   const [showWatermarkPreview, setShowWatermarkPreview] = useState<boolean>(true);
+  const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
 
   useEffect(() => {
     void getWatermarkConfiguration()
@@ -218,25 +228,39 @@ export default function ValidationQueueScreen({
       .catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    if (!isAllMode) return;
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      setAllLoading(true);
-      setAllError("");
-      getValidationQueue({ history : true })
-        .then((res) => { if (active) setAllQueue(res.data); })
-        .catch((err: unknown) => { if (active) setAllError(readApiError(err, "Unable to load all submissions.")); })
-        .finally(() => { if (active) setAllLoading(false); });
-    });
-    return () => { active = false; };
-  }, [isAllMode]);
+  const fetchAllQueue = useCallback(() => {
+    setAllLoading(true);
+    setAllError("");
+    return getValidationQueue({ history: true })
+      .then((res) => {
+        setAllQueue(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch((err: unknown) => {
+        setAllError(readApiError(err, "Unable to load all submissions."));
+      })
+      .finally(() => setAllLoading(false));
+  }, []);
 
   useEffect(() => {
-    if (!isFailedMode || selectedFailureId || failuresLoading || failures.length === 0) return;
-    queueMicrotask(() => setSelectedFailureId(failures[0].submissionId));
-  }, [isFailedMode, failuresLoading, failures, selectedFailureId]);
+    let active = true;
+    queueMicrotask(() => {
+      if (active) void fetchAllQueue();
+    });
+    return () => {
+      active = false;
+    };
+  }, [fetchAllQueue]);
+
+
+
+  useEffect(() => {
+    if (!isFailedMode || failuresLoading) return;
+    const selectionIsVisible = selectedFailureId
+      ? filteredFailures.some((item) => item.submissionId === selectedFailureId)
+      : false;
+    if (selectionIsVisible) return;
+    queueMicrotask(() => setSelectedFailureId(filteredFailures[0]?.submissionId ?? null));
+  }, [isFailedMode, failuresLoading, filteredFailures, selectedFailureId]);
 
   useEffect(() => {
     if (!selectedFailureId) {
@@ -255,12 +279,7 @@ export default function ValidationQueueScreen({
         .finally(() => { if (active) setFailureContentLoading(false); });
     });
     return () => { active = false; };
-  }, [selectedFailureId]);
-
-  useEffect(() => {
-    if (selectedId || loading || queue.length === 0) return;
-    void openSubmission(queue[0]);
-  }, [loading, queue, selectedId]);
+  }, [selectedFailureId, toast]);
 
   useEffect(() => {
     return () => {
@@ -270,10 +289,22 @@ export default function ValidationQueueScreen({
 
   function handleFilterChange(next: QueueFilter) {
     if (next === filter) return;
-    // The active review lock (and the currently open submission) persists across
-    // tab switches — only explicitly opening a different submission releases it.
+    openRequestRef.current += 1;
     setSortKey(next === "all" ? "submitted" : "publish_slot");
     setFilter(next);
+    setSelectedId(null);
+    setSelected(null);
+    setSelectedLoading(false);
+    setLockNotice("");
+    setEditMode(false);
+    setShowHistoryModal(false);
+    if (next !== "failed") {
+      setSelectedFailureId(null);
+      setFailureContent(null);
+    }
+    if (next === "all") {
+      void fetchAllQueue();
+    }
   }
 
   function openDecisionModal(nextModal: Exclude<DecisionModal, null>) {
@@ -292,10 +323,12 @@ export default function ValidationQueueScreen({
     }, MODAL_EXIT_MS);
   }
 
-  async function openSubmission(summary: SubmissionSummary) {
+  const openSubmission = useCallback(async (summary: SubmissionSummary) => {
     if (selectedId === summary.id) {
       return;
     }
+
+    const requestId = ++openRequestRef.current;
 
     // Opening a different submission does not release any lock already held —
     // locks persist per-submission until explicitly unlocked, decided, or expired.
@@ -309,26 +342,54 @@ export default function ValidationQueueScreen({
 
     try {
       const detail = await getSubmission(summary.id);
+      if (requestId !== openRequestRef.current) return;
       setSelected(detail.data);
 
       // Restore lock UI state (e.g. after a page refresh) without acquiring
       // anything — a read-only check against the backend's current lock.
       if (REVIEWABLE_STATUSES.has(normalizeStatus(detail.data.status))) {
         const lockStatus = await getReviewLockStatus(summary.id);
-        if (lockStatus.data) {
-          if (lockStatus.data.lockedByEmail.toLowerCase() === user.email.toLowerCase()) {
-            setLockFor(summary.id, lockStatus.data);
+        if (requestId !== openRequestRef.current) return;
+        const lock = lockStatus.data;
+        if (lock) {
+          if (lock.lockedByEmail.toLowerCase() === user.email.toLowerCase()) {
+            setLocks((prev) => ({ ...prev, [summary.id]: lock }));
           } else {
-            setLockNotice(`This submission is currently being reviewed by ${lockStatus.data.lockedByEmail}.`);
+            setLockNotice(`This submission is currently being reviewed by ${lock.lockedByEmail}.`);
           }
         }
       }
     } catch (err: unknown) {
+      if (requestId !== openRequestRef.current) return;
       toast.error(readApiError(err, "Unable to open this submission."));
     } finally {
-      setSelectedLoading(false);
+      if (requestId === openRequestRef.current) setSelectedLoading(false);
     }
-  }
+  }, [selectedId, toast, user.email]);
+
+  useEffect(() => {
+    if (isFailedMode || loading) return;
+    const selectedIsVisible = selectedId
+      ? filteredQueue.some((item) => item.id === selectedId)
+      : false;
+    if (selectedIsVisible) return;
+
+    if (filteredQueue.length > 0) {
+      const firstSubmission = filteredQueue[0];
+      queueMicrotask(() => void openSubmission(firstSubmission));
+      return;
+    }
+
+    if (selectedId || selected) {
+      const requestId = ++openRequestRef.current;
+      queueMicrotask(() => {
+        if (requestId !== openRequestRef.current) return;
+        setSelectedId(null);
+        setSelected(null);
+        setSelectedLoading(false);
+      });
+    }
+  }, [isFailedMode, loading, filteredQueue, selectedId, selected, openSubmission]);
 
   function setLockFor(submissionId: string, lock: ReviewLock) {
     setLocks((prev) => ({ ...prev, [submissionId]: lock }));
@@ -443,6 +504,8 @@ export default function ValidationQueueScreen({
       return;
     }
     setDecisionBusy(true);
+
+
     try {
       await requestSubmissionRevision(selected.id, { remarks: remarks.trim() });
       toast.warning("Revision request sent to the contributor.");
@@ -487,20 +550,41 @@ export default function ValidationQueueScreen({
   }
 
   return (
-    <div className="val-page">
+    <div className={`val-page ${isPanelCollapsed ? "is-queue-collapsed" : ""}`}>
       <aside className="val-queue-panel">
         <div className="val-queue-header">
           <div className="val-title-row">
             <div>
+              <span className="val-kicker">Content operations</span>
               <h1>Review Queue</h1>
+              <p>Review, refine, and release network content.</p>
             </div>
-            <span className="val-count">{isFailedMode ? failures.length : filteredQueue.length}</span>
+            <button
+              type="button"
+              className="val-collapse-btn"
+              onClick={() => setIsPanelCollapsed(true)}
+              title="Collapse queue panel (<<)"
+              aria-label="Collapse queue list"
+            >
+              <i className="ti ti-chevrons-left" />
+            </button>
           </div>
 
           <div className="val-tabs" role="tablist" aria-label="Queue filters">
             <button
+              className={filter === "all" ? "active" : ""}
+              type="button"
+              role="tab"
+              aria-selected={filter === "all"}
+              onClick={() => handleFilterChange("all")}
+            >
+              All <span>{combinedQueue.length}</span>
+            </button>
+            <button
               className={filter === "pending" ? "active" : ""}
               type="button"
+              role="tab"
+              aria-selected={filter === "pending"}
               onClick={() => handleFilterChange("pending")}
             >
               Pending <span>{pendingCount}</span>
@@ -508,20 +592,17 @@ export default function ValidationQueueScreen({
             <button
               className={filter === "in_review" ? "active" : ""}
               type="button"
+              role="tab"
+              aria-selected={filter === "in_review"}
               onClick={() => handleFilterChange("in_review")}
             >
               Review <span>{reviewCount}</span>
             </button>
             <button
-              className={filter === "all" ? "active" : ""}
-              type="button"
-              onClick={() => handleFilterChange("all")}
-            >
-              All <span>{allQueue.length}</span>
-            </button>
-            <button
               className={filter === "failed" ? "active" : ""}
               type="button"
+              role="tab"
+              aria-selected={filter === "failed"}
               onClick={() => handleFilterChange("failed")}
             >
               Failed <span>{failures.length}</span>
@@ -534,7 +615,18 @@ export default function ValidationQueueScreen({
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search title, contributor, tags..."
+              aria-label="Search review queue"
             />
+            {search && (
+              <button
+                type="button"
+                className="val-search-clear"
+                onClick={() => setSearch("")}
+                aria-label="Clear queue search"
+              >
+                <i className="ti ti-x" />
+              </button>
+            )}
           </label>
         </div>
 
@@ -565,16 +657,20 @@ export default function ValidationQueueScreen({
               {!failuresLoading && failuresError && (
                 <QueueState icon="ti-database-off" title="Unable to load failures" subtitle={failuresError} />
               )}
-              {!failuresLoading && !failuresError && failures.length === 0 && (
+              {!failuresLoading && !failuresError && filteredFailures.length === 0 && (
                 <QueueState
-                  icon="ti-circle-check"
-                  title="No failed publications"
-                  subtitle="Automated publish failures needing manual recovery will appear here."
+                  icon={failures.length === 0 ? "ti-circle-check" : "ti-search-off"}
+                  title={failures.length === 0 ? "No failed publications" : "No matching failures"}
+                  subtitle={
+                    failures.length === 0
+                      ? "Automated publish failures needing manual recovery will appear here."
+                      : "Try a different title, institution, or error term."
+                  }
                 />
               )}
               {!failuresLoading &&
                 !failuresError &&
-                failures.map((item) => (
+                filteredFailures.map((item) => (
                   <button
                     className={`val-queue-item ${item.submissionId === selectedFailureId ? "active" : ""}`}
                     key={item.submissionId}
@@ -677,13 +773,27 @@ export default function ValidationQueueScreen({
       </aside>
 
       <main className="val-review-panel">
+        {isPanelCollapsed && (
+          <button
+            type="button"
+            className="val-expand-btn"
+            onClick={() => setIsPanelCollapsed(false)}
+            title="Expand queue panel (>>)"
+            aria-label="Expand queue list"
+          >
+            <i className="ti ti-chevrons-right" />
+            <span>Show Queue</span>
+          </button>
+        )}
         {isFailedMode && !selectedFailure && (
           <div className="val-empty">
             <i className="ti ti-mood-sad"></i>
-            <h2>{failures.length === 0 ? "No failed publications" : "Select a failed submission"}</h2>
+            <h2>{filteredFailures.length === 0 ? "No matching failed publications" : "Select a failed submission"}</h2>
             <p>
-              {failures.length === 0
-                ? "Automated publish failures needing manual recovery will appear here."
+              {filteredFailures.length === 0
+                ? failures.length === 0
+                  ? "Automated publish failures needing manual recovery will appear here."
+                  : "Clear or adjust your search to see failed publications."
                 : "Open an item from the list to retry it or fall back to manual publishing."}
             </p>
           </div>
@@ -691,126 +801,126 @@ export default function ValidationQueueScreen({
 
         {isFailedMode && selectedFailure && (
           <>
-            {selectedFailure.lastManualPublishAbandonedAt && (
-              <NoticeBar
-                tone="warn"
-                icon="ti-alert-triangle"
-                text={`A manual publish session was abandoned on ${formatDateTime(selectedFailure.lastManualPublishAbandonedAt)}.`}
-              />
-            )}
-
             <div className="val-scroll">
-              <header className="val-review-header">
-                <div>
-                  <div className="val-badge-row">
-                    <span className="val-inst">{selectedFailure.institutionName || "Unknown institution"}</span>
-                    <span className="val-sub-id">{shortId(selectedFailure.submissionId)}</span>
-                  </div>
-                  <h2>{selectedFailure.eventTitle || "Untitled submission"}</h2>
-                  {failureContent?.contributorEmail && (
-                    <p>
-                      <i className="ti ti-user"></i>
-                      Submitted by <strong>{failureContent.contributorEmail}</strong>
-                    </p>
-                  )}
-                </div>
-                <div className="val-slot-card">
-                  <span>Publish Slot</span>
-                  <strong>
-                    {selectedFailure.scheduledAt ? formatDate(selectedFailure.scheduledAt) : "Unscheduled"}
-                  </strong>
-                  <small>
-                    {selectedFailure.scheduledAt ? formatTime(selectedFailure.scheduledAt) : "No preferred time"}
-                  </small>
-                </div>
-              </header>
-
-              {failureContentLoading && (
-                <p className="val-muted">Loading submission content...</p>
+              {selectedFailure.lastManualPublishAbandonedAt && (
+                <NoticeBar
+                  tone="warn"
+                  icon="ti-alert-triangle"
+                  text={`A manual publish session was abandoned on ${formatDateTime(selectedFailure.lastManualPublishAbandonedAt)}.`}
+                />
               )}
 
-              {!failureContentLoading && failureContent && (
+              {failureContentLoading ? (
+                <PanelContentLoader text="Loading submission details" />
+              ) : failureContent ? (
                 <>
-                  <MediaCarousel
+                  <FacebookPostPreviewCard
+                    submission={failureContent}
+                    editMode={false}
+                    editForm={emptyEditForm()}
                     mediaAssets={failureContent.mediaAssets ?? []}
                     mediaIndex={failureMediaIndex}
                     onMediaIndexChange={setFailureMediaIndex}
+                    watermarkConfig={watermarkConfig}
+                    showWatermarkPreview={showWatermarkPreview}
+                    onToggleWatermark={() => setShowWatermarkPreview((prev) => !prev)}
+                    onOpenHistory={() => setShowHistoryModal(true)}
                   />
-                  <SubmissionDetailCards content={failureContent} />
-                </>
-              )}
 
-              <section className="val-detail-grid">
-                <DetailCard icon="ti-refresh" label="Retry Attempts">
-                  {selectedFailure.retryCount}
-                </DetailCard>
-                <DetailCard icon="ti-clock-hour-4" label="Last Attempt">
-                  {selectedFailure.lastAttemptAt ? formatDateTime(selectedFailure.lastAttemptAt) : "No attempts recorded"}
-                </DetailCard>
-                {selectedFailure.lastError && (
-                  <DetailCard icon="ti-bug" label="Last Error" full muted>
-                    {selectedFailure.lastError}
-                  </DetailCard>
-                )}
-              </section>
+                  <section className="val-detail-grid" style={{ width: "100%", maxWidth: "620px" }}>
+                    <DetailCard icon="ti-refresh" label="Retry Attempts">
+                      {selectedFailure.retryCount}
+                    </DetailCard>
+                    <DetailCard icon="ti-clock-hour-4" label="Last Attempt">
+                      {selectedFailure.lastAttemptAt ? formatDateTime(selectedFailure.lastAttemptAt) : "No attempts recorded"}
+                    </DetailCard>
+                    {selectedFailure.lastError && (
+                      <DetailCard icon="ti-bug" label="Last Error" full muted>
+                        {selectedFailure.lastError}
+                      </DetailCard>
+                    )}
+                  </section>
+                </>
+              ) : null}
             </div>
 
+            {showHistoryModal && failureContent && (
+              <ValidationHistoryModal
+                submission={failureContent}
+                log={failureLog}
+                loading={failureLogLoading}
+                isTerminalStatus={false}
+                onClose={() => setShowHistoryModal(false)}
+              />
+            )}
+
             <footer className="val-action-bar">
-              <span>
-                <i className="ti ti-info-circle"></i>
-                {selectedFailure.status === "missed_review"
-                  ? "This submission missed its review window. Assign a new schedule to send it back to the approval queue."
-                  : selectedFailure.manualPublishInProgress
-                    ? "A manual publish session is already open for this submission."
-                    : "Retry automatically, or fall back to manual publishing."}
-              </span>
-              {selectedFailure.status === "missed_review" ? (
-                <button
-                  className="val-btn success"
-                  type="button"
-                  disabled={failureBusy === selectedFailure.submissionId}
-                  onClick={() => setRetryItem(selectedFailure)}
-                >
-                  <i className="ti ti-calendar-plus"></i> Retry with New Schedule
-                </button>
-              ) : selectedFailure.manualPublishInProgress ? (
-                <>
+              <div className="val-action-status">
+                <span className="val-action-hint">
+                  <i className="ti ti-info-circle" />
+                  <span>
+                    {selectedFailure.status === "missed_review"
+                      ? "This submission missed its review window. Assign a new schedule to send it back to the approval queue."
+                      : selectedFailure.manualPublishInProgress
+                        ? "A manual publish session is already open for this submission."
+                        : "Retry automatically, or fall back to manual publishing."}
+                  </span>
+                </span>
+              </div>
+              <div className="val-action-group">
+                {selectedFailure.status === "missed_review" ? (
                   <button
-                    className="val-btn ghost"
-                    type="button"
-                    disabled={failureBusy === selectedFailure.submissionId}
-                    onClick={() => void handleCancelManual(selectedFailure)}
-                  >
-                    <i className="ti ti-x"></i> Cancel Manual Session
-                  </button>
-                  <button
-                    className="val-btn success"
-                    type="button"
-                    onClick={() => openWorkflowPanel(selectedFailure)}
-                  >
-                    <i className="ti ti-user-check"></i> Continue Manual Publish
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    className="val-btn ghost"
+                    className="val-btn val-btn-primary"
                     type="button"
                     disabled={failureBusy === selectedFailure.submissionId}
                     onClick={() => setRetryItem(selectedFailure)}
                   >
-                    <i className="ti ti-refresh"></i> Retry
+                    <i className="ti ti-calendar-plus" />
+                    <span>Retry with New Schedule</span>
                   </button>
-                  <button
-                    className="val-btn success"
-                    type="button"
-                    disabled={failureBusy === selectedFailure.submissionId}
-                    onClick={() => void handleStartManual(selectedFailure)}
-                  >
-                    <i className="ti ti-user-check"></i> Start Manual Publish
-                  </button>
-                </>
-              )}
+                ) : selectedFailure.manualPublishInProgress ? (
+                  <>
+                    <button
+                      className="val-btn val-btn-danger-outline"
+                      type="button"
+                      disabled={failureBusy === selectedFailure.submissionId}
+                      onClick={() => void handleCancelManual(selectedFailure)}
+                    >
+                      <i className="ti ti-x" />
+                      <span>Cancel Manual Session</span>
+                    </button>
+                    <button
+                      className="val-btn val-btn-primary"
+                      type="button"
+                      onClick={() => openWorkflowPanel(selectedFailure)}
+                    >
+                      <i className="ti ti-user-check" />
+                      <span>Continue Manual Publish</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="val-btn val-btn-secondary"
+                      type="button"
+                      disabled={failureBusy === selectedFailure.submissionId}
+                      onClick={() => setRetryItem(selectedFailure)}
+                    >
+                      <i className="ti ti-refresh" />
+                      <span>Retry</span>
+                    </button>
+                    <button
+                      className="val-btn val-btn-primary"
+                      type="button"
+                      disabled={failureBusy === selectedFailure.submissionId}
+                      onClick={() => void handleStartManual(selectedFailure)}
+                    >
+                      <i className="ti ti-user-check" />
+                      <span>Start Manual Publish</span>
+                    </button>
+                  </>
+                )}
+              </div>
             </footer>
           </>
         )}
@@ -825,255 +935,216 @@ export default function ValidationQueueScreen({
 
         {!isFailedMode && selected && (
           <>
-            {isSelfReview && (
-              <NoticeBar
-                tone="warn"
-                icon="ti-alert-triangle"
-                text="You are reviewing your own submission. This action will be flagged in the audit log."
-              />
-            )}
-            {lockNotice && (
-              <NoticeBar tone="warn" icon="ti-lock" text={lockNotice} />
-            )}
-            {activeLock && (
-              <NoticeBar
-                tone="info"
-                icon="ti-lock-open"
-                text={`You hold the review lock until ${formatDateTime(activeLock.expiresAt)}.`}
-              />
-            )}
-
             <div className="val-scroll">
-              <header className="val-review-header">
-                <div>
-                  <div className="val-badge-row">
-                    <span className="val-inst">{selected.institutionName || "Unknown institution"}</span>
-                    <span className="val-sub-id">{shortId(selected.id)}</span>
-                  </div>
-                  <h2>{selected.eventTitle || "Untitled submission"}</h2>
-                  <p>
-                    <i className="ti ti-user"></i>
-                    Submitted by <strong>{selected.contributorEmail}</strong>
-                  </p>
-                </div>
-                {selected.fastTrack ? (
-                  <div className="val-slot-card val-live">
-                    <span>
-                      <i className="ti ti-broadcast"></i> Live
-                    </span>
-                    {selected.publishedAt ? (
-                      <>
-                        <strong>{formatDate(selected.publishedAt)}</strong>
-                        <small>Published {formatTime(selected.publishedAt)}</small>
-                      </>
-                    ) : (
-                      <strong>Publishes immediately</strong>
-                    )}
-                  </div>
-                ) : (
-                  <div className="val-slot-card">
-                    <span>{selected.publishedAt ? "Published" : "Publish Slot"}</span>
-                    <strong>
-                      {selected.scheduledAt
-                        ? formatDate(selected.scheduledAt)
-                        : selected.publishedAt
-                          ? formatDate(selected.publishedAt)
-                          : "Unscheduled"}
-                    </strong>
-                    <small>
-                      {selected.scheduledAt
-                        ? formatTime(selected.scheduledAt)
-                        : selected.publishedAt
-                          ? formatTime(selected.publishedAt)
-                          : "No preferred time"}
-                    </small>
-                  </div>
-                )}
-              </header>
-
-              <MediaCarousel
-                mediaAssets={mediaAssets}
-                mediaIndex={mediaIndex}
-                onMediaIndexChange={setMediaIndex}
-                watermarkConfig={watermarkConfig}
-                showWatermarkPreview={showWatermarkPreview}
-                onToggleWatermark={() => setShowWatermarkPreview((prev) => !prev)}
-              />
-
-              {editMode ? (
-                <section className="val-detail-grid val-edit-grid">
-                  <label className="val-edit-field">
-                    <span>Event Title</span>
-                    <input
-                      value={editForm.eventTitle}
-                      onChange={(e) => setEditForm({ ...editForm, eventTitle: e.target.value })}
-                    />
-                  </label>
-                  <label className="val-edit-field">
-                    <span>Event Date</span>
-                    <input
-                      type="date"
-                      value={editForm.eventDate}
-                      onChange={(e) => setEditForm({ ...editForm, eventDate: e.target.value })}
-                    />
-                  </label>
-                  <label className="val-edit-field full">
-                    <span>Tags (comma-separated)</span>
-                    <input
-                      value={editForm.tags}
-                      onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
-                    />
-                  </label>
-                  <label className="val-edit-field full">
-                    <span>Facebook Caption</span>
-                    <textarea
-                      rows={4}
-                      value={editForm.caption}
-                      onChange={(e) => setEditForm({ ...editForm, caption: e.target.value })}
-                    />
-                  </label>
-                  <label className="val-edit-field full">
-                    <span>Administrator Notes</span>
-                    <textarea
-                      rows={3}
-                      value={editForm.description}
-                      onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                    />
-                  </label>
-                </section>
-              ) : (
-                <SubmissionDetailCards content={selected} />
+              {isSelfReview && (
+                <NoticeBar
+                  tone="warn"
+                  icon="ti-alert-triangle"
+                  text="You are reviewing your own submission. This action will be flagged in the audit log."
+                />
+              )}
+              {lockNotice && (
+                <NoticeBar tone="warn" icon="ti-lock" text={lockNotice} />
+              )}
+              {activeLock && (
+                <NoticeBar
+                  tone="info"
+                  icon="ti-lock-open"
+                  text={`You hold the review lock until ${formatDateTime(activeLock.expiresAt)}.`}
+                />
               )}
 
-              <section className="val-log-card">
-                <div className="val-section-head">
-                  <div>
-                    <i className="ti ti-history"></i>
-                    History
-                  </div>
-                  <span>{visibleLog.length}</span>
-                </div>
-                {logLoading && <p className="val-muted">Loading audit log...</p>}
-                {!logLoading && visibleLog.length === 0 && (
-                  <p className="val-muted">
-                    {isTerminalStatus
-                      ? "No validation actions recorded — this submission was not reviewed through the validation workflow."
-                      : "No approval, revision, rejection, or timeout actions recorded yet."}
-                  </p>
-                )}
-                {!logLoading &&
-                  visibleLog.map((entry) => (
-                    <div className="val-log-item" key={entry.id}>
-                      <div className="val-log-dot">
-                        <i className={`ti ${logIcon(entry.action)}`}></i>
+              {selectedLoading ? (
+                <PanelContentLoader text="Loading submission details" />
+              ) : (
+                <>
+                  <FacebookPostPreviewCard
+                    submission={selected}
+                    editMode={editMode}
+                    editForm={editForm}
+                    mediaAssets={mediaAssets}
+                    mediaIndex={mediaIndex}
+                    onMediaIndexChange={setMediaIndex}
+                    watermarkConfig={watermarkConfig}
+                    showWatermarkPreview={showWatermarkPreview}
+                    onToggleWatermark={() => setShowWatermarkPreview((prev) => !prev)}
+                    onOpenHistory={() => setShowHistoryModal(true)}
+                  />
+
+                  {editMode && (
+                    <section className="val-edit-grid-panel">
+                      <div className="val-edit-grid-head">
+                        <i className="ti ti-edit" />
+                        <span>Edit Submission Details for Facebook Post</span>
                       </div>
-                      <div>
-                        <strong>
-                          {formatAction(entry.action)}
-                          {entry.selfReview && <span className="val-log-flag">Self-review</span>}
-                          {entry.fastTrack && <span className="val-log-flag">Fast-Track</span>}
-                        </strong>
-                        <span>
-                          {entry.validatorEmail} · {formatDateTime(entry.createdAt)}
-                        </span>
-                        {entry.remarks && <p>{entry.remarks}</p>}
-                        {entry.rejectionReason && <p>{entry.rejectionReason}</p>}
-                        {entry.editDiff && <EditDiffView diffJson={entry.editDiff} />}
+                      <div className="val-edit-grid">
+                        <label className="val-edit-field">
+                          <span>Event Title</span>
+                          <input
+                            value={editForm.eventTitle}
+                            onChange={(e) => setEditForm({ ...editForm, eventTitle: e.target.value })}
+                          />
+                        </label>
+                        <label className="val-edit-field">
+                          <span>Event Date</span>
+                          <input
+                            type="date"
+                            value={editForm.eventDate}
+                            onChange={(e) => setEditForm({ ...editForm, eventDate: e.target.value })}
+                          />
+                        </label>
+                        <label className="val-edit-field full">
+                          <span>Tags (comma-separated, e.g. Volunteer, Outreach)</span>
+                          <input
+                            value={editForm.tags}
+                            onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
+                          />
+                        </label>
+                        <label className="val-edit-field full">
+                          <span>Facebook Caption</span>
+                          <textarea
+                            rows={4}
+                            value={editForm.caption}
+                            onChange={(e) => setEditForm({ ...editForm, caption: e.target.value })}
+                          />
+                        </label>
+                        <label className="val-edit-field full">
+                          <span>Administrator Notes (optional)</span>
+                          <textarea
+                            rows={3}
+                            value={editForm.description}
+                            onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                          />
+                        </label>
                       </div>
-                    </div>
-                  ))}
-              </section>
+                    </section>
+                  )}
+                </>
+              )}
             </div>
+
+            {showHistoryModal && (
+              <ValidationHistoryModal
+                submission={selected}
+                log={log}
+                loading={logLoading}
+                isTerminalStatus={isTerminalStatus}
+                onClose={() => setShowHistoryModal(false)}
+              />
+            )}
 
             {isTerminalStatus ? (
               <footer className="val-action-bar val-action-bar--readonly">
-                <span>
-                  <i className="ti ti-eye"></i>
-                  Read-only — this submission is {statusLabel[normalizeStatus(selected?.status ?? "")] ?? selected?.status ?? "in a terminal state"} and can no longer be acted on.
-                </span>
+                <div className="val-action-status">
+                  <span className="val-action-hint">
+                    <i className="ti ti-eye" />
+                    Read-only — this submission is {statusLabel[normalizeStatus(selected?.status ?? "")] ?? selected?.status ?? "in a terminal state"}.
+                  </span>
+                </div>
               </footer>
             ) : editMode ? (
               <footer className="val-action-bar">
-                <span>
-                  <i className="ti ti-pencil"></i>
-                  Editing — saving keeps the submission In Review; you still choose a terminal action after.
-                </span>
-                <button
-                  className="val-btn ghost"
-                  type="button"
-                  disabled={editSaving}
-                  onClick={handleCancelEdit}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="val-btn success"
-                  type="button"
-                  disabled={editSaving}
-                  onClick={() => void handleSaveEdit()}
-                >
-                  <i className="ti ti-device-floppy"></i>
-                  {editSaving ? "Saving..." : "Save Changes"}
-                </button>
+                <div className="val-action-status">
+                  <span className="val-action-edit-pill">
+                    <i className="ti ti-pencil" />
+                    Editing — saving keeps In Review; select a terminal action after.
+                  </span>
+                </div>
+                <div className="val-action-group">
+                  <button
+                    className="val-btn val-btn-secondary"
+                    type="button"
+                    disabled={editSaving}
+                    onClick={handleCancelEdit}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="val-btn val-btn-primary"
+                    type="button"
+                    disabled={editSaving}
+                    onClick={() => void handleSaveEdit()}
+                  >
+                    <i className="ti ti-device-floppy" />
+                    <span>{editSaving ? "Saving..." : "Save Changes"}</span>
+                  </button>
+                </div>
               </footer>
             ) : activeLock ? (
               <footer className="val-action-bar">
-                <span>
-                  <i className="ti ti-info-circle"></i>
-                  Record your decision. Actions are permanent and logged.
-                </span>
-                <button
-                  className="val-btn ghost"
-                  type="button"
-                  disabled={lockBusy}
-                  onClick={() => void handleReleaseLock()}
-                >
-                  <i className="ti ti-lock-open"></i> Unlock
-                </button>
-                <button
-                  className="val-btn danger"
-                  type="button"
-                  onClick={() => openDecisionModal("reject")}
-                >
-                  <i className="ti ti-ban"></i> Reject
-                </button>
-                <button
-                  className="val-btn warn"
-                  type="button"
-                  onClick={() => openDecisionModal("revise")}
-                >
-                  <i className="ti ti-pencil-exclamation"></i> Request Revision
-                </button>
-                <button
-                  className="val-btn ghost"
-                  type="button"
-                  onClick={handleStartEdit}
-                >
-                  <i className="ti ti-pencil"></i> Edit
-                </button>
-                <button
-                  className="val-btn success"
-                  type="button"
-                  onClick={() => openDecisionModal("approve")}
-                >
-                  <i className="ti ti-circle-check"></i> Approve
-                </button>
+                <div className="val-action-status">
+                  <span className="val-action-lock-pill">
+                    <i className="ti ti-lock-check" />
+                    Review in progress
+                  </span>
+                </div>
+                <div className="val-action-group">
+                  <button
+                    className="val-btn val-btn-subtle"
+                    type="button"
+                    disabled={lockBusy}
+                    onClick={() => void handleReleaseLock()}
+                    title="Release lock and return to queue"
+                  >
+                    <i className="ti ti-lock-open" />
+                    <span>Unlock</span>
+                  </button>
+
+                  <div className="val-action-divider" />
+
+                  <button
+                    className="val-btn val-btn-danger-outline"
+                    type="button"
+                    onClick={() => openDecisionModal("reject")}
+                  >
+                    <i className="ti ti-ban" />
+                    <span>Reject</span>
+                  </button>
+                  <button
+                    className="val-btn val-btn-secondary"
+                    type="button"
+                    onClick={() => openDecisionModal("revise")}
+                  >
+                    <i className="ti ti-pencil-exclamation" />
+                    <span>Request Revision</span>
+                  </button>
+                  <button
+                    className="val-btn val-btn-blue-outline"
+                    type="button"
+                    onClick={handleStartEdit}
+                  >
+                    <i className="ti ti-pencil" />
+                    <span>Edit</span>
+                  </button>
+                  <button
+                    className="val-btn val-btn-primary"
+                    type="button"
+                    onClick={() => openDecisionModal("approve")}
+                  >
+                    <i className="ti ti-check" />
+                    <span>Approve</span>
+                  </button>
+                </div>
               </footer>
             ) : (
               <footer className="val-action-bar">
-                <span>
-                  <i className="ti ti-info-circle"></i>
-                  Acquire a review lock to record a decision.
-                </span>
-                <button
-                  className="val-btn success"
-                  type="button"
-                  disabled={lockBusy}
-                  onClick={() => void handleAcquireLock()}
-                >
-                  <i className="ti ti-lock"></i>
-                  {lockBusy ? "Locking..." : "Review"}
-                </button>
+                <div className="val-action-status">
+                  <span className="val-action-hint">
+                    <i className="ti ti-info-circle" />
+                    Acquire review lock to record a decision.
+                  </span>
+                </div>
+                <div className="val-action-group">
+                  <button
+                    className="val-btn val-btn-primary"
+                    type="button"
+                    disabled={lockBusy}
+                    onClick={() => void handleAcquireLock()}
+                  >
+                    <i className="ti ti-lock" />
+                    <span>{lockBusy ? "Locking..." : "Start Review"}</span>
+                  </button>
+                </div>
               </footer>
             )}
           </>
@@ -1209,6 +1280,37 @@ function NoticeBar({
   );
 }
 
+function PanelContentLoader({ text = "Loading submission details..." }: { text?: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "360px",
+        width: "100%",
+        padding: "64px 24px",
+      }}
+      role="status"
+      aria-label={text}
+    >
+      <div className="dc-dot-triangle-container">
+        <div className="dc-dot-triangle-label">
+          <span>{text}</span>
+          <span className="dc-dot-triangle-label-dots">
+            <span className="dc-dot-triangle-dot-char">.</span>
+            <span className="dc-dot-triangle-dot-char">.</span>
+            <span className="dc-dot-triangle-dot-char">.</span>
+          </span>
+        </div>
+        <div className="loader-stage" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className="loader-dots" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EditDiffView({ diffJson }: { diffJson: string }) {
   const entries = parseEditDiff(diffJson);
   if (entries.length === 0) return null;
@@ -1226,103 +1328,207 @@ function EditDiffView({ diffJson }: { diffJson: string }) {
   );
 }
 
-function MediaCarousel({
+function FacebookPostImage({
+  src,
+  alt = "",
+  showWatermark = false,
+  watermarkConfig = null,
+  skipWatermark = false,
+}: {
+  src: string;
+  alt?: string;
+  showWatermark?: boolean;
+  watermarkConfig?: WatermarkConfiguration | null;
+  skipWatermark?: boolean;
+}) {
+  const [isVeryTall, setIsVeryTall] = useState(false);
+
+  useEffect(() => {
+    setIsVeryTall(false);
+  }, [src]);
+
+  return (
+    <div className={`val-fb-image-wrapper ${isVeryTall ? "is-very-tall" : ""}`}>
+      <img
+        src={src}
+        alt={alt}
+        className={isVeryTall ? "val-fb-img-cover" : "val-fb-img-natural"}
+        onLoad={(e) => {
+          const { naturalWidth, naturalHeight } = e.currentTarget;
+          if (naturalWidth && naturalHeight) {
+            const ratio = naturalWidth / naturalHeight;
+            // Facebook feed rule:
+            // - If ratio >= 4/5 (0.8): natural scaling (100% width, auto height)
+            // - If ratio < 4/5 (0.8): cap container to 4:5 aspect ratio and crop with object-fit: cover
+            setIsVeryTall(ratio < 0.8);
+          }
+        }}
+      />
+      {showWatermark && watermarkConfig?.enabled && !skipWatermark && (
+        <WatermarkOverlay elements={watermarkConfig.elements} />
+      )}
+    </div>
+  );
+}
+
+function FacebookPostPreviewCard({
+  submission,
+  editMode,
+  editForm,
   mediaAssets,
   mediaIndex,
   onMediaIndexChange,
   watermarkConfig,
   showWatermarkPreview = true,
   onToggleWatermark,
+  onOpenHistory,
 }: {
+  submission: SubmissionSummary;
+  editMode: boolean;
+  editForm: EditFormState;
   mediaAssets: SavedMediaAsset[];
   mediaIndex: number;
   onMediaIndexChange: (index: number) => void;
   watermarkConfig?: WatermarkConfiguration | null;
   showWatermarkPreview?: boolean;
   onToggleWatermark?: () => void;
+  onOpenHistory?: () => void;
 }) {
   const selectedMedia = mediaAssets[mediaIndex];
+  const pageName = submission.institutionName || "DasigConnect";
+  const displayCaption = editMode ? editForm.caption : (submission.caption || submission.eventTitle);
+  const displayTags: string[] = editMode
+    ? editForm.tags.split(",").map((t: string) => t.trim()).filter(Boolean)
+    : (submission.tags || []);
+
+  const formattedTags: string[] = displayTags.map((t: string) => (t.startsWith("#") ? t : `#${t}`));
+
   return (
-    <section className="val-media-section">
-      {watermarkConfig?.enabled && onToggleWatermark && (
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
-          <button
-            type="button"
-            className={`val-wm-toggle-btn ${showWatermarkPreview ? "active" : ""}`}
-            onClick={onToggleWatermark}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "5px 12px",
-              fontSize: "12px",
-              fontWeight: 600,
-              borderRadius: "20px",
-              border: showWatermarkPreview ? "1px solid #93c5fd" : "1px solid #cbd5e1",
-              background: showWatermarkPreview ? "#eff6ff" : "#f8fafc",
-              color: showWatermarkPreview ? "#1d4ed8" : "#64748b",
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-            }}
-          >
-            <i className={`ti ${showWatermarkPreview ? "ti-badge-filled" : "ti-badge"}`} />
-            <span>{showWatermarkPreview ? "Watermark Preview: ON" : "Watermark Preview: OFF"}</span>
-          </button>
+    <article className="val-fb-card" aria-label="Facebook Post Preview">
+      {/* 1. Facebook Page Header */}
+      <div className="val-fb-header">
+        <div className="val-fb-author">
+          <div className="val-fb-avatar" aria-hidden="true">
+            <i className="ti ti-brand-facebook" />
+          </div>
+          <div className="val-fb-author-meta">
+            <div className="val-fb-author-name">
+              <strong>{pageName}</strong>
+            </div>
+            <div className="val-fb-time-row">
+              <span>Published by {pageName}</span>
+              <span className="val-fb-dot">·</span>
+              <span>
+                {submission.fastTrack
+                  ? "Live Event Fast-Track"
+                  : submission.scheduledAt
+                  ? `Scheduled • ${formatDate(submission.scheduledAt)}`
+                  : "18h"}
+              </span>
+              <span className="val-fb-dot">·</span>
+              <i className="ti ti-world" title="Public on Facebook" />
+            </div>
+          </div>
         </div>
-      )}
-      <div className="val-carousel">
+
+        <div className="val-fb-header-actions">
+          {watermarkConfig?.enabled && onToggleWatermark && (
+            <button
+              type="button"
+              className={`val-wm-toggle-btn ${showWatermarkPreview ? "active" : ""}`}
+              onClick={onToggleWatermark}
+              title="Toggle watermark overlay on media preview"
+            >
+              <i className={`ti ${showWatermarkPreview ? "ti-badge-filled" : "ti-badge"}`} />
+              <span>{showWatermarkPreview ? "Watermark: ON" : "Watermark: OFF"}</span>
+            </button>
+          )}
+          {onOpenHistory && (
+            <button
+              type="button"
+              className="val-fb-more-btn"
+              onClick={onOpenHistory}
+              title="View History & Audit Details (•••)"
+              aria-label="View history and audit details"
+            >
+              <i className="ti ti-dots" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 2. Facebook Post Caption & Hashtags (Starts directly withoutCMS title headline) */}
+      <div className="val-fb-body">
+        {displayCaption ? (
+          <p className="val-fb-text">{displayCaption}</p>
+        ) : (
+          <p className="val-fb-text val-fb-text-empty">No caption supplied.</p>
+        )}
+        {formattedTags.length > 0 && (
+          <div className="val-fb-hashtags">
+            {formattedTags.map((tag: string) => (
+              <span key={tag} className="val-fb-hashtag">{tag}</span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 3. Media Frame with Dynamic Facebook Aspect-Ratio Handling */}
+      <div className="val-fb-media-frame">
         {selectedMedia ? (
           isImage(selectedMedia.fileType) ? (
-            <div style={{ position: "relative", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <img src={selectedMedia.storageUrl} alt={selectedMedia.fileName} />
-              {showWatermarkPreview && watermarkConfig?.enabled && (
-                <WatermarkOverlay elements={watermarkConfig.elements} />
-              )}
-            </div>
+            <FacebookPostImage
+              src={selectedMedia.storageUrl}
+              alt={selectedMedia.fileName}
+              showWatermark={showWatermarkPreview}
+              watermarkConfig={watermarkConfig}
+              skipWatermark={selectedMedia.skipWatermark}
+            />
           ) : (
-            <div className="val-video-placeholder">
-              <i className="ti ti-player-play-filled"></i>
-              <span>{selectedMedia.fileName}</span>
+            <div className="val-fb-video-wrapper">
+              <video src={selectedMedia.storageUrl} controls playsInline />
             </div>
           )
         ) : (
-          <div className="val-no-media">
-            <i className="ti ti-photo-off"></i>
-            <span>No media assets attached</span>
+          <div className="val-fb-no-media">
+            <i className="ti ti-photo-off" />
+            <span>No media attached</span>
           </div>
         )}
+
         {mediaAssets.length > 1 && (
           <>
             <button
-              className="val-carrow left"
+              className="val-fb-arrow left"
               type="button"
+              aria-label="Previous media"
               onClick={() =>
                 onMediaIndexChange((mediaIndex - 1 + mediaAssets.length) % mediaAssets.length)
               }
             >
-              <i className="ti ti-chevron-left"></i>
+              <i className="ti ti-chevron-left" />
             </button>
             <button
-              className="val-carrow right"
+              className="val-fb-arrow right"
               type="button"
+              aria-label="Next media"
               onClick={() => onMediaIndexChange((mediaIndex + 1) % mediaAssets.length)}
             >
-              <i className="ti ti-chevron-right"></i>
+              <i className="ti ti-chevron-right" />
             </button>
+            <div className="val-fb-counter">
+              {mediaIndex + 1} / {mediaAssets.length}
+            </div>
           </>
         )}
-        <div className="val-carousel-meta">
-          <span>
-            {mediaAssets.length ? `${mediaIndex + 1} / ${mediaAssets.length}` : "0 / 0"}
-          </span>
-          <b>{selectedMedia?.fileType || "MEDIA"}</b>
-        </div>
       </div>
-      {mediaAssets.length > 0 && (
-        <div className="val-thumbs">
+
+      {/* Multi-Photo Carousel Dots / Thumbnails */}
+      {mediaAssets.length > 1 && (
+        <div className="val-fb-thumbs">
           {mediaAssets.map((asset, index) => (
             <button
-              className={index === mediaIndex ? "active" : ""}
+              className={`val-fb-thumb ${index === mediaIndex ? "active" : ""}`}
               key={asset.id}
               type="button"
               onClick={() => onMediaIndexChange(index)}
@@ -1331,40 +1537,219 @@ function MediaCarousel({
               {isImage(asset.fileType) ? (
                 <img src={asset.storageUrl} alt="" />
               ) : (
-                <i className="ti ti-video"></i>
+                <div className="val-fb-thumb-video"><i className="ti ti-video" /></div>
               )}
             </button>
           ))}
         </div>
       )}
-    </section>
+
+      {/* 4. Insights Bar (Image 2) */}
+      <div className="val-fb-insights-bar" aria-hidden="true">
+        <span className="val-fb-insights-link">See insights</span>
+        <button type="button" tabIndex={-1} className="val-fb-create-ad-btn">
+          Create ad
+        </button>
+      </div>
+
+      {/* 5. Engagement Action Buttons (Image 2) */}
+      <div className="val-fb-action-buttons" aria-hidden="true">
+        <button type="button" className="val-fb-action-btn" tabIndex={-1}>
+          <i className="ti ti-thumb-up" />
+          <span>Like</span>
+        </button>
+        <button type="button" className="val-fb-action-btn" tabIndex={-1}>
+          <i className="ti ti-message-circle" />
+          <span>Comment</span>
+        </button>
+        <button type="button" className="val-fb-action-btn" tabIndex={-1}>
+          <i className="ti ti-share-3" />
+          <span>Share</span>
+        </button>
+      </div>
+
+      {/* 6. Comment as page input (Image 2) */}
+      <div className="val-fb-comment-bar" aria-hidden="true">
+        <div className="val-fb-comment-avatar">
+          <i className="ti ti-brand-facebook" />
+        </div>
+        <div className="val-fb-comment-input-box">
+          <span>Comment as {pageName}</span>
+          <div className="val-fb-comment-tools">
+            <i className="ti ti-mood-smile" />
+            <i className="ti ti-camera" />
+            <i className="ti ti-gif" />
+            <i className="ti ti-sticker" />
+          </div>
+        </div>
+      </div>
+    </article>
   );
 }
 
-function SubmissionDetailCards({ content }: { content: SubmissionSummary }) {
-  return (
-    <section className="val-detail-grid">
-      <DetailCard icon="ti-calendar-event" label="Event Date">
-        {formatDate(content.eventDate)}
-      </DetailCard>
-      <DetailCard icon="ti-sparkles" label="Tags" full>
-        <div className="val-tag-row">
-          {content.tags?.length ? (
-            content.tags.map((tag) => <span key={tag}>{tag}</span>)
-          ) : (
-            <em>No tags supplied</em>
-          )}
+function ValidationHistoryModal({
+  submission,
+  log,
+  loading,
+  isTerminalStatus,
+  onClose,
+}: {
+  submission: SubmissionSummary;
+  log: ValidationLog[];
+  loading: boolean;
+  isTerminalStatus: boolean;
+  onClose: () => void;
+}) {
+  const visibleLog = log.filter(
+    (entry) =>
+      entry.action !== "lock_acquired" &&
+      entry.action !== "lock_released",
+  );
+
+  return createPortal(
+    <div className="val-modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="val-history-modal" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="val-history-header">
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div
+              style={{
+                width: "36px",
+                height: "36px",
+                borderRadius: "10px",
+                background: "#eff6ff",
+                color: "#1877f2",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "18px",
+              }}
+            >
+              <i className="ti ti-history" />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "var(--val-text)" }}>
+                Submission History & Details
+              </h3>
+              <span style={{ fontSize: "12px", color: "var(--val-muted)" }}>
+                {shortId(submission.id)} · {submission.institutionName || "Unknown Institution"}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="val-collapse-btn"
+            onClick={onClose}
+            aria-label="Close"
+            style={{ color: "#64748b" }}
+          >
+            <i className="ti ti-x" />
+          </button>
         </div>
-      </DetailCard>
-      <DetailCard icon="ti-brand-facebook" label="Facebook Caption" full>
-        <p className="val-caption">{content.caption || "No caption supplied."}</p>
-      </DetailCard>
-      {content.description && (
-        <DetailCard icon="ti-notes" label="Administrator Notes" full muted>
-          {content.description}
-        </DetailCard>
-      )}
-    </section>
+
+        {/* Body */}
+        <div className="val-history-body">
+          {/* Metadata Grid */}
+          <div className="val-history-meta-grid">
+            <div className="val-history-meta-item">
+              <span>Submitted By</span>
+              <strong>{submission.contributorEmail || "—"}</strong>
+            </div>
+            <div className="val-history-meta-item">
+              <span>Event Date</span>
+              <strong>{formatDate(submission.eventDate)}</strong>
+            </div>
+            {submission.scheduledAt && (
+              <div className="val-history-meta-item">
+                <span>Scheduled Slot</span>
+                <strong>{formatDate(submission.scheduledAt)} at {formatTime(submission.scheduledAt)}</strong>
+              </div>
+            )}
+            <div className="val-history-meta-item">
+              <span>Status</span>
+              <strong style={{ color: "#1877f2", textTransform: "capitalize" }}>
+                {statusLabel[normalizeStatus(submission.status)] || normalizeStatus(submission.status).replace(/_/g, " ") || "Unknown"}
+              </strong>
+            </div>
+          </div>
+
+          {/* Administrator / Contributor Notes */}
+          {submission.description && (
+            <div style={{ padding: "12px 14px", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--val-border)" }}>
+              <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: "var(--val-muted)" }}>
+                Administrator Notes
+              </span>
+              <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--val-text-2)", whiteSpace: "pre-wrap" }}>
+                {submission.description}
+              </p>
+            </div>
+          )}
+
+          {/* Timeline Events */}
+          <div>
+            <div className="val-history-section-title">
+              <span>Audit Events ({visibleLog.length})</span>
+            </div>
+
+            {loading && (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--val-muted)", padding: "20px 0" }}>
+                <i className="ti ti-loader-2 val-spin" />
+                <span>Loading audit trail...</span>
+              </div>
+            )}
+
+            {!loading && visibleLog.length === 0 && (
+              <p style={{ color: "var(--val-muted)", fontSize: "13px", fontStyle: "italic", margin: "8px 0" }}>
+                {isTerminalStatus
+                  ? "No validation actions recorded -- this submission was not reviewed through the validation workflow."
+                  : "No approval, revision, rejection, or timeout actions recorded yet."}
+              </p>
+            )}
+
+            {!loading && visibleLog.length > 0 && (
+              <div className="val-history-list">
+                {visibleLog.map((entry) => (
+                  <div className="val-log-item" key={entry.id}>
+                    <div className={`val-log-dot action-${entry.action}`}>
+                      <i className={`ti ${logIcon(entry.action)}`}></i>
+                    </div>
+                    <div className="val-log-content">
+                      <strong>
+                        {formatAction(entry.action)}
+                        {entry.selfReview && <span className="val-log-flag">Self-review</span>}
+                        {entry.fastTrack && <span className="val-log-flag fast-track">Fast-Track</span>}
+                      </strong>
+                      <span className="val-log-meta">
+                        {entry.validatorEmail} · {formatDateTime(entry.createdAt)}
+                      </span>
+                      {entry.remarks && <p className="val-log-remarks">{entry.remarks}</p>}
+                      {entry.rejectionReason && <p className="val-log-remarks">{entry.rejectionReason}</p>}
+                      {entry.editDiff && <EditDiffView diffJson={entry.editDiff} />}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            padding: "14px 24px",
+            borderTop: "1px solid var(--val-border, #e2e8f0)",
+            background: "var(--val-surface, #ffffff)",
+          }}
+        >
+          <button type="button" className="val-btn val-btn-secondary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1474,8 +1859,8 @@ function parseEditDiff(diffJson: string): Array<[string, { from: unknown; to: un
   }
 }
 
-function normalizeStatus(value: string) {
-  return value.toLowerCase();
+function normalizeStatus(value?: string | null) {
+  return String(value ?? "").toLowerCase().replace(/-/g, "_");
 }
 
 function deadlineTone(value?: string) {
@@ -1486,10 +1871,10 @@ function deadlineTone(value?: string) {
   return "";
 }
 
-function isImage(fileType: string) {
-  return ["jpeg", "jpg", "png", "webp", "gif", "image"].some((type) =>
-    fileType.toLowerCase().includes(type),
-  );
+function isImage(fileType?: string | null): boolean {
+  if (!fileType) return true;
+  const lower = String(fileType).toLowerCase();
+  return !lower.includes("video") && !lower.includes("mp4") && !lower.includes("mov");
 }
 
 function shortId(id: string) {
