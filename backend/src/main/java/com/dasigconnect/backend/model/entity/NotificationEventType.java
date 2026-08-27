@@ -19,5 +19,8 @@ public enum NotificationEventType {
     submission_rescheduled,
     token_expiring,
     token_invalid,
+    empty_schedule_warning,
+    fast_track_submission,
+    embedding_failure_digest,
     generic
 }

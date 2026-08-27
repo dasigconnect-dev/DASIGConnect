@@ -3,11 +3,15 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { WatermarkElement } from "../../types/watermark.types";
 import { changePassword, getMe, getPageSettings, listInstitutions, updateAccountSettings, updatePageSettings } from "../../api/authApi";
+import { createMessengerLinkCode, disconnectMessenger, getMessengerConnectionStatus, type MessengerConnection, type MessengerLinkCode } from "../../api/messengerApi";
 import { deleteWatermarkOverride, getWatermarkConfiguration, saveWatermarkConfiguration } from "../../api/watermarkApi";
 import WatermarkCanvasEditor from "../settings/components/WatermarkCanvasEditor";
 import { useToast } from "../../context/ToastContext";
 
-interface Props { user: User; onProfileUpdated: () => Promise<void>; }
+interface Props {
+  user: User;
+  onProfileUpdated: () => Promise<void>;
+}
 
 type SettingsTab = "account" | "password" | "page";
 
@@ -48,7 +52,12 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [watermarkLoading, setWatermarkLoading] = useState(false);
   const [revertingOverride, setRevertingOverride] = useState(false);
 
-  const [saving, setSaving] = useState<"account" | "password" | "page" | "watermark" | null>(null);
+  // Messenger Integration States
+  const [messengerStatus, setMessengerStatus] = useState<MessengerConnection | null>(null);
+  const [linkCode, setLinkCode] = useState<MessengerLinkCode | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const [saving, setSaving] = useState<"account" | "password" | "page" | "watermark" | "messenger" | null>(null);
   const pageInstitutionId = user.role === "administrator" ? (userInstitutionId || user.institutionId || null) : selectedInstitutionId || null;
 
   const currentInstitution = institutions.find((i) => i.id === pageInstitutionId);
@@ -59,7 +68,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     if (!trimmed) return "Display name cannot be empty.";
     if (trimmed.length < 2) return "Display name must be at least 2 characters.";
     if (trimmed.length > 60) return "Display name cannot exceed 60 characters.";
-    // Allow letters (including Filipino ñ/Ñ), numbers, spaces, hyphens, periods, and apostrophes
     const validPattern = /^[a-zA-Z0-9\s\-'.ñÑ]+$/;
     if (!validPattern.test(name)) {
       return "Only letters, numbers, spaces, hyphens, periods, and apostrophes are allowed.";
@@ -78,6 +86,13 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [isStudioOpen, setIsStudioOpen] = useState(() => {
     return window.location.hash === "#watermark-studio";
   });
+
+  const loadMessenger = () => {
+    if (!canManagePage) return;
+    getMessengerConnectionStatus()
+      .then((data) => setMessengerStatus(data))
+      .catch(() => setMessengerStatus(null));
+  };
 
   useEffect(() => {
     const hash = location.hash.replace("#", "");
@@ -112,7 +127,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     navigate(`/settings#page`, { replace: true });
   }
 
-  // Initial mount: load profile and super admin institutions
+  // Initial mount: load profile, institutions, and messenger status
   useEffect(() => {
     void getMe().then(({ data }) => {
       const fullName = [data.firstName, data.lastName].filter(Boolean).join(" ");
@@ -128,6 +143,10 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       }
     });
 
+    if (canManagePage) {
+      loadMessenger();
+    }
+
     if (user.role === "super_administrator") {
       void listInstitutions().then(({ data }) =>
         setInstitutions(
@@ -139,9 +158,9 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
         )
       );
     }
-  }, [user.name, user.role]);
+  }, [user.name, user.role, canManagePage]);
 
-  // Page and Watermark settings loader (strictly tied to institution scope change)
+  // Page and Watermark settings loader
   useEffect(() => {
     if (!canManagePage) return;
 
@@ -207,10 +226,14 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     setSaving("password");
     try {
       await changePassword(currentPassword, newPassword);
-      setCurrentPassword(""); setNewPassword("");
+      setCurrentPassword("");
+      setNewPassword("");
       toast.success("Password changed. Other signed-in devices remain active.");
-    } catch { toast.error("Password change failed. Check your current password."); }
-    finally { setSaving(null); }
+    } catch {
+      toast.error("Password change failed. Check your current password.");
+    } finally {
+      setSaving(null);
+    }
   }
 
   async function savePage() {
@@ -218,8 +241,11 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     try {
       await updatePageSettings({ watermarkEnabled, watermarkText: "", facebookPageId }, pageInstitutionId);
       toast.success("Facebook settings updated.");
-    } catch { toast.error("Unable to update Facebook settings."); }
-    finally { setSaving(null); }
+    } catch {
+      toast.error("Unable to update Facebook settings.");
+    } finally {
+      setSaving(null);
+    }
   }
 
   async function saveWatermark() {
@@ -262,10 +288,47 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     }
   }
 
+  async function generateMessengerCode() {
+    setSaving("messenger");
+    try {
+      const res = await createMessengerLinkCode();
+      setLinkCode(res);
+      setCopiedCode(false);
+      toast.success("Messenger link code generated. Send it to the official Page.");
+    } catch {
+      toast.error("Unable to generate Messenger link code.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleDisconnectMessenger() {
+    if (!window.confirm("Are you sure you want to disconnect Facebook Messenger alerts?")) return;
+    setSaving("messenger");
+    try {
+      await disconnectMessenger();
+      setMessengerStatus({ connected: false, enabled: false, linkedAt: null });
+      setLinkCode(null);
+      toast.success("Facebook Messenger disconnected.");
+    } catch {
+      toast.error("Unable to disconnect Messenger.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  function handleCopyCode() {
+    if (!linkCode) return;
+    void navigator.clipboard.writeText(linkCode.code).then(() => {
+      setCopiedCode(true);
+      toast.success("Code copied to clipboard!");
+      setTimeout(() => setCopiedCode(false), 3000);
+    });
+  }
+
   if (isStudioOpen && canManagePage) {
     return (
       <div className="dash-body settings-page settings-studio-fullscreen-page">
-        {/* Topbar with back button placed above */}
         <div className="settings-studio-topbar">
           <button
             type="button"
@@ -278,7 +341,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
           </button>
         </div>
 
-        {/* Dedicated Full-Width Watermark Studio Container */}
         <section className="settings-studio-card" id="watermark-studio">
           <header className="settings-studio-header">
             <div className="settings-studio-header-left">
@@ -687,6 +749,93 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                   onClick={() => void savePage()}
                 />
               </section>
+
+              {/* Card 3: Facebook Messenger Alerts */}
+              <section className="settings-card" id="messenger-card">
+                <SettingsHeader
+                  icon="ti ti-brand-messenger"
+                  title="Facebook Messenger Alerts"
+                  description="Receive instant alerts for submissions, schedule warnings, and critical publishing events directly on Messenger."
+                  accent={
+                    messengerStatus?.connected ? (
+                      <span className="settings-admin-chip" style={{ background: "#dcfce7", color: "#166534" }}>
+                        <i className="ti ti-circle-check" /> Connected
+                      </span>
+                    ) : (
+                      <span className="settings-admin-chip">
+                        <i className="ti ti-plug" /> Integration
+                      </span>
+                    )
+                  }
+                />
+                <div className="settings-card-body">
+                  {messengerStatus?.connected ? (
+                    <div className="settings-messenger-connected">
+                      <div className="settings-messenger-badge">
+                        <span className="settings-messenger-status-dot" />
+                        <div className="settings-messenger-badge-text">
+                          <strong>Messenger Account Linked & Active</strong>
+                          <span>Connected {messengerStatus.linkedAt ? new Date(messengerStatus.linkedAt).toLocaleDateString() : ""} — Real-time alerts enabled</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="settings-messenger-disconnect-btn"
+                        disabled={saving === "messenger"}
+                        onClick={() => void handleDisconnectMessenger()}
+                      >
+                        <i className="ti ti-plug-connected-x" /> Disconnect
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="settings-messenger-box">
+                      <div className="settings-messenger-steps">
+                        <p>Link your personal Facebook Messenger to receive automated real-time alerts (T-01, T-07, T-11, T-12) directly from DASIGConnect.</p>
+                        <ol>
+                          <li>Click <strong>Generate Link Code</strong> below to receive a secure 10-minute code.</li>
+                          <li>Open Facebook Messenger and send the exact command to the official DASIGConnect Page.</li>
+                          <li>DASIGConnect will verify the code and immediately confirm your connection.</li>
+                        </ol>
+                      </div>
+
+                      {linkCode ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                          <div className="settings-messenger-code-container">
+                            <span>{linkCode.code}</span>
+                            <button type="button" className="settings-messenger-copy-btn" onClick={handleCopyCode}>
+                              <i className={copiedCode ? "ti ti-check" : "ti ti-copy"} />
+                              {copiedCode ? "Copied" : "Copy"}
+                            </button>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "var(--d-muted)" }}>
+                            <span>Expires in 10 minutes</span>
+                            <button
+                              type="button"
+                              style={{ background: "none", border: "none", color: "var(--d-blue)", cursor: "pointer", textDecoration: "underline", fontSize: "11px" }}
+                              onClick={loadMessenger}
+                            >
+                              Check Connection Status
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <button
+                            type="button"
+                            className="settings-save-button"
+                            style={{ display: "inline-flex", alignItems: "center", gap: "8px", width: "auto" }}
+                            disabled={saving === "messenger"}
+                            onClick={() => void generateMessengerCode()}
+                          >
+                            <i className={saving === "messenger" ? "ti ti-loader-2 settings-spinner" : "ti ti-key"} />
+                            Generate Link Code
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </section>
             </div>
           )}
         </main>
@@ -696,12 +845,43 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
 }
 
 function SettingsHeader({ icon, title, description, accent }: { icon: string; title: string; description: string; accent?: React.ReactNode }) {
-  return <header className="settings-card-header"><span className="settings-card-icon"><i className={icon} /></span><div className="settings-card-heading"><h2>{title}</h2><p>{description}</p></div>{accent}</header>;
+  return (
+    <header className="settings-card-header">
+      <span className="settings-card-icon"><i className={icon} /></span>
+      <div className="settings-card-heading">
+        <h2>{title}</h2>
+        <p>{description}</p>
+      </div>
+      {accent}
+    </header>
+  );
 }
+
 function SettingsFooter({ label, icon, busy, disabled, onClick }: { label: string; icon: string; busy: boolean; disabled?: boolean; onClick: () => void }) {
-  return <footer className="settings-card-footer"><button type="button" className="settings-save-button" disabled={busy || disabled} aria-busy={busy} onClick={onClick}><i className={busy ? "ti ti-loader-2 settings-spinner" : icon} />{busy ? "Saving…" : label}</button></footer>;
+  return (
+    <footer className="settings-card-footer">
+      <button type="button" className="settings-save-button" disabled={busy || disabled} aria-busy={busy} onClick={onClick}>
+        <i className={busy ? "ti ti-loader-2 settings-spinner" : icon} />
+        {busy ? "Saving…" : label}
+      </button>
+    </footer>
+  );
 }
+
 function Toggle({ icon, title, description, checked, onChange }: { icon?: string; title: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="settings-toggle-row">{icon && <span className="settings-toggle-icon"><i className={icon} /></span>}<span className="settings-toggle-copy"><strong>{title}</strong><span>{description}</span></span><input className="settings-toggle-input" type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} /><span className="settings-switch"><span /></span></label>;
+  return (
+    <label className="settings-toggle-row">
+      {icon && <span className="settings-toggle-icon"><i className={icon} /></span>}
+      <span className="settings-toggle-copy">
+        <strong>{title}</strong>
+        <span>{description}</span>
+      </span>
+      <input className="settings-toggle-input" type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span className="settings-switch"><span /></span>
+    </label>
+  );
 }
-function formatRole(role: User["role"]) { return role === "super_administrator" ? "Super Administrator" : role === "administrator" ? "Administrator" : "Contributor"; }
+
+function formatRole(role: User["role"]) {
+  return role === "super_administrator" ? "Super Administrator" : role === "administrator" ? "Administrator" : "Contributor";
+}

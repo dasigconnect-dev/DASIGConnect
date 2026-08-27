@@ -195,7 +195,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const selectedPostingIsDefault = Boolean(
     selectedPostingInstitution && isDefaultInstitution(selectedPostingInstitution),
   );
-
   const [existingAlbums] = useState<string[]>([
     "2026 Hackathons",
     "DOST Region 7 Announcements",
