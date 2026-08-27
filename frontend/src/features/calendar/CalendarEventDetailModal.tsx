@@ -88,8 +88,8 @@ export default function CalendarEventDetailModal({
 
   const mediaAssets = submissionDetail?.mediaAssets ?? [];
   const caption = submissionDetail?.caption?.trim();
-  const displayStatus = visibleCalendarStatus(event.status, user.role, isOwnInstitution);
-  const displayColor = visibleStatusColor(event.status, user.role, isOwnInstitution);
+  const displayStatus = visibleCalendarStatus(event.status, user.role, isOwnInstitution, event.mine);
+  const displayColor = visibleStatusColor(event.status, user.role, isOwnInstitution, event.mine);
   const rawStatus = (event.status || "").toLowerCase();
   const isPendingApproval = rawStatus === "pending" || rawStatus === "in_review";
   const isAdmin = user.role === "administrator" || user.role === "super_administrator";
@@ -122,7 +122,7 @@ export default function CalendarEventDetailModal({
               className="status-badge"
               style={{ background: displayColor.bg, color: displayColor.text }}
             >
-              {visibleStatusLabel(event.status, user.role, isOwnInstitution)}
+              {visibleStatusLabel(event.status, user.role, isOwnInstitution, event.mine)}
             </span>
             {event.locked && (
               <span className="status-badge cal-locked-badge">

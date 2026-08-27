@@ -113,6 +113,9 @@ public class ValidationService {
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
 
+        String sessionEditDiff = combinedSessionEditDiff(submissionId);
+        boolean edited = sessionEditDiff != null;
+
         submission.setStatus(SubmissionStatus.scheduled);
         submissionRepository.save(submission);
 
@@ -122,20 +125,24 @@ public class ValidationService {
         reviewLockService.release(submissionId, caller);
 
         User validator = loadUser(caller.userId());
-        logAction(submission, validator, ValidationAction.approved, null, null,
-                selfReview, submission.isFastTrack(), null);
+        logAction(submission, validator,
+                edited ? ValidationAction.edited_and_approved : ValidationAction.approved,
+                null, null, selfReview, submission.isFastTrack(), sessionEditDiff);
 
-        eventPublisher.publishEvent(new SubmissionApprovedEvent(submission));
-        log.info("Submission approved (fastTrack={}): submission={} validator={}", submission.isFastTrack(), submissionId, caller.userId());
+        eventPublisher.publishEvent(new SubmissionApprovedEvent(submission, edited));
+        log.info("Submission approved (fastTrack={}, edited={}): submission={} validator={}",
+                submission.isFastTrack(), edited, submissionId, caller.userId());
     }
 
     /**
-     * Edits a submission's content and approves it in the same action: transitions
-     * to SCHEDULED (or PUBLISHING if fast-track), confirms slot, releases lock. Records a before/after diff of any
-     * edited fields alongside the approval action (A9/A10).
+     * A9: applies a direct inline edit to any editable field of a submission that is
+     * currently IN_REVIEW. The submission stays IN_REVIEW — the Administrator must
+     * still select a terminal action afterwards. Each edit records its own
+     * before/after diff in the audit log (A10), so repeated edits within a review
+     * session are all traceable.
      * A5: self-review is allowed but distinctly flagged in the audit log.
      */
-    public void editAndApprove(UUID submissionId, SubmissionUpdateDto dto, JwtUserDetails caller) {
+    public void edit(UUID submissionId, SubmissionUpdateDto dto, JwtUserDetails caller) {
         Submission submission = loadSubmissionInScope(submissionId, caller);
         boolean selfReview = isSelfReview(submission, caller);
         assertReviewableStatus(submission);
@@ -146,20 +153,13 @@ public class ValidationService {
         submissionService.assertContentComplete(submission);
         String editDiff = buildEditDiff(before, snapshotEditableFields(submission));
 
-        submission.setStatus(SubmissionStatus.scheduled);
-        submissionRepository.save(submission);
-
-        if (!submission.isFastTrack()) {
-            slotReservationService.confirm(submissionId);
-        }
-        reviewLockService.release(submissionId, caller);
-
+        // Keep the submission IN_REVIEW — no terminal transition here.
         User validator = loadUser(caller.userId());
-        logAction(submission, validator, ValidationAction.edited_and_approved, null, null,
+        logAction(submission, validator, ValidationAction.edited, null, null,
                 selfReview, submission.isFastTrack(), editDiff);
 
-        eventPublisher.publishEvent(new SubmissionApprovedEvent(submission, editDiff != null));
-        log.info("Submission edited and approved: submission={} validator={}", submissionId, caller.userId());
+        log.info("Submission edited in review (changed={}): submission={} validator={}",
+                editDiff != null, submissionId, caller.userId());
     }
 
     /**
@@ -174,6 +174,8 @@ public class ValidationService {
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
 
+        String sessionEditDiff = combinedSessionEditDiff(submissionId);
+
         submission.setStatus(SubmissionStatus.needs_revision);
         submission.setValidatorRemarks(remarks);
         submissionRepository.save(submission);
@@ -183,7 +185,7 @@ public class ValidationService {
 
         User validator = loadUser(caller.userId());
         logAction(submission, validator, ValidationAction.needs_revision, remarks, null,
-                selfReview, submission.isFastTrack(), null);
+                selfReview, submission.isFastTrack(), sessionEditDiff);
 
         eventPublisher.publishEvent(new RevisionRequestedEvent(submission, remarks));
         log.info("Revision requested: submission={} validator={}", submissionId, caller.userId());
@@ -201,6 +203,7 @@ public class ValidationService {
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
 
+        String sessionEditDiff = combinedSessionEditDiff(submissionId);
         String fullReason = buildRejectionReason(reasonCode, notes);
         submission.setStatus(SubmissionStatus.rejected);
         submission.setRejectionReason(fullReason);
@@ -211,7 +214,7 @@ public class ValidationService {
 
         User validator = loadUser(caller.userId());
         logAction(submission, validator, ValidationAction.rejected, null, fullReason,
-                selfReview, submission.isFastTrack(), null);
+                selfReview, submission.isFastTrack(), sessionEditDiff);
 
         eventPublisher.publishEvent(new SubmissionRejectedEvent(submission, fullReason));
         log.info("Submission rejected: submission={} reason={} validator={}", submissionId, reasonCode, caller.userId());
@@ -302,6 +305,61 @@ public class ValidationService {
             return objectMapper.writeValueAsString(diff);
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             log.warn("Failed to serialize edit diff, storing null: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * A10: aggregates the before/after diffs of every standalone {@code edited}
+     * action taken since the current review lock was acquired into one combined
+     * diff, so a terminal action (approve/revise/reject) records the full picture
+     * of what the Administrator changed. Returns null when no edit happened this
+     * session.
+     */
+    private String combinedSessionEditDiff(UUID submissionId) {
+        List<ValidationLog> logs = validationLogRepository
+                .findBySubmissionIdOrderByCreatedAtAsc(submissionId);
+
+        int lastLockIndex = -1;
+        for (int i = 0; i < logs.size(); i++) {
+            if (logs.get(i).getAction() == ValidationAction.lock_acquired) {
+                lastLockIndex = i;
+            }
+        }
+
+        Map<String, Map<String, Object>> combined = new LinkedHashMap<>();
+        for (int i = lastLockIndex + 1; i < logs.size(); i++) {
+            ValidationLog entry = logs.get(i);
+            if (entry.getAction() != ValidationAction.edited || entry.getEditDiff() == null) {
+                continue;
+            }
+            try {
+                Map<String, Map<String, Object>> diff = objectMapper.readValue(
+                        entry.getEditDiff(),
+                        new com.fasterxml.jackson.core.type.TypeReference<>() {});
+                for (Map.Entry<String, Map<String, Object>> field : diff.entrySet()) {
+                    Map<String, Object> existing = combined.get(field.getKey());
+                    if (existing == null) {
+                        combined.put(field.getKey(), new LinkedHashMap<>(field.getValue()));
+                    } else {
+                        // Keep the earliest "from", advance to the latest "to".
+                        existing.put("to", field.getValue().get("to"));
+                    }
+                }
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                log.warn("Skipping unparseable edit diff for submission {}: {}", submissionId, e.getMessage());
+            }
+        }
+
+        combined.entrySet().removeIf(e ->
+                java.util.Objects.equals(e.getValue().get("from"), e.getValue().get("to")));
+        if (combined.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(combined);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            log.warn("Failed to serialize combined session edit diff for submission {}: {}", submissionId, e.getMessage());
             return null;
         }
     }

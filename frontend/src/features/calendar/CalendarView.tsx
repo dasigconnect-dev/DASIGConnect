@@ -60,7 +60,7 @@ function isOwnInstitution(e: CalendarEvent, user: User) {
 function toFcEvents(events: CalendarEvent[], user: User, draggable: boolean) {
   return events.map((e) => {
     const status = (e.status || "").toLowerCase();
-    const color = visibleStatusColor(e.status, user.role, isOwnInstitution(e, user));
+    const color = visibleStatusColor(e.status, user.role, isOwnInstitution(e, user), e.mine);
     return {
       id: e.id,
       title: eventTitle(e),
@@ -77,7 +77,7 @@ function toFcEvents(events: CalendarEvent[], user: User, draggable: boolean) {
 function renderEventContent(arg: EventContentArg, user: User, draggable: boolean) {
   const e = arg.event.extendedProps.event as CalendarEvent;
   const isOwn = isOwnInstitution(e, user);
-  const color = visibleStatusColor(e.status, user.role, isOwn);
+  const color = visibleStatusColor(e.status, user.role, isOwn, e.mine);
   const status = (e.status || "").toLowerCase();
   const isDraggable = draggable && DRAGGABLE_STATUSES.includes(status);
   return (
@@ -99,7 +99,7 @@ function renderEventContent(arg: EventContentArg, user: User, draggable: boolean
       <span className="cal-event-main">
         <span className="cal-event-title">{eventTitle(e)}</span>
         <span className="cal-event-meta">
-          {eventInstitution(e)} · {eventTime(e.scheduledAt)} · {visibleStatusLabel(e.status, user.role, isOwn)}
+          {eventInstitution(e)} · {eventTime(e.scheduledAt)} · {visibleStatusLabel(e.status, user.role, isOwn, e.mine)}
         </span>
       </span>
     </div>
@@ -128,7 +128,7 @@ export default function CalendarView({
     const counts = new Map<string, number>();
     const tracked = ["scheduled", "direct_post_scheduled", "published", "published_manual"];
     events.forEach((e) => {
-      const status = visibleCalendarStatus(e.status, user.role, isOwnInstitution(e, user));
+      const status = visibleCalendarStatus(e.status, user.role, isOwnInstitution(e, user), e.mine);
       if (!tracked.includes(status)) return;
       const d = new Date(e.scheduledAt);
       const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;

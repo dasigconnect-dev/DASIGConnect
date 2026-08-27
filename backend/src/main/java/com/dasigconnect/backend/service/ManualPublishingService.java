@@ -158,16 +158,24 @@ public class ManualPublishingService {
     }
 
     /**
-     * A8: retries a PUBLISH_FAILED submission on a newly chosen slot instead of the
-     * original one. Guard rails are re-evaluated against the new slot; a hard
-     * violation blocks the move unless the admin supplies an overrideReason.
+     * A8: retries a PUBLISH_FAILED or MISSED_REVIEW submission on a newly chosen
+     * slot instead of the original one. Guard rails are re-evaluated against the
+     * new slot; a hard violation blocks the move unless the admin supplies an
+     * overrideReason.
+     *
+     * <ul>
+     *   <li>PUBLISH_FAILED → SCHEDULED (re-enters the automated publishing flow).</li>
+     *   <li>MISSED_REVIEW → PENDING (re-enters the Approval Workflow so it still
+     *       gets a proper review rather than skipping to publication).</li>
+     * </ul>
      */
     public void retryWithNewSchedule(UUID submissionId, RescheduleRequestDto dto, JwtUserDetails admin) {
         Submission s = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new SubmissionNotFoundException(submissionId));
-        if (s.getStatus() != SubmissionStatus.publish_failed) {
+        boolean missedReview = s.getStatus() == SubmissionStatus.missed_review;
+        if (s.getStatus() != SubmissionStatus.publish_failed && !missedReview) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Only PUBLISH_FAILED submissions can be retried with a new schedule.");
+                    "Only PUBLISH_FAILED or MISSED_REVIEW submissions can be retried with a new schedule.");
         }
 
         Instant originalSlot = s.getScheduledAt();
@@ -192,16 +200,23 @@ public class ManualPublishingService {
             );
         }
 
-        slotReservationService.reserveLockedSlot(submissionId, s.getInstitution().getId(), newSlot);
+        if (missedReview) {
+            // Re-enter the Approval Workflow rather than the publishing flow.
+            slotReservationService.reserve(submissionId, s.getInstitution().getId(), newSlot);
+            s.setStatus(SubmissionStatus.pending);
+            s.setSubmittedAt(Instant.now());
+        } else {
+            slotReservationService.reserveLockedSlot(submissionId, s.getInstitution().getId(), newSlot);
+            s.setStatus(SubmissionStatus.scheduled);
+        }
         s.setScheduledAt(newSlot);
-        s.setStatus(SubmissionStatus.scheduled);
         s.setRetryCount(0);
         s.setManualPublishStartedAt(null);
         submissionRepository.save(s);
 
         auditLogService.record(
                 entityManager.getReference(User.class, admin.userId()),
-                "MANUAL_PUBLISH_RETRY_NEW_SCHEDULE",
+                missedReview ? "MISSED_REVIEW_RETRY_NEW_SCHEDULE" : "MANUAL_PUBLISH_RETRY_NEW_SCHEDULE",
                 null, null,
                 submissionId,
                 Map.of(

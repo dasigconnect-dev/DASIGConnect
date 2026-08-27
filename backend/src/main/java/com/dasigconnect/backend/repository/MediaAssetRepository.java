@@ -1,14 +1,16 @@
 package com.dasigconnect.backend.repository;
 
-import com.dasigconnect.backend.model.entity.MediaAsset;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+
+import com.dasigconnect.backend.model.entity.MediaAsset;
 
 public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
@@ -38,12 +40,17 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     long countByMediaAlbumIdAndDeletedAtIsNull(UUID mediaAlbumId);
 
-    /** Re-home the active assets in a set of albums to another institution. */
+    /**
+     * Re-home the active assets in a set of albums to another institution.
+     */
     @Modifying
     @Query(value = "UPDATE media_assets SET institution_id = :institutionId WHERE media_album_id IN :albumIds AND deleted_at IS NULL", nativeQuery = true)
     void rehomeAssetsInAlbums(@Param("institutionId") UUID institutionId, @Param("albumIds") java.util.Collection<UUID> albumIds);
 
-    /** [albumId, assetCount] pairs for every album in the institution that holds active assets. */
+    /**
+     * [albumId, assetCount] pairs for every album in the institution that holds
+     * active assets.
+     */
     @Query("""
             SELECT m.mediaAlbum.id, COUNT(m)
             FROM MediaAsset m
@@ -52,7 +59,10 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             """)
     List<Object[]> countActiveAssetsByAlbum(@Param("institutionId") UUID institutionId);
 
-    /** Same as {@link #countActiveAssetsByAlbum} but across every institution (admin network view). */
+    /**
+     * Same as {@link #countActiveAssetsByAlbum} but across every institution
+     * (admin network view).
+     */
     @Query("""
             SELECT m.mediaAlbum.id, COUNT(m)
             FROM MediaAsset m
@@ -62,6 +72,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     List<Object[]> countActiveAssetsByAlbumAllInstitutions();
 
     boolean existsByAssetCode(String assetCode);
+
     boolean existsByUploaderId(UUID uploaderId);
 
     @Modifying
@@ -75,8 +86,8 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         WHERE id = :id
         """, nativeQuery = true)
     void updateEmbedding(@Param("id") UUID id,
-                         @Param("embedding") String embeddingJson,
-                         @Param("embeddingModel") String embeddingModel);
+            @Param("embedding") String embeddingJson,
+            @Param("embeddingModel") String embeddingModel);
 
     @Modifying
     @Transactional
@@ -90,10 +101,10 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         WHERE id = :id
         """, nativeQuery = true)
     void updateClassification(@Param("id") UUID id,
-                              @Param("category") String category,
-                              @Param("confidence") double confidence,
-                              @Param("description") String description,
-                              @Param("classificationModel") String classificationModel);
+            @Param("category") String category,
+            @Param("confidence") double confidence,
+            @Param("description") String description,
+            @Param("classificationModel") String classificationModel);
 
     @Query(value = """
         SELECT * FROM media_assets
@@ -149,7 +160,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         """, nativeQuery = true)
     List<MediaAsset> findNeedingEmbedding();
 
-    /** Returns id + cosine similarity score for top nearest neighbours. */
+    /**
+     * Returns id + cosine similarity score for top nearest neighbours.
+     */
     @Query(value = """
         SELECT CAST(id AS text), 1 - (embedding <=> CAST(:queryVector AS vector)) AS score
         FROM media_assets
@@ -161,12 +174,15 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         LIMIT 30
         """, nativeQuery = true)
     List<Object[]> findTopSimilarWithScore(@Param("institutionId") UUID institutionId,
-                                            @Param("queryVector") String queryVectorJson);
+            @Param("queryVector") String queryVectorJson);
 
     @Query("SELECT m FROM MediaAsset m WHERE m.id IN :ids AND m.deletedAt IS NULL")
     List<MediaAsset> findActiveByIds(@Param("ids") List<UUID> ids);
 
-    /** [idText, cosineScore] for the nearest ready assets across the given institutions. */
+    /**
+     * [idText, cosineScore] for the nearest ready assets across the given
+     * institutions.
+     */
     @Query(value = """
         SELECT CAST(id AS text), 1 - (embedding <=> CAST(:queryVector AS vector)) AS score
         FROM media_assets
@@ -178,9 +194,11 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         LIMIT 60
         """, nativeQuery = true)
     List<Object[]> findTopSimilarInInstitutions(@Param("institutionIds") java.util.Collection<UUID> institutionIds,
-                                                @Param("queryVector") String queryVectorJson);
+            @Param("queryVector") String queryVectorJson);
 
-    /** [idText, cosineScore] for the nearest ready assets network-wide (admin). */
+    /**
+     * [idText, cosineScore] for the nearest ready assets network-wide (admin).
+     */
     @Query(value = """
         SELECT CAST(id AS text), 1 - (embedding <=> CAST(:queryVector AS vector)) AS score
         FROM media_assets
@@ -206,7 +224,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         LIMIT :limit
         """, nativeQuery = true)
     List<MediaAsset> findDeletedReadyForPurge(@Param("cutoff") java.time.Instant cutoff,
-                                               @Param("limit") int limit);
+            @Param("limit") int limit);
 
     @Modifying
     @Transactional
