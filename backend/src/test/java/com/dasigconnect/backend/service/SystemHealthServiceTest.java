@@ -4,15 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.dasigconnect.backend.model.dto.systemhealth.HealthStatus;
 import com.dasigconnect.backend.model.dto.systemhealth.OperationalMetricDto;
 import com.dasigconnect.backend.repository.ScheduledJobRunRepository;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mail.javamail.JavaMailSender;
 
@@ -78,5 +82,25 @@ class SystemHealthServiceTest {
         assertThat(metrics.get(0).detail()).isEqualTo("Metric could not be retrieved.");
         assertThat(metrics.subList(1, metrics.size()))
                 .allSatisfy(metric -> assertThat(metric.status()).isEqualTo(HealthStatus.HEALTHY));
+    }
+
+    @Test
+    void operationalMetrics_bindsTimeBoundAsSqlTimestamp() {
+        // The PostgreSQL JDBC driver cannot infer a SQL type for a bare
+        // java.time.Instant bound via JdbcTemplate, which failed every metric.
+        // The 30-day cutoff must be passed as java.sql.Timestamp.
+        when(jdbcTemplate.queryForMap(anyString(), any()))
+                .thenReturn(Map.of("value", 0, "sample_size", 0));
+        when(jdbcTemplate.queryForObject(anyString(), eq(Long.class), any())).thenReturn(0L);
+
+        service.operationalMetrics();
+
+        ArgumentCaptor<Object> arg = ArgumentCaptor.forClass(Object.class);
+        verify(jdbcTemplate, atLeastOnce()).queryForMap(anyString(), arg.capture());
+        assertThat(arg.getAllValues()).allSatisfy(value -> assertThat(value).isInstanceOf(Timestamp.class));
+
+        ArgumentCaptor<Object> objArg = ArgumentCaptor.forClass(Object.class);
+        verify(jdbcTemplate).queryForObject(anyString(), eq(Long.class), objArg.capture());
+        assertThat(objArg.getValue()).isInstanceOf(Timestamp.class);
     }
 }
