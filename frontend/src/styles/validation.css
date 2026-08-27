@@ -1136,23 +1136,93 @@
   max-width: 620px;
   background: var(--val-surface);
   border: 1px solid var(--val-border);
-  border-radius: 12px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.05);
-  padding: 18px 20px;
-  margin-bottom: 24px;
+  border-radius: 14px;
+  box-shadow: 0 6px 24px rgba(16, 24, 40, 0.06);
+  overflow: hidden;
   box-sizing: border-box;
 }
 
-.val-edit-grid-head {
+/* legacy edit head — no longer rendered, kept harmless */
+.val-edit-grid-head { display: none; }
+
+/* ── Tabbed edit form ── */
+.val-edit-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 6px 0;
+  background: var(--val-surface-2, #f3f6fb);
+  border-bottom: 1px solid var(--val-border);
+}
+.val-edit-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 8px;
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--val-muted);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.val-edit-tab i { font-size: 15px; }
+.val-edit-tab:hover { color: var(--val-text-2); }
+.val-edit-tab.active {
+  background: var(--val-surface);
+  color: var(--val-accent, #2563eb);
+  box-shadow: 0 -1px 0 var(--val-accent, #2563eb) inset;
+}
+.val-edit-tab em {
+  font-style: normal;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--val-border);
+  color: var(--val-text-2);
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 800;
+}
+.val-edit-tab em.warn { background: #fee2e2; color: #b91c1c; }
+
+.val-edit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 20px;
+}
+.val-edit-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.val-edit-label-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: #1877f2;
-  margin-bottom: 14px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--val-border);
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.val-edit-label-row > span {
+  color: var(--val-muted);
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.val-edit-gr-ok {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #047857;
+  background: #d1fae5;
+  border-radius: 8px;
+  padding: 6px 8px;
 }
 
 .val-detail-grid {
@@ -1503,18 +1573,14 @@
 .val-edit-field {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  border-radius: 10px;
-  border: 1px solid var(--val-border);
-  background: var(--val-surface);
-  padding: 12px 14px;
+  gap: 6px;
 }
 
 .val-edit-field.full {
   grid-column: 1 / -1;
 }
 
-.val-edit-field span {
+.val-edit-field > span {
   color: var(--val-muted);
   font-size: 10.5px;
   font-weight: 900;
@@ -1526,11 +1592,23 @@
 .val-edit-field textarea {
   border: 1px solid var(--val-border);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 9px 11px;
   font: inherit;
   font-size: 13.5px;
   color: var(--val-text-2);
+  background: var(--val-surface);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
+
+.val-edit-field input:focus,
+.val-edit-field textarea:focus,
+.val-edit-media-caption:focus {
+  outline: none;
+  border-color: var(--val-accent, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.val-edit-field textarea { resize: vertical; }
 
 .val-log-flag {
   margin-left: 8px;
@@ -2078,4 +2156,553 @@
 .val-edit-diff-to {
   color: #16a34a;
   font-weight: 600;
+}
+
+/* ── Review-queue editor: fancy text + media + reschedule ── */
+.val-edit-caption-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.val-edit-caption-head > span {
+  color: var(--val-muted);
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.val-edit-add-media {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px dashed var(--val-border);
+  border-radius: 999px;
+  background: var(--val-surface);
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--val-text-2);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.val-edit-add-media:hover {
+  border-color: var(--val-accent, #2563eb);
+  color: var(--val-accent, #2563eb);
+  background: rgba(37, 99, 235, 0.05);
+}
+
+.val-edit-media-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+.val-edit-media-empty {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 22px;
+  border: 1px dashed var(--val-border);
+  border-radius: 12px;
+  color: var(--val-muted);
+  font-size: 12.5px;
+}
+
+.val-edit-media-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid var(--val-border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--val-surface);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.val-edit-media-row:hover {
+  border-color: #c3cee0;
+  box-shadow: 0 2px 10px rgba(16, 24, 40, 0.06);
+}
+
+.val-edit-media-thumb {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0b1220;
+  box-shadow: inset 0 0 0 1px rgba(16, 24, 40, 0.08);
+}
+.val-edit-media-thumb img,
+.val-edit-media-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.val-edit-media-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.val-edit-media-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--val-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.val-edit-media-caption {
+  border: 1px solid var(--val-border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 12.5px;
+  background: var(--val-surface);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.val-edit-media-wm {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 6px;
+  border: 1px solid var(--val-border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--val-muted);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.val-edit-media-wm:has(input:checked) {
+  border-color: var(--val-accent, #2563eb);
+  color: var(--val-accent, #2563eb);
+  background: rgba(37, 99, 235, 0.06);
+}
+.val-edit-media-wm input { accent-color: var(--val-accent, #2563eb); }
+
+.val-edit-media-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.val-edit-media-actions button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 26px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  color: var(--val-text-2);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.val-edit-media-actions button:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: var(--val-text);
+}
+/* join the up/down pair */
+.val-edit-media-actions button:nth-child(1) { border-radius: 8px 8px 0 0; }
+.val-edit-media-actions button:nth-child(2) { border-radius: 0 0 8px 8px; border-top: 0; }
+.val-edit-media-actions button:disabled { opacity: 0.3; cursor: default; }
+.val-edit-media-remove {
+  border-radius: 8px !important;
+  border-color: transparent !important;
+  color: var(--val-red, #ef4444) !important;
+}
+.val-edit-media-remove:hover:not(:disabled) {
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+}
+
+.val-edit-gr {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-style: dashed;
+}
+.val-edit-gr-loading { font-size: 12px; color: var(--val-muted); }
+.val-edit-gr-block,
+.val-edit-gr-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12.5px;
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+.val-edit-gr-block { background: #fee2e2; color: #b91c1c; }
+.val-edit-gr-warn { background: #fef3c7; color: #92400e; }
+
+/* ── Edit mode: form beside a scaled-down submission preview ── */
+.val-edit-layout--off { display: contents; }
+
+.val-scroll:has(.val-edit-layout) { align-items: stretch; }
+
+.val-edit-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.val-edit-layout > .val-fb-card {
+  flex: 0 0 42%;
+  max-width: 42%;
+  margin-bottom: 0;
+  position: sticky;
+  top: 0;
+}
+
+.val-edit-layout > .val-edit-grid-panel {
+  flex: 1 1 58%;
+  max-width: none;
+  margin-bottom: 0;
+}
+
+.val-page.is-queue-collapsed .val-edit-layout > .val-fb-card {
+  max-width: 42%;
+}
+
+@media (max-width: 1180px) {
+  .val-edit-layout { flex-direction: column; }
+  .val-edit-layout > .val-fb-card,
+  .val-edit-layout > .val-edit-grid-panel {
+    flex: none;
+    max-width: 100%;
+    width: 100%;
+    position: static;
+  }
+}
+
+/* ═══ Review-queue "Add from Media Library" picker ════════════════════════════ */
+.val-edit-add-media-group {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* The modal is portalled to <body>, outside .val-page / .submission-screen, so
+   the reused media-picker components (mlt-*, mac-*, mag-*, BrandedSelect) lose
+   their design tokens. Re-declare the full set here so they render exactly as
+   they do inside the composer. */
+.val-libpick-backdrop {
+  --val-surface: #ffffff;
+  --val-surface-2: #f7f9fd;
+  --val-border: #dde3ee;
+  --val-border-2: #c8d3e8;
+  --val-text: #0c1d3d;
+  --val-text-2: #3a506b;
+  --val-muted: #6a7f9a;
+  --val-blue: #1877f2;
+  --val-blue-2: #1565d8;
+
+  --sub-surface: #ffffff;
+  --sub-surface-2: #f7f9fd;
+  --sub-border: #dde3ee;
+  --sub-text: #0c1d3d;
+  --sub-text-2: #3a506b;
+  --sub-muted: #6a7f9a;
+  --sub-blue: #1877f2;
+  --sub-blue-2: #1565d8;
+  --sub-blue-dim: #eff6ff;
+  --sub-blue-bdr: #bfdbfe;
+  --sub-r: 10px;
+  --sub-r-sm: 7px;
+  --sub-shadow: 0 1px 4px rgba(0, 0, 0, 0.07), 0 4px 16px rgba(0, 0, 0, 0.04);
+
+  --mp-surface: #ffffff;
+  --mp-surface-2: #f7f9fd;
+  --mp-border: #dde3ee;
+  --mp-text: #0c1d3d;
+  --mp-text-2: #3a506b;
+  --mp-muted: #6a7f9a;
+  --mp-blue: #1877f2;
+  --mp-blue-dim: #eff6ff;
+  --mp-blue-bdr: #bfdbfe;
+  --mp-r: 10px;
+  --mp-r-sm: 7px;
+  --mp-shadow: 0 1px 4px rgba(0, 0, 0, 0.07), 0 4px 16px rgba(0, 0, 0, 0.04);
+
+  position: fixed;
+  inset: 0;
+  z-index: 6000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(12, 29, 61, 0.5);
+  backdrop-filter: blur(3px);
+  animation: val-libpick-fade 0.14s ease-out;
+}
+@keyframes val-libpick-fade {
+  from { opacity: 0; }
+}
+
+.val-libpick {
+  width: min(880px, 100%);
+  height: min(82vh, 760px);
+  display: flex;
+  flex-direction: column;
+  background: var(--val-surface);
+  border: 1px solid var(--val-border);
+  border-radius: 16px;
+  box-shadow: 0 24px 70px -12px rgba(12, 29, 61, 0.4);
+  overflow: hidden;
+  animation: val-libpick-pop 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes val-libpick-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+}
+
+.val-libpick-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--val-border);
+  background: var(--val-surface-2);
+}
+.val-libpick-head-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--val-blue);
+  color: #fff;
+  font-size: 17px;
+}
+.val-libpick-head > div { flex: 1; min-width: 0; }
+.val-libpick-head h3 {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--val-text);
+}
+.val-libpick-head p {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--val-muted);
+}
+.val-libpick-x {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  color: var(--val-text-2);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.val-libpick-x:hover {
+  background: var(--val-red-dim, #fef2f2);
+  border-color: var(--val-red-bdr, #fecaca);
+  color: var(--val-red, #dc2626);
+}
+
+/* One scroll region only: .val-libpick-body scrolls; the grid's own inner
+   scroller and mlt-root are flattened so there is one scrollbar and "Load more"
+   is never clipped. */
+.val-libpick-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--val-border-2) transparent;
+}
+.val-libpick-body::-webkit-scrollbar { width: 10px; }
+.val-libpick-body::-webkit-scrollbar-thumb {
+  background: var(--val-border-2);
+  border: 3px solid var(--val-surface);
+  border-radius: 999px;
+}
+.val-libpick-body .mlt-root {
+  padding: 0 14px;
+}
+.val-libpick-body .mlt-root,
+.val-libpick-body .mag-scroll-wrap {
+  max-height: none;
+  overflow: visible;
+}
+
+/* Sticky search + filter toolbar */
+.val-libpick-body .mlt-filters {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  margin: 0 -14px 10px;
+  padding: 12px 14px;
+  background: var(--val-surface);
+  border-bottom: 1px solid var(--val-border);
+  align-items: center;
+}
+.val-libpick-body .mlt-search-wrap { min-width: 200px; }
+.val-libpick-body .mlt-search {
+  height: 38px;
+  border: 1px solid var(--val-border-2);
+  border-radius: 8px;
+  background: var(--val-surface-2);
+  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+}
+.val-libpick-body .mlt-search:focus {
+  border-color: var(--val-blue);
+  background: var(--val-surface);
+  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.14);
+}
+.val-libpick-body .mlt-search-icon { color: var(--val-muted); }
+.val-libpick-body .dc-select.mlt-select { min-width: 150px; width: 150px; }
+.val-libpick-body .dc-select-trigger {
+  min-height: 38px;
+  border: 1px solid var(--val-border-2);
+  border-radius: 8px;
+  background: var(--val-surface-2);
+  font-size: 12.5px;
+}
+.val-libpick-body .dc-select-trigger:hover { border-color: var(--val-blue-bdr, #bfdbfe); }
+.val-libpick-body .dc-select.is-open .dc-select-trigger {
+  border-color: var(--val-blue);
+  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.14);
+}
+
+.val-libpick-body .mlt-count {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--val-muted);
+}
+
+/* Grid tiles */
+.val-libpick-body .mag-grid {
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 10px;
+  padding-bottom: 14px;
+}
+.val-libpick-body .mac-card {
+  border: 1px solid var(--val-border);
+  border-radius: 10px;
+  background: var(--val-surface);
+  transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+}
+.val-libpick-body .mac-card:hover:not(:disabled) {
+  border-color: var(--val-blue-bdr, #bfdbfe);
+  box-shadow: 0 6px 16px -8px rgba(24, 119, 242, 0.35);
+  transform: translateY(-1px);
+}
+.val-libpick-body .mac-card--selected {
+  border-color: var(--val-blue);
+  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.18);
+}
+.val-libpick-body .mac-thumb { aspect-ratio: 1 / 1; }
+.val-libpick-body .mac-name {
+  padding: 6px 8px 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--val-text);
+}
+.val-libpick-body .mac-category {
+  padding: 1px 8px 6px;
+  font-size: 10.5px;
+  color: var(--val-muted);
+  text-transform: capitalize;
+}
+.val-libpick-body .mac-added-label {
+  margin: 0 8px 6px;
+  color: var(--val-green, #16a34a);
+  font-weight: 700;
+  font-size: 10px;
+}
+.val-libpick-body .mac-check {
+  background: var(--val-blue);
+  box-shadow: 0 2px 6px rgba(12, 29, 61, 0.25);
+}
+
+/* States */
+.val-libpick-body .mlt-empty,
+.val-libpick-body .mlt-error {
+  margin: 8px 0 16px;
+  border: 1px dashed var(--val-border-2);
+  border-radius: 12px;
+  background: var(--val-surface-2);
+  color: var(--val-muted);
+}
+.val-libpick-body .mlt-load-more {
+  margin: 4px 0 16px;
+  height: 38px;
+  border: 1px solid var(--val-border-2);
+  border-radius: 8px;
+  background: var(--val-surface);
+  color: var(--val-text-2);
+  font-weight: 600;
+  transition: background 0.12s, border-color 0.12s;
+}
+.val-libpick-body .mlt-load-more:hover:not(:disabled) {
+  background: var(--val-surface-2);
+  border-color: var(--val-blue-bdr, #bfdbfe);
+}
+
+/* Sticky bottom selection bar */
+.val-libpick-body .mlt-action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: 0 -14px;
+  padding: 12px 16px;
+  background: var(--val-surface);
+  border-top: 1px solid var(--val-border);
+  box-shadow: 0 -12px 20px -12px rgba(12, 29, 61, 0.22);
+}
+.val-libpick-body .mlt-action-count {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--val-text);
+}
+.val-libpick-body .mlt-action-clear {
+  border: 1px solid var(--val-border-2);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-weight: 600;
+  color: var(--val-text-2);
+  background: var(--val-surface);
+  transition: background 0.12s, border-color 0.12s;
+}
+.val-libpick-body .mlt-action-clear:hover {
+  background: var(--val-surface-2);
+  border-color: var(--val-border-2);
+}
+.val-libpick-body .mlt-action-add {
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-weight: 700;
+  background: var(--val-blue);
+  box-shadow: 0 2px 8px -2px rgba(24, 119, 242, 0.5);
+}
+.val-libpick-body .mlt-action-add:hover:not(:disabled) { background: var(--val-blue-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .val-libpick-backdrop,
+  .val-libpick { animation: none; }
 }

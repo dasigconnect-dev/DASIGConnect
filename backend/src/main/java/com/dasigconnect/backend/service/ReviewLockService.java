@@ -53,7 +53,9 @@ public class ReviewLockService {
      *
      * A5: self-review (validator == contributor) is allowed, not blocked — the
      * resulting ValidationLog entries are flagged via ValidationService/isSelfReview.
-     * If the caller already holds the lock, returns the existing lock (idempotent).
+     * If the caller already holds the lock, its TTL is renewed and the lock is
+     * returned (idempotent keep-alive — the review panel pings this while open so a
+     * long edit session does not lose the lock to ReviewLockCleanupJob).
      * If another validator holds a valid lock, returns 409.
      * Transitions submission: pending → in_review.
      */
@@ -73,8 +75,9 @@ public class ReviewLockService {
             if (existing.getExpiresAt().isAfter(Instant.now())) {
                 // Lock is still valid
                 if (existing.getLockedBy().getId().equals(caller.userId())) {
-                    // Caller already holds it — idempotent
-                    return existing;
+                    // Caller already holds it — renew the TTL (idempotent keep-alive)
+                    existing.setExpiresAt(Instant.now().plus(LOCK_DURATION_MINUTES, ChronoUnit.MINUTES));
+                    return reviewLockRepository.save(existing);
                 }
                 // Another validator holds it
                 throw new ResponseStatusException(HttpStatus.CONFLICT,

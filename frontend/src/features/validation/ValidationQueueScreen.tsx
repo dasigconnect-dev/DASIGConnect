@@ -1,19 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { getSubmission, type SavedMediaAsset, type SubmissionSummary } from "../../api/submissionApi";
+import {
+  getSubmission,
+  validateGuardRails,
+  type GuardRailResult,
+  type SavedMediaAsset,
+  type SubmissionSummary,
+} from "../../api/submissionApi";
 import {
   acquireReviewLock,
   approveSubmission,
+  attachValidationLibraryAsset,
+  detachValidationAsset,
   editSubmission,
   getReviewLockStatus,
   getValidationQueue,
   rejectSubmission,
   releaseReviewLock,
+  reorderValidationMedia,
   requestSubmissionRevision,
+  uploadValidationMedia,
   type RejectionReasonCode,
   type ReviewLock,
   type ValidationLog,
 } from "../../api/validationApi";
+import type { SubmissionMediaItem } from "../../types/media";
+import FancyTextTool, { type FancyTextSelection } from "../submission/components/FancyTextTool";
+import ReviewLibraryPickerModal from "./ReviewLibraryPickerModal";
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
 import { getWatermarkConfiguration } from "../../api/watermarkApi";
@@ -40,25 +53,71 @@ type DecisionModal = "approve" | "revise" | "reject" | null;
 const MODAL_EXIT_MS = 190;
 const REVIEWABLE_STATUSES = new Set(["pending", "in_review"]);
 
+const VIDEO_EXT = new Set(["mp4", "mov", "webm", "avi", "mkv"]);
+
+interface EditMediaItem {
+  key: string;
+  assetId?: string;
+  file?: File;
+  previewUrl: string;
+  fileName: string;
+  isImage: boolean;
+  caption: string;
+  skipWatermark: boolean;
+}
+
 interface EditFormState {
   eventTitle: string;
   eventDate: string;
   caption: string;
   description: string;
   tags: string;
+  scheduledDate: string;
+  scheduledTime: string;
+  media: EditMediaItem[];
+  removedAssetIds: string[];
 }
 
 function emptyEditForm(): EditFormState {
-  return { eventTitle: "", eventDate: "", caption: "", description: "", tags: "" };
+  return {
+    eventTitle: "",
+    eventDate: "",
+    caption: "",
+    description: "",
+    tags: "",
+    scheduledDate: "",
+    scheduledTime: "",
+    media: [],
+    removedAssetIds: [],
+  };
+}
+
+function savedAssetToMediaItem(asset: SavedMediaAsset): EditMediaItem {
+  return {
+    key: `saved-${asset.id}`,
+    assetId: asset.id,
+    previewUrl: asset.storageUrl,
+    fileName: asset.fileName,
+    isImage: !VIDEO_EXT.has(asset.fileType?.toLowerCase() ?? ""),
+    caption: asset.caption ?? "",
+    skipWatermark: Boolean(asset.skipWatermark),
+  };
 }
 
 function toEditForm(summary: SubmissionSummary): EditFormState {
+  const scheduled = summary.scheduledAt ? new Date(summary.scheduledAt) : null;
   return {
     eventTitle: summary.eventTitle || "",
     eventDate: summary.eventDate ? summary.eventDate.slice(0, 10) : "",
     caption: summary.caption || "",
     description: summary.description || "",
     tags: summary.tags?.join(", ") || "",
+    scheduledDate: scheduled ? scheduled.toISOString().slice(0, 10) : "",
+    scheduledTime: scheduled
+      ? `${String(scheduled.getHours()).padStart(2, "0")}:${String(scheduled.getMinutes()).padStart(2, "0")}`
+      : "",
+    media: (summary.mediaAssets ?? []).map(savedAssetToMediaItem),
+    removedAssetIds: [],
   };
 }
 
@@ -118,6 +177,14 @@ export default function ValidationQueueScreen({
   const [editSaving, setEditSaving] = useState(false);
   const [editForm, setEditForm] = useState<EditFormState>(emptyEditForm());
   const [editedThisSession, setEditedThisSession] = useState(false);
+  const [captionSelection, setCaptionSelection] = useState<FancyTextSelection>({ start: 0, end: 0 });
+  const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
+  const [guardRailsLoading, setGuardRailsLoading] = useState(false);
+  const [editTab, setEditTab] = useState<"details" | "media" | "schedule">("details");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
+  const editCaptionRef = useRef<HTMLTextAreaElement | null>(null);
+  const editFileInputRef = useRef<HTMLInputElement | null>(null);
   const { log, loading: logLoading, refresh: refreshLog } = useValidationLog(selectedId);
   const modalExitTimer = useRef<number | null>(null);
   const openRequestRef = useRef(0);
@@ -440,6 +507,53 @@ export default function ValidationQueueScreen({
     }
   }
 
+  // Keep the review lock alive while a submission panel is open. The backend TTL
+  // is 15 min and ReviewLockCleanupJob reverts in_review → pending once it lapses,
+  // so a long edit session would otherwise silently lose the lock (and the row
+  // drops off the Review tab). Ping every 5 min while the tab is visible; the
+  // backend renews the holder's TTL idempotently.
+  useEffect(() => {
+    if (!selected || !activeLock) return;
+    const submissionId = selected.id;
+    const renew = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const res = await acquireReviewLock(submissionId);
+        setLockFor(submissionId, res.data);
+      } catch (err: unknown) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 403 || status === 409) {
+          clearLockFor(submissionId);
+          setLockNotice(
+            "Your review lock was lost. Re-acquire it from the action bar to continue.",
+          );
+        }
+        // transient errors are ignored — the next tick retries
+      }
+    };
+    const timer = window.setInterval(renew, 5 * 60 * 1000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void renew();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, Boolean(activeLock)]);
+
+  function handleLockLost(submissionId: string) {
+    clearLockFor(submissionId);
+    setEditMode(false);
+    setLockNotice(
+      "Your review lock is no longer held — the submission has returned to the queue " +
+        "(or was claimed by another reviewer). Re-open it to continue.",
+    );
+    void refresh();
+    void fetchAllQueue();
+  }
+
   async function handleApprove() {
     if (!selected) return;
     setDecisionBusy(true);
@@ -452,7 +566,14 @@ export default function ValidationQueueScreen({
       setSelectedId(null);
       await refresh();
     } catch (err: unknown) {
-      toast.error(readApiError(err, "Approval failed."));
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 403 || status === 409) {
+        closeDecisionModal();
+        handleLockLost(selected.id);
+        toast.error("Review lock expired before the approval could be recorded.");
+      } else {
+        toast.error(readApiError(err, "Approval failed."));
+      }
     } finally {
       setDecisionBusy(false);
     }
@@ -461,37 +582,185 @@ export default function ValidationQueueScreen({
   function handleStartEdit() {
     if (!selected) return;
     setEditForm(toEditForm(selected));
+    setGuardRails(null);
+    setCaptionSelection({ start: 0, end: 0 });
+    setEditTab("details");
+    setOverrideReason("");
+    setIsPanelCollapsed(true);
     setEditMode(true);
   }
 
   function handleCancelEdit() {
     setEditMode(false);
+    setGuardRails(null);
+  }
+
+  const editScheduledAtIso = useMemo(() => {
+    if (!editForm.scheduledDate || !editForm.scheduledTime) return "";
+    const d = new Date(`${editForm.scheduledDate}T${editForm.scheduledTime}`);
+    return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+  }, [editForm.scheduledDate, editForm.scheduledTime]);
+
+  const originalScheduledIso = selected?.scheduledAt
+    ? new Date(selected.scheduledAt).toISOString()
+    : "";
+  const scheduleChanged = editScheduledAtIso !== originalScheduledIso;
+
+  useEffect(() => {
+    if (!editMode || !scheduleChanged || !editScheduledAtIso || !selected) {
+      setGuardRails(null);
+      return;
+    }
+    const controller = new AbortController();
+    setGuardRailsLoading(true);
+    validateGuardRails(editScheduledAtIso, selected.institutionId)
+      .then((res) => setGuardRails(res.data))
+      .catch(() => setGuardRails(null))
+      .finally(() => setGuardRailsLoading(false));
+    return () => controller.abort();
+  }, [editMode, scheduleChanged, editScheduledAtIso, selected]);
+
+  const hardBlocked = (guardRails?.hardBlocks?.length ?? 0) > 0;
+  const canSaveEdit =
+    !editSaving && (!hardBlocked || overrideReason.trim().length >= 10);
+
+  function updateMedia(key: string, patch: Partial<EditMediaItem>) {
+    setEditForm((f) => ({
+      ...f,
+      media: f.media.map((m) => (m.key === key ? { ...m, ...patch } : m)),
+    }));
+  }
+
+  function moveMedia(index: number, dir: -1 | 1) {
+    setEditForm((f) => {
+      const next = [...f.media];
+      const target = index + dir;
+      if (target < 0 || target >= next.length) return f;
+      [next[index], next[target]] = [next[target], next[index]];
+      return { ...f, media: next };
+    });
+  }
+
+  function removeMedia(item: EditMediaItem) {
+    setEditForm((f) => ({
+      ...f,
+      media: f.media.filter((m) => m.key !== item.key),
+      removedAssetIds: item.assetId ? [...f.removedAssetIds, item.assetId] : f.removedAssetIds,
+    }));
+  }
+
+  function addMediaFiles(files: FileList | null) {
+    if (!files?.length) return;
+    const items: EditMediaItem[] = Array.from(files).map((file) => {
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+      return {
+        key: `new-${crypto.randomUUID()}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        fileName: file.name,
+        isImage: !VIDEO_EXT.has(ext),
+        caption: "",
+        skipWatermark: false,
+      };
+    });
+    setEditForm((f) => ({ ...f, media: [...f.media, ...items] }));
+  }
+
+  function addLibraryAssets(items: SubmissionMediaItem[]) {
+    setEditForm((f) => {
+      const have = new Set(f.media.map((m) => m.assetId).filter(Boolean));
+      const next: EditMediaItem[] = items
+        .filter((it): it is SubmissionMediaItem & { assetId: string } =>
+          Boolean(it.assetId) && !have.has(it.assetId),
+        )
+        .map((it) => ({
+          key: `lib-${it.assetId}`,
+          assetId: it.assetId,
+          previewUrl: it.previewUrl,
+          fileName: it.fileName,
+          isImage: it.mediaType !== "video",
+          caption: "",
+          skipWatermark: false,
+        }));
+      return { ...f, media: [...f.media, ...next] };
+    });
   }
 
   async function handleSaveEdit() {
-    if (!selected) return;
+    if (!selected || !canSaveEdit) return;
     setEditSaving(true);
     try {
-      await editSubmission(selected.id, {
+      const id = selected.id;
+
+      // 1. upload any new device files
+      const newFiles = editForm.media.filter((m) => m.file).map((m) => m.file as File);
+      if (newFiles.length > 0) await uploadValidationMedia(id, newFiles);
+
+      // 2. attach staged library picks that aren't on the submission yet
+      const attached = new Set((selected.mediaAssets ?? []).map((a) => a.id));
+      for (const item of editForm.media) {
+        if (item.assetId && !attached.has(item.assetId)) {
+          await attachValidationLibraryAsset(id, item.assetId).catch(() => undefined);
+        }
+      }
+
+      // 3. detach removed assets
+      for (const assetId of editForm.removedAssetIds) {
+        await detachValidationAsset(id, assetId).catch(() => undefined);
+      }
+
+      // 4. reorder + per-item caption / skip-watermark. Re-read to learn the
+      //    server-assigned ids for freshly uploaded files.
+      const afterMedia = (await getSubmission(id)).data.mediaAssets ?? [];
+      const orderedIds: string[] = [];
+      const captions: Record<string, string> = {};
+      const skips: Record<string, boolean> = {};
+      const used = new Set<string>();
+      for (const item of editForm.media) {
+        let match: SavedMediaAsset | undefined;
+        if (item.assetId) {
+          match = afterMedia.find((a) => a.id === item.assetId);
+        } else {
+          match = afterMedia.find((a) => !used.has(a.id) && a.fileName === item.fileName);
+        }
+        if (!match) continue;
+        used.add(match.id);
+        orderedIds.push(match.id);
+        if (item.caption.trim()) captions[match.id] = item.caption.trim();
+        if (item.isImage && item.skipWatermark) skips[match.id] = true;
+      }
+      if (orderedIds.length === afterMedia.length && afterMedia.length > 0) {
+        await reorderValidationMedia(id, orderedIds, captions, skips);
+      }
+
+      // 4. scalar fields + reschedule
+      await editSubmission(id, {
         eventTitle: editForm.eventTitle,
         eventDate: editForm.eventDate || undefined,
         caption: editForm.caption,
-        description: editForm.description,
+        description: hardBlocked && overrideReason.trim() ? overrideReason.trim() : undefined,
         tags: editForm.tags
           ? editForm.tags.split(",").map((t) => t.trim()).filter(Boolean)
           : undefined,
+        scheduledAt: scheduleChanged && editScheduledAtIso ? editScheduledAtIso : undefined,
       });
-      // A9: the submission stays IN_REVIEW — re-render the edited content and
-      // keep the panel + lock open so the Administrator can still pick a
-      // terminal action.
-      const detail = await getSubmission(selected.id);
+
+      // A9: stays IN_REVIEW — refresh content, keep panel + lock open.
+      const detail = await getSubmission(id);
       setSelected(detail.data);
       setEditMode(false);
+      setGuardRails(null);
       setEditedThisSession(true);
       await refreshLog();
       toast.success("Changes saved — choose a terminal action.");
     } catch (err: unknown) {
-      toast.error(readApiError(err, "Saving the edit failed."));
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 403 || status === 409) {
+        handleLockLost(selected.id);
+        toast.error("Review lock expired before your changes could be saved.");
+      } else {
+        toast.error(readApiError(err, "Saving the edit failed."));
+      }
     } finally {
       setEditSaving(false);
     }
@@ -516,7 +785,14 @@ export default function ValidationQueueScreen({
       setSelectedId(null);
       await refresh();
     } catch (err: unknown) {
-      toast.error(readApiError(err, "Revision request failed."));
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 403 || status === 409) {
+        closeDecisionModal();
+        handleLockLost(selected.id);
+        toast.error("Review lock expired before the revision request could be sent.");
+      } else {
+        toast.error(readApiError(err, "Revision request failed."));
+      }
     } finally {
       setDecisionBusy(false);
     }
@@ -543,7 +819,14 @@ export default function ValidationQueueScreen({
       setSelectedId(null);
       await refresh();
     } catch (err: unknown) {
-      toast.error(readApiError(err, "Rejection failed."));
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 403 || status === 409) {
+        closeDecisionModal();
+        handleLockLost(selected.id);
+        toast.error("Review lock expired before the rejection could be recorded.");
+      } else {
+        toast.error(readApiError(err, "Rejection failed."));
+      }
     } finally {
       setDecisionBusy(false);
     }
@@ -957,7 +1240,7 @@ export default function ValidationQueueScreen({
               {selectedLoading ? (
                 <PanelContentLoader text="Loading submission details" />
               ) : (
-                <>
+                <div className={editMode ? "val-edit-layout" : "val-edit-layout--off"}>
                   <FacebookPostPreviewCard
                     submission={selected}
                     editMode={editMode}
@@ -973,53 +1256,237 @@ export default function ValidationQueueScreen({
 
                   {editMode && (
                     <section className="val-edit-grid-panel">
-                      <div className="val-edit-grid-head">
-                        <i className="ti ti-edit" />
-                        <span>Edit Submission Details for Facebook Post</span>
+                      <div className="val-edit-tabs" role="tablist">
+                        {(
+                          [
+                            ["details", "ti-file-text", "Details"],
+                            ["media", "ti-photo", "Media"],
+                            ["schedule", "ti-calendar-clock", "Schedule"],
+                          ] as const
+                        ).map(([key, icon, label]) => (
+                          <button
+                            key={key}
+                            type="button"
+                            role="tab"
+                            aria-selected={editTab === key}
+                            className={`val-edit-tab${editTab === key ? " active" : ""}`}
+                            onClick={() => setEditTab(key)}
+                          >
+                            <i className={`ti ${icon}`} />
+                            <span>{label}</span>
+                            {key === "media" && editForm.media.length > 0 && (
+                              <em>{editForm.media.length}</em>
+                            )}
+                            {key === "schedule" && hardBlocked && <em className="warn">!</em>}
+                          </button>
+                        ))}
                       </div>
-                      <div className="val-edit-grid">
-                        <label className="val-edit-field">
-                          <span>Event Title</span>
-                          <input
-                            value={editForm.eventTitle}
-                            onChange={(e) => setEditForm({ ...editForm, eventTitle: e.target.value })}
-                          />
-                        </label>
-                        <label className="val-edit-field">
-                          <span>Event Date</span>
-                          <input
-                            type="date"
-                            value={editForm.eventDate}
-                            onChange={(e) => setEditForm({ ...editForm, eventDate: e.target.value })}
-                          />
-                        </label>
-                        <label className="val-edit-field full">
-                          <span>Tags (comma-separated, e.g. Volunteer, Outreach)</span>
-                          <input
-                            value={editForm.tags}
-                            onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
-                          />
-                        </label>
-                        <label className="val-edit-field full">
-                          <span>Facebook Caption</span>
-                          <textarea
-                            rows={4}
-                            value={editForm.caption}
-                            onChange={(e) => setEditForm({ ...editForm, caption: e.target.value })}
-                          />
-                        </label>
-                        <label className="val-edit-field full">
-                          <span>Administrator Notes (optional)</span>
-                          <textarea
-                            rows={3}
-                            value={editForm.description}
-                            onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                          />
-                        </label>
-                      </div>
+
+                      {editTab === "details" && (
+                        <div className="val-edit-body">
+                          <div className="val-edit-row">
+                            <label className="val-edit-field">
+                              <span>Event Title</span>
+                              <input
+                                value={editForm.eventTitle}
+                                onChange={(e) => setEditForm({ ...editForm, eventTitle: e.target.value })}
+                              />
+                            </label>
+                            <label className="val-edit-field">
+                              <span>Event Date</span>
+                              <input
+                                type="date"
+                                value={editForm.eventDate}
+                                onChange={(e) => setEditForm({ ...editForm, eventDate: e.target.value })}
+                              />
+                            </label>
+                          </div>
+
+                          <div className="val-edit-field">
+                            <div className="val-edit-label-row">
+                              <span>Caption</span>
+                              <FancyTextTool
+                                caption={editForm.caption}
+                                selection={captionSelection}
+                                onReplaceSelection={(next, sel) => {
+                                  setEditForm((f) => ({ ...f, caption: next }));
+                                  setCaptionSelection(sel);
+                                }}
+                                onPreviewSelection={(next) => setEditForm((f) => ({ ...f, caption: next }))}
+                                onRestoreSelection={setCaptionSelection}
+                              />
+                            </div>
+                            <textarea
+                              ref={editCaptionRef}
+                              rows={6}
+                              value={editForm.caption}
+                              onChange={(e) => {
+                                setEditForm({ ...editForm, caption: e.target.value });
+                                setCaptionSelection({ start: e.target.selectionStart, end: e.target.selectionEnd });
+                              }}
+                              onSelect={(e) =>
+                                setCaptionSelection({
+                                  start: e.currentTarget.selectionStart,
+                                  end: e.currentTarget.selectionEnd,
+                                })
+                              }
+                            />
+                          </div>
+
+                          <label className="val-edit-field">
+                            <span>Tags</span>
+                            <input
+                              placeholder="comma-separated, e.g. Volunteer, Outreach"
+                              value={editForm.tags}
+                              onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
+                            />
+                          </label>
+                        </div>
+                      )}
+
+                      {editTab === "media" && (
+                        <div className="val-edit-body">
+                          <div className="val-edit-label-row">
+                            <span>Attached Media</span>
+                            <div className="val-edit-add-media-group">
+                              <button
+                                type="button"
+                                className="val-edit-add-media"
+                                onClick={() => editFileInputRef.current?.click()}
+                              >
+                                <i className="ti ti-plus" /> Add files
+                              </button>
+                              <button
+                                type="button"
+                                className="val-edit-add-media"
+                                onClick={() => setLibraryPickerOpen(true)}
+                              >
+                                <i className="ti ti-library-photo" /> From Library
+                              </button>
+                            </div>
+                            <input
+                              ref={editFileInputRef}
+                              type="file"
+                              accept="image/*,video/*"
+                              multiple
+                              hidden
+                              onChange={(e) => {
+                                addMediaFiles(e.target.files);
+                                e.target.value = "";
+                              }}
+                            />
+                          </div>
+                          <div className="val-edit-media-list">
+                            {editForm.media.length === 0 && (
+                              <p className="val-edit-media-empty">
+                                <i className="ti ti-photo-off" />
+                                No media attached — add files above.
+                              </p>
+                            )}
+                            {editForm.media.map((item, i) => (
+                              <div key={item.key} className="val-edit-media-row">
+                                <div className="val-edit-media-thumb">
+                                  {item.isImage ? (
+                                    <img src={item.previewUrl} alt={item.fileName} />
+                                  ) : (
+                                    <video src={item.previewUrl} muted />
+                                  )}
+                                </div>
+                                <div className="val-edit-media-main">
+                                  <div className="val-edit-media-name">{item.fileName}</div>
+                                  <input
+                                    className="val-edit-media-caption"
+                                    placeholder="Optional caption"
+                                    value={item.caption}
+                                    onChange={(e) => updateMedia(item.key, { caption: e.target.value })}
+                                  />
+                                  {item.isImage && (
+                                    <label className="val-edit-media-wm">
+                                      <input
+                                        type="checkbox"
+                                        checked={item.skipWatermark}
+                                        onChange={(e) => updateMedia(item.key, { skipWatermark: e.target.checked })}
+                                      />
+                                      Skip watermark
+                                    </label>
+                                  )}
+                                </div>
+                                <div className="val-edit-media-actions">
+                                  <button type="button" onClick={() => moveMedia(i, -1)} disabled={i === 0} aria-label="Move up">
+                                    <i className="ti ti-chevron-up" />
+                                  </button>
+                                  <button type="button" onClick={() => moveMedia(i, 1)} disabled={i === editForm.media.length - 1} aria-label="Move down">
+                                    <i className="ti ti-chevron-down" />
+                                  </button>
+                                  <button type="button" className="val-edit-media-remove" onClick={() => removeMedia(item)} aria-label="Remove">
+                                    <i className="ti ti-trash" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {editTab === "schedule" && (
+                        <div className="val-edit-body">
+                          <div className="val-edit-row">
+                            <label className="val-edit-field">
+                              <span>Preferred Date</span>
+                              <input
+                                type="date"
+                                value={editForm.scheduledDate}
+                                onChange={(e) => setEditForm({ ...editForm, scheduledDate: e.target.value })}
+                              />
+                            </label>
+                            <label className="val-edit-field">
+                              <span>Preferred Time</span>
+                              <input
+                                type="time"
+                                value={editForm.scheduledTime}
+                                onChange={(e) => setEditForm({ ...editForm, scheduledTime: e.target.value })}
+                              />
+                            </label>
+                          </div>
+
+                          {scheduleChanged && (
+                            <div className="val-edit-gr">
+                              {guardRailsLoading && <span className="val-edit-gr-loading">Checking slot…</span>}
+                              {!guardRailsLoading &&
+                                !guardRails?.hardBlocks?.length &&
+                                !guardRails?.softWarnings?.length && (
+                                  <div className="val-edit-gr-ok">
+                                    <i className="ti ti-circle-check" /> Slot is clear.
+                                  </div>
+                                )}
+                              {guardRails?.hardBlocks?.map((v, i) => (
+                                <div key={`h${i}`} className="val-edit-gr-block">
+                                  <i className="ti ti-alert-triangle" /> {v.message}
+                                </div>
+                              ))}
+                              {guardRails?.softWarnings?.map((v, i) => (
+                                <div key={`s${i}`} className="val-edit-gr-warn">
+                                  <i className="ti ti-info-circle" /> {v.message}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {hardBlocked && (
+                            <label className="val-edit-field">
+                              <span>Override reason (required — a guard rail is blocked)</span>
+                              <textarea
+                                rows={3}
+                                value={overrideReason}
+                                onChange={(e) => setOverrideReason(e.target.value)}
+                              />
+                            </label>
+                          )}
+                        </div>
+                      )}
                     </section>
                   )}
-                </>
+                </div>
               )}
             </div>
 
@@ -1062,7 +1529,7 @@ export default function ValidationQueueScreen({
                   <button
                     className="val-btn val-btn-primary"
                     type="button"
-                    disabled={editSaving}
+                    disabled={!canSaveEdit}
                     onClick={() => void handleSaveEdit()}
                   >
                     <i className="ti ti-device-floppy" />
@@ -1259,6 +1726,15 @@ export default function ValidationQueueScreen({
         }}
         onClose={closeWorkflowPanel}
       />
+
+      {editMode && libraryPickerOpen && selected && (
+        <ReviewLibraryPickerModal
+          institutionId={selected.institutionId}
+          excludeIds={editForm.media.map((m) => m.assetId).filter((x): x is string => Boolean(x))}
+          onAdd={addLibraryAssets}
+          onClose={() => setLibraryPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }
