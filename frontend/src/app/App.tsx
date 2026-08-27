@@ -811,24 +811,23 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/submissions/new"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+                <SubmissionScreen user={currentUser!} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/submissions/:submissionId"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+                <SubmissionScreen user={currentUser!} />
+              </ProtectedRoute>
+            }
+          />
         </Route>
-
-        <Route
-          path="/submissions/new"
-          element={
-            <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
-              <SubmissionScreen user={currentUser!} />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/submissions/:submissionId"
-          element={
-            <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
-              <SubmissionScreen user={currentUser!} />
-            </ProtectedRoute>
-          }
-        />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

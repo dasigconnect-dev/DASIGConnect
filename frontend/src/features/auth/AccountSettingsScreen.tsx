@@ -1,3 +1,4 @@
+import "../../styles/dasig-loader.css";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
@@ -21,6 +22,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const navigate = useNavigate();
 
   const canManagePage = user.role !== "contributor";
+  const [initialLoading, setInitialLoading] = useState(true);
 
   // Tab State
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
@@ -129,35 +131,64 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
 
   // Initial mount: load profile, institutions, and messenger status
   useEffect(() => {
-    void getMe().then(({ data }) => {
-      const fullName = [data.firstName, data.lastName].filter(Boolean).join(" ");
-      const name = data.displayName || fullName || user.name || "";
-      setDisplayName(name);
-      setInitialDisplayName(name);
-      setNotifyInApp(data.notifyInApp);
-      setInitialNotifyInApp(data.notifyInApp);
-      setNotifyEmail(data.notifyEmail);
-      setInitialNotifyEmail(data.notifyEmail);
-      if (data.institutionId) {
-        setUserInstitutionId(data.institutionId);
-      }
-    });
+    let isCurrent = true;
+    const promises: Promise<unknown>[] = [
+      getMe()
+        .then(({ data }) => {
+          if (!isCurrent) return;
+          const fullName = [data.firstName, data.lastName].filter(Boolean).join(" ");
+          const name = data.displayName || fullName || user.name || "";
+          setDisplayName(name);
+          setInitialDisplayName(name);
+          setNotifyInApp(data.notifyInApp);
+          setInitialNotifyInApp(data.notifyInApp);
+          setNotifyEmail(data.notifyEmail);
+          setInitialNotifyEmail(data.notifyEmail);
+          if (data.institutionId) {
+            setUserInstitutionId(data.institutionId);
+          }
+        })
+        .catch(() => {}),
+    ];
 
     if (canManagePage) {
-      loadMessenger();
+      promises.push(
+        getMessengerConnectionStatus()
+          .then((data) => {
+            if (isCurrent) setMessengerStatus(data);
+          })
+          .catch(() => {
+            if (isCurrent) setMessengerStatus(null);
+          })
+      );
     }
 
     if (user.role === "super_administrator") {
-      void listInstitutions().then(({ data }) =>
-        setInstitutions(
-          data.map((item) => ({
-            id: item.id,
-            name: item.name,
-            logoUrl: item.hasLogo ? `/api/v1/institutions/${item.id}/logo` : null,
-          }))
-        )
+      promises.push(
+        listInstitutions()
+          .then(({ data }) => {
+            if (!isCurrent) return;
+            setInstitutions(
+              data.map((item) => ({
+                id: item.id,
+                name: item.name,
+                logoUrl: item.hasLogo ? `/api/v1/institutions/${item.id}/logo` : null,
+              }))
+            );
+          })
+          .catch(() => {})
       );
     }
+
+    Promise.allSettled(promises).finally(() => {
+      if (isCurrent) {
+        setInitialLoading(false);
+      }
+    });
+
+    return () => {
+      isCurrent = false;
+    };
   }, [user.name, user.role, canManagePage]);
 
   // Page and Watermark settings loader
@@ -324,6 +355,47 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       toast.success("Code copied to clipboard!");
       setTimeout(() => setCopiedCode(false), 3000);
     });
+  }
+
+  if (initialLoading) {
+    return (
+      <div className="dash-body settings-page">
+        <header className="settings-page-header">
+          <div>
+            <div className="dash-greeting">Settings</div>
+            <p className="settings-page-subtitle">Manage your account, security, and publishing preferences.</p>
+          </div>
+          <span className="settings-role-badge">
+            <i className="ti ti-shield-check" />
+            {formatRole(user.role)}
+          </span>
+        </header>
+
+        <div
+          className="card-wrap"
+          style={{
+            minHeight: "380px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "60px 20px",
+            background: "var(--d-surface, #ffffff)",
+          }}
+        >
+          <div className="dc-dot-triangle-container">
+            <div className="loader-dots" />
+            <div className="dc-dot-triangle-label">
+              Loading Settings
+              <span className="dc-dot-triangle-label-dots">
+                <span className="dc-dot-triangle-dot-char">.</span>
+                <span className="dc-dot-triangle-dot-char">.</span>
+                <span className="dc-dot-triangle-dot-char">.</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (isStudioOpen && canManagePage) {
