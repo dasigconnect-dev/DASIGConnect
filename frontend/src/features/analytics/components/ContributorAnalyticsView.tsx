@@ -3,7 +3,6 @@ import { formatNumber, formatPercent } from "../analyticsUtils";
 import CategoryPerformancePanel from "./CategoryPerformancePanel";
 import ContentIssuesPanel from "./ContentIssuesPanel";
 import FacebookEngagementPanel from "./FacebookEngagementPanel";
-import RoleMetricPanel from "./RoleMetricPanel";
 import StatusBreakdownPanel from "./StatusBreakdownPanel";
 
 interface Props {
@@ -13,27 +12,59 @@ interface Props {
 
 export default function ContributorAnalyticsView({ summary, onOpenReport }: Readonly<Props>) {
   return (
-    <div className="analytics-main-grid analytics-main-grid-scoped">
-      <div className="analytics-stack">
+    <div className="analytics-main-grid">
+      {/* Left: Submission Quality */}
+      <div className="card-wrap">
+        <div className="analytics-card-title">Submission Quality</div>
+        <div className="analytics-card-subtitle">Velocity, revision signals, and workflow distribution.</div>
+
         {summary.contributorAnalytics && (
-          <RoleMetricPanel
-            title="Institution Submission Quality"
-            metrics={[
-              ["Submitted", formatNumber(summary.contributorAnalytics.submittedPosts)],
-              ["Published", formatNumber(summary.contributorAnalytics.publishedPosts)],
-              ["Revision requests", formatNumber(summary.contributorAnalytics.revisionRequestCount)],
-              ["Needs revision/rejected", formatPercent(summary.contributorAnalytics.rejectedOrNeedsRevisionRate)],
-            ]}
-          />
+          <>
+            <div className="analytics-section-label">Submission Volume</div>
+            <div className="analytics-stat-grid" style={{ marginBottom: 20 }}>
+              <div className="analytics-stat-cell">
+                <span className="analytics-stat-cell-label">Submitted</span>
+                <span className="analytics-stat-cell-value">{formatNumber(summary.contributorAnalytics.submittedPosts)}</span>
+              </div>
+              <div className="analytics-stat-cell">
+                <span className="analytics-stat-cell-label">Published</span>
+                <span className="analytics-stat-cell-value">{formatNumber(summary.contributorAnalytics.publishedPosts)}</span>
+              </div>
+              <div className="analytics-stat-cell">
+                <span className="analytics-stat-cell-label">Revision Requests</span>
+                <span className="analytics-stat-cell-value">{formatNumber(summary.contributorAnalytics.revisionRequestCount)}</span>
+              </div>
+              <div className="analytics-stat-cell">
+                <span className="analytics-stat-cell-label">Needs Revision Rate</span>
+                <span className="analytics-stat-cell-value">{formatPercent(summary.contributorAnalytics.rejectedOrNeedsRevisionRate)}</span>
+              </div>
+            </div>
+          </>
         )}
-        <StatusBreakdownPanel rows={summary.statusBreakdown} role={summary.scopeRole} />
+
+        <div className="analytics-section-label">Status Distribution</div>
+        <div style={{ marginBottom: 20 }}>
+          <StatusBreakdownPanel rows={summary.statusBreakdown} role={summary.scopeRole} />
+        </div>
+
+        <div className="analytics-section-label">Top Categories</div>
         <CategoryPerformancePanel rows={summary.topCategories} />
       </div>
-      <div className="analytics-stack">
-        <FacebookEngagementPanel
-          data={summary.facebookEngagement}
-          onOpenReport={() => onOpenReport("facebook-engagement")}
-        />
+
+      {/* Right: Engagement & Compliance */}
+      <div className="card-wrap">
+        <div className="analytics-card-title">Engagement & Compliance</div>
+        <div className="analytics-card-subtitle">Audience reach, social reactions, and content completeness.</div>
+
+        <div className="analytics-section-label">Facebook Engagement</div>
+        <div style={{ marginBottom: 20 }}>
+          <FacebookEngagementPanel
+            data={summary.facebookEngagement}
+            onOpenReport={() => onOpenReport("facebook-engagement")}
+          />
+        </div>
+
+        <div className="analytics-section-label">Missing Requirements</div>
         <ContentIssuesPanel rows={summary.contentIssues} />
       </div>
     </div>
