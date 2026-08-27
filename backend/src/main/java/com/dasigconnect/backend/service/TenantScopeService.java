@@ -16,8 +16,12 @@ public class TenantScopeService {
 
     @Transactional
     public void bindTenantScope(UUID institutionId, String role) {
+        // RLS policies grant the tenant-isolation bypass to 'administrator' only.
+        // A super administrator is a network-wide administrator, so bind the same
+        // scope role for row visibility (service-layer checks still apply).
+        String scopeRole = "super_administrator".equalsIgnoreCase(role) ? "administrator" : role;
         setLocal("app.current_institution_id", institutionId == null ? "" : institutionId.toString());
-        setLocal("app.current_role", role == null ? "" : role);
+        setLocal("app.current_role", scopeRole == null ? "" : scopeRole);
     }
 
     private void setLocal(String key, String value) {

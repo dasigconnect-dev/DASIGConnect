@@ -126,12 +126,12 @@ public class ValidationService {
                 selfReview, submission.isFastTrack(), null);
 
         eventPublisher.publishEvent(new SubmissionApprovedEvent(submission));
-        log.info("Submission approved: submission={} validator={}", submissionId, caller.userId());
+        log.info("Submission approved (fastTrack={}): submission={} validator={}", submission.isFastTrack(), submissionId, caller.userId());
     }
 
     /**
      * Edits a submission's content and approves it in the same action: transitions
-     * to SCHEDULED, confirms slot, releases lock. Records a before/after diff of any
+     * to SCHEDULED (or PUBLISHING if fast-track), confirms slot, releases lock. Records a before/after diff of any
      * edited fields alongside the approval action (A9/A10).
      * A5: self-review is allowed but distinctly flagged in the audit log.
      */

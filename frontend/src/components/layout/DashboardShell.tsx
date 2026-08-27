@@ -235,17 +235,17 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       visible: true,
     },
     {
-      id: 'notifications',
-      icon: 'ti ti-bell',
-      label: 'Notifications',
-      path: '/notifications',
-      visible: true,
-    },
-    {
       id: 'scheduler',
       icon: 'ti ti-calendar-event',
       label: 'Calendar',
       path: '/scheduler/calendar',
+      visible: true,
+    },
+    {
+      id: 'notifications',
+      icon: 'ti ti-bell',
+      label: 'Notifications',
+      path: '/notifications',
       visible: true,
     },
     {
@@ -262,11 +262,11 @@ function groupDashboardNavItems(items: DashboardNavItem[]) {
   return [
     {
       label: 'Workspace',
-      items: items.filter((item) => ['home', 'submit', 'review-queue', 'media-repository', 'notifications'].includes(item.id)),
+      items: items.filter((item) => ['home', 'submit', 'review-queue', 'media-repository', 'scheduler', 'notifications'].includes(item.id)),
     },
     {
       label: 'Operations',
-      items: items.filter((item) => ['institution-management', 'user-management', 'scheduler', 'analytics'].includes(item.id)),
+      items: items.filter((item) => ['institution-management', 'user-management', 'analytics'].includes(item.id)),
     },
   ].filter((group) => group.items.length > 0)
 }
