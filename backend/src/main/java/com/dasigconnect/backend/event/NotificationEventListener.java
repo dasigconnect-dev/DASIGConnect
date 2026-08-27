@@ -6,6 +6,9 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,16 +21,20 @@ import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.service.EmailDeliveryService;
+import com.dasigconnect.backend.service.MessengerDeliveryService;
 import com.dasigconnect.backend.service.NotificationService;
 
 /**
- * Dispatches in-app and email notifications for submission lifecycle events
- * (T2–T7, T9–T17). Each handler runs in its own transaction after the
- * triggering transaction commits, so a notification failure cannot roll back
- * the business action that caused it.
+ * Dispatches in-app, email, and Facebook Messenger notifications for
+ * system lifecycle events (T-01 through T-12, plus operational events).
+ * Each handler runs in its own transaction after the triggering transaction
+ * commits (AFTER_COMMIT / REQUIRES_NEW), ensuring notification delivery
+ * never blocks or rolls back core business transactions.
  */
 @Component
 public class NotificationEventListener {
+
+    private static final Logger log = LoggerFactory.getLogger(NotificationEventListener.class);
 
     private static final DateTimeFormatter SLOT_FMT =
             DateTimeFormatter.ofPattern("MMM d, yyyy HH:mm 'UTC'");
@@ -35,17 +42,44 @@ public class NotificationEventListener {
     private final NotificationService notificationService;
     private final UserRepository userRepository;
     private final EmailDeliveryService emailDeliveryService;
+    private final MessengerDeliveryService messengerDeliveryService;
+    private final String frontendBaseUrl;
 
     public NotificationEventListener(
             NotificationService notificationService,
             UserRepository userRepository,
-            EmailDeliveryService emailDeliveryService) {
+            EmailDeliveryService emailDeliveryService,
+            MessengerDeliveryService messengerDeliveryService,
+            @Value("${app.frontend.base-url:http://localhost:5173}") String frontendBaseUrl) {
         this.notificationService = notificationService;
         this.userRepository = userRepository;
         this.emailDeliveryService = emailDeliveryService;
+        this.messengerDeliveryService = messengerDeliveryService;
+        this.frontendBaseUrl = frontendBaseUrl.replaceAll("/+$", "");
     }
 
-    // ── T2 — Submission approved (SCHEDULED) ─────────────────────────────────
+    // ── T-01 — New Draft Submitted (DRAFT → PENDING) ──────────────────────────
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onSubmissionPending(SubmissionPendingEvent event) {
+        Submission s = event.submission();
+        String contributorEmail = s.getContributor() != null ? s.getContributor().getEmail() : "A contributor";
+        String scheduledPart = s.getScheduledAt() != null ? " — scheduled for " + fmt(s.getScheduledAt()) : "";
+        String msg = contributorEmail + " submitted '" + s.getEventTitle() + "' for approval" + scheduledPart + ".";
+        String link = "/submissions/" + s.getId();
+
+        List<User> admins = institutionAdmins(s.getInstitution().getId());
+        for (User admin : admins) {
+            notificationService.createNotification(admin, NotificationEventType.submission_pending, msg, link);
+            // Messenger delivery (A4 / A5)
+            String messengerMsg = "New submission awaiting validation: \"" + s.getEventTitle()
+                    + "\". Open DASIGConnect: " + frontendBaseUrl + link;
+            messengerDeliveryService.sendToUser(admin.getId(), messengerMsg);
+        }
+    }
+
+    // ── T-02 — Post Approved & Scheduled (PENDING → SCHEDULED) ────────────────
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -64,30 +98,10 @@ public class NotificationEventListener {
         emailDeliveryService.send(contributor,
                 NotificationEventType.submission_approved.name(),
                 "DASIGConnect — Submission approved",
-                msg + "\n\nView your scheduled post: " + link);
+                msg + "\n\nView your scheduled post: " + frontendBaseUrl + link);
     }
 
-    // ── T3 — Revision requested (NEEDS_REVISION) ─────────────────────────────
-
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onRevisionRequested(RevisionRequestedEvent event) {
-        Submission s = event.submission();
-        User contributor = s.getContributor();
-        String msg = "Revision requested for '" + s.getEventTitle()
-                + ".' Review the Validator's remarks.";
-        String link = "/submissions/" + s.getId();
-
-        notificationService.createNotification(contributor, NotificationEventType.submission_needs_revision, msg, link);
-        String emailBody = msg + "\n\nValidator remarks:\n" + event.remarks()
-                + "\n\nView submission: " + link;
-        emailDeliveryService.send(contributor,
-                NotificationEventType.submission_needs_revision.name(),
-                "DASIGConnect — Revision requested",
-                emailBody);
-    }
-
-    // ── T4 — Submission rejected (REJECTED) ──────────────────────────────────
+    // ── T-03 — Post Rejected (PENDING → REJECTED) ─────────────────────────────
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -99,14 +113,34 @@ public class NotificationEventListener {
 
         notificationService.createNotification(contributor, NotificationEventType.submission_rejected, msg, link);
         String emailBody = msg + "\n\nRejection reason:\n" + event.reason()
-                + "\n\nView submission: " + link;
+                + "\n\nView submission: " + frontendBaseUrl + link;
         emailDeliveryService.send(contributor,
                 NotificationEventType.submission_rejected.name(),
                 "DASIGConnect — Submission rejected",
                 emailBody);
     }
 
-    // ── T5 — Post published (automated, PUBLISHED) ───────────────────────────
+    // ── Revision Requested (PENDING → NEEDS_REVISION) ─────────────────────────
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onRevisionRequested(RevisionRequestedEvent event) {
+        Submission s = event.submission();
+        User contributor = s.getContributor();
+        String msg = "Revision requested for '" + s.getEventTitle()
+                + ".' Review the Administrator's remarks.";
+        String link = "/submissions/" + s.getId();
+
+        notificationService.createNotification(contributor, NotificationEventType.submission_needs_revision, msg, link);
+        String emailBody = msg + "\n\nAdministrator remarks:\n" + event.remarks()
+                + "\n\nView submission: " + frontendBaseUrl + link;
+        emailDeliveryService.send(contributor,
+                NotificationEventType.submission_needs_revision.name(),
+                "DASIGConnect — Revision requested",
+                emailBody);
+    }
+
+    // ── T-04 — Post Published (Automated via Graph API) ───────────────────────
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -118,7 +152,7 @@ public class NotificationEventListener {
         notificationService.createNotification(s.getContributor(), NotificationEventType.submission_published, msg, link);
     }
 
-    // ── T6 — Post published (manual, PUBLISHED_MANUAL) ───────────────────────
+    // ── T-05 — Post Published (Manual Fallback) ───────────────────────────────
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -131,14 +165,14 @@ public class NotificationEventListener {
         notificationService.createNotification(
                 s.getContributor(), NotificationEventType.submission_published_manual, contributorMsg, postLink);
 
-        String validatorMsg = "'" + s.getEventTitle() + "' from "
+        String adminMsg = "'" + s.getEventTitle() + "' from "
                 + s.getInstitution().getName() + " was manually published by the Administrator.";
-        for (User v : validators(s.getInstitution().getId())) {
-            notificationService.createNotification(v, NotificationEventType.submission_published_manual, validatorMsg, postLink);
+        for (User admin : institutionAdmins(s.getInstitution().getId())) {
+            notificationService.createNotification(admin, NotificationEventType.submission_published_manual, adminMsg, postLink);
         }
     }
 
-    // ── T7 — Automated publishing failed (PUBLISH_FAILED) ────────────────────
+    // ── T-06 — Automated Publishing Failed (PUBLISH_FAILED) ───────────────────
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -150,12 +184,27 @@ public class NotificationEventListener {
         String adminMsg = "Automated publishing failed for '" + s.getEventTitle()
                 + "' (scheduled " + slot + "). Error: " + event.errorDetail()
                 + ". Manual action required.";
-        for (User admin : admins()) {
+
+        // Notify super admins and institution admins
+        List<User> targetAdmins = new java.util.ArrayList<>(superAdmins());
+        if (s.getInstitution() != null && s.getInstitution().getId() != null) {
+            for (User ia : institutionAdmins(s.getInstitution().getId())) {
+                if (!targetAdmins.contains(ia)) {
+                    targetAdmins.add(ia);
+                }
+            }
+        }
+
+        for (User admin : targetAdmins) {
             notificationService.createNotification(admin, NotificationEventType.submission_publish_failed, adminMsg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.submission_publish_failed.name(),
                     "DASIGConnect — Publishing failed",
-                    adminMsg);
+                    adminMsg + "\n\nResolution Center: " + frontendBaseUrl + "/admin/resolution");
+            // Messenger alert (A4 / A5)
+            String messengerAlert = "URGENT: Automated publishing failed for \"" + s.getEventTitle()
+                    + "\". Manual action required: " + frontendBaseUrl + link;
+            messengerDeliveryService.sendToUser(admin.getId(), messengerAlert);
         }
 
         String contributorMsg = "Your post '" + s.getEventTitle()
@@ -176,7 +225,7 @@ public class NotificationEventListener {
         String adminMsg = "'" + s.getEventTitle() + "' missed its scheduled publication time ("
                 + slot + ") without review. Its slot has been released — assign a new schedule to"
                 + " send it back to the approval queue.";
-        for (User admin : admins()) {
+        for (User admin : superAdmins()) {
             notificationService.createNotification(admin, NotificationEventType.submission_missed_review, adminMsg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.submission_missed_review.name(),
@@ -191,75 +240,51 @@ public class NotificationEventListener {
                 s.getContributor(), NotificationEventType.submission_missed_review, contributorMsg, link);
     }
 
-    // ── T9 — Override approved ────────────────────────────────────────────────
+    // ── T-07 — Empty Schedule Warning ─────────────────────────────────────────
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onOverrideApproved(OverrideApprovedEvent event) {
-        Submission s = event.submission();
-        String link = "/submissions/" + s.getId();
+    public void onEmptySchedule(EmptyScheduleEvent event) {
+        String instName = event.institution().getName();
+        StringBuilder sb = new StringBuilder();
+        sb.append("Upcoming schedule for ").append(instName).append(" is currently empty (0 posts scheduled).");
+        if (event.suggestions() != null && !event.suggestions().isEmpty()) {
+            sb.append("\n\nContent suggestions:");
+            for (String suggestion : event.suggestions()) {
+                sb.append("\n• ").append(suggestion);
+            }
+        }
+        String msg = sb.toString();
+        String link = "/scheduler/calendar";
 
-        String contributorMsg = "Your guard rail override request for '" + s.getEventTitle()
-                + "' was approved. You may proceed with your selected slot.";
-        notificationService.createNotification(event.contributor(), NotificationEventType.override_approved, contributorMsg, link);
-
-        String validatorMsg = "Administrator approved a guard rail override for '"
-                + event.contributor().getEmail() + "' — '" + s.getEventTitle() + "'.";
-        for (User v : validators(s.getInstitution().getId())) {
-            notificationService.createNotification(v, NotificationEventType.override_approved, validatorMsg, link);
+        // In-app to institution admins
+        for (User admin : institutionAdmins(event.institution().getId())) {
+            notificationService.createNotification(admin, NotificationEventType.empty_schedule_warning, msg, link);
+        }
+        // In-app to institution contributors
+        for (User contributor : institutionContributors(event.institution().getId())) {
+            notificationService.createNotification(contributor, NotificationEventType.empty_schedule_warning, msg, link);
         }
     }
 
-    // ── T10 — Override denied ─────────────────────────────────────────────────
-
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onOverrideDenied(OverrideDeniedEvent event) {
-        Submission s = event.submission();
-        String link = "/submissions/" + s.getId();
-        String msg = "Your guard rail override request for '" + s.getEventTitle() + "' was not approved.";
-
-        notificationService.createNotification(event.contributor(), NotificationEventType.override_denied, msg, link);
-        String emailBody = msg + (event.reason() != null ? "\n\nAdministrator reason: " + event.reason() : "")
-                + "\n\nView submission: " + link;
-        emailDeliveryService.send(event.contributor(),
-                NotificationEventType.override_denied.name(),
-                "DASIGConnect — Override request denied",
-                emailBody);
-    }
-
-    // ── T11 — Admin direct post ───────────────────────────────────────────────
-
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onAdminDirectPost(AdminDirectPostEvent event) {
-        String msg = "The Administrator posted directly to the DASIG Facebook Page on behalf of "
-                + event.institution().getName() + ": '"
-                + truncate(event.postTitle(), 80) + ".' View post →";
-        String link = event.postUrl() != null ? event.postUrl() : "/";
-        for (User v : validators(event.institution().getId())) {
-            notificationService.createNotification(v, NotificationEventType.admin_direct_post, msg, link);
-        }
-    }
-
-    // ── T12 — Token expiry warning (GR-T3) ───────────────────────────────────
+    // ── T-08 — Token Expiry Warning (GR-T3) ───────────────────────────────────
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onTokenExpiryWarning(TokenExpiryWarningEvent event) {
         String msg = "The Facebook Page Access Token will expire in " + event.daysUntilExpiry()
                 + " days. Re-authenticate the Facebook integration before it expires to avoid publishing interruptions.";
-        String link = "/admin/integrations";
-        for (User admin : admins()) {
+        String link = "/admin/resolution";
+        for (User admin : superAdmins()) {
             notificationService.createNotification(admin, NotificationEventType.token_expiring, msg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.token_expiring.name(),
                     "DASIGConnect — Token expiry warning",
-                    msg);
+                    msg + "\n\nManage tokens: " + frontendBaseUrl + link);
         }
     }
 
-    // ── T13 — Token validation failure (GR-T4) ───────────────────────────────
+    // ── T-09 — Token Validation Failure (GR-T4) ───────────────────────────────
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -267,17 +292,17 @@ public class NotificationEventListener {
         String msg = "CRITICAL: The Facebook Page Access Token failed validation. "
                 + "Automated publishing is suspended until the token is reauthorized. "
                 + "Re-authenticate immediately in the Resolution Center.";
-        String link = "/admin/resolution-center";
-        for (User admin : admins()) {
+        String link = "/admin/resolution";
+        for (User admin : superAdmins()) {
             notificationService.createNotification(admin, NotificationEventType.token_invalid, msg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.token_invalid.name(),
                     "DASIGConnect — CRITICAL: Token validation failed",
-                    msg);
+                    msg + "\n\nResolution Center: " + frontendBaseUrl + link);
         }
     }
 
-    // ── T14 — Institution has no active validator ─────────────────────────────
+    // ── Token Publishing Suspended Alert (Suspension Lifecycle) ───────────────
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -298,46 +323,16 @@ public class NotificationEventListener {
         if (event.detail() != null && !event.detail().isBlank()) {
             msg = msg + " Detail: " + event.detail();
         }
-        for (User admin : admins()) {
+        for (User admin : superAdmins()) {
             notificationService.createNotification(admin, NotificationEventType.token_invalid, msg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.token_invalid.name(),
                     "DASIGConnect - Facebook token publishing alert",
-                    msg);
+                    msg + "\n\nResolution Center: " + frontendBaseUrl + link);
         }
     }
 
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onInstitutionNoValidator(InstitutionNoValidatorEvent event) {
-        String name = event.institution().getName();
-        String msg = name + " has no active Validators. All pending submissions from this institution "
-                + "are being escalated to you until a new Validator is provisioned.";
-        String link = "/admin/institutions/" + event.institution().getId();
-        for (User admin : admins()) {
-            notificationService.createNotification(admin, NotificationEventType.institution_no_validator, msg, link);
-            emailDeliveryService.send(admin,
-                    NotificationEventType.institution_no_validator.name(),
-                    "DASIGConnect — No active Validator at " + name,
-                    msg);
-        }
-    }
-
-    // ── T15 — New institution onboarded ──────────────────────────────────────
-
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onInstitutionOnboarded(InstitutionOnboardedEvent event) {
-        String name = event.institution().getName();
-        String msg = name + " has completed onboarding. "
-                + "The Validator account is now active and the workspace is ready.";
-        String link = "/admin/institutions/" + event.institution().getId();
-        for (User admin : admins()) {
-            notificationService.createNotification(admin, NotificationEventType.institution_onboarded, msg, link);
-        }
-    }
-
-    // ── T16 — Administrator rescheduled a post ────────────────────────────────
+    // ── T-10 — Administrator rescheduled a post ────────────────────────────────
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -349,7 +344,84 @@ public class NotificationEventListener {
         notificationService.createNotification(s.getContributor(), NotificationEventType.submission_rescheduled, msg, link);
     }
 
-    // ── T17 — Administrator suggests alternative slot ─────────────────────────
+    // ── T-11 — Fast-Track Live Event Submission ───────────────────────────────
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onFastTrackSubmission(FastTrackSubmissionEvent event) {
+        Submission s = event.submission();
+        String contributorEmail = s.getContributor() != null ? s.getContributor().getEmail() : "A contributor";
+        String msg = "URGENT Fast-Track live event submission: " + contributorEmail + " submitted '"
+                + s.getEventTitle() + "' for immediate approval.";
+        String link = "/submissions/" + s.getId();
+
+        List<User> admins = institutionAdmins(s.getInstitution().getId());
+        for (User admin : admins) {
+            notificationService.createNotification(admin, NotificationEventType.fast_track_submission, msg, link);
+            emailDeliveryService.send(admin,
+                    NotificationEventType.fast_track_submission.name(),
+                    "URGENT: Fast-Track submission needs approval",
+                    msg + "\n\nOpen DASIGConnect: " + frontendBaseUrl + link);
+            // Messenger alert (A4 / A5)
+            String messengerMsg = "URGENT Fast-Track submission: \"" + s.getEventTitle()
+                    + "\". Open DASIGConnect: " + frontendBaseUrl + link;
+            messengerDeliveryService.sendToUser(admin.getId(), messengerMsg);
+        }
+    }
+
+    // ── T-12 — Embedding Reconciliation Failure Digest ────────────────────────
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onEmbeddingFailureDigest(EmbeddingFailureDigestEvent event) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Weekly AI Embedding Digest: ").append(event.failedCount())
+                .append(" media asset(s) failed embedding generation.");
+        if (event.sampleFilenames() != null && !event.sampleFilenames().isEmpty()) {
+            sb.append(" Affected files: ").append(String.join(", ", event.sampleFilenames()));
+        }
+        String msg = sb.toString();
+        String link = "/media-repository";
+
+        for (User admin : superAdmins()) {
+            notificationService.createNotification(admin, NotificationEventType.embedding_failure_digest, msg, link);
+        }
+    }
+
+    // ── Additional Operational Events ─────────────────────────────────────────
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onOverrideApproved(OverrideApprovedEvent event) {
+        Submission s = event.submission();
+        String link = "/submissions/" + s.getId();
+
+        String contributorMsg = "Your guard rail override request for '" + s.getEventTitle()
+                + "' was approved. You may proceed with your selected slot.";
+        notificationService.createNotification(event.contributor(), NotificationEventType.override_approved, contributorMsg, link);
+
+        String adminMsg = "Administrator approved a guard rail override for '"
+                + event.contributor().getEmail() + "' — '" + s.getEventTitle() + "'.";
+        for (User admin : institutionAdmins(s.getInstitution().getId())) {
+            notificationService.createNotification(admin, NotificationEventType.override_approved, adminMsg, link);
+        }
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onOverrideDenied(OverrideDeniedEvent event) {
+        Submission s = event.submission();
+        String link = "/submissions/" + s.getId();
+        String msg = "Your guard rail override request for '" + s.getEventTitle() + "' was not approved.";
+
+        notificationService.createNotification(event.contributor(), NotificationEventType.override_denied, msg, link);
+        String emailBody = msg + (event.reason() != null ? "\n\nAdministrator reason: " + event.reason() : "")
+                + "\n\nView submission: " + frontendBaseUrl + link;
+        emailDeliveryService.send(event.contributor(),
+                NotificationEventType.override_denied.name(),
+                "DASIGConnect — Override request denied",
+                emailBody);
+    }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -365,20 +437,67 @@ public class NotificationEventListener {
         emailDeliveryService.send(event.contributor(),
                 NotificationEventType.override_slot_suggested.name(),
                 "DASIGConnect — Alternative slot suggested",
-                msg);
+                msg + "\n\nView submission: " + frontendBaseUrl + link);
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onAdminDirectPost(AdminDirectPostEvent event) {
+        String msg = "The Administrator posted directly to the DASIG Facebook Page on behalf of "
+                + event.institution().getName() + ": '"
+                + truncate(event.postTitle(), 80) + ".' View post →";
+        String link = event.postUrl() != null ? event.postUrl() : "/";
+        for (User admin : institutionAdmins(event.institution().getId())) {
+            notificationService.createNotification(admin, NotificationEventType.admin_direct_post, msg, link);
+        }
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onInstitutionNoValidator(InstitutionNoValidatorEvent event) {
+        String name = event.institution().getName();
+        String msg = name + " has no active Administrators. All pending submissions from this institution "
+                + "are being escalated until an Administrator is provisioned.";
+        String link = "/admin/institution-management";
+        for (User admin : superAdmins()) {
+            notificationService.createNotification(admin, NotificationEventType.institution_no_validator, msg, link);
+            emailDeliveryService.send(admin,
+                    NotificationEventType.institution_no_validator.name(),
+                    "DASIGConnect — No active Administrator at " + name,
+                    msg + "\n\nManage institutions: " + frontendBaseUrl + link);
+        }
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onInstitutionOnboarded(InstitutionOnboardedEvent event) {
+        String name = event.institution().getName();
+        String msg = name + " has completed onboarding. "
+                + "The Administrator account is now active and the workspace is ready.";
+        String link = "/admin/institution-management";
+        for (User admin : superAdmins()) {
+            notificationService.createNotification(admin, NotificationEventType.institution_onboarded, msg, link);
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private List<User> validators(java.util.UUID institutionId) {
+    private List<User> institutionAdmins(java.util.UUID institutionId) {
+        if (institutionId == null) return List.of();
         return userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.administrator);
     }
 
-    private List<User> admins() {
+    private List<User> institutionContributors(java.util.UUID institutionId) {
+        if (institutionId == null) return List.of();
+        return userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.contributor);
+    }
+
+    private List<User> superAdmins() {
         return userRepository.findByRole(UserRole.super_administrator);
     }
 
     private static String fmt(Instant instant) {
+        if (instant == null) return "TBD";
         return ZonedDateTime.ofInstant(instant, ZoneOffset.UTC).format(SLOT_FMT);
     }
 

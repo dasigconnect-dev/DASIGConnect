@@ -19,7 +19,7 @@ import {
   type SavedMediaAsset,
   type SubmissionSummary,
 } from "../../api/submissionApi";
-import { getMediaAsset } from "../../api/mediaApi";
+import { getMediaAsset, listMediaAlbums } from "../../api/mediaApi";
 import {
   useSubmissionLookups,
   useSubmissions,
@@ -177,6 +177,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
   const [institutionsLoading, setInstitutionsLoading] = useState(false);
   const [institutionsError, setInstitutionsError] = useState("");
+  const [existingAlbums, setExistingAlbums] = useState<string[]>([]);
   const [activeStep, setActiveStep] = useState<ProgressStep>("media");
   const [captionSelection, setCaptionSelection] = useState<FancyTextSelection>({
     start: 0,
@@ -195,12 +196,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const selectedPostingIsDefault = Boolean(
     selectedPostingInstitution && isDefaultInstitution(selectedPostingInstitution),
   );
-
-  const [existingAlbums] = useState<string[]>([
-    "2026 Hackathons",
-    "DOST Region 7 Announcements",
-    "Webinars"
-  ]); //replace with api call instead of dummy data
 
   const queued = useMemo(() => {
     const byFilter = (() => {
@@ -315,6 +310,26 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       .finally(() => setInstitutionsLoading(false));
     return () => controller.abort();
   }, [isAdminComposer]);
+
+  useEffect(() => {
+    if (!selectedInstitutionId) {
+      setExistingAlbums([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    listMediaAlbums(selectedInstitutionId, controller.signal)
+      .then((response) => {
+        setExistingAlbums((response.data ?? []).map((album) => album.name));
+      })
+      .catch((err: unknown) => {
+        if ((err as { name?: string })?.name === "CanceledError") return;
+        setExistingAlbums([]);
+        toast.error("Could not load media albums.");
+      });
+
+    return () => controller.abort();
+  }, [selectedInstitutionId, toast]);
 
   const isDetailsComplete = useMemo(
     () =>

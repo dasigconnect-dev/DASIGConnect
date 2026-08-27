@@ -16,6 +16,8 @@ public class MediaAssetDetailDto {
     private String fileType;
     private long fileSizeBytes;
     private String aiCategory;
+    private UUID albumId;
+    private String albumName;
     private BigDecimal aiConfidence;
     private String aiDescription;
     private Instant aiClassifiedAt;
@@ -39,6 +41,10 @@ public class MediaAssetDetailDto {
         dto.fileType = asset.getFileType().name();
         dto.fileSizeBytes = asset.getFileSizeBytes();
         dto.aiCategory = asset.getAiCategory();
+        if (asset.getMediaAlbum() != null) {
+            dto.albumId = asset.getMediaAlbum().getId();
+            dto.albumName = asset.getMediaAlbum().getName();
+        }
         dto.aiConfidence = asset.getAiConfidence();
         dto.aiDescription = asset.getAiDescription();
         dto.aiClassifiedAt = asset.getAiClassifiedAt();
@@ -81,6 +87,14 @@ public class MediaAssetDetailDto {
 
     public String getAiCategory() {
         return aiCategory;
+    }
+
+    public UUID getAlbumId() {
+        return albumId;
+    }
+
+    public String getAlbumName() {
+        return albumName;
     }
 
     public BigDecimal getAiConfidence() {

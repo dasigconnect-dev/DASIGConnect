@@ -23,10 +23,12 @@ import org.springframework.web.server.ResponseStatusException;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.entity.Institution;
+import com.dasigconnect.backend.model.entity.MediaAlbum;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.AssetTagRepository;
+import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
@@ -45,6 +47,10 @@ class MediaAssetServiceTest {
     @Mock
     private MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     @Mock
+    private MediaAlbumRepository mediaAlbumRepository;
+    @Mock
+    private com.dasigconnect.backend.repository.InstitutionRepository institutionRepository;
+    @Mock
     private AssetTagRepository assetTagRepository;
     @Mock
     private SubmissionService submissionService;
@@ -52,6 +58,8 @@ class MediaAssetServiceTest {
     private SupabaseStorageService supabaseStorageService;
     @Mock
     private AIClassificationService aiClassificationService;
+    @Mock
+    private com.dasigconnect.backend.external.VoyageAIClient voyageAIClient;
 
     private MediaAssetService mediaAssetService;
 
@@ -62,10 +70,13 @@ class MediaAssetServiceTest {
                 submissionRepository,
                 submissionMediaAssetRepository,
                 assetTagRepository,
+                mediaAlbumRepository,
                 mediaAssetEmbeddingRepository,
+                institutionRepository,
                 submissionService,
                 supabaseStorageService,
-                aiClassificationService);
+                aiClassificationService,
+                voyageAIClient);
     }
 
     @Test
@@ -129,16 +140,16 @@ class MediaAssetServiceTest {
         UUID uploaderId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = asset(assetId, institutionId, uploaderId);
-        when(mediaAssetRepository.findActiveByInstitution(institutionId)).thenReturn(List.of(asset));
+        when(mediaAssetRepository.findActiveByInstitutionIds(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(asset));
         when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(List.of(assetId)))
                 .thenReturn(Set.of(assetId));
         when(submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(List.of(assetId))).thenReturn(Set.of());
 
         MediaAssetListResponseDto resultForUploader = mediaAssetService.list(
-                null, null, null, null, null, null, 1, 20, null,
+                null, null, null, null, null, null, null, 1, 20, null,
                 user(uploaderId, "contributor", institutionId));
         MediaAssetListResponseDto resultForOtherUser = mediaAssetService.list(
-                null, null, null, null, null, null, 1, 20, null,
+                null, null, null, null, null, null, null, 1, 20, null,
                 user(UUID.randomUUID(), "contributor", institutionId));
 
         assertTrue(resultForUploader.getItems().isEmpty());
@@ -151,12 +162,12 @@ class MediaAssetServiceTest {
         UUID uploaderId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = asset(assetId, institutionId, uploaderId);
-        when(mediaAssetRepository.findActiveByInstitution(institutionId)).thenReturn(List.of(asset));
+        when(mediaAssetRepository.findActiveByInstitutionIds(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(asset));
         when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(List.of(assetId)))
                 .thenReturn(Set.of());
 
         MediaAssetListResponseDto result = mediaAssetService.list(
-                null, null, null, null, null, null, 1, 20, null,
+                null, null, null, null, null, null, null, 1, 20, null,
                 user(UUID.randomUUID(), "contributor", institutionId));
 
         assertEquals(1, result.getItems().size());
@@ -168,16 +179,177 @@ class MediaAssetServiceTest {
         UUID uploaderId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = asset(assetId, institutionId, uploaderId);
-        when(mediaAssetRepository.findActiveByInstitution(institutionId)).thenReturn(List.of(asset));
+        when(mediaAssetRepository.findActiveByInstitutionIds(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(asset));
         when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(List.of(assetId)))
                 .thenReturn(Set.of(assetId));
         when(submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(List.of(assetId))).thenReturn(Set.of(assetId));
 
         MediaAssetListResponseDto result = mediaAssetService.list(
-                null, null, null, null, null, null, 1, 20, null,
+                null, null, null, null, null, null, null, 1, 20, null,
                 user(UUID.randomUUID(), "contributor", institutionId));
 
         assertEquals(1, result.getItems().size());
+    }
+
+    @Test
+    void listAlbums_adminWithoutInstitution_returnsAlbumsAcrossInstitutions() {
+        MediaAlbum a = album(UUID.randomUUID(), UUID.randomUUID(), null);
+        MediaAlbum b = album(UUID.randomUUID(), UUID.randomUUID(), null);
+        when(mediaAlbumRepository.findAll()).thenReturn(List.of(a, b));
+        when(mediaAlbumRepository.countChildAlbumsByParentAllInstitutions()).thenReturn(List.of());
+        when(mediaAssetRepository.countActiveAssetsByAlbumAllInstitutions()).thenReturn(List.of());
+
+        var result = mediaAssetService.listAlbums(null, user(UUID.randomUUID(), "administrator", null));
+
+        assertEquals(2, result.size());
+    }
+
+    @Test
+    void deleteAlbum_contributorCannotDeleteAnotherInstitutionFolder() {
+        UUID ownInstitution = UUID.randomUUID();
+        UUID otherInstitution = UUID.randomUUID();
+        UUID albumId = UUID.randomUUID();
+        when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album(albumId, otherInstitution, null)));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "contributor", ownInstitution)));
+        assertEquals(403, ex.getStatusCode().value());
+        verify(mediaAlbumRepository, never()).delete(any());
+    }
+
+    @Test
+    void deleteAlbum_adminCanDeleteAnyInstitutionFolder() {
+        UUID albumId = UUID.randomUUID();
+        MediaAlbum album = album(albumId, UUID.randomUUID(), null);
+        when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album));
+        when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(0L);
+        when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(0L);
+
+        mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "administrator", null));
+
+        verify(mediaAlbumRepository).delete(album);
+    }
+
+    @Test
+    void moveAlbum_intoOwnDescendant_isRejected() {
+        UUID institutionId = UUID.randomUUID();
+        UUID albumId = UUID.randomUUID();
+        UUID childId = UUID.randomUUID();
+        when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album(albumId, institutionId, null)));
+        when(mediaAlbumRepository.findById(childId)).thenReturn(Optional.of(album(childId, institutionId, null)));
+        when(mediaAlbumRepository.findDescendantIds(albumId)).thenReturn(List.of(childId));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.moveAlbum(albumId, childId, null, user(UUID.randomUUID(), "contributor", institutionId)));
+        assertEquals(409, ex.getStatusCode().value());
+    }
+
+    @Test
+    void moveAlbum_contributorCannotMoveIntoUnrelatedInstitution() {
+        UUID ownInstitution = UUID.randomUUID();
+        UUID otherInstitution = UUID.randomUUID();
+        UUID albumId = UUID.randomUUID();
+        UUID destinationParentId = UUID.randomUUID();
+        when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album(albumId, ownInstitution, null)));
+        when(mediaAlbumRepository.findById(destinationParentId))
+                .thenReturn(Optional.of(album(destinationParentId, otherInstitution, null)));
+        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc()).thenReturn(Optional.empty());
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.moveAlbum(albumId, destinationParentId, null,
+                        user(UUID.randomUUID(), "contributor", ownInstitution)));
+        assertEquals(403, ex.getStatusCode().value());
+    }
+
+    @Test
+    void moveAlbum_intoItself_isRejected() {
+        UUID institutionId = UUID.randomUUID();
+        UUID albumId = UUID.randomUUID();
+        when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album(albumId, institutionId, null)));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.moveAlbum(albumId, albumId, null, user(UUID.randomUUID(), "contributor", institutionId)));
+        assertEquals(409, ex.getStatusCode().value());
+    }
+
+    @Test
+    void deleteAlbum_withSubAlbums_isRejected() {
+        UUID institutionId = UUID.randomUUID();
+        UUID albumId = UUID.randomUUID();
+        when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album(albumId, institutionId, null)));
+        when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(2L);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "administrator", null)));
+        assertEquals(409, ex.getStatusCode().value());
+        verify(mediaAlbumRepository, never()).delete(any());
+    }
+
+    @Test
+    void deleteAlbum_withAssets_isRejected() {
+        UUID institutionId = UUID.randomUUID();
+        UUID albumId = UUID.randomUUID();
+        when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album(albumId, institutionId, null)));
+        when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(0L);
+        when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(5L);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "administrator", null)));
+        assertEquals(409, ex.getStatusCode().value());
+        verify(mediaAlbumRepository, never()).delete(any());
+    }
+
+    @Test
+    void deleteAlbum_whenEmpty_deletes() {
+        UUID institutionId = UUID.randomUUID();
+        UUID albumId = UUID.randomUUID();
+        MediaAlbum album = album(albumId, institutionId, null);
+        when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album));
+        when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(0L);
+        when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(0L);
+
+        mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "administrator", null));
+
+        verify(mediaAlbumRepository).delete(album);
+    }
+
+    @Test
+    void deleteAlbum_contributorCanDeleteFolderTheyCreated() {
+        UUID institutionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID albumId = UUID.randomUUID();
+        MediaAlbum album = album(albumId, institutionId, null);
+        album.setCreatedBy(userId);
+        when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album));
+        when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(0L);
+        when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(0L);
+
+        mediaAssetService.deleteAlbum(albumId, user(userId, "contributor", institutionId));
+
+        verify(mediaAlbumRepository).delete(album);
+    }
+
+    @Test
+    void deleteAlbum_contributorCannotDeleteFolderCreatedByAnother() {
+        UUID institutionId = UUID.randomUUID();
+        UUID albumId = UUID.randomUUID();
+        MediaAlbum album = album(albumId, institutionId, null);
+        album.setCreatedBy(UUID.randomUUID());
+        when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "contributor", institutionId)));
+        assertEquals(403, ex.getStatusCode().value());
+        verify(mediaAlbumRepository, never()).delete(any());
+    }
+
+    private static MediaAlbum album(UUID id, UUID institutionId, MediaAlbum parent) {
+        MediaAlbum album = new MediaAlbum();
+        album.setId(id);
+        album.setName("Album " + id.toString().substring(0, 4));
+        album.setInstitution(institution(institutionId));
+        album.setParentAlbum(parent);
+        return album;
     }
 
     private static JwtUserDetails user(UUID userId, String role, UUID institutionId) {
