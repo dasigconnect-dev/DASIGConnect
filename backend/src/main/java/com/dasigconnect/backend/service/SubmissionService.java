@@ -39,6 +39,7 @@ import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
 import com.dasigconnect.backend.model.entity.Institution;
+import com.dasigconnect.backend.model.entity.AssetTag;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaAssetStatus;
 import com.dasigconnect.backend.model.entity.MediaFileType;
@@ -48,6 +49,7 @@ import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
+import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.ReviewLockRepository;
@@ -98,6 +100,8 @@ public class SubmissionService {
     @Value("${app.guardrails.enforced:true}")
     private boolean guardRailsEnforced = true;
 
+    private final AssetTagRepository assetTagRepository;
+
     public SubmissionService(
             SubmissionRepository submissionRepository,
             InstitutionRepository institutionRepository,
@@ -111,6 +115,7 @@ public class SubmissionService {
             NotificationService notificationService,
             EmailDeliveryService emailDeliveryService,
             UserRepository userRepository,
+            AssetTagRepository assetTagRepository,
             ApplicationEventPublisher eventPublisher) {
         this.submissionRepository = submissionRepository;
         this.institutionRepository = institutionRepository;
@@ -124,6 +129,7 @@ public class SubmissionService {
         this.notificationService = notificationService;
         this.emailDeliveryService = emailDeliveryService;
         this.userRepository = userRepository;
+        this.assetTagRepository = assetTagRepository;
         this.eventPublisher = eventPublisher;
     }
 
@@ -575,12 +581,35 @@ public class SubmissionService {
         asset.setFileType(fileType);
         asset.setFileSizeBytes(dto.getFileSizeBytes());
         asset = mediaAssetRepository.save(asset);
+        applySubmissionMediaTags(asset, submission.getMediaTags());
 
         linkAssetToSubmission(submission, asset, (int) currentCount);
         refreshManualPublishingFlag(submission);
 
         log.info("Media asset {} attached to submission {} by user {}", asset.getId(), submissionId, user.userId());
         return buildResponse(submission);
+    }
+
+    /**
+     * Copy the media tags the contributor entered on the Submit-Content upload
+     * step onto the new asset as {@code manual} {@code asset_tags}, so those tags
+     * show up in the Media Library alongside library-uploaded assets' tags.
+     */
+    private void applySubmissionMediaTags(MediaAsset asset, String joinedTags) {
+        if (joinedTags == null || joinedTags.isBlank()) {
+            return;
+        }
+        for (String raw : joinedTags.split(",")) {
+            String label = raw.trim();
+            if (label.isEmpty() || assetTagRepository.existsByMediaAssetIdAndLabel(asset.getId(), label)) {
+                continue;
+            }
+            AssetTag tag = new AssetTag();
+            tag.setMediaAsset(asset);
+            tag.setLabel(label);
+            tag.setSource("manual");
+            assetTagRepository.save(tag);
+        }
     }
 
     /**

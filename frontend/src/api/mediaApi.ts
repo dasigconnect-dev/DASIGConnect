@@ -32,6 +32,7 @@ export interface MediaAsset {
   albumId?: string;
   albumName?: string;
   aiTags?: AiTag[];
+  userTags?: Array<{ id: string; label: string }>;
   usedIn?: MediaUsage[];
   widthPx?: number;
   heightPx?: number;
@@ -231,7 +232,15 @@ interface MediaAssetDetailResponse {
     status: string;
     deepLink?: string;
   }>;
-  tags?: Array<{ id: string; label: string }>;
+  tags?: Array<{ id: string; label: string; source: string }>;
+}
+
+export interface MediaAssetHistoryEntry {
+  action: string;
+  actorName: string;
+  actorEmail: string | null;
+  occurredAt: string;
+  summary: string;
 }
 
 function mapDetailToAsset(raw: MediaAssetDetailResponse): MediaAsset {
@@ -242,8 +251,11 @@ function mapDetailToAsset(raw: MediaAssetDetailResponse): MediaAsset {
       confidence: raw.aiConfidence != null ? Math.round(Number(raw.aiConfidence) * 100) : 100,
     });
   }
+  const userTags: Array<{ id: string; label: string }> = [];
   for (const tag of raw.tags ?? []) {
-    if (!aiTags.some((t) => t.label === tag.label)) {
+    if (tag.source === "manual") {
+      userTags.push({ id: tag.id, label: tag.label });
+    } else if (!aiTags.some((t) => t.label === tag.label)) {
       aiTags.push({ label: tag.label, confidence: 100 });
     }
   }
@@ -264,6 +276,7 @@ function mapDetailToAsset(raw: MediaAssetDetailResponse): MediaAsset {
     albumId: raw.albumId ?? undefined,
     albumName: raw.albumName ?? undefined,
     aiTags: aiTags.length > 0 ? aiTags : undefined,
+    userTags,
     usedIn: (raw.usedIn ?? []).map((u) => ({
       submissionId: u.submissionId,
       submissionTitle: u.eventTitle,
@@ -278,6 +291,18 @@ export function getMediaAsset(id: string, signal?: AbortSignal) {
   return api
     .get<MediaAssetDetailResponse>(`/media-assets/${id}`, { signal })
     .then((res) => ({ ...res, data: mapDetailToAsset(res.data) }));
+}
+
+export function getMediaAssetHistory(id: string, signal?: AbortSignal) {
+  return api.get<MediaAssetHistoryEntry[]>(`/media-assets/${id}/history`, { signal });
+}
+
+export function addMediaAssetTag(id: string, label: string) {
+  return api.post<{ id: string; label: string; source: string }>(`/media-assets/${id}/tags`, { label });
+}
+
+export function removeMediaAssetTag(id: string, tagId: string) {
+  return api.delete<void>(`/media-assets/${id}/tags/${tagId}`);
 }
 
 export function deleteMediaAsset(id: string, force = false) {

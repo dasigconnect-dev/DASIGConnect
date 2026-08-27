@@ -3,12 +3,14 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { MediaAsset, MediaUsage } from "../../api/mediaApi";
 import {
+  addMediaAssetTag,
   bulkDeleteMediaAssets,
   createMediaAlbum,
   deleteMediaAlbum,
   deleteMediaAsset,
   ensureMediaAlbumPath,
   getMediaAsset,
+  removeMediaAssetTag,
   getMediaAssetUploadUrl,
   listMediaAlbums,
   moveMediaAlbum,
@@ -30,6 +32,7 @@ import { usePersistentSelection } from "../../hooks/usePersistentSelection";
 import { useMediaAssets } from "./hooks/useMediaAssets";
 import type { SortOption, ViewMode, DeleteTier } from "./types";
 import AssetCard from "./components/AssetCard";
+import AssetLightbox from "./components/AssetLightbox";
 import AlbumCard from "./components/AlbumCard";
 import { buildAlbumOptions, albumSubtreeIds } from "./albumTree";
 import MediaToolbar from "./components/MediaToolbar";
@@ -144,6 +147,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   const [selectedAsset, setSelectedAsset] = useState<MediaAsset | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [lightboxAssetId, setLightboxAssetId] = useState<string | null>(null);
 
   const {
     selected: checkedIds,
@@ -687,6 +691,17 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     }
   }
 
+  async function handleAssetTag(assetId: string, action: () => Promise<unknown>) {
+    try {
+      await action();
+      const { data } = await getMediaAsset(assetId);
+      setSelectedAsset(data);
+      setAssets((prev) => prev.map((a) => (a.id === data.id ? { ...a, ...data } : a)));
+    } catch {
+      toast.error("Could not update tags.");
+    }
+  }
+
   async function handleUpload(
     file: File,
     metadata: UploadMetadata,
@@ -807,12 +822,12 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     }
   }
 
-  async function handleDownload() {
-    if (!selectedAsset?.storageUrl) {
+  async function downloadAsset(asset: MediaAsset | null) {
+    if (!asset?.storageUrl) {
       toast.error("No file URL available.");
       return;
     }
-    const { storageUrl, fileName } = selectedAsset;
+    const { storageUrl, fileName } = asset;
     try {
       const response = await fetch(storageUrl);
       if (!response.ok) throw new Error(`Status ${response.status}`);
@@ -829,6 +844,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       // CORS or network blocked the blob fetch — fall back to opening the file.
       window.open(storageUrl, "_blank");
     }
+  }
+
+  function handleDownload() {
+    void downloadAsset(selectedAsset);
   }
 
   function openDeleteModal(tier: DeleteTier) {
@@ -1187,12 +1206,30 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
                       animationDelay={Math.min(idx * 40, 480)}
                       showInstitutionChip={networkView && isAdmin}
                       onClick={() => handleToggleCheck(asset)}
+                      onOpen={() => setLightboxAssetId(asset.id)}
                     />
                   ))}
                 </div>
               </section>
             )}
           </div>
+        );
+      })()}
+
+      {(() => {
+        const lightboxAssets = semanticResults ?? visibleAssets;
+        const lightboxIndex = lightboxAssetId
+          ? lightboxAssets.findIndex((a) => a.id === lightboxAssetId)
+          : -1;
+        if (lightboxIndex < 0) return null;
+        return (
+          <AssetLightbox
+            assets={lightboxAssets}
+            index={lightboxIndex}
+            onIndexChange={(i) => setLightboxAssetId(lightboxAssets[i]?.id ?? null)}
+            onClose={() => setLightboxAssetId(null)}
+            onDownload={(a) => void downloadAsset(a)}
+          />
         );
       })()}
 
@@ -1222,6 +1259,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         albums={albums}
         onUpdateAlbum={(assetId, albumId) => void handleUpdateAssetAlbum(assetId, albumId)}
         onRenameAlbum={(album) => void handleRenameAlbum(album)}
+        onAddTag={(assetId, label) => void handleAssetTag(assetId, () => addMediaAssetTag(assetId, label))}
+        onRemoveTag={(assetId, tagId) => void handleAssetTag(assetId, () => removeMediaAssetTag(assetId, tagId))}
       />
 
       {/* Upload Modal (portal) */}
