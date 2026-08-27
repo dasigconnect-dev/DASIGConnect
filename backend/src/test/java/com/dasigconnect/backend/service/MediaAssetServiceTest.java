@@ -4,9 +4,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import java.time.Instant;
+
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.Optional;
@@ -60,6 +66,15 @@ class MediaAssetServiceTest {
     private AIClassificationService aiClassificationService;
     @Mock
     private com.dasigconnect.backend.external.VoyageAIClient voyageAIClient;
+    @Mock
+    private AuditLogService auditLogService;
+    @Mock
+    private com.dasigconnect.backend.repository.AuditLogRepository auditLogRepository;
+    @Mock
+    private com.dasigconnect.backend.repository.UserRepository userRepository;
+
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
     private MediaAssetService mediaAssetService;
 
@@ -76,7 +91,11 @@ class MediaAssetServiceTest {
                 submissionService,
                 supabaseStorageService,
                 aiClassificationService,
-                voyageAIClient);
+                voyageAIClient,
+                auditLogService,
+                auditLogRepository,
+                userRepository,
+                objectMapper);
     }
 
     @Test
@@ -341,6 +360,81 @@ class MediaAssetServiceTest {
                 () -> mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "contributor", institutionId)));
         assertEquals(403, ex.getStatusCode().value());
         verify(mediaAlbumRepository, never()).delete(any());
+    }
+
+    @Test
+    void updateAlbum_recordsMovedAuditEntry() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        UUID targetAlbumId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        asset.setMediaAlbum(album(UUID.randomUUID(), institutionId, null));
+        MediaAlbum target = album(targetAlbumId, institutionId, null);
+
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(mediaAlbumRepository.findById(targetAlbumId)).thenReturn(Optional.of(target));
+        when(mediaAssetRepository.save(asset)).thenReturn(asset);
+        when(assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of());
+
+        com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto dto =
+                new com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto();
+        dto.setAlbumId(targetAlbumId);
+
+        mediaAssetService.updateAlbum(assetId, dto, user(UUID.randomUUID(), "administrator", institutionId));
+
+        verify(auditLogService).record(any(), eq("MEDIA_ASSET_MOVED"), isNull(), isNull(), eq(assetId), any());
+    }
+
+    @Test
+    void delete_recordsDeletedAuditEntry() {
+        UUID institutionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, userId);
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+
+        mediaAssetService.delete(assetId, false, user(userId, "contributor", institutionId));
+
+        verify(auditLogService).record(any(), eq("MEDIA_ASSET_DELETED"), isNull(), isNull(), eq(assetId), any());
+    }
+
+    @Test
+    void history_returnsSynthesizedUploadPlusAuditEntriesNewestFirst() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, actorId);
+        ReflectionTestUtils.setField(asset, "createdAt", Instant.parse("2026-01-01T00:00:00Z"));
+        asset.getUploader().setEmail("owner@example.edu");
+
+        com.dasigconnect.backend.model.entity.AuditLog row = new com.dasigconnect.backend.model.entity.AuditLog();
+        row.setAction("MEDIA_ASSET_MOVED");
+        row.setResourceId(assetId);
+        row.setMetadata("{\"toAlbumName\":\"Campaigns\"}");
+        User actor = asset.getUploader();
+        row.setActor(actor);
+        ReflectionTestUtils.setField(row, "createdAt", Instant.parse("2026-02-01T00:00:00Z"));
+
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(auditLogRepository.findByResourceIdOrderByCreatedAtDesc(assetId)).thenReturn(List.of(row));
+        when(userRepository.findAllById(any())).thenReturn(List.of(actor));
+
+        var history = mediaAssetService.history(assetId, user(UUID.randomUUID(), "administrator", institutionId));
+
+        assertEquals(2, history.size());
+        assertEquals("Moved to Campaigns", history.get(0).summary());
+        assertEquals("MEDIA_ASSET_UPLOADED", history.get(1).action());
+    }
+
+    @Test
+    void history_rejectsAssetFromAnotherInstitution() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, UUID.randomUUID(), UUID.randomUUID());
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.history(assetId, user(UUID.randomUUID(), "contributor", UUID.randomUUID())));
+        assertEquals(404, ex.getStatusCode().value());
     }
 
     private static MediaAlbum album(UUID id, UUID institutionId, MediaAlbum parent) {
