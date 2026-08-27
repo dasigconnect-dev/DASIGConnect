@@ -1,8 +1,55 @@
+import { useState } from "react";
 import type { WatermarkElement } from "../../types/watermark.types";
 
 interface WatermarkOverlayProps {
   elements?: WatermarkElement[];
   className?: string;
+}
+
+function WatermarkImageItem({ el }: { el: WatermarkElement }) {
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError) {
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "linear-gradient(135deg, rgba(24, 119, 242, 0.9), rgba(12, 29, 61, 0.95))",
+          borderRadius: "8px",
+          color: "#ffffff",
+          fontSize: "11px",
+          fontWeight: 800,
+          letterSpacing: "0.05em",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
+        }}
+      >
+        DASIG
+      </div>
+    );
+  }
+
+  const src = el.imageUrl && el.imageUrl.trim() !== "" && el.imageUrl !== "/dasig-logo.png"
+    ? el.imageUrl
+    : "/favicon.svg";
+
+  return (
+    <img
+      src={src}
+      alt=""
+      draggable={false}
+      onError={() => setHasError(true)}
+      style={{
+        width: "100%",
+        height: "100%",
+        objectFit: "contain",
+        display: "block",
+      }}
+    />
+  );
 }
 
 export default function WatermarkOverlay({ elements, className = "" }: WatermarkOverlayProps) {
@@ -45,19 +92,7 @@ export default function WatermarkOverlay({ elements, className = "" }: Watermark
               boxSizing: "border-box",
             }}
           >
-            {el.type === "image" && (
-              <img
-                src={el.imageUrl || "/dasig-logo.png"}
-                alt=""
-                draggable={false}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "contain",
-                  display: "block",
-                }}
-              />
-            )}
+            {el.type === "image" && <WatermarkImageItem el={el} />}
 
             {el.type === "text" && (
               <div

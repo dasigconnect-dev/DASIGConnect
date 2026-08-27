@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { FailedPublication } from "../../api/resolutionApi";
 
 interface ResolutionRetryModalProps {
@@ -40,81 +41,109 @@ export default function ResolutionRetryModal({
     onClose();
   }
 
-  return (
+  return createPortal(
     <div
-      className="modal-backdrop"
+      className="val-modal-overlay"
       onClick={handleClose}
       role="dialog"
       aria-modal="true"
       aria-label="Retry with new schedule"
     >
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-card-header">
-          <h2 className="modal-card-title">Retry With New Schedule</h2>
+      <div
+        className="val-modal"
+        style={{ maxWidth: "480px", width: "100%", padding: "24px" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+          <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "var(--val-text)" }}>
+            Retry With New Schedule
+          </h3>
           <button
             type="button"
-            className="modal-close-btn"
+            className="val-collapse-btn"
             onClick={handleClose}
             aria-label="Close"
+            style={{ color: "#64748b" }}
           >
             <i className="ti ti-x" aria-hidden="true" />
           </button>
         </div>
-        <div className="modal-card-body">
-          <p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginBottom: "24px" }}>
+          <p style={{ margin: 0, fontSize: "13.5px", color: "var(--val-muted)", lineHeight: 1.5 }}>
             Choose a publish time for <strong>"{item.eventTitle}"</strong> and it will
             be re-queued for the automated publisher. Guard rails are re-checked
             against the new slot.
           </p>
-          <div className="rc-field">
-            <label className="rc-label" htmlFor="retry-new-slot">
-              New scheduled time <span className="rc-required">*</span>
-            </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--val-text-2)" }}>
+              New scheduled time <span style={{ color: "var(--val-red)" }}>*</span>
+            </span>
             <input
-              id="retry-new-slot"
               type="datetime-local"
-              className="rc-input"
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--val-border)",
+                background: "var(--val-surface)",
+                color: "var(--val-text)",
+                font: "inherit",
+                fontSize: "13.5px",
+                boxSizing: "border-box",
+              }}
               value={scheduledAt}
               onChange={(e) => setScheduledAt(e.target.value)}
             />
-          </div>
-          <div className="rc-field">
-            <label className="rc-label" htmlFor="retry-override-reason">
-              Override reason (only needed if the new slot violates a guard rail)
-            </label>
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--val-text-2)" }}>
+              Override reason <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--val-muted)" }}>(only needed if new slot violates guard rail)</span>
+            </span>
             <input
-              id="retry-override-reason"
               type="text"
-              className="rc-input"
+              placeholder="Optional"
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--val-border)",
+                background: "var(--val-surface)",
+                color: "var(--val-text)",
+                font: "inherit",
+                fontSize: "13.5px",
+                boxSizing: "border-box",
+              }}
               value={overrideReason}
               onChange={(e) => setOverrideReason(e.target.value)}
-              placeholder="Optional"
             />
-          </div>
+          </label>
         </div>
-        <div className="modal-card-footer">
-          <button type="button" className="btn-secondary" onClick={handleClose}>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+          <button
+            type="button"
+            className="val-btn val-btn-secondary"
+            onClick={handleClose}
+          >
             Cancel
           </button>
           <button
             type="button"
-            className="btn-primary"
+            className="val-btn val-btn-primary"
             disabled={busy || !scheduledAt}
             onClick={() =>
               onConfirmWithNewSchedule(new Date(scheduledAt).toISOString(), overrideReason || undefined)
             }
           >
-            {busy ? (
-              <>
-                <div className="spinner-ring spinner-ring-sm" />
-                Rescheduling...
-              </>
-            ) : (
-              "Confirm New Schedule"
-            )}
+            {busy && <i className="ti ti-loader-2 val-spin" />}
+            {busy ? "Rescheduling..." : "Confirm New Schedule"}
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
