@@ -31,6 +31,7 @@ export interface Notification {
   link: string;
   linkLabel: string;
   group: string;
+  createdAt?: string;
 }
 
 export interface AuditEntry {
