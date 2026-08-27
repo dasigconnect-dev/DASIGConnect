@@ -14,6 +14,7 @@ import com.dasigconnect.backend.event.PublishFailedEvent;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.repository.SubmissionRepository;
+import com.dasigconnect.backend.service.ScheduledJobHealthService;
 import org.springframework.context.ApplicationEventPublisher;
 
 /**
@@ -31,16 +32,20 @@ public class StaleSubmissionDetectorJob {
 
     private final SubmissionRepository submissionRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final ScheduledJobHealthService scheduledJobHealthService;
 
     public StaleSubmissionDetectorJob(
             SubmissionRepository submissionRepository,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            ScheduledJobHealthService scheduledJobHealthService) {
         this.submissionRepository = submissionRepository;
         this.eventPublisher = eventPublisher;
+        this.scheduledJobHealthService = scheduledJobHealthService;
     }
 
     @Scheduled(cron = "0 */5 * * * *", zone = "UTC")
     public void run() {
+        Instant startedAt = Instant.now();
         try {
             Instant cutoff = Instant.now().minus(5, ChronoUnit.MINUTES);
             List<Submission> missed = findAndMarkFailed(cutoff);
@@ -50,8 +55,10 @@ public class StaleSubmissionDetectorJob {
                     eventPublisher.publishEvent(new PublishFailedEvent(s, "Publish window missed — server was unavailable during the scheduled time."));
                 }
             }
+            scheduledJobHealthService.recordSuccess("StaleSubmissionDetectorJob", startedAt);
         } catch (Exception ex) {
             log.error("StaleSubmissionDetectorJob failed: {}", ex.getMessage(), ex);
+            scheduledJobHealthService.recordFailure("StaleSubmissionDetectorJob", startedAt, ex);
         }
     }
 

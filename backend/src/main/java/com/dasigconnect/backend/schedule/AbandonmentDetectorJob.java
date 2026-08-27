@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.service.ManualPublishingService;
+import com.dasigconnect.backend.service.ScheduledJobHealthService;
 
 /**
  * Runs every 5 minutes. Clears manual publish sessions that have been open
@@ -26,17 +27,21 @@ public class AbandonmentDetectorJob {
 
     private final SubmissionRepository submissionRepository;
     private final ManualPublishingService manualPublishingService;
+    private final ScheduledJobHealthService scheduledJobHealthService;
 
     public AbandonmentDetectorJob(
             SubmissionRepository submissionRepository,
-            ManualPublishingService manualPublishingService) {
+            ManualPublishingService manualPublishingService,
+            ScheduledJobHealthService scheduledJobHealthService) {
         this.submissionRepository = submissionRepository;
         this.manualPublishingService = manualPublishingService;
+        this.scheduledJobHealthService = scheduledJobHealthService;
     }
 
     @Scheduled(cron = "0 */5 * * * *", zone = "UTC")
     @Transactional
     public void run() {
+        Instant startedAt = Instant.now();
         try {
             Instant cutoff = Instant.now().minus(ABANDONMENT_THRESHOLD_HOURS, ChronoUnit.HOURS);
             List<Submission> abandoned = submissionRepository.findAbandonedManualPublishes(cutoff);
@@ -46,8 +51,10 @@ public class AbandonmentDetectorJob {
                     manualPublishingService.clearAbandoned(s);
                 }
             }
+            scheduledJobHealthService.recordSuccess("AbandonmentDetectorJob", startedAt);
         } catch (Exception ex) {
             log.error("AbandonmentDetectorJob failed: {}", ex.getMessage(), ex);
+            scheduledJobHealthService.recordFailure("AbandonmentDetectorJob", startedAt, ex);
         }
     }
 }
