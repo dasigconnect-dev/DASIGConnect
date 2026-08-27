@@ -45,7 +45,7 @@ export function useValidationQueue() {
     setLoading(true);
     setError("");
     return getValidationQueue({ signal })
-      .then((response) => setQueue(response.data))
+      .then((response) => setQueue(Array.isArray(response.data) ? response.data : []))
       .catch((err: unknown) => {
         if (isCanceledError(err)) return;
         setError(getErrorMessage(err, "Unable to load the validation queue."));
@@ -55,9 +55,14 @@ export function useValidationQueue() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void refresh(controller.signal);
+    let active = true;
+
+    queueMicrotask(() => {
+      if (active) void refresh(controller.signal);
+    });
 
     return () => {
+      active = false;
       controller.abort();
     };
   }, [refresh]);
@@ -82,7 +87,7 @@ export function useValidationLog(submissionId?: string | null) {
       setLoading(true);
       setError("");
       return getValidationLog(submissionId, signal)
-        .then((response) => setLog(response.data))
+        .then((response) => setLog(Array.isArray(response.data) ? response.data : []))
         .catch((err: unknown) => {
           if (isCanceledError(err)) return;
           setError(getErrorMessage(err, "Unable to load the validation log."));
@@ -94,9 +99,14 @@ export function useValidationLog(submissionId?: string | null) {
 
   useEffect(() => {
     const controller = new AbortController();
-    void refresh(controller.signal);
+    let active = true;
+
+    queueMicrotask(() => {
+      if (active) void refresh(controller.signal);
+    });
 
     return () => {
+      active = false;
       controller.abort();
     };
   }, [refresh]);
