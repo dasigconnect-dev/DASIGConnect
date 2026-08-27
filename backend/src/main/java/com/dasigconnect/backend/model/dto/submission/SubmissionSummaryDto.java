@@ -16,6 +16,7 @@ public class SubmissionSummaryDto {
     private String caption;
     private String status;
     private Instant scheduledAt;
+    private Instant publishedAt;
     private Instant submittedAt;
     private Instant createdAt;
     private UUID institutionId;
@@ -38,6 +39,7 @@ public class SubmissionSummaryDto {
         dto.caption = s.getCaption();
         dto.status = s.getStatus().name();
         dto.scheduledAt = s.getScheduledAt();
+        dto.publishedAt = s.getPublishedAt();
         dto.submittedAt = s.getSubmittedAt();
         dto.createdAt = s.getCreatedAt();
         dto.institutionId = s.getInstitution().getId();
@@ -80,6 +82,10 @@ public class SubmissionSummaryDto {
 
     public Instant getScheduledAt() {
         return scheduledAt;
+    }
+
+    public Instant getPublishedAt() {
+        return publishedAt;
     }
 
     public Instant getSubmittedAt() {

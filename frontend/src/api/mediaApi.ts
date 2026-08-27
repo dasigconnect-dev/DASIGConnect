@@ -29,6 +29,8 @@ export interface MediaAsset {
   uploaderName?: string;
   uploadedAt: string;
   status: MediaAssetStatus;
+  albumId?: string;
+  albumName?: string;
   aiTags?: AiTag[];
   usedIn?: MediaUsage[];
   widthPx?: number;
@@ -58,6 +60,28 @@ export interface MediaAssetRegisterRequest {
   fileName: string;
   fileType: string;
   fileSizeBytes: number;
+  institutionId?: string | null;
+  albumId?: string | null;
+  albumName?: string;
+  autoMatchAlbum?: boolean;
+  tags: string[];
+}
+
+export interface MediaAlbum {
+  id: string;
+  institutionId: string;
+  institutionCode: string;
+  institutionName: string;
+  parentAlbumId: string | null;
+  name: string;
+  childAlbumCount: number;
+  assetCount: number;
+  /** Whether the requesting user may delete this folder (admin, or its creator). */
+  canDelete: boolean;
+  /** True when this folder belongs to the shared default institution. */
+  shared: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface MediaAssetPageResponse {
@@ -69,6 +93,8 @@ interface MediaAssetPageResponse {
     fileType: string;
     fileSizeBytes: number;
     aiCategory?: string | null;
+    albumId?: string | null;
+    albumName?: string | null;
     createdAt: string;
     institutionId?: string | null;
     institutionName?: string | null;
@@ -112,22 +138,46 @@ function rawToAsset(raw: MediaAssetPageResponse["items"][0]): MediaAsset {
     uploaderName: raw.uploaderEmail ?? undefined,
     uploadedAt: raw.createdAt,
     status: "ready" as const,
+    albumId: raw.albumId ?? undefined,
+    albumName: raw.albumName ?? undefined,
     aiTags: raw.aiCategory ? [{ label: raw.aiCategory, confidence: 100 }] : [],
   };
 }
 
-export function listMediaAssets(params?: { networkView?: boolean; institutionId?: string | null }, signal?: AbortSignal) {
+export function listMediaAssets(
+  params?: { networkView?: boolean; institutionId?: string | null; albumId?: string | null },
+  signal?: AbortSignal,
+) {
   const scope = params?.networkView ? "network" : undefined;
   const institutionId = params?.institutionId ?? undefined;
+  const albumId = params?.albumId ?? undefined;
   return api
     .get<MediaAssetPageResponse>("/media-assets", {
-      params: { ...(scope ? { scope } : {}), ...(institutionId ? { institutionId } : {}) },
+      params: {
+        ...(scope ? { scope } : {}),
+        ...(institutionId ? { institutionId } : {}),
+        ...(albumId ? { albumId } : {}),
+      },
       signal,
     })
     .then((response) => ({
       ...response,
       data: (response.data.items ?? []).map(rawToAsset),
     }));
+}
+
+/** Meaning-based asset search (Voyage embedding + pgvector, with keyword fallback). */
+export function semanticSearchMediaAssets(
+  query: string,
+  institutionId?: string | null,
+  signal?: AbortSignal,
+) {
+  return api
+    .get<MediaAssetPageResponse>("/media-assets/search", {
+      params: { query, ...(institutionId ? { institutionId } : {}) },
+      signal,
+    })
+    .then((response) => (response.data.items ?? []).map(rawToAsset));
 }
 
 export async function searchMediaAssets(
@@ -166,6 +216,8 @@ interface MediaAssetDetailResponse {
   fileType: string;
   fileSizeBytes: number;
   aiCategory?: string | null;
+  albumId?: string | null;
+  albumName?: string | null;
   aiConfidence?: number | null;
   createdAt: string;
   institutionId?: string | null;
@@ -209,6 +261,8 @@ function mapDetailToAsset(raw: MediaAssetDetailResponse): MediaAsset {
     uploaderName: raw.uploaderEmail ?? undefined,
     uploadedAt: raw.createdAt,
     status: "ready",
+    albumId: raw.albumId ?? undefined,
+    albumName: raw.albumName ?? undefined,
     aiTags: aiTags.length > 0 ? aiTags : undefined,
     usedIn: (raw.usedIn ?? []).map((u) => ({
       submissionId: u.submissionId,
@@ -243,4 +297,49 @@ export function getMediaAssetUploadUrl(payload: MediaAssetUploadUrlRequest) {
 
 export function registerMediaAsset(payload: MediaAssetRegisterRequest) {
   return api.post<MediaAsset>("/media-assets/upload", payload);
+}
+
+export function listMediaAlbums(institutionId?: string | null, signal?: AbortSignal) {
+  return api.get<MediaAlbum[]>("/media-assets/albums", {
+    params: institutionId ? { institutionId } : undefined,
+    signal,
+  });
+}
+
+export function createMediaAlbum(
+  name: string,
+  institutionId?: string | null,
+  parentAlbumId?: string | null,
+) {
+  return api.post<MediaAlbum>("/media-assets/albums", { name, institutionId, parentAlbumId });
+}
+
+export function renameMediaAlbum(id: string, name: string, institutionId?: string | null) {
+  return api.post<MediaAlbum>(`/media-assets/albums/${id}`, { name, institutionId });
+}
+
+/** Walk/create a folder path and return its leaf album. Backs "Upload folder". */
+export function ensureMediaAlbumPath(
+  institutionId: string | null | undefined,
+  segments: string[],
+) {
+  return api.post<MediaAlbum>("/media-assets/albums/ensure-path", { institutionId, segments });
+}
+
+/** Re-parent an album. `parentAlbumId` null moves it to the institution root. */
+export function moveMediaAlbum(
+  id: string,
+  parentAlbumId: string | null,
+  institutionId?: string | null,
+) {
+  return api.patch<MediaAlbum>(`/media-assets/albums/${id}/parent`, { parentAlbumId, institutionId });
+}
+
+export function deleteMediaAlbum(id: string) {
+  return api.delete<void>(`/media-assets/albums/${id}`);
+}
+
+export function updateMediaAssetAlbum(id: string, albumId: string | null) {
+  return api.post<MediaAssetDetailResponse>(`/media-assets/${id}/album`, { albumId })
+    .then((res) => ({ ...res, data: mapDetailToAsset(res.data) }));
 }

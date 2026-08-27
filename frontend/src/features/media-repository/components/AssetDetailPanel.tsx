@@ -1,6 +1,8 @@
 import { createPortal } from "react-dom";
-import type { MediaAsset } from "../../../api/mediaApi";
+import { useEffect, useState } from "react";
+import type { MediaAlbum, MediaAsset } from "../../../api/mediaApi";
 import { formatFileSize, formatUploadDate, formatResolution, formatFileTypeName, isVideoType } from "../utils";
+import { buildAlbumOptions } from "../albumTree";
 
 interface AssetDetailPanelProps {
   asset: MediaAsset | null;
@@ -20,6 +22,9 @@ interface AssetDetailPanelProps {
   onRequestDelete: () => void;
   canBulkDelete?: boolean;
   onRequestBulkDelete?: () => void;
+  albums?: MediaAlbum[];
+  onUpdateAlbum?: (assetId: string, albumId: string | null) => void;
+  onRenameAlbum?: (album: MediaAlbum) => void;
 }
 
 const submissionStatusLabel: Record<string, string> = {
@@ -60,8 +65,22 @@ export default function AssetDetailPanel({
   onRequestDelete,
   canBulkDelete = false,
   onRequestBulkDelete,
+  albums = [],
+  onUpdateAlbum,
+  onRenameAlbum,
 }: AssetDetailPanelProps) {
   const newPostCount = selectionMode ? selectedAssets.length : asset ? 1 : 0;
+  const [albumSelection, setAlbumSelection] = useState("");
+  const currentAlbum = albums.find((album) => album.id === asset?.albumId);
+  // Valid move targets: folders in the asset's own institution, plus the shared library.
+  const albumOptions = buildAlbumOptions(
+    asset ? albums.filter((a) => a.institutionId === asset.institutionId || a.shared) : albums,
+  );
+
+  useEffect(() => {
+    setAlbumSelection(asset?.albumId ?? "");
+  }, [asset?.albumId, asset?.id]);
+
   const panel = (
     <div className={`med-panel${open ? " open" : ""}`} role="dialog" aria-modal="true" aria-label="Asset Detail">
       <div className="med-panel-header">
@@ -195,6 +214,10 @@ export default function AssetDetailPanel({
                   <div className="med-meta-val">{formatUploadDate(asset.uploadedAt)}</div>
                 </div>
                 <div>
+                  <div className="med-meta-key">Album</div>
+                  <div className="med-meta-val">{asset.albumName || "No album assigned"}</div>
+                </div>
+                <div>
                   <div className="med-meta-key">File Size</div>
                   <div className="med-meta-val">{formatFileSize(asset.fileSizeBytes)}</div>
                 </div>
@@ -202,6 +225,42 @@ export default function AssetDetailPanel({
                   <div className="med-meta-key">Resolution</div>
                   <div className="med-meta-val">{formatResolution(asset)}</div>
                 </div>
+              </div>
+            </div>
+
+            {/* Album Organization */}
+            <div>
+              <div className="med-panel-section-label">Album Organization</div>
+              <div className="med-album-manage">
+                <select
+                  className="med-album-select"
+                  value={albumSelection}
+                  onChange={(event) => setAlbumSelection(event.target.value)}
+                >
+                  {albumOptions.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+                <div className="med-album-actions">
+                  <button
+                    className="med-btn med-btn-ghost med-btn-sm"
+                    type="button"
+                    onClick={() => onUpdateAlbum?.(asset.id, albumSelection || null)}
+                    disabled={!onUpdateAlbum || !albumSelection || albumSelection === (asset.albumId ?? "")}
+                  >
+                    Move here
+                  </button>
+                </div>
+                {currentAlbum && (
+                  <button
+                    className="med-inline-link"
+                    type="button"
+                    onClick={() => onRenameAlbum?.(currentAlbum)}
+                    disabled={!onRenameAlbum}
+                  >
+                    Rename current album
+                  </button>
+                )}
               </div>
             </div>
 

@@ -28,7 +28,7 @@ export interface RevisionPayload {
   remarks: string;
 }
 
-export interface EditAndApprovePayload {
+export interface EditSubmissionPayload {
   eventTitle?: string;
   eventDate?: string;
   caption?: string;
@@ -74,11 +74,11 @@ export function approveSubmission(submissionId: string) {
   return api.post<void>(`/validation/${submissionId}/approve`);
 }
 
-export function editAndApproveSubmission(
+export function editSubmission(
   submissionId: string,
-  payload: EditAndApprovePayload,
+  payload: EditSubmissionPayload,
 ) {
-  return api.post<void>(`/validation/${submissionId}/edit-and-approve`, payload);
+  return api.post<void>(`/validation/${submissionId}/edit`, payload);
 }
 
 export function requestSubmissionRevision(

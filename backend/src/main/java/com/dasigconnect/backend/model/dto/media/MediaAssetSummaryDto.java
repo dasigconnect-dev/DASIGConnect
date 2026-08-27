@@ -14,6 +14,8 @@ public class MediaAssetSummaryDto {
     private String fileType;
     private long fileSizeBytes;
     private String aiCategory;
+    private UUID albumId;
+    private String albumName;
     private Instant createdAt;
     private UUID institutionId;
     private String institutionName;
@@ -31,6 +33,10 @@ public class MediaAssetSummaryDto {
         dto.fileType = asset.getFileType().name();
         dto.fileSizeBytes = asset.getFileSizeBytes();
         dto.aiCategory = asset.getAiCategory();
+        if (asset.getMediaAlbum() != null) {
+            dto.albumId = asset.getMediaAlbum().getId();
+            dto.albumName = asset.getMediaAlbum().getName();
+        }
         dto.createdAt = asset.getCreatedAt();
         dto.institutionId = asset.getInstitution().getId();
         dto.institutionName = asset.getInstitution().getName();
@@ -53,6 +59,8 @@ public class MediaAssetSummaryDto {
     public String getFileType() { return fileType; }
     public long getFileSizeBytes() { return fileSizeBytes; }
     public String getAiCategory() { return aiCategory; }
+    public UUID getAlbumId() { return albumId; }
+    public String getAlbumName() { return albumName; }
     public Instant getCreatedAt() { return createdAt; }
     public UUID getInstitutionId() { return institutionId; }
     public String getInstitutionName() { return institutionName; }

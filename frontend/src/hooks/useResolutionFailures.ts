@@ -91,7 +91,11 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
         scheduledAt,
         overrideReason: overrideReason || undefined,
       });
-      toast.success(`"${item.eventTitle}" rescheduled and re-queued.`);
+      toast.success(
+        item.status === "missed_review"
+          ? `"${item.eventTitle}" rescheduled and sent back to the approval queue.`
+          : `"${item.eventTitle}" rescheduled and re-queued.`,
+      );
       refresh();
     } catch (err: unknown) {
       const message =

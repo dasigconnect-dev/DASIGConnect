@@ -29,4 +29,7 @@ public interface InstitutionRepository extends JpaRepository<Institution, UUID> 
     boolean existsByEmailDomainAndIdNot(String emailDomain, UUID id);
 
     List<Institution> findAllByStatus(InstitutionStatus status);
+
+    /** The shared default institution ("DASIG Central Visayas") — visible to every institution. */
+    Optional<Institution> findFirstByIsProtectedTrueOrderByCreatedAtAsc();
 }

@@ -221,12 +221,14 @@ class ValidationServiceTest {
     }
 
     @Test
-    void editAndApprove_capturesFieldDiffAndLogsEditedAction() {
+    void edit_keepsSubmissionInReviewAndLogsStandaloneEditedAction() {
+        // A9: a standalone edit records its diff but does NOT transition the
+        // submission out of IN_REVIEW and never confirms a slot or fires approval.
         JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
 
         Submission submission = new Submission();
         submission.setId(UUID.randomUUID());
-        submission.setStatus(SubmissionStatus.pending);
+        submission.setStatus(SubmissionStatus.in_review);
         submission.setEventTitle("Original Title");
 
         Institution institution = new Institution();
@@ -251,25 +253,28 @@ class ValidationServiceTest {
         SubmissionUpdateDto dto = new SubmissionUpdateDto();
         dto.setEventTitle("Edited Title");
 
-        validationService.editAndApprove(submission.getId(), dto, admin);
+        validationService.edit(submission.getId(), dto, admin);
 
         ArgumentCaptor<ValidationLog> captor = ArgumentCaptor.forClass(ValidationLog.class);
         verify(validationLogRepository).save(captor.capture());
         ValidationLog entry = captor.getValue();
-        assertThat(entry.getAction()).isEqualTo(ValidationAction.edited_and_approved);
+        assertThat(entry.getAction()).isEqualTo(ValidationAction.edited);
         assertThat(entry.getEditDiff()).contains("Original Title").contains("Edited Title");
-        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.scheduled);
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.in_review);
+        verify(slotReservationService, org.mockito.Mockito.never()).confirm(any());
+        verify(eventPublisher, org.mockito.Mockito.never()).publishEvent(any());
     }
 
     @Test
-    void editAndApprove_fastTrackSubmission_skipsSlotConfirmation() {
+    void approve_afterSessionEdit_recordsEditedApprovalAndFiresEditedEvent() {
+        // A10/A11: approving after one or more standalone edits this session records
+        // the terminal action as edited_and_approved with the combined diff and
+        // notifies the contributor that changes were made.
         JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
 
         Submission submission = new Submission();
         submission.setId(UUID.randomUUID());
-        submission.setStatus(SubmissionStatus.pending);
-        submission.setEventTitle("Original Title");
-        submission.setFastTrack(true);
+        submission.setStatus(SubmissionStatus.in_review);
 
         Institution institution = new Institution();
         institution.setId(submissionInstitutionId);
@@ -282,16 +287,31 @@ class ValidationServiceTest {
         User adminUser = new User();
         adminUser.setId(adminId);
 
+        ValidationLog lockLog = new ValidationLog();
+        lockLog.setAction(ValidationAction.lock_acquired);
+        ValidationLog editLog = new ValidationLog();
+        editLog.setAction(ValidationAction.edited);
+        editLog.setEditDiff("{\"caption\":{\"from\":\"old\",\"to\":\"new\"}}");
+
         when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
         when(userRepository.findById(adminId)).thenReturn(Optional.of(adminUser));
-        when(submissionService.applySubmissionEdits(any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(validationLogRepository.findBySubmissionIdOrderByCreatedAtAsc(submission.getId()))
+                .thenReturn(List.of(lockLog, editLog));
 
-        SubmissionUpdateDto dto = new SubmissionUpdateDto();
+        validationService.approve(submission.getId(), admin);
 
-        assertThatCode(() -> validationService.editAndApprove(submission.getId(), dto, admin))
-                .doesNotThrowAnyException();
-
-        verify(slotReservationService, org.mockito.Mockito.never()).confirm(any());
+        ArgumentCaptor<ValidationLog> captor = ArgumentCaptor.forClass(ValidationLog.class);
+        verify(validationLogRepository).save(captor.capture());
+        ValidationLog entry = captor.getValue();
+        assertThat(entry.getAction()).isEqualTo(ValidationAction.edited_and_approved);
+        assertThat(entry.getEditDiff()).contains("caption").contains("old").contains("new");
         assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.scheduled);
+
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue())
+                .isInstanceOf(com.dasigconnect.backend.event.SubmissionApprovedEvent.class);
+        assertThat(((com.dasigconnect.backend.event.SubmissionApprovedEvent) eventCaptor.getValue()).edited())
+                .isTrue();
     }
 }
