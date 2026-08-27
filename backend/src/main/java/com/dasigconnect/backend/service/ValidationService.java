@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.service;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +58,7 @@ public class ValidationService {
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final AuditLogService auditLogService;
 
     public ValidationService(
             SubmissionRepository submissionRepository,
@@ -67,7 +69,8 @@ public class ValidationService {
             SubmissionService submissionService,
             UserRepository userRepository,
             ApplicationEventPublisher eventPublisher,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            AuditLogService auditLogService) {
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.validationLogRepository = validationLogRepository;
@@ -77,6 +80,7 @@ public class ValidationService {
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
+        this.auditLogService = auditLogService;
     }
 
     /**
@@ -437,5 +441,17 @@ public class ValidationService {
         entry.setFastTrack(fastTrack);
         entry.setEditDiff(editDiff);
         validationLogRepository.save(entry);
+
+        try {
+            Map<String, Object> meta = new HashMap<>();
+            if (remarks != null && !remarks.isBlank()) meta.put("remarks", remarks);
+            if (rejectionReason != null && !rejectionReason.isBlank()) meta.put("rejectionReason", rejectionReason);
+            if (selfReview) meta.put("selfReview", true);
+            if (fastTrack) meta.put("fastTrack", true);
+            if (editDiff != null && !editDiff.isBlank()) meta.put("editDiff", editDiff);
+            auditLogService.record(validator, action.name(), null, null, submission.getId(), meta);
+        } catch (Exception ex) {
+            log.warn("Failed to write audit log for validation action {} on submission {}: {}", action, submission.getId(), ex.getMessage());
+        }
     }
 }

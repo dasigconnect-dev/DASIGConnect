@@ -11,15 +11,6 @@ interface NotificationsScreenProps {
   user: User;
 }
 
-interface EnrichedAuditEntry {
-  type: string;
-  typeClass: string;
-  detail: string;
-  time: string;
-  actor: string;
-  timestamp?: string;
-}
-
 const PAGE_SIZE = 7;
 
 const CONTRIBUTOR_FILTERS: NotificationFilter[] = [
@@ -188,7 +179,6 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
   const navigate = useNavigate();
   const {
     allNotifications,
-    auditLog,
     loading,
     fetchError,
     activeFilter,
@@ -199,11 +189,8 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
     refreshNotifications,
   } = useNotifications();
 
-  const [viewMode, setViewMode] = useState<"notifications" | "audit">("notifications");
   const [searchQuery, setSearchQuery] = useState("");
-  const [auditSearch, setAuditSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
-  const [showAllAudit, setShowAllAudit] = useState(false);
 
   const isContributor = user.role === "contributor";
   const isValidator = user.role === "administrator";
@@ -284,74 +271,6 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
     return filteredNotifications.slice(0, PAGE_SIZE);
   }, [filteredNotifications, showAll]);
 
-  // Combined Audit Log Entries
-  const enrichedAuditLogs: EnrichedAuditEntry[] = useMemo(() => {
-    const fromSse: EnrichedAuditEntry[] = auditLog.map((a) => ({
-      type: a.type,
-      typeClass: a.typeClass || "badge-approved",
-      detail: a.detail,
-      time: a.time,
-      actor: "In-App SSE",
-    }));
-
-    const fromNotifications: EnrichedAuditEntry[] = allNotifications.map((n) => {
-      let type = "DISPATCHED";
-      let typeClass = "badge-approved";
-      if (n.eventType.includes("approved")) {
-        type = "APPROVED";
-        typeClass = "badge-approved";
-      } else if (n.eventType.includes("published")) {
-        type = "PUBLISHED";
-        typeClass = "badge-approved";
-      } else if (n.eventType.includes("rejected")) {
-        type = "REJECTED";
-        typeClass = "badge-critical";
-      } else if (n.eventType.includes("revision")) {
-        type = "REVISION_REQ";
-        typeClass = "badge-warning";
-      } else if (n.eventType.includes("failed") || n.eventType.includes("invalid")) {
-        type = "ALERT_FAIL";
-        typeClass = "badge-critical";
-      } else if (n.eventType.includes("timeout") || n.eventType.includes("warning")) {
-        type = "DEADLINE";
-        typeClass = "badge-warning";
-      } else if (n.eventType.includes("token")) {
-        type = "SECURITY";
-        typeClass = "badge-warning";
-      } else if (n.eventType.includes("override")) {
-        type = "OVERRIDE";
-        typeClass = "badge-approved";
-      }
-
-      return {
-        type,
-        typeClass,
-        detail: n.text,
-        time: n.time || "Recently",
-        actor: n.sender || "System",
-        timestamp: n.createdAt,
-      };
-    });
-
-    return [...fromSse, ...fromNotifications];
-  }, [allNotifications, auditLog]);
-
-  const filteredAuditLogs = useMemo(() => {
-    const term = auditSearch.trim().toLowerCase();
-    if (!term) return enrichedAuditLogs;
-    return enrichedAuditLogs.filter(
-      (a) =>
-        a.detail.toLowerCase().includes(term) ||
-        a.type.toLowerCase().includes(term) ||
-        a.actor.toLowerCase().includes(term),
-    );
-  }, [enrichedAuditLogs, auditSearch]);
-
-  const displayedAuditLogs = useMemo(() => {
-    if (showAllAudit) return filteredAuditLogs;
-    return filteredAuditLogs.slice(0, PAGE_SIZE);
-  }, [filteredAuditLogs, showAllAudit]);
-
   function handleFilterChange(filter: NotificationFilter) {
     setActiveFilter(filter);
   }
@@ -372,23 +291,17 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
     }
   }
 
-  const pageTitle =
-    viewMode === "audit"
-      ? "Audit Log"
-      : isContributor
-      ? "Workflow Inbox"
-      : isValidator
-      ? "Validation Inbox"
-      : "Notifications";
+  const pageTitle = isContributor
+    ? "Workflow Inbox"
+    : isValidator
+    ? "Validation Inbox"
+    : "Notifications";
 
-  const pageSubtitle =
-    viewMode === "audit"
-      ? "Immutable record of event dispatches, automated triggers, and state-changing actions."
-      : isContributor
-      ? "Complete overview of submission feedback and publishing updates across your workspace."
-      : isValidator
-      ? "Complete overview of incoming submissions and validation deadlines across your workspace."
-      : "Complete overview of notifications, alerts, and publishing activities across your workspace.";
+  const pageSubtitle = isContributor
+    ? "Complete overview of submission feedback and publishing updates across your workspace."
+    : isValidator
+    ? "Complete overview of incoming submissions and validation deadlines across your workspace."
+    : "Complete overview of notifications, alerts, and publishing activities across your workspace.";
 
   // Initial Full Screen Loading State
   if (loading) {
@@ -414,7 +327,7 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
             <div className="dc-dot-triangle-container">
               <div className="loader-dots" />
               <div className="dc-dot-triangle-label">
-                {viewMode === "audit" ? "Loading Audit Logs" : "Loading Notifications"}
+                Loading Notifications
                 <span className="dc-dot-triangle-label-dots">
                   <span className="dc-dot-triangle-dot-char">.</span>
                   <span className="dc-dot-triangle-dot-char">.</span>
@@ -439,28 +352,15 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            {/* Audit Log Button beside Mark all read */}
             <button
               type="button"
               className="notif-btn notif-btn-ghost"
-              onClick={() => setViewMode((prev) => (prev === "audit" ? "notifications" : "audit"))}
-              title={viewMode === "audit" ? "Return to Notifications" : "View Audit Log"}
+              onClick={markAllRead}
+              title="Mark all notifications as read"
             >
-              <i className={viewMode === "audit" ? "ti ti-bell" : "ti ti-history"} style={{ fontSize: 14 }} />
-              <span>{viewMode === "audit" ? "View Notifications" : "Audit Log"}</span>
+              <i className="ti ti-checks" style={{ fontSize: 14 }} />
+              <span>Mark all read</span>
             </button>
-
-            {viewMode === "notifications" && (
-              <button
-                type="button"
-                className="notif-btn notif-btn-ghost"
-                onClick={markAllRead}
-                title="Mark all notifications as read"
-              >
-                <i className="ti ti-checks" style={{ fontSize: 14 }} />
-                <span>Mark all read</span>
-              </button>
-            )}
 
             <button
               type="button"
@@ -474,110 +374,11 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
           </div>
         </div>
 
-        {viewMode === "audit" ? (
-          /* Audit Log Table Mode */
-          <>
-            <div className="card-wrap" style={{ marginBottom: "16px" }}>
-              <div className="dash-card-toolbar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span className="sidebar-nav-label" style={{ margin: 0, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                    System Audit Trail
-                  </span>
-                  <span className="im-status-tab-count" style={{ marginLeft: "4px" }}>
-                    {filteredAuditLogs.length} events
-                  </span>
-                </div>
-
-                <div className="im-search-wrap" style={{ margin: 0 }}>
-                  <i className="ti ti-search im-search-icon" aria-hidden="true" />
-                  <input
-                    className="im-search-input"
-                    type="search"
-                    placeholder="Search audit logs..."
-                    value={auditSearch}
-                    onChange={(e) => setAuditSearch(e.target.value)}
-                    aria-label="Search audit logs"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Independent Action Row between Card 1 and Card 2 for Audit Logs */}
-            {filteredAuditLogs.length > PAGE_SIZE && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: "14px",
-                  padding: "0 2px",
-                }}
-              >
-                <span style={{ fontSize: "13px", color: "var(--d-muted, #5a6f8a)", fontWeight: 500 }}>
-                  Showing {displayedAuditLogs.length} of {filteredAuditLogs.length} audit logs
-                </span>
-
-                <button
-                  type="button"
-                  className="notif-view-all-pill"
-                  onClick={() => setShowAllAudit((prev) => !prev)}
-                  title={showAllAudit ? `Show top ${PAGE_SIZE} audit logs` : "Show all audit logs"}
-                >
-                  <i className={showAllAudit ? "ti ti-chevron-up" : "ti ti-list-details"} />
-                  <span>{showAllAudit ? `Show Top ${PAGE_SIZE}` : `View All Audit Logs (${filteredAuditLogs.length})`}</span>
-                </button>
-              </div>
-            )}
-
-            <div className="card-wrap">
-              <table className="data-table" id="audit-log-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: "42%" }}>AUDIT ACTION / EVENT</th>
-                    <th style={{ width: "24%" }}>SOURCE / ACTOR</th>
-                    <th style={{ width: "16%" }}>TIMESTAMP</th>
-                    <th style={{ width: "18%" }}>TYPE</th>
-                  </tr>
-                </thead>
-                <tbody className="act-table-animate">
-                  {filteredAuditLogs.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} style={{ textAlign: "center", padding: "44px 20px", color: "var(--d-muted)" }}>
-                        <div style={{ fontWeight: 600, color: "#1e293b", marginBottom: 4 }}>No audit records found</div>
-                        <div style={{ color: "#64748b", fontSize: 12.5 }}>Real-time SSE dispatches and activity logs will appear here.</div>
-                      </td>
-                    </tr>
-                  ) : (
-                    displayedAuditLogs.map((entry, index) => (
-                      <tr key={`audit-${index}`}>
-                        <td>
-                          <div style={{ minWidth: 0 }}>
-                            <div className="act-title">{entry.detail}</div>
-                            <span className="act-category">{entry.time}</span>
-                          </div>
-                        </td>
-                        <td className="act-institution">{entry.actor}</td>
-                        <td className="act-date">{formatNotificationDate(entry.timestamp)}</td>
-                        <td>
-                          <span className={`status-pill ${entry.typeClass === "badge-critical" ? "pill-failed" : entry.typeClass === "badge-warning" ? "pill-revision" : "sp-approved"}`}>
-                            <i className="ti ti-activity" style={{ fontSize: 12 }} /> {entry.type}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </>
-        ) : (
-          /* Notifications Table Mode */
-          <>
-            {/* Card 1: Filter Tabs & Search Toolbar */}
-            <div className="card-wrap" style={{ marginBottom: "16px" }}>
-              <div className="dash-card-toolbar">
-                <div className="im-status-tabs" role="group" aria-label="Filter notifications by category">
-                  {displayFilters.map((f) => (
+        {/* Card 1: Filter Tabs & Search Toolbar */}
+        <div className="card-wrap" style={{ marginBottom: "16px" }}>
+          <div className="dash-card-toolbar">
+            <div className="im-status-tabs" role="group" aria-label="Filter notifications by category">
+              {displayFilters.map((f) => (
                     <button
                       key={f}
                       type="button"
@@ -789,8 +590,6 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
                 </tbody>
               </table>
             </div>
-          </>
-        )}
       </div>
     </div>
   );

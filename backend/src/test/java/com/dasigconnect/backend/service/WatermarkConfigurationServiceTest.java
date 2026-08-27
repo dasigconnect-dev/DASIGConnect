@@ -6,6 +6,7 @@ import com.dasigconnect.backend.model.dto.settings.WatermarkElementDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.WatermarkConfiguration;
 import com.dasigconnect.backend.repository.InstitutionRepository;
+import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.repository.WatermarkConfigurationRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -36,13 +37,19 @@ class WatermarkConfigurationServiceTest {
     @Mock
     private InstitutionRepository institutions;
 
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private AuditLogService auditLogService;
+
     private ObjectMapper objectMapper;
     private WatermarkConfigurationService service;
 
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        service = new WatermarkConfigurationService(repository, institutions, objectMapper);
+        service = new WatermarkConfigurationService(repository, institutions, userRepository, auditLogService, objectMapper);
     }
 
     @Test
