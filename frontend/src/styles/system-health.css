@@ -242,6 +242,7 @@
 .sys-badge-warning { color: #92400e; background: #fef3c7; }
 .sys-badge-unhealthy { color: #b91c1c; background: #fee2e2; }
 .sys-badge-unavailable { color: #475467; background: #eef2f7; }
+.sys-badge-scheduled { color: #3730a3; background: #e0e7ff; }
 
 /* ---------- Panel + table ---------- */
 
@@ -295,11 +296,21 @@
 
 /* ---------- States ---------- */
 
+.sys-loading-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 24px 0 0;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .sys-loading {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
-  margin-top: 24px;
+  margin-top: 12px;
 }
 
 .sys-skeleton {

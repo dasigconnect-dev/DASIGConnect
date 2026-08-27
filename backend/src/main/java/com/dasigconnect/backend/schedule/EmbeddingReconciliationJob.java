@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -41,11 +42,19 @@ public class EmbeddingReconciliationJob {
 
     @Scheduled(fixedDelay = 300_000)
     public void reconcile() {
-        java.time.Instant startedAt = java.time.Instant.now();
+        Instant startedAt = Instant.now();
         try {
+            reconcilePendingEmbeddings();
+            scheduledJobHealthService.recordSuccess("EmbeddingReconciliationJob", startedAt);
+        } catch (Exception ex) {
+            log.error("EmbeddingReconciliationJob failed: {}", ex.getMessage(), ex);
+            scheduledJobHealthService.recordFailure("EmbeddingReconciliationJob", startedAt, ex);
+        }
+    }
+
+    private void reconcilePendingEmbeddings() {
         List<MediaAsset> pending = mediaAssetRepository.findNeedingEmbedding();
         if (pending.isEmpty()) {
-            scheduledJobHealthService.recordSuccess("EmbeddingReconciliationJob", startedAt);
             return;
         }
 
@@ -69,11 +78,6 @@ public class EmbeddingReconciliationJob {
             } catch (Exception e) {
                 log.warn("Reconciliation failed for asset {}: {}", asset.getId(), e.getMessage());
             }
-        }
-        scheduledJobHealthService.recordSuccess("EmbeddingReconciliationJob", startedAt);
-        } catch (Exception ex) {
-            scheduledJobHealthService.recordFailure("EmbeddingReconciliationJob", startedAt, ex);
-            throw ex;
         }
     }
 }

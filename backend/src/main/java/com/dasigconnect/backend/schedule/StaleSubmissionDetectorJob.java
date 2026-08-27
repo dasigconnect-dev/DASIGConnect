@@ -58,6 +58,11 @@ public class StaleSubmissionDetectorJob {
     public void run() {
         Instant startedAt = Instant.now();
         Instant cutoff = startedAt.minus(5, ChronoUnit.MINUTES);
+
+        // Each sweep is isolated so one failing does not skip the other, but a
+        // failure in either is reported as the job's health status.
+        Exception failure = null;
+
         try {
             List<Submission> missed = findAndMarkFailed(cutoff);
             if (!missed.isEmpty()) {
@@ -66,10 +71,9 @@ public class StaleSubmissionDetectorJob {
                     eventPublisher.publishEvent(new PublishFailedEvent(s, "Publish window missed — server was unavailable during the scheduled time."));
                 }
             }
-            scheduledJobHealthService.recordSuccess("StaleSubmissionDetectorJob", startedAt);
         } catch (Exception ex) {
             log.error("StaleSubmissionDetectorJob (publish-failed sweep) failed: {}", ex.getMessage(), ex);
-            scheduledJobHealthService.recordFailure("StaleSubmissionDetectorJob", startedAt, ex);
+            failure = ex;
         }
 
         try {
@@ -82,6 +86,15 @@ public class StaleSubmissionDetectorJob {
             }
         } catch (Exception ex) {
             log.error("StaleSubmissionDetectorJob (missed-review sweep) failed: {}", ex.getMessage(), ex);
+            if (failure == null) {
+                failure = ex;
+            }
+        }
+
+        if (failure == null) {
+            scheduledJobHealthService.recordSuccess("StaleSubmissionDetectorJob", startedAt);
+        } else {
+            scheduledJobHealthService.recordFailure("StaleSubmissionDetectorJob", startedAt, failure);
         }
     }
 

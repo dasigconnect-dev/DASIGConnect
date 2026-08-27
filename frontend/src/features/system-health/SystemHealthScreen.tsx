@@ -20,6 +20,12 @@ interface Props {
   user: User;
 }
 
+function isAbortError(reason: unknown): boolean {
+  const name = (reason as { name?: string; code?: string } | null)?.name;
+  const code = (reason as { code?: string } | null)?.code;
+  return name === "CanceledError" || name === "AbortError" || code === "ERR_CANCELED";
+}
+
 // Module-level cache so re-opening the screen renders instantly and only
 // refreshes in the background when stale.
 const CACHE_TTL_MS = 60_000;
@@ -46,27 +52,34 @@ export default function SystemHealthScreen({ user }: Props) {
 
   async function load(signal?: AbortSignal, background = false) {
     if (!background) setLoading(true);
-    try {
-      const [summaryResponse, tokenResponse] = await Promise.allSettled([
-        getSystemHealthSummary(signal),
-        getSystemHealthTokens(signal),
-      ]);
 
-      if (summaryResponse.status === "fulfilled") {
-        setSummary(summaryResponse.value.data);
-        cachedSummary = summaryResponse.value.data;
-        cachedAt = Date.now();
-      }
-      if (tokenResponse.status === "fulfilled") {
-        setTokens(tokenResponse.value.data);
-        cachedTokens = tokenResponse.value.data;
-      }
-      if (summaryResponse.status === "rejected" && !cachedSummary) {
-        toast.error("Unable to load system health metrics.");
-      }
-    } finally {
-      if (!background) setLoading(false);
+    const [summaryResponse, tokenResponse] = await Promise.allSettled([
+      getSystemHealthSummary(signal),
+      getSystemHealthTokens(signal),
+    ]);
+
+    // This request was superseded (StrictMode remount, fast re-navigation, or an
+    // explicit refresh). Leave the loading state and data to the newer load().
+    if (signal?.aborted) return;
+
+    if (summaryResponse.status === "fulfilled") {
+      setSummary(summaryResponse.value.data);
+      cachedSummary = summaryResponse.value.data;
+      cachedAt = Date.now();
     }
+    if (tokenResponse.status === "fulfilled") {
+      setTokens(tokenResponse.value.data);
+      cachedTokens = tokenResponse.value.data;
+    }
+    if (
+      summaryResponse.status === "rejected" &&
+      !isAbortError(summaryResponse.reason) &&
+      !cachedSummary
+    ) {
+      toast.error("Unable to load system health metrics.");
+    }
+
+    if (!background) setLoading(false);
   }
 
   async function handleExport() {
@@ -124,11 +137,17 @@ export default function SystemHealthScreen({ user }: Props) {
       </header>
 
       {loading && !summary ? (
-        <div className="sys-loading">
-          <div className="sys-skeleton" />
-          <div className="sys-skeleton" />
-          <div className="sys-skeleton" />
-        </div>
+        <>
+          <p className="sys-loading-label">
+            <i className="ti ti-loader-2 sys-spin" aria-hidden="true" />
+            Loading system health…
+          </p>
+          <div className="sys-loading">
+            <div className="sys-skeleton" />
+            <div className="sys-skeleton" />
+            <div className="sys-skeleton" />
+          </div>
+        </>
       ) : summary ? (
         <>
           <section className={`sys-overview sys-status-${summary.overallStatus.toLowerCase()}`}>
@@ -272,6 +291,7 @@ function JobTable({ jobs }: { jobs: BackgroundJobHealth[] }) {
           <tr>
             <th>Job</th>
             <th>Status</th>
+            <th>Last Run</th>
             <th>Last Success</th>
             <th>Duration</th>
           </tr>
@@ -281,6 +301,7 @@ function JobTable({ jobs }: { jobs: BackgroundJobHealth[] }) {
             <tr key={job.jobName}>
               <td>{formatJobName(job.jobName)}</td>
               <td><StatusBadge status={job.status} /></td>
+              <td>{formatDate(job.lastStartedAt)}</td>
               <td>{formatDate(job.lastSuccessAt)}</td>
               <td>{job.lastDurationMs == null ? "—" : `${job.lastDurationMs} ms`}</td>
             </tr>

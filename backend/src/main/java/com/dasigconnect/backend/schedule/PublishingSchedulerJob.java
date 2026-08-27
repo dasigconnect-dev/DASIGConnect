@@ -46,8 +46,16 @@ public class PublishingSchedulerJob {
     public void run() {
         Instant startedAt = Instant.now();
         try {
-        if (!facebookPublisherService.isConfigured()) {
+            publishDueSubmissions();
             scheduledJobHealthService.recordSuccess("PublishingSchedulerJob", startedAt);
+        } catch (Exception ex) {
+            log.error("PublishingSchedulerJob failed: {}", ex.getMessage(), ex);
+            scheduledJobHealthService.recordFailure("PublishingSchedulerJob", startedAt, ex);
+        }
+    }
+
+    private void publishDueSubmissions() {
+        if (!facebookPublisherService.isConfigured()) {
             return;
         }
 
@@ -56,7 +64,6 @@ public class PublishingSchedulerJob {
 
         List<Submission> due = publishingQueryService.loadDueSubmissions(windowStart, now);
         if (due.isEmpty()) {
-            scheduledJobHealthService.recordSuccess("PublishingSchedulerJob", startedAt);
             return;
         }
 
@@ -79,11 +86,6 @@ public class PublishingSchedulerJob {
                 log.error("Unexpected error publishing submission {}: {}",
                         submission.getId(), ex.getMessage(), ex);
             }
-        }
-        scheduledJobHealthService.recordSuccess("PublishingSchedulerJob", startedAt);
-        } catch (Exception ex) {
-            scheduledJobHealthService.recordFailure("PublishingSchedulerJob", startedAt, ex);
-            throw ex;
         }
     }
 }

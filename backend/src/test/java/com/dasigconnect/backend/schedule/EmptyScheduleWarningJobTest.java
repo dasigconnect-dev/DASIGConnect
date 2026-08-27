@@ -20,6 +20,7 @@ import com.dasigconnect.backend.model.entity.InstitutionStatus;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.service.ContentIdeaSuggestionService;
+import com.dasigconnect.backend.service.ScheduledJobHealthService;
 
 class EmptyScheduleWarningJobTest {
 
@@ -27,6 +28,7 @@ class EmptyScheduleWarningJobTest {
     private SubmissionRepository submissionRepository;
     private ContentIdeaSuggestionService contentIdeaSuggestionService;
     private ApplicationEventPublisher eventPublisher;
+    private ScheduledJobHealthService scheduledJobHealthService;
     private EmptyScheduleWarningJob job;
 
     @BeforeEach
@@ -35,12 +37,14 @@ class EmptyScheduleWarningJobTest {
         submissionRepository = Mockito.mock(SubmissionRepository.class);
         contentIdeaSuggestionService = Mockito.mock(ContentIdeaSuggestionService.class);
         eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
+        scheduledJobHealthService = Mockito.mock(ScheduledJobHealthService.class);
 
         job = new EmptyScheduleWarningJob(
                 institutionRepository,
                 submissionRepository,
                 contentIdeaSuggestionService,
-                eventPublisher);
+                eventPublisher,
+                scheduledJobHealthService);
     }
 
     @Test

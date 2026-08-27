@@ -36,7 +36,7 @@ public class SocialEngagementSyncJob {
             }
             scheduledJobHealthService.recordSuccess("SocialEngagementSyncJob", startedAt);
         } catch (Exception ex) {
-            log.warn("SocialEngagementSyncJob failed: {}", ex.getMessage());
+            log.error("SocialEngagementSyncJob failed: {}", ex.getMessage(), ex);
             scheduledJobHealthService.recordFailure("SocialEngagementSyncJob", startedAt, ex);
         }
     }
