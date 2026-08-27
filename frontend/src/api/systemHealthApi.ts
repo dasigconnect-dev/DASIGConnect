@@ -1,6 +1,6 @@
 import { api } from "./authApi";
 
-export type HealthStatus = "HEALTHY" | "WARNING" | "UNHEALTHY" | "UNAVAILABLE";
+export type HealthStatus = "HEALTHY" | "WARNING" | "UNHEALTHY" | "UNAVAILABLE" | "SCHEDULED";
 
 export interface StorageMetric {
   name: string;

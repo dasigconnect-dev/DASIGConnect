@@ -42,8 +42,8 @@ public class ExpiredOverrideCleanupJob {
             }
             scheduledJobHealthService.recordSuccess("ExpiredOverrideCleanupJob", startedAt);
         } catch (Exception ex) {
+            log.error("ExpiredOverrideCleanupJob failed: {}", ex.getMessage(), ex);
             scheduledJobHealthService.recordFailure("ExpiredOverrideCleanupJob", startedAt, ex);
-            throw ex;
         }
     }
 }
