@@ -3,9 +3,13 @@ import { useState, useRef, useEffect, useMemo } from "react";
 interface AlbumComboboxProps {
   value: string;
   existingAlbums?: string[];
+  /** Optional short label (e.g. institution code) shown as a badge next to each album row. */
+  albumBadges?: Record<string, string>;
   readOnly?: boolean;
   placeholder?: string;
   autoMatchLabel?: string;
+  /** Shown under the "Create new album" row, e.g. "in CIT-U · top level". */
+  createHint?: string;
   onChange: (value: string) => void;
   onAutoMatch: () => void;
 }
@@ -13,9 +17,11 @@ interface AlbumComboboxProps {
 export default function AlbumCombobox({
   value,
   existingAlbums = [],
+  albumBadges,
   readOnly,
   placeholder,
   autoMatchLabel = "Auto-Match from Event Title",
+  createHint,
   onChange,
   onAutoMatch,
 }: AlbumComboboxProps) {
@@ -97,8 +103,15 @@ export default function AlbumCombobox({
               style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "10px 12px", border: "none", borderBottom: "1px solid #e5e7eb", background: "#fff", color: "#111827", textAlign: "left", cursor: "pointer", fontSize: "14px" }}
               onClick={() => setOpen(false)}
             >
-              <i className="ti ti-plus" style={{ color: "#10b981" }} /> 
-              Create new album: <strong>"{value.trim()}"</strong>
+              <i className="ti ti-plus" style={{ color: "#10b981" }} />
+              <span>
+                Create new album: <strong>"{value.trim()}"</strong>
+                {createHint && (
+                  <span style={{ display: "block", fontSize: "12px", color: "#6b7280", fontWeight: 400 }}>
+                    {createHint}
+                  </span>
+                )}
+              </span>
             </button>
           )}
 
@@ -114,7 +127,12 @@ export default function AlbumCombobox({
                 }}
               >
                 <i className="ti ti-folder" style={{ color: "#9ca3af" }} />
-                {album}
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{album}</span>
+                {albumBadges?.[album] && (
+                  <span style={{ flex: "none", padding: "1px 7px", borderRadius: "9999px", background: "#EBF2FF", color: "#2563EB", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                    {albumBadges[album]}
+                  </span>
+                )}
               </button>
             ))
           ) : (

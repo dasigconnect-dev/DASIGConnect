@@ -2,6 +2,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import type { MediaAlbum, MediaAsset } from "../../../api/mediaApi";
 import { formatFileSize, formatUploadDate, formatResolution, formatFileTypeName, isVideoType } from "../utils";
+import { buildAlbumOptions } from "../albumTree";
 
 interface AssetDetailPanelProps {
   asset: MediaAsset | null;
@@ -71,6 +72,10 @@ export default function AssetDetailPanel({
   const newPostCount = selectionMode ? selectedAssets.length : asset ? 1 : 0;
   const [albumSelection, setAlbumSelection] = useState("");
   const currentAlbum = albums.find((album) => album.id === asset?.albumId);
+  // Valid move targets: folders in the asset's own institution, plus the shared library.
+  const albumOptions = buildAlbumOptions(
+    asset ? albums.filter((a) => a.institutionId === asset.institutionId || a.shared) : albums,
+  );
 
   useEffect(() => {
     setAlbumSelection(asset?.albumId ?? "");
@@ -232,9 +237,8 @@ export default function AssetDetailPanel({
                   value={albumSelection}
                   onChange={(event) => setAlbumSelection(event.target.value)}
                 >
-                  <option value="">No album</option>
-                  {albums.map((album) => (
-                    <option key={album.id} value={album.id}>{album.name}</option>
+                  {albumOptions.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
                   ))}
                 </select>
                 <div className="med-album-actions">
@@ -242,17 +246,9 @@ export default function AssetDetailPanel({
                     className="med-btn med-btn-ghost med-btn-sm"
                     type="button"
                     onClick={() => onUpdateAlbum?.(asset.id, albumSelection || null)}
-                    disabled={!onUpdateAlbum || albumSelection === (asset.albumId ?? "")}
+                    disabled={!onUpdateAlbum || !albumSelection || albumSelection === (asset.albumId ?? "")}
                   >
-                    Apply
-                  </button>
-                  <button
-                    className="med-btn med-btn-ghost med-btn-sm"
-                    type="button"
-                    onClick={() => onUpdateAlbum?.(asset.id, null)}
-                    disabled={!onUpdateAlbum || !asset.albumId}
-                  >
-                    Remove
+                    Move here
                   </button>
                 </div>
                 {currentAlbum && (
