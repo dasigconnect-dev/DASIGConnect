@@ -451,8 +451,8 @@ export default function AuditLogScreen({ user: _user }: Props) {
                 <table className="data-table" id="audit-main-table">
                   <thead>
                     <tr>
-                      <th style={{ width: "20%" }}>TIMESTAMP (PHT)</th>
                       <th style={{ width: "22%" }}>ACTOR</th>
+                      <th style={{ width: "20%" }}>TIMESTAMP (PHT)</th>
                       <th style={{ width: "18%" }}>ACTION / CATEGORY</th>
                       <th style={{ width: "18%" }}>AFFECTED ENTITY</th>
                       <th style={{ width: "16%" }}>SUMMARY</th>
@@ -472,14 +472,6 @@ export default function AuditLogScreen({ user: _user }: Props) {
                           onClick={() => setSelectedEntry(entry)}
                           style={{ cursor: "pointer" }}
                         >
-                          {/* Timestamp */}
-                          <td>
-                            <div className="audit-cell-timestamp">
-                              <span className="act-title" style={{ fontSize: "12.5px" }}>{formatted}</span>
-                              {relative && <span className="act-category">{relative}</span>}
-                            </div>
-                          </td>
-
                           {/* Actor */}
                           <td>
                             <div className="audit-cell-actor">
@@ -499,6 +491,14 @@ export default function AuditLogScreen({ user: _user }: Props) {
                                   <span className="audit-actor-sub">{entry.actor.email}</span>
                                 )}
                               </div>
+                            </div>
+                          </td>
+
+                          {/* Timestamp */}
+                          <td>
+                            <div className="audit-cell-timestamp">
+                              <span className="act-title" style={{ fontSize: "12.5px" }}>{formatted}</span>
+                              {relative && <span className="act-category">{relative}</span>}
                             </div>
                           </td>
 
