@@ -91,6 +91,9 @@ class SubmissionServiceTest {
     private EntityManager entityManager;
 
     @Mock
+    private com.dasigconnect.backend.repository.AssetTagRepository assetTagRepository;
+
+    @Mock
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
@@ -560,6 +563,33 @@ class SubmissionServiceTest {
         verify(mediaAssetRepository).save(captor.capture());
         assertThat(captor.getValue().getInstitution()).isNull();
         assertThat(captor.getValue().getStatus()).isEqualTo(MediaAssetStatus.STAGED);
+    }
+
+    @Test
+    void attachMedia_copiesSubmissionMediaTagsOntoAssetAsManualTags() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        submission.setMediaTags("event, dost7");
+        AttachMediaDto dto = new AttachMediaDto();
+        dto.setStorageUrl("https://storage.example/media/photo.jpg");
+        dto.setFileName("photo.jpg");
+        dto.setFileType("JPEG");
+        dto.setFileSizeBytes(1024L);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(mediaAssetRepository.save(any(MediaAsset.class)))
+                .thenAnswer(invocation -> assignMediaAssetId(invocation.getArgument(0)));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+
+        submissionService.attachMedia(submissionId, dto, contributorPrincipal);
+
+        org.mockito.ArgumentCaptor<com.dasigconnect.backend.model.entity.AssetTag> tags =
+                org.mockito.ArgumentCaptor.forClass(com.dasigconnect.backend.model.entity.AssetTag.class);
+        verify(assetTagRepository, org.mockito.Mockito.times(2)).save(tags.capture());
+        assertThat(tags.getAllValues()).extracting(com.dasigconnect.backend.model.entity.AssetTag::getLabel)
+                .containsExactly("event", "dost7");
+        assertThat(tags.getAllValues()).allSatisfy(t -> assertThat(t.getSource()).isEqualTo("manual"));
     }
 
     @Test

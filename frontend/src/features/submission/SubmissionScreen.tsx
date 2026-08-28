@@ -195,6 +195,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateDeleteId, setTemplateDeleteId] = useState<string | null>(null);
+  const [deletingTemplate, setDeletingTemplate] = useState(false);
   const [pendingLeaveAction, setPendingLeaveAction] =
     useState<PendingLeaveAction>(null);
   const [centerMode, setCenterMode] = useState<CenterMode>("edit");
@@ -969,18 +971,29 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
   }
 
-  async function deleteCustomTemplate(templateId: string) {
+  function requestDeleteCustomTemplate(templateId: string) {
+    setTemplateDeleteId(templateId);
+    setModal("delete-template");
+  }
+
+  async function deleteCustomTemplate() {
+    if (!templateDeleteId) return;
+    setDeletingTemplate(true);
     try {
-      await deletePostTemplate(templateId);
-      setCustomTemplates((current) => current.filter((template) => template.id !== templateId));
+      await deletePostTemplate(templateDeleteId);
+      setCustomTemplates((current) => current.filter((template) => template.id !== templateDeleteId));
       setForm((current) =>
-        current.selectedTemplateId === templateId
+        current.selectedTemplateId === templateDeleteId
           ? { ...current, selectedTemplateId: null }
           : current,
       );
+      setTemplateDeleteId(null);
+      setModal(null);
       toast.success("Template deleted.");
     } catch (err) {
       toast.error(getErrorMessage(err, "Could not delete template."));
+    } finally {
+      setDeletingTemplate(false);
     }
   }
 
@@ -2015,13 +2028,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                           title="Delete template"
                           onClick={(event) => {
                             event.stopPropagation();
-                            void deleteCustomTemplate(template.id);
+                            requestDeleteCustomTemplate(template.id);
                           }}
                           onKeyDown={(event) => {
                             if (event.key !== "Enter" && event.key !== " ") return;
                             event.preventDefault();
                             event.stopPropagation();
-                            void deleteCustomTemplate(template.id);
+                            requestDeleteCustomTemplate(template.id);
                           }}
                         >
                           <i className="ti ti-trash" aria-hidden="true" />
@@ -2876,6 +2889,26 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           disabled={busy}
           onCancel={() => setModal(null)}
           onConfirm={() => void handleDelete()}
+        />
+      )}
+      {modal === "delete-template" && (
+        <ConfirmModal
+          icon="ti-trash"
+          tone="danger"
+          title="Delete this template?"
+          description={`"${
+            customTemplates.find((template) => template.id === templateDeleteId)?.name ??
+            "This template"
+          }" will be removed from your saved post templates.`}
+          cancelLabel="Cancel"
+          confirmLabel={deletingTemplate ? "Deleting..." : "Delete Template"}
+          loading={deletingTemplate}
+          disabled={deletingTemplate}
+          onCancel={() => {
+            setTemplateDeleteId(null);
+            setModal(null);
+          }}
+          onConfirm={() => void deleteCustomTemplate()}
         />
       )}
       {modal === "withdraw" && (

@@ -31,6 +31,7 @@ export type ModalState =
   | "submit"
   | "success"
   | "delete"
+  | "delete-template"
   | "withdraw"
   | "fast-track-switch"
   | "draft-choice"
