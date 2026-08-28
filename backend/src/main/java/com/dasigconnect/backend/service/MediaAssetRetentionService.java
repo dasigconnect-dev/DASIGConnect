@@ -24,7 +24,7 @@ public class MediaAssetRetentionService {
     private final MediaAssetRepository mediaAssetRepository;
     private final MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     private final AssetTagRepository assetTagRepository;
-    private final SupabaseStorageService supabaseStorageService;
+    private final R2StorageService r2StorageService;
     private final TransactionTemplate txTemplate;
     private final int retentionDays;
     private final int batchSize;
@@ -33,14 +33,14 @@ public class MediaAssetRetentionService {
             MediaAssetRepository mediaAssetRepository,
             MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
             AssetTagRepository assetTagRepository,
-            SupabaseStorageService supabaseStorageService,
+            R2StorageService r2StorageService,
             PlatformTransactionManager transactionManager,
             @Value("${app.media-assets.deleted-retention-days:30}") int retentionDays,
             @Value("${app.media-assets.purge-batch-size:25}") int batchSize) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
         this.assetTagRepository = assetTagRepository;
-        this.supabaseStorageService = supabaseStorageService;
+        this.r2StorageService = r2StorageService;
         this.txTemplate = new TransactionTemplate(transactionManager);
         this.retentionDays = Math.max(retentionDays, 1);
         this.batchSize = Math.min(Math.max(batchSize, 1), 100);
@@ -60,7 +60,7 @@ public class MediaAssetRetentionService {
             String storageUrl = asset.getStorageUrl();
 
             // Storage deletion runs with no DB connection held
-            boolean storageDeleted = supabaseStorageService.deletePublicObject(storageUrl);
+            boolean storageDeleted = r2StorageService.deletePublicObject(storageUrl);
 
             // Short write transaction for DB cleanup only
             txTemplate.execute(status -> {

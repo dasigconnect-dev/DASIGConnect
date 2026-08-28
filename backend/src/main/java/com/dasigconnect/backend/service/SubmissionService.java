@@ -88,7 +88,7 @@ public class SubmissionService {
     private final SlotReservationService slotReservationService;
     private final GuardRailService guardRailService;
     private final AuditLogService auditLogService;
-    private final SupabaseStorageService supabaseStorageService;
+    private final R2StorageService r2StorageService;
     private final NotificationService notificationService;
     private final EmailDeliveryService emailDeliveryService;
     private final UserRepository userRepository;
@@ -111,7 +111,7 @@ public class SubmissionService {
             SlotReservationService slotReservationService,
             GuardRailService guardRailService,
             AuditLogService auditLogService,
-            SupabaseStorageService supabaseStorageService,
+            R2StorageService r2StorageService,
             NotificationService notificationService,
             EmailDeliveryService emailDeliveryService,
             UserRepository userRepository,
@@ -125,7 +125,7 @@ public class SubmissionService {
         this.slotReservationService = slotReservationService;
         this.guardRailService = guardRailService;
         this.auditLogService = auditLogService;
-        this.supabaseStorageService = supabaseStorageService;
+        this.r2StorageService = r2StorageService;
         this.notificationService = notificationService;
         this.emailDeliveryService = emailDeliveryService;
         this.userRepository = userRepository;
@@ -145,8 +145,8 @@ public class SubmissionService {
         validateMediaFile(dto.getFileType(), dto.getFileSizeBytes());
         String safeFileName = dto.getFileName().replaceAll("[^a-zA-Z0-9._-]", "-");
         String objectPath = submission.getId() + "/" + UUID.randomUUID() + "-" + safeFileName;
-        String signedUrl = supabaseStorageService.createSignedUploadUrl(objectPath);
-        String publicUrl = supabaseStorageService.getPublicUrl(objectPath);
+        String signedUrl = r2StorageService.createSignedUploadUrl(objectPath);
+        String publicUrl = r2StorageService.getPublicUrl(objectPath);
         return new SignedUploadUrlResponse(signedUrl, publicUrl, objectPath);
     }
 
@@ -709,7 +709,7 @@ public class SubmissionService {
         mediaAssetRepository.findActiveById(mediaAssetId).ifPresent(orphan -> {
             String storageUrl = orphan.getStorageUrl();
             mediaAssetRepository.delete(orphan);
-            boolean storageDeleted = supabaseStorageService.deletePublicObject(storageUrl);
+            boolean storageDeleted = r2StorageService.deletePublicObject(storageUrl);
             log.info("Orphaned draft-only media asset {} permanently deleted ({}, storageDeleted={})",
                     mediaAssetId, context, storageDeleted);
         });
