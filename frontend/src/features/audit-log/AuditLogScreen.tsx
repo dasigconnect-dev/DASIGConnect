@@ -12,6 +12,7 @@ import {
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
 import BrandedSelect from "../../components/ui/BrandedSelect";
+import PageLoader from "../../components/common/PageLoader";
 import AuditDetailModal from "./AuditDetailModal";
 import "../../styles/audit-log.css";
 import "../../styles/dasig-loader.css";
@@ -92,6 +93,27 @@ function getPresetDates(preset: DatePreset): { start?: string; end?: string } {
   }
 }
 
+const DEFAULT_CATEGORIES = [
+  { key: "APPROVAL", label: "Approvals" },
+  { key: "REJECTION", label: "Rejections" },
+  { key: "EDIT_AND_REVISION", label: "Edits & Revisions" },
+  { key: "RESCHEDULE_AND_OVERRIDE", label: "Reschedules & Overrides" },
+  { key: "PUBLISHING", label: "Publishing" },
+  { key: "ACCOUNT_MANAGEMENT", label: "Account Management" },
+  { key: "INSTITUTION_MANAGEMENT", label: "Institution Management" },
+  { key: "MEDIA_LIFECYCLE", label: "Media Lifecycle" },
+  { key: "CONFIGURATION", label: "Configuration" },
+  { key: "SECURITY", label: "Security" },
+];
+
+const DEFAULT_ENTITY_TYPES = [
+  { key: "SUBMISSION", label: "Submissions" },
+  { key: "USER", label: "Users" },
+  { key: "INSTITUTION", label: "Institutions" },
+  { key: "MEDIA_ASSET", label: "Media Assets" },
+  { key: "SYSTEM_SETTING", label: "System Settings" },
+];
+
 export default function AuditLogScreen({ user: _user }: Props) {
   const toast = useToast();
 
@@ -109,6 +131,7 @@ export default function AuditLogScreen({ user: _user }: Props) {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -149,7 +172,9 @@ export default function AuditLogScreen({ user: _user }: Props) {
         setTotalElements(response.totalElements || 0);
         setTotalPages(response.totalPages || 0);
         setLoadError("");
+        setLoading(false);
       } catch (err: unknown) {
+        if (signal?.aborted) return;
         const isCanceled =
           (err as { code?: string })?.code === "ERR_CANCELED" ||
           (err as { name?: string })?.name === "CanceledError" ||
@@ -160,7 +185,6 @@ export default function AuditLogScreen({ user: _user }: Props) {
           (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
             "Unable to connect to the audit service. Please retry."
         );
-      } finally {
         setLoading(false);
       }
     },
@@ -174,6 +198,7 @@ export default function AuditLogScreen({ user: _user }: Props) {
   }, [loadData]);
 
   function handlePresetChange(preset: DatePreset) {
+    setLoading(true);
     setDatePreset(preset);
     if (preset !== "custom") {
       const { start, end } = getPresetDates(preset);
@@ -184,6 +209,7 @@ export default function AuditLogScreen({ user: _user }: Props) {
   }
 
   function handleResetFilters() {
+    setLoading(true);
     setDatePreset("all");
     setStartDate("");
     setEndDate("");
@@ -210,14 +236,16 @@ export default function AuditLogScreen({ user: _user }: Props) {
     }
   }
 
+  const categoriesList = metadataOptions?.categories?.length ? metadataOptions.categories : DEFAULT_CATEGORIES;
+  const entityTypesList = metadataOptions?.entityTypes?.length ? metadataOptions.entityTypes : DEFAULT_ENTITY_TYPES;
   const categoryOptions = [
     { value: "", label: "All Categories" },
-    ...(metadataOptions?.categories.map((c) => ({ value: c.key, label: c.label })) ?? []),
+    ...categoriesList.map((c) => ({ value: c.key, label: c.label })),
   ];
 
   const entityOptions = [
     { value: "", label: "All Entities" },
-    ...(metadataOptions?.entityTypes.map((et) => ({ value: et.key, label: et.label })) ?? []),
+    ...entityTypesList.map((et) => ({ value: et.key, label: et.label })),
   ];
 
   return (
@@ -272,35 +300,47 @@ export default function AuditLogScreen({ user: _user }: Props) {
           <div className="audit-toolbar-inner">
             {/* Left Filter Group */}
             <div className="audit-filters-group">
-              {/* Time Window Segmented Control */}
-              <div className="analytics-segmented" role="group" aria-label="Time filter">
+              {/* Time Window Pill Tabs */}
+              <div className="sub-status-tabs" role="group" aria-label="Time window filter">
                 <button
                   type="button"
-                  className={datePreset === "all" ? "active" : ""}
+                  className={`sub-status-tab${datePreset === "all" ? " is-active" : ""}`}
                   onClick={() => handlePresetChange("all")}
                 >
-                  All Time
+                  <span>All</span>
+                  <span className="sub-status-tab-count">
+                    {datePreset === "all" ? totalElements : "•"}
+                  </span>
                 </button>
                 <button
                   type="button"
-                  className={datePreset === "today" ? "active" : ""}
+                  className={`sub-status-tab${datePreset === "today" ? " is-active" : ""}`}
                   onClick={() => handlePresetChange("today")}
                 >
-                  Today
+                  <span>Today</span>
+                  <span className="sub-status-tab-count">
+                    {datePreset === "today" ? totalElements : "•"}
+                  </span>
                 </button>
                 <button
                   type="button"
-                  className={datePreset === "7d" ? "active" : ""}
+                  className={`sub-status-tab${datePreset === "7d" ? " is-active" : ""}`}
                   onClick={() => handlePresetChange("7d")}
                 >
-                  7D
+                  <span>7D</span>
+                  <span className="sub-status-tab-count">
+                    {datePreset === "7d" ? totalElements : "•"}
+                  </span>
                 </button>
                 <button
                   type="button"
-                  className={datePreset === "30d" ? "active" : ""}
+                  className={`sub-status-tab${datePreset === "30d" ? " is-active" : ""}`}
                   onClick={() => handlePresetChange("30d")}
                 >
-                  30D
+                  <span>30D</span>
+                  <span className="sub-status-tab-count">
+                    {datePreset === "30d" ? totalElements : "•"}
+                  </span>
                 </button>
               </div>
 
@@ -309,6 +349,7 @@ export default function AuditLogScreen({ user: _user }: Props) {
                 <BrandedSelect
                   value={category}
                   onChange={(v) => {
+                    setLoading(true);
                     setCategory(v as AuditLogCategory);
                     setPage(0);
                   }}
@@ -322,6 +363,7 @@ export default function AuditLogScreen({ user: _user }: Props) {
                 <BrandedSelect
                   value={entityType}
                   onChange={(v) => {
+                    setLoading(true);
                     setEntityType(v as AuditEntityType);
                     setPage(0);
                   }}
@@ -329,20 +371,6 @@ export default function AuditLogScreen({ user: _user }: Props) {
                   options={entityOptions}
                 />
               </div>
-
-              {/* Reset Filters Pill */}
-              {isFiltered && (
-                <button
-                  type="button"
-                  className="notif-btn notif-btn-ghost"
-                  onClick={handleResetFilters}
-                  title="Clear all active filters"
-                  style={{ height: "36px", padding: "0 10px", fontSize: "12px" }}
-                >
-                  <i className="ti ti-rotate-clockwise" style={{ fontSize: 13 }} />
-                  <span>Reset</span>
-                </button>
-              )}
             </div>
 
             {/* Right Search Box */}
@@ -354,6 +382,7 @@ export default function AuditLogScreen({ user: _user }: Props) {
                 placeholder="Search actor or action..."
                 value={search}
                 onChange={(e) => {
+                  setLoading(true);
                   setSearch(e.target.value);
                   setPage(0);
                 }}
@@ -364,6 +393,7 @@ export default function AuditLogScreen({ user: _user }: Props) {
                   type="button"
                   className="im-search-clear"
                   onClick={() => {
+                    setLoading(true);
                     setSearch("");
                     setPage(0);
                   }}
@@ -380,28 +410,50 @@ export default function AuditLogScreen({ user: _user }: Props) {
         {/* ── Matching Count Subheader Row ── */}
         <div className="audit-meta-row">
           <span className="audit-count-label">
-            Showing {logs.length > 0 ? page * pageSize + 1 : 0}–
-            {Math.min((page + 1) * pageSize, totalElements)} of {totalElements.toLocaleString()} audit events
+            {loading ? (
+              "Loading audit events..."
+            ) : totalElements > 0 ? (
+              `Showing ${page * pageSize + 1}–${Math.min((page + 1) * pageSize, totalElements)} of ${totalElements} audit events`
+            ) : (
+              "Showing 0–0 of 0 audit events"
+            )}
           </span>
-          <span className="analytics-scope-badge">
-            <i className="ti ti-shield-lock" style={{ fontSize: 11 }} />
-            Immutable Trail
+          <span
+            className="audit-entity-badge"
+            title="Records are immutable and tamper-evident"
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "#1877F2", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 999, padding: "3px 10px", fontWeight: 600 }}
+          >
+            <i className="ti ti-clock-shield" style={{ fontSize: 13 }} />
+            <span>Immutable Trail</span>
           </span>
         </div>
 
         {/* ── Main Data Table Card ── */}
         <div className="card-wrap audit-table-card">
           {loading && (
-            <div className="audit-state-box">
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: "360px",
+                width: "100%",
+                padding: "64px 24px",
+              }}
+              role="status"
+              aria-label="Loading Audit Log"
+            >
               <div className="dc-dot-triangle-container">
-                <div className="loader-dots" />
                 <div className="dc-dot-triangle-label">
-                  Loading Audit Logs
+                  <span>Loading Audit Log</span>
                   <span className="dc-dot-triangle-label-dots">
                     <span className="dc-dot-triangle-dot-char">.</span>
                     <span className="dc-dot-triangle-dot-char">.</span>
                     <span className="dc-dot-triangle-dot-char">.</span>
                   </span>
+                </div>
+                <div className="loader-stage" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div className="loader-dots" />
                 </div>
               </div>
             </div>
@@ -482,8 +534,8 @@ export default function AuditLogScreen({ user: _user }: Props) {
                                 <span className="audit-actor-name-row">
                                   <strong>{entry.actor?.name || entry.actor?.email || "System Automation"}</strong>
                                   {entry.actor?.role === "SUPER_ADMINISTRATOR" && (
-                                    <span className="chip-admin" style={{ fontSize: "9px", padding: "1px 5px" }}>
-                                      Super Admin
+                                    <span className="audit-actor-role">
+                                      • Super Admin
                                     </span>
                                   )}
                                 </span>
@@ -551,8 +603,7 @@ export default function AuditLogScreen({ user: _user }: Props) {
                           <td style={{ textAlign: "right" }}>
                             <button
                               type="button"
-                              className="notif-btn notif-btn-ghost"
-                              style={{ height: "28px", padding: "0 8px", fontSize: "11.5px" }}
+                              className="audit-view-btn"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedEntry(entry);
@@ -578,18 +629,24 @@ export default function AuditLogScreen({ user: _user }: Props) {
                 <div className="audit-pagination-nav">
                   <button
                     type="button"
-                    className="notif-btn notif-btn-ghost"
+                    className="audit-page-btn"
                     disabled={page <= 0}
-                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    onClick={() => {
+                      setLoading(true);
+                      setPage((p) => Math.max(0, p - 1));
+                    }}
                   >
                     <i className="ti ti-chevron-left" />
                     Previous
                   </button>
                   <button
                     type="button"
-                    className="notif-btn notif-btn-ghost"
+                    className="audit-page-btn"
                     disabled={page >= totalPages - 1}
-                    onClick={() => setPage((p) => p + 1)}
+                    onClick={() => {
+                      setLoading(true);
+                      setPage((p) => p + 1);
+                    }}
                   >
                     Next
                     <i className="ti ti-chevron-right" />

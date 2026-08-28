@@ -1688,12 +1688,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 type="button"
                 onClick={() => void refreshQueue()}
                 disabled={refreshingQueue || loading}
+                title="Refresh submissions list"
               >
-                {refreshingQueue || loading ? (
-                  <i className="ti ti-loader-2 sub-spin"></i>
-                ) : (
-                  <i className="ti ti-refresh"></i>
-                )}
+                <i className={`ti ti-refresh${refreshingQueue || loading ? " spin" : ""}`} style={{ fontSize: 14 }} />
+                <span>Refresh</span>
               </button>
               <button
                 className="sub-list-new"
