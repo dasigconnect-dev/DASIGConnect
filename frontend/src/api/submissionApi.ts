@@ -184,7 +184,7 @@ export async function uploadSubmissionMedia(id: string, files: File[]) {
     });
     if (!upload.ok) {
       const msg = await upload.text().catch(() => "");
-      throw new Error(msg || "Supabase media upload failed.");
+      throw new Error(msg || "Media upload to storage failed.");
     }
     responses.push(
       await api.post(`/submissions/${id}/media`, {
