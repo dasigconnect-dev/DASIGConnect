@@ -11,8 +11,10 @@ import {
 } from "../../api/auditLogApi";
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
-import "../../styles/audit-log.css";
+import BrandedSelect from "../../components/ui/BrandedSelect";
 import AuditDetailModal from "./AuditDetailModal";
+import "../../styles/audit-log.css";
+import "../../styles/dasig-loader.css";
 
 interface Props {
   user: User;
@@ -45,19 +47,23 @@ function timeAgo(iso: string) {
   return "";
 }
 
-function categoryClass(category: string): string {
+function categoryBadgeClass(category: string): string {
   switch (category) {
-    case "APPROVAL": return "cat-approval";
-    case "REJECTION": return "cat-rejection";
-    case "EDIT_AND_REVISION": return "cat-edit";
-    case "RESCHEDULE_AND_OVERRIDE": return "cat-reschedule";
-    case "PUBLISHING": return "cat-publish";
-    case "ACCOUNT_MANAGEMENT": return "cat-account";
-    case "INSTITUTION_MANAGEMENT": return "cat-institution";
-    case "MEDIA_LIFECYCLE": return "cat-media";
-    case "CONFIGURATION": return "cat-config";
-    case "SECURITY": return "cat-security";
-    default: return "cat-other";
+    case "APPROVAL":
+    case "PUBLISHING":
+      return "sp-approved";
+    case "REJECTION":
+    case "SECURITY":
+      return "pill-failed";
+    case "EDIT_AND_REVISION":
+    case "RESCHEDULE_AND_OVERRIDE":
+      return "pill-revision";
+    case "ACCOUNT_MANAGEMENT":
+    case "INSTITUTION_MANAGEMENT":
+    case "CONFIGURATION":
+    case "MEDIA_LIFECYCLE":
+    default:
+      return "sp-scheduled";
   }
 }
 
@@ -65,13 +71,11 @@ function getPresetDates(preset: DatePreset): { start?: string; end?: string } {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   const toDateStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
   const todayStr = toDateStr(now);
 
   switch (preset) {
-    case "today": {
+    case "today":
       return { start: todayStr, end: todayStr };
-    }
     case "7d": {
       const d = new Date();
       d.setDate(d.getDate() - 7);
@@ -146,33 +150,21 @@ export default function AuditLogScreen({ user: _user }: Props) {
         setTotalPages(response.totalPages || 0);
         setLoadError("");
       } catch (err: unknown) {
-        // A cancelled request must never surface as an error. Axios reports this
-        // as "CanceledError" / code "ERR_CANCELED"; the fetch adapter throws a
-        // DOMException named "AbortError". The surest signal is the signal itself.
-        const e = err as { name?: string; code?: string };
-        if (
-          signal?.aborted ||
-          e?.name === "CanceledError" ||
-          e?.name === "AbortError" ||
-          e?.code === "ERR_CANCELED"
-        ) {
-          return;
-        }
-        const status = (err as { response?: { status?: number } }).response?.status;
-        const message =
-          status === 403
-            ? "You do not have permission to view the audit log."
-            : "Unable to load audit logs. The server may be unavailable — try again.";
-        setLoadError(message);
-        setLogs([]);
-        setTotalElements(0);
-        setTotalPages(0);
-        toast.error(message);
+        const isCanceled =
+          (err as { code?: string })?.code === "ERR_CANCELED" ||
+          (err as { name?: string })?.name === "CanceledError" ||
+          (err as { name?: string })?.name === "AbortError";
+        if (isCanceled) return;
+
+        setLoadError(
+          (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+            "Unable to connect to the audit service. Please retry."
+        );
       } finally {
-        if (!signal?.aborted) setLoading(false);
+        setLoading(false);
       }
     },
-    [filterParams, toast]
+    [filterParams]
   );
 
   useEffect(() => {
@@ -181,22 +173,14 @@ export default function AuditLogScreen({ user: _user }: Props) {
     return () => controller.abort();
   }, [loadData]);
 
-  // Handle Preset Changes
-  function handlePresetChange(newPreset: DatePreset) {
-    setDatePreset(newPreset);
-    if (newPreset !== "custom") {
-      const { start, end } = getPresetDates(newPreset);
+  function handlePresetChange(preset: DatePreset) {
+    setDatePreset(preset);
+    if (preset !== "custom") {
+      const { start, end } = getPresetDates(preset);
       setStartDate(start ?? "");
       setEndDate(end ?? "");
       setPage(0);
     }
-  }
-
-  function handleCustomDateChange(start: string, end: string) {
-    setDatePreset("custom");
-    setStartDate(start);
-    setEndDate(end);
-    setPage(0);
   }
 
   function handleResetFilters() {
@@ -220,423 +204,410 @@ export default function AuditLogScreen({ user: _user }: Props) {
       await downloadAuditLogCsv(filterParams);
       toast.success("DOST Region 7 Audit Log exported successfully.");
     } catch {
-      toast.error("Failed to export audit log CSV. You can retry without losing your filters.");
+      toast.error("Failed to export audit log CSV.");
     } finally {
       setExporting(false);
     }
   }
 
+  const categoryOptions = [
+    { value: "", label: "All Categories" },
+    ...(metadataOptions?.categories.map((c) => ({ value: c.key, label: c.label })) ?? []),
+  ];
+
+  const entityOptions = [
+    { value: "", label: "All Entities" },
+    ...(metadataOptions?.entityTypes.map((et) => ({ value: et.key, label: et.label })) ?? []),
+  ];
+
   return (
-    <div className="audit-screen">
-      {/* ── Screen Header ── */}
-      <div className="audit-header">
-        <div className="audit-title-group">
-          <h1>
-            <i className="ti ti-clipboard-list" />
-            Audit Log Review
-          </h1>
-          <p className="audit-subtitle">
-            Immutable record of all system state changes, workflow decisions, and administrative actions.
-          </p>
-        </div>
-        <div className="audit-toolbar">
-          <button
-            type="button"
-            className="audit-export-btn"
-            onClick={handleExport}
-            disabled={exporting || loading}
-            title="Download formatted CSV report for DOST Region 7 governance reporting"
-          >
-            {exporting ? (
-              <>
-                <div className="spinner-ring spinner-ring-xs" />
-                Exporting...
-              </>
-            ) : (
-              <>
-                <i className="ti ti-download" />
-                Export DOST-7 CSV
-              </>
-            )}
-          </button>
-        </div>
-      </div>
+    <div id="screen-audit" style={{ background: "var(--d-bg)" }}>
+      <div className="dash-body audit-screen-container">
 
-      {/* ── Overview Summary Banner ── */}
-      <div className="audit-overview">
-        <div className="audit-overview-info">
-          <div className="audit-overview-icon">
-            <i className="ti ti-shield-check" />
-          </div>
-          <div className="audit-overview-text">
-            <strong>System Governance Record</strong>
-            <span>
-              {isFiltered ? "Filtered log view active" : "Showing all-time immutable audit trail"}
-            </span>
-          </div>
-        </div>
-        <div className="audit-overview-counts">
-          <div className="audit-count-item">
-            <span>Matching Events</span>
-            <strong>{totalElements.toLocaleString()}</strong>
-          </div>
-          <div className="audit-count-item">
-            <span>Total Pages</span>
-            <strong>{totalPages.toLocaleString()}</strong>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Filter & Search Panel ── */}
-      <div className="audit-filter-panel">
-        {/* Date Presets */}
-        <div className="audit-filter-presets">
-          <span className="audit-preset-label">Time Window:</span>
-          <button
-            type="button"
-            className={`audit-preset-pill ${datePreset === "today" ? "active" : ""}`}
-            onClick={() => handlePresetChange("today")}
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            className={`audit-preset-pill ${datePreset === "7d" ? "active" : ""}`}
-            onClick={() => handlePresetChange("7d")}
-          >
-            Last 7 Days
-          </button>
-          <button
-            type="button"
-            className={`audit-preset-pill ${datePreset === "30d" ? "active" : ""}`}
-            onClick={() => handlePresetChange("30d")}
-          >
-            Last 30 Days
-          </button>
-          <button
-            type="button"
-            className={`audit-preset-pill ${datePreset === "all" ? "active" : ""}`}
-            onClick={() => handlePresetChange("all")}
-          >
-            All Time
-          </button>
-          {datePreset === "custom" && (
-            <span className="audit-preset-pill active">Custom Range</span>
-          )}
-        </div>
-
-        {/* Filter Input Grid */}
-        <div className="audit-filter-grid">
-          {/* Start Date */}
-          <div className="audit-filter-field">
-            <label htmlFor="audit-start-date">From Date</label>
-            <input
-              id="audit-start-date"
-              type="date"
-              className="audit-input"
-              value={startDate}
-              onChange={(e) => handleCustomDateChange(e.target.value, endDate)}
-            />
+        {/* ── Standard Header View ── */}
+        <div className="dash-view-header audit-header-row">
+          <div>
+            <h1 className="dash-view-title">Audit Log Review</h1>
+            <p className="dash-view-desc">
+              Immutable record of system state changes, workflow decisions, and administrative actions
+            </p>
           </div>
 
-          {/* End Date */}
-          <div className="audit-filter-field">
-            <label htmlFor="audit-end-date">To Date</label>
-            <input
-              id="audit-end-date"
-              type="date"
-              className="audit-input"
-              value={endDate}
-              onChange={(e) => handleCustomDateChange(startDate, e.target.value)}
-            />
-          </div>
-
-          {/* Action Category Dropdown */}
-          <div className="audit-filter-field">
-            <label htmlFor="audit-category">Action Category</label>
-            <select
-              id="audit-category"
-              className="audit-select"
-              value={category}
-              onChange={(e) => {
-                setCategory(e.target.value as AuditLogCategory);
-                setPage(0);
-              }}
+          <div className="audit-header-actions">
+            <button
+              type="button"
+              className="notif-btn notif-btn-ghost"
+              onClick={() => void loadData()}
+              disabled={loading}
+              title="Refresh audit log"
             >
-              <option value="">All Categories</option>
-              {metadataOptions?.categories.map((c) => (
-                <option key={c.key} value={c.key}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </div>
+              <i className={`ti ti-refresh${loading ? " spin" : ""}`} style={{ fontSize: 14 }} />
+              <span>Refresh</span>
+            </button>
 
-          {/* Entity Type Dropdown */}
-          <div className="audit-filter-field">
-            <label htmlFor="audit-entity-type">Affected Entity</label>
-            <select
-              id="audit-entity-type"
-              className="audit-select"
-              value={entityType}
-              onChange={(e) => {
-                setEntityType(e.target.value as AuditEntityType);
-                setPage(0);
-              }}
-            >
-              <option value="">All Entities</option>
-              {metadataOptions?.entityTypes.map((et) => (
-                <option key={et.key} value={et.key}>
-                  {et.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Search Input */}
-          <div className="audit-filter-field audit-search-field">
-            <label htmlFor="audit-search">Search Actor / Action</label>
-            <i className="ti ti-search" />
-            <input
-              id="audit-search"
-              type="text"
-              className="audit-input"
-              placeholder="Search by actor or keyword..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(0);
-              }}
-            />
-          </div>
-
-          {/* Clear Filters Button */}
-          {isFiltered && (
-            <div className="audit-filter-field" style={{ alignSelf: "flex-end" }}>
-              <button
-                type="button"
-                className="audit-reset-btn"
-                onClick={handleResetFilters}
-                title="Clear all active filters"
-              >
-                <i className="ti ti-rotate-clockwise" />
-                Clear Filters
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── Table Card ── */}
-      <div className="audit-table-card">
-        {loading && (
-          <div className="audit-state-container">
-            <div className="spinner-ring" />
-            <span>Loading audit log entries...</span>
-          </div>
-        )}
-
-        {!loading && loadError && logs.length === 0 && (
-          <div className="audit-state-container">
-            <i className="ti ti-alert-triangle" />
-            <h3>Could Not Load the Audit Log</h3>
-            <p>{loadError}</p>
             <button
               type="button"
               className="audit-export-btn"
-              onClick={() => void loadData()}
+              onClick={handleExport}
+              disabled={exporting || loading}
+              title="Download formatted CSV report for DOST Region 7 governance reporting"
             >
-              <i className="ti ti-refresh" />
-              Retry
+              {exporting ? (
+                <>
+                  <i className="ti ti-loader-2 spin" style={{ fontSize: 14 }} />
+                  <span>Exporting...</span>
+                </>
+              ) : (
+                <>
+                  <i className="ti ti-download" style={{ fontSize: 14 }} />
+                  <span>Export DOST-7 CSV</span>
+                </>
+              )}
             </button>
           </div>
-        )}
+        </div>
 
-        {!loading && !loadError && logs.length === 0 && (
-          <div className="audit-state-container">
-            <i className="ti ti-search-off" />
-            <h3>No Audit Entries Found</h3>
-            <p>
-              No audit records match the selected filter criteria. Try adjusting your date range,
-              clearing search terms, or resetting filters.
-            </p>
-            {isFiltered && (
+        {/* ── Toolbar Card (Filters + Search) ── */}
+        <div className="card-wrap audit-toolbar-card">
+          <div className="audit-toolbar-inner">
+            {/* Left Filter Group */}
+            <div className="audit-filters-group">
+              {/* Time Window Segmented Control */}
+              <div className="analytics-segmented" role="group" aria-label="Time filter">
+                <button
+                  type="button"
+                  className={datePreset === "all" ? "active" : ""}
+                  onClick={() => handlePresetChange("all")}
+                >
+                  All Time
+                </button>
+                <button
+                  type="button"
+                  className={datePreset === "today" ? "active" : ""}
+                  onClick={() => handlePresetChange("today")}
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  className={datePreset === "7d" ? "active" : ""}
+                  onClick={() => handlePresetChange("7d")}
+                >
+                  7D
+                </button>
+                <button
+                  type="button"
+                  className={datePreset === "30d" ? "active" : ""}
+                  onClick={() => handlePresetChange("30d")}
+                >
+                  30D
+                </button>
+              </div>
+
+              {/* Category Dropdown */}
+              <div className="audit-filter-item">
+                <BrandedSelect
+                  value={category}
+                  onChange={(v) => {
+                    setCategory(v as AuditLogCategory);
+                    setPage(0);
+                  }}
+                  ariaLabel="Filter by category"
+                  options={categoryOptions}
+                />
+              </div>
+
+              {/* Entity Dropdown */}
+              <div className="audit-filter-item">
+                <BrandedSelect
+                  value={entityType}
+                  onChange={(v) => {
+                    setEntityType(v as AuditEntityType);
+                    setPage(0);
+                  }}
+                  ariaLabel="Filter by entity type"
+                  options={entityOptions}
+                />
+              </div>
+
+              {/* Reset Filters Pill */}
+              {isFiltered && (
+                <button
+                  type="button"
+                  className="notif-btn notif-btn-ghost"
+                  onClick={handleResetFilters}
+                  title="Clear all active filters"
+                  style={{ height: "36px", padding: "0 10px", fontSize: "12px" }}
+                >
+                  <i className="ti ti-rotate-clockwise" style={{ fontSize: 13 }} />
+                  <span>Reset</span>
+                </button>
+              )}
+            </div>
+
+            {/* Right Search Box */}
+            <div className="im-search-wrap" style={{ margin: 0 }}>
+              <i className="ti ti-search im-search-icon" aria-hidden="true" />
+              <input
+                className="im-search-input"
+                type="search"
+                placeholder="Search actor or action..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(0);
+                }}
+                aria-label="Search audit log"
+              />
+              {search && (
+                <button
+                  type="button"
+                  className="im-search-clear"
+                  onClick={() => {
+                    setSearch("");
+                    setPage(0);
+                  }}
+                  aria-label="Clear search"
+                  style={{ position: "absolute", right: 8, background: "none", border: "none", cursor: "pointer", color: "var(--d-muted)" }}
+                >
+                  <i className="ti ti-x" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Matching Count Subheader Row ── */}
+        <div className="audit-meta-row">
+          <span className="audit-count-label">
+            Showing {logs.length > 0 ? page * pageSize + 1 : 0}–
+            {Math.min((page + 1) * pageSize, totalElements)} of {totalElements.toLocaleString()} audit events
+          </span>
+          <span className="analytics-scope-badge">
+            <i className="ti ti-shield-lock" style={{ fontSize: 11 }} />
+            Immutable Trail
+          </span>
+        </div>
+
+        {/* ── Main Data Table Card ── */}
+        <div className="card-wrap audit-table-card">
+          {loading && (
+            <div className="audit-state-box">
+              <div className="dc-dot-triangle-container">
+                <div className="loader-dots" />
+                <div className="dc-dot-triangle-label">
+                  Loading Audit Logs
+                  <span className="dc-dot-triangle-label-dots">
+                    <span className="dc-dot-triangle-dot-char">.</span>
+                    <span className="dc-dot-triangle-dot-char">.</span>
+                    <span className="dc-dot-triangle-dot-char">.</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!loading && loadError && logs.length === 0 && (
+            <div className="audit-state-box">
+              <i className="ti ti-alert-triangle" style={{ fontSize: 32, color: "#ef4444", marginBottom: 8 }} />
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0C1D3D", margin: "0 0 4px" }}>
+                Could Not Load the Audit Log
+              </h3>
+              <p style={{ fontSize: 13, color: "var(--d-muted)", margin: "0 0 16px" }}>{loadError}</p>
               <button
                 type="button"
-                className="audit-export-btn"
-                style={{ background: "#f1f5f9", color: "#334155" }}
-                onClick={handleResetFilters}
+                className="notif-btn notif-btn-ghost"
+                onClick={() => void loadData()}
               >
-                Reset All Filters
+                <i className="ti ti-refresh" /> Retry
               </button>
-            )}
-          </div>
-        )}
-
-        {!loading && logs.length > 0 && (
-          <>
-            <div className="audit-table-wrap">
-              <table className="audit-table">
-                <thead>
-                  <tr>
-                    <th>Timestamp (PHT)</th>
-                    <th>Actor</th>
-                    <th>Action Category</th>
-                    <th>Affected Entity</th>
-                    <th>Summary / Reason</th>
-                    <th style={{ textAlign: "right" }}>Details</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {logs.map((entry) => {
-                    const relative = timeAgo(entry.timestamp);
-                    const formatted = formatDate(entry.timestamp);
-                    const isEntityActive = entry.entity.exists;
-
-                    return (
-                      <tr key={entry.id}>
-                        {/* Timestamp */}
-                        <td>
-                          <div className="audit-timestamp-cell">
-                            <span className="audit-timestamp-primary">{formatted}</span>
-                            {relative && (
-                              <span className="audit-timestamp-relative">{relative}</span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Actor */}
-                        <td>
-                          <div className="audit-actor-cell">
-                            <div className="audit-avatar">
-                              {entry.actor?.name
-                                ? entry.actor.name.charAt(0).toUpperCase()
-                                : "S"}
-                            </div>
-                            <div className="audit-actor-info">
-                              <span className="audit-actor-name">
-                                {entry.actor?.name ?? "System Automation"}
-                                {entry.actor?.role === "SUPER_ADMINISTRATOR" && (
-                                  <span className="chip-admin" style={{ fontSize: "10px", padding: "1px 6px" }}>
-                                    Super Admin
-                                  </span>
-                                )}
-                              </span>
-                              <span className="audit-actor-email">
-                                {entry.actor?.email ?? "system@dasigconnect.gov.ph"}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Category & Action */}
-                        <td>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                            <span className={`audit-cat-badge ${categoryClass(entry.category)}`}>
-                              {entry.categoryLabel}
-                            </span>
-                            <span style={{ fontSize: "11px", color: "#64748b", textTransform: "capitalize" }}>
-                              {entry.actionLabel}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Affected Entity */}
-                        <td>
-                          {isEntityActive ? (
-                            entry.entity.jumpUrl ? (
-                              <a
-                                href={entry.entity.jumpUrl}
-                                className="audit-entity-badge audit-entity-link"
-                                title="Jump to entity"
-                              >
-                                <i className="ti ti-external-link" />
-                                {entry.entity.label}
-                              </a>
-                            ) : (
-                              <span className="audit-entity-badge audit-entity-link">
-                                {entry.entity.label}
-                              </span>
-                            )
-                          ) : (
-                            <span
-                              className="audit-entity-badge audit-entity-unavailable"
-                              title="Entity has been deleted or is no longer available"
-                            >
-                              <i className="ti ti-alert-triangle" />
-                              [Entity no longer available]
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Summary */}
-                        <td>
-                          <div className="audit-summary-text" title={entry.summary}>
-                            {entry.summary || "—"}
-                          </div>
-                        </td>
-
-                        {/* Action Details Button */}
-                        <td style={{ textAlign: "right" }}>
-                          <button
-                            type="button"
-                            className="audit-view-btn"
-                            onClick={() => setSelectedEntry(entry)}
-                            title="Inspect full audit event details and diffs"
-                          >
-                            <i className="ti ti-eye" />
-                            View
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
             </div>
+          )}
 
-            {/* Pagination Controls */}
-            <div className="audit-pagination">
-              <div className="audit-pagination-info">
-                Showing {page * pageSize + 1}–
-                {Math.min((page + 1) * pageSize, totalElements)} of {totalElements.toLocaleString()}{" "}
-                events
-              </div>
-              <div className="audit-pagination-nav">
+          {!loading && !loadError && logs.length === 0 && (
+            <div className="audit-state-box">
+              <i className="ti ti-search-off" style={{ fontSize: 32, color: "#94a3b8", marginBottom: 8 }} />
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0C1D3D", margin: "0 0 4px" }}>
+                No Audit Entries Found
+              </h3>
+              <p style={{ fontSize: 13, color: "var(--d-muted)", margin: "0 0 14px", maxWidth: 420 }}>
+                No records match your selected filters. Try broadening your date range or clearing search keywords.
+              </p>
+              {isFiltered && (
                 <button
                   type="button"
-                  className="audit-page-btn"
-                  disabled={page <= 0}
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  className="notif-btn notif-btn-ghost"
+                  onClick={handleResetFilters}
                 >
-                  <i className="ti ti-chevron-left" />
-                  Previous
+                  <i className="ti ti-rotate-clockwise" /> Reset Filters
                 </button>
-                <span style={{ fontSize: "12px", fontWeight: 700, color: "#344054", margin: "0 6px" }}>
+              )}
+            </div>
+          )}
+
+          {!loading && !loadError && logs.length > 0 && (
+            <>
+              <div className="audit-table-wrap">
+                <table className="data-table" id="audit-main-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: "20%" }}>TIMESTAMP (PHT)</th>
+                      <th style={{ width: "22%" }}>ACTOR</th>
+                      <th style={{ width: "18%" }}>ACTION / CATEGORY</th>
+                      <th style={{ width: "18%" }}>AFFECTED ENTITY</th>
+                      <th style={{ width: "16%" }}>SUMMARY</th>
+                      <th style={{ width: "6%", textAlign: "right" }}>DETAIL</th>
+                    </tr>
+                  </thead>
+                  <tbody className="act-table-animate">
+                    {logs.map((entry) => {
+                      const relative = timeAgo(entry.timestamp);
+                      const formatted = formatDate(entry.timestamp);
+                      const isEntityActive = entry.entity.exists;
+                      const badgeClass = categoryBadgeClass(entry.category);
+
+                      return (
+                        <tr
+                          key={entry.id}
+                          onClick={() => setSelectedEntry(entry)}
+                          style={{ cursor: "pointer" }}
+                        >
+                          {/* Timestamp */}
+                          <td>
+                            <div className="audit-cell-timestamp">
+                              <span className="act-title" style={{ fontSize: "12.5px" }}>{formatted}</span>
+                              {relative && <span className="act-category">{relative}</span>}
+                            </div>
+                          </td>
+
+                          {/* Actor */}
+                          <td>
+                            <div className="audit-cell-actor">
+                              <div className="audit-avatar-circle">
+                                {entry.actor?.name ? entry.actor.name.charAt(0).toUpperCase() : "S"}
+                              </div>
+                              <div className="audit-actor-text">
+                                <span className="audit-actor-name-row">
+                                  <strong>{entry.actor?.name || entry.actor?.email || "System Automation"}</strong>
+                                  {entry.actor?.role === "SUPER_ADMINISTRATOR" && (
+                                    <span className="chip-admin" style={{ fontSize: "9px", padding: "1px 5px" }}>
+                                      Super Admin
+                                    </span>
+                                  )}
+                                </span>
+                                {entry.actor?.name && entry.actor?.email && (
+                                  <span className="audit-actor-sub">{entry.actor.email}</span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Category & Action */}
+                          <td>
+                            <div className="audit-cell-cat">
+                              <span className={`status-pill ${badgeClass}`}>
+                                {entry.categoryLabel}
+                              </span>
+                              <span className="audit-action-label">
+                                {entry.actionLabel}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* Affected Entity */}
+                          <td>
+                            {isEntityActive ? (
+                              entry.entity.jumpUrl ? (
+                                <a
+                                  href={entry.entity.jumpUrl}
+                                  className="audit-entity-link"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title="Jump to entity"
+                                >
+                                  <i className="ti ti-link" style={{ fontSize: 12 }} />
+                                  <span>{entry.entity.label}</span>
+                                </a>
+                              ) : (
+                                <span className="audit-entity-tag">
+                                  {entry.entity.label}
+                                </span>
+                              )
+                            ) : (
+                              <span className="audit-entity-unavailable" title="Entity no longer available">
+                                <i className="ti ti-alert-circle" style={{ fontSize: 12 }} />
+                                <span>Deleted / Unavailable</span>
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Summary */}
+                          <td>
+                            <div className="audit-summary-text" title={entry.summary}>
+                              {entry.summary || "—"}
+                            </div>
+                          </td>
+
+                          {/* Action Details Button */}
+                          <td style={{ textAlign: "right" }}>
+                            <button
+                              type="button"
+                              className="notif-btn notif-btn-ghost"
+                              style={{ height: "28px", padding: "0 8px", fontSize: "11.5px" }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedEntry(entry);
+                              }}
+                              title="Inspect full audit event details and diffs"
+                            >
+                              <i className="ti ti-eye" style={{ fontSize: 13 }} />
+                              <span>View</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="audit-pagination-row">
+                <span className="audit-pagination-info">
                   Page {page + 1} of {Math.max(1, totalPages)}
                 </span>
-                <button
-                  type="button"
-                  className="audit-page-btn"
-                  disabled={page >= totalPages - 1}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next
-                  <i className="ti ti-chevron-right" />
-                </button>
+                <div className="audit-pagination-nav">
+                  <button
+                    type="button"
+                    className="notif-btn notif-btn-ghost"
+                    disabled={page <= 0}
+                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  >
+                    <i className="ti ti-chevron-left" />
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    className="notif-btn notif-btn-ghost"
+                    disabled={page >= totalPages - 1}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Next
+                    <i className="ti ti-chevron-right" />
+                  </button>
+                </div>
               </div>
-            </div>
-          </>
+            </>
+          )}
+        </div>
+
+        {/* ── Detail Modal ── */}
+        {selectedEntry && (
+          <AuditDetailModal
+            entry={selectedEntry}
+            onClose={() => setSelectedEntry(null)}
+          />
         )}
       </div>
-
-      {/* ── Detail Modal ── */}
-      {selectedEntry && (
-        <AuditDetailModal
-          entry={selectedEntry}
-          onClose={() => setSelectedEntry(null)}
-        />
-      )}
     </div>
   );
 }
