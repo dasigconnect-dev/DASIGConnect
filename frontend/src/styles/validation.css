@@ -1166,7 +1166,6 @@
   width: 100%;
   max-width: 620px;
   background: var(--val-surface);
-  border: 1px solid var(--val-border);
   border-radius: 14px;
   box-shadow: 0 6px 24px rgba(16, 24, 40, 0.06);
   overflow: hidden;

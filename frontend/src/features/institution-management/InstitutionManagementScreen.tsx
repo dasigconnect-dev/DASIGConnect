@@ -1638,8 +1638,11 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             className="im-add-btn"
             onClick={() => setShowAddModal(true)}
           >
-            <i className="ti ti-plus" aria-hidden="true"></i>
-            Add institution
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
+              <i className="ti ti-plus" style={{ fontSize: "12px", fontWeight: "bold" }} aria-hidden="true" />
+              <i className="ti ti-building" style={{ fontSize: "15px" }} aria-hidden="true" />
+            </span>
+            <span>Add Institution</span>
           </button>
         </header>
 
@@ -1659,10 +1662,18 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
                   <div className="im-skeleton-icon"></div>
                   <SkeletonBlock className="um-skeleton-line is-wide" />
                 </div>
-                <SkeletonBlock className="um-skeleton-line is-short" />
-                <SkeletonBlock className="um-skeleton-line is-wide" />
-                <SkeletonBlock className="um-skeleton-line is-short" />
-                <SkeletonBlock className="um-skeleton-line is-short" />
+                <div className="im-skeleton-cell">
+                  <SkeletonBlock className="um-skeleton-line is-short" />
+                </div>
+                <div className="im-skeleton-cell">
+                  <SkeletonBlock className="um-skeleton-line is-medium" />
+                </div>
+                <div className="im-skeleton-cell">
+                  <SkeletonBlock className="um-skeleton-line is-short" />
+                </div>
+                <div className="im-skeleton-cell">
+                  <SkeletonBlock className="um-skeleton-line is-short" />
+                </div>
               </div>
             ))}
           </div>
@@ -1682,8 +1693,11 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
               className="im-add-btn"
               onClick={() => setShowAddModal(true)}
             >
-              <i className="ti ti-building-plus" aria-hidden="true"></i>
-              Add first institution
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                <i className="ti ti-plus" style={{ fontSize: "12px", fontWeight: "bold" }} aria-hidden="true" />
+                <i className="ti ti-building" style={{ fontSize: "15px" }} aria-hidden="true" />
+              </span>
+              <span>Add first institution</span>
             </button>
           </div>
         )}
