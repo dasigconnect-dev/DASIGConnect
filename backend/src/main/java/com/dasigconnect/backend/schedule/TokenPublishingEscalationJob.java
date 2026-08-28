@@ -54,36 +54,38 @@ public class TokenPublishingEscalationJob {
     public void run() {
         Instant startedAt = Instant.now();
         try {
-            List<Submission> blocked = submissionRepository.findTokenBlockedScheduledSubmissions();
-            if (blocked.isEmpty()) {
-                scheduledJobHealthService.recordSuccess("TokenPublishingEscalationJob", startedAt);
-                return;
-            }
-
-            if (facebookPublisherService.hasUsableActiveToken()) {
-                retryBlockedSubmissions(blocked);
-                scheduledJobHealthService.recordSuccess("TokenPublishingEscalationJob", startedAt);
-                return;
-            }
-
-            Instant now = Instant.now();
-            for (Submission submission : blocked) {
-                Instant blockedAt = submission.getTokenBlockedAt();
-                if (blockedAt == null) {
-                    continue;
-                }
-
-                Duration blockedFor = Duration.between(blockedAt, now);
-                if (blockedFor.compareTo(FAIL_AFTER) >= 0) {
-                    failAfterFortyEightHours(submission);
-                } else if (blockedFor.compareTo(ESCALATE_AFTER) >= 0) {
-                    escalateAfterTwentyFourHours(submission);
-                }
-            }
+            escalateTokenBlockedSubmissions();
             scheduledJobHealthService.recordSuccess("TokenPublishingEscalationJob", startedAt);
         } catch (Exception ex) {
             log.error("TokenPublishingEscalationJob failed: {}", ex.getMessage(), ex);
             scheduledJobHealthService.recordFailure("TokenPublishingEscalationJob", startedAt, ex);
+        }
+    }
+
+    private void escalateTokenBlockedSubmissions() {
+        List<Submission> blocked = submissionRepository.findTokenBlockedScheduledSubmissions();
+        if (blocked.isEmpty()) {
+            return;
+        }
+
+        if (facebookPublisherService.hasUsableActiveToken()) {
+            retryBlockedSubmissions(blocked);
+            return;
+        }
+
+        Instant now = Instant.now();
+        for (Submission submission : blocked) {
+            Instant blockedAt = submission.getTokenBlockedAt();
+            if (blockedAt == null) {
+                continue;
+            }
+
+            Duration blockedFor = Duration.between(blockedAt, now);
+            if (blockedFor.compareTo(FAIL_AFTER) >= 0) {
+                failAfterFortyEightHours(submission);
+            } else if (blockedFor.compareTo(ESCALATE_AFTER) >= 0) {
+                escalateAfterTwentyFourHours(submission);
+            }
         }
     }
 

@@ -13,6 +13,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -35,17 +36,31 @@ public class SystemHealthService {
 
     private static final Logger log = LoggerFactory.getLogger(SystemHealthService.class);
 
-    private static final List<String> EXPECTED_JOBS = List.of(
-            "PublishingSchedulerJob",
-            "StaleSubmissionDetectorJob",
-            "EmbeddingReconciliationJob",
-            "MediaAssetRetentionPurgeJob",
-            "StaleDraftSlotReleaseJob",
-            "TokenHealthCheckJob",
-            "TokenPublishingEscalationJob",
-            "SocialEngagementSyncJob",
-            "AbandonmentDetectorJob",
-            "ExpiredOverrideCleanupJob");
+    /**
+     * Every scheduled job that reports health, mapped to how often it is expected
+     * to run. A job is flagged WARNING (stale) only once its last run is older
+     * than twice its expected interval, so weekly jobs are not permanently stale.
+     * Insertion order controls display order before the alphabetical sort.
+     */
+    private static final Map<String, Duration> EXPECTED_JOBS = new LinkedHashMap<>();
+    static {
+        EXPECTED_JOBS.put("PublishingSchedulerJob", Duration.ofMinutes(1));
+        EXPECTED_JOBS.put("ReviewLockCleanupJob", Duration.ofMinutes(1));
+        EXPECTED_JOBS.put("StaleSubmissionDetectorJob", Duration.ofMinutes(5));
+        EXPECTED_JOBS.put("AbandonmentDetectorJob", Duration.ofMinutes(5));
+        EXPECTED_JOBS.put("ExpiredOverrideCleanupJob", Duration.ofMinutes(5));
+        EXPECTED_JOBS.put("TokenPublishingEscalationJob", Duration.ofMinutes(5));
+        EXPECTED_JOBS.put("ValidationDeadlineNotificationJob", Duration.ofMinutes(5));
+        EXPECTED_JOBS.put("EmbeddingReconciliationJob", Duration.ofMinutes(5));
+        EXPECTED_JOBS.put("SocialEngagementSyncJob", Duration.ofMinutes(15));
+        EXPECTED_JOBS.put("MediaAssetRetentionPurgeJob", Duration.ofDays(1));
+        EXPECTED_JOBS.put("StaleDraftSlotReleaseJob", Duration.ofDays(1));
+        EXPECTED_JOBS.put("TokenHealthCheckJob", Duration.ofDays(1));
+        EXPECTED_JOBS.put("ScheduledJobRunRetentionJob", Duration.ofDays(1));
+        EXPECTED_JOBS.put("EmbeddingFailureDigestJob", Duration.ofDays(7));
+        EXPECTED_JOBS.put("EmptyScheduleWarningJob", Duration.ofDays(7));
+    }
+    private static final Duration DEFAULT_STALE_AFTER = Duration.ofHours(24);
 
     private final JdbcTemplate jdbcTemplate;
     private final ScheduledJobRunRepository scheduledJobRunRepository;
@@ -82,7 +97,9 @@ public class SystemHealthService {
                 .build();
     }
 
-    @Transactional(readOnly = true)
+    // Intentionally not @Transactional: each metric below runs its own autocommit
+    // JdbcTemplate query so one failing query cannot poison a shared transaction
+    // and cascade "current transaction is aborted" into every later metric.
     public SystemHealthSummaryDto summary() {
         List<StorageMetricDto> storage = storage();
         List<ExternalServiceHealthDto> services = externalServices();
@@ -135,7 +152,7 @@ public class SystemHealthService {
         for (ScheduledJobRun run : scheduledJobRunRepository.findLatestRunsByJobName()) {
             latestByName.put(run.getJobName(), run);
         }
-        for (String expected : EXPECTED_JOBS) {
+        for (String expected : EXPECTED_JOBS.keySet()) {
             latestByName.putIfAbsent(expected, null);
         }
         return latestByName.entrySet().stream()
@@ -144,7 +161,6 @@ public class SystemHealthService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
     public List<OperationalMetricDto> operationalMetrics() {
         Instant start = Instant.now().minus(30, ChronoUnit.DAYS);
         return List.of(
@@ -270,14 +286,24 @@ public class SystemHealthService {
                 "Mail sender does not expose a connection health probe.", null, null);
     }
 
+    /** A job that is expected no more than once a day is not "unavailable" just because
+     *  it has not run since the last restart — only frequent jobs that never run are. */
+    private static final Duration INFREQUENT_JOB_THRESHOLD = Duration.ofHours(23);
+
     private BackgroundJobHealthDto toJobDto(String jobName, ScheduledJobRun run) {
         String displayName = jobDisplayName(jobName);
         if (run == null) {
-            return new BackgroundJobHealthDto(displayName, HealthStatus.UNAVAILABLE,
-                    null, null, null, null, null, "No recorded run yet.");
+            Duration interval = EXPECTED_JOBS.get(jobName);
+            boolean infrequent = interval != null && interval.compareTo(INFREQUENT_JOB_THRESHOLD) >= 0;
+            return infrequent
+                    ? new BackgroundJobHealthDto(displayName, HealthStatus.SCHEDULED,
+                            null, null, null, null, null, "Awaiting first run.")
+                    : new BackgroundJobHealthDto(displayName, HealthStatus.UNAVAILABLE,
+                            null, null, null, null, null, "No recorded run yet.");
         }
         boolean failed = "FAILED".equalsIgnoreCase(run.getStatus());
-        Instant staleCutoff = Instant.now().minus(24, ChronoUnit.HOURS);
+        Duration staleAfter = EXPECTED_JOBS.getOrDefault(jobName, DEFAULT_STALE_AFTER).multipliedBy(2);
+        Instant staleCutoff = Instant.now().minus(staleAfter);
         HealthStatus status = failed ? HealthStatus.UNHEALTHY
                 : run.getStartedAt().isBefore(staleCutoff) ? HealthStatus.WARNING
                 : HealthStatus.HEALTHY;
@@ -301,7 +327,7 @@ public class SystemHealthService {
                     JOIN submissions s ON s.id = vl.submission_id
                     WHERE vl.created_at >= ?
                       AND vl.action IN ('approved', 'edited_and_approved')
-                    """, start);
+                    """, Timestamp.from(start));
             double value = number(row.get("value"));
             long sample = longNumber(row.get("sample_size"));
             if (sample == 0) {
@@ -330,7 +356,7 @@ public class SystemHealthService {
                     FROM validation_logs
                     WHERE created_at >= ?
                       AND action IN ('approved', 'edited_and_approved')
-                    """, start);
+                    """, Timestamp.from(start));
             long approvals = longNumber(row.get("approvals"));
             long edited = longNumber(row.get("edited"));
             if (approvals == 0) {
@@ -354,7 +380,7 @@ public class SystemHealthService {
                     FROM audit_log
                     WHERE created_at >= ?
                       AND action IN ('MANUAL_PUBLISH_STARTED', 'MANUAL_PUBLISH_COMPLETE')
-                    """, start);
+                    """, Timestamp.from(start));
             long started = longNumber(row.get("started"));
             long completed = longNumber(row.get("completed"));
             if (started == 0) {
@@ -377,7 +403,7 @@ public class SystemHealthService {
                            COUNT(CASE WHEN result = 'success' THEN 1 END) AS successes
                     FROM publication_attempts
                     WHERE attempted_at >= ?
-                    """, start);
+                    """, Timestamp.from(start));
             long attempts = longNumber(row.get("attempts"));
             long successes = longNumber(row.get("successes"));
             if (attempts == 0) {
@@ -400,7 +426,7 @@ public class SystemHealthService {
                     FROM submissions
                     WHERE fast_track = true
                       AND created_at >= ?
-                    """, Long.class, start);
+                    """, Long.class, Timestamp.from(start));
             long value = count == null ? 0 : count;
             return metric("live_event_fast_track_volume", "Live Event Fast-Track volume", value, "count", value,
                     HealthStatus.HEALTHY, "Fast-track live event submissions created in the last 30 days.");
@@ -461,6 +487,11 @@ public class SystemHealthService {
             case "SocialEngagementSyncJob" -> "Social Engagement Sync";
             case "AbandonmentDetectorJob" -> "Abandonment Detector";
             case "ExpiredOverrideCleanupJob" -> "Expired Override Cleanup";
+            case "ReviewLockCleanupJob" -> "Review Lock Cleanup";
+            case "ValidationDeadlineNotificationJob" -> "Validation Deadline Notification";
+            case "EmbeddingFailureDigestJob" -> "Embedding Failure Digest";
+            case "EmptyScheduleWarningJob" -> "Empty Schedule Warning";
+            case "ScheduledJobRunRetentionJob" -> "Job Run Retention";
             default -> jobName.replaceAll("(?<=[a-z])(?=[A-Z])", " ").replace(" Job", "");
         };
     }

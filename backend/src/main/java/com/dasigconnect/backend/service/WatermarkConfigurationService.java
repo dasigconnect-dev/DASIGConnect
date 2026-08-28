@@ -4,8 +4,10 @@ import com.dasigconnect.backend.model.dto.settings.WatermarkConfigurationDto;
 import com.dasigconnect.backend.model.dto.settings.WatermarkConfigurationRequestDto;
 import com.dasigconnect.backend.model.dto.settings.WatermarkElementDto;
 import com.dasigconnect.backend.model.entity.Institution;
+import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.WatermarkConfiguration;
 import com.dasigconnect.backend.repository.InstitutionRepository;
+import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.repository.WatermarkConfigurationRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -13,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -25,15 +28,21 @@ public class WatermarkConfigurationService {
 
     private final WatermarkConfigurationRepository repository;
     private final InstitutionRepository institutions;
+    private final UserRepository userRepository;
+    private final AuditLogService auditLogService;
     private final ObjectMapper objectMapper;
 
     public WatermarkConfigurationService(
             WatermarkConfigurationRepository repository,
             InstitutionRepository institutions,
+            UserRepository userRepository,
+            AuditLogService auditLogService,
             ObjectMapper objectMapper
     ) {
         this.repository = repository;
         this.institutions = institutions;
+        this.userRepository = userRepository;
+        this.auditLogService = auditLogService;
         this.objectMapper = objectMapper;
     }
 
@@ -110,6 +119,17 @@ public class WatermarkConfigurationService {
         WatermarkConfiguration saved = repository.save(config);
         boolean isOverride = institutionId != null;
         String instName = institution != null ? institution.getName() : "DASIG Central Visayas (Default)";
+
+        try {
+            User user = actor != null && actor.userId() != null ? userRepository.findById(actor.userId()).orElse(null) : null;
+            Map<String, Object> meta = Map.of(
+                    "institutionName", instName,
+                    "enabled", saved.isEnabled(),
+                    "elementsCount", request.elements() != null ? request.elements().size() : 0
+            );
+            auditLogService.record(user, "WATERMARK_CONFIG_UPDATED", null, null, saved.getId(), meta);
+        } catch (Exception ignored) {}
+
         return mapToDto(saved, isOverride, instName);
     }
 
@@ -120,7 +140,14 @@ public class WatermarkConfigurationService {
         }
         authorizeWrite(institutionId, actor);
 
-        repository.findByInstitutionId(institutionId).ifPresent(repository::delete);
+        repository.findByInstitutionId(institutionId).ifPresent(config -> {
+            repository.delete(config);
+            try {
+                User user = actor != null && actor.userId() != null ? userRepository.findById(actor.userId()).orElse(null) : null;
+                Map<String, Object> meta = Map.of("institutionId", institutionId.toString(), "action", "RESET_TO_DEFAULT");
+                auditLogService.record(user, "WATERMARK_OVERRIDE_REMOVED", null, null, institutionId, meta);
+            } catch (Exception ignored) {}
+        });
     }
 
     private void authorizeRead(UUID institutionId, JwtUserDetails actor) {

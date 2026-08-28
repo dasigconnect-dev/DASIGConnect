@@ -100,3 +100,59 @@ export function getValidationLog(submissionId: string, signal?: AbortSignal) {
     signal,
   });
 }
+
+// ── A9: media edits during review (admin only) ──────────────────────────────
+
+function safeFileName(name: string) {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "-");
+}
+
+function fileType(file: File) {
+  const ext = file.name.split(".").pop()?.toLowerCase() || file.type.split("/")[1]?.toLowerCase() || "jpeg";
+  return ext === "jpg" ? "jpeg" : ext;
+}
+
+/** Upload device files straight to Supabase, then attach each to the in-review submission. */
+export async function uploadValidationMedia(submissionId: string, files: File[]) {
+  let last;
+  for (const file of files) {
+    const { data } = await api.post<{ signedUrl: string; publicUrl: string; path: string }>(
+      `/validation/${submissionId}/media/upload-url`,
+      { fileName: safeFileName(file.name), fileType: fileType(file), fileSizeBytes: file.size },
+    );
+    const put = await fetch(data.signedUrl, {
+      method: "PUT",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    if (!put.ok) throw new Error((await put.text().catch(() => "")) || "Supabase media upload failed.");
+    last = await api.post(`/validation/${submissionId}/media`, {
+      storageUrl: data.publicUrl,
+      fileName: file.name,
+      fileType: fileType(file),
+      fileSizeBytes: file.size,
+    });
+  }
+  return last;
+}
+
+export function attachValidationLibraryAsset(submissionId: string, mediaAssetId: string) {
+  return api.post<void>(`/validation/${submissionId}/assets`, { mediaAssetId });
+}
+
+export function detachValidationAsset(submissionId: string, mediaAssetId: string) {
+  return api.delete<void>(`/validation/${submissionId}/assets/${mediaAssetId}`);
+}
+
+export function reorderValidationMedia(
+  submissionId: string,
+  mediaAssetIds: string[],
+  mediaCaptions?: Record<string, string>,
+  skipWatermarks?: Record<string, boolean>,
+) {
+  return api.patch<void>(`/validation/${submissionId}/media/order`, {
+    mediaAssetIds,
+    mediaCaptions,
+    skipWatermarks,
+  });
+}

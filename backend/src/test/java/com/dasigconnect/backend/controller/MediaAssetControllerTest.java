@@ -165,6 +165,21 @@ class MediaAssetControllerTest {
 
     @Test
     @WithMockUser
+    void history_authenticated_returns200WithEntries() throws Exception {
+        UUID assetId = UUID.randomUUID();
+        when(mediaAssetService.history(eq(assetId), any())).thenReturn(List.of(
+                new com.dasigconnect.backend.model.dto.media.MediaAssetHistoryEntryDto(
+                        "MEDIA_ASSET_MOVED", "Jane Cruz", "jane@example.edu",
+                        Instant.now(), "Moved to Campaigns")));
+
+        mockMvc.perform(get("/api/v1/media-assets/{id}/history", assetId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].summary").value("Moved to Campaigns"))
+                .andExpect(jsonPath("$.data[0].actorName").value("Jane Cruz"));
+    }
+
+    @Test
+    @WithMockUser
     void addTag_authenticated_returns201() throws Exception {
         UUID assetId = UUID.randomUUID();
         UUID tagId = UUID.randomUUID();

@@ -28,6 +28,7 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetAddToDraftRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetHistoryEntryDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
@@ -87,6 +88,14 @@ public class MediaAssetController {
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(mediaAssetService.get(id, user)));
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<List<MediaAssetHistoryEntryDto>>> history(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.history(id, user)));
     }
 
     @PostMapping("/{id}/use-in-new-post")

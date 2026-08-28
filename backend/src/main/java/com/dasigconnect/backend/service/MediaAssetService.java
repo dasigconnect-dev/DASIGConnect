@@ -3,10 +3,14 @@ package com.dasigconnect.backend.service;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -22,6 +26,7 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetHistoryEntryDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
@@ -38,14 +43,17 @@ import com.dasigconnect.backend.model.entity.MediaAlbum;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaAssetStatus;
 import com.dasigconnect.backend.model.entity.MediaFileType;
+import com.dasigconnect.backend.model.entity.AuditLog;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.AssetTagRepository;
+import com.dasigconnect.backend.repository.AuditLogRepository;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
+import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 
 import jakarta.persistence.EntityManager;
@@ -68,6 +76,10 @@ public class MediaAssetService {
     private final SupabaseStorageService supabaseStorageService;
     private final AIClassificationService aiClassificationService;
     private final com.dasigconnect.backend.external.VoyageAIClient voyageAIClient;
+    private final AuditLogService auditLogService;
+    private final AuditLogRepository auditLogRepository;
+    private final UserRepository userRepository;
+    private final ObjectMapper objectMapper;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -83,7 +95,11 @@ public class MediaAssetService {
             SubmissionService submissionService,
             SupabaseStorageService supabaseStorageService,
             AIClassificationService aiClassificationService,
-            com.dasigconnect.backend.external.VoyageAIClient voyageAIClient) {
+            com.dasigconnect.backend.external.VoyageAIClient voyageAIClient,
+            AuditLogService auditLogService,
+            AuditLogRepository auditLogRepository,
+            UserRepository userRepository,
+            ObjectMapper objectMapper) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
@@ -95,6 +111,10 @@ public class MediaAssetService {
         this.supabaseStorageService = supabaseStorageService;
         this.aiClassificationService = aiClassificationService;
         this.voyageAIClient = voyageAIClient;
+        this.auditLogService = auditLogService;
+        this.auditLogRepository = auditLogRepository;
+        this.userRepository = userRepository;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -280,6 +300,10 @@ public class MediaAssetService {
     public MediaAssetDetailDto get(UUID id, JwtUserDetails user) {
         MediaAsset asset = mediaAssetRepository.findActiveById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
+        // A STAGED draft upload has no institution and is not a library asset.
+        if (asset.getInstitution() == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
+        }
         if (!isAdmin(user) && !visibleInstitutionIds(user).contains(asset.getInstitution().getId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
         }
@@ -297,6 +321,111 @@ public class MediaAssetService {
                 .map(AssetTagDto::from)
                 .toList();
         return MediaAssetDetailDto.from(asset, usedIn, tags);
+    }
+
+    /**
+     * Activity history for one asset: the {@code audit_log} rows recorded against
+     * its id (newest first) plus a synthesized "Uploaded" entry so assets that
+     * predate audit logging are not blank. Same read scope as {@link #get}.
+     */
+    @Transactional(readOnly = true)
+    public List<MediaAssetHistoryEntryDto> history(UUID id, JwtUserDetails user) {
+        MediaAsset asset = mediaAssetRepository.findActiveById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
+        if (asset.getInstitution() == null
+                || (!isAdmin(user) && !visibleInstitutionIds(user).contains(asset.getInstitution().getId()))
+                || !isPublishedToRepository(asset)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
+        }
+
+        List<AuditLog> rows = auditLogRepository.findByResourceIdOrderByCreatedAtDesc(id);
+        Set<UUID> actorIds = rows.stream()
+                .map(r -> r.getActor() != null ? r.getActor().getId() : null)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        Map<UUID, User> actors = new java.util.HashMap<>();
+        userRepository.findAllById(actorIds).forEach(u -> actors.put(u.getId(), u));
+
+        List<MediaAssetHistoryEntryDto> entries = new ArrayList<>();
+        for (AuditLog row : rows) {
+            User actor = row.getActor() != null ? actors.get(row.getActor().getId()) : null;
+            entries.add(new MediaAssetHistoryEntryDto(
+                    row.getAction(),
+                    displayName(actor),
+                    actor != null ? actor.getEmail() : null,
+                    row.getCreatedAt(),
+                    summarize(row.getAction(), parseMetadata(row.getMetadata()))));
+        }
+
+        // Synthesized upload event (oldest) — always present so the history is
+        // never blank, even for assets that predate audit logging.
+        User uploader = asset.getUploader();
+        entries.add(new MediaAssetHistoryEntryDto(
+                "MEDIA_ASSET_UPLOADED",
+                displayName(uploader),
+                uploader != null ? uploader.getEmail() : null,
+                asset.getCreatedAt(),
+                "Uploaded " + asset.getFileName()));
+        return entries;
+    }
+
+    // ── audit helpers ──
+
+    private void recordAssetAudit(JwtUserDetails user, String action, UUID assetId, Map<String, ?> metadata) {
+        try {
+            auditLogService.record(
+                    userRepository.getReferenceById(user.userId()),
+                    action, null, null, assetId, metadata);
+        } catch (Exception ex) {
+            log.warn("Failed to record audit '{}' for asset {}: {}", action, assetId, ex.getMessage());
+        }
+    }
+
+    private Map<String, Object> parseMetadata(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        } catch (Exception ex) {
+            return Map.of();
+        }
+    }
+
+    private static String displayName(User user) {
+        if (user == null) {
+            return "System";
+        }
+        if (user.getDisplayName() != null && !user.getDisplayName().isBlank()) {
+            return user.getDisplayName();
+        }
+        String name = ((user.getFirstName() == null ? "" : user.getFirstName()) + " "
+                + (user.getLastName() == null ? "" : user.getLastName())).trim();
+        return name.isEmpty() ? user.getEmail() : name;
+    }
+
+    private static String summarize(String action, Map<String, Object> meta) {
+        return switch (action) {
+            case "MEDIA_ASSET_UPLOADED" -> {
+                Object name = meta.get("fileName");
+                yield name != null ? "Uploaded " + name : "Uploaded";
+            }
+            case "MEDIA_ASSET_MOVED" -> {
+                Object to = meta.get("toAlbumName");
+                yield to != null ? "Moved to " + to : "Moved to another folder";
+            }
+            case "MEDIA_ASSET_DELETED" ->
+                Boolean.TRUE.equals(meta.get("bulk")) ? "Deleted (bulk)" : "Deleted";
+            case "MEDIA_ASSET_TAG_ADDED" -> {
+                Object label = meta.get("label");
+                yield label != null ? "Tagged “" + label + "”" : "Tag added";
+            }
+            case "MEDIA_ASSET_TAG_REMOVED" -> {
+                Object label = meta.get("label");
+                yield label != null ? "Removed tag “" + label + "”" : "Tag removed";
+            }
+            default -> action.replace("MEDIA_ASSET_", "").replace('_', ' ').toLowerCase();
+        };
     }
 
     public SubmissionResponseDto useInNewPost(UUID assetId, MediaAssetUseInNewPostRequestDto dto, JwtUserDetails user) {
@@ -336,6 +465,7 @@ public class MediaAssetService {
         asset.setStatus(MediaAssetStatus.DELETED);
         mediaAssetEmbeddingRepository.deleteByAssetId(assetId);
         mediaAssetRepository.save(asset);
+        recordAssetAudit(user, "MEDIA_ASSET_DELETED", assetId, Map.of("bulk", false, "force", force));
     }
 
     public MediaAssetBulkDeleteResponseDto bulkDelete(MediaAssetBulkDeleteRequestDto dto, JwtUserDetails user) {
@@ -363,6 +493,9 @@ public class MediaAssetService {
             mediaAssetEmbeddingRepository.deleteByAssetId(asset.getId());
         }
         mediaAssetRepository.saveAll(assets);
+        for (UUID assetId : assetIds) {
+            recordAssetAudit(user, "MEDIA_ASSET_DELETED", assetId, Map.of("bulk", true));
+        }
         return new MediaAssetBulkDeleteResponseDto(assetIds);
     }
 
@@ -411,6 +544,16 @@ public class MediaAssetService {
         asset.setStatus(MediaAssetStatus.PROCESSING);
         asset = mediaAssetRepository.save(asset);
         List<AssetTagDto> savedTags = saveManualTags(asset, manualTags);
+
+        Map<String, Object> auditMeta = new LinkedHashMap<>();
+        auditMeta.put("fileName", asset.getFileName());
+        auditMeta.put("institutionId", institutionId.toString());
+        if (album != null) {
+            auditMeta.put("albumId", album.getId().toString());
+            auditMeta.put("albumName", album.getName());
+        }
+        auditMeta.put("tagCount", savedTags.size());
+        recordAssetAudit(user, "MEDIA_ASSET_UPLOADED", asset.getId(), auditMeta);
 
         // Trigger async classification + embedding — never blocks the upload response
         final UUID savedId = asset.getId();
@@ -669,6 +812,7 @@ public class MediaAssetService {
         MediaAlbum album = mediaAlbumRepository.findById(dto.getAlbumId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selected album was not found."));
 
+        MediaAlbum fromAlbum = asset.getMediaAlbum();
         UUID assetInstitutionId = asset.getInstitution().getId();
         UUID targetInstitutionId = album.getInstitution().getId();
         if (!targetInstitutionId.equals(assetInstitutionId)) {
@@ -685,7 +829,22 @@ public class MediaAssetService {
             asset.setInstitution(album.getInstitution());
         }
         asset.setMediaAlbum(album);
-        return MediaAssetDetailDto.from(mediaAssetRepository.save(asset), List.of(), currentTags(assetId));
+        MediaAssetDetailDto result =
+                MediaAssetDetailDto.from(mediaAssetRepository.save(asset), List.of(), currentTags(assetId));
+
+        Map<String, Object> moveMeta = new LinkedHashMap<>();
+        if (fromAlbum != null) {
+            moveMeta.put("fromAlbumId", fromAlbum.getId().toString());
+            moveMeta.put("fromAlbumName", fromAlbum.getName());
+        }
+        moveMeta.put("toAlbumId", album.getId().toString());
+        moveMeta.put("toAlbumName", album.getName());
+        if (!targetInstitutionId.equals(assetInstitutionId)) {
+            moveMeta.put("fromInstitutionId", assetInstitutionId.toString());
+            moveMeta.put("toInstitutionId", targetInstitutionId.toString());
+        }
+        recordAssetAudit(user, "MEDIA_ASSET_MOVED", assetId, moveMeta);
+        return result;
     }
 
     public AssetTagDto addTag(UUID assetId, AddAssetTagRequestDto dto, JwtUserDetails user) {
@@ -700,7 +859,9 @@ public class MediaAssetService {
         tag.setMediaAsset(asset);
         tag.setLabel(trimmedLabel);
         tag.setSource("manual");
-        return AssetTagDto.from(assetTagRepository.save(tag));
+        AssetTagDto saved = AssetTagDto.from(assetTagRepository.save(tag));
+        recordAssetAudit(user, "MEDIA_ASSET_TAG_ADDED", assetId, Map.of("label", trimmedLabel));
+        return saved;
     }
 
     public void removeTag(UUID assetId, UUID tagId, JwtUserDetails user) {
@@ -710,7 +871,9 @@ public class MediaAssetService {
         if (!tag.getMediaAsset().getId().equals(assetId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tag not found.");
         }
+        String label = tag.getLabel();
         assetTagRepository.delete(tag);
+        recordAssetAudit(user, "MEDIA_ASSET_TAG_REMOVED", assetId, Map.of("label", label));
     }
 
     public MediaAssetUploadUrlResponseDto createUploadUrl(MediaAssetUploadUrlRequestDto dto, JwtUserDetails user) {

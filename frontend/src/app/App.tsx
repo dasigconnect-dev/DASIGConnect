@@ -33,6 +33,7 @@ import ValidationQueueScreen from "../features/validation/ValidationQueueScreen"
 import InstitutionManagementScreen from "../features/institution-management/InstitutionManagementScreen";
 import AdministratorManagementScreen from "../features/administrator-management/AdministratorManagementScreen";
 import SystemHealthScreen from "../features/system-health/SystemHealthScreen";
+import AuditLogScreen from "../features/audit-log/AuditLogScreen";
 import CalendarScreen from "../features/calendar/CalendarScreen";
 import MediaRepositoryScreen from "../features/media-repository/MediaRepositoryScreen";
 import NotificationsScreen from "../features/notifications/NotificationsScreen";
@@ -752,6 +753,14 @@ function App() {
             }
           />
           <Route
+            path="/admin/audit-log"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
+                <AuditLogScreen user={currentUser!} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/validation/queue"
             element={
               <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
@@ -811,24 +820,23 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/submissions/new"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+                <SubmissionScreen user={currentUser!} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/submissions/:submissionId"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+                <SubmissionScreen user={currentUser!} />
+              </ProtectedRoute>
+            }
+          />
         </Route>
-
-        <Route
-          path="/submissions/new"
-          element={
-            <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
-              <SubmissionScreen user={currentUser!} />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/submissions/:submissionId"
-          element={
-            <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
-              <SubmissionScreen user={currentUser!} />
-            </ProtectedRoute>
-          }
-        />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

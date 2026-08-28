@@ -23,6 +23,8 @@ public class MediaAssetSummaryDto {
     private String uploaderEmail;
     private String caption;
     private boolean skipWatermark;
+    /** MediaAssetStatus name. "STAGED" = a draft upload not yet bound to an institution. */
+    private String status;
 
     public static MediaAssetSummaryDto from(MediaAsset asset) {
         MediaAssetSummaryDto dto = new MediaAssetSummaryDto();
@@ -38,10 +40,14 @@ public class MediaAssetSummaryDto {
             dto.albumName = asset.getMediaAlbum().getName();
         }
         dto.createdAt = asset.getCreatedAt();
-        dto.institutionId = asset.getInstitution().getId();
-        dto.institutionName = asset.getInstitution().getName();
+        // Null for a STAGED (draft-only) upload — it has no institution yet.
+        if (asset.getInstitution() != null) {
+            dto.institutionId = asset.getInstitution().getId();
+            dto.institutionName = asset.getInstitution().getName();
+        }
         dto.uploaderId = asset.getUploader().getId();
         dto.uploaderEmail = asset.getUploader().getEmail();
+        dto.status = asset.getStatus() != null ? asset.getStatus().name() : null;
         return dto;
     }
 
@@ -68,4 +74,5 @@ public class MediaAssetSummaryDto {
     public String getUploaderEmail() { return uploaderEmail; }
     public String getCaption() { return caption; }
     public boolean isSkipWatermark() { return skipWatermark; }
+    public String getStatus() { return status; }
 }

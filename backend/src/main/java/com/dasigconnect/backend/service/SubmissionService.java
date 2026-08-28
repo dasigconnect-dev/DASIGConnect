@@ -39,7 +39,9 @@ import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
 import com.dasigconnect.backend.model.entity.Institution;
+import com.dasigconnect.backend.model.entity.AssetTag;
 import com.dasigconnect.backend.model.entity.MediaAsset;
+import com.dasigconnect.backend.model.entity.MediaAssetStatus;
 import com.dasigconnect.backend.model.entity.MediaFileType;
 import com.dasigconnect.backend.model.entity.NotificationEventType;
 import com.dasigconnect.backend.model.entity.Submission;
@@ -47,6 +49,7 @@ import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
+import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.ReviewLockRepository;
@@ -97,6 +100,8 @@ public class SubmissionService {
     @Value("${app.guardrails.enforced:true}")
     private boolean guardRailsEnforced = true;
 
+    private final AssetTagRepository assetTagRepository;
+
     public SubmissionService(
             SubmissionRepository submissionRepository,
             InstitutionRepository institutionRepository,
@@ -110,6 +115,7 @@ public class SubmissionService {
             NotificationService notificationService,
             EmailDeliveryService emailDeliveryService,
             UserRepository userRepository,
+            AssetTagRepository assetTagRepository,
             ApplicationEventPublisher eventPublisher) {
         this.submissionRepository = submissionRepository;
         this.institutionRepository = institutionRepository;
@@ -123,6 +129,7 @@ public class SubmissionService {
         this.notificationService = notificationService;
         this.emailDeliveryService = emailDeliveryService;
         this.userRepository = userRepository;
+        this.assetTagRepository = assetTagRepository;
         this.eventPublisher = eventPublisher;
     }
 
@@ -130,9 +137,14 @@ public class SubmissionService {
     public SignedUploadUrlResponse createSignedUploadUrl(UUID submissionId, SignedUploadUrlRequest dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
+        return signedUploadUrlFor(submission, dto);
+    }
+
+    /** Media-upload URL core — caller owns the auth/status checks. Reused by ValidationService. */
+    SignedUploadUrlResponse signedUploadUrlFor(Submission submission, SignedUploadUrlRequest dto) {
         validateMediaFile(dto.getFileType(), dto.getFileSizeBytes());
         String safeFileName = dto.getFileName().replaceAll("[^a-zA-Z0-9._-]", "-");
-        String objectPath = submissionId + "/" + UUID.randomUUID() + "-" + safeFileName;
+        String objectPath = submission.getId() + "/" + UUID.randomUUID() + "-" + safeFileName;
         String signedUrl = supabaseStorageService.createSignedUploadUrl(objectPath);
         String publicUrl = supabaseStorageService.getPublicUrl(objectPath);
         return new SignedUploadUrlResponse(signedUrl, publicUrl, objectPath);
@@ -229,8 +241,58 @@ public class SubmissionService {
     public SubmissionResponseDto update(UUID submissionId, SubmissionUpdateDto dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
+        maybeRehomeSubmission(submission, dto.getInstitutionId(), user);
         submission = applySubmissionEdits(submission, dto);
         return buildResponse(submission);
+    }
+
+    /**
+     * Moves an editable draft to a different institution when an admin composer
+     * picks a new "Posting As" scope. Media attached from the previous
+     * institution's library is detached (the {@link MediaAsset} rows stay in
+     * that library; draft-only uploads that end up orphaned are purged), any
+     * held slot is released, and the schedule is cleared because guard rails are
+     * evaluated per institution. No-op when the id is unchanged/absent.
+     */
+    private void maybeRehomeSubmission(Submission submission, UUID requestedInstitutionId, JwtUserDetails user) {
+        if (requestedInstitutionId == null
+                || requestedInstitutionId.equals(submission.getInstitution().getId())) {
+            return;
+        }
+        boolean isAdmin = "administrator".equalsIgnoreCase(user.role())
+                || "super_administrator".equalsIgnoreCase(user.role());
+        if (!isAdmin) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only network administrators can change a submission's institution.");
+        }
+        Institution target = institutionRepository.findById(requestedInstitutionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Institution not found: " + requestedInstitutionId));
+
+        UUID previousInstitutionId = submission.getInstitution().getId();
+
+        // Staged uploads (status STAGED, no institution) are not bound to the old
+        // institution — they stay attached and survive the move. Only assets
+        // picked from the previous institution's library are detached; those rows
+        // remain in that library, so nothing is lost.
+        List<MediaAsset> libraryPicks = submissionMediaAssetRepository
+                .findMediaAssetsBySubmissionId(submission.getId()).stream()
+                .filter(asset -> asset.getStatus() != MediaAssetStatus.STAGED)
+                .toList();
+        for (MediaAsset asset : libraryPicks) {
+            submissionMediaAssetRepository
+                    .findBySubmissionIdAndMediaAssetId(submission.getId(), asset.getId())
+                    .ifPresent(submissionMediaAssetRepository::delete);
+        }
+        submissionMediaAssetRepository.flush();
+        slotReservationService.deleteAllForSubmission(submission.getId());
+
+        submission.setInstitution(target);
+        submission.setScheduledAt(null);
+        refreshManualPublishingFlag(submission);
+        log.info("Submission {} re-homed from institution {} to {} by user {} ({} library picks detached, staged uploads kept)",
+                submission.getId(), previousInstitutionId, requestedInstitutionId, user.userId(),
+                libraryPicks.size());
     }
 
     /**
@@ -310,7 +372,10 @@ public class SubmissionService {
 
     /**
      * Deletes a DRAFT submission and removes its slot reservations. Only the
-     * owning contributor may delete. Only DRAFT status is deletable.
+     * owning contributor may delete. Only DRAFT status is deletable. Media that
+     * was uploaded solely for this draft and is now orphaned is permanently
+     * purged (row + storage object); assets picked from the library or ever used
+     * beyond draft status stay put.
      */
     public void delete(UUID submissionId, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
@@ -318,10 +383,17 @@ public class SubmissionService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only DRAFT submissions can be deleted. Current status: " + submission.getStatus());
         }
+        List<MediaAsset> attached =
+                submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId);
         submissionMediaAssetRepository.deleteBySubmissionId(submissionId);
+        submissionMediaAssetRepository.flush();
+        for (MediaAsset asset : attached) {
+            purgeOrphanedDraftUpload(asset.getId(), "draft " + submissionId + " deleted");
+        }
         slotReservationService.deleteAllForSubmission(submissionId);
         submissionRepository.delete(submission);
-        log.info("Submission {} deleted by user {}", submissionId, user.userId());
+        log.info("Submission {} deleted by user {} ({} orphan-checked media)",
+                submissionId, user.userId(), attached.size());
     }
 
     /**
@@ -365,6 +437,21 @@ public class SubmissionService {
             throw new ResponseStatusException(HttpStatusCode.valueOf(422),
                     "At least one valid media attachment is required before submitting.");
         }
+
+        // Promote staged draft uploads: bind them to the now-final institution and
+        // hand them to the AI pipeline. Library-picked assets are already bound.
+        List<MediaAsset> staged = submissionMediaAssetRepository
+                .findMediaAssetsBySubmissionId(submissionId).stream()
+                .filter(asset -> asset.getStatus() == MediaAssetStatus.STAGED)
+                .toList();
+        if (!staged.isEmpty()) {
+            for (MediaAsset asset : staged) {
+                asset.setInstitution(submission.getInstitution());
+                asset.setStatus(MediaAssetStatus.PROCESSING);
+            }
+            mediaAssetRepository.saveAll(staged);
+        }
+
         refreshManualPublishingFlag(submission);
 
         submission.setStatus(SubmissionStatus.pending);
@@ -465,11 +552,23 @@ public class SubmissionService {
      * Attaches a new media file to a submission. The frontend uploads the file
      * directly to Supabase Storage and passes the resulting URL here. A
      * MediaAsset record is created and linked.
+     *
+     * <p>While the submission is a DRAFT the asset is <b>staged</b>: no institution
+     * and {@code status = STAGED}, so it stays out of the Media Repository and is
+     * not bound to the draft's (still tentative) institution. It is bound to the
+     * final institution — and flipped to {@code PROCESSING} — in {@link #submit}.
+     * Uploads during NEEDS_REVISION go straight to the already-committed
+     * institution, as before.
      */
     public SubmissionResponseDto attachMedia(UUID submissionId, AttachMediaDto dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
+        return attachUploadedMediaTo(submission, dto, user);
+    }
 
+    /** attach-uploaded-media core — caller owns the auth/status checks. Reused by ValidationService. */
+    SubmissionResponseDto attachUploadedMediaTo(Submission submission, AttachMediaDto dto, JwtUserDetails user) {
+        UUID submissionId = submission.getId();
         long currentCount = submissionMediaAssetRepository.countBySubmissionId(submissionId);
         if (currentCount >= MAX_MEDIA_PER_SUBMISSION) {
             throw new ResponseStatusException(HttpStatusCode.valueOf(422),
@@ -477,9 +576,14 @@ public class SubmissionService {
         }
 
         MediaFileType fileType = validateMediaFile(dto.getFileType(), dto.getFileSizeBytes());
+        boolean stage = submission.getStatus() == SubmissionStatus.draft;
 
         MediaAsset asset = new MediaAsset();
-        asset.setInstitution(entityManager.getReference(Institution.class, submission.getInstitution().getId()));
+        if (stage) {
+            asset.setStatus(MediaAssetStatus.STAGED);
+        } else {
+            asset.setInstitution(entityManager.getReference(Institution.class, submission.getInstitution().getId()));
+        }
         asset.setUploader(entityManager.getReference(User.class, user.userId()));
         asset.setAssetCode(generateAssetCode());
         asset.setStorageUrl(dto.getStorageUrl());
@@ -487,6 +591,7 @@ public class SubmissionService {
         asset.setFileType(fileType);
         asset.setFileSizeBytes(dto.getFileSizeBytes());
         asset = mediaAssetRepository.save(asset);
+        applySubmissionMediaTags(asset, submission.getMediaTags());
 
         linkAssetToSubmission(submission, asset, (int) currentCount);
         refreshManualPublishingFlag(submission);
@@ -496,23 +601,54 @@ public class SubmissionService {
     }
 
     /**
+     * Copy the media tags the contributor entered on the Submit-Content upload
+     * step onto the new asset as {@code manual} {@code asset_tags}, so those tags
+     * show up in the Media Library alongside library-uploaded assets' tags.
+     */
+    private void applySubmissionMediaTags(MediaAsset asset, String joinedTags) {
+        if (joinedTags == null || joinedTags.isBlank()) {
+            return;
+        }
+        for (String raw : joinedTags.split(",")) {
+            String label = raw.trim();
+            if (label.isEmpty() || assetTagRepository.existsByMediaAssetIdAndLabel(asset.getId(), label)) {
+                continue;
+            }
+            AssetTag tag = new AssetTag();
+            tag.setMediaAsset(asset);
+            tag.setLabel(label);
+            tag.setSource("manual");
+            assetTagRepository.save(tag);
+        }
+    }
+
+    /**
      * Attaches an existing media library asset to a submission. Used by the
      * media recommendation panel and AssetPickerModal.
      */
     public SubmissionResponseDto attachAsset(UUID submissionId, AttachAssetDto dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
+        return attachLibraryAssetTo(submission, dto.getMediaAssetId());
+    }
 
-        MediaAsset asset = mediaAssetRepository.findActiveById(dto.getMediaAssetId())
-                .orElseThrow(() -> new MediaAssetNotFoundException(dto.getMediaAssetId()));
+    /** attach-library-asset core — caller owns the auth/status checks. Reused by ValidationService. */
+    SubmissionResponseDto attachLibraryAssetTo(Submission submission, UUID mediaAssetId) {
+        UUID submissionId = submission.getId();
+        MediaAsset asset = mediaAssetRepository.findActiveById(mediaAssetId)
+                .orElseThrow(() -> new MediaAssetNotFoundException(mediaAssetId));
 
+        // A STAGED upload is not a library asset and cannot be picked this way.
+        if (asset.getInstitution() == null) {
+            throw new MediaAssetNotFoundException(mediaAssetId);
+        }
         // Validate asset belongs to same institution
         if (!asset.getInstitution().getId().equals(submission.getInstitution().getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Media asset does not belong to this submission's institution.");
         }
 
-        if (submissionMediaAssetRepository.existsBySubmissionIdAndMediaAssetId(submissionId, dto.getMediaAssetId())) {
+        if (submissionMediaAssetRepository.existsBySubmissionIdAndMediaAssetId(submissionId, mediaAssetId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Asset is already attached to this submission.");
         }
 
@@ -525,45 +661,58 @@ public class SubmissionService {
         linkAssetToSubmission(submission, asset, (int) currentCount);
         refreshManualPublishingFlag(submission);
 
-        log.info("Existing asset {} attached to submission {} by user {}", asset.getId(), submissionId, user.userId());
+        log.info("Existing asset {} attached to submission {}", asset.getId(), submissionId);
         return buildResponse(submissionRepository.findById(submissionId).orElseThrow());
     }
 
     public void detachAsset(UUID submissionId, UUID mediaAssetId, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
+        detachAssetFrom(submission, mediaAssetId);
+    }
 
+    /** detach-asset core — caller owns the auth/status checks. Reused by ValidationService. */
+    void detachAssetFrom(Submission submission, UUID mediaAssetId) {
+        UUID submissionId = submission.getId();
         SubmissionMediaAsset link = submissionMediaAssetRepository
                 .findBySubmissionIdAndMediaAssetId(submissionId, mediaAssetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Media asset is not attached to this submission."));
 
-        boolean everPublishedBeyondDraft = !submissionMediaAssetRepository
-                .findAssetIdsUsedBeyondDraft(List.of(mediaAssetId)).isEmpty();
-
         submissionMediaAssetRepository.delete(link);
         submissionMediaAssetRepository.flush();
         refreshManualPublishingFlag(submission);
-        log.info("Asset {} detached from submission {} by user {}", mediaAssetId, submissionId, user.userId());
+        log.info("Asset {} detached from submission {}", mediaAssetId, submissionId);
 
-        // A draft-only upload that is now attached to nothing served no purpose
-        // beyond that draft — permanently delete it (row + storage object) so
-        // it never surfaces as an orphaned "standalone" asset in the Media
-        // Repository, rather than soft-deleting it into the 30-day retention
-        // queue like a deliberate library deletion. Assets that were ever
-        // used beyond draft status are left alone even if this was their
-        // last remaining attachment, since they are legitimate reusable
-        // library assets. asset_tags and media_asset_embeddings cascade-delete
-        // at the database level (ON DELETE CASCADE).
-        if (!everPublishedBeyondDraft && !submissionMediaAssetRepository.existsByMediaAssetId(mediaAssetId)) {
-            mediaAssetRepository.findActiveById(mediaAssetId).ifPresent(orphan -> {
-                String storageUrl = orphan.getStorageUrl();
-                mediaAssetRepository.delete(orphan);
-                boolean storageDeleted = supabaseStorageService.deletePublicObject(storageUrl);
-                log.info("Orphaned draft-only media asset {} permanently deleted after detach from submission {} (storageDeleted={})",
-                        mediaAssetId, submissionId, storageDeleted);
-            });
+        purgeOrphanedDraftUpload(mediaAssetId, "detach from submission " + submissionId);
+    }
+
+    /**
+     * Permanently deletes a media asset (row + storage object) when it exists
+     * only to back a draft that no longer references it. A draft-only upload
+     * attached to nothing served no purpose beyond that draft, so it is removed
+     * outright rather than soft-deleted into the 30-day retention queue like a
+     * deliberate library deletion. Assets that were ever used in a submission
+     * beyond draft status, or that are still attached elsewhere, are left alone.
+     * {@code asset_tags} and {@code media_asset_embeddings} cascade-delete at the
+     * database level (ON DELETE CASCADE). Safe to call for any asset id — it is a
+     * no-op unless the asset is a genuine orphaned draft-only upload. Staged
+     * uploads ({@code status = STAGED}) are always caught here: they are never
+     * "used beyond draft", so an abandoned draft leaves no library asset behind.
+     */
+    private void purgeOrphanedDraftUpload(UUID mediaAssetId, String context) {
+        boolean everUsedBeyondDraft = !submissionMediaAssetRepository
+                .findAssetIdsUsedBeyondDraft(List.of(mediaAssetId)).isEmpty();
+        if (everUsedBeyondDraft || submissionMediaAssetRepository.existsByMediaAssetId(mediaAssetId)) {
+            return;
         }
+        mediaAssetRepository.findActiveById(mediaAssetId).ifPresent(orphan -> {
+            String storageUrl = orphan.getStorageUrl();
+            mediaAssetRepository.delete(orphan);
+            boolean storageDeleted = supabaseStorageService.deletePublicObject(storageUrl);
+            log.info("Orphaned draft-only media asset {} permanently deleted ({}, storageDeleted={})",
+                    mediaAssetId, context, storageDeleted);
+        });
     }
 
     /**
@@ -574,7 +723,12 @@ public class SubmissionService {
     public SubmissionResponseDto reorderMedia(UUID submissionId, SubmissionMediaOrderDto dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
+        return reorderMediaOf(submission, dto);
+    }
 
+    /** reorder + per-asset caption/skip-watermark core — caller owns the auth/status checks. Reused by ValidationService. */
+    SubmissionResponseDto reorderMediaOf(Submission submission, SubmissionMediaOrderDto dto) {
+        UUID submissionId = submission.getId();
         List<SubmissionMediaAsset> links =
                 submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId);
         if (links.size() != dto.getMediaAssetIds().size()) {
@@ -608,7 +762,7 @@ public class SubmissionService {
         }
         submissionMediaAssetRepository.saveAll(links);
 
-        log.info("Contributor {} reordered media for submission {}", user.userId(), submissionId);
+        log.info("Reordered media for submission {}", submissionId);
         return buildResponse(submission);
     }
 

@@ -105,7 +105,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             new UsernamePasswordAuthenticationToken(principal, null, authorities);
                     SecurityContextHolder.getContext().setAuthentication(authentication);
 
-                    tenantScopeService.bindTenantScope(institutionId, role);
+                    tenantScopeService.bindTenantScope(userId, institutionId, role);
                 }
             } catch (Exception ex) {
                 log.debug("JWT validation failed: {}", ex.getMessage());

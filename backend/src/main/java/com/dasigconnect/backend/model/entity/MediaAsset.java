@@ -20,8 +20,10 @@ public class MediaAsset {
     @Id
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "institution_id", nullable = false)
+    // Nullable: a STAGED asset (uploaded to a draft submission) has no institution
+    // until the submission is submitted for review. See V73__media_asset_staging.sql.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "institution_id")
     private Institution institution;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

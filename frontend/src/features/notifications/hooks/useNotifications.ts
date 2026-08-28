@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import {
   listNotifications,
   markAllNotificationsRead as apiMarkAllRead,
@@ -283,6 +284,7 @@ function mapDto(dto: NotificationDto): Notification {
     link: dto.deepLink ?? "/notifications",
     linkLabel: meta.linkLabel,
     group: computeGroup(dto.createdAt),
+    createdAt: dto.createdAt,
   };
 }
 
@@ -299,19 +301,30 @@ export function useNotifications() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    let isCurrent = true;
     const controller = new AbortController();
+    setLoading(true);
+
     listNotifications(controller.signal)
       .then((res) => {
+        if (!isCurrent) return;
         setNotifications(res.data.map(mapDto));
         setFetchError(null);
+        setLoading(false);
       })
-      .catch((err: { code?: string }) => {
-        if (err?.code !== "ERR_CANCELED") {
-          setFetchError("Could not load notifications. The backend may not be available.");
+      .catch((err: unknown) => {
+        if (!isCurrent) return;
+        if (axios.isCancel(err) || (err as { code?: string })?.code === "ERR_CANCELED") {
+          return;
         }
-      })
-      .finally(() => setLoading(false));
-    return () => controller.abort();
+        setFetchError("Could not load notifications. The backend may not be available.");
+        setLoading(false);
+      });
+
+    return () => {
+      isCurrent = false;
+      controller.abort();
+    };
   }, [refreshKey]);
 
   useEffect(() => {

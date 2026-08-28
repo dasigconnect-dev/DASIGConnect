@@ -16,6 +16,8 @@ export interface UseMediaLibraryAssetsReturn {
   setAiCategory: (v: string) => void;
   mediaType: "" | "image" | "video";
   setMediaType: (v: "" | "image" | "video") => void;
+  albumId: string;
+  setAlbumId: (v: string) => void;
   loadMore: () => void;
   retry: () => void;
   selectedIds: string[];
@@ -23,7 +25,15 @@ export interface UseMediaLibraryAssetsReturn {
   clearSelection: () => void;
 }
 
-export function useMediaLibraryAssets(): UseMediaLibraryAssetsReturn {
+export interface UseMediaLibraryAssetsOptions {
+  /** Scope the library to a specific institution (used by network-wide admins). */
+  institutionId?: string;
+}
+
+export function useMediaLibraryAssets(
+  options?: UseMediaLibraryAssetsOptions,
+): UseMediaLibraryAssetsReturn {
+  const institutionId = options?.institutionId;
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -33,6 +43,7 @@ export function useMediaLibraryAssets(): UseMediaLibraryAssetsReturn {
   const [search, setSearch] = useState("");
   const [aiCategory, setAiCategory] = useState("");
   const [mediaType, setMediaType] = useState<"" | "image" | "video">("");
+  const [albumId, setAlbumId] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -45,7 +56,14 @@ export function useMediaLibraryAssets(): UseMediaLibraryAssetsReturn {
   }, [search]);
 
   const doFetch = useCallback(
-    (q: string, cat: string, type: "" | "image" | "video", pageNum: number, append: boolean) => {
+    (
+      q: string,
+      cat: string,
+      type: "" | "image" | "video",
+      album: string,
+      pageNum: number,
+      append: boolean,
+    ) => {
       pageRef.current = pageNum;
       setLoading(true);
       setError(false);
@@ -53,6 +71,8 @@ export function useMediaLibraryAssets(): UseMediaLibraryAssetsReturn {
         query: q || undefined,
         aiCategory: cat || undefined,
         mediaType: type || undefined,
+        albumId: album || undefined,
+        institutionId: institutionId || undefined,
         page: pageNum,
         pageSize: PAGE_SIZE,
       })
@@ -63,23 +83,23 @@ export function useMediaLibraryAssets(): UseMediaLibraryAssetsReturn {
         .catch(() => setError(true))
         .finally(() => setLoading(false));
     },
-    []
+    [institutionId]
   );
 
   useEffect(() => {
     const controller = { aborted: false };
     queueMicrotask(() => {
-      if (!controller.aborted) void doFetch(debouncedSearch, aiCategory, mediaType, 1, false);
+      if (!controller.aborted) void doFetch(debouncedSearch, aiCategory, mediaType, albumId, 1, false);
     });
     return () => { controller.aborted = true; };
-  }, [debouncedSearch, aiCategory, mediaType, doFetch]);
+  }, [debouncedSearch, aiCategory, mediaType, albumId, doFetch]);
 
   function loadMore() {
-    void doFetch(debouncedSearch, aiCategory, mediaType, pageRef.current + 1, true);
+    void doFetch(debouncedSearch, aiCategory, mediaType, albumId, pageRef.current + 1, true);
   }
 
   function retry() {
-    void doFetch(debouncedSearch, aiCategory, mediaType, pageRef.current, false);
+    void doFetch(debouncedSearch, aiCategory, mediaType, albumId, pageRef.current, false);
   }
 
   function toggleSelect(id: string) {
@@ -104,6 +124,8 @@ export function useMediaLibraryAssets(): UseMediaLibraryAssetsReturn {
     setAiCategory,
     mediaType,
     setMediaType,
+    albumId,
+    setAlbumId,
     loadMore,
     retry,
     selectedIds,

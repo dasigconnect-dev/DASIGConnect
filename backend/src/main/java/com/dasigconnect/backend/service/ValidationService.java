@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.service;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +19,11 @@ import org.springframework.web.server.ResponseStatusException;
 import com.dasigconnect.backend.event.RevisionRequestedEvent;
 import com.dasigconnect.backend.event.SubmissionApprovedEvent;
 import com.dasigconnect.backend.event.SubmissionRejectedEvent;
+import com.dasigconnect.backend.model.dto.submission.AttachMediaDto;
+import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlRequest;
+import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlResponse;
+import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
 import com.dasigconnect.backend.model.entity.Submission;
@@ -52,6 +58,7 @@ public class ValidationService {
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final AuditLogService auditLogService;
 
     public ValidationService(
             SubmissionRepository submissionRepository,
@@ -62,7 +69,8 @@ public class ValidationService {
             SubmissionService submissionService,
             UserRepository userRepository,
             ApplicationEventPublisher eventPublisher,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            AuditLogService auditLogService) {
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.validationLogRepository = validationLogRepository;
@@ -72,6 +80,7 @@ public class ValidationService {
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
+        this.auditLogService = auditLogService;
     }
 
     /**
@@ -163,6 +172,58 @@ public class ValidationService {
 
         log.info("Submission edited in review (changed={}): submission={} validator={}",
                 editDiff != null, submissionId, caller.userId());
+    }
+
+    // ── A9: media edits during review ────────────────────────────────────────
+    // The reviewing admin may add/remove/reorder media (and set per-item caption
+    // + skip-watermark) on an IN_REVIEW submission. Each mutation records a
+    // `ValidationAction.edited` log row so it counts as an edited approval (A10).
+    // Content completeness is NOT enforced here — the reviewer may be mid-swap;
+    // approve() still enforces it.
+
+    private Submission loadForMediaEdit(UUID submissionId, JwtUserDetails caller) {
+        Submission submission = loadSubmissionInScope(submissionId, caller);
+        assertReviewableStatus(submission);
+        reviewLockService.assertCallerHoldsLock(submissionId, caller);
+        return submission;
+    }
+
+    private void logMediaEdit(Submission submission, JwtUserDetails caller) {
+        logAction(submission, loadUser(caller.userId()), ValidationAction.edited, null, null,
+                isSelfReview(submission, caller), submission.isFastTrack(), "{\"media\":\"updated\"}");
+    }
+
+    @Transactional(readOnly = true)
+    public SignedUploadUrlResponse reviewMediaUploadUrl(UUID submissionId, SignedUploadUrlRequest dto, JwtUserDetails caller) {
+        Submission submission = loadForMediaEdit(submissionId, caller);
+        return submissionService.signedUploadUrlFor(submission, dto);
+    }
+
+    public SubmissionResponseDto attachReviewMedia(UUID submissionId, AttachMediaDto dto, JwtUserDetails caller) {
+        Submission submission = loadForMediaEdit(submissionId, caller);
+        SubmissionResponseDto response = submissionService.attachUploadedMediaTo(submission, dto, caller);
+        logMediaEdit(submission, caller);
+        return response;
+    }
+
+    public SubmissionResponseDto attachReviewLibraryAsset(UUID submissionId, UUID mediaAssetId, JwtUserDetails caller) {
+        Submission submission = loadForMediaEdit(submissionId, caller);
+        SubmissionResponseDto response = submissionService.attachLibraryAssetTo(submission, mediaAssetId);
+        logMediaEdit(submission, caller);
+        return response;
+    }
+
+    public void detachReviewMedia(UUID submissionId, UUID mediaAssetId, JwtUserDetails caller) {
+        Submission submission = loadForMediaEdit(submissionId, caller);
+        submissionService.detachAssetFrom(submission, mediaAssetId);
+        logMediaEdit(submission, caller);
+    }
+
+    public SubmissionResponseDto reorderReviewMedia(UUID submissionId, SubmissionMediaOrderDto dto, JwtUserDetails caller) {
+        Submission submission = loadForMediaEdit(submissionId, caller);
+        SubmissionResponseDto response = submissionService.reorderMediaOf(submission, dto);
+        logMediaEdit(submission, caller);
+        return response;
     }
 
     /**
@@ -380,5 +441,17 @@ public class ValidationService {
         entry.setFastTrack(fastTrack);
         entry.setEditDiff(editDiff);
         validationLogRepository.save(entry);
+
+        try {
+            Map<String, Object> meta = new HashMap<>();
+            if (remarks != null && !remarks.isBlank()) meta.put("remarks", remarks);
+            if (rejectionReason != null && !rejectionReason.isBlank()) meta.put("rejectionReason", rejectionReason);
+            if (selfReview) meta.put("selfReview", true);
+            if (fastTrack) meta.put("fastTrack", true);
+            if (editDiff != null && !editDiff.isBlank()) meta.put("editDiff", editDiff);
+            auditLogService.record(validator, action.name(), null, null, submission.getId(), meta);
+        } catch (Exception ex) {
+            log.warn("Failed to write audit log for validation action {} on submission {}: {}", action, submission.getId(), ex.getMessage());
+        }
     }
 }

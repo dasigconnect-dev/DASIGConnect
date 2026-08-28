@@ -195,6 +195,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateDeleteId, setTemplateDeleteId] = useState<string | null>(null);
+  const [deletingTemplate, setDeletingTemplate] = useState(false);
   const [pendingLeaveAction, setPendingLeaveAction] =
     useState<PendingLeaveAction>(null);
   const [centerMode, setCenterMode] = useState<CenterMode>("edit");
@@ -763,6 +765,63 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setSaveState("idle");
   }
 
+  // Admin "Posting As" change. On an unsaved composer it's a free switch. On a
+  // saved draft, files uploaded to this draft are STAGED (no institution yet) and
+  // are kept; only assets picked from the previous institution's library are
+  // dropped (they stay in that library). The reserved slot is per-institution, so
+  // the schedule is cleared too. Mirrored server-side by
+  // SubmissionService.maybeRehomeSubmission on the next save.
+  function handlePostingInstitutionChange(nextInstitutionId: string) {
+    if (!nextInstitutionId || nextInstitutionId === form.institutionId) return;
+
+    if (!form.id) {
+      updateField("institutionId", nextInstitutionId);
+      return;
+    }
+
+    const droppedAssets = form.savedAssets.filter((asset) => asset.status !== "STAGED");
+    const keptAssets = form.savedAssets.filter((asset) => asset.status === "STAGED");
+    const droppedCount = droppedAssets.length + form.pendingAssetIds.length;
+    const hasSchedule = Boolean(form.scheduledDate || form.scheduledTime);
+
+    if (droppedCount > 0 || hasSchedule) {
+      const parts = [
+        droppedCount > 0
+          ? `remove ${droppedCount} item${droppedCount === 1 ? "" : "s"} you picked from the current institution's library`
+          : null,
+        hasSchedule ? "clear the preferred schedule" : null,
+      ]
+        .filter(Boolean)
+        .join(" and ");
+      const confirmed = window.confirm(
+        `Changing the institution will ${parts}. Files you uploaded to this draft are kept. Continue?`,
+      );
+      if (!confirmed) return;
+    }
+
+    const droppedIds = new Set(droppedAssets.map((asset) => asset.id));
+    const droppedKeys = new Set(droppedAssets.map((asset) => savedMediaKey(asset.id)));
+
+    setForm((current) => ({
+      ...current,
+      institutionId: nextInstitutionId,
+      savedAssets: keptAssets,
+      mediaOrder: current.mediaOrder.filter((key) => !droppedKeys.has(key)),
+      pendingAssetIds: [],
+      removedAssetIds: [],
+      scheduledDate: "",
+      scheduledTime: "",
+    }));
+    setPickerItems((current) =>
+      current.filter((item) => !(item.assetId != null && droppedIds.has(item.assetId))),
+    );
+    setSaveState("idle");
+    const targetName =
+      institutions.find((institution) => institution.id === nextInstitutionId)?.name ??
+      "the selected institution";
+    toast.info(`Save the draft to move it to ${targetName}.`);
+  }
+
   function captureCaptionSelection(element: HTMLTextAreaElement) {
     setCaptionSelection({
       start: element.selectionStart,
@@ -912,18 +971,29 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
   }
 
-  async function deleteCustomTemplate(templateId: string) {
+  function requestDeleteCustomTemplate(templateId: string) {
+    setTemplateDeleteId(templateId);
+    setModal("delete-template");
+  }
+
+  async function deleteCustomTemplate() {
+    if (!templateDeleteId) return;
+    setDeletingTemplate(true);
     try {
-      await deletePostTemplate(templateId);
-      setCustomTemplates((current) => current.filter((template) => template.id !== templateId));
+      await deletePostTemplate(templateDeleteId);
+      setCustomTemplates((current) => current.filter((template) => template.id !== templateDeleteId));
       setForm((current) =>
-        current.selectedTemplateId === templateId
+        current.selectedTemplateId === templateDeleteId
           ? { ...current, selectedTemplateId: null }
           : current,
       );
+      setTemplateDeleteId(null);
+      setModal(null);
       toast.success("Template deleted.");
     } catch (err) {
       toast.error(getErrorMessage(err, "Could not delete template."));
+    } finally {
+      setDeletingTemplate(false);
     }
   }
 
@@ -1618,12 +1688,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 type="button"
                 onClick={() => void refreshQueue()}
                 disabled={refreshingQueue || loading}
+                title="Refresh submissions list"
               >
-                {refreshingQueue || loading ? (
-                  <i className="ti ti-loader-2 sub-spin"></i>
-                ) : (
-                  <i className="ti ti-refresh"></i>
-                )}
+                <i className={`ti ti-refresh${refreshingQueue || loading ? " spin" : ""}`} style={{ fontSize: 14 }} />
+                <span>Refresh</span>
               </button>
               <button
                 className="sub-list-new"
@@ -1958,13 +2026,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                           title="Delete template"
                           onClick={(event) => {
                             event.stopPropagation();
-                            void deleteCustomTemplate(template.id);
+                            requestDeleteCustomTemplate(template.id);
                           }}
                           onKeyDown={(event) => {
                             if (event.key !== "Enter" && event.key !== " ") return;
                             event.preventDefault();
                             event.stopPropagation();
-                            void deleteCustomTemplate(template.id);
+                            requestDeleteCustomTemplate(template.id);
                           }}
                         >
                           <i className="ti ti-trash" aria-hidden="true" />
@@ -2159,11 +2227,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                       ? `${institution.name} (Default)`
                       : institution.name,
                   }))}
-                  disabled={isReadOnlySubmission || Boolean(form.id)}
+                  disabled={isReadOnlySubmission}
                   loading={institutionsLoading}
                   ariaLabel="Posting As"
                   className={`sub-posting-select${selectedPostingIsDefault ? " is-default" : ""}`}
-                  onChange={(value) => updateField("institutionId", value)}
+                  onChange={handlePostingInstitutionChange}
                 />
                 {/* {selectedPostingIsDefault && (
                   <div className="sub-inline-default-note">
@@ -2819,6 +2887,26 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           disabled={busy}
           onCancel={() => setModal(null)}
           onConfirm={() => void handleDelete()}
+        />
+      )}
+      {modal === "delete-template" && (
+        <ConfirmModal
+          icon="ti-trash"
+          tone="danger"
+          title="Delete this template?"
+          description={`"${
+            customTemplates.find((template) => template.id === templateDeleteId)?.name ??
+            "This template"
+          }" will be removed from your saved post templates.`}
+          cancelLabel="Cancel"
+          confirmLabel={deletingTemplate ? "Deleting..." : "Delete Template"}
+          loading={deletingTemplate}
+          disabled={deletingTemplate}
+          onCancel={() => {
+            setTemplateDeleteId(null);
+            setModal(null);
+          }}
+          onConfirm={() => void deleteCustomTemplate()}
         />
       )}
       {modal === "withdraw" && (

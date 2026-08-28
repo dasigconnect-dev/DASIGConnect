@@ -32,7 +32,7 @@ public class MediaAssetRetentionPurgeJob {
             }
             scheduledJobHealthService.recordSuccess("MediaAssetRetentionPurgeJob", startedAt);
         } catch (Exception ex) {
-            log.warn("MediaAssetRetentionPurgeJob failed: {}", ex.getMessage());
+            log.error("MediaAssetRetentionPurgeJob failed: {}", ex.getMessage(), ex);
             scheduledJobHealthService.recordFailure("MediaAssetRetentionPurgeJob", startedAt, ex);
         }
     }

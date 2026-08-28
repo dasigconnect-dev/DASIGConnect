@@ -1,4 +1,4 @@
-package com.dasigconnect.backend.job;
+package com.dasigconnect.backend.schedule;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -20,6 +20,7 @@ import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.service.EmailDeliveryService;
 import com.dasigconnect.backend.service.NotificationService;
+import com.dasigconnect.backend.service.ScheduledJobHealthService;
 
 /**
  * T8 — Fires every 5 minutes. For each PENDING/IN_REVIEW submission whose
@@ -39,59 +40,66 @@ public class ValidationDeadlineNotificationJob {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final EmailDeliveryService emailDeliveryService;
+    private final ScheduledJobHealthService scheduledJobHealthService;
 
     public ValidationDeadlineNotificationJob(
             SubmissionRepository submissionRepository,
             NotificationRepository notificationRepository,
             UserRepository userRepository,
             NotificationService notificationService,
-            EmailDeliveryService emailDeliveryService) {
+            EmailDeliveryService emailDeliveryService,
+            ScheduledJobHealthService scheduledJobHealthService) {
         this.submissionRepository = submissionRepository;
         this.notificationRepository = notificationRepository;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
         this.emailDeliveryService = emailDeliveryService;
+        this.scheduledJobHealthService = scheduledJobHealthService;
     }
 
     @Scheduled(fixedDelay = 5 * 60 * 1000)
     public void checkValidationDeadlines() {
-        Instant now = Instant.now();
-        Instant windowEnd = now.plusSeconds(30 * 60);
+        Instant startedAt = Instant.now();
+        try {
+            Instant windowEnd = startedAt.plusSeconds(30 * 60);
 
-        List<Submission> urgent = submissionRepository.findApproachingDeadlines(now, windowEnd);
-        if (urgent.isEmpty()) {
-            return;
-        }
+            List<Submission> urgent = submissionRepository.findApproachingDeadlines(startedAt, windowEnd);
+            if (!urgent.isEmpty()) {
+                log.info("T8 deadline check: {} submission(s) approaching publication without validation.", urgent.size());
 
-        log.info("T8 deadline check: {} submission(s) approaching publication without validation.", urgent.size());
+                List<User> admins = userRepository.findByRole(UserRole.super_administrator);
 
-        List<User> admins = userRepository.findByRole(UserRole.super_administrator);
+                for (Submission s : urgent) {
+                    String link = "/submissions/" + s.getId();
+                    String msg = "URGENT: '" + s.getEventTitle()
+                            + "' is scheduled to publish in less than 30 minutes and has not been validated. "
+                            + "Immediate action required.";
 
-        for (Submission s : urgent) {
-            String link = "/submissions/" + s.getId();
-            String msg = "URGENT: '" + s.getEventTitle()
-                    + "' is scheduled to publish in less than 30 minutes and has not been validated. "
-                    + "Immediate action required.";
+                    List<User> validators = userRepository
+                            .findByInstitutionIdAndRoleOrderByCreatedAtDesc(s.getInstitution().getId(), UserRole.administrator);
 
-            List<User> validators = userRepository
-                    .findByInstitutionIdAndRoleOrderByCreatedAtDesc(s.getInstitution().getId(), UserRole.administrator);
-
-            for (User v : validators) {
-                if (alreadyNotified(v, link)) continue;
-                notificationService.createNotification(v, NotificationEventType.validation_timeout, msg, link);
-                emailDeliveryService.send(v,
-                        NotificationEventType.validation_timeout.name(),
-                        "DASIGConnect — URGENT: Validation deadline approaching",
-                        msg);
+                    for (User v : validators) {
+                        if (alreadyNotified(v, link)) continue;
+                        notificationService.createNotification(v, NotificationEventType.validation_timeout, msg, link);
+                        emailDeliveryService.send(v,
+                                NotificationEventType.validation_timeout.name(),
+                                "DASIGConnect — URGENT: Validation deadline approaching",
+                                msg);
+                    }
+                    for (User admin : admins) {
+                        if (alreadyNotified(admin, link)) continue;
+                        notificationService.createNotification(admin, NotificationEventType.validation_timeout, msg, link);
+                        emailDeliveryService.send(admin,
+                                NotificationEventType.validation_timeout.name(),
+                                "DASIGConnect — URGENT: Validation deadline approaching",
+                                msg);
+                    }
+                }
             }
-            for (User admin : admins) {
-                if (alreadyNotified(admin, link)) continue;
-                notificationService.createNotification(admin, NotificationEventType.validation_timeout, msg, link);
-                emailDeliveryService.send(admin,
-                        NotificationEventType.validation_timeout.name(),
-                        "DASIGConnect — URGENT: Validation deadline approaching",
-                        msg);
-            }
+            scheduledJobHealthService.recordSuccess("ValidationDeadlineNotificationJob", startedAt);
+        } catch (Exception ex) {
+            log.error("ValidationDeadlineNotificationJob failed: {}", ex.getMessage(), ex);
+            scheduledJobHealthService.recordFailure("ValidationDeadlineNotificationJob", startedAt, ex);
         }
     }
 
