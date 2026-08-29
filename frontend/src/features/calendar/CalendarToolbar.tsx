@@ -22,70 +22,84 @@ export default function CalendarToolbar({
   onRefresh,
 }: CalendarToolbarProps) {
   return (
-    <div className="screen-actions cal-toolbar">
-      <div className="cal-toolbar-group cal-toolbar-left" aria-label="Calendar navigation">
+    <div className="cal-toolbar">
+      {/* Left Zone: Navigation Controls */}
+      <div className="cal-toolbar-left" aria-label="Calendar navigation">
         <div className="cal-range-controls">
-        <button type="button" className="btn-secondary btn-sm" onClick={() => onNavigate("prev")}>
-          <i className="ti ti-chevron-left" aria-hidden="true" />
-          Previous
-        </button>
-        <button type="button" className="btn-primary btn-sm cal-today-btn" onClick={() => onNavigate("today")}>
-          Today
-        </button>
-        <button type="button" className="btn-secondary btn-sm" onClick={() => onNavigate("next")}>
-          Next
-          <i className="ti ti-chevron-right" aria-hidden="true" />
-        </button>
+          <button type="button" className="cal-nav-btn" onClick={() => onNavigate("prev")} aria-label="Previous">
+            <i className="ti ti-chevron-left" aria-hidden="true" />
+          </button>
+          <button type="button" className="cal-today-pill" onClick={() => onNavigate("today")}>
+            Today
+          </button>
+          <button type="button" className="cal-nav-btn" onClick={() => onNavigate("next")} aria-label="Next">
+            <i className="ti ti-chevron-right" aria-hidden="true" />
+          </button>
         </div>
       </div>
-      <div className="cal-toolbar-group cal-toolbar-center" aria-live="polite">
+
+      {/* Center Zone: Date Range Heading */}
+      <div className="cal-toolbar-center" aria-live="polite">
         <div className="cal-range-label">{rangeLabel}</div>
       </div>
-      <div className="cal-toolbar-group cal-toolbar-right">
-        <div className="cal-view-toggle" aria-label="Calendar view">
+
+      {/* Right Zone: View Modes & Actions */}
+      <div className="cal-toolbar-right">
+        <div className="cal-view-toggle" role="tablist" aria-label="Calendar view">
           <button
             type="button"
+            role="tab"
             className={`view-btn${view === "dayGridMonth" ? " active" : ""}`}
             onClick={() => onViewChange("dayGridMonth")}
-            aria-pressed={view === "dayGridMonth"}
+            aria-selected={view === "dayGridMonth"}
           >
             <i className="ti ti-calendar-month" aria-hidden="true" />
             Month
           </button>
           <button
             type="button"
+            role="tab"
             className={`view-btn${view === "timeGridWeek" ? " active" : ""}`}
             onClick={() => onViewChange("timeGridWeek")}
-            aria-pressed={view === "timeGridWeek"}
+            aria-selected={view === "timeGridWeek"}
           >
             <i className="ti ti-calendar-week" aria-hidden="true" />
             Week
           </button>
         </div>
-        <div className={`cal-full-day-slot${view === "timeGridWeek" ? " is-active" : ""}`}>
-          <button
-            type="button"
-            className={`btn-secondary btn-sm cal-full-day-toggle${showFullDay ? " active" : ""}`}
-            onClick={onToggleFullDay}
-            aria-pressed={showFullDay}
-            disabled={view !== "timeGridWeek"}
-          >
-            <i className="ti ti-clock-hour-24" aria-hidden="true" />
-            {showFullDay ? "Publishing Hours" : "Show Full Day"}
-          </button>
-        </div>
+
         <button
           type="button"
-          className="btn-secondary"
+          className={`cal-pill-btn${view === "timeGridWeek" ? " is-week" : " is-disabled"}${showFullDay && view === "timeGridWeek" ? " active" : ""}`}
+          onClick={onToggleFullDay}
+          disabled={view !== "timeGridWeek"}
+          aria-pressed={view === "timeGridWeek" && showFullDay}
+          title={
+            view !== "timeGridWeek"
+              ? "Show Full Day is only available in Week view"
+              : showFullDay
+                ? "Switch to standard publishing hours"
+                : "Show full 24-hour day schedule"
+          }
+        >
+          <i className="ti ti-clock-hour-24" aria-hidden="true" />
+          <span>{showFullDay && view === "timeGridWeek" ? "Publishing Hours" : "Show Full Day"}</span>
+        </button>
+
+        <button
+          type="button"
+          className="cal-refresh-btn"
           onClick={onRefresh}
           disabled={loading}
+          title="Refresh calendar"
+          aria-label="Refresh calendar"
         >
           {loading ? (
             <span className="spinner-ring spinner-ring-sm" aria-hidden="true" />
           ) : (
             <i className="ti ti-refresh" aria-hidden="true" />
           )}
-          {loading ? "Refreshing" : "Refresh"}
+          <span>{loading ? "Refreshing" : "Refresh"}</span>
         </button>
       </div>
     </div>

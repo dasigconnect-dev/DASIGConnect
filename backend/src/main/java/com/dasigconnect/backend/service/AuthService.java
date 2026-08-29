@@ -44,7 +44,9 @@ public class AuthService {
         // Temporarily elevate scope to moderator to bypass RLS during authentication lookup
         tenantScopeService.bindTenantScope(null, null, "admin");
 
-        User user = userRepository.findByEmail(dto.email())
+        String email = dto.email() != null ? dto.email().trim() : "";
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .or(() -> userRepository.findByEmail(email))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
 
         if (accountLockoutService.isLocked(user.getId())) {

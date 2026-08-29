@@ -1779,27 +1779,32 @@ body {
   margin-bottom: 12px;
 }
 .section-link-btn {
-  background: transparent;
-  border: none;
-  color: var(--d-blue);
+  background: #ffffff;
+  border: 1px solid var(--d-border, #e2e8f0);
+  color: var(--d-blue, #1877f2);
   font-family: var(--ff-body);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.2s ease;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(10, 22, 40, 0.03);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
 }
 .section-link-btn i {
   display: inline-block;
 }
 .section-link-btn:hover {
   background: #eff6ff;
+  border-color: #bfdbfe;
   color: #1565d8;
-  transform: translateX(4px);
+  transform: translateY(-0.5px);
+  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.12);
 }
 
 .data-table {

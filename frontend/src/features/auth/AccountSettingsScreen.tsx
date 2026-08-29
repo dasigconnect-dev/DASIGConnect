@@ -370,14 +370,12 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
         </header>
 
         <div
-          className="card-wrap"
           style={{
             minHeight: "380px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             padding: "60px 20px",
-            background: "var(--d-surface, #ffffff)",
           }}
         >
           <div className="dc-dot-triangle-container">

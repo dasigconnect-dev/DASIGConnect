@@ -56,50 +56,42 @@ export default function MultiSelect({
   const summary =
     selectedLabels.length === 0
       ? ""
-      : selectedLabels.length === 1
-        ? selectedLabels[0]
-        : `${selectedLabels.length} selected`;
+      : `${selectedLabels.length} selected`;
 
   return (
     <div
       className={`dc-select dc-multi ${open ? "is-open" : ""} drop-down ${className}`.trim()}
       ref={rootRef}
     >
-      <div className={`dc-select-trigger ${open ? "open" : ""}`}>
-        <button
-          type="button"
-          className="dc-multi-label"
-          onClick={() => setOpen((v) => !v)}
-          aria-label={ariaLabel}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-        >
-          <span className={summary ? "" : "placeholder"}>{summary || placeholder}</span>
-        </button>
-        {values.length > 0 && (
-          <button
-            type="button"
-            className="dc-select-clear"
-            onClick={(e) => {
-              e.stopPropagation();
-              onChange([]);
-            }}
-            aria-label={`Clear ${ariaLabel ?? "filter"}`}
-            title="Clear"
-          >
-            <i className="ti ti-x" aria-hidden="true" />
-          </button>
-        )}
-        <button
-          type="button"
-          className="dc-multi-caret"
-          onClick={() => setOpen((v) => !v)}
-          tabIndex={-1}
-          aria-hidden="true"
-        >
-          <i className="ti ti-chevron-down" aria-hidden="true" />
-        </button>
-      </div>
+      <button
+        type="button"
+        className={`dc-select-trigger ${open ? "open" : ""}`}
+        onClick={() => setOpen((v) => !v)}
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className={`dc-multi-text ${summary ? "" : "placeholder"}`}>
+          {summary || placeholder}
+        </span>
+        <span className="dc-multi-controls">
+          {values.length > 0 && (
+            <span
+              role="button"
+              className="dc-select-clear"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange([]);
+              }}
+              aria-label={`Clear ${ariaLabel ?? "filter"}`}
+              title="Clear"
+            >
+              <i className="ti ti-x" aria-hidden="true" />
+            </span>
+          )}
+          <i className="ti ti-chevron-down dc-multi-chevron" aria-hidden="true" />
+        </span>
+      </button>
 
       {open && (
         <div className="dc-select-popover" role="listbox" aria-multiselectable="true">

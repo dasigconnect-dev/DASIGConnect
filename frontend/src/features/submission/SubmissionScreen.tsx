@@ -2504,63 +2504,39 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             </Field>
 
             {!isReadOnlySubmission && (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", marginTop: "24px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, color: "#374151", fontSize: "14px" }}>
-                    Publishing Mode
-                    <i
-                        className="ti ti-info-circle"
-                        title="Choose 'Schedule' to plan a future post, or 'Live Event' to bypass the calendar queue for urgent, immediate publication."
-                        style={{ color: "#9ca3af", cursor: "help", fontSize: "15px" }}
-                    />
-                    </div>
-
-                    {/* Segmented Pill Toggle */}
-                    <div style={{ display: "flex", background: "#f3f4f6", padding: "4px", borderRadius: "8px", gap: "4px" }}>
-                    <button
-                        type="button"
-                        style={{
-                        padding: "6px 12px",
-                        border: "none",
-                        borderRadius: "6px",
-                        background: !form.fastTrack ? "#fff" : "transparent",
-                        color: !form.fastTrack ? "#111827" : "#6b7280",
-                        boxShadow: !form.fastTrack ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                        fontWeight: !form.fastTrack ? 600 : 500,
-                        fontSize: "13px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        transition: "all 0.2s"
-                        }}
-                        onClick={() => updateFastTrack(false)}
-                    >
-                        <i className="ti ti-calendar" /> Schedule
-                    </button>
-                    <button
-                        type="button"
-                        style={{
-                        padding: "6px 12px",
-                        border: "none",
-                        borderRadius: "6px",
-                        background: form.fastTrack ? "#fff" : "transparent",
-                        color: form.fastTrack ? "#111827" : "#6b7280",
-                        boxShadow: form.fastTrack ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                        fontWeight: form.fastTrack ? 600 : 500,
-                        fontSize: "13px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        transition: "all 0.2s"
-                        }}
-                        onClick={() => updateFastTrack(true)}
-                    >
-                        <i className="ti ti-bolt" style={{ color: form.fastTrack ? "#eab308" : "inherit" }} /> Live Event
-                    </button>
-                    </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", marginTop: "24px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, color: "#374151", fontSize: "14px" }}>
+                  Publishing Mode
+                  <i
+                    className="ti ti-info-circle"
+                    title="Choose 'Schedule' to plan a future post, or 'Live Event' to bypass the calendar queue for urgent, immediate publication."
+                    style={{ color: "#9ca3af", cursor: "help", fontSize: "15px" }}
+                  />
                 </div>
-                )}
+
+                {/* Segmented Pill Toggle */}
+                <div className="sub-mode-toggle" role="group" aria-label="Publishing mode">
+                  <button
+                    type="button"
+                    className={!form.fastTrack ? "active" : ""}
+                    onClick={() => updateFastTrack(false)}
+                    aria-pressed={!form.fastTrack}
+                  >
+                    <i className="ti ti-calendar" />
+                    <span>Schedule</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={form.fastTrack ? "active" : ""}
+                    onClick={() => updateFastTrack(true)}
+                    aria-pressed={form.fastTrack}
+                  >
+                    <i className="ti ti-bolt" />
+                    <span>Live Event</span>
+                  </button>
+                </div>
+              </div>
+            )}
             {form.fastTrack && (
                 <div className="sub-inline-note" style={{ marginTop: "16px", marginBottom: "8px" }}>
                     <i className="ti ti-info-circle" style={{ marginRight: "6px" }}></i>

@@ -1,3 +1,5 @@
+import "../../styles/dasig-loader.css";
+
 interface CalendarErrorStateProps {
   message: string;
   onRetry: () => void;
@@ -25,9 +27,18 @@ export function CalendarLoadingState() {
 export function CalendarLoadingOverlay() {
   return (
     <div className="cal-loading-overlay" aria-live="polite" aria-label="Updating calendar view">
-      <div className="cal-loading-overlay-card">
-        <div className="cal-skeleton cal-loading-overlay-title" />
-        <div className="cal-skeleton cal-loading-overlay-sub" />
+      <div className="dc-dot-triangle-container">
+        <div className="dc-dot-triangle-label">
+          <span>Loading</span>
+          <span className="dc-dot-triangle-label-dots">
+            <span className="dc-dot-triangle-dot-char">.</span>
+            <span className="dc-dot-triangle-dot-char">.</span>
+            <span className="dc-dot-triangle-dot-char">.</span>
+          </span>
+        </div>
+        <div className="loader-stage" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className="loader-dots" />
+        </div>
       </div>
     </div>
   );

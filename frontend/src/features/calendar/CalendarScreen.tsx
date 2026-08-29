@@ -16,6 +16,7 @@ import CalendarLegend from "./CalendarLegend";
 import CalendarToolbar, { type CalendarViewMode } from "./CalendarToolbar";
 import { CalendarErrorState } from "./CalendarStates";
 import { visibleCalendarStatus } from "./calendarStatus";
+import PageLoader from "../../components/common/PageLoader";
 
 interface CalendarScreenProps {
   user: User;
@@ -320,6 +321,10 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
     setDateFilter("all");
   }
 
+  if (loading && events.length === 0) {
+    return <PageLoader />;
+  }
+
   return (
     <div className="screen-root">
       <div className="screen-header cal-screen-header">
@@ -356,7 +361,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
         </div>
       </div>
 
-      <section className="cal-overview-grid" aria-label="Publishing metrics">
+      <section className={`cal-overview-grid cal-overview-grid-${isAdmin ? "5" : "3"}`} aria-label="Publishing metrics">
         <MetricCard metric="scheduled" icon="ti ti-calendar-time" label="Scheduled Posts" value={metrics.scheduled} tone="blue" onOpen={setActiveMetric} />
         <MetricCard metric="published" icon="ti ti-circle-check" label="Published" value={metrics.published} tone="green" onOpen={setActiveMetric} />
         {isAdmin && (
@@ -368,21 +373,24 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
         <MetricCard metric="today" icon="ti ti-sun" label="Upcoming Today" value={metrics.today} tone="purple" onOpen={setActiveMetric} />
       </section>
 
-      <div className="cal-toolbar-row">
-        <CalendarToolbar
-          view={calendarView}
-          loading={loading}
-          rangeLabel={rangeLabel}
-          showFullDay={showFullDay}
-          onViewChange={switchView}
-          onNavigate={navigateCalendar}
-          onToggleFullDay={() => setShowFullDay((value) => !value)}
-          onRefresh={() => {
-            beginCalendarTransition();
-            refresh();
-          }}
-        />
-      </div>
+      <CalendarToolbar
+        view={calendarView}
+        loading={loading}
+        rangeLabel={rangeLabel}
+        showFullDay={showFullDay}
+        onViewChange={switchView}
+        onNavigate={navigateCalendar}
+        onToggleFullDay={() => {
+          if (calendarView !== "timeGridWeek") {
+            switchView("timeGridWeek");
+          }
+          setShowFullDay((value) => !value);
+        }}
+        onRefresh={() => {
+          beginCalendarTransition();
+          refresh();
+        }}
+      />
 
       {!loading && error && (
         <CalendarErrorState message={error} onRetry={refresh} />
@@ -482,7 +490,7 @@ function MetricCard({
       <div className="cal-metric-icon">
         <i className={icon} aria-hidden="true" />
       </div>
-      <div>
+      <div className="cal-metric-content">
         <div className="cal-metric-value">{value}</div>
         <div className="cal-metric-label">{label}</div>
       </div>

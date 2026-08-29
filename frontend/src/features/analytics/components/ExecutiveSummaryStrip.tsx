@@ -6,6 +6,8 @@ interface Props {
 }
 
 export default function ExecutiveSummaryStrip({ summary }: Props) {
+  const isContributor = summary.scopeRole === "contributor" || Boolean(summary.contributorAnalytics);
+
   const topInstitution =
     summary.postsByInstitution.length > 0
       ? [...summary.postsByInstitution].sort((a, b) => b.totalPublished - a.totalPublished)[0]
@@ -14,7 +16,12 @@ export default function ExecutiveSummaryStrip({ summary }: Props) {
   const topInstName = topInstitution ? topInstitution.institutionName : "All Network";
   const topInstVolume = topInstitution ? `${topInstitution.totalPublished} posts` : "0 posts";
 
-  const cards = [
+  const firstPassRate = Math.max(
+    0,
+    100 - (summary.contributorAnalytics?.rejectedOrNeedsRevisionRate ? summary.contributorAnalytics.rejectedOrNeedsRevisionRate * 100 : 0)
+  );
+
+  const adminCards = [
     {
       id: "top-inst",
       icon: "ti ti-building",
@@ -74,6 +81,65 @@ export default function ExecutiveSummaryStrip({ summary }: Props) {
       tagClass: "sp-scheduled",
     },
   ];
+
+  const contributorCards = [
+    {
+      id: "total-submitted",
+      icon: "ti ti-file-upload",
+      label: "TOTAL SUBMISSIONS",
+      value: formatNumber(summary.contributorAnalytics?.submittedPosts ?? summary.totalPostsPublished.sampleSize),
+      sub: "posts drafted & sent",
+      tag: "Active",
+      tagClass: "sp-scheduled",
+    },
+    {
+      id: "total-published",
+      icon: "ti ti-speakerphone",
+      label: "TOTAL PUBLISHED",
+      value: formatNumber(summary.totalPostsPublished.value),
+      sub: "live on Facebook",
+      tag: summary.totalPostsPublished.targetMet ? "On Target" : "Tracking",
+      tagClass: summary.totalPostsPublished.targetMet ? "sp-approved" : "sp-pending",
+    },
+    {
+      id: "completeness",
+      icon: "ti ti-checklist",
+      label: "COMPLETENESS",
+      value: formatPercent(summary.contentCompleteness.value),
+      sub: "Target: 95.0%",
+      tag: summary.contentCompleteness.targetMet ? "On Target" : "Below",
+      tagClass: summary.contentCompleteness.targetMet ? "sp-approved" : "pill-revision",
+    },
+    {
+      id: "delay",
+      icon: "ti ti-clock-hour-4",
+      label: "AVG POSTING DELAY",
+      value: `${summary.averagePostingDelay.value.toFixed(1)}d`,
+      sub: `${summary.averagePostingDelay.sampleSize} posts measured`,
+      tag: "Tracking",
+      tagClass: "sp-pending",
+    },
+    {
+      id: "first-pass-health",
+      icon: "ti ti-circle-check",
+      label: "FIRST-PASS HEALTH",
+      value: `${firstPassRate.toFixed(1)}%`,
+      sub: "approved first try",
+      tag: "Healthy",
+      tagClass: "sp-approved",
+    },
+    {
+      id: "social-reach",
+      icon: "ti ti-thumb-up",
+      label: "SOCIAL REACH",
+      value: formatNumber(Math.round(summary.facebookEngagement.averageReach)),
+      sub: `${formatNumber(summary.facebookEngagement.totalReactions)} total reactions`,
+      tag: "Live Sync",
+      tagClass: "sp-scheduled",
+    },
+  ];
+
+  const cards = isContributor ? contributorCards : adminCards;
 
   return (
     <div className="analytics-kpi-strip-wrap">

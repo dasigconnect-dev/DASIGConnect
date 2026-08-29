@@ -93,29 +93,32 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 12px;
-  border-radius: var(--r-sm, 8px);
-  font-size: 13.5px;
-  font-weight: 500;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 550;
   color: var(--d-muted, #475569);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   border: none;
   background: transparent;
   font-family: var(--ff-body);
   text-align: left;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .settings-nav-sidebar .sidebar-link:hover {
   background: #eef3ff;
   color: var(--d-blue, #1877f2);
+  transform: translateX(2px);
 }
 
 .settings-nav-sidebar .sidebar-link.active {
   background: #eef3ff;
   color: var(--d-blue, #1877f2);
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .settings-nav-sidebar .sidebar-link i {
@@ -528,30 +531,29 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 38px;
-  border: 1px solid #1460cc;
-  border-radius: 8px;
-  padding: 0 16px;
-  background: var(--d-blue);
+  height: 40px;
+  border: none;
+  border-radius: 999px;
+  padding: 0 22px;
+  background: var(--d-blue, #1877f2);
   color: #fff;
   font-family: var(--ff-body);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 650;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(24, 119, 242, 0.2);
-  transition:
-    background 0.16s,
-    box-shadow 0.16s,
-    transform 0.1s;
+  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
 }
 
 .settings-save-button:hover:not(:disabled) {
   background: #1460cc;
-  box-shadow: 0 4px 12px rgba(24, 119, 242, 0.2);
+  box-shadow: 0 4px 14px rgba(24, 119, 242, 0.35);
+  transform: translateY(-0.5px);
 }
 
 .settings-save-button:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: scale(0.98);
 }
 
 .settings-save-button:focus-visible {
@@ -560,10 +562,11 @@
 }
 
 .settings-save-button:disabled {
-  border-color: #cbd5e1;
   background: #cbd5e1;
+  color: #94a3b8;
   box-shadow: none;
   cursor: not-allowed;
+  transform: none;
 }
 
 .settings-spinner {
@@ -936,20 +939,25 @@
 }
 
 .settings-messenger-disconnect-btn {
-  padding: 6px 14px;
+  height: 32px;
+  padding: 0 16px;
   font-size: 12px;
   font-weight: 600;
   color: #dc2626;
   background: #fff;
   border: 1px solid #fca5a5;
-  border-radius: 7px;
+  border-radius: 999px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.18s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .settings-messenger-disconnect-btn:hover {
   background: #fef2f2;
   border-color: #ef4444;
+  transform: translateY(-0.5px);
 }
 
 .settings-messenger-box {
@@ -976,20 +984,22 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  height: 32px;
+  padding: 0 14px;
   font-size: 12px;
   font-weight: 600;
   background: #1e293b;
   color: #f1f5f9;
   border: 1px solid #334155;
-  border-radius: 6px;
+  border-radius: 999px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.18s ease;
 }
 
 .settings-messenger-copy-btn:hover {
   background: #334155;
   color: #fff;
+  transform: translateY(-0.5px);
 }
 
 .settings-messenger-steps {
