@@ -3,6 +3,7 @@ package com.dasigconnect.backend.model.dto.systemhealth;
 import java.time.Instant;
 
 public record BackgroundJobHealthDto(
+        String key,
         String jobName,
         HealthStatus status,
         Instant lastStartedAt,

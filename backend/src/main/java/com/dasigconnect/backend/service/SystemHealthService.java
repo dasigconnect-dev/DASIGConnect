@@ -339,9 +339,9 @@ public class SystemHealthService {
             Duration interval = EXPECTED_JOBS.get(jobName);
             boolean infrequent = interval != null && interval.compareTo(INFREQUENT_JOB_THRESHOLD) >= 0;
             return infrequent
-                    ? new BackgroundJobHealthDto(displayName, HealthStatus.SCHEDULED,
+                    ? new BackgroundJobHealthDto(jobName, displayName, HealthStatus.SCHEDULED,
                             null, null, null, null, null, "Awaiting first run.")
-                    : new BackgroundJobHealthDto(displayName, HealthStatus.UNAVAILABLE,
+                    : new BackgroundJobHealthDto(jobName, displayName, HealthStatus.UNAVAILABLE,
                             null, null, null, null, null, "No recorded run yet.");
         }
         boolean failed = "FAILED".equalsIgnoreCase(run.getStatus());
@@ -351,6 +351,7 @@ public class SystemHealthService {
                 : run.getStartedAt().isBefore(staleCutoff) ? HealthStatus.WARNING
                 : HealthStatus.HEALTHY;
         return new BackgroundJobHealthDto(
+                jobName,
                 displayName,
                 status,
                 run.getStartedAt(),

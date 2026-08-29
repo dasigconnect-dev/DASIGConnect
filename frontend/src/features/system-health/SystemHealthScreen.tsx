@@ -4,7 +4,7 @@ import {
   getSystemHealthSummary,
   getSystemHealthTokens,
   initSystemHealthOAuth,
-  recheckSystemHealthTokens,
+  runSystemHealthJob,
   type BackgroundJobHealth,
   type ExternalServiceHealth,
   type HealthStatus,
@@ -41,7 +41,7 @@ export default function SystemHealthScreen({ user }: Props) {
   const [tokens, setTokens] = useState<TokenStatus[]>(cachedTokens);
   const [loading, setLoading] = useState(!cachedSummary);
   const [exporting, setExporting] = useState(false);
-  const [rechecking, setRechecking] = useState(false);
+  const [runningJobKey, setRunningJobKey] = useState<string | null>(null);
   const [busyTokenId, setBusyTokenId] = useState<string | null>(null);
 
   // Active top-level tab (jobs | integrations | performance | storage)
@@ -113,16 +113,16 @@ export default function SystemHealthScreen({ user }: Props) {
     }
   }
 
-  async function handleRecheckTokens() {
-    setRechecking(true);
+  async function handleRunJob(job: BackgroundJobHealth) {
+    setRunningJobKey(job.key);
     try {
-      await recheckSystemHealthTokens();
+      await runSystemHealthJob(job.key);
       await load(undefined, true);
-      toast.success("Token health check re-run.");
+      toast.success(`Ran ${job.jobName}.`);
     } catch {
-      toast.error("Unable to re-run the token health check.");
+      toast.error(`Unable to run ${job.jobName}.`);
     } finally {
-      setRechecking(false);
+      setRunningJobKey(null);
     }
   }
 
@@ -489,20 +489,13 @@ export default function SystemHealthScreen({ user }: Props) {
                         aria-label="Search background jobs"
                       />
                     </div>
-
-                    <button
-                      type="button"
-                      className="notif-btn notif-btn-ghost notif-btn-sm"
-                      onClick={() => void handleRecheckTokens()}
-                      disabled={rechecking}
-                      title="Run the Facebook token health check now instead of waiting for its daily schedule"
-                    >
-                      <i className={rechecking ? "ti ti-loader-2 sys-spin" : "ti ti-refresh-dot"} aria-hidden="true" />
-                      <span>{rechecking ? "Checking..." : "Re-run token check"}</span>
-                    </button>
                   </div>
 
-                  <JobTable jobs={filteredJobs} />
+                  <JobTable
+                    jobs={filteredJobs}
+                    runningJobKey={runningJobKey}
+                    onRun={(job) => void handleRunJob(job)}
+                  />
                 </div>
               </div>
             )}
@@ -919,7 +912,15 @@ function ServiceCard({ item }: { item: ExternalServiceHealth }) {
   );
 }
 
-function JobTable({ jobs }: { jobs: BackgroundJobHealth[] }) {
+function JobTable({
+  jobs,
+  runningJobKey,
+  onRun,
+}: {
+  jobs: BackgroundJobHealth[];
+  runningJobKey: string | null;
+  onRun: (job: BackgroundJobHealth) => void;
+}) {
   if (jobs.length === 0) {
     return (
       <div className="sys-table-empty">
@@ -929,43 +930,61 @@ function JobTable({ jobs }: { jobs: BackgroundJobHealth[] }) {
     );
   }
 
+  const anyRunning = runningJobKey !== null;
+
   return (
     <table className="data-table sys-jobs-table">
       <thead>
         <tr>
-          <th style={{ width: "34%" }}>JOB NAME</th>
-          <th style={{ width: "16%" }}>STATUS</th>
-          <th style={{ width: "18%" }}>LAST RUN</th>
-          <th style={{ width: "18%" }}>LAST SUCCESS</th>
-          <th style={{ width: "14%" }}>DURATION</th>
+          <th style={{ width: "30%" }}>JOB NAME</th>
+          <th style={{ width: "14%" }}>STATUS</th>
+          <th style={{ width: "16%" }}>LAST RUN</th>
+          <th style={{ width: "16%" }}>LAST SUCCESS</th>
+          <th style={{ width: "12%" }}>DURATION</th>
+          <th style={{ width: "12%", textAlign: "right" }}>ACTIONS</th>
         </tr>
       </thead>
       <tbody>
-        {jobs.map((job) => (
-          <tr key={job.jobName} className="notif-table-row">
-            <td>
-              <div className="sys-job-cell">
-                <span className={`sys-job-dot sys-dot-${job.status.toLowerCase()}`} />
-                <div>
-                  <strong className="sys-job-name">{formatJobName(job.jobName)}</strong>
-                  {job.lastError && (
-                    <span className="sys-job-error-hint" title={job.lastError}>
-                      <i className="ti ti-alert-triangle" /> {job.lastError}
-                    </span>
-                  )}
+        {jobs.map((job) => {
+          const running = runningJobKey === job.key;
+          return (
+            <tr key={job.key} className="notif-table-row">
+              <td>
+                <div className="sys-job-cell">
+                  <span className={`sys-job-dot sys-dot-${job.status.toLowerCase()}`} />
+                  <div>
+                    <strong className="sys-job-name">{formatJobName(job.jobName)}</strong>
+                    {job.lastError && (
+                      <span className="sys-job-error-hint" title={job.lastError}>
+                        <i className="ti ti-alert-triangle" /> {job.lastError}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </td>
-            <td><StatusBadge status={job.status} /></td>
-            <td><span className="sys-date-text">{formatDate(job.lastStartedAt)}</span></td>
-            <td><span className="sys-date-text">{formatDate(job.lastSuccessAt)}</span></td>
-            <td>
-              <span className="sys-duration-pill">
-                {job.lastDurationMs == null ? "—" : `${job.lastDurationMs} ms`}
-              </span>
-            </td>
-          </tr>
-        ))}
+              </td>
+              <td><StatusBadge status={job.status} /></td>
+              <td><span className="sys-date-text">{formatDate(job.lastStartedAt)}</span></td>
+              <td><span className="sys-date-text">{formatDate(job.lastSuccessAt)}</span></td>
+              <td>
+                <span className="sys-duration-pill">
+                  {job.lastDurationMs == null ? "—" : `${job.lastDurationMs} ms`}
+                </span>
+              </td>
+              <td style={{ textAlign: "right" }}>
+                <button
+                  type="button"
+                  className="notif-btn notif-btn-ghost notif-btn-sm"
+                  onClick={() => onRun(job)}
+                  disabled={anyRunning}
+                  title={`Run ${formatJobName(job.jobName)} now instead of waiting for its schedule`}
+                >
+                  <i className={running ? "ti ti-loader-2 sys-spin" : "ti ti-player-play"} aria-hidden="true" />
+                  <span>{running ? "Running..." : "Re-run"}</span>
+                </button>
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

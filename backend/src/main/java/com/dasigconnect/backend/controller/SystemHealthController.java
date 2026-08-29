@@ -8,7 +8,7 @@ import com.dasigconnect.backend.model.dto.systemhealth.ExternalServiceHealthDto;
 import com.dasigconnect.backend.model.dto.systemhealth.OperationalMetricDto;
 import com.dasigconnect.backend.model.dto.systemhealth.StorageMetricDto;
 import com.dasigconnect.backend.model.dto.systemhealth.SystemHealthSummaryDto;
-import com.dasigconnect.backend.schedule.TokenHealthCheckJob;
+import com.dasigconnect.backend.service.ManualJobRunner;
 import com.dasigconnect.backend.service.SystemHealthService;
 import com.dasigconnect.backend.service.TokenManagementService;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -33,15 +33,15 @@ public class SystemHealthController {
 
     private final SystemHealthService systemHealthService;
     private final TokenManagementService tokenManagementService;
-    private final TokenHealthCheckJob tokenHealthCheckJob;
+    private final ManualJobRunner manualJobRunner;
 
     public SystemHealthController(
             SystemHealthService systemHealthService,
             TokenManagementService tokenManagementService,
-            TokenHealthCheckJob tokenHealthCheckJob) {
+            ManualJobRunner manualJobRunner) {
         this.systemHealthService = systemHealthService;
         this.tokenManagementService = tokenManagementService;
-        this.tokenHealthCheckJob = tokenHealthCheckJob;
+        this.manualJobRunner = manualJobRunner;
     }
 
     @GetMapping("/summary")
@@ -82,13 +82,21 @@ public class SystemHealthController {
     }
 
     /**
-     * Runs the Facebook token health check on demand (it otherwise only fires on
-     * its daily 08:00 UTC cron) and returns the refreshed background-job list so
-     * the caller can see the new status immediately.
+     * Runs a scheduled background job on demand (jobs otherwise only fire on their
+     * own cron / fixed-delay schedule) and returns the refreshed job list so the
+     * caller sees the new status immediately. {@code jobKey} is the job's simple
+     * class name, as shown in {@code BackgroundJobHealthDto.key}. 404 if unknown.
      */
+    @PostMapping("/jobs/{jobKey}/run")
+    public ResponseEntity<ApiResponse<List<BackgroundJobHealthDto>>> runJob(@PathVariable String jobKey) {
+        manualJobRunner.run(jobKey);
+        return ResponseEntity.ok(ApiResponse.success(systemHealthService.backgroundJobs()));
+    }
+
+    /** Back-compat shortcut for the most common manual run. */
     @PostMapping("/tokens/recheck")
     public ResponseEntity<ApiResponse<List<BackgroundJobHealthDto>>> recheckTokenHealth() {
-        tokenHealthCheckJob.run();
+        manualJobRunner.run("TokenHealthCheckJob");
         return ResponseEntity.ok(ApiResponse.success(systemHealthService.backgroundJobs()));
     }
 
