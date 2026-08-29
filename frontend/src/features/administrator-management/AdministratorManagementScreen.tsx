@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import {
   cancelInvitation,
+  changeUserRole,
   confirmAdminTransfer,
   deleteUser,
   inviteUser,
   listAdmins,
+  listInstitutions,
   listPendingAdminInvitations,
   requestAdminTransfer,
   resendInvitation,
@@ -15,12 +17,14 @@ import type { PendingInvitationResponse, UserProfileResponse } from '../../api/a
 import type { User } from '../../types/auth.types'
 import { useToast } from '../../context/ToastContext'
 import { getUserDisplayName } from '../../lib/userIdentity'
+import ChangeRoleModal from '../user-management/components/ChangeRoleModal'
 import ConfirmDialog from '../user-management/components/ConfirmDialog'
 import DeliveryIssuesAlert from '../user-management/components/DeliveryIssuesAlert'
 import InstitutionUsersCard from '../user-management/components/InstitutionUsersCard'
 import InvitationComposer from '../user-management/components/InvitationComposer'
 import { SkeletonBlock } from '../user-management/components/LoadingPrimitives'
-import type { InviteResults } from '../user-management/types'
+import type { InstitutionOption, InviteResults } from '../user-management/types'
+import { toInstitutionOption } from '../user-management/types'
 
 interface AdminManagementScreenProps {
   user: User
@@ -32,6 +36,7 @@ interface ConfirmDialogState {
   message: string
   confirmLabel: string
   dangerous: boolean
+  requireTypedConfirmation?: string
   onConfirm: () => void
 }
 
@@ -66,6 +71,12 @@ export default function AdminManagementScreen({
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
 
+  // Change role modal (demote a peer admin to moderator/contributor).
+  const [institutions, setInstitutions] = useState<InstitutionOption[]>([])
+  const [roleUser, setRoleUser] = useState<UserProfileResponse | null>(null)
+  const [roleBusy, setRoleBusy] = useState(false)
+  const [roleError, setRoleError] = useState('')
+
   const currentAdminRecord = useMemo(
     () => admins.find((item) => item.email.toLowerCase() === user.email.toLowerCase()) ?? null,
     [admins, user.email],
@@ -87,6 +98,13 @@ export default function AdminManagementScreen({
   useEffect(() => {
     void loadAdminManagement()
   }, [])
+
+  useEffect(() => {
+    if (!isOwner) return
+    listInstitutions()
+      .then((response) => setInstitutions(response.data.map(toInstitutionOption)))
+      .catch(() => setInstitutions([]))
+  }, [isOwner])
 
   // Keep the cross-route cache in sync with the latest lists (incl. mutations).
   useEffect(() => {
@@ -291,9 +309,10 @@ export default function AdminManagementScreen({
   function handleDeleteUser(managedUser: UserProfileResponse) {
     setConfirmDialog({
       title: 'Remove Admin',
-      message: `Remove ${getUserDisplayName(managedUser)}? Accounts with historical records will be kept inactive for audit integrity.`,
-      confirmLabel: 'Remove',
+      message: `Remove ${getUserDisplayName(managedUser)}? Accounts with historical records are kept inactive for audit integrity; otherwise the account is permanently deleted and cannot be recovered.`,
+      confirmLabel: 'Remove account',
       dangerous: true,
+      requireTypedConfirmation: managedUser.email,
       onConfirm: () => {
         setConfirmDialog(null)
         void executeDeleteUser(managedUser)
@@ -395,6 +414,36 @@ export default function AdminManagementScreen({
     )
     if (match) {
       void handleResendInvitation(match.id)
+    }
+  }
+
+  function handleOpenChangeRole(managedUser: UserProfileResponse) {
+    setRoleUser(managedUser)
+    setRoleError('')
+  }
+
+  function handleCloseChangeRole() {
+    if (roleBusy) return
+    setRoleUser(null)
+    setRoleError('')
+  }
+
+  async function handleConfirmChangeRole(
+    role: 'contributor' | 'moderator' | 'admin',
+    institutionId: string | null,
+  ) {
+    if (!roleUser) return
+    setRoleBusy(true)
+    setRoleError('')
+    try {
+      await changeUserRole(roleUser.id, role, institutionId)
+      toast.success(`${getUserDisplayName(roleUser)} is now a ${role}.`)
+      await loadAdminManagement()
+      setRoleUser(null)
+    } catch (err: unknown) {
+      setRoleError(getApiErrorMessage(err, 'Unable to change role.'))
+    } finally {
+      setRoleBusy(false)
     }
   }
 
@@ -538,6 +587,7 @@ export default function AdminManagementScreen({
               onCancelInvitation={handleCancelInvitationFromUser}
               onResendInvitation={handleResendInvitationFromUser}
               onRequestSuperAdminTransfer={handleRequestTransfer}
+              onChangeRole={isOwner ? handleOpenChangeRole : undefined}
               showRoleControls={false}
               showInstitutionColumn={false}
               showFilterPills
@@ -555,11 +605,25 @@ export default function AdminManagementScreen({
           message={confirmDialog.message}
           confirmLabel={confirmDialog.confirmLabel}
           dangerous={confirmDialog.dangerous}
+          requireTypedConfirmation={confirmDialog.requireTypedConfirmation}
           onConfirm={confirmDialog.onConfirm}
           onCancel={() => setConfirmDialog(null)}
         />
       )}
       {inviteAdminModal}
+
+      {roleUser && (
+        <ChangeRoleModal
+          user={roleUser}
+          institutions={institutions}
+          isOwner={isOwner}
+          adminSlotsOpen={remainingAdminSlots}
+          busy={roleBusy}
+          error={roleError}
+          onConfirm={(role, institutionId) => void handleConfirmChangeRole(role, institutionId)}
+          onClose={handleCloseChangeRole}
+        />
+      )}
     </div>
   )
 }

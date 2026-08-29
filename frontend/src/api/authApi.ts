@@ -261,6 +261,17 @@ export function reassignContributor(id: string, targetInstitutionId: string) {
     targetInstitutionId,
   });
 }
+
+export function changeUserRole(
+  id: string,
+  role: "contributor" | "moderator" | "admin",
+  institutionId?: string | null,
+) {
+  return api.patch<UserProfileResponse>(`/users/${id}/role`, {
+    role,
+    institutionId: role === "contributor" ? institutionId ?? null : null,
+  });
+}
 export function uploadUserAvatar(id: string, file: File) {
   const formData = new FormData();
   formData.append("file", file);

@@ -1580,6 +1580,41 @@ button.um-user-avatar:focus-visible {
 .um-confirm-ok:hover { background: #1460CC; }
 .um-confirm-ok.is-danger { background: #DC2626; }
 .um-confirm-ok.is-danger:hover { background: #B91C1C; }
+.um-confirm-ok:disabled { background: #C7CDD9; color: #F5F7FA; cursor: not-allowed; }
+
+.um-confirm-typed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 20px;
+}
+
+.um-confirm-typed-label {
+  color: var(--d-muted);
+  font-size: 13px;
+}
+
+.um-confirm-typed-label strong {
+  color: var(--d-text);
+  font-weight: 650;
+}
+
+.um-confirm-typed-input {
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--d-border);
+  border-radius: 8px;
+  background: var(--d-surface);
+  color: var(--d-text);
+  font-family: var(--ff-body);
+  font-size: 14px;
+}
+
+.um-confirm-typed-input:focus-visible {
+  outline: none;
+  border-color: var(--d-blue);
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.18);
+}
 
 /* ---- Refresh + count pills (used in cards) ---- */
 .um-refresh-pill {

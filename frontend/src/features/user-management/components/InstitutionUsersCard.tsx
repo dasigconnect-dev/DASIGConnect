@@ -15,6 +15,7 @@ interface InstitutionUsersCardProps {
   onCancelInvitation: (user: UserProfileResponse) => void
   onResendInvitation?: (user: UserProfileResponse) => void
   onReassign?: (user: UserProfileResponse) => void
+  onChangeRole?: (user: UserProfileResponse) => void
   onRequestSuperAdminTransfer?: (user: UserProfileResponse) => void
   resendingUserId?: string | null
   showRoleControls?: boolean
@@ -46,6 +47,7 @@ export default function InstitutionUsersCard({
   onCancelInvitation,
   onResendInvitation,
   onReassign,
+  onChangeRole,
   onRequestSuperAdminTransfer,
   resendingUserId = null,
   showRoleControls = true,
@@ -296,6 +298,13 @@ export default function InstitutionUsersCard({
                               dangerous: true,
                             }
                           : null,
+                        onChangeRole && canChangeRole(currentUser, managedUser)
+                          ? {
+                              label: 'Change role',
+                              icon: 'ti ti-user-cog',
+                              onClick: () => onChangeRole(managedUser),
+                            }
+                          : null,
                         onReassign && canManage
                           ? {
                               label: 'Reassign institution',
@@ -521,6 +530,15 @@ function canToggleUserStatus(currentUser: User | null, managedUser: UserProfileR
     return currentUser.role === 'admin' && currentUser.email.toLowerCase() !== managedUser.email.toLowerCase()
   }
   return currentUser.role === 'admin' || currentUser.role === 'moderator'
+}
+
+function canChangeRole(currentUser: User | null, managedUser: UserProfileResponse) {
+  return Boolean(
+    currentUser &&
+      currentUser.role === 'admin' &&
+      managedUser.accountState.toLowerCase() === 'active' &&
+      currentUser.email.toLowerCase() !== managedUser.email.toLowerCase(),
+  )
 }
 
 function canRequestSuperAdminTransfer(currentUser: User | null, managedUser: UserProfileResponse) {

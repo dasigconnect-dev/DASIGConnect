@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom'
 import { Navigate } from 'react-router-dom'
 import {
   cancelInvitation,
+  changeUserRole,
   deleteUser,
   inviteUser,
+  listAdmins,
   listInstitutions,
   listNetworkUsers,
   listPendingNetworkInvitations,
@@ -15,6 +17,7 @@ import {
 import type { PendingInvitationResponse, UserProfileResponse } from '../../api/authApi'
 import type { User } from '../../types/auth.types'
 import BrandedSelect from '../../components/ui/BrandedSelect'
+import ChangeRoleModal from './components/ChangeRoleModal'
 import ConfirmDialog from './components/ConfirmDialog'
 import DeliveryIssuesAlert from './components/DeliveryIssuesAlert'
 import InstitutionUsersCard from './components/InstitutionUsersCard'
@@ -30,6 +33,7 @@ interface ConfirmDialogState {
   message: string
   confirmLabel: string
   dangerous: boolean
+  requireTypedConfirmation?: string
   onConfirm: () => void
   onCancel?: () => void
 }
@@ -69,6 +73,14 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
   const [reassignTargetId, setReassignTargetId] = useState('')
   const [reassignLoading, setReassignLoading] = useState(false)
   const [reassignError, setReassignError] = useState('')
+
+  // Change role modal
+  const [roleUser, setRoleUser] = useState<UserProfileResponse | null>(null)
+  const [roleBusy, setRoleBusy] = useState(false)
+  const [roleError, setRoleError] = useState('')
+  // Owner status + open admin slots, from the admins roster (admin-only endpoint).
+  const [isOwner, setIsOwner] = useState(false)
+  const [adminSlotsOpen, setAdminSlotsOpen] = useState(0)
 
   const selectedInviteInstitution = useMemo(
     () => institutions.find((inst) => inst.id === inviteInstitutionId) ?? null,
@@ -138,12 +150,19 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     setManagementLoading(true)
     setManagementError('')
     try {
-      const [usersResponse, pendingResponse] = await Promise.all([
+      const [usersResponse, pendingResponse, adminsResponse] = await Promise.all([
         listNetworkUsers(),
         listPendingNetworkInvitations(),
+        listAdmins(),
       ])
       setManagedUsers(usersResponse.data)
       setPendingInvitations(pendingResponse.data)
+
+      const admins = adminsResponse.data
+      const me = admins.find((a) => a.email.toLowerCase() === user.email.toLowerCase())
+      setIsOwner(me?.adminOwner === true)
+      const activeAdmins = admins.filter((a) => a.accountState.toLowerCase() === 'active').length
+      setAdminSlotsOpen(Math.max(0, 3 - activeAdmins))
     } catch (error: unknown) {
       setManagedUsers([])
       setPendingInvitations([])
@@ -266,9 +285,10 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
   function handleDeleteUser(managedUser: UserProfileResponse) {
     setConfirmDialog({
       title: 'Remove User',
-      message: `Remove ${getUserDisplayName(managedUser)}? If they have existing content or media, their account will be deactivated to preserve data integrity. Otherwise it will be permanently deleted.`,
-      confirmLabel: 'Remove',
+      message: `Remove ${getUserDisplayName(managedUser)}? If they have existing content or media, their account is deactivated to preserve data integrity. Otherwise it is permanently deleted and cannot be recovered.`,
+      confirmLabel: 'Remove account',
       dangerous: true,
+      requireTypedConfirmation: managedUser.email,
       onConfirm: () => {
         setConfirmDialog(null)
         void executeDeleteUser(managedUser)
@@ -402,6 +422,38 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     }
   }
 
+  // ── Change role ─────────────────────────────────────────────────────────
+
+  function handleOpenChangeRole(managedUser: UserProfileResponse) {
+    setRoleUser(managedUser)
+    setRoleError('')
+  }
+
+  function handleCloseChangeRole() {
+    if (roleBusy) return
+    setRoleUser(null)
+    setRoleError('')
+  }
+
+  async function handleConfirmChangeRole(
+    role: 'contributor' | 'moderator' | 'admin',
+    institutionId: string | null,
+  ) {
+    if (!roleUser) return
+    setRoleBusy(true)
+    setRoleError('')
+    try {
+      await changeUserRole(roleUser.id, role, institutionId)
+      toast.success(`${getUserDisplayName(roleUser)} is now a ${role}.`)
+      await loadManagementLists()
+      setRoleUser(null)
+    } catch (err: unknown) {
+      setRoleError(getApiErrorMessage(err, 'Unable to change role.'))
+    } finally {
+      setRoleBusy(false)
+    }
+  }
+
   return (
     <div className="um-screen">
       <main className="um-body">
@@ -479,6 +531,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
           onCancelInvitation={handleCancelInvitationFromUsers}
           onResendInvitation={handleResendInvitationFromUsers}
           onReassign={handleOpenReassign}
+          onChangeRole={handleOpenChangeRole}
           showRoleControls
           showInstitutionColumn
           title="All Users"
@@ -582,6 +635,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
           message={confirmDialog.message}
           confirmLabel={confirmDialog.confirmLabel}
           dangerous={confirmDialog.dangerous}
+          requireTypedConfirmation={confirmDialog.requireTypedConfirmation}
           onConfirm={confirmDialog.onConfirm}
           onCancel={() => {
             confirmDialog.onCancel?.()
@@ -678,6 +732,19 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
           </div>,
           document.body,
         )}
+
+      {roleUser && (
+        <ChangeRoleModal
+          user={roleUser}
+          institutions={institutions}
+          isOwner={isOwner}
+          adminSlotsOpen={adminSlotsOpen}
+          busy={roleBusy}
+          error={roleError}
+          onConfirm={(role, institutionId) => void handleConfirmChangeRole(role, institutionId)}
+          onClose={handleCloseChangeRole}
+        />
+      )}
     </div>
   )
 }
