@@ -8,11 +8,17 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface InvitationTokenRepository extends JpaRepository<InvitationToken, UUID> {
     Optional<InvitationToken> findByTokenHash(String tokenHash);
+
+    /** Removes every invitation token for an address, regardless of used/expired state. */
+    @Modifying
+    @Query(value = "DELETE FROM invitation_tokens WHERE lower(recipient_email) = lower(:email)", nativeQuery = true)
+    int deleteByRecipientEmailIgnoreCase(@Param("email") String email);
     List<InvitationToken> findByInstitutionIdAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
             UUID institutionId,
             Instant now);

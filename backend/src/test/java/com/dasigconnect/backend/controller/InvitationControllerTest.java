@@ -15,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -224,5 +225,19 @@ class InvitationControllerTest {
         mockMvc.perform(get("/api/v1/invitations/pending/count").param("institutionId", INSTITUTION_ID.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pendingInvitations").value(3));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void cancelByUser_asAdmin_returns204() throws Exception {
+        mockMvc.perform(delete("/api/v1/invitations/by-user/{userId}", UUID.randomUUID()))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void cancelByUser_asModerator_isForbidden() throws Exception {
+        mockMvc.perform(delete("/api/v1/invitations/by-user/{userId}", UUID.randomUUID()))
+                .andExpect(status().isForbidden());
     }
 }

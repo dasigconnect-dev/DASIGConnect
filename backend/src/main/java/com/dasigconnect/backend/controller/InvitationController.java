@@ -92,6 +92,21 @@ public class InvitationController {
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 
+    /**
+     * DELETE /api/v1/invitations/by-user/{userId}
+     * Cancels a pending account by user id — reliable even when the invitation
+     * token has expired, unlike DELETE /{id} which needs a live token.
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @DeleteMapping("/by-user/{userId}")
+    public ResponseEntity<Void> cancelByUser(
+            @PathVariable UUID userId,
+            Authentication authentication) {
+        JwtUserDetails requester = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails p ? p : null;
+        invitationService.cancelPendingUserInvitation(userId, requester);
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
+
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     @GetMapping("/pending")
     public ResponseEntity<ApiResponse<List<PendingInvitationDto>>> pending(

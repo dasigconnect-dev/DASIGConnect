@@ -644,6 +644,58 @@ class InvitationServiceTest {
         verify(invitationTokenRepository).delete(token);
     }
 
+    @Test
+    void cancelPendingUserInvitation_expiredToken_stillCancelsUserAndClearsTokens() {
+        UUID userId = UUID.randomUUID();
+        User pendingUser = new User();
+        pendingUser.setId(userId);
+        pendingUser.setEmail("Invitee@Example.com");
+        pendingUser.setAccountState(UserStatus.pending);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(pendingUser));
+        when(invitationTokenRepository.deleteByRecipientEmailIgnoreCase("Invitee@Example.com")).thenReturn(0);
+
+        invitationService.cancelPendingUserInvitation(userId, adminPrincipal);
+
+        assertThat(pendingUser.getAccountState()).isEqualTo(UserStatus.cancelled);
+        verify(userRepository).save(pendingUser);
+        verify(invitationTokenRepository).deleteByRecipientEmailIgnoreCase("Invitee@Example.com");
+    }
+
+    @Test
+    void cancelPendingUserInvitation_activeUser_throws409() {
+        UUID userId = UUID.randomUUID();
+        User activeUser = new User();
+        activeUser.setId(userId);
+        activeUser.setEmail("active@example.com");
+        activeUser.setAccountState(UserStatus.active);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(activeUser));
+
+        assertThatThrownBy(() -> invitationService.cancelPendingUserInvitation(userId, adminPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(409);
+    }
+
+    @Test
+    void cancelPendingUserInvitation_missingUser_throws404() {
+        UUID userId = UUID.randomUUID();
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> invitationService.cancelPendingUserInvitation(userId, adminPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(404);
+    }
+
+    @Test
+    void cancelPendingUserInvitation_nonAdmin_throws403() {
+        assertThatThrownBy(() -> invitationService.cancelPendingUserInvitation(
+                UUID.randomUUID(), validatorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(403);
+    }
+
     private static JwtUserDetails principal(String role, UUID institutionId) {
         return new JwtUserDetails(UUID.randomUUID(), role + "@example.com", role, institutionId);
     }
