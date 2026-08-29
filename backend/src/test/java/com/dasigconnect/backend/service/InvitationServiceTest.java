@@ -78,6 +78,7 @@ class InvitationServiceTest {
         institution.setStatus(InstitutionStatus.active); // default for most tests
         adminPrincipal = new JwtUserDetails(UUID.randomUUID(), "admin@dasigconnect.com", "admin", null);
         validatorPrincipal = new JwtUserDetails(UUID.randomUUID(), "moderator@example.com", "moderator", institutionId);
+        org.springframework.test.util.ReflectionTestUtils.setField(invitationService, "maxAdmins", 3L);
     }
 
     private InvitationToken buildToken(boolean used, boolean expired) {

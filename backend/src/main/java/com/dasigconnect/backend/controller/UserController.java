@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
+import com.dasigconnect.backend.model.dto.user.ChangeUserRoleRequestDto;
 import com.dasigconnect.backend.model.dto.user.ReassignContributorRequest;
 import com.dasigconnect.backend.model.dto.user.AdminTransferResponseDto;
 import com.dasigconnect.backend.model.dto.user.UpdateUserStatusRequestDto;
@@ -117,6 +118,22 @@ public class UserController {
             @RequestBody @Valid UpdateUserStatusRequestDto request,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(userService.updateStatus(id, request.accountState(), user)));
+    }
+
+    /**
+     * PATCH /api/v1/users/{id}/role Promotes or demotes an account between
+     * contributor, moderator, and admin. Admin-authenticated; the service layer
+     * refines this (peer admin for contributor/moderator, Admin Owner for
+     * anything touching an admin account).
+     */
+    @PatchMapping("/users/{id}/role")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<UserDto>> changeRole(
+            @PathVariable UUID id,
+            @RequestBody @Valid ChangeUserRoleRequestDto request,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(
+                userService.changeRole(id, request.role(), request.institutionId(), user)));
     }
 
     /**

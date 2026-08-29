@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +54,11 @@ public class UserService {
     private final InstitutionRepository institutionRepository;
     private final InvitationTokenRepository invitationTokenRepository;
     private final AuditLogService auditLogService;
+    private final ApplicationEventPublisher eventPublisher;
+
+    /** Administrative policy cap: maximum active admin accounts network-wide (`app.admins.max`, default 3). */
+    @Value("${app.admins.max:3}")
+    private long maxAdmins;
 
     public UserService(
             UserRepository userRepository,
@@ -65,7 +72,8 @@ public class UserService {
             JWTService jwtService,
             InstitutionRepository institutionRepository,
             InvitationTokenRepository invitationTokenRepository,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.notificationRepository = notificationRepository;
         this.emailDeliveryLogRepository = emailDeliveryLogRepository;
@@ -78,6 +86,7 @@ public class UserService {
         this.institutionRepository = institutionRepository;
         this.invitationTokenRepository = invitationTokenRepository;
         this.auditLogService = auditLogService;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -333,6 +342,116 @@ public class UserService {
                 id,
                 java.util.Map.of("email", user.getEmail(), "role", user.getRole().name()));
         return "deleted";
+    }
+
+    /**
+     * Promote or demote an account between contributor, moderator, and admin.
+     *
+     * <ul>
+     *   <li>Any active admin may move an account between contributor and
+     *       moderator; only the Admin Owner may promote to admin or change an
+     *       existing admin's role.</li>
+     *   <li>{@code contributor} requires an active {@code institutionId}; the
+     *       network-wide roles clear the institution.</li>
+     *   <li>Promotion to admin is blocked once the active-admin count reaches
+     *       {@code app.admins.max}.</li>
+     *   <li>The Admin Owner's own role cannot be changed here — transfer
+     *       ownership first. Nobody can change their own role.</li>
+     * </ul>
+     *
+     * The account's tokens are invalidated (role and institution live in the
+     * JWT), so the person must sign in again. Historical submissions, media, and
+     * validation logs keep their original institution and authorship.
+     */
+    @Transactional
+    public UserDto changeRole(UUID userId, UserRole newRole, UUID institutionId, JwtUserDetails requester) {
+        if (newRole == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Target role is required.");
+        }
+        if (requester != null && requester.userId() != null && requester.userId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You cannot change your own role.");
+        }
+
+        User target = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        UserRole fromRole = target.getRole();
+        boolean touchesAdmin = fromRole == UserRole.admin || newRole == UserRole.admin;
+        if (touchesAdmin) {
+            requireActiveAdminOwner(requester);
+        } else {
+            requireActiveAdmin(requester);
+        }
+
+        if (fromRole == UserRole.admin && target.isAdminOwner()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Transfer admin ownership before changing this account's role.");
+        }
+        if (newRole == fromRole) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This account already has that role.");
+        }
+        if (target.getAccountState() != UserStatus.active) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only active accounts can be reassigned. Reactivate or re-invite the account first.");
+        }
+        if (newRole == UserRole.admin
+                && userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active) >= maxAdmins) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Admin limit reached (" + maxAdmins
+                            + "). Remove or transfer an existing admin before promoting another.");
+        }
+
+        UUID fromInstitutionId = target.getInstitution() != null ? target.getInstitution().getId() : null;
+        String fromInstitutionName = target.getInstitution() != null ? target.getInstitution().getName() : "(none)";
+        String toInstitutionName = "(none)";
+
+        if (newRole == UserRole.contributor) {
+            if (institutionId == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "An institution is required when demoting an account to contributor.");
+            }
+            var institution = institutionRepository.findById(institutionId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Target institution not found."));
+            if (institution.getStatus() != InstitutionStatus.active) {
+                throw new ResponseStatusException(org.springframework.http.HttpStatusCode.valueOf(422),
+                        "Target institution is not active. Contributors can only be assigned to active institutions.");
+            }
+            target.setInstitution(institution);
+            toInstitutionName = institution.getName();
+        } else {
+            // moderator and admin are network-wide.
+            target.setInstitution(null);
+        }
+
+        if (newRole != UserRole.admin) {
+            target.setAdminOwner(false);
+        }
+        if (fromRole == UserRole.moderator && newRole != UserRole.moderator) {
+            // Drop any review claims the account holds as a moderator.
+            reviewLockRepository.deleteByLockedById(userId);
+        }
+
+        target.setRole(newRole);
+        User saved = userRepository.save(target);
+        jwtService.invalidateUserTokens(saved.getId());
+
+        auditLogService.record(
+                findRequesterForAudit(requester),
+                "USER_ROLE_CHANGED",
+                null, null,
+                saved.getId(),
+                Map.of(
+                        "email", saved.getEmail(),
+                        "fromRole", fromRole.name(),
+                        "toRole", newRole.name(),
+                        "fromInstitution", fromInstitutionName,
+                        "toInstitution", toInstitutionName));
+
+        String actorEmail = requester != null ? requester.email() : null;
+        eventPublisher.publishEvent(new com.dasigconnect.backend.event.UserRoleChangedEvent(
+                saved, fromRole, newRole, actorEmail));
+
+        return UserDto.from(saved);
     }
 
     /**

@@ -153,6 +153,31 @@ class UserControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
+    void changeRole_asAdmin_returnsUpdatedUser() throws Exception {
+        UUID userId = UUID.randomUUID();
+        User promoted = user(userId, "c@cit.edu.ph", UserRole.moderator, null);
+        when(userService.changeRole(any(), any(), any(), any())).thenReturn(UserDto.from(promoted));
+
+        mockMvc.perform(patch("/api/v1/users/{id}/role", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"role":"moderator"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.role").value("moderator"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void changeRole_missingRole_returns400() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/{id}/role", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
     void updateStatus_missingStatus_returns400() throws Exception {
         mockMvc.perform(patch("/api/v1/users/{id}/status", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)

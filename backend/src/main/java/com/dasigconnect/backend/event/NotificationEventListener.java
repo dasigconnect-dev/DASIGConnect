@@ -465,6 +465,27 @@ public class NotificationEventListener {
         }
     }
 
+    // ── T18 — Account role changed (promotion / demotion) ─────────────────────
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onUserRoleChanged(UserRoleChangedEvent event) {
+        User user = event.user();
+        if (user == null) {
+            return;
+        }
+        String msg = "Your account role changed from " + roleLabel(event.fromRole())
+                + " to " + roleLabel(event.toRole()) + ". Sign in again to continue.";
+        notificationService.createNotification(user, NotificationEventType.user_role_changed, msg, "/dashboard");
+    }
+
+    private static String roleLabel(UserRole role) {
+        if (role == null) {
+            return "unknown";
+        }
+        String name = role.name();
+        return Character.toUpperCase(name.charAt(0)) + name.substring(1);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
     /**
      * Moderators are network-wide (no owning institution), so every moderator

@@ -39,13 +39,6 @@ public class InvitationService {
 
     private static final Logger log = LoggerFactory.getLogger(InvitationService.class);
 
-    /**
-     * Administrative policy cap: at most three admin accounts network-wide.
-     * Enforced when an admin invitation is created and again when it is
-     * accepted, so a stale invite can never push the network past the limit.
-     */
-    private static final long MAX_ADMINS = 3;
-
     private final InvitationTokenRepository invitationTokenRepository;
     private final UserRepository userRepository;
     private final EntityManager entityManager;
@@ -54,6 +47,15 @@ public class InvitationService {
     private final EmailService emailService;
     private final AuditLogService auditLogService;
     private final InstitutionService institutionService;
+
+    /**
+     * Administrative policy cap: maximum active admin accounts network-wide
+     * (`app.admins.max`, default 3). Enforced when an admin invitation is
+     * created and again when it is accepted, so a stale invite can never push
+     * the network past the limit.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.admins.max:3}")
+    private long maxAdmins;
 
     public InvitationService(
             InvitationTokenRepository invitationTokenRepository,
@@ -162,9 +164,9 @@ public class InvitationService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Account is already active");
         }
         if (token.getAssignedRole() == UserRole.admin
-                && userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active) >= MAX_ADMINS) {
+                && userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active) >= maxAdmins) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Admin limit reached (" + MAX_ADMINS + "). This invitation can no longer be accepted.");
+                    "Admin limit reached (" + maxAdmins + "). This invitation can no longer be accepted.");
         }
         user.setEmail(token.getRecipientEmail());
         user.setRole(token.getAssignedRole());
@@ -474,9 +476,9 @@ public class InvitationService {
                 .filter(email -> !email.equalsIgnoreCase(recipientEmail))
                 .distinct()
                 .count();
-        if (activeAdmins + pendingAdminInvites >= MAX_ADMINS) {
+        if (activeAdmins + pendingAdminInvites >= maxAdmins) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Admin limit reached (" + MAX_ADMINS
+                    "Admin limit reached (" + maxAdmins
                             + "). Remove or transfer an existing admin before inviting another.");
         }
     }

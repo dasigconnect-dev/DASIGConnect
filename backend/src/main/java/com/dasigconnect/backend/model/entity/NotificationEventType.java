@@ -23,5 +23,6 @@ public enum NotificationEventType {
     empty_schedule_warning,
     fast_track_submission,
     embedding_failure_digest,
+    user_role_changed,
     generic
 }
