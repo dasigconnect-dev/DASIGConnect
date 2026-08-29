@@ -409,7 +409,11 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   }
 
   function handleDeleteInstitution(inst: InstitutionWithStats) {
-    const contributorsCount = managedUsers.filter((u) => u.role.toLowerCase() === 'contributor').length
+    const contributorsCount = managedUsers.filter(
+      (u) =>
+        u.role.toLowerCase() === 'contributor' &&
+        ['active', 'pending', 'pending_email_undelivered'].includes(u.accountState.toLowerCase()),
+    ).length
     if (contributorsCount > 0) {
       setConfirmDialog({
         title: 'Cannot Delete Institution',
@@ -632,25 +636,6 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
       toast.error('Protected institutions cannot be deactivated.')
       return
     }
-    const contributorsCount = managedUsers.filter((u) => u.role.toLowerCase() === 'contributor').length
-    const pendingCount = pendingInvitations.length
-    if (contributorsCount > 0 || pendingCount > 0) {
-      setConfirmDialog({
-        title: 'Cannot Deactivate Institution',
-        message: `"${institution.name}" currently has ${contributorsCount} contributor account(s) and ${pendingCount} pending invitation(s). All contributors must be transferred to another institution or removed before deactivating.`,
-        confirmLabel: contributorsCount > 0 ? 'Transfer Contributors' : 'Close',
-        dangerous: false,
-        onConfirm: () => {
-          setConfirmDialog(null)
-          if (contributorsCount > 0) {
-            const firstContributor = managedUsers.find((u) => u.role.toLowerCase() === 'contributor')
-            if (firstContributor) handleOpenReassign(firstContributor)
-          }
-        },
-      })
-      return
-    }
-
     setConfirmDialog({
       title: 'Deactivate Institution',
       message: `Deactivate "${institution.name}"? New contributor invitations will be blocked. You can reactivate this institution at any time.`,
