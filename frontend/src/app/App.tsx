@@ -1005,19 +1005,26 @@ function getApiErrorMessage(error: unknown, fallback: string) {
     const data = response.data;
     if (isRecord(data)) {
       if (typeof data.error === "string") return data.error;
+      // ApiResponse envelope: { success, data, error: { code, message } }
+      if (isRecord(data.error) && typeof data.error.message === "string") {
+        return data.error.message;
+      }
       if (typeof data.message === "string") return data.message;
     }
   }
   return typeof error.message === "string" ? error.message : fallback;
 }
 
+// Matches the backend reason strings from InvitationService#assertTokenUnused
+// and #acceptInvitation ("Invitation has expired", "Invitation has already
+// been used", "Account is already active").
 function isExpiredInviteError(message: string) {
   return message.toLowerCase().includes("expired");
 }
 
 function isAlreadyUsedInviteError(message: string) {
   const normalized = message.toLowerCase();
-  return normalized.includes("already") || normalized.includes("active") || normalized.includes("used");
+  return normalized.includes("already been used") || normalized.includes("already active");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

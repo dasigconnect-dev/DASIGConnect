@@ -4,7 +4,6 @@ import com.dasigconnect.backend.model.dto.settings.WatermarkConfigurationDto;
 import com.dasigconnect.backend.model.dto.settings.WatermarkConfigurationRequestDto;
 import com.dasigconnect.backend.model.dto.settings.WatermarkElementDto;
 import com.dasigconnect.backend.model.entity.WatermarkConfiguration;
-import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.repository.WatermarkConfigurationRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -34,9 +33,6 @@ class WatermarkConfigurationServiceTest {
     private WatermarkConfigurationRepository repository;
 
     @Mock
-    private InstitutionRepository institutions;
-
-    @Mock
     private UserRepository userRepository;
 
     @Mock
@@ -48,13 +44,32 @@ class WatermarkConfigurationServiceTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        service = new WatermarkConfigurationService(repository, institutions, userRepository, auditLogService, objectMapper);
+        service = new WatermarkConfigurationService(repository, userRepository, auditLogService, objectMapper);
     }
 
     @Test
-    void contributorCannotAccessWatermarkConfig() {
+    void contributorCanReadGlobalWatermark() {
         var actor = new JwtUserDetails(UUID.randomUUID(), "contrib@example.com", "contributor", UUID.randomUUID());
-        assertThatThrownBy(() -> service.get(null, actor))
+        when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
+
+        WatermarkConfigurationDto dto = service.get(null, actor);
+
+        assertThat(dto).isNotNull();
+        assertThat(dto.elements()).isNotEmpty();
+    }
+
+    @Test
+    void unauthenticatedCannotReadWatermark() {
+        assertThatThrownBy(() -> service.get(null, null))
+                .isInstanceOf(ResponseStatusException.class);
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void contributorCannotSaveWatermark() {
+        var actor = new JwtUserDetails(UUID.randomUUID(), "contrib@example.com", "contributor", UUID.randomUUID());
+        var request = new WatermarkConfigurationRequestDto(null, true, new ArrayList<>());
+        assertThatThrownBy(() -> service.save(request, actor))
                 .isInstanceOf(ResponseStatusException.class);
         verifyNoInteractions(repository);
     }

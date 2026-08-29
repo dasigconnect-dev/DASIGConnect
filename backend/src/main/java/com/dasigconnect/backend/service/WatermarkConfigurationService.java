@@ -5,7 +5,6 @@ import com.dasigconnect.backend.model.dto.settings.WatermarkConfigurationRequest
 import com.dasigconnect.backend.model.dto.settings.WatermarkElementDto;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.WatermarkConfiguration;
-import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.repository.WatermarkConfigurationRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -26,20 +25,17 @@ import org.springframework.web.server.ResponseStatusException;
 public class WatermarkConfigurationService {
 
     private final WatermarkConfigurationRepository repository;
-    private final InstitutionRepository institutions;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
     private final ObjectMapper objectMapper;
 
     public WatermarkConfigurationService(
             WatermarkConfigurationRepository repository,
-            InstitutionRepository institutions,
             UserRepository userRepository,
             AuditLogService auditLogService,
             ObjectMapper objectMapper
     ) {
         this.repository = repository;
-        this.institutions = institutions;
         this.userRepository = userRepository;
         this.auditLogService = auditLogService;
         this.objectMapper = objectMapper;
@@ -47,7 +43,7 @@ public class WatermarkConfigurationService {
 
     @Transactional(readOnly = true)
     public WatermarkConfigurationDto get(UUID institutionId, JwtUserDetails actor) {
-        authorizeRead(institutionId, actor);
+        authorizeRead(actor);
 
         Optional<WatermarkConfiguration> defaultConfig = repository.findByInstitutionIsNull();
         return defaultConfig.map(cfg -> mapToDto(cfg, false, "DASIG Central Visayas (Global)"))
@@ -56,7 +52,7 @@ public class WatermarkConfigurationService {
 
     @Transactional
     public WatermarkConfigurationDto save(WatermarkConfigurationRequestDto request, JwtUserDetails actor) {
-        authorizeWrite(null, actor);
+        authorizeWrite(actor);
 
         if (request.elements() != null && request.elements().size() > 3) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Watermark can contain at most 3 elements");
@@ -85,20 +81,14 @@ public class WatermarkConfigurationService {
         return mapToDto(saved, false, instName);
     }
 
-    @Transactional
-    public void deleteOverride(UUID institutionId, JwtUserDetails actor) {
-        authorizeWrite(null, actor);
-        throw new ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Institution-specific watermark overrides are disabled. Edit the global watermark instead.");
+    private void authorizeRead(JwtUserDetails actor) {
+        // The watermark is a single global configuration that every role needs
+        // in order to render post previews — any authenticated user may read it.
+        if (actor != null) return;
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
     }
 
-    private void authorizeRead(UUID institutionId, JwtUserDetails actor) {
-        if (actor != null && "admin".equalsIgnoreCase(actor.role())) return;
-        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Watermark configuration read access denied");
-    }
-
-    private void authorizeWrite(UUID institutionId, JwtUserDetails actor) {
+    private void authorizeWrite(JwtUserDetails actor) {
         if (actor != null && "admin".equalsIgnoreCase(actor.role())) return;
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Watermark configuration write access denied");
     }

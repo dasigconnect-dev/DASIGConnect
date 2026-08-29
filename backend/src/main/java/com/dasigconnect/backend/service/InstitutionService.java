@@ -11,6 +11,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -60,6 +62,8 @@ public class InstitutionService {
     private final OverrideRequestRepository overrideRequestRepository;
     private final PageSettingsRepository pageSettingsRepository;
     private final WatermarkConfigurationRepository watermarkConfigurationRepository;
+    /** Media object store — concrete host (R2, Supabase, …) is abstracted behind this service. */
+    private final R2StorageService mediaStorage;
     private final WorkspaceProvisionerService workspaceProvisioner;
     private final AuditLogService auditLogService;
 
@@ -74,6 +78,7 @@ public class InstitutionService {
             OverrideRequestRepository overrideRequestRepository,
             PageSettingsRepository pageSettingsRepository,
             WatermarkConfigurationRepository watermarkConfigurationRepository,
+            R2StorageService mediaStorage,
             WorkspaceProvisionerService workspaceProvisioner,
             AuditLogService auditLogService) {
         this.institutionRepository = institutionRepository;
@@ -86,6 +91,7 @@ public class InstitutionService {
         this.overrideRequestRepository = overrideRequestRepository;
         this.pageSettingsRepository = pageSettingsRepository;
         this.watermarkConfigurationRepository = watermarkConfigurationRepository;
+        this.mediaStorage = mediaStorage;
         this.workspaceProvisioner = workspaceProvisioner;
         this.auditLogService = auditLogService;
     }
@@ -440,12 +446,23 @@ public class InstitutionService {
                     "\"" + institution.getName() + "\" has media assets in its library. Delete all media assets before deleting the institution.");
         }
 
+        // Stored objects for any lingering soft-deleted assets — the retention
+        // purge job iterates DB rows, so once those rows are gone below the
+        // objects would be orphaned in the media store. Purge them best-effort
+        // after the delete transaction commits (no DB connection held during the
+        // storage I/O).
+        List<String> orphanStorageUrls = mediaAssetRepository.findStorageUrlsByInstitutionId(institutionId);
+
         // Clean up FK-constrained administrative records before the hard delete.
         invitationTokenRepository.deleteByInstitutionId(institutionId);
         slotReservationRepository.deleteByInstitutionId(institutionId);
         overrideRequestRepository.deleteByInstitutionId(institutionId);
         pageSettingsRepository.deleteByInstitutionId(institutionId);
         watermarkConfigurationRepository.deleteByInstitutionId(institutionId);
+        // Assets first: soft-deleted rows still point at institution_id and
+        // media_album_id, so they must go before the albums (and the
+        // institution) can be removed.
+        mediaAssetRepository.deleteByInstitutionId(institutionId);
         mediaAlbumRepository.deleteByInstitutionId(institutionId);
 
         String name = institution.getName();
@@ -459,6 +476,41 @@ public class InstitutionService {
         );
 
         log.info("Institution deleted: {} ({})", name, institutionId);
+
+        purgeStorageObjectsAfterCommit(name, orphanStorageUrls);
+    }
+
+    /**
+     * Best-effort removal of the stored objects whose {@code media_assets} rows
+     * were just hard-deleted with the institution. Runs after the transaction
+     * commits so no pooled DB connection is held during the storage calls;
+     * failures are logged and never fail the delete (the rows are already gone
+     * regardless). Storage host is abstracted behind the injected storage service.
+     */
+    private void purgeStorageObjectsAfterCommit(String institutionName, List<String> storageUrls) {
+        if (storageUrls == null || storageUrls.isEmpty()) {
+            return;
+        }
+        Runnable sweep = () -> {
+            int purged = 0;
+            for (String url : storageUrls) {
+                if (url != null && !url.isBlank() && mediaStorage.deletePublicObject(url)) {
+                    purged++;
+                }
+            }
+            log.info("Purged {}/{} orphaned storage objects for deleted institution {}",
+                    purged, storageUrls.size(), institutionName);
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    sweep.run();
+                }
+            });
+        } else {
+            sweep.run();
+        }
     }
 
     private boolean hasBlockingContributorAccounts(UUID institutionId) {

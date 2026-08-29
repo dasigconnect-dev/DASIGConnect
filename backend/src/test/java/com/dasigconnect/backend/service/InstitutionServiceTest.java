@@ -75,6 +75,9 @@ class InstitutionServiceTest {
     private WatermarkConfigurationRepository watermarkConfigurationRepository;
 
     @Mock
+    private R2StorageService mediaStorage;
+
+    @Mock
     private WorkspaceProvisionerService workspaceProvisioner;
 
     @Mock
@@ -412,6 +415,48 @@ class InstitutionServiceTest {
 
             assertThat(mockInstitution.getStatus()).isEqualTo(InstitutionStatus.inactive);
             verify(institutionRepository).save(mockInstitution);
+        }
+    }
+
+    @Nested
+    @DisplayName("deleteInstitution()")
+    class DeleteInstitutionTests {
+
+        @Test
+        @DisplayName("purges media assets before albums so the self-referencing album FK is not tripped")
+        void shouldPurgeAssetsBeforeAlbums() {
+            mockInstitution.setProtected(false);
+            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+            when(userRepository.existsByInstitutionIdAndRoleAndAccountStateIn(eq(institutionId), eq(UserRole.contributor), any()))
+                    .thenReturn(false);
+            when(submissionRepository.existsByInstitutionId(institutionId)).thenReturn(false);
+            when(mediaAssetRepository.existsActiveByInstitutionId(institutionId)).thenReturn(false);
+
+            institutionService.deleteInstitution(institutionId);
+
+            var inOrder = org.mockito.Mockito.inOrder(
+                    mediaAssetRepository, mediaAlbumRepository, institutionRepository);
+            inOrder.verify(mediaAssetRepository).deleteByInstitutionId(institutionId);
+            inOrder.verify(mediaAlbumRepository).deleteByInstitutionId(institutionId);
+            inOrder.verify(institutionRepository).delete(mockInstitution);
+        }
+
+        @Test
+        @DisplayName("best-effort purges the R2 object of every lingering asset (soft-deleted included)")
+        void shouldPurgeOrphanedStorageObjects() {
+            mockInstitution.setProtected(false);
+            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+            when(userRepository.existsByInstitutionIdAndRoleAndAccountStateIn(eq(institutionId), eq(UserRole.contributor), any()))
+                    .thenReturn(false);
+            when(submissionRepository.existsByInstitutionId(institutionId)).thenReturn(false);
+            when(mediaAssetRepository.existsActiveByInstitutionId(institutionId)).thenReturn(false);
+            when(mediaAssetRepository.findStorageUrlsByInstitutionId(institutionId))
+                    .thenReturn(java.util.List.of("https://cdn.example/a.jpg", "https://cdn.example/b.png"));
+
+            institutionService.deleteInstitution(institutionId);
+
+            verify(mediaStorage).deletePublicObject("https://cdn.example/a.jpg");
+            verify(mediaStorage).deletePublicObject("https://cdn.example/b.png");
         }
     }
 }

@@ -42,7 +42,21 @@ public interface MediaAlbumRepository extends JpaRepository<MediaAlbum, UUID> {
 
     long countByParentAlbumId(UUID parentAlbumId);
 
-    void deleteByInstitutionId(UUID institutionId);
+    /**
+     * Hard-deletes every album owned by an institution in a single statement.
+     *
+     * <p>Must be a bulk DML delete rather than a derived {@code deleteBy...}:
+     * {@code media_albums.parent_album_id} is a self-referencing FK, and the
+     * row-by-row deletes Spring Data would emit can remove a parent folder
+     * before its children and trip the constraint. A single {@code DELETE}
+     * statement defers the FK check to statement end, so arbitrary nesting
+     * depth is removed safely. Callers must first clear
+     * {@code media_assets.media_album_id} for the institution (see
+     * {@link MediaAssetRepository#deleteByInstitutionId}).
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(value = "DELETE FROM media_albums WHERE institution_id = :institutionId", nativeQuery = true)
+    void deleteByInstitutionId(@Param("institutionId") UUID institutionId);
 
     /** [parentAlbumId, childCount] pairs for every album in the institution that has children. */
     @Query("""
