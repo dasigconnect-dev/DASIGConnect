@@ -98,6 +98,18 @@ React SPA (Vercel) -> Spring Boot REST API (Render) -> Supabase PostgreSQL + pgv
 
 current branch: uc-2.1-library-albums
 
+> ### 2026-08-29 — `feat/user-management`: admin cap of 3 + Owner/peer power split
+>
+> - **Administrative policy: max 3 admin accounts.** `InvitationService.MAX_ADMINS = 3`, enforced at admin-invite creation (`assertAdminCapAllows` — active admins + distinct pending admin invites) and re-checked at `acceptInvitation`; both return **409**. New `UserRepository.countByRoleAndAccountState`.
+> - **Peer admins can now manage moderator accounts.** `UserService.validateCanManageUser` / `validateCanRemoveUser` gate only *admin-targets* behind `requireActiveAdminOwner`; moderator targets need only the new `requireActiveAdmin` helper (any active admin). Admin-on-admin actions stay Owner-only; self-management still blocked.
+> - **Owner transfer accepts an existing admin as target** (`requestAdminTransfer` / `confirmAdminTransfer`). Moderator target = 1-for-1 handoff (outgoing owner → moderator). Admin target = `admin_owner` flag moves only, outgoing stays admin (`incomingWasModerator` captured pre-mutation).
+> - **Frontend:** `AdministratorManagementScreen` keeps the read-only roster + `N / 3` count for every admin; Invite/remove/transfer render only when `currentAdminRecord.adminOwner === true` (Invite disabled at cap). New `readOnly` prop on `InstitutionUsersCard` blanks the per-row action menu. `canRequestSuperAdminTransfer` widened to allow admin targets.
+> - **Verification:** backend `UserServiceTest` (34) + `InvitationServiceTest` (33) + both controller tests pass (92 total, 0 failures). Frontend `npm run build` + targeted ESLint clean.
+> - No migration added — `admin_owner` and the transfer columns already exist.
+> - **User Management screen restyled:** removed the Users/Invitations tab bar; the invite flow is now a header **Invite User** button (`im-add-btn`) opening a modal with the institution context bar + `InvitationComposer` + `DeliveryIssuesAlert`, matching Admin Management. `PendingInvitationsCard` dropped — pending accounts already render as rows in `InstitutionUsersCard` with resend/cancel. Metrics row + users table are now always visible. (Pre-existing `react-hooks/set-state-in-effect` lint error on the `listInstitutions` effect left untouched.)
+> - **Invite modal simplified:** `InvitationComposer` gained an `embedded` prop (passed by all three modal callers — User Management, Admin Management, Institution Management). Embedded mode drops the component's internal header (was already CSS-hidden), the large "Destination Workspace" recap card (redundant with the modal subtitle / institution select), and the long helper sentences. One institution indicator, one recipient counter, no card-within-a-card.
+> - **`InvitationComposer` recipient cap is now a `maxRecipients` prop** (default 15). Admin Management passes `remainingAdminSlots = max(0, 3 − activeAdmins − pendingAdminInvites)`, so the admin invite modal caps chips at the open slots instead of 15: input disables at the limit, `onAdd` is guarded, the meter shows `n/<slots>`, the modal subtitle shows "N slots open", and the batch-size guard message reflects the 3-admin cap.
+
 > ### 2026-08-27 — `uc-2.1-library-albums`: merged `dev`, resolved SubmissionScreen conflict, file-system albums (Phase 1)
 >
 > - **Merge conflict** in `frontend/src/features/submission/SubmissionScreen.tsx` (merge of `dev`) resolved: kept this branch's live `listMediaAlbums(institutionId)` fetch + `AlbumCombobox`, dropped `dev`'s hardcoded `existingAlbums` dummy array. Added `signal?: AbortSignal` to `listMediaAlbums` in `mediaApi.ts` (branch had shipped a call with 2 args against a 1-arg signature).
