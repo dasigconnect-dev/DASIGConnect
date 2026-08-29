@@ -418,6 +418,24 @@ public class InvitationService {
                 .toList();
     }
 
+    /**
+     * Pending contributor/moderator invitations across every institution.
+     * Admin-only — backs the network-wide User Management page.
+     */
+    @Transactional(readOnly = true)
+    public List<PendingInvitationDto> listPendingNetwork(JwtUserDetails requester) {
+        if (!isAdmin(requester)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only admins can view network-wide invitations");
+        }
+        return invitationTokenRepository
+                .findPendingRoleInvitationsAcrossInstitutions(
+                        java.util.EnumSet.of(UserRole.contributor, UserRole.moderator), Instant.now())
+                .stream()
+                .map(PendingInvitationDto::from)
+                .toList();
+    }
+
     @Transactional(readOnly = true)
     public Map<String, Long> countPending(UUID institutionId, JwtUserDetails requester) {
         validateInstitutionScope(institutionId, requester);

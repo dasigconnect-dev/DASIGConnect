@@ -140,6 +140,23 @@ public class UserService {
                 .toList();
     }
 
+    /**
+     * Network-wide roster of contributor and moderator accounts across every
+     * institution. Admin-only — used by the User Management page so admins
+     * don't have to open each institution individually.
+     */
+    public List<UserDto> listNetworkUsers(JwtUserDetails requester) {
+        if (!isAdminRole(requester)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only admins can access the network-wide user directory.");
+        }
+        return userRepository.findByRolesWithInstitutionOrderByCreatedAtDesc(
+                        EnumSet.of(UserRole.contributor, UserRole.moderator))
+                .stream()
+                .map(UserDto::from)
+                .toList();
+    }
+
     public UserDto getById(UUID id, JwtUserDetails requester) {
         var user = userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));

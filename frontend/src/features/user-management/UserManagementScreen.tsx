@@ -1,0 +1,750 @@
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
+import { Navigate } from 'react-router-dom'
+import {
+  cancelInvitation,
+  deleteUser,
+  inviteUser,
+  listInstitutions,
+  listNetworkUsers,
+  listPendingNetworkInvitations,
+  reassignContributor,
+  resendInvitation,
+  updateUserStatus,
+} from '../../api/authApi'
+import type { PendingInvitationResponse, UserProfileResponse } from '../../api/authApi'
+import type { User } from '../../types/auth.types'
+import BrandedSelect from '../../components/ui/BrandedSelect'
+import ConfirmDialog from './components/ConfirmDialog'
+import DeliveryIssuesAlert from './components/DeliveryIssuesAlert'
+import InstitutionUsersCard from './components/InstitutionUsersCard'
+import InvitationComposer from './components/InvitationComposer'
+import { SkeletonBlock } from './components/LoadingPrimitives'
+import PendingInvitationsCard from './components/PendingInvitationsCard'
+import type { InstitutionOption, InviteResults, InviteRole } from './types'
+import { toInstitutionOption } from './types'
+import { useToast } from '../../context/ToastContext'
+import { getUserDisplayName } from '../../lib/userIdentity'
+
+type ActiveTab = 'users' | 'invitations'
+
+interface ConfirmDialogState {
+  title: string
+  message: string
+  confirmLabel: string
+  dangerous: boolean
+  onConfirm: () => void
+  onCancel?: () => void
+}
+
+interface UserManagementScreenProps {
+  user: User
+}
+
+export default function UserManagementScreen({ user }: UserManagementScreenProps) {
+  const toast = useToast()
+
+  const [institutions, setInstitutions] = useState<InstitutionOption[]>([])
+  const [institutionsLoading, setInstitutionsLoading] = useState(false)
+  const [institutionError, setInstitutionError] = useState('')
+
+  const [activeTab, setActiveTab] = useState<ActiveTab>('users')
+
+  // Invitation composer (destination institution must be chosen explicitly since this view spans all institutions)
+  const [inviteInstitutionId, setInviteInstitutionId] = useState('')
+  const [emailChips, setEmailChips] = useState<string[]>([])
+  const [emailDraft, setEmailDraft] = useState('')
+  const [inviteRole, setInviteRole] = useState<InviteRole>(null)
+  const [inviteResults, setInviteResults] = useState<InviteResults | null>(null)
+  const [sending, setSending] = useState(false)
+
+  // Network-wide data
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitationResponse[]>([])
+  const [managedUsers, setManagedUsers] = useState<UserProfileResponse[]>([])
+  const [managementLoading, setManagementLoading] = useState(false)
+  const [managementError, setManagementError] = useState('')
+  const [resendingInvitationId, setResendingInvitationId] = useState<string | null>(null)
+  const [cancellingInvitationId, setCancellingInvitationId] = useState<string | null>(null)
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
+
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
+
+  // Reassign contributor modal
+  const [reassignUser, setReassignUser] = useState<UserProfileResponse | null>(null)
+  const [reassignTargetId, setReassignTargetId] = useState('')
+  const [reassignLoading, setReassignLoading] = useState(false)
+  const [reassignError, setReassignError] = useState('')
+
+  const selectedInviteInstitution = useMemo(
+    () => institutions.find((inst) => inst.id === inviteInstitutionId) ?? null,
+    [institutions, inviteInstitutionId],
+  )
+
+  const initializing = institutionsLoading || (managementLoading && managedUsers.length === 0 && pendingInvitations.length === 0)
+
+  useEffect(() => {
+    if (user.role !== 'admin') return
+    setInstitutionsLoading(true)
+    setInstitutionError('')
+    listInstitutions()
+      .then((response) => {
+        const nextInstitutions = response.data.map(toInstitutionOption)
+        setInstitutions(nextInstitutions)
+        setInviteInstitutionId((current) => current || nextInstitutions[0]?.id || '')
+      })
+      .catch((error: unknown) => {
+        setInstitutions([])
+        setInstitutionError(getApiErrorMessage(error, 'Unable to load institutions.'))
+      })
+      .finally(() => setInstitutionsLoading(false))
+  }, [user.role])
+
+  useEffect(() => {
+    if (user.role !== 'admin') return
+    void loadManagementLists()
+  }, [user.role])
+
+  if (user.role !== 'admin') {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  async function loadManagementLists() {
+    setManagementLoading(true)
+    setManagementError('')
+    try {
+      const [usersResponse, pendingResponse] = await Promise.all([
+        listNetworkUsers(),
+        listPendingNetworkInvitations(),
+      ])
+      setManagedUsers(usersResponse.data)
+      setPendingInvitations(pendingResponse.data)
+    } catch (error: unknown) {
+      setManagedUsers([])
+      setPendingInvitations([])
+      setManagementError(getApiErrorMessage(error, 'Unable to load users and invitations.'))
+    } finally {
+      setManagementLoading(false)
+    }
+  }
+
+  async function handleSendInvitations(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setInviteResults(null)
+
+    if (emailChips.length === 0) {
+      setInviteResults({
+        total: 0,
+        success: [],
+        failed: [{ email: 'Batch', reason: 'Add at least one recipient email.' }],
+      })
+      return
+    }
+    if (!inviteInstitutionId) {
+      setInviteResults({
+        total: emailChips.length,
+        success: [],
+        failed: [{ email: 'Batch', reason: 'Select a destination institution before sending.' }],
+      })
+      return
+    }
+    if (emailChips.length > 15) {
+      setInviteResults({
+        total: emailChips.length,
+        success: [],
+        failed: [{ email: 'Batch', reason: 'Batch exceeds maximum of 15 invitations.' }],
+      })
+      return
+    }
+    if (!inviteRole) return
+
+    if (inviteRole === 'moderator') {
+      const proceed = await confirmModeratorInvite()
+      if (!proceed) return
+    }
+
+    setSending(true)
+    const success: string[] = []
+    const failed: InviteResults['failed'] = []
+    try {
+      for (const email of emailChips) {
+        if (!isValidEmail(email)) {
+          failed.push({ email, reason: 'Invalid email address.' })
+          continue
+        }
+        try {
+          const response = await inviteUser({
+            recipientEmail: email,
+            institutionId: inviteInstitutionId,
+            assignedRole: inviteRole,
+          })
+          if (response.data.emailDelivered) {
+            success.push(email)
+          } else {
+            failed.push({
+              email,
+              reason: 'Invitation created, but email delivery failed.',
+              invitationUrl: response.data.invitationUrl,
+            })
+          }
+        } catch (error: unknown) {
+          failed.push({ email, reason: getApiErrorMessage(error, 'Invitation failed.') })
+        }
+      }
+
+      if (failed.length === 0) {
+        toast.success(`${success.length} invitation${success.length === 1 ? '' : 's'} sent successfully.`)
+      } else {
+        if (success.length > 0) {
+          toast.info(`${success.length} of ${emailChips.length} invitation${success.length === 1 ? '' : 's'} sent.`)
+        }
+        setInviteResults({ total: emailChips.length, success, failed })
+      }
+      setEmailChips([])
+      setEmailDraft('')
+      setInviteRole(null)
+      await loadManagementLists()
+    } finally {
+      setSending(false)
+    }
+  }
+
+  function confirmModeratorInvite(): Promise<boolean> {
+    const targetName = selectedInviteInstitution?.name || 'this institution'
+    const activeModerators = managedUsers.filter(
+      (u) =>
+        u.role.toLowerCase() === 'moderator' &&
+        u.accountState.toLowerCase() === 'active' &&
+        u.institutionId === inviteInstitutionId,
+    )
+    if (activeModerators.length === 0) return Promise.resolve(true)
+
+    return new Promise((resolve) => {
+      setConfirmDialog({
+        title: 'Invite Additional Moderator?',
+        message: `${targetName} already has ${activeModerators.length} active moderator${activeModerators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
+        confirmLabel: 'Yes, invite moderator',
+        dangerous: false,
+        onConfirm: () => {
+          setConfirmDialog(null)
+          resolve(true)
+        },
+        onCancel: () => resolve(false),
+      })
+    })
+  }
+
+  async function handleResendInvitation(id: string) {
+    setResendingInvitationId(id)
+    try {
+      await resendInvitation(id)
+      toast.success('Invitation resent.')
+      await loadManagementLists()
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to resend invitation.'))
+    } finally {
+      setResendingInvitationId(null)
+    }
+  }
+
+  async function handleCancelInvitation(id: string) {
+    setCancellingInvitationId(id)
+    try {
+      await cancelInvitation(id)
+      setPendingInvitations((current) => current.filter((item) => item.id !== id))
+      toast.success('Invitation cancelled.')
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to cancel invitation.'))
+    } finally {
+      setCancellingInvitationId(null)
+    }
+  }
+
+  function handleToggleUserStatus(managedUser: UserProfileResponse) {
+    const nextState = managedUser.accountState.toLowerCase() === 'inactive' ? 'active' : 'inactive'
+    const verb = nextState === 'inactive' ? 'Deactivate' : 'Reactivate'
+    setConfirmDialog({
+      title: `${verb} User`,
+      message: `Are you sure you want to ${verb.toLowerCase()} ${getUserDisplayName(managedUser)}?`,
+      confirmLabel: verb,
+      dangerous: nextState === 'inactive',
+      onConfirm: () => {
+        setConfirmDialog(null)
+        void executeToggleUserStatus(managedUser, nextState)
+      },
+    })
+  }
+
+  async function executeToggleUserStatus(managedUser: UserProfileResponse, nextState: 'active' | 'inactive') {
+    setUpdatingUserId(managedUser.id)
+    try {
+      const response = await updateUserStatus(managedUser.id, nextState)
+      setManagedUsers((current) =>
+        current.map((item) => (item.id === managedUser.id ? response.data : item)),
+      )
+      toast.success(nextState === 'inactive' ? 'Account deactivated.' : 'Account reactivated.')
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to update account status.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  function handleDeleteUser(managedUser: UserProfileResponse) {
+    setConfirmDialog({
+      title: 'Remove User',
+      message: `Remove ${getUserDisplayName(managedUser)}? If they have existing content or media, their account will be deactivated to preserve data integrity. Otherwise it will be permanently deleted.`,
+      confirmLabel: 'Remove',
+      dangerous: true,
+      onConfirm: () => {
+        setConfirmDialog(null)
+        void executeDeleteUser(managedUser)
+      },
+    })
+  }
+
+  async function executeDeleteUser(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
+    try {
+      const response = await deleteUser(managedUser.id)
+      if (response.data.action === 'deactivated') {
+        setManagedUsers((current) =>
+          current.map((item) => (item.id === managedUser.id ? { ...item, accountState: 'inactive' } : item)),
+        )
+        toast.info('Account deactivated. Their content and media have been preserved.')
+      } else {
+        setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
+        toast.success('User permanently removed.')
+      }
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to remove user.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  function handleCancelInvitationFromUsers(managedUser: UserProfileResponse) {
+    setConfirmDialog({
+      title: 'Cancel Invitation',
+      message: `Cancel the pending invitation for ${managedUser.email}?`,
+      confirmLabel: 'Cancel invitation',
+      dangerous: true,
+      onConfirm: () => {
+        setConfirmDialog(null)
+        void executeCancelInvitationByEmail(managedUser)
+      },
+    })
+  }
+
+  async function executeCancelInvitationByEmail(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
+    try {
+      const match = pendingInvitations.find(
+        (inv) => inv.recipientEmail.toLowerCase() === managedUser.email.toLowerCase(),
+      )
+      if (match) {
+        await cancelInvitation(match.id)
+      }
+      setManagedUsers((current) =>
+        current.map((item) => (item.id === managedUser.id ? { ...item, accountState: 'cancelled' } : item)),
+      )
+      await loadManagementLists()
+      toast.success('Invitation cancelled.')
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to cancel invitation.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  async function handleResendInvitationFromUsers(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
+    try {
+      const match = pendingInvitations.find(
+        (inv) => inv.recipientEmail.toLowerCase() === managedUser.email.toLowerCase(),
+      )
+      if (match) {
+        await resendInvitation(match.id)
+      } else if (managedUser.institutionId) {
+        await inviteUser({
+          recipientEmail: managedUser.email,
+          institutionId: managedUser.institutionId,
+          assignedRole: managedUser.role.toLowerCase() as 'contributor' | 'moderator',
+        })
+      }
+      await loadManagementLists()
+      toast.success(`Invitation resent to ${managedUser.email}.`)
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to resend invitation.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  function handleResubmitFailed() {
+    if (!inviteResults) return
+    const failedEmails = inviteResults.failed.map((f) => f.email).filter(isValidEmail)
+    setEmailChips(failedEmails)
+    setEmailDraft('')
+    setInviteResults(null)
+  }
+
+  // ── Reassign contributor ────────────────────────────────────────────────
+
+  function handleOpenReassign(managedUser: UserProfileResponse) {
+    if (managedUser.role.toLowerCase() !== 'contributor') {
+      toast.error('Only contributor accounts can be reassigned. Moderators are managed per-institution.')
+      return
+    }
+    setReassignUser(managedUser)
+    setReassignTargetId('')
+    setReassignError('')
+  }
+
+  function handleCloseReassign() {
+    if (reassignLoading) return
+    setReassignUser(null)
+    setReassignTargetId('')
+    setReassignError('')
+  }
+
+  async function handleConfirmReassign() {
+    if (!reassignUser || !reassignTargetId) return
+    setReassignLoading(true)
+    setReassignError('')
+    try {
+      await reassignContributor(reassignUser.id, reassignTargetId)
+      const targetInst = institutions.find((i) => i.id === reassignTargetId)
+      toast.success(
+        `${getUserDisplayName(reassignUser)} has been reassigned to ${targetInst?.name ?? 'the selected institution'}.`,
+      )
+      await loadManagementLists()
+      handleCloseReassign()
+    } catch (err: unknown) {
+      setReassignError(getApiErrorMessage(err, 'Unable to reassign contributor.'))
+    } finally {
+      setReassignLoading(false)
+    }
+  }
+
+  return (
+    <div className="um-screen">
+      <main className="um-body">
+        <header className="um-page-header">
+          <div>
+            <h1>User Management</h1>
+            <p>Manage moderator and contributor accounts across every institution.</p>
+          </div>
+        </header>
+
+        {institutionError && (
+          <div className="alert alert-err" role="alert">
+            <i className="ti ti-alert-circle" aria-hidden="true"></i>
+            <div>{institutionError}</div>
+          </div>
+        )}
+
+        {managementError && (
+          <div className="alert alert-err" role="alert">
+            <i className="ti ti-alert-circle" aria-hidden="true"></i>
+            <div>{managementError}</div>
+          </div>
+        )}
+
+        <div className="um-tabs" role="tablist" aria-label="User Management sections">
+          <button
+            type="button"
+            role="tab"
+            id="tab-users"
+            aria-controls="panel-users"
+            aria-selected={activeTab === 'users'}
+            className={`um-tab${activeTab === 'users' ? ' is-active' : ''}`}
+            onClick={() => setActiveTab('users')}
+          >
+            <i className="ti ti-users" aria-hidden="true"></i>
+            Users
+            {managedUsers.length > 0 && <span className="um-tab-badge is-neutral">{managedUsers.length}</span>}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-invitations"
+            aria-controls="panel-invitations"
+            aria-selected={activeTab === 'invitations'}
+            className={`um-tab${activeTab === 'invitations' ? ' is-active' : ''}`}
+            onClick={() => setActiveTab('invitations')}
+          >
+            <i className="ti ti-send" aria-hidden="true"></i>
+            Invitations
+            {pendingInvitations.length > 0 && <span className="um-tab-badge">{pendingInvitations.length}</span>}
+          </button>
+        </div>
+
+        {activeTab === 'users' && (
+          <div id="panel-users" role="tabpanel" aria-labelledby="tab-users" className="um-tab-panel">
+            {!initializing && (
+              <div className="um-metrics-row">
+                <MetricCard
+                  icon="ti ti-users"
+                  label="Total Users"
+                  value={managedUsers.length}
+                  loading={managementLoading && managedUsers.length === 0}
+                />
+                <MetricCard
+                  icon="ti ti-user-check"
+                  label="Active"
+                  value={managedUsers.filter((u) => u.accountState.toLowerCase() === 'active').length}
+                  loading={managementLoading && managedUsers.length === 0}
+                  accent="green"
+                />
+                <MetricCard
+                  icon="ti ti-shield-check"
+                  label="Moderators"
+                  value={managedUsers.filter((u) => u.role.toLowerCase() === 'moderator').length}
+                  loading={managementLoading && managedUsers.length === 0}
+                  accent="purple"
+                />
+                <MetricCard
+                  icon="ti ti-pencil"
+                  label="Contributors"
+                  value={managedUsers.filter((u) => u.role.toLowerCase() === 'contributor').length}
+                  loading={managementLoading && managedUsers.length === 0}
+                  accent="blue"
+                />
+                <MetricCard
+                  icon="ti ti-clock-pause"
+                  label="Pending Invites"
+                  value={pendingInvitations.length}
+                  loading={managementLoading && pendingInvitations.length === 0}
+                  accent={pendingInvitations.length > 0 ? 'gold' : undefined}
+                />
+              </div>
+            )}
+
+            <InstitutionUsersCard
+              currentUser={user}
+              users={managedUsers}
+              loading={managementLoading}
+              updatingUserId={updatingUserId}
+              onToggleUserStatus={handleToggleUserStatus}
+              onDeleteUser={handleDeleteUser}
+              onCancelInvitation={handleCancelInvitationFromUsers}
+              onResendInvitation={handleResendInvitationFromUsers}
+              onReassign={handleOpenReassign}
+              showRoleControls
+              showInstitutionColumn
+              title="All Users"
+              description="Moderator and contributor accounts across every institution."
+            />
+          </div>
+        )}
+
+        {activeTab === 'invitations' && (
+          <div id="panel-invitations" role="tabpanel" aria-labelledby="tab-invitations" className="um-tab-panel">
+            <div className="um-context-bar">
+              <div className="um-context-label">
+                <i className="ti ti-building" aria-hidden="true"></i>
+                <span>Invite to institution</span>
+              </div>
+              {institutionsLoading ? (
+                <SkeletonBlock className="um-skeleton-line is-wide" />
+              ) : (
+                <BrandedSelect
+                  className="um-inst-select"
+                  value={inviteInstitutionId}
+                  onChange={setInviteInstitutionId}
+                  disabled={institutions.length === 0}
+                  ariaLabel="Select destination institution"
+                  placeholder="Select institution"
+                  options={
+                    institutions.length === 0
+                      ? [{ value: '', label: 'No institutions available', disabled: true }]
+                      : institutions.map((inst) => ({ value: inst.id, label: inst.name }))
+                  }
+                />
+              )}
+            </div>
+
+            <InvitationComposer
+              chips={emailChips}
+              emailDraft={emailDraft}
+              role={inviteRole}
+              selectedInstitution={selectedInviteInstitution}
+              canChooseRole
+              sending={sending}
+              onDraftChange={setEmailDraft}
+              onAddChip={(email) => {
+                if (!emailChips.includes(email.toLowerCase())) {
+                  setEmailChips((prev) => [...prev, email.toLowerCase()])
+                }
+              }}
+              onRemoveChip={(index) => setEmailChips((prev) => prev.filter((_, i) => i !== index))}
+              onRoleChange={setInviteRole}
+              onSubmit={(event) => void handleSendInvitations(event)}
+            />
+
+            {inviteResults && (
+              <DeliveryIssuesAlert results={inviteResults} onResubmitFailed={handleResubmitFailed} />
+            )}
+
+            <PendingInvitationsCard
+              invitations={pendingInvitations}
+              institutions={institutions}
+              loading={managementLoading}
+              resendingInvitationId={resendingInvitationId}
+              cancellingInvitationId={cancellingInvitationId}
+              onResend={(id) => void handleResendInvitation(id)}
+              onCancelInvitation={(id) => void handleCancelInvitation(id)}
+              showRoleControls
+            />
+          </div>
+        )}
+      </main>
+
+      {confirmDialog && (
+        <ConfirmDialog
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          dangerous={confirmDialog.dangerous}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => {
+            confirmDialog.onCancel?.()
+            setConfirmDialog(null)
+          }}
+        />
+      )}
+
+      {reassignUser &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="dash-modal-backdrop im-modal-backdrop" onClick={handleCloseReassign} role="presentation">
+            <div
+              className="dash-modal-card im-reassign-modal-card"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="um-reassign-modal-title"
+            >
+              <div className="dash-modal-header im-modal-header">
+                <div>
+                  <div id="um-reassign-modal-title" className="dash-modal-title">
+                    Reassign Contributor
+                  </div>
+                  <div className="dash-modal-sub">
+                    Move <strong>{getUserDisplayName(reassignUser)}</strong> to a different institution.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="dash-modal-close"
+                  onClick={handleCloseReassign}
+                  aria-label="Close reassign modal"
+                  disabled={reassignLoading}
+                >
+                  <i className="ti ti-x" aria-hidden="true"></i>
+                </button>
+              </div>
+
+              <div className="dash-modal-body im-modal-body">
+                <div className="im-reassign-notice">
+                  <i className="ti ti-info-circle" aria-hidden="true"></i>
+                  <span>
+                    The contributor's Row-Level Security scoping will be updated to the new institution. Historical
+                    submissions remain attributed to their original institution.
+                  </span>
+                </div>
+
+                <div className="dash-field">
+                  <label className="dash-field-label">Target Institution</label>
+                  <BrandedSelect
+                    value={reassignTargetId}
+                    onChange={(value) => {
+                      setReassignTargetId(value)
+                      setReassignError('')
+                    }}
+                    disabled={reassignLoading}
+                    placeholder="— Select an institution —"
+                    options={institutions
+                      .filter((inst) => inst.status === 'active' && inst.id !== reassignUser.institutionId)
+                      .map((inst) => ({ value: inst.id, label: inst.name }))}
+                  />
+                </div>
+
+                {reassignError && (
+                  <div className="alert alert-err im-modal-alert" role="alert">
+                    <i className="ti ti-alert-circle" aria-hidden="true"></i>
+                    <div>{reassignError}</div>
+                  </div>
+                )}
+
+                <div className="dash-modal-actions im-modal-actions">
+                  <button type="button" className="btn-ghost" onClick={handleCloseReassign} disabled={reassignLoading}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={!reassignTargetId || reassignLoading}
+                    onClick={() => void handleConfirmReassign()}
+                  >
+                    {reassignLoading ? (
+                      <>
+                        <i className="ti ti-loader-2 im-spin" aria-hidden="true"></i>
+                        Reassigning...
+                      </>
+                    ) : (
+                      'Reassign'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </div>
+  )
+}
+
+interface MetricCardProps {
+  icon: string
+  label: string
+  value: number
+  loading: boolean
+  accent?: 'blue' | 'green' | 'gold' | 'purple'
+}
+
+function MetricCard({ icon, label, value, loading, accent }: MetricCardProps) {
+  return (
+    <div className={`um-metric${accent ? ` accent-${accent}` : ''}`}>
+      <div className="um-metric-icon">
+        <i className={icon} aria-hidden="true"></i>
+      </div>
+      <div className="um-metric-body">
+        <span className="um-metric-label">{label}</span>
+        {loading ? <SkeletonBlock className="um-skeleton-number" /> : <strong className="um-metric-value">{value}</strong>}
+      </div>
+    </div>
+  )
+}
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (!isRecord(error)) return fallback
+  const response = error.response
+  if (isRecord(response)) {
+    const data = response.data
+    if (isRecord(data)) {
+      if (typeof data.error === 'string') return data.error
+      if (typeof data.message === 'string') return data.message
+    }
+  }
+  return typeof error.message === 'string' ? error.message : fallback
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}

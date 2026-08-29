@@ -3,6 +3,7 @@ package com.dasigconnect.backend.repository;
 import com.dasigconnect.backend.model.entity.InvitationToken;
 import com.dasigconnect.backend.model.entity.UserRole;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -35,5 +36,19 @@ public interface InvitationTokenRepository extends JpaRepository<InvitationToken
             """)
     List<InvitationToken> findPendingNetworkRoleInvitations(
             @Param("assignedRole") UserRole assignedRole,
+            @Param("now") Instant now);
+
+    /** Pending contributor/moderator invitations across every institution, for the network-wide User Management page. */
+    @Query("""
+            select token
+            from InvitationToken token
+            left join fetch token.institution
+            where token.assignedRole in :assignedRoles
+              and token.usedAt is null
+              and token.expiresAt > :now
+            order by token.createdAt desc
+            """)
+    List<InvitationToken> findPendingRoleInvitationsAcrossInstitutions(
+            @Param("assignedRoles") Collection<UserRole> assignedRoles,
             @Param("now") Instant now);
 }

@@ -237,6 +237,16 @@ export function listAdmins() {
   });
 }
 
+export function listNetworkUsers() {
+  return api.get<UserProfileResponse[]>("/users/network", {}).then((response) => {
+    response.data = response.data.map((user) => ({
+      ...user,
+      avatarUrl: user.hasAvatar ? getUserAvatarUrl(user.id, user.avatarUpdatedAt) : null,
+    }));
+    return response;
+  });
+}
+
 export function updateUserStatus(
   id: string,
   accountState: "active" | "inactive" | "cancelled",
@@ -281,6 +291,10 @@ export function listPendingInvitations(institutionId: string) {
 
 export function listPendingAdminInvitations() {
   return api.get<PendingInvitationResponse[]>("/invitations/pending/admins");
+}
+
+export function listPendingNetworkInvitations() {
+  return api.get<PendingInvitationResponse[]>("/invitations/pending/network");
 }
 
 export function getPendingInvitationCount(institutionId: string) {

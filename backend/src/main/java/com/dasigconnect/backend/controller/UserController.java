@@ -91,6 +91,17 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success(userService.listModerators(user)));
     }
 
+    /**
+     * GET /api/v1/users/network Lists all contributor and moderator accounts
+     * across every institution. Admin-only.
+     */
+    @GetMapping("/users/network")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<List<UserDto>>> listNetworkUsers(
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.listNetworkUsers(user)));
+    }
+
     @GetMapping("/users/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR')")
     public ResponseEntity<ApiResponse<UserDto>> getUser(

@@ -109,6 +109,14 @@ public class InvitationController {
         return ResponseEntity.ok(ApiResponse.success(invitationService.listPendingAdmins(requester)));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/pending/network")
+    public ResponseEntity<ApiResponse<List<PendingInvitationDto>>> pendingNetwork(
+            Authentication authentication) {
+        JwtUserDetails requester = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails p ? p : null;
+        return ResponseEntity.ok(ApiResponse.success(invitationService.listPendingNetwork(requester)));
+    }
+
     @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     @GetMapping("/pending/count")
     public ResponseEntity<ApiResponse<Map<String, Long>>> pendingCount(
