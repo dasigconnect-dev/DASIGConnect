@@ -119,13 +119,6 @@ public class WatermarkApplicationService {
     }
 
     private Optional<WatermarkConfiguration> resolveConfiguration(Submission submission) {
-        UUID institutionId = submission.getInstitution() != null ? submission.getInstitution().getId() : null;
-        if (institutionId != null) {
-            Optional<WatermarkConfiguration> override = configurationRepository.findByInstitutionId(institutionId);
-            if (override.isPresent()) {
-                return override;
-            }
-        }
         return configurationRepository.findByInstitutionIsNull();
     }
 

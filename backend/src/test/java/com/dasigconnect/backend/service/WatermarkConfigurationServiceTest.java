@@ -3,7 +3,6 @@ package com.dasigconnect.backend.service;
 import com.dasigconnect.backend.model.dto.settings.WatermarkConfigurationDto;
 import com.dasigconnect.backend.model.dto.settings.WatermarkConfigurationRequestDto;
 import com.dasigconnect.backend.model.dto.settings.WatermarkElementDto;
-import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.WatermarkConfiguration;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
@@ -74,15 +73,9 @@ class WatermarkConfigurationServiceTest {
     }
 
     @Test
-    void institutionFallsBackToNetworkDefaultWhenNoOverride() {
+    void institutionRequestUsesGlobalWatermark() {
         UUID instId = UUID.randomUUID();
         var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", instId);
-
-        Institution inst = new Institution();
-        inst.setId(instId);
-        inst.setName("CIT University");
-        when(institutions.findById(instId)).thenReturn(Optional.of(inst));
-        when(repository.findByInstitutionId(instId)).thenReturn(Optional.empty());
 
         WatermarkConfiguration defaultConfig = new WatermarkConfiguration();
         defaultConfig.setId(UUID.randomUUID());
@@ -93,10 +86,11 @@ class WatermarkConfigurationServiceTest {
         WatermarkConfigurationDto dto = service.get(instId, actor);
 
         assertThat(dto).isNotNull();
-        assertThat(dto.institutionId()).isEqualTo(instId);
-        assertThat(dto.institutionName()).isEqualTo("CIT University");
+        assertThat(dto.institutionId()).isNull();
+        assertThat(dto.institutionName()).isEqualTo("DASIG Central Visayas (Global)");
         assertThat(dto.isOverride()).isFalse();
         assertThat(dto.elements()).hasSize(1);
+        verify(repository).findByInstitutionIsNull();
     }
 
     @Test

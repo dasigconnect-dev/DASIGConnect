@@ -28,9 +28,17 @@ import com.dasigconnect.backend.model.dto.institution.CreateInstitutionRequest;
 import com.dasigconnect.backend.model.dto.institution.InstitutionDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
+import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
+import com.dasigconnect.backend.repository.MediaAlbumRepository;
+import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.OverrideRequestRepository;
+import com.dasigconnect.backend.repository.PageSettingsRepository;
+import com.dasigconnect.backend.repository.SlotReservationRepository;
+import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
+import com.dasigconnect.backend.repository.WatermarkConfigurationRepository;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
@@ -43,7 +51,28 @@ class InstitutionServiceTest {
     private UserRepository userRepository;
 
     @Mock
+    private SubmissionRepository submissionRepository;
+
+    @Mock
+    private MediaAssetRepository mediaAssetRepository;
+
+    @Mock
+    private MediaAlbumRepository mediaAlbumRepository;
+
+    @Mock
     private InvitationTokenRepository invitationTokenRepository;
+
+    @Mock
+    private SlotReservationRepository slotReservationRepository;
+
+    @Mock
+    private OverrideRequestRepository overrideRequestRepository;
+
+    @Mock
+    private PageSettingsRepository pageSettingsRepository;
+
+    @Mock
+    private WatermarkConfigurationRepository watermarkConfigurationRepository;
 
     @Mock
     private WorkspaceProvisionerService workspaceProvisioner;
@@ -370,8 +399,13 @@ class InstitutionServiceTest {
             mockInstitution.setProtected(false);
             mockInstitution.setStatus(InstitutionStatus.active);
             when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
-            when(userRepository.countByInstitutionId(institutionId)).thenReturn(0L);
-            when(invitationTokenRepository.countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(eq(institutionId), any())).thenReturn(0L);
+            when(userRepository.existsByInstitutionIdAndRoleAndAccountStateIn(eq(institutionId), eq(UserRole.contributor), any()))
+                    .thenReturn(false);
+            when(invitationTokenRepository.countByInstitutionIdAndAssignedRoleAndUsedAtIsNullAndExpiresAtAfter(
+                    eq(institutionId),
+                    eq(UserRole.contributor),
+                    any()))
+                    .thenReturn(0L);
             when(institutionRepository.save(any())).thenReturn(mockInstitution);
 
             InstitutionDto result = institutionService.deactivateInstitution(institutionId);

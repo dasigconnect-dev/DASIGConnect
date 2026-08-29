@@ -42,6 +42,8 @@ public interface MediaAlbumRepository extends JpaRepository<MediaAlbum, UUID> {
 
     long countByParentAlbumId(UUID parentAlbumId);
 
+    void deleteByInstitutionId(UUID institutionId);
+
     /** [parentAlbumId, childCount] pairs for every album in the institution that has children. */
     @Query("""
             SELECT a.parentAlbum.id, COUNT(a)

@@ -3,7 +3,6 @@ package com.dasigconnect.backend.service;
 import com.dasigconnect.backend.model.dto.settings.WatermarkConfigurationDto;
 import com.dasigconnect.backend.model.dto.settings.WatermarkConfigurationRequestDto;
 import com.dasigconnect.backend.model.dto.settings.WatermarkElementDto;
-import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.WatermarkConfiguration;
 import com.dasigconnect.backend.repository.InstitutionRepository;
@@ -50,69 +49,28 @@ public class WatermarkConfigurationService {
     public WatermarkConfigurationDto get(UUID institutionId, JwtUserDetails actor) {
         authorizeRead(institutionId, actor);
 
-        if (institutionId != null) {
-            Institution institution = institutions.findById(institutionId)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Institution not found"));
-
-            Optional<WatermarkConfiguration> customConfig = repository.findByInstitutionId(institutionId);
-            if (customConfig.isPresent()) {
-                return mapToDto(customConfig.get(), true, institution.getName());
-            }
-
-            // Fallback to network-wide default
-            Optional<WatermarkConfiguration> defaultConfig = repository.findByInstitutionIsNull();
-            if (defaultConfig.isPresent()) {
-                WatermarkConfiguration cfg = defaultConfig.get();
-                return new WatermarkConfigurationDto(
-                        cfg.getId(),
-                        institutionId,
-                        institution.getName(),
-                        cfg.isEnabled(),
-                        false, // isOverride is false because it's inheriting default
-                        parseElements(cfg.getElementsJson()),
-                        cfg.getUpdatedAt(),
-                        cfg.getUpdatedBy()
-                );
-            }
-
-            return createDefaultDto(institutionId, institution.getName(), false);
-        }
-
-        // Network-wide default requested
         Optional<WatermarkConfiguration> defaultConfig = repository.findByInstitutionIsNull();
-        return defaultConfig.map(cfg -> mapToDto(cfg, false, "DASIG Central Visayas (Default)"))
-                .orElseGet(() -> createDefaultDto(null, "DASIG Central Visayas (Default)", false));
+        return defaultConfig.map(cfg -> mapToDto(cfg, false, "DASIG Central Visayas (Global)"))
+                .orElseGet(() -> createDefaultDto(null, "DASIG Central Visayas (Global)", false));
     }
 
     @Transactional
     public WatermarkConfigurationDto save(WatermarkConfigurationRequestDto request, JwtUserDetails actor) {
-        UUID institutionId = request.institutionId();
-        authorizeWrite(institutionId, actor);
+        authorizeWrite(null, actor);
 
         if (request.elements() != null && request.elements().size() > 3) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Watermark can contain at most 3 elements");
         }
 
-        WatermarkConfiguration config;
-        Institution institution = null;
-
-        if (institutionId != null) {
-            institution = institutions.findById(institutionId)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Institution not found"));
-            config = repository.findByInstitutionId(institutionId).orElseGet(WatermarkConfiguration::new);
-            config.setInstitution(institution);
-        } else {
-            config = repository.findByInstitutionIsNull().orElseGet(WatermarkConfiguration::new);
-            config.setInstitution(null);
-        }
+        WatermarkConfiguration config = repository.findByInstitutionIsNull().orElseGet(WatermarkConfiguration::new);
+        config.setInstitution(null);
 
         config.setEnabled(request.enabled());
         config.setElementsJson(serializeElements(sanitizeElements(request.elements())));
         config.setUpdatedBy(actor.email());
 
         WatermarkConfiguration saved = repository.save(config);
-        boolean isOverride = institutionId != null;
-        String instName = institution != null ? institution.getName() : "DASIG Central Visayas (Default)";
+        String instName = "DASIG Central Visayas (Global)";
 
         try {
             User user = actor != null && actor.userId() != null ? userRepository.findById(actor.userId()).orElse(null) : null;
@@ -124,24 +82,15 @@ public class WatermarkConfigurationService {
             auditLogService.record(user, "WATERMARK_CONFIG_UPDATED", null, null, saved.getId(), meta);
         } catch (Exception ignored) {}
 
-        return mapToDto(saved, isOverride, instName);
+        return mapToDto(saved, false, instName);
     }
 
     @Transactional
     public void deleteOverride(UUID institutionId, JwtUserDetails actor) {
-        if (institutionId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Institution ID is required to remove override");
-        }
-        authorizeWrite(institutionId, actor);
-
-        repository.findByInstitutionId(institutionId).ifPresent(config -> {
-            repository.delete(config);
-            try {
-                User user = actor != null && actor.userId() != null ? userRepository.findById(actor.userId()).orElse(null) : null;
-                Map<String, Object> meta = Map.of("institutionId", institutionId.toString(), "action", "RESET_TO_DEFAULT");
-                auditLogService.record(user, "WATERMARK_OVERRIDE_REMOVED", null, null, institutionId, meta);
-            } catch (Exception ignored) {}
-        });
+        authorizeWrite(null, actor);
+        throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Institution-specific watermark overrides are disabled. Edit the global watermark instead.");
     }
 
     private void authorizeRead(UUID institutionId, JwtUserDetails actor) {

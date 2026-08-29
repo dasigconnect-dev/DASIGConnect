@@ -2,6 +2,7 @@ package com.dasigconnect.backend.service;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -19,13 +20,18 @@ import com.dasigconnect.backend.model.dto.institution.InstitutionDto;
 import com.dasigconnect.backend.model.dto.institution.UpdateInstitutionRequest;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
+import com.dasigconnect.backend.model.entity.UserRole;
+import com.dasigconnect.backend.model.entity.UserStatus;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
+import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.OverrideRequestRepository;
+import com.dasigconnect.backend.repository.PageSettingsRepository;
 import com.dasigconnect.backend.repository.SlotReservationRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
+import com.dasigconnect.backend.repository.WatermarkConfigurationRepository;
 
 /**
  * Manages the institution lifecycle.
@@ -48,9 +54,12 @@ public class InstitutionService {
     private final UserRepository userRepository;
     private final SubmissionRepository submissionRepository;
     private final MediaAssetRepository mediaAssetRepository;
+    private final MediaAlbumRepository mediaAlbumRepository;
     private final InvitationTokenRepository invitationTokenRepository;
     private final SlotReservationRepository slotReservationRepository;
     private final OverrideRequestRepository overrideRequestRepository;
+    private final PageSettingsRepository pageSettingsRepository;
+    private final WatermarkConfigurationRepository watermarkConfigurationRepository;
     private final WorkspaceProvisionerService workspaceProvisioner;
     private final AuditLogService auditLogService;
 
@@ -59,18 +68,24 @@ public class InstitutionService {
             UserRepository userRepository,
             SubmissionRepository submissionRepository,
             MediaAssetRepository mediaAssetRepository,
+            MediaAlbumRepository mediaAlbumRepository,
             InvitationTokenRepository invitationTokenRepository,
             SlotReservationRepository slotReservationRepository,
             OverrideRequestRepository overrideRequestRepository,
+            PageSettingsRepository pageSettingsRepository,
+            WatermarkConfigurationRepository watermarkConfigurationRepository,
             WorkspaceProvisionerService workspaceProvisioner,
             AuditLogService auditLogService) {
         this.institutionRepository = institutionRepository;
         this.userRepository = userRepository;
         this.submissionRepository = submissionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
+        this.mediaAlbumRepository = mediaAlbumRepository;
         this.invitationTokenRepository = invitationTokenRepository;
         this.slotReservationRepository = slotReservationRepository;
         this.overrideRequestRepository = overrideRequestRepository;
+        this.pageSettingsRepository = pageSettingsRepository;
+        this.watermarkConfigurationRepository = watermarkConfigurationRepository;
         this.workspaceProvisioner = workspaceProvisioner;
         this.auditLogService = auditLogService;
     }
@@ -258,13 +273,16 @@ public class InstitutionService {
                     "Institution '" + institution.getName() + "' is already inactive.");
         }
 
-        long contributorCount = userRepository.countByInstitutionId(institutionId);
+        boolean hasBlockingContributors = hasBlockingContributorAccounts(institutionId);
         long pendingInviteCount = invitationTokenRepository
-                .countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(institutionId, Instant.now());
-        if (contributorCount > 0 || pendingInviteCount > 0) {
+                .countByInstitutionIdAndAssignedRoleAndUsedAtIsNullAndExpiresAtAfter(
+                        institutionId,
+                        UserRole.contributor,
+                        Instant.now());
+        if (hasBlockingContributors || pendingInviteCount > 0) {
             throw new IllegalStateException(
                     "Cannot deactivate institution '" + institution.getName()
-                    + "' while contributors or pending invitations exist. Please transfer or remove contributors first.");
+                    + "' while active contributors or pending contributor invitations exist. Please transfer or remove accounts first.");
         }
 
         String previousStatus = institution.getStatus().name();
@@ -407,7 +425,7 @@ public class InstitutionService {
         Institution institution = institutionRepository.findById(institutionId)
                 .orElseThrow(() -> new InstitutionNotFoundException(institutionId));
 
-        if (userRepository.existsByInstitutionId(institutionId)) {
+        if (hasBlockingContributorAccounts(institutionId)) {
             throw new IllegalArgumentException(
                     "\"" + institution.getName() + "\" still has contributors. Transfer or remove all contributors before deleting.");
         }
@@ -426,6 +444,9 @@ public class InstitutionService {
         invitationTokenRepository.deleteByInstitutionId(institutionId);
         slotReservationRepository.deleteByInstitutionId(institutionId);
         overrideRequestRepository.deleteByInstitutionId(institutionId);
+        pageSettingsRepository.deleteByInstitutionId(institutionId);
+        watermarkConfigurationRepository.deleteByInstitutionId(institutionId);
+        mediaAlbumRepository.deleteByInstitutionId(institutionId);
 
         String name = institution.getName();
         String code = institution.getCode();
@@ -438,5 +459,12 @@ public class InstitutionService {
         );
 
         log.info("Institution deleted: {} ({})", name, institutionId);
+    }
+
+    private boolean hasBlockingContributorAccounts(UUID institutionId) {
+        return userRepository.existsByInstitutionIdAndRoleAndAccountStateIn(
+                institutionId,
+                UserRole.contributor,
+                List.of(UserStatus.pending, UserStatus.pending_email_undelivered, UserStatus.active));
     }
 }
