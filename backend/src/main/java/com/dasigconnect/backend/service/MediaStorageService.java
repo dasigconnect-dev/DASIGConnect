@@ -3,7 +3,10 @@ package com.dasigconnect.backend.service;
 import jakarta.annotation.PreDestroy;
 import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,8 +18,11 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
@@ -43,11 +49,23 @@ public class MediaStorageService {
     private static final Logger log = LoggerFactory.getLogger(MediaStorageService.class);
     private static final Duration UPLOAD_URL_TTL = Duration.ofMinutes(15);
 
+    /** How long a bucket-usage scan is reused before another {@code ListObjectsV2} sweep. */
+    private static final Duration USAGE_CACHE_TTL = Duration.ofMinutes(10);
+    /** Safety cap so a very large bucket cannot make the scan run unbounded. */
+    private static final int USAGE_SCAN_MAX_PAGES = 200; // 200 * 1000 keys
+
+    /**
+     * Real bucket footprint from an object listing: summed object sizes and count.
+     * {@code partial} is true when the safety cap stopped the sweep early.
+     */
+    public record StorageUsage(long totalBytes, long objectCount, boolean partial, Instant scannedAt) {}
+
     private final String bucket;
     private final String publicBaseUrl;
     private final S3Client s3Client;
     private final S3Presigner presigner;
     private final boolean configured;
+    private final AtomicReference<StorageUsage> cachedUsage = new AtomicReference<>();
 
     public MediaStorageService(
             @Value("${app.r2.account-id:}") String accountId,
@@ -156,6 +174,54 @@ public class MediaStorageService {
 
     public String generatedWatermarkPath(UUID submissionId, UUID mediaAssetId, String extension) {
         return "generated/watermarked/" + submissionId + "/" + mediaAssetId + "-" + System.currentTimeMillis() + "." + extension;
+    }
+
+    /**
+     * Real bucket footprint (summed object sizes + count) from an S3
+     * {@code ListObjectsV2} sweep of the whole bucket — this counts every object
+     * actually stored, including watermarked derivatives and orphans that have no
+     * {@code media_assets} row. The result is cached for {@link #USAGE_CACHE_TTL}
+     * because the sweep is O(object count). Returns empty when storage is not
+     * configured or the listing fails, so callers can fall back to a DB estimate.
+     */
+    public Optional<StorageUsage> probeUsage() {
+        if (!configured) {
+            return Optional.empty();
+        }
+        StorageUsage cached = cachedUsage.get();
+        if (cached != null && cached.scannedAt().isAfter(Instant.now().minus(USAGE_CACHE_TTL))) {
+            return Optional.of(cached);
+        }
+        try {
+            long totalBytes = 0;
+            long objectCount = 0;
+            boolean partial = false;
+            String continuationToken = null;
+            int pages = 0;
+            do {
+                ListObjectsV2Response page = s3Client.listObjectsV2(ListObjectsV2Request.builder()
+                        .bucket(bucket)
+                        .maxKeys(1000)
+                        .continuationToken(continuationToken)
+                        .build());
+                for (S3Object object : page.contents()) {
+                    totalBytes += object.size() == null ? 0 : object.size();
+                    objectCount++;
+                }
+                continuationToken = Boolean.TRUE.equals(page.isTruncated()) ? page.nextContinuationToken() : null;
+                if (++pages >= USAGE_SCAN_MAX_PAGES && continuationToken != null) {
+                    partial = true;
+                    continuationToken = null;
+                }
+            } while (continuationToken != null);
+
+            StorageUsage usage = new StorageUsage(totalBytes, objectCount, partial, Instant.now());
+            cachedUsage.set(usage);
+            return Optional.of(usage);
+        } catch (Exception ex) {
+            log.warn("Media storage usage probe failed: {}", ex.getMessage());
+            return Optional.ofNullable(cached); // serve a stale reading if we have one, else empty
+        }
     }
 
     public boolean deletePublicObject(String publicUrl) {

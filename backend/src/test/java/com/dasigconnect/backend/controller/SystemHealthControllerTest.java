@@ -1,7 +1,9 @@
 package com.dasigconnect.backend.controller;
 
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -10,6 +12,7 @@ import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.model.dto.systemhealth.HealthStatus;
 import com.dasigconnect.backend.model.dto.systemhealth.SystemHealthSummaryDto;
 import com.dasigconnect.backend.service.JWTService;
+import com.dasigconnect.backend.service.ManualJobRunner;
 import com.dasigconnect.backend.service.SystemHealthService;
 import com.dasigconnect.backend.service.TenantScopeService;
 import com.dasigconnect.backend.service.TokenManagementService;
@@ -36,6 +39,9 @@ class SystemHealthControllerTest {
 
     @MockitoBean
     private TokenManagementService tokenManagementService;
+
+    @MockitoBean
+    private ManualJobRunner manualJobRunner;
 
     @MockitoBean
     private JWTService jwtService;
@@ -67,6 +73,35 @@ class SystemHealthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.overallStatus").value("WARNING"))
                 .andExpect(jsonPath("$.data.warningCount").value(1));
+    }
+
+    @Test
+    void runJob_withoutAdminRole_returns403() throws Exception {
+        mockMvc.perform(post("/api/v1/system-health/jobs/TokenHealthCheckJob/run"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void runJob_asAdmin_runsJobAndReturnsRefreshedJobs() throws Exception {
+        when(systemHealthService.backgroundJobs()).thenReturn(List.of());
+
+        mockMvc.perform(post("/api/v1/system-health/jobs/AbandonmentDetectorJob/run"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray());
+
+        verify(manualJobRunner).run("AbandonmentDetectorJob");
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void recheckTokens_asAdmin_delegatesToTokenHealthCheckJob() throws Exception {
+        when(systemHealthService.backgroundJobs()).thenReturn(List.of());
+
+        mockMvc.perform(post("/api/v1/system-health/tokens/recheck"))
+                .andExpect(status().isOk());
+
+        verify(manualJobRunner).run("TokenHealthCheckJob");
     }
 
     @Test
