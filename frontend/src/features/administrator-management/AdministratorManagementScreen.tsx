@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  cancelInvitation,
+  cancelInvitationByUser,
   changeUserRole,
   confirmAdminTransfer,
   deleteUser,
+  eraseUserData,
   inviteUser,
   listAdmins,
   listInstitutions,
@@ -307,12 +308,15 @@ export default function AdminManagementScreen({
   }
 
   function handleDeleteUser(managedUser: UserProfileResponse) {
+    const isErased = Boolean(managedUser.purgedAt)
     setConfirmDialog({
-      title: 'Remove Admin',
-      message: `Remove ${getUserDisplayName(managedUser)}? Accounts with historical records are kept inactive for audit integrity; otherwise the account is permanently deleted and cannot be recovered.`,
-      confirmLabel: 'Remove account',
+      title: isErased ? 'Remove Record' : 'Remove Admin',
+      message: isErased
+        ? `This account's personal data has already been erased. Removing the record permanently deletes it if nothing references it; if it has historical records it stays as an anonymised inactive row.`
+        : `Remove ${getUserDisplayName(managedUser)}? Accounts with historical records are kept inactive for audit integrity; otherwise the account is permanently deleted and cannot be recovered.`,
+      confirmLabel: isErased ? 'Remove record' : 'Remove account',
       dangerous: true,
-      requireTypedConfirmation: managedUser.email,
+      requireTypedConfirmation: isErased ? 'DELETE' : managedUser.email,
       onConfirm: () => {
         setConfirmDialog(null)
         void executeDeleteUser(managedUser)
@@ -337,6 +341,36 @@ export default function AdminManagementScreen({
       }
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to remove admin.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  function handleEraseData(managedUser: UserProfileResponse) {
+    setConfirmDialog({
+      title: 'Erase personal data',
+      message: `Permanently scrub ${getUserDisplayName(managedUser)}'s name, email, avatar, credentials, and unpublished media uploads. Their submissions and review history remain but no longer identify them. This cannot be undone.`,
+      confirmLabel: 'Erase personal data',
+      dangerous: true,
+      requireTypedConfirmation: managedUser.email,
+      onConfirm: () => {
+        setConfirmDialog(null)
+        void executeEraseData(managedUser)
+      },
+    })
+  }
+
+  async function executeEraseData(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
+    try {
+      const response = await eraseUserData(managedUser.id)
+      const purged = response.data.mediaAssetsPurged
+      toast.success(
+        `Personal data erased.${purged > 0 ? ` ${purged} media file${purged === 1 ? '' : 's'} queued for purge.` : ''}`,
+      )
+      await loadAdminManagement()
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Unable to erase personal data.'))
     } finally {
       setUpdatingUserId(null)
     }
@@ -389,22 +423,16 @@ export default function AdminManagementScreen({
     }
   }
 
-  async function handleCancelInvitation(id: string) {
+  async function handleCancelInvitationFromUser(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
     try {
-      await cancelInvitation(id)
+      await cancelInvitationByUser(managedUser.id)
       toast.success('Invitation cancelled.')
       await loadAdminManagement()
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to cancel invitation.'))
-    }
-  }
-
-  function handleCancelInvitationFromUser(managedUser: UserProfileResponse) {
-    const match = pendingInvitations.find(
-      (item) => item.recipientEmail.toLowerCase() === managedUser.email.toLowerCase(),
-    )
-    if (match) {
-      void handleCancelInvitation(match.id)
+    } finally {
+      setUpdatingUserId(null)
     }
   }
 
@@ -588,6 +616,7 @@ export default function AdminManagementScreen({
               onResendInvitation={handleResendInvitationFromUser}
               onRequestSuperAdminTransfer={handleRequestTransfer}
               onChangeRole={isOwner ? handleOpenChangeRole : undefined}
+              onEraseData={isOwner ? handleEraseData : undefined}
               showRoleControls={false}
               showInstitutionColumn={false}
               showFilterPills

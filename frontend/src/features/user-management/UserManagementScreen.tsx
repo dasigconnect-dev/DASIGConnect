@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Navigate } from 'react-router-dom'
 import {
-  cancelInvitation,
+  cancelInvitationByUser,
   changeUserRole,
   deleteUser,
+  eraseUserData,
   inviteUser,
   listAdmins,
   listInstitutions,
@@ -283,12 +284,15 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
   }
 
   function handleDeleteUser(managedUser: UserProfileResponse) {
+    const isErased = Boolean(managedUser.purgedAt)
     setConfirmDialog({
-      title: 'Remove User',
-      message: `Remove ${getUserDisplayName(managedUser)}? If they have existing content or media, their account is deactivated to preserve data integrity. Otherwise it is permanently deleted and cannot be recovered.`,
-      confirmLabel: 'Remove account',
+      title: isErased ? 'Remove Record' : 'Remove User',
+      message: isErased
+        ? `This account's personal data has already been erased. Removing the record permanently deletes it if nothing references it; if it has submissions or media it stays as an anonymised inactive row.`
+        : `Remove ${getUserDisplayName(managedUser)}? If they have existing content or media, their account is deactivated to preserve data integrity. Otherwise it is permanently deleted and cannot be recovered.`,
+      confirmLabel: isErased ? 'Remove record' : 'Remove account',
       dangerous: true,
-      requireTypedConfirmation: managedUser.email,
+      requireTypedConfirmation: isErased ? 'DELETE' : managedUser.email,
       onConfirm: () => {
         setConfirmDialog(null)
         void executeDeleteUser(managedUser)
@@ -316,6 +320,36 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     }
   }
 
+  function handleEraseData(managedUser: UserProfileResponse) {
+    setConfirmDialog({
+      title: 'Erase personal data',
+      message: `Permanently scrub ${getUserDisplayName(managedUser)}'s name, email, avatar, credentials, and unpublished media uploads. Their submissions and review history remain but no longer identify them. This cannot be undone.`,
+      confirmLabel: 'Erase personal data',
+      dangerous: true,
+      requireTypedConfirmation: managedUser.email,
+      onConfirm: () => {
+        setConfirmDialog(null)
+        void executeEraseData(managedUser)
+      },
+    })
+  }
+
+  async function executeEraseData(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
+    try {
+      const response = await eraseUserData(managedUser.id)
+      const purged = response.data.mediaAssetsPurged
+      toast.success(
+        `Personal data erased.${purged > 0 ? ` ${purged} media file${purged === 1 ? '' : 's'} queued for purge.` : ''}`,
+      )
+      await loadManagementLists()
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to erase personal data.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
   function handleCancelInvitationFromUsers(managedUser: UserProfileResponse) {
     setConfirmDialog({
       title: 'Cancel Invitation',
@@ -332,12 +366,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
   async function executeCancelInvitationByEmail(managedUser: UserProfileResponse) {
     setUpdatingUserId(managedUser.id)
     try {
-      const match = pendingInvitations.find(
-        (inv) => inv.recipientEmail.toLowerCase() === managedUser.email.toLowerCase(),
-      )
-      if (match) {
-        await cancelInvitation(match.id)
-      }
+      await cancelInvitationByUser(managedUser.id)
       setManagedUsers((current) =>
         current.map((item) => (item.id === managedUser.id ? { ...item, accountState: 'cancelled' } : item)),
       )
@@ -532,6 +561,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
           onResendInvitation={handleResendInvitationFromUsers}
           onReassign={handleOpenReassign}
           onChangeRole={handleOpenChangeRole}
+          onEraseData={isOwner ? handleEraseData : undefined}
           showRoleControls
           showInstitutionColumn
           title="All Users"

@@ -1205,6 +1205,20 @@
   vertical-align: middle;
 }
 
+.um-erased-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #FDECEC;
+  color: #B91C1C;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
 .um-data-card.is-directory .um-table th:first-child,
 .um-data-card.is-directory .um-table td:first-child {
   width: 38%;
