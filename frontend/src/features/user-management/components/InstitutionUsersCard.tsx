@@ -14,6 +14,8 @@ interface InstitutionUsersCardProps {
   onDeleteUser: (user: UserProfileResponse) => void
   onCancelInvitation: (user: UserProfileResponse) => void
   onResendInvitation?: (user: UserProfileResponse) => void
+  /** For pending rows: whether the current user may resend/cancel this invitation. Defaults to allowed. */
+  canManageInvitation?: (user: UserProfileResponse) => boolean
   onReassign?: (user: UserProfileResponse) => void
   onChangeRole?: (user: UserProfileResponse) => void
   onEraseData?: (user: UserProfileResponse) => void
@@ -47,6 +49,7 @@ export default function InstitutionUsersCard({
   onDeleteUser,
   onCancelInvitation,
   onResendInvitation,
+  canManageInvitation,
   onReassign,
   onChangeRole,
   onEraseData,
@@ -258,25 +261,32 @@ export default function InstitutionUsersCard({
                   const displayName = getUserDisplayName(managedUser)
                   const initials = getUserInitials(managedUser)
 
+                  const canManageThisInvite = canManageInvitation
+                    ? canManageInvitation(managedUser)
+                    : true
+
                   const menuItems = readOnly
                     ? []
                     : isPending
-                    ? [
-                        onResendInvitation
-                          ? {
-                              label: isResending ? 'Resending…' : 'Resend invitation',
-                              icon: 'ti ti-send',
-                              onClick: () => onResendInvitation(managedUser),
-                              disabled: isResending,
-                            }
-                          : null,
-                        {
-                          label: 'Cancel invitation',
-                          icon: 'ti ti-ban',
-                          onClick: () => onCancelInvitation(managedUser),
-                          dangerous: true,
-                        },
-                      ].filter((item): item is NonNullable<typeof item> => item !== null)
+                    ? (canManageThisInvite
+                        ? [
+                            onResendInvitation
+                              ? {
+                                  label: isResending ? 'Resending…' : 'Resend invitation',
+                                  icon: 'ti ti-send',
+                                  onClick: () => onResendInvitation(managedUser),
+                                  disabled: isResending,
+                                }
+                              : null,
+                            {
+                              label: 'Cancel invitation',
+                              icon: 'ti ti-ban',
+                              onClick: () => onCancelInvitation(managedUser),
+                              dangerous: true,
+                            },
+                          ]
+                        : []
+                      ).filter((item): item is NonNullable<typeof item> => item !== null)
                     : [
                         canManage && (isActive || isInactive)
                           ? {

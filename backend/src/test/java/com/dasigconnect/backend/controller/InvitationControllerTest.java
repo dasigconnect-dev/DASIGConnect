@@ -190,7 +190,9 @@ class InvitationControllerTest {
                 UserRole.contributor,
                 INSTITUTION_ID,
                 Instant.now().plusSeconds(3600),
-                Instant.now())));
+                Instant.now(),
+                null,
+                true)));
 
         mockMvc.perform(get("/api/v1/invitations/pending").param("institutionId", INSTITUTION_ID.toString()))
                 .andExpect(status().isOk())
@@ -208,7 +210,9 @@ class InvitationControllerTest {
                 UserRole.admin,
                 null,
                 Instant.now().plusSeconds(3600),
-                Instant.now())));
+                Instant.now(),
+                null,
+                true)));
 
         mockMvc.perform(get("/api/v1/invitations/pending/admins"))
                 .andExpect(status().isOk())

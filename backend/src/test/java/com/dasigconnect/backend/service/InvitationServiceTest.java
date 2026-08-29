@@ -136,7 +136,45 @@ class InvitationServiceTest {
                 && user.getAccountState() == UserStatus.pending));
         verify(invitationTokenRepository).save(argThat(token
                 -> token.getAssignedRole() == UserRole.admin
-                && token.getInstitution() == null));
+                && token.getInstitution() == null
+                && adminPrincipal.userId().equals(token.getCreatedByUserId())));
+    }
+
+    @Test
+    void cancel_moderatorMayCancelOwnContributorInvite() {
+        JwtUserDetails moderator = principal("moderator", null);
+        InvitationToken token = buildToken(false, false);
+        token.setCreatedByUserId(moderator.userId());
+        when(invitationTokenRepository.findById(token.getId())).thenReturn(Optional.of(token));
+        when(userRepository.findByEmail(token.getRecipientEmail())).thenReturn(Optional.empty());
+
+        invitationService.cancel(token.getId(), moderator);
+
+        verify(invitationTokenRepository).delete(token);
+    }
+
+    @Test
+    void cancel_moderatorCannotCancelSomeoneElsesInvite() {
+        InvitationToken token = buildToken(false, false);
+        token.setCreatedByUserId(UUID.randomUUID()); // sent by another admin/moderator
+        when(invitationTokenRepository.findById(token.getId())).thenReturn(Optional.of(token));
+
+        assertThatThrownBy(() -> invitationService.cancel(token.getId(), principal("moderator", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(403);
+    }
+
+    @Test
+    void resend_moderatorCannotResendSomeoneElsesInvite() {
+        InvitationToken token = buildToken(false, false);
+        token.setCreatedByUserId(UUID.randomUUID());
+        when(invitationTokenRepository.findById(token.getId())).thenReturn(Optional.of(token));
+
+        assertThatThrownBy(() -> invitationService.resend(token.getId(), principal("moderator", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(403);
     }
 
     @Test

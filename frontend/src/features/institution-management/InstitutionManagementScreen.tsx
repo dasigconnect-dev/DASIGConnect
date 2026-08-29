@@ -1468,6 +1468,13 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             onDeleteUser={handleDeleteUser}
             onCancelInvitation={handleCancelInvitationFromUsers}
             onResendInvitation={handleResendInvitationFromUsers}
+            canManageInvitation={(managedUser) => {
+              if (isAdmin) return true
+              const inv = pendingInvitations.find(
+                (i) => i.recipientEmail.toLowerCase() === managedUser.email.toLowerCase(),
+              )
+              return inv?.canManage ?? false
+            }}
             resendingUserId={updatingUserId}
             onReassign={handleOpenReassign}
             showRoleControls={false}

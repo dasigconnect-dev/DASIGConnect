@@ -293,6 +293,9 @@ export interface PendingInvitationResponse {
   institutionId: string | null;
   expiresAt: string;
   createdAt: string;
+  createdByUserId: string | null;
+  /** Whether the current user may resend/cancel this invitation (admins: always; moderators: only their own). */
+  canManage: boolean;
 }
 
 export function listPendingInvitations(institutionId: string) {
