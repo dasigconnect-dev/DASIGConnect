@@ -4,6 +4,7 @@ import {
   getSystemHealthSummary,
   getSystemHealthTokens,
   initSystemHealthOAuth,
+  recheckSystemHealthTokens,
   type BackgroundJobHealth,
   type ExternalServiceHealth,
   type HealthStatus,
@@ -40,6 +41,7 @@ export default function SystemHealthScreen({ user }: Props) {
   const [tokens, setTokens] = useState<TokenStatus[]>(cachedTokens);
   const [loading, setLoading] = useState(!cachedSummary);
   const [exporting, setExporting] = useState(false);
+  const [rechecking, setRechecking] = useState(false);
   const [busyTokenId, setBusyTokenId] = useState<string | null>(null);
 
   // Active top-level tab (jobs | integrations | performance | storage)
@@ -108,6 +110,19 @@ export default function SystemHealthScreen({ user }: Props) {
       toast.error("Unable to export snapshot.");
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function handleRecheckTokens() {
+    setRechecking(true);
+    try {
+      await recheckSystemHealthTokens();
+      await load(undefined, true);
+      toast.success("Token health check re-run.");
+    } catch {
+      toast.error("Unable to re-run the token health check.");
+    } finally {
+      setRechecking(false);
     }
   }
 
@@ -474,6 +489,17 @@ export default function SystemHealthScreen({ user }: Props) {
                         aria-label="Search background jobs"
                       />
                     </div>
+
+                    <button
+                      type="button"
+                      className="notif-btn notif-btn-ghost notif-btn-sm"
+                      onClick={() => void handleRecheckTokens()}
+                      disabled={rechecking}
+                      title="Run the Facebook token health check now instead of waiting for its daily schedule"
+                    >
+                      <i className={rechecking ? "ti ti-loader-2 sys-spin" : "ti ti-refresh-dot"} aria-hidden="true" />
+                      <span>{rechecking ? "Checking..." : "Re-run token check"}</span>
+                    </button>
                   </div>
 
                   <JobTable jobs={filteredJobs} />

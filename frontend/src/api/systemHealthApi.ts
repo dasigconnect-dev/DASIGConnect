@@ -70,6 +70,11 @@ export function getSystemHealthTokens(signal?: AbortSignal) {
   return api.get<TokenStatus[]>("/system-health/tokens", { signal });
 }
 
+/** Runs the Facebook token health check now (bypasses its daily cron) and returns the refreshed jobs. */
+export function recheckSystemHealthTokens() {
+  return api.post<BackgroundJobHealth[]>("/system-health/tokens/recheck");
+}
+
 export function initSystemHealthOAuth(tokenId: string) {
   return api.get<{ authorizationUrl: string }>(`/system-health/tokens/${tokenId}/oauth-init`);
 }
