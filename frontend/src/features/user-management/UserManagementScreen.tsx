@@ -139,7 +139,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
       })
       return
     }
-    if (!inviteInstitutionId) {
+    if (inviteRole !== 'moderator' && !inviteInstitutionId) {
       setInviteResults({
         total: emailChips.length,
         success: [],
@@ -157,11 +157,6 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     }
     if (!inviteRole) return
 
-    if (inviteRole === 'moderator') {
-      const proceed = await confirmModeratorInvite()
-      if (!proceed) return
-    }
-
     setSending(true)
     const success: string[] = []
     const failed: InviteResults['failed'] = []
@@ -174,7 +169,8 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
         try {
           const response = await inviteUser({
             recipientEmail: email,
-            institutionId: inviteInstitutionId,
+            // Moderators are network-wide — no destination institution.
+            institutionId: inviteRole === 'moderator' ? null : inviteInstitutionId,
             assignedRole: inviteRole,
           })
           if (response.data.emailDelivered) {
@@ -206,31 +202,6 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     } finally {
       setSending(false)
     }
-  }
-
-  function confirmModeratorInvite(): Promise<boolean> {
-    const targetName = selectedInviteInstitution?.name || 'this institution'
-    const activeModerators = managedUsers.filter(
-      (u) =>
-        u.role.toLowerCase() === 'moderator' &&
-        u.accountState.toLowerCase() === 'active' &&
-        u.institutionId === inviteInstitutionId,
-    )
-    if (activeModerators.length === 0) return Promise.resolve(true)
-
-    return new Promise((resolve) => {
-      setConfirmDialog({
-        title: 'Invite Additional Moderator?',
-        message: `${targetName} already has ${activeModerators.length} active moderator${activeModerators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
-        confirmLabel: 'Yes, invite moderator',
-        dangerous: false,
-        onConfirm: () => {
-          setConfirmDialog(null)
-          resolve(true)
-        },
-        onCancel: () => resolve(false),
-      })
-    })
   }
 
   async function handleResendInvitation(id: string) {
@@ -362,13 +333,15 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
       const match = pendingInvitations.find(
         (inv) => inv.recipientEmail.toLowerCase() === managedUser.email.toLowerCase(),
       )
+      const role = managedUser.role.toLowerCase()
       if (match) {
         await resendInvitation(match.id)
-      } else if (managedUser.institutionId) {
+      } else if (role === 'moderator' || managedUser.institutionId) {
+        // Moderators are network-wide, so a null institutionId is expected for them.
         await inviteUser({
           recipientEmail: managedUser.email,
-          institutionId: managedUser.institutionId,
-          assignedRole: managedUser.role.toLowerCase() as 'contributor' | 'moderator',
+          institutionId: role === 'moderator' ? null : managedUser.institutionId,
+          assignedRole: role as 'contributor' | 'moderator',
         })
       }
       await loadManagementLists()
@@ -540,36 +513,39 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
 
         {activeTab === 'invitations' && (
           <div id="panel-invitations" role="tabpanel" aria-labelledby="tab-invitations" className="um-tab-panel">
-            <div className="um-context-bar">
-              <div className="um-context-label">
-                <i className="ti ti-building" aria-hidden="true"></i>
-                <span>Invite to institution</span>
+            {inviteRole !== 'moderator' && (
+              <div className="um-context-bar">
+                <div className="um-context-label">
+                  <i className="ti ti-building" aria-hidden="true"></i>
+                  <span>Invite to institution</span>
+                </div>
+                {institutionsLoading ? (
+                  <SkeletonBlock className="um-skeleton-line is-wide" />
+                ) : (
+                  <BrandedSelect
+                    className="um-inst-select"
+                    value={inviteInstitutionId}
+                    onChange={setInviteInstitutionId}
+                    disabled={institutions.length === 0}
+                    ariaLabel="Select destination institution"
+                    placeholder="Select institution"
+                    options={
+                      institutions.length === 0
+                        ? [{ value: '', label: 'No institutions available', disabled: true }]
+                        : institutions.map((inst) => ({ value: inst.id, label: inst.name }))
+                    }
+                  />
+                )}
               </div>
-              {institutionsLoading ? (
-                <SkeletonBlock className="um-skeleton-line is-wide" />
-              ) : (
-                <BrandedSelect
-                  className="um-inst-select"
-                  value={inviteInstitutionId}
-                  onChange={setInviteInstitutionId}
-                  disabled={institutions.length === 0}
-                  ariaLabel="Select destination institution"
-                  placeholder="Select institution"
-                  options={
-                    institutions.length === 0
-                      ? [{ value: '', label: 'No institutions available', disabled: true }]
-                      : institutions.map((inst) => ({ value: inst.id, label: inst.name }))
-                  }
-                />
-              )}
-            </div>
+            )}
 
             <InvitationComposer
               chips={emailChips}
               emailDraft={emailDraft}
               role={inviteRole}
-              selectedInstitution={selectedInviteInstitution}
+              selectedInstitution={inviteRole === 'moderator' ? null : selectedInviteInstitution}
               canChooseRole
+              networkWide={inviteRole === 'moderator'}
               sending={sending}
               onDraftChange={setEmailDraft}
               onAddChip={(email) => {

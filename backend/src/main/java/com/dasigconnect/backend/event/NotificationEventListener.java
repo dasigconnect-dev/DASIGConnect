@@ -68,7 +68,7 @@ public class NotificationEventListener {
         String msg = contributorEmail + " submitted '" + s.getEventTitle() + "' for approval" + scheduledPart + ".";
         String link = "/submissions/" + s.getId();
 
-        List<User> admins = institutionAdmins(s.getInstitution().getId());
+        List<User> admins = allModerators();
         for (User admin : admins) {
             notificationService.createNotification(admin, NotificationEventType.submission_pending, msg, link);
             // Messenger delivery (A4 / A5)
@@ -161,7 +161,7 @@ public class NotificationEventListener {
 
         String adminMsg = "'" + s.getEventTitle() + "' from "
                 + s.getInstitution().getName() + " was manually published by the Moderator.";
-        for (User admin : institutionAdmins(s.getInstitution().getId())) {
+        for (User admin : allModerators()) {
             notificationService.createNotification(admin, NotificationEventType.submission_published_manual, adminMsg, postLink);
         }
     }
@@ -178,13 +178,11 @@ public class NotificationEventListener {
                 + "' (scheduled " + slot + "). Error: " + event.errorDetail()
                 + ". Manual action required.";
 
-        // Notify super admins and institution admins
+        // Notify super admins and moderators (both network-wide roles)
         List<User> targetAdmins = new java.util.ArrayList<>(superAdmins());
-        if (s.getInstitution() != null && s.getInstitution().getId() != null) {
-            for (User ia : institutionAdmins(s.getInstitution().getId())) {
-                if (!targetAdmins.contains(ia)) {
-                    targetAdmins.add(ia);
-                }
+        for (User ia : allModerators()) {
+            if (!targetAdmins.contains(ia)) {
+                targetAdmins.add(ia);
             }
         }
 
@@ -249,7 +247,7 @@ public class NotificationEventListener {
         String link = "/scheduler/calendar";
 
         // In-app to institution admins
-        for (User admin : institutionAdmins(event.institution().getId())) {
+        for (User admin : allModerators()) {
             notificationService.createNotification(admin, NotificationEventType.empty_schedule_warning, msg, link);
         }
         // In-app to institution contributors
@@ -344,7 +342,7 @@ public class NotificationEventListener {
                 + s.getEventTitle() + "' for immediate approval.";
         String link = "/submissions/" + s.getId();
 
-        List<User> admins = institutionAdmins(s.getInstitution().getId());
+        List<User> admins = allModerators();
         for (User admin : admins) {
             notificationService.createNotification(admin, NotificationEventType.fast_track_submission, msg, link);
             emailDeliveryService.send(admin,
@@ -389,7 +387,7 @@ public class NotificationEventListener {
 
         String adminMsg = "Moderator approved a guard rail override for '"
                 + event.contributor().getEmail() + "' — '" + s.getEventTitle() + "'.";
-        for (User admin : institutionAdmins(s.getInstitution().getId())) {
+        for (User admin : allModerators()) {
             notificationService.createNotification(admin, NotificationEventType.override_approved, adminMsg, link);
         }
     }
@@ -434,7 +432,7 @@ public class NotificationEventListener {
                 + event.institution().getName() + ": '"
                 + truncate(event.postTitle(), 80) + ".' View post →";
         String link = event.postUrl() != null ? event.postUrl() : "/";
-        for (User admin : institutionAdmins(event.institution().getId())) {
+        for (User admin : allModerators()) {
             notificationService.createNotification(admin, NotificationEventType.admin_direct_post, msg, link);
         }
     }
@@ -468,11 +466,12 @@ public class NotificationEventListener {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-    private List<User> institutionAdmins(java.util.UUID institutionId) {
-        if (institutionId == null) {
-            return List.of();
-        }
-        return userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.moderator);
+    /**
+     * Moderators are network-wide (no owning institution), so every moderator
+     * is notified regardless of which institution an event originated from.
+     */
+    private List<User> allModerators() {
+        return userRepository.findByRole(UserRole.moderator);
     }
 
     private List<User> institutionContributors(java.util.UUID institutionId) {

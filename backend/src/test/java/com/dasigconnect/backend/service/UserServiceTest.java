@@ -149,15 +149,17 @@ class UserServiceTest {
     }
 
     @Test
-    void listByInstitution_moderatorCannotListOtherInstitution() {
+    void listByInstitution_moderatorCanListOtherInstitution() {
+        // Moderators are network-wide now — no institution comparison applies.
         UUID otherInstitution = UUID.randomUUID();
+        when(userRepository.findByInstitutionIdOrderByCreatedAtDesc(otherInstitution))
+                .thenReturn(List.of(contributor));
 
-        assertThatThrownBy(() -> userService.listByInstitution(
+        List<UserDto> result = userService.listByInstitution(
                 otherInstitution,
-                principal(UUID.randomUUID(), "moderator", institutionId)))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN);
+                principal(UUID.randomUUID(), "moderator", null));
+
+        assertThat(result).extracting(UserDto::getEmail).containsExactly("contributor@cit.edu.ph");
     }
 
     @Test
@@ -207,14 +209,17 @@ class UserServiceTest {
     }
 
     @Test
-    void countByRole_moderatorCannotCountOtherInstitution() {
+    void countByRole_moderatorCanCountOtherInstitution() {
+        // Moderators are network-wide now — no institution comparison applies.
         UUID otherInstitution = UUID.randomUUID();
-        assertThatThrownBy(() -> userService.countByRole(
+        when(userRepository.countByInstitutionIdAndRoleAndAccountState(otherInstitution, UserRole.contributor, UserStatus.active)).thenReturn(3L);
+        when(userRepository.countByInstitutionIdAndRoleAndAccountState(otherInstitution, UserRole.moderator, UserStatus.active)).thenReturn(0L);
+
+        Map<String, Long> result = userService.countByRole(
                 otherInstitution,
-                principal(UUID.randomUUID(), "moderator", institutionId)))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN);
+                principal(UUID.randomUUID(), "moderator", null));
+
+        assertThat(result).containsEntry("contributors", 3L);
     }
 
     @Test
@@ -227,14 +232,14 @@ class UserServiceTest {
     }
 
     @Test
-    void getById_moderatorCannotViewOtherInstitutionUser() {
+    void getById_moderatorCanViewOtherInstitutionUser() {
+        // Moderators are network-wide now — no institution comparison applies.
         when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
 
-        assertThatThrownBy(() -> userService.getById(userId,
-                principal(UUID.randomUUID(), "moderator", UUID.randomUUID())))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN);
+        UserDto result = userService.getById(userId,
+                principal(UUID.randomUUID(), "moderator", UUID.randomUUID()));
+
+        assertThat(result.getEmail()).isEqualTo("contributor@cit.edu.ph");
     }
 
     @Test

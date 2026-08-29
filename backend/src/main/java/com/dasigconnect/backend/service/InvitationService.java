@@ -218,16 +218,16 @@ public class InvitationService {
     }
 
     private Institution resolveInvitationInstitution(CreateInvitationRequestDto dto) {
-        if (dto.assignedRole() == UserRole.admin) {
+        if (dto.assignedRole() == UserRole.admin || dto.assignedRole() == UserRole.moderator) {
             if (dto.institutionId() != null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Admin invitations must not be assigned to an institution");
+                        "Admin and moderator invitations must not be assigned to an institution");
             }
             return null;
         }
         if (dto.institutionId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Institution is required for contributor and moderator invitations");
+                    "Institution is required for contributor invitations");
         }
         Institution institution = entityManager.find(Institution.class, dto.institutionId());
         if (institution == null) {
@@ -453,10 +453,8 @@ public class InvitationService {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "Only admins can invite moderators or admins");
             }
-            if (inviter.institutionId() == null || !inviter.institutionId().equals(dto.institutionId())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                        "Moderators can only invite contributors to their own institution");
-            }
+            // Moderators are network-wide (no owning institution) — they may invite
+            // contributors to any institution, same as admins.
             return;
         }
         throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -477,16 +475,11 @@ public class InvitationService {
     }
 
     private void validateInstitutionScope(UUID institutionId, JwtUserDetails requester) {
-        if (isAdmin(requester)) {
-            return;
-        }
-        if (requester != null
-                && "moderator".equalsIgnoreCase(requester.role())
-                && requester.institutionId() != null
-                && requester.institutionId().equals(institutionId)) {
+        if (isAdmin(requester) || (requester != null && "moderator".equalsIgnoreCase(requester.role()))) {
+            // Moderator and Admin are both network-wide roles — no institution comparison needed.
             return;
         }
         throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Only admins and same-institution moderators can view invitations");
+                "Only admins and moderators can view invitations");
     }
 }

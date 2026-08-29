@@ -514,17 +514,12 @@ public class UserService {
     }
 
     private void validateInstitutionScope(UUID institutionId, JwtUserDetails requester) {
-        if (isAdminRole(requester)) {
-            return;
-        }
-        if (requester != null
-                && "moderator".equalsIgnoreCase(requester.role())
-                && requester.institutionId() != null
-                && requester.institutionId().equals(institutionId)) {
+        if (isModeratorRole(requester)) {
+            // Moderator and Admin are both network-wide roles — no institution comparison needed.
             return;
         }
         throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Only admins or same-institution moderators can access users.");
+                "Only admins or moderators can access users.");
     }
 
     private void validateCanManageUser(User target, JwtUserDetails requester) {

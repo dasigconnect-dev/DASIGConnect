@@ -5,6 +5,7 @@ import {
   getPendingInvitationCount,
   getUserCounts,
   listInstitutions,
+  listNetworkUsers,
 } from "../../api/authApi";
 import {
   listSubmissions,
@@ -142,31 +143,45 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
     }
 
     let active = true;
-    Promise.all(
-      institutionIds.map(async (institutionId) => {
-        const [countsResponse, pendingResponse] = await Promise.all([
-          getUserCounts(institutionId),
-          getPendingInvitationCount(institutionId),
-        ]);
-        return {
-          contributors: countsResponse.data.contributors,
-          moderators: countsResponse.data.moderators,
-          pendingInvitations: pendingResponse.data.pendingInvitations,
-        };
-      }),
-    )
-      .then((responses) => {
+    // Moderators are network-wide now, so per-institution counts always report 0
+    // moderators; fetch the real total once instead of summing it per institution.
+    const networkModeratorCount =
+      user.role === "admin"
+        ? listNetworkUsers().then(
+            (response) =>
+              response.data.filter(
+                (u) =>
+                  u.role.toLowerCase() === "moderator" &&
+                  u.accountState.toLowerCase() === "active",
+              ).length,
+          )
+        : Promise.resolve(0);
+    Promise.all([
+      Promise.all(
+        institutionIds.map(async (institutionId) => {
+          const [countsResponse, pendingResponse] = await Promise.all([
+            getUserCounts(institutionId),
+            getPendingInvitationCount(institutionId),
+          ]);
+          return {
+            contributors: countsResponse.data.contributors,
+            pendingInvitations: pendingResponse.data.pendingInvitations,
+          };
+        }),
+      ),
+      networkModeratorCount,
+    ])
+      .then(([responses, moderators]) => {
         if (!active) return;
         const totals = responses.reduce(
           (sum, item) => ({
             contributors: sum.contributors + item.contributors,
-            moderators: sum.moderators + item.moderators,
             pendingInvitations:
               sum.pendingInvitations + item.pendingInvitations,
           }),
-          { contributors: 0, moderators: 0, pendingInvitations: 0 },
+          { contributors: 0, pendingInvitations: 0 },
         );
-        setDashboardStats((current) => ({ ...current, ...totals }));
+        setDashboardStats((current) => ({ ...current, ...totals, moderators }));
       })
       .catch(() => {
         if (active) {

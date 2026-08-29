@@ -234,11 +234,11 @@ class InvitationServiceTest {
         existingAdmin.setEmail("admin@example.com");
         existingAdmin.setRole(UserRole.moderator);
         existingAdmin.setAccountState(UserStatus.inactive);
-        when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
         when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(existingAdmin));
 
+        // Moderators are network-wide now — no institution is attached to the invite.
         CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
-                "admin@example.com", institutionId, UserRole.moderator);
+                "admin@example.com", null, UserRole.moderator);
 
         assertThatThrownBy(() -> invitationService.createInvitation(dto, adminPrincipal))
                 .isInstanceOf(ResponseStatusException.class)
@@ -257,8 +257,9 @@ class InvitationServiceTest {
         });
         when(emailService.buildInvitationLink(any())).thenReturn("http://localhost:5173/invite?token=token");
 
+        // Contributor invites still carry an institution; moderators no longer do.
         invitationService.createInvitation(
-                new CreateInvitationRequestDto("moderator2@example.com", institutionId, UserRole.moderator),
+                new CreateInvitationRequestDto("contributor2@example.com", institutionId, UserRole.contributor),
                 adminPrincipal);
 
         verify(institutionService, never()).transitionToPending(any());
@@ -274,13 +275,13 @@ class InvitationServiceTest {
         });
         when(emailService.buildInvitationLink(any())).thenReturn("http://localhost:5173/invite?token=token");
         CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
-                "moderator@gmail.com", institutionId, UserRole.moderator);
+                "contributor@gmail.com", institutionId, UserRole.contributor);
 
         InvitationResponseDto result = invitationService.createInvitation(dto, adminPrincipal);
 
-        assertThat(result.recipientEmail()).isEqualTo("moderator@gmail.com");
-        assertThat(result.assignedRole()).isEqualTo(UserRole.moderator);
-        verify(emailService).sendInvitationEmail(eq("moderator@gmail.com"), any());
+        assertThat(result.recipientEmail()).isEqualTo("contributor@gmail.com");
+        assertThat(result.assignedRole()).isEqualTo(UserRole.contributor);
+        verify(emailService).sendInvitationEmail(eq("contributor@gmail.com"), any());
     }
 
     @Test
