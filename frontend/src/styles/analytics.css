@@ -57,8 +57,16 @@
 
 /* ── Filter & Time Range Toolbar Card ───────────────────────────────────── */
 .analytics-toolbar-card {
+  position: relative;
+  z-index: 120;
+  overflow: visible !important;
   margin-bottom: 18px;
-  padding: 12px 18px;
+  padding: 10px 16px;
+  background: var(--d-surface, #ffffff);
+  border: 1px solid var(--cal-line, #e2e8f0);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(10, 22, 40, 0.035);
+  box-sizing: border-box;
 }
 
 .analytics-toolbar-inner {
@@ -67,6 +75,7 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 14px;
+  overflow: visible;
 }
 
 .analytics-filters-group {
@@ -74,24 +83,30 @@
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
+  overflow: visible;
+  position: relative;
+  z-index: 130;
 }
 
 .analytics-filter-field {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  position: relative;
 }
 
 .analytics-field-label {
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--d-muted, #5a6f8a);
+  color: #64748b;
+  line-height: 1;
 }
 
 .analytics-filter-field .dc-select,
 .analytics-filter-field select {
   min-width: 170px;
-  height: 36px;
+  height: 34px;
+  position: relative;
 }
 
 .analytics-actions-group {
@@ -104,36 +119,62 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 3px;
-  background: #F1F5F9;
-  border-radius: 8px;
-  border: 1px solid #E2E8F0;
+  padding: 2px;
+  background: #f1f5f9;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  height: 34px;
+  box-sizing: border-box;
 }
 
 .analytics-segmented button {
   min-width: 42px;
   height: 28px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 999px;
   background: transparent;
-  color: var(--d-muted, #5a6f8a);
+  color: #64748b;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 650;
   cursor: pointer;
   transition: all 0.15s ease;
-  padding: 0 10px;
+  padding: 0 12px;
   font-family: inherit;
 }
 
 .analytics-segmented button:hover {
-  color: #0F172A;
-  background: #E8EDF2;
+  color: var(--d-blue, #1877f2);
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .analytics-segmented button.active {
   background: var(--d-blue, #1877f2);
   color: #ffffff;
-  box-shadow: 0 1px 3px rgba(24, 119, 242, 0.25);
+  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
+}
+
+.analytics-actions-group .notif-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 550;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+.analytics-actions-group .notif-btn-ghost:hover:not(:disabled) {
+  border-color: #bfdbfe;
+  color: var(--d-blue, #1877f2);
+  background: #eff6ff;
+  transform: translateY(-0.5px);
 }
 
 /* ── Top Executive KPI Cards Strip ──────────────────────────────────────── */

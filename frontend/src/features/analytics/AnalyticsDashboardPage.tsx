@@ -92,7 +92,7 @@ export default function AnalyticsDashboardPage({ user }: Props) {
         </div>
 
         {/* ── Filter & Time Range Toolbar Card ── */}
-        <div className="card-wrap analytics-toolbar-card">
+        <div className="analytics-toolbar-card">
           <div className="analytics-toolbar-inner">
             <div className="analytics-filters-group">
               {summary?.adminView && (

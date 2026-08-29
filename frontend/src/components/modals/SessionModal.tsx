@@ -4,7 +4,7 @@ interface SessionModalProps {
   open: boolean
   email: string
   password: string
-  error: boolean
+  error: string | boolean | null
   submitLoading: boolean
   signOutLoading: boolean
   onEmailChange: (value: string) => void
@@ -47,8 +47,10 @@ export default function SessionModal({
           className={`alert alert-err${error ? "" : " hidden"}`}
           style={{ marginBottom: 12 }}
         >
-          <i className="ti ti-alert-circle"></i> Invalid credentials. Please try
-          again.
+          <i className="ti ti-alert-circle"></i>{" "}
+          {typeof error === "string" && error
+            ? error
+            : "Invalid credentials. Please try again."}
         </div>
         <div className="fgroup">
           <label className="flabel">Institutional Email</label>

@@ -467,7 +467,7 @@
 
 .mlt-search-icon {
   position: absolute;
-  left: 10px;
+  left: 12px;
   font-size: 14px;
   color: var(--mp-muted);
   pointer-events: none;
@@ -475,14 +475,16 @@
 
 .mlt-search {
   width: 100%;
-  padding: 7px 32px 7px 32px;
+  height: 38px;
+  padding: 0 32px 0 36px;
   font-size: 13px;
   border: 1px solid var(--mp-border);
-  border-radius: var(--mp-r-sm);
+  border-radius: 999px;
   background: var(--mp-surface);
   color: var(--mp-text);
   outline: none;
   transition: border-color 0.15s;
+  box-sizing: border-box;
 }
 
 .mlt-search:focus {

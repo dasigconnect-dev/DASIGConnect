@@ -79,7 +79,7 @@ function App() {
 
   const [modalEmail, setModalEmail] = useState("");
   const [modalPassword, setModalPassword] = useState("");
-  const [modalError, setModalError] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
   const [modalLoginLoading, setModalLoginLoading] = useState(false);
   const [showModalPassword, setShowModalPassword] = useState(false);
 
@@ -439,22 +439,23 @@ function App() {
   async function handleModalLogin() {
     if (modalLoginLoading || logoutLoading) return;
     setModalLoginLoading(true);
-    setModalError(false);
+    setModalError(null);
     const email = modalEmail.trim().toLowerCase();
     try {
       const response = await login(email, modalPassword);
-      setAuthToken(response.data.accessToken);
-      const fallbackUser = buildUserFromLogin(email, response.data);
+      const apiUser = response.data;
+      setAuthToken(apiUser.accessToken);
+      const fallbackUser = buildUserFromLogin(email, apiUser);
       const user = await loadCurrentUser(fallbackUser);
-      localStorage.setItem("dasigconnect_token", response.data.accessToken);
+      localStorage.setItem("dasigconnect_token", apiUser.accessToken);
       localStorage.setItem("dasigconnect_user", JSON.stringify(user));
       setCurrentUser(user);
-      startSessionCountdown(response.data.accessToken);
+      startSessionCountdown(apiUser.accessToken);
       setShowSessionModal(false);
-      setModalError(false);
+      setModalError(null);
       setModalPassword("");
-    } catch {
-      setModalError(true);
+    } catch (err: unknown) {
+      setModalError(getApiErrorMessage(err, "Invalid credentials. Please try again."));
     } finally {
       setModalLoginLoading(false);
     }
@@ -820,23 +821,25 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/submissions/new"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
-                <SubmissionScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/submissions/:submissionId"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
-                <SubmissionScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
         </Route>
+
+        {/* Standalone Full-Screen Submission Editor */}
+        <Route
+          path="/submissions/new"
+          element={
+            <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+              <SubmissionScreen user={currentUser!} />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/submissions/:submissionId"
+          element={
+            <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+              <SubmissionScreen user={currentUser!} />
+            </ProtectedRoute>
+          }
+        />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

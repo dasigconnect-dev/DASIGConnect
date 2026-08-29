@@ -12,7 +12,6 @@ import {
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
 import BrandedSelect from "../../components/ui/BrandedSelect";
-import PageLoader from "../../components/common/PageLoader";
 import AuditDetailModal from "./AuditDetailModal";
 import "../../styles/audit-log.css";
 import "../../styles/dasig-loader.css";
@@ -131,7 +130,6 @@ export default function AuditLogScreen({ user: _user }: Props) {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [initialLoading, setInitialLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [exporting, setExporting] = useState(false);

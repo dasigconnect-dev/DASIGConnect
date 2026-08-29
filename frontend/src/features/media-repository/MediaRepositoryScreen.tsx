@@ -216,6 +216,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [blockingUsages, setBlockingUsages] = useState<MediaUsage[]>([]);
   const [warningUsages, setWarningUsages] = useState<MediaUsage[]>([]);
   const [deleting, setDeleting] = useState(false);
+  const [contentTypeFilter, setContentTypeFilter] = useState<"all" | "folders" | "files">("all");
 
   const tagChips = useMemo(() => {
     const counts = new Map<string, number>();
@@ -317,6 +318,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     closePanel();
     clearSelection();
     setSemanticResults(null);
+    setContentTypeFilter("all");
   }
 
   async function runSemanticSearch() {
@@ -970,26 +972,51 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
               <div className="med-new-menu" role="menu">
                 <button
                   type="button"
+                  className="med-new-menu-item"
                   role="menuitem"
                   onClick={() => { setNewMenuOpen(false); openCreateAlbumModal(); }}
                 >
-                  <FolderPlusIcon /> New folder
+                  <div className="med-new-menu-icon-badge folder">
+                    <i className="ti ti-folder-plus" />
+                  </div>
+                  <div className="med-new-menu-text">
+                    <span className="med-new-menu-title">New folder</span>
+                    <span className="med-new-menu-sub">Create a sub-collection</span>
+                  </div>
                 </button>
+
+                <div className="med-new-menu-divider" />
+
                 <button
                   type="button"
+                  className="med-new-menu-item"
                   role="menuitem"
                   onClick={() => { setNewMenuOpen(false); setUploadOpen(true); }}
                 >
-                  <UploadIcon /> Upload files
+                  <div className="med-new-menu-icon-badge upload">
+                    <i className="ti ti-cloud-upload" />
+                  </div>
+                  <div className="med-new-menu-text">
+                    <span className="med-new-menu-title">Upload files</span>
+                    <span className="med-new-menu-sub">Images, videos & docs</span>
+                  </div>
                 </button>
+
                 <button
                   type="button"
+                  className="med-new-menu-item"
                   role="menuitem"
                   disabled={!targetInstitutionId}
                   title={targetInstitutionId ? undefined : "Open an institution or folder first"}
                   onClick={() => { setNewMenuOpen(false); folderInputRef.current?.click(); }}
                 >
-                  <FolderUploadIcon /> Upload folder
+                  <div className="med-new-menu-icon-badge folder-upload">
+                    <i className="ti ti-folder-up" />
+                  </div>
+                  <div className="med-new-menu-text">
+                    <span className="med-new-menu-title">Upload folder</span>
+                    <span className="med-new-menu-sub">Import entire directory</span>
+                  </div>
                 </button>
               </div>
             )}
@@ -1060,11 +1087,14 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           className={`med-crumb${(isAdmin ? !selectedInstitutionId : !currentAlbumId) ? " current" : ""}`}
           onClick={isAdmin ? goToAllInstitutions : () => navigateToAlbum(null)}
         >
+          <i className="ti ti-folders" style={{ fontSize: 14, marginRight: 5, opacity: 0.85 }} />
           {isAdmin ? "All institutions" : "Library"}
         </button>
         {isAdmin && crumbInstitution && (
           <span className="med-crumb-part">
-            <span className="med-crumb-sep">/</span>
+            <svg className="med-crumb-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
             <button
               type="button"
               className={`med-crumb${!currentAlbumId ? " current" : ""}`}
@@ -1072,22 +1102,29 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
                 selectedInstitution ? navigateToAlbum(null) : openInstitution(crumbInstitution.id)
               }
             >
+              {!currentAlbumId && <i className="ti ti-building" style={{ fontSize: 13, marginRight: 4 }} />}
               {crumbInstitution.name}
             </button>
           </span>
         )}
-        {breadcrumbTrail.map((album, idx) => (
-          <span key={album.id} className="med-crumb-part">
-            <span className="med-crumb-sep">/</span>
-            <button
-              type="button"
-              className={`med-crumb${idx === breadcrumbTrail.length - 1 ? " current" : ""}`}
-              onClick={() => navigateToAlbum(album.id)}
-            >
-              {album.name}
-            </button>
-          </span>
-        ))}
+        {breadcrumbTrail.map((album, idx) => {
+          const isLeaf = idx === breadcrumbTrail.length - 1;
+          return (
+            <span key={album.id} className="med-crumb-part">
+              <svg className="med-crumb-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+              <button
+                type="button"
+                className={`med-crumb${isLeaf ? " current" : ""}`}
+                onClick={() => navigateToAlbum(album.id)}
+              >
+                {isLeaf && <i className="ti ti-folder" style={{ fontSize: 13, marginRight: 4, color: "var(--med-blue, #1877f2)" }} />}
+                {album.name}
+              </button>
+            </span>
+          );
+        })}
       </nav>
 
       {/* Semantic search banner */}
@@ -1119,100 +1156,160 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         </div>
       )}
 
-      {/* Result strip */}
-      <div className="med-result-strip">
-        <p className="med-result-count">
-          {(() => {
-            const folderN = searchActive ? matchingAlbums.length : childAlbums.length;
-            const assetN = (semanticResults ?? visibleAssets).length;
-            const label = semanticResults !== null || searchActive ? "results" : "items";
-            const parts: string[] = [];
-            if (folderN > 0) parts.push(`${folderN} folder${folderN === 1 ? "" : "s"}`);
-            parts.push(`${assetN} ${label}`);
-            return parts.join(" · ");
-          })()}
-        </p>
-        {activeTags.size > 0 && (
-          <div className="med-active-filters">
-            {[...activeTags].map((tag) => (
-              <div key={tag} className="med-filter-tag">
-                {tag}
-                <button onClick={() => clearTag(tag)} type="button" aria-label={`Remove ${tag} filter`}>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Folders + Media Grid / States */}
+      {/* Dynamic Content Type Nav & Result Strip */}
       {(() => {
         const folderCards = searchActive
           ? matchingAlbums
           : activeTags.size === 0
             ? childAlbums
             : [];
-        const showFolders = folderCards.length > 0;
         const gridAssets = semanticResults ?? visibleAssets;
+        const hasMixedContent = folderCards.length > 0 && gridAssets.length > 0;
 
-        if (loading || (semanticBusy && semanticResults === null)) return <SkeletonGrid viewMode={viewMode} />;
-        if (error) return <ErrorState message={error} onRetry={() => void refresh()} />;
-        if (gridAssets.length === 0 && !showFolders) {
-          return (
-            <EmptyState
-              hasSearch={searchActive || activeTags.size > 0 || semanticResults !== null}
-              inFolder={Boolean(currentAlbumId)}
-              onUpload={() => setUploadOpen(true)}
-            />
-          );
-        }
-        const listView = viewMode === "list";
-        const gridClass = `med-grid${listView ? " list-view" : ""}${checkedIds.size > 0 ? " selecting" : ""}`;
         return (
-          <div className="med-sections">
-            {showFolders && (
-              <section className="med-section">
-                <div className={gridClass}>
-                  {folderCards.map((album, idx) => (
-                    <AlbumCard
-                      key={album.id}
-                      album={album}
-                      animationDelay={Math.min(idx * 30, 240)}
-                      canManage={canManageAlbum(album)}
-                      {...albumInstitutionProps(album)}
-                      onOpen={() => openFolder(album)}
-                      onRename={() => void handleRenameAlbum(album)}
-                      onMove={() => setMoveAlbumTarget(album)}
-                      onDelete={() => void handleDeleteAlbum(album)}
-                    />
+          <>
+            <div className="med-result-strip">
+              <div className="med-result-strip-left">
+                {loading || (semanticBusy && semanticResults === null) ? (
+                  <p className="med-result-count" style={{ opacity: 0.7 }}>
+                    Loading items…
+                  </p>
+                ) : (
+                  <p className="med-result-count">
+                    {(() => {
+                      const folderN = folderCards.length;
+                      const assetN = gridAssets.length;
+                      const isSearching = semanticResults !== null || searchActive;
+                      const parts: string[] = [];
+                      if (folderN > 0) parts.push(`${folderN} ${folderN === 1 ? "folder" : "folders"}`);
+                      if (isSearching) {
+                        parts.push(`${assetN} ${assetN === 1 ? "result" : "results"}`);
+                      } else {
+                        parts.push(`${assetN} ${assetN === 1 ? "item" : "items"}`);
+                      }
+                      return parts.join(" · ");
+                    })()}
+                  </p>
+                )}
+
+                {/* Smart Auto-Activated Content Type Switcher */}
+                {!loading && hasMixedContent && (
+                  <div className="med-content-type-nav" role="tablist" aria-label="Filter content type">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={contentTypeFilter === "all"}
+                      className={`med-type-tab${contentTypeFilter === "all" ? " active" : ""}`}
+                      onClick={() => setContentTypeFilter("all")}
+                    >
+                      All
+                      <span className="med-type-tab-count">{folderCards.length + gridAssets.length}</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={contentTypeFilter === "folders"}
+                      className={`med-type-tab${contentTypeFilter === "folders" ? " active" : ""}`}
+                      onClick={() => setContentTypeFilter("folders")}
+                    >
+                      <i className="ti ti-folder" style={{ fontSize: 13, marginRight: 2 }} />
+                      Folders
+                      <span className="med-type-tab-count">{folderCards.length}</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={contentTypeFilter === "files"}
+                      className={`med-type-tab${contentTypeFilter === "files" ? " active" : ""}`}
+                      onClick={() => setContentTypeFilter("files")}
+                    >
+                      <i className="ti ti-photo" style={{ fontSize: 13, marginRight: 2 }} />
+                      Media Files
+                      <span className="med-type-tab-count">{gridAssets.length}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {activeTags.size > 0 && (
+                <div className="med-active-filters">
+                  {[...activeTags].map((tag) => (
+                    <div key={tag} className="med-filter-tag">
+                      {tag}
+                      <button onClick={() => clearTag(tag)} type="button" aria-label={`Remove ${tag} filter`}>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </div>
                   ))}
                 </div>
-              </section>
-            )}
-            {gridAssets.length > 0 && (
-              <section className="med-section">
-                <div className={gridClass}>
-                  {gridAssets.map((asset, idx) => (
-                    <AssetCard
-                      key={asset.id}
-                      asset={asset}
-                      selected={selectedAsset?.id === asset.id}
-                      checked={checkedIds.has(asset.id)}
-                      listView={listView}
-                      animationDelay={Math.min(idx * 40, 480)}
-                      showInstitutionChip={networkView && isAdmin}
-                      onClick={() => handleToggleCheck(asset)}
-                      onOpen={() => setLightboxAssetId(asset.id)}
-                    />
-                  ))}
+              )}
+            </div>
+
+            {/* Folders + Media Grid / States */}
+            {(() => {
+              if (loading || (semanticBusy && semanticResults === null)) return <SkeletonGrid viewMode={viewMode} />;
+              if (error) return <ErrorState message={error} onRetry={() => void refresh()} />;
+              if (gridAssets.length === 0 && folderCards.length === 0) {
+                return (
+                  <EmptyState
+                    hasSearch={searchActive || activeTags.size > 0 || semanticResults !== null}
+                    inFolder={Boolean(currentAlbumId)}
+                    onUpload={() => setUploadOpen(true)}
+                  />
+                );
+              }
+              const showFolders = folderCards.length > 0 && (contentTypeFilter === "all" || contentTypeFilter === "folders");
+              const showAssets = gridAssets.length > 0 && (contentTypeFilter === "all" || contentTypeFilter === "files");
+              const listView = viewMode === "list";
+              const gridClass = `med-grid${listView ? " list-view" : ""}${checkedIds.size > 0 ? " selecting" : ""}`;
+
+              return (
+                <div className="med-sections">
+                  {showFolders && (
+                    <section className="med-section">
+                      <div className={gridClass}>
+                        {folderCards.map((album, idx) => (
+                          <AlbumCard
+                            key={album.id}
+                            album={album}
+                            animationDelay={Math.min(idx * 30, 240)}
+                            canManage={canManageAlbum(album)}
+                            {...albumInstitutionProps(album)}
+                            onOpen={() => openFolder(album)}
+                            onRename={() => void handleRenameAlbum(album)}
+                            onMove={() => setMoveAlbumTarget(album)}
+                            onDelete={() => void handleDeleteAlbum(album)}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                  {showAssets && (
+                    <section className="med-section">
+                      <div className={gridClass}>
+                        {gridAssets.map((asset, idx) => (
+                          <AssetCard
+                            key={asset.id}
+                            asset={asset}
+                            selected={selectedAsset?.id === asset.id}
+                            checked={checkedIds.has(asset.id)}
+                            listView={listView}
+                            animationDelay={Math.min(idx * 40, 480)}
+                            showInstitutionChip={networkView && isAdmin}
+                            onClick={() => handleToggleCheck(asset)}
+                            onOpen={() => setLightboxAssetId(asset.id)}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  )}
                 </div>
-              </section>
-            )}
-          </div>
+              );
+            })()}
+          </>
         );
       })()}
 
@@ -1588,36 +1685,6 @@ function MoveAlbumModal({
         </div>
       </div>
     </div>
-  );
-}
-
-function FolderPlusIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      <line x1="12" y1="11" x2="12" y2="17" />
-      <line x1="9" y1="14" x2="15" y2="14" />
-    </svg>
-  );
-}
-
-function UploadIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="17 8 12 3 7 8" />
-      <line x1="12" y1="3" x2="12" y2="15" />
-    </svg>
-  );
-}
-
-function FolderUploadIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      <polyline points="9 14 12 11 15 14" />
-      <line x1="12" y1="11" x2="12" y2="18" />
-    </svg>
   );
 }
 

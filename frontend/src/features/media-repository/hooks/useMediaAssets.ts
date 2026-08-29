@@ -61,6 +61,11 @@ export function useMediaAssets(
     [networkView, institutionId, albumId, enabled],
   );
 
+  // Clear stale assets immediately when scope changes so old folder counts never flash
+  useEffect(() => {
+    setAssets([]);
+  }, [networkView, institutionId, albumId]);
+
   useEffect(() => {
     const controller = new AbortController();
     let active = true;

@@ -314,18 +314,16 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
           </div>
 
           <div
-            className="card-wrap"
             style={{
               minHeight: "380px",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               padding: "60px 20px",
-              background: "var(--d-surface, #ffffff)",
+              background: "transparent",
             }}
           >
             <div className="dc-dot-triangle-container">
-              <div className="loader-dots" />
               <div className="dc-dot-triangle-label">
                 Loading Notifications
                 <span className="dc-dot-triangle-label-dots">
@@ -334,6 +332,7 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
                   <span className="dc-dot-triangle-dot-char">.</span>
                 </span>
               </div>
+              <div className="loader-dots" />
             </div>
           </div>
         </div>

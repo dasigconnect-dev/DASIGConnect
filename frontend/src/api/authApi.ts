@@ -64,7 +64,12 @@ export interface UserProfileResponse {
 }
 
 export function login(email: string, password: string) {
-  return api.post<LoginResponse>("/auth/login", { email, password });
+  delete api.defaults.headers.common.Authorization;
+  return api.post<LoginResponse>(
+    "/auth/login",
+    { email, password },
+    { headers: { Authorization: undefined } }
+  );
 }
 
 export function logout() {
@@ -72,11 +77,13 @@ export function logout() {
 }
 
 export function requestPasswordReset(email: string) {
-  return api.post("/auth/forgot-password", { email });
+  delete api.defaults.headers.common.Authorization;
+  return api.post("/auth/forgot-password", { email }, { headers: { Authorization: undefined } });
 }
 
 export function resetPassword(token: string, newPassword: string) {
-  return api.post("/auth/reset-password", { token, newPassword });
+  delete api.defaults.headers.common.Authorization;
+  return api.post("/auth/reset-password", { token, newPassword }, { headers: { Authorization: undefined } });
 }
 
 export interface InvitationValidateResponse {

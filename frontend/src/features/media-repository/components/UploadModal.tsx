@@ -428,16 +428,31 @@ export default function UploadModal({
 
           <div className="med-upload-specs">
             <div className="med-spec-item">
-              <div className="med-spec-label">Accepted Formats</div>
-              <div className="med-spec-val">JPG, PNG, GIF, MP4, MOV, WEBP</div>
+              <div className="med-spec-icon">
+                <i className="ti ti-photo" aria-hidden="true" />
+              </div>
+              <div className="med-spec-content">
+                <span className="med-spec-label">Accepted Formats</span>
+                <span className="med-spec-val">JPG, PNG, GIF, MP4, MOV, WEBP</span>
+              </div>
             </div>
             <div className="med-spec-item">
-              <div className="med-spec-label">Max File Size</div>
-              <div className="med-spec-val">50 MB per file</div>
+              <div className="med-spec-icon">
+                <i className="ti ti-database" aria-hidden="true" />
+              </div>
+              <div className="med-spec-content">
+                <span className="med-spec-label">Max File Size</span>
+                <span className="med-spec-val">50 MB per asset</span>
+              </div>
             </div>
             <div className="med-spec-item">
-              <div className="med-spec-label">Classification</div>
-              <div className="med-spec-val">AI tags applied after upload</div>
+              <div className="med-spec-icon">
+                <i className="ti ti-sparkles" aria-hidden="true" />
+              </div>
+              <div className="med-spec-content">
+                <span className="med-spec-label">Classification</span>
+                <span className="med-spec-val">Auto AI tags on upload</span>
+              </div>
             </div>
           </div>
 
