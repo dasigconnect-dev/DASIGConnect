@@ -31,7 +31,7 @@ import RecentActivityScreen from "../features/dashboard/RecentActivityScreen";
 import SubmissionScreen from "../features/submission/SubmissionScreen";
 import ValidationQueueScreen from "../features/validation/ValidationQueueScreen";
 import InstitutionManagementScreen from "../features/institution-management/InstitutionManagementScreen";
-import AdministratorManagementScreen from "../features/administrator-management/AdministratorManagementScreen";
+import AdminManagementScreen from "../features/administrator-management/AdministratorManagementScreen";
 import SystemHealthScreen from "../features/system-health/SystemHealthScreen";
 import AuditLogScreen from "../features/audit-log/AuditLogScreen";
 import CalendarScreen from "../features/calendar/CalendarScreen";
@@ -407,7 +407,7 @@ function App() {
       toast.error(
         getApiErrorMessage(
           err,
-          "Could not resend invitation. Please contact your DASIG Administrator.",
+          "Could not resend invitation. Please contact your DASIG Moderator.",
         ),
       );
     } finally {
@@ -725,16 +725,16 @@ function App() {
           <Route
             path="/admin/institution-management"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin"]}>
                 <InstitutionManagementScreen user={currentUser!} />
               </ProtectedRoute>
             }
           />
           <Route
-            path="/admin/administrator-management"
+            path="/admin/admin-management"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
-                <AdministratorManagementScreen
+              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
+                <AdminManagementScreen
                   user={currentUser!}
                   onProfileUpdated={refreshCurrentUserProfile}
                 />
@@ -743,12 +743,20 @@ function App() {
           />
           <Route
             path="/admin/user-management/*"
-            element={<Navigate to="/admin/administrator-management" replace />}
+            element={<Navigate to="/admin/admin-management" replace />}
+          />
+          <Route
+            path="/admin/administrator-management"
+            element={<Navigate to="/admin/admin-management" replace />}
+          />
+          <Route
+            path="/admin/moderator-management"
+            element={<Navigate to="/admin/admin-management" replace />}
           />
           <Route
             path="/admin/system-health"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
                 <SystemHealthScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -756,7 +764,7 @@ function App() {
           <Route
             path="/admin/audit-log"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
                 <AuditLogScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -764,7 +772,7 @@ function App() {
           <Route
             path="/validation/queue"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin"]}>
                 <ValidationQueueScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -772,7 +780,7 @@ function App() {
           <Route
             path="/scheduler/calendar"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
                 <CalendarScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -784,7 +792,7 @@ function App() {
           <Route
             path="/media-repository"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
                 <MediaRepositoryScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -792,7 +800,7 @@ function App() {
           <Route
             path="/notifications"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
                 <NotificationsScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -800,7 +808,7 @@ function App() {
           <Route
             path="/analytics"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["admin", "contributor"]}>
                 <AnalyticsDashboardPage user={currentUser!} />
               </ProtectedRoute>
             }
@@ -808,7 +816,7 @@ function App() {
           <Route
             path="/submissions"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
                 <SubmissionScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -816,7 +824,7 @@ function App() {
           <Route
             path="/settings"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
                 <AccountSettingsScreen user={currentUser!} onProfileUpdated={refreshCurrentUserProfile} />
               </ProtectedRoute>
             }
@@ -827,7 +835,7 @@ function App() {
         <Route
           path="/submissions/new"
           element={
-            <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+            <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
               <SubmissionScreen user={currentUser!} />
             </ProtectedRoute>
           }
@@ -835,7 +843,7 @@ function App() {
         <Route
           path="/submissions/:submissionId"
           element={
-            <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+            <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
               <SubmissionScreen user={currentUser!} />
             </ProtectedRoute>
           }
@@ -877,8 +885,8 @@ function isPasswordResetPath(pathname: string) {
 
 function mapApiRole(role: string): User["role"] {
   const normalized = role.toLowerCase();
-  if (normalized.includes("super")) return "super_administrator";
-  if (normalized.includes("admin")) return "administrator";
+  if (normalized === "admin" || normalized.includes("super")) return "admin";
+  if (normalized === "moderator" || normalized.includes("admin")) return "moderator";
   return "contributor";
 }
 

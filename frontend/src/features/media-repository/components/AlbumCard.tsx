@@ -88,7 +88,7 @@ export default function AlbumCard({
                 disabled={!mayDelete || !isEmpty}
                 title={
                   !mayDelete
-                    ? "Only an administrator or the folder's creator can delete it"
+                    ? "Only an moderator or the folder's creator can delete it"
                     : !isEmpty
                       ? "Move or delete everything inside this folder first"
                       : undefined

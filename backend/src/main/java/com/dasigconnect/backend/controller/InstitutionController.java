@@ -32,12 +32,12 @@ import jakarta.validation.Valid;
 /**
  * REST endpoints for institution management (UC-1.2).
  *
- * All endpoints are restricted to Administrator roles via @PreAuthorize. The JWT
+ * All endpoints are restricted to Moderator roles via @PreAuthorize. The JWT
  * filter (M1's JwtAuthenticationFilter) populates the SecurityContext with
- * ROLE_SUPER_ADMINISTRATOR before these methods are reached.
+ * ROLE_ADMIN before these methods are reached.
  *
- * NOTE: M1's UserRole enum uses lowercase ("super_administrator"), but Spring
- * Security expects "ROLE_SUPER_ADMINISTRATOR" (uppercase). The filter applies
+ * NOTE: M1's UserRole enum uses lowercase ("admin"), but Spring
+ * Security expects "ROLE_ADMIN" (uppercase). The filter applies
  * .toUpperCase() when creating the GrantedAuthority, so
  * @PreAuthorize works with the uppercase authorities created from the role enum.
  *
@@ -45,7 +45,7 @@ import jakarta.validation.Valid;
  */
 @RestController
 @RequestMapping({"/api/v1/institutions", "/api/v1/admin/institutions"})
-@PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
+@PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR')")
 public class InstitutionController {
 
     private final InstitutionService institutionService;
@@ -65,7 +65,7 @@ public class InstitutionController {
      *
      * Error responses: 400 Bad Request — validation failure (blank name,
      * invalid code format) 400 Bad Request — institution code already exists
-     * 403 Forbidden — caller is not an SUPER_ADMINISTRATOR
+     * 403 Forbidden — caller is not an ADMIN
      */
     @PostMapping
     public ResponseEntity<ApiResponse<InstitutionDto>> createInstitution(
@@ -81,7 +81,7 @@ public class InstitutionController {
      * missing/inaccessible institutions per SRS 3.4.6.4.
      *
      * Error responses: 404 Not Found — institution does not exist 403 Forbidden
-     * — caller is not an SUPER_ADMINISTRATOR
+     * — caller is not an ADMIN
      */
     @GetMapping("/{institutionId}")
     public ResponseEntity<ApiResponse<InstitutionDto>> getInstitution(
@@ -93,7 +93,7 @@ public class InstitutionController {
     /**
      * GET /api/admin/institutions
      *
-     * Returns all institutions for Administrator dropdowns and management.
+     * Returns all institutions for Moderator dropdowns and management.
      */
     @GetMapping
     public ResponseEntity<ApiResponse<List<InstitutionDto>>> listInstitutions() {
@@ -156,7 +156,7 @@ public class InstitutionController {
      * PATCH /api/v1/institutions/{institutionId}/reactivate
      *
      * A3: Admin-initiated reactivation. Restores ACTIVE or PENDING status
-     * depending on whether the institution has active validators.
+     * depending on whether the institution has active moderators.
      */
     @PatchMapping("/{institutionId}/reactivate")
     public ResponseEntity<ApiResponse<InstitutionDto>> reactivateInstitution(@PathVariable UUID institutionId) {

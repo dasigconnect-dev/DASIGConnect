@@ -460,7 +460,7 @@ public class AnalyticsRepository {
                 (SELECT COUNT(*) FROM audit_log al
                  LEFT JOIN users actor ON actor.id = al.actor_id
                  WHERE al.created_at >= :start AND al.created_at < :end
-                   AND actor.role = 'administrator'
+                   AND actor.role = 'admin'
                    %2$s) AS admin_action_count
             """.formatted(scope.scopedFilter("s"), scope.auditFilter("actor"));
         return jdbc.queryForObject(sql, params, (rs, rowNum) ->
@@ -500,7 +500,7 @@ public class AnalyticsRepository {
 
     public List<SubmissionAnalyticsRowDto> submissionReportRows(Instant start, Instant end, AnalyticsScope scope) {
         boolean showContributor = !"contributor".equals(scope.role());
-        boolean showInstitution = "super_administrator".equals(scope.role());
+        boolean showInstitution = "admin".equals(scope.role());
         boolean showRevisionCycles = !"contributor".equals(scope.role());
         String sql = """
             SELECT s.id AS submission_id,
@@ -760,7 +760,7 @@ public class AnalyticsRepository {
                 Map.of("metric", "publication_attempts", "value", stats.attemptCount()),
                 Map.of("metric", "successful_publication_attempts", "value", stats.successCount()),
                 Map.of("metric", "on_time_publications", "value", stats.onTimeCount()),
-                Map.of("metric", "administrator_actions", "value", stats.adminActionCount()));
+                Map.of("metric", "moderator_actions", "value", stats.adminActionCount()));
     }
 
     private MapSqlParameterSource params(Instant start, Instant end, AnalyticsScope scope) {
@@ -796,8 +796,8 @@ public class AnalyticsRepository {
     public record AnalyticsScope(String role, UUID institutionId, UUID userId, String category) {
         /**
          * Institution scoping only. Contributor's institutionId is always their
-         * own (never null) so they are always scoped; administrator/
-         * super_administrator are network-wide unless an institutionId filter
+         * own (never null) so they are always scoped; moderator/
+         * admin are network-wide unless an institutionId filter
          * was supplied. Both admin tiers are treated identically — there is no
          * distinct "validator" scope in the current role model.
          */

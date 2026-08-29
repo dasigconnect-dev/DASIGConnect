@@ -61,7 +61,7 @@ class MediaAssetServiceTest {
     @Mock
     private SubmissionService submissionService;
     @Mock
-    private SupabaseStorageService supabaseStorageService;
+    private R2StorageService r2StorageService;
     @Mock
     private AIClassificationService aiClassificationService;
     @Mock
@@ -89,7 +89,7 @@ class MediaAssetServiceTest {
                 mediaAssetEmbeddingRepository,
                 institutionRepository,
                 submissionService,
-                supabaseStorageService,
+                r2StorageService,
                 aiClassificationService,
                 voyageAIClient,
                 auditLogService,
@@ -132,7 +132,7 @@ class MediaAssetServiceTest {
         MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
 
-        mediaAssetService.delete(assetId, false, user(UUID.randomUUID(), "super_administrator", institutionId));
+        mediaAssetService.delete(assetId, false, user(UUID.randomUUID(), "admin", institutionId));
 
         verify(mediaAssetRepository).save(asset);
     }
@@ -218,7 +218,7 @@ class MediaAssetServiceTest {
         when(mediaAlbumRepository.countChildAlbumsByParentAllInstitutions()).thenReturn(List.of());
         when(mediaAssetRepository.countActiveAssetsByAlbumAllInstitutions()).thenReturn(List.of());
 
-        var result = mediaAssetService.listAlbums(null, user(UUID.randomUUID(), "administrator", null));
+        var result = mediaAssetService.listAlbums(null, user(UUID.randomUUID(), "admin", null));
 
         assertEquals(2, result.size());
     }
@@ -244,7 +244,7 @@ class MediaAssetServiceTest {
         when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(0L);
         when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(0L);
 
-        mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "administrator", null));
+        mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "admin", null));
 
         verify(mediaAlbumRepository).delete(album);
     }
@@ -299,7 +299,7 @@ class MediaAssetServiceTest {
         when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(2L);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "administrator", null)));
+                () -> mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "admin", null)));
         assertEquals(409, ex.getStatusCode().value());
         verify(mediaAlbumRepository, never()).delete(any());
     }
@@ -313,7 +313,7 @@ class MediaAssetServiceTest {
         when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(5L);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "administrator", null)));
+                () -> mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "admin", null)));
         assertEquals(409, ex.getStatusCode().value());
         verify(mediaAlbumRepository, never()).delete(any());
     }
@@ -327,7 +327,7 @@ class MediaAssetServiceTest {
         when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(0L);
         when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(0L);
 
-        mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "administrator", null));
+        mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "admin", null));
 
         verify(mediaAlbumRepository).delete(album);
     }
@@ -380,7 +380,7 @@ class MediaAssetServiceTest {
                 new com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto();
         dto.setAlbumId(targetAlbumId);
 
-        mediaAssetService.updateAlbum(assetId, dto, user(UUID.randomUUID(), "administrator", institutionId));
+        mediaAssetService.updateAlbum(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId));
 
         verify(auditLogService).record(any(), eq("MEDIA_ASSET_MOVED"), isNull(), isNull(), eq(assetId), any());
     }
@@ -419,7 +419,7 @@ class MediaAssetServiceTest {
         when(auditLogRepository.findByResourceIdOrderByCreatedAtDesc(assetId)).thenReturn(List.of(row));
         when(userRepository.findAllById(any())).thenReturn(List.of(actor));
 
-        var history = mediaAssetService.history(assetId, user(UUID.randomUUID(), "administrator", institutionId));
+        var history = mediaAssetService.history(assetId, user(UUID.randomUUID(), "moderator", institutionId));
 
         assertEquals(2, history.size());
         assertEquals("Moved to Campaigns", history.get(0).summary());

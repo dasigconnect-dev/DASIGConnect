@@ -15,7 +15,7 @@ interface PendingInvitationsCardProps {
   showRoleControls?: boolean
 }
 
-type RoleFilter = 'all' | 'administrator' | 'contributor'
+type RoleFilter = 'all' | 'moderator' | 'contributor'
 type ExpiryFilter = 'all' | 'soon' | 'expired'
 
 export default function PendingInvitationsCard({
@@ -82,7 +82,7 @@ export default function PendingInvitationsCard({
           <div className="um-filter-group">
             <span className="um-filter-label">Role</span>
             <div className="um-filter-pills" role="group" aria-label="Filter by role">
-              {(['all', 'contributor', 'administrator'] as RoleFilter[]).map((value) => (
+              {(['all', 'contributor', 'moderator'] as RoleFilter[]).map((value) => (
                 <button
                   key={value}
                   type="button"

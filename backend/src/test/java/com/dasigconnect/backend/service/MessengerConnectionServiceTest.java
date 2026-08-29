@@ -30,12 +30,12 @@ class MessengerConnectionServiceTest {
 
         assertThatThrownBy(() -> service.createLinkCode(contributor))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Only administrators can connect Messenger.");
+                .hasMessageContaining("Only moderators and admins can connect Messenger.");
     }
 
     @Test
-    void createLinkCode_administratorRole_generatesCodeStartingWithCONNECT() {
-        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.edu", "administrator", UUID.randomUUID(), false);
+    void createLinkCode_moderatorRole_generatesCodeStartingWithCONNECT() {
+        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.edu", "moderator", UUID.randomUUID(), false);
 
         var result = service.createLinkCode(admin);
         assertThat(result.code()).startsWith("CONNECT ");
@@ -43,8 +43,8 @@ class MessengerConnectionServiceTest {
     }
 
     @Test
-    void createLinkCode_superAdministratorRole_generatesCodeStartingWithCONNECT() {
-        JwtUserDetails superAdmin = new JwtUserDetails(UUID.randomUUID(), "superadmin@dost.gov.ph", "super_administrator", null, true);
+    void createLinkCode_adminRole_generatesCodeStartingWithCONNECT() {
+        JwtUserDetails superAdmin = new JwtUserDetails(UUID.randomUUID(), "superadmin@dost.gov.ph", "admin", null, true);
 
         var result = service.createLinkCode(superAdmin);
         assertThat(result.code()).startsWith("CONNECT ");

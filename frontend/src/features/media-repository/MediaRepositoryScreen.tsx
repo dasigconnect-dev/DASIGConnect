@@ -75,9 +75,10 @@ function fileTypeFromFile(file: File) {
   return ext === "jpg" ? "jpeg" : ext;
 }
 
-// PUT the file straight to Supabase using XHR so we can report real upload
-// progress (fetch() cannot) and surface the actual Supabase status on failure.
-function putToSupabase(
+// PUT the file straight to object storage (Cloudflare R2) using XHR so we can
+// report real upload progress (fetch() cannot) and surface the actual HTTP
+// status from storage on failure.
+function putToStorage(
   signedUrl: string,
   file: File,
   onProgress?: (pct: number) => void,
@@ -108,7 +109,7 @@ function putToSupabase(
 export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenProps) {
   const toast = useToast();
   const navigate = useNavigate();
-  const isAdmin = user.role === "administrator" || user.role === "super_administrator";
+  const isAdmin = user.role === "admin";
 
   // Admins browse network-wide by default; the per-institution filter narrows it.
   const networkView = isAdmin;
@@ -710,7 +711,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     onProgress?: (pct: number) => void,
     opts?: { silent?: boolean },
   ) {
-    if (!targetInstitutionId) {
+    // The upload modal resolves the institution from its own picker / the chosen
+    // folder; fall back to the screen-level target for other callers.
+    const institutionId = metadata.institutionId ?? targetInstitutionId;
+    if (!institutionId) {
       const message = "Select an institution before uploading to the media library.";
       toast.error(message);
       throw new Error(message);
@@ -726,10 +730,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       const { data: urlData } = await getMediaAssetUploadUrl({
         fileName: safeFileName(file.name),
         fileType: fileTypeFromFile(file),
+        institutionId,
       });
 
       // Reserve the last 10% for the metadata-register call below.
-      await putToSupabase(urlData.signedUrl, file, (pct) =>
+      await putToStorage(urlData.signedUrl, file, (pct) =>
         onProgress?.(Math.round(pct * 0.9)),
       );
 
@@ -738,7 +743,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         fileName: file.name,
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
-        institutionId: targetInstitutionId,
+        institutionId,
         albumId: metadata.albumId,
         albumName: metadata.albumName,
         autoMatchAlbum: metadata.autoMatchAlbum,
@@ -803,7 +808,13 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         try {
           await handleUpload(
             file,
-            { albumId: leaf.id, albumName: leaf.name, autoMatchAlbum: false, tags: [folderTag] },
+            {
+              albumId: leaf.id,
+              albumName: leaf.name,
+              autoMatchAlbum: false,
+              tags: [folderTag],
+              institutionId: targetInstitutionId,
+            },
             undefined,
             { silent: true },
           );

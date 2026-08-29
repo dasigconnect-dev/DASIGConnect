@@ -30,10 +30,10 @@ import com.dasigconnect.backend.repository.UserRepository;
 /**
  * Manages the institution lifecycle.
  *
- * State machine: INACTIVE → (admin sends validator invitation) → PENDING
- * PENDING → (validator activates account) → ACTIVE ACTIVE → (all validators
- * deactivated) → INACTIVE PENDING → (last validator invitation cancelled, no
- * active validators) → INACTIVE
+ * State machine: INACTIVE → (admin sends moderator invitation) → PENDING
+ * PENDING → (moderator activates account) → ACTIVE ACTIVE → (all moderators
+ * deactivated) → INACTIVE PENDING → (last moderator invitation cancelled, no
+ * active moderators) → INACTIVE
  *
  * Invalid transitions are rejected with IllegalStateException → HTTP 409.
  */
@@ -310,7 +310,7 @@ public class InstitutionService {
     }
 
     /**
-     * INACTIVE → PENDING. Called when an admin sends a validator invitation.
+     * INACTIVE → PENDING. Called when an admin sends a moderator invitation.
      */
     public void transitionToPending(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)
@@ -336,7 +336,7 @@ public class InstitutionService {
     }
 
     /**
-     * PENDING → ACTIVE. Called when the first validator activates their
+     * PENDING → ACTIVE. Called when the first moderator activates their
      * account. Also accepts INACTIVE as a precondition to handle edge cases.
      */
     public void transitionToActive(UUID institutionId) {
@@ -365,8 +365,8 @@ public class InstitutionService {
     }
 
     /**
-     * ACTIVE or PENDING → INACTIVE. Called when all validators are
-     * deactivated/removed, or when the last pending validator invitation is
+     * ACTIVE or PENDING → INACTIVE. Called when all moderators are
+     * deactivated/removed, or when the last pending moderator invitation is
      * cancelled.
      */
     public void transitionToInactive(UUID institutionId) {

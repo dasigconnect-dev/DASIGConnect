@@ -48,6 +48,8 @@ export interface DeleteCheckResult {
 export interface MediaAssetUploadUrlRequest {
   fileName: string;
   fileType: string;
+  /** Target institution, so the backend keys the object under the right tenant partition. */
+  institutionId?: string | null;
 }
 
 export interface MediaAssetUploadUrlResponse {

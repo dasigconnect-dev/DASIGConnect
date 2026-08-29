@@ -43,7 +43,7 @@ function isContributorWorkflowNotification(notification: Notification) {
   return ["submissions", "publishing", "deadline", "overrides"].includes(notification.category);
 }
 
-function isValidatorWorkflowNotification(notification: Notification) {
+function isModeratorWorkflowNotification(notification: Notification) {
   return ["submissions", "deadline", "system"].includes(notification.category);
 }
 
@@ -101,7 +101,7 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
     if (n.link !== "/dashboard" && n.link !== "/notifications" && n.link !== "/") {
       if (n.link.startsWith("/submissions/")) {
         const subId = n.link.replace("/submissions/", "");
-        if (userRole === "administrator" || userRole === "super_administrator") {
+        if (userRole === "moderator" || userRole === "admin") {
           return `/validation/queue?submissionId=${subId}`;
         }
         return `/submissions?id=${subId}`;
@@ -111,7 +111,8 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   const eventType = n.eventType;
-  const isAdmin = userRole === "administrator" || userRole === "super_administrator";
+  const canReview = userRole === "moderator" || userRole === "admin";
+  const isAdmin = userRole === "admin";
 
   if (
     eventType === "submission_pending" ||
@@ -119,11 +120,11 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
     eventType === "validation_timeout" ||
     eventType === "submission_missed_review"
   ) {
-    return isAdmin ? "/validation/queue" : "/submissions";
+    return canReview ? "/validation/queue" : "/submissions";
   }
 
   if (eventType === "submission_publish_failed") {
-    return isAdmin ? "/validation/queue?tab=failed" : "/submissions?tab=failed";
+    return canReview ? "/validation/queue?tab=failed" : "/submissions?tab=failed";
   }
 
   if (
@@ -137,7 +138,7 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   if (eventType === "submission_published" || eventType === "submission_published_manual") {
-    return isAdmin ? "/scheduler/calendar" : "/submissions?tab=published";
+    return canReview ? "/scheduler/calendar" : "/submissions?tab=published";
   }
 
   if (eventType === "submission_needs_revision") {
@@ -149,10 +150,10 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   if (eventType === "token_expiring" || eventType === "token_invalid") {
-    return "/settings#page";
+    return isAdmin ? "/settings#page" : "/dashboard";
   }
 
-  if (eventType === "institution_onboarded" || eventType === "institution_no_validator") {
+  if (eventType === "institution_onboarded" || eventType === "institution_no_moderator") {
     return "/admin/institution-management";
   }
 
@@ -161,7 +162,7 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   if (n.category === "submissions" || n.category === "overrides") {
-    return isAdmin ? "/validation/queue" : "/submissions";
+    return canReview ? "/validation/queue" : "/submissions";
   }
 
   if (n.category === "publishing" || n.category === "deadline") {
@@ -169,10 +170,10 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   if (n.category === "system") {
-    return isAdmin ? "/admin/system-health" : "/settings";
+    return isAdmin ? "/admin/system-health" : "/dashboard";
   }
 
-  return isAdmin ? "/validation/queue" : "/submissions";
+  return canReview ? "/validation/queue" : "/submissions";
 }
 
 export default function NotificationsScreen({ user }: NotificationsScreenProps) {
@@ -193,17 +194,17 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
   const [showAll, setShowAll] = useState(false);
 
   const isContributor = user.role === "contributor";
-  const isValidator = user.role === "administrator";
+  const isModerator = user.role === "moderator";
 
   const workflowNotifications = useMemo(() => {
     if (isContributor) {
       return allNotifications.filter(isContributorWorkflowNotification);
     }
-    if (isValidator) {
-      return allNotifications.filter(isValidatorWorkflowNotification);
+    if (isModerator) {
+      return allNotifications.filter(isModeratorWorkflowNotification);
     }
     return allNotifications;
-  }, [allNotifications, isContributor, isValidator]);
+  }, [allNotifications, isContributor, isModerator]);
 
   const contributorCounts = useMemo(() => {
     return isContributor
@@ -220,8 +221,8 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
       : counts;
   }, [counts, isContributor, workflowNotifications]);
 
-  const validatorCounts = useMemo(() => {
-    return isValidator
+  const moderatorCounts = useMemo(() => {
+    return isModerator
       ? {
           ...counts,
           all: workflowNotifications.length,
@@ -231,12 +232,12 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
           system: workflowNotifications.filter((n) => n.category === "system").length,
         }
       : counts;
-  }, [counts, isValidator, workflowNotifications]);
+  }, [counts, isModerator, workflowNotifications]);
 
-  const displayCounts = isContributor ? contributorCounts : isValidator ? validatorCounts : counts;
+  const displayCounts = isContributor ? contributorCounts : isModerator ? moderatorCounts : counts;
   const displayFilters = isContributor
     ? CONTRIBUTOR_FILTERS
-    : isValidator
+    : isModerator
     ? VALIDATOR_FILTERS
     : ADMIN_FILTERS;
 
@@ -293,13 +294,13 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
 
   const pageTitle = isContributor
     ? "Workflow Inbox"
-    : isValidator
+    : isModerator
     ? "Validation Inbox"
     : "Notifications";
 
   const pageSubtitle = isContributor
     ? "Complete overview of submission feedback and publishing updates across your workspace."
-    : isValidator
+    : isModerator
     ? "Complete overview of incoming submissions and validation deadlines across your workspace."
     : "Complete overview of notifications, alerts, and publishing activities across your workspace.";
 

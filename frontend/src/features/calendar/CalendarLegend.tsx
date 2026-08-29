@@ -12,7 +12,7 @@ const LEGEND_STATUSES = [
 
 export default function CalendarLegend() {
   // Every role can now see workflow states on the calendar — contributors and
-  // validators for their own submissions, admins for all — so the full legend
+  // moderators for their own submissions, admins for all — so the full legend
   // applies to everyone.
   return (
     <div className="cal-legend">

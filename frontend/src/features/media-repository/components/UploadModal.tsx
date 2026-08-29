@@ -9,6 +9,8 @@ export interface UploadMetadata {
   albumName?: string;
   autoMatchAlbum: boolean;
   tags: string[];
+  /** Institution the upload is scoped to — resolved from the open folder or the modal's picker. */
+  institutionId: string | null;
 }
 
 interface UploadModalProps {
@@ -198,14 +200,17 @@ export default function UploadModal({
       let albumId: string | null | undefined;
       let albumName: string;
       let autoMatchAlbum = false;
+      let institutionId: string | null;
 
       if (usingCurrentAlbum && currentAlbum) {
         albumId = currentAlbum.id;
         albumName = currentAlbum.name;
+        institutionId = currentAlbum.institutionId;
       } else if (resolvedExistingAlbum) {
         albumId = resolvedExistingAlbum.id;
         albumName = resolvedExistingAlbum.name;
         autoMatchAlbum = autoMatched;
+        institutionId = resolvedExistingAlbum.institutionId;
       } else {
         if (!effectiveInstId) {
           setUploading(false);
@@ -217,9 +222,10 @@ export default function UploadModal({
         const created = await onCreateAlbum(albumInput.trim(), effectiveInstId, parentId);
         albumId = created.id;
         albumName = created.name;
+        institutionId = effectiveInstId;
       }
 
-      const metadata: UploadMetadata = { albumId, albumName, autoMatchAlbum, tags };
+      const metadata: UploadMetadata = { albumId, albumName, autoMatchAlbum, tags, institutionId };
       const total = selectedFiles.length;
       for (const [index, file] of selectedFiles.entries()) {
         const completedBase = (index / total) * 100;
@@ -233,10 +239,12 @@ export default function UploadModal({
         setUploading(false);
         onClose();
       }, 600);
-    } catch {
+    } catch (err) {
+      console.error("[UploadModal] upload failed:", err);
       setUploading(false);
       setProgress(0);
-      setInlineError("Upload failed. Check your folder, tags, or connection and try again.");
+      const detail = err instanceof Error ? err.message : String(err);
+      setInlineError(`Upload failed: ${detail}`);
     }
   }
 

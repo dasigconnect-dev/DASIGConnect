@@ -2173,11 +2173,11 @@ function ValidationHistoryModal({
             </div>
           </div>
 
-          {/* Administrator / Contributor Notes */}
+          {/* Moderator / Contributor Notes */}
           {submission.description && (
             <div style={{ padding: "12px 14px", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--val-border)" }}>
               <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: "var(--val-muted)" }}>
-                Administrator Notes
+                Moderator Notes
               </span>
               <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--val-text-2)", whiteSpace: "pre-wrap" }}>
                 {submission.description}

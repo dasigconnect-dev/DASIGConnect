@@ -366,7 +366,7 @@ public class SystemHealthService {
             double rate = round(edited * 100.0 / approvals);
             return metric("edit_approve_rate", "Edit & Approve rate", rate, "percent", approvals,
                     HealthStatus.HEALTHY,
-                    "Share of approvals where the Administrator edited the submission before approving, over the last 30 days.");
+                    "Share of approvals where the Moderator edited the submission before approving, over the last 30 days.");
         } catch (Exception ex) {
             return unavailableMetric("edit_approve_rate", "Edit & Approve rate", "percent", ex);
         }

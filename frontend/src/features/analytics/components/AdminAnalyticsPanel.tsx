@@ -11,7 +11,7 @@ export default function AdminAnalyticsPanel({ summary }: { summary: AnalyticsSum
     },
     {
       label: "Admin Actions",
-      value: formatNumber(summary.adminAnalytics.administratorActions),
+      value: formatNumber(summary.adminAnalytics.moderatorActions),
     },
     {
       label: "Admin Direct Posts",

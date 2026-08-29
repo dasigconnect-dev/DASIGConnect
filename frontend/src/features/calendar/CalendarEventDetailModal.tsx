@@ -47,7 +47,7 @@ export default function CalendarEventDetailModal({
     };
   }, [event, onClose]);
 
-  const isContributor = user.role !== "administrator" && user.role !== "super_administrator";
+  const isContributor = user.role !== "moderator" && user.role !== "admin";
   const isOwnInstitution = Boolean(user.institutionId && event?.institutionId && user.institutionId === event.institutionId);
   const isCrossInstitutionIsolated = isContributor && !isOwnInstitution;
 
@@ -92,7 +92,7 @@ export default function CalendarEventDetailModal({
   const displayColor = visibleStatusColor(event.status, user.role, isOwnInstitution, event.mine);
   const rawStatus = (event.status || "").toLowerCase();
   const isPendingApproval = rawStatus === "pending" || rawStatus === "in_review";
-  const isAdmin = user.role === "administrator" || user.role === "super_administrator";
+  const isAdmin = user.role === "moderator" || user.role === "admin";
 
   return createPortal(
     <div
@@ -271,7 +271,7 @@ function workflowHint(status: string) {
   const value = status.toLowerCase();
   if (value.includes("failed")) return "Needs attention before this content can move forward.";
   if (value === "published" || value === "published_manual") return "Published.";
-  if (value === "admin_direct_post" || value === "direct_post_scheduled") return "Administrator-managed post.";
+  if (value === "admin_direct_post" || value === "direct_post_scheduled") return "Moderator-managed post.";
   if (["pending", "in_review", "needs_revision", "rejected"].includes(value)) return "Awaiting review.";
   return "Queued in the publishing schedule.";
 }

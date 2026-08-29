@@ -531,7 +531,7 @@ export default function AuditLogScreen({ user: _user }: Props) {
                               <div className="audit-actor-text">
                                 <span className="audit-actor-name-row">
                                   <strong>{entry.actor?.name || entry.actor?.email || "System Automation"}</strong>
-                                  {entry.actor?.role === "SUPER_ADMINISTRATOR" && (
+                                  {entry.actor?.role === "ADMIN" && (
                                     <span className="audit-actor-role">
                                       • Super Admin
                                     </span>

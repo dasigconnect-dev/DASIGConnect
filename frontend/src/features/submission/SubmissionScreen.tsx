@@ -224,7 +224,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   });
   const [captionPromptOpen, setCaptionPromptOpen] = useState(false);
   const [fancyTextPreviewActive, setFancyTextPreviewActive] = useState(false);
-  const isAdminComposer = user.role === "administrator" || user.role === "super_administrator";
+  const isAdminComposer = user.role === "moderator" || user.role === "admin";
   const isMySubmissionsPage = location.pathname === "/submissions";
   const selectedInstitutionId = isAdminComposer ? form.institutionId : user.institutionId || "";
   const [mediaUploadFailed, setMediaUploadFailed] = useState(false);
@@ -2831,7 +2831,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           description={
             hasRecommendedWarnings
               ? `Required checks are complete, but ${recommendedWarnings.length} recommended item(s) still need attention: ${recommendedWarnings.map((item) => item.title).join(", ")}. You can still submit for approval.`
-              : `This submission will be sent for administrator approval. Readiness score: ${readiness.score} / 100.`
+              : `This submission will be sent for moderator approval. Readiness score: ${readiness.score} / 100.`
           }
           cancelLabel={hasRecommendedWarnings ? "Review Warnings" : "Go Back"}
           confirmLabel={submitting ? "Submitting..." : hasRecommendedWarnings ? "Submit Anyway" : "Confirm Submission"}

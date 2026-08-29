@@ -32,7 +32,7 @@ public class AIRecommendationController {
 
     /** Returns up to 5 similar media assets from the library using pgvector cosine search. */
     @GetMapping("/{id}/similar-media")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<MediaAssetSummaryDto>>> getSimilarMedia(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
@@ -44,7 +44,7 @@ public class AIRecommendationController {
      * via a synchronous Voyage AI embedding call. Returns ranked results with similarity scores.
      */
     @PostMapping("/{id}/suggest-media")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<MediaSuggestResultDto>>> suggestMedia(
             @PathVariable UUID id,
             @RequestBody MediaSuggestRequestDto dto,
@@ -54,7 +54,7 @@ public class AIRecommendationController {
 
     /** Records a user action (accepted/dismissed) for tag_classification or media_recommendation. */
     @PostMapping("/{id}/log-interaction")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<Void> logInteraction(
             @PathVariable UUID id,
             @RequestBody @Valid AiInteractionLogRequestDto dto,

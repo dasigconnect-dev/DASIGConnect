@@ -109,7 +109,7 @@ export default function AuditDetailModal({ entry, onClose }: Props) {
                     {entry.actor?.name ? entry.actor.name.charAt(0).toUpperCase() : "S"}
                   </div>
                   <strong>{entry.actor?.name || "System Automation"}</strong>
-                  {entry.actor?.role === "SUPER_ADMINISTRATOR" && (
+                  {entry.actor?.role === "ADMIN" && (
                     <span className="audit-actor-role">
                       • Super Admin
                     </span>
@@ -125,7 +125,7 @@ export default function AuditDetailModal({ entry, onClose }: Props) {
               <div className="audit-kv-item">
                 <span className="audit-kv-label">Role</span>
                 <span className="audit-kv-value">
-                  {entry.actor?.role === "SUPER_ADMINISTRATOR" ? "Super Administrator" : entry.actor?.role || "SYSTEM"}
+                  {entry.actor?.role === "ADMIN" ? "Admin" : entry.actor?.role || "SYSTEM"}
                 </span>
               </div>
 

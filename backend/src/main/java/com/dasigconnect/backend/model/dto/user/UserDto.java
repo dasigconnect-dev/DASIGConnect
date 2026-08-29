@@ -14,7 +14,7 @@ public class UserDto {
     private String displayName;
     private String role;
     private String accountState;
-    private boolean superAdministrator;
+    private boolean adminOwner;
     private UUID superAdminTransferRequestedBy;
     private Instant superAdminTransferExpiresAt;
     private UUID institutionId;
@@ -34,7 +34,7 @@ public class UserDto {
         dto.displayName = buildDisplayName(user);
         dto.role = user.getRole().name();
         dto.accountState = user.getAccountState().name();
-        dto.superAdministrator = user.isSuperAdministrator();
+        dto.adminOwner = user.isAdminOwner();
         dto.superAdminTransferRequestedBy = user.getSuperAdminTransferRequestedBy();
         dto.superAdminTransferExpiresAt = user.getSuperAdminTransferExpiresAt();
         dto.institutionId = user.getInstitution() != null ? user.getInstitution().getId() : null;
@@ -75,8 +75,8 @@ public class UserDto {
         return accountState;
     }
 
-    public boolean isSuperAdministrator() {
-        return superAdministrator;
+    public boolean isAdminOwner() {
+        return adminOwner;
     }
 
     public UUID getSuperAdminTransferRequestedBy() {

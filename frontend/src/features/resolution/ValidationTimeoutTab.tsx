@@ -175,7 +175,7 @@ export default function ValidationTimeoutTab({ refreshSignal, onCountChange }: P
                       className="rc-act-btn rc-act-approve"
                       disabled={isBusy}
                       onClick={() => void handleApprove(item)}
-                      title="Approve as fallback Validator"
+                      title="Approve as fallback Moderator"
                     >
                       {isBusy ? <div className="spinner-ring spinner-ring-xs" /> : <i className="ti ti-check" />}
                       Approve

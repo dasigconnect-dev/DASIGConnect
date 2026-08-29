@@ -130,7 +130,7 @@ export default function InviteScreen({
                 </strong>
                 This invitation token is no longer valid. Your account remains
                 in PENDING status. You can request a fresh invitation link below,
-                or contact your DASIG Administrator.
+                or contact your DASIG Moderator.
               </div>
             </div>
             {resendSuccess && (

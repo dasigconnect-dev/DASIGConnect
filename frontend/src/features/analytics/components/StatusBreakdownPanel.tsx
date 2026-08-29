@@ -16,7 +16,7 @@ function getStatusNavUrl(status: string, role: string): string | null {
   if (role === "contributor") {
     return s === "draft" ? "/submissions/new?tab=drafts" : "/submissions/new?tab=submitted";
   }
-  if (role === "administrator" || role === "super_administrator") {
+  if (role === "moderator" || role === "admin") {
     if (s === "approved" || s === "published") return "/scheduler/calendar";
     if (s === "publish_failed") return "/validation/queue?tab=failed";
     return "/validation/queue";

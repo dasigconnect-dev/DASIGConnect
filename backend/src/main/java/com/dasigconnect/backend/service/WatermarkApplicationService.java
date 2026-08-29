@@ -51,14 +51,14 @@ public class WatermarkApplicationService {
 
     private final WatermarkConfigurationRepository configurationRepository;
     private final InstitutionRepository institutionRepository;
-    private final SupabaseStorageService storageService;
+    private final R2StorageService storageService;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
     public WatermarkApplicationService(
             WatermarkConfigurationRepository configurationRepository,
             InstitutionRepository institutionRepository,
-            SupabaseStorageService storageService,
+            R2StorageService storageService,
             ObjectMapper objectMapper) {
         this.configurationRepository = configurationRepository;
         this.institutionRepository = institutionRepository;

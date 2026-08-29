@@ -781,8 +781,8 @@ export function formatTimeInput(value: string) {
 }
 
 export function formatRole(role: User["role"]) {
-  if (role === "super_administrator") return "Super Administrator";
-  if (role === "administrator") return "Administrator";
+  if (role === "admin") return "Admin";
+  if (role === "moderator") return "Moderator";
   return "Contributor";
 }
 

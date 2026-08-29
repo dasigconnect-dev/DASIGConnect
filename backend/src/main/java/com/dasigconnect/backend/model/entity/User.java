@@ -58,8 +58,8 @@ public class User {
     @Column(name = "account_state", nullable = false, length = 30)
     private UserStatus accountState = UserStatus.pending;
 
-    @Column(name = "is_super_administrator", nullable = false)
-    private boolean superAdministrator;
+    @Column(name = "is_admin", nullable = false)
+    private boolean adminOwner;
 
     @Column(name = "super_admin_transfer_requested_by")
     private UUID superAdminTransferRequestedBy;
@@ -170,12 +170,12 @@ public class User {
         this.accountState = accountState;
     }
 
-    public boolean isSuperAdministrator() {
-        return superAdministrator;
+    public boolean isAdminOwner() {
+        return adminOwner;
     }
 
-    public void setSuperAdministrator(boolean superAdministrator) {
-        this.superAdministrator = superAdministrator;
+    public void setAdminOwner(boolean adminOwner) {
+        this.adminOwner = adminOwner;
     }
 
     public UUID getSuperAdminTransferRequestedBy() {

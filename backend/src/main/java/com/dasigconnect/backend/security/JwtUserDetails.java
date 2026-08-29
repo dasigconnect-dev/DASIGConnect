@@ -7,7 +7,7 @@ public record JwtUserDetails(
         String email,
         String role,
         UUID institutionId,
-        boolean superAdministrator) {
+        boolean adminOwner) {
 
     public JwtUserDetails(UUID userId, String email, String role, UUID institutionId) {
         this(userId, email, role, institutionId, false);

@@ -36,7 +36,7 @@ public class InvitationController {
         this.invitationService = invitationService;
     }
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     @PostMapping
     public ResponseEntity<ApiResponse<InvitationResponseDto>> create(
             @RequestBody @Valid CreateInvitationRequestDto dto,
@@ -73,7 +73,7 @@ public class InvitationController {
      * Resends the invitation email with a fresh token.
      * Used when the original delivery failed (pending_email_undelivered).
      */
-    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     @PostMapping("/{id}/resend")
     public ResponseEntity<ApiResponse<InvitationResponseDto>> resend(
             @PathVariable UUID id,
@@ -82,7 +82,7 @@ public class InvitationController {
         return ResponseEntity.ok(ApiResponse.success(invitationService.resend(id, requester)));
     }
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> cancel(
             @PathVariable UUID id,
@@ -92,7 +92,7 @@ public class InvitationController {
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     @GetMapping("/pending")
     public ResponseEntity<ApiResponse<List<PendingInvitationDto>>> pending(
             @RequestParam UUID institutionId,
@@ -101,15 +101,15 @@ public class InvitationController {
         return ResponseEntity.ok(ApiResponse.success(invitationService.listPending(institutionId, requester)));
     }
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
-    @GetMapping("/pending/administrators")
-    public ResponseEntity<ApiResponse<List<PendingInvitationDto>>> pendingAdministrators(
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/pending/admins")
+    public ResponseEntity<ApiResponse<List<PendingInvitationDto>>> pendingAdmins(
             Authentication authentication) {
         JwtUserDetails requester = authentication != null && authentication.getPrincipal() instanceof JwtUserDetails p ? p : null;
-        return ResponseEntity.ok(ApiResponse.success(invitationService.listPendingAdministrators(requester)));
+        return ResponseEntity.ok(ApiResponse.success(invitationService.listPendingAdmins(requester)));
     }
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR','ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERATOR')")
     @GetMapping("/pending/count")
     public ResponseEntity<ApiResponse<Map<String, Long>>> pendingCount(
             @RequestParam UUID institutionId,

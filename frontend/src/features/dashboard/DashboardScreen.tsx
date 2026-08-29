@@ -48,7 +48,7 @@ interface ActivityItem {
 interface DashboardStats {
   submissions: SubmissionSummary[];
   contributors: number;
-  validators: number;
+  moderators: number;
   pendingInvitations: number;
 }
 
@@ -62,12 +62,12 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
     submissions: [],
     contributors: 0,
-    validators: 0,
+    moderators: 0,
     pendingInvitations: 0,
   });
 
   useEffect(() => {
-    if (user?.role === "administrator" && user.institutionId) {
+    if (user?.role === "moderator" && user.institutionId) {
       setInstitutions([
         {
           id: user.institutionId,
@@ -78,7 +78,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
       ]);
       return;
     }
-    if (user?.role !== "super_administrator") return;
+    if (user?.role !== "admin") return;
     listInstitutions()
       .then((response) => {
         const mapped = response.data.map((item) => ({
@@ -118,14 +118,14 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
       setDashboardStats((current) => ({
         ...current,
         contributors: 0,
-        validators: 0,
+        moderators: 0,
         pendingInvitations: 0,
       }));
       return;
     }
 
     const institutionIds =
-      user.role === "super_administrator"
+      user.role === "admin"
         ? institutions.map((institution) => institution.id)
         : user.institutionId
           ? [user.institutionId]
@@ -135,7 +135,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
       setDashboardStats((current) => ({
         ...current,
         contributors: 0,
-        validators: 0,
+        moderators: 0,
         pendingInvitations: 0,
       }));
       return;
@@ -150,7 +150,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
         ]);
         return {
           contributors: countsResponse.data.contributors,
-          validators: countsResponse.data.validators,
+          moderators: countsResponse.data.moderators,
           pendingInvitations: pendingResponse.data.pendingInvitations,
         };
       }),
@@ -160,11 +160,11 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
         const totals = responses.reduce(
           (sum, item) => ({
             contributors: sum.contributors + item.contributors,
-            validators: sum.validators + item.validators,
+            moderators: sum.moderators + item.moderators,
             pendingInvitations:
               sum.pendingInvitations + item.pendingInvitations,
           }),
-          { contributors: 0, validators: 0, pendingInvitations: 0 },
+          { contributors: 0, moderators: 0, pendingInvitations: 0 },
         );
         setDashboardStats((current) => ({ ...current, ...totals }));
       })
@@ -173,7 +173,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
           setDashboardStats((current) => ({
             ...current,
             contributors: 0,
-            validators: 0,
+            moderators: 0,
             pendingInvitations: 0,
           }));
         }
@@ -401,7 +401,7 @@ const DOMAIN_MAP: Record<string, string> = {
 
 function getInstitutionName(user: User | null): string {
   if (!user) return "Institution";
-  if (user.role === "super_administrator") return "DASIG";
+  if (user.role === "admin") return "DASIG";
 
   const explicitInstitution = user.inst?.trim();
   if (explicitInstitution && explicitInstitution !== user.institutionId) {
@@ -435,13 +435,13 @@ function notice(user: User | null, stats: DashboardStats) {
       html: "<strong>Welcome to DASIGConnect!</strong> Your account is now active. Explore your dashboard and start submitting content for your institution's events.",
     };
   }
-  if (user.role === "super_administrator") {
+  if (user.role === "admin") {
     return {
       icon: "ti ti-shield-check",
-      html: "<strong>Administrator workspace.</strong> You have full network-wide visibility across all member institutions.",
+      html: "<strong>Moderator workspace.</strong> You have full network-wide visibility across all member institutions.",
     };
   }
-  if (user.role === "administrator") {
+  if (user.role === "moderator") {
     const instName = getInstitutionName(user);
     const pending = stats.submissions.filter(
       (s) => s.status === "pending" || s.status === "in_review",
@@ -451,13 +451,13 @@ function notice(user: User | null, stats: DashboardStats) {
       : `No submissions are currently pending review from ${instName} contributors.`;
     return {
       icon: "ti ti-clipboard-check",
-      html: `${pendingText} Approved content moves to the DASIG Administrator for scheduling.`,
+      html: `${pendingText} Approved content moves to the DASIG Moderator for scheduling.`,
     };
   }
   const instName = getInstitutionName(user);
   return {
     icon: "ti ti-confetti",
-    html: `<strong>Welcome to DASIGConnect!</strong> Your account is active and bound to ${instName}'s workspace. Submit photos and videos from your institution's events — your Administrator will review them before they go to the DASIG Facebook page.`,
+    html: `<strong>Welcome to DASIGConnect!</strong> Your account is active and bound to ${instName}'s workspace. Submit photos and videos from your institution's events — your Moderator will review them before they go to the DASIG Facebook page.`,
   };
 }
 
@@ -480,7 +480,7 @@ function statsForRole(
   const reviewCount = submissions.filter(
     (item) => item.status === "pending" || item.status === "in_review",
   ).length;
-  if (user.role === "super_administrator") {
+  if (user.role === "admin") {
     return [
       {
         icon: "ti ti-building",
@@ -492,7 +492,7 @@ function statsForRole(
         icon: "ti ti-users",
         color: "#1877F2",
         label: "Total Users",
-        value: String(stats.contributors + stats.validators),
+        value: String(stats.contributors + stats.moderators),
       },
       {
         icon: "ti ti-clock-pause",
@@ -514,7 +514,7 @@ function statsForRole(
       },
     ];
   }
-  if (user.role === "administrator") {
+  if (user.role === "moderator") {
     return [
       {
         icon: "ti ti-file-time",
@@ -573,7 +573,7 @@ function statsForRole(
 
 function actionsForRole(user: User | null): ActionItem[] {
   if (!user) return [];
-  if (user.role === "super_administrator") {
+  if (user.role === "admin") {
     return [
       {
         icon: "ti ti-building-community",
@@ -585,7 +585,7 @@ function actionsForRole(user: User | null): ActionItem[] {
         icon: "ti ti-user-plus",
         accent: "ac-blue",
         title: "Invite Members",
-        subtitle: "Send invitations to contributors and administrators",
+        subtitle: "Send invitations to contributors and moderators",
       },
       {
         icon: "ti ti-layout-grid",
@@ -595,7 +595,7 @@ function actionsForRole(user: User | null): ActionItem[] {
       },
     ];
   }
-  if (user.role === "administrator") {
+  if (user.role === "moderator") {
     return [
       {
         icon: "ti ti-clipboard-check",

@@ -37,13 +37,13 @@ import com.dasigconnect.backend.service.TokenManagementService;
 import com.dasigconnect.backend.service.ValidationTimeoutService;
 
 /**
- * UC-3.5 Administrator Exception Handling — umbrella controller for all
+ * UC-3.5 Moderator Exception Handling — umbrella controller for all
  * Resolution Center exception-handling endpoints.
  * Base path: /api/v1/admin/resolution
  */
 @RestController
 @RequestMapping("/api/v1/admin/resolution")
-@PreAuthorize("hasRole('SUPER_ADMINISTRATOR')")
+@PreAuthorize("hasRole('ADMIN')")
 public class ExceptionHandlingController {
 
     private final SubmissionRepository submissionRepository;

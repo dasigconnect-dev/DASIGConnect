@@ -44,7 +44,7 @@ interface InstitutionWithStats {
   status: string
   logoUrl: string | null
   contributors: number
-  validators: number
+  moderators: number
   pendingInvitations: number
   statsLoading: boolean
   isProtected?: boolean
@@ -173,7 +173,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   }, [location.pathname, location.state, navigate])
 
   useEffect(() => {
-    if (user.role !== 'administrator' && user.role !== 'super_administrator') return
+    if (user.role !== 'moderator' && user.role !== 'admin') return
     if (!institutionsMemoryCache.data) {
       setListLoading(true)
     }
@@ -188,7 +188,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
           status: item.status,
           logoUrl: item.hasLogo ? getInstitutionLogoUrl(item.id, item.logoUpdatedAt) : null,
           contributors: 0,
-          validators: 0,
+          moderators: 0,
           pendingInvitations: 0,
           statsLoading: true,
           isProtected: item.isProtected ?? item.protected,
@@ -204,7 +204,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
                     ? {
                       ...i,
                       contributors: countsRes.data.contributors,
-                      validators: countsRes.data.validators,
+                      moderators: countsRes.data.moderators,
                       pendingInvitations: pendingRes.data.pendingInvitations,
                       statsLoading: false,
                     }
@@ -350,8 +350,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
       const contributors = usersData.filter(
         (u) => u.role.toLowerCase() === 'contributor',
       ).length
-      const validators = usersData.filter(
-        (u) => u.role.toLowerCase() === 'administrator',
+      const moderators = usersData.filter(
+        (u) => u.role.toLowerCase() === 'moderator',
       ).length
       const pendingCount = Math.max(
         pendingData.length,
@@ -363,7 +363,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
           ? {
               ...curr,
               contributors,
-              validators,
+              moderators,
               pendingInvitations: pendingCount,
               statsLoading: false,
             }
@@ -376,7 +376,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             ? {
                 ...inst,
                 contributors,
-                validators,
+                moderators,
                 pendingInvitations: pendingCount,
                 statsLoading: false,
               }
@@ -535,7 +535,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
         status: response.data.status,
         logoUrl: null,
         contributors: 0,
-        validators: 0,
+        moderators: 0,
         pendingInvitations: 0,
         statsLoading: false,
       }
@@ -744,8 +744,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     }
     if (!inviteRole) return
 
-    if (inviteRole === 'administrator') {
-      const proceed = await confirmAdministratorInvite()
+    if (inviteRole === 'moderator') {
+      const proceed = await confirmModeratorInvite()
       if (!proceed) return
     }
 
@@ -761,7 +761,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
         try {
           const response = await inviteUser({
             recipientEmail: email,
-            institutionId: inviteRole === 'administrator' ? null : selectedInstitution.id,
+            institutionId: selectedInstitution.id,
             assignedRole: inviteRole,
           })
           if (response.data.emailDelivered) {
@@ -804,19 +804,19 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     }
   }
 
-  function confirmAdministratorInvite(): Promise<boolean> {
-    const activeAdministrators = managedUsers.filter(
+  function confirmModeratorInvite(): Promise<boolean> {
+    const activeModerators = managedUsers.filter(
       (u) =>
-        u.role.toLowerCase() === 'administrator' && u.accountState.toLowerCase() === 'active',
+        u.role.toLowerCase() === 'moderator' && u.accountState.toLowerCase() === 'active',
     )
-    if (activeAdministrators.length === 0) return Promise.resolve(true)
+    if (activeModerators.length === 0) return Promise.resolve(true)
 
     const name = selectedInstitution?.name || 'this institution'
     return new Promise((resolve) => {
       setConfirmDialog({
-        title: 'Invite Additional Administrator?',
-        message: `${name} already has ${activeAdministrators.length} active administrator${activeAdministrators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
-        confirmLabel: 'Yes, invite administrator',
+        title: 'Invite Additional Moderator?',
+        message: `${name} already has ${activeModerators.length} active moderator${activeModerators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
+        confirmLabel: 'Yes, invite moderator',
         dangerous: false,
         onConfirm: () => {
           setConfirmDialog(null)
@@ -947,7 +947,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
         await inviteUser({
           recipientEmail: managedUser.email,
           institutionId: selectedInstitution.id,
-          assignedRole: (managedUser.role.toLowerCase() as 'contributor' | 'validator'),
+          assignedRole: (managedUser.role.toLowerCase() as 'contributor' | 'moderator'),
         })
       }
       await loadManagementLists(selectedInstitution.id)

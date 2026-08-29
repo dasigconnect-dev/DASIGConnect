@@ -50,7 +50,7 @@ export interface UserProfileResponse {
   displayName: string | null;
   role: string;
   accountState: string;
-  superAdministrator: boolean;
+  adminOwner: boolean;
   superAdminTransferRequestedBy: string | null;
   superAdminTransferExpiresAt: string | null;
   institutionId: string | null;
@@ -207,7 +207,7 @@ export function getInstitutionLogoUrl(id: string, logoUpdatedAt: string | null) 
 }
 
 export function getUserCounts(institutionId: string) {
-  return api.get<{ contributors: number; validators: number }>(
+  return api.get<{ contributors: number; moderators: number }>(
     "/users/counts",
     {
       params: { institutionId },
@@ -227,8 +227,8 @@ export function listUsers(institutionId: string) {
   });
 }
 
-export function listAdministrators() {
-  return api.get<UserProfileResponse[]>("/users/administrators", {}).then((response) => {
+export function listAdmins() {
+  return api.get<UserProfileResponse[]>("/users/admins", {}).then((response) => {
     response.data = response.data.map((user) => ({
       ...user,
       avatarUrl: user.hasAvatar ? getUserAvatarUrl(user.id, user.avatarUpdatedAt) : null,
@@ -279,8 +279,8 @@ export function listPendingInvitations(institutionId: string) {
   });
 }
 
-export function listPendingAdministratorInvitations() {
-  return api.get<PendingInvitationResponse[]>("/invitations/pending/administrators");
+export function listPendingAdminInvitations() {
+  return api.get<PendingInvitationResponse[]>("/invitations/pending/admins");
 }
 
 export function getPendingInvitationCount(institutionId: string) {
@@ -296,7 +296,7 @@ export function resendInvitation(id: string) {
 export interface InviteUserRequest {
   recipientEmail: string;
   institutionId: string | null;
-  assignedRole: "contributor" | "administrator" | "validator";
+  assignedRole: "contributor" | "moderator" | "admin";
 }
 
 export function inviteUser(data: InviteUserRequest) {
@@ -311,19 +311,19 @@ export function cancelInvitation(id: string) {
   return api.delete(`/invitations/${id}`);
 }
 
-export interface SuperAdministratorTransferResponse {
+export interface AdminTransferResponse {
   targetUserId: string;
   requestedByUserId: string;
   expiresAt: string;
   status: string;
 }
 
-export function requestSuperAdministratorTransfer(id: string) {
-  return api.post<SuperAdministratorTransferResponse>(`/users/${id}/super-administrator-transfer`);
+export function requestAdminTransfer(id: string) {
+  return api.post<AdminTransferResponse>(`/users/${id}/admin-transfer`);
 }
 
-export function confirmSuperAdministratorTransfer() {
-  return api.post<UserProfileResponse>("/users/super-administrator-transfer/confirm");
+export function confirmAdminTransfer() {
+  return api.post<UserProfileResponse>("/users/admin-transfer/confirm");
 }
 
 export interface InvitationResponse {
