@@ -29,6 +29,8 @@ interface InstitutionUsersCardProps {
   userColumnLabel?: string
   /** Render the title/count/description + headerAction row above the filter bar. */
   showHeader?: boolean
+  /** Hide all per-row actions — renders the list as a read-only directory. */
+  readOnly?: boolean
 }
 
 type RoleFilter = 'all' | 'moderator' | 'contributor'
@@ -57,6 +59,7 @@ export default function InstitutionUsersCard({
   showFilterPills = true,
   userColumnLabel = 'User',
   showHeader = true,
+  readOnly = false,
 }: InstitutionUsersCardProps) {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
@@ -252,7 +255,9 @@ export default function InstitutionUsersCard({
                   const displayName = getUserDisplayName(managedUser)
                   const initials = getUserInitials(managedUser)
 
-                  const menuItems = isPending
+                  const menuItems = readOnly
+                    ? []
+                    : isPending
                     ? [
                         onResendInvitation
                           ? {
@@ -519,10 +524,11 @@ function canToggleUserStatus(currentUser: User | null, managedUser: UserProfileR
 }
 
 function canRequestSuperAdminTransfer(currentUser: User | null, managedUser: UserProfileResponse) {
+  const targetRole = managedUser.role.toLowerCase()
   return Boolean(
     currentUser &&
       currentUser.role === 'admin' &&
-      managedUser.role.toLowerCase() === 'moderator' &&
+      (targetRole === 'moderator' || targetRole === 'admin') &&
       managedUser.accountState.toLowerCase() === 'active' &&
       currentUser.email.toLowerCase() !== managedUser.email.toLowerCase(),
   )
