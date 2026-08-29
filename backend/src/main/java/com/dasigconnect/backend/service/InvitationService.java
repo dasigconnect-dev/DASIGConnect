@@ -138,7 +138,7 @@ public class InvitationService {
 
     @Transactional(readOnly = true)
     public InvitationValidateResponseDto validateToken(String rawToken) {
-        String tokenHash = TokenHashUtils.sha256Hex(rawToken);
+        String tokenHash = TokenHashUtils.sha256Hex(normalizeRawToken(rawToken));
         InvitationToken token = invitationTokenRepository.findByTokenHash(tokenHash)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid invitation token"));
 
@@ -152,7 +152,7 @@ public class InvitationService {
     }
 
     public LoginResponseDto acceptInvitation(AcceptInvitationRequestDto dto) {
-        String tokenHash = TokenHashUtils.sha256Hex(dto.token());
+        String tokenHash = TokenHashUtils.sha256Hex(normalizeRawToken(dto.token()));
         InvitationToken token = invitationTokenRepository.findByTokenHash(tokenHash)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid invitation token"));
 
@@ -202,6 +202,13 @@ public class InvitationService {
         if (token.getExpiresAt().isBefore(Instant.now())) {
             throw new ResponseStatusException(HttpStatus.GONE, "Invitation has expired");
         }
+    }
+
+    private String normalizeRawToken(String rawToken) {
+        if (rawToken == null || rawToken.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invitation token is required");
+        }
+        return rawToken.trim();
     }
 
     private String normalizeName(String value) {
@@ -332,7 +339,7 @@ public class InvitationService {
     public void resendExpiredToken(String rawToken, String email) {
         InvitationToken targetToken = null;
         if (rawToken != null && !rawToken.isBlank()) {
-            String hash = TokenHashUtils.sha256Hex(rawToken.trim());
+            String hash = TokenHashUtils.sha256Hex(normalizeRawToken(rawToken));
             targetToken = invitationTokenRepository.findByTokenHash(hash).orElse(null);
         }
 

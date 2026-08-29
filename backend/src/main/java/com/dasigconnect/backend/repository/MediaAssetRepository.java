@@ -43,6 +43,27 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     long countByMediaAlbumIdAndDeletedAtIsNull(UUID mediaAlbumId);
 
     /**
+     * Every stored object URL for an institution's assets (active and
+     * soft-deleted). Used to best-effort purge objects from the media store
+     * before the institution and its asset rows are hard-deleted.
+     */
+    @Query("SELECT m.storageUrl FROM MediaAsset m WHERE m.institution.id = :institutionId AND m.storageUrl IS NOT NULL")
+    List<String> findStorageUrlsByInstitutionId(@Param("institutionId") UUID institutionId);
+
+    /**
+     * Hard-deletes every media asset owned by an institution — including
+     * soft-deleted rows that {@code existsActiveByInstitutionId} does not see —
+     * so the institution and its albums can be removed without tripping the
+     * {@code media_assets.institution_id} / {@code media_album_id} foreign keys.
+     * {@code asset_tags}, {@code asset_embeddings}, and
+     * {@code media_asset_embeddings} are cleared by their {@code ON DELETE
+     * CASCADE} constraints.
+     */
+    @Modifying
+    @Query(value = "DELETE FROM media_assets WHERE institution_id = :institutionId", nativeQuery = true)
+    void deleteByInstitutionId(@Param("institutionId") UUID institutionId);
+
+    /**
      * Re-home the active assets in a set of albums to another institution.
      */
     @Modifying

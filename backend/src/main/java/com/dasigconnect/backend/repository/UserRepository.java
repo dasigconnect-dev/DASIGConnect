@@ -41,6 +41,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      */
     boolean existsByInstitutionIdAndAccountState(UUID institutionId, UserStatus accountState);
 
+    boolean existsByInstitutionIdAndRoleAndAccountStateIn(
+            UUID institutionId,
+            UserRole role,
+            Collection<UserStatus> accountStates);
+
     List<User> findByRole(UserRole role);
 
     @Query("""

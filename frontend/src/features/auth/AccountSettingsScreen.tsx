@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { WatermarkElement } from "../../types/watermark.types";
-import { changePassword, getMe, getPageSettings, listInstitutions, updateAccountSettings, updatePageSettings } from "../../api/authApi";
+import { changePassword, getMe, getPageSettings, updateAccountSettings, updatePageSettings } from "../../api/authApi";
 import { createMessengerLinkCode, disconnectMessenger, getMessengerConnectionStatus, type MessengerConnection, type MessengerLinkCode } from "../../api/messengerApi";
-import { deleteWatermarkOverride, getWatermarkConfiguration, saveWatermarkConfiguration } from "../../api/watermarkApi";
+import { getWatermarkConfiguration, saveWatermarkConfiguration } from "../../api/watermarkApi";
 import WatermarkCanvasEditor from "../settings/components/WatermarkCanvasEditor";
 import { useToast } from "../../context/ToastContext";
 
@@ -43,15 +43,11 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [facebookPageId, setFacebookPageId] = useState("");
-  const [institutions, setInstitutions] = useState<{ id: string; name: string; logoUrl?: string | null }[]>([]);
-  const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
 
   // Watermark Studio States
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
   const [watermarkElements, setWatermarkElements] = useState<WatermarkElement[]>([]);
-  const [isWatermarkOverride, setIsWatermarkOverride] = useState(false);
   const [watermarkLoading, setWatermarkLoading] = useState(false);
-  const [revertingOverride, setRevertingOverride] = useState(false);
 
   // Messenger Integration States
   const [messengerStatus, setMessengerStatus] = useState<MessengerConnection | null>(null);
@@ -59,9 +55,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [copiedCode, setCopiedCode] = useState(false);
 
   const [saving, setSaving] = useState<"account" | "password" | "page" | "watermark" | "messenger" | null>(null);
-  const pageInstitutionId = selectedInstitutionId || null;
-
-  const currentInstitution = institutions.find((i) => i.id === pageInstitutionId);
+  const pageInstitutionId = null;
 
   // Display Name Validation
   function validateDisplayName(name: string) {
@@ -130,7 +124,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     navigate(`/settings#${canManagePage ? "page" : "account"}`, { replace: true });
   }
 
-  // Initial mount: load profile, institutions, and messenger status
+  // Initial mount: load profile and messenger status
   useEffect(() => {
     let isCurrent = true;
     const promises: Promise<unknown>[] = [
@@ -161,23 +155,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       );
     }
 
-    if (user.role === "admin") {
-      promises.push(
-        listInstitutions()
-          .then(({ data }) => {
-            if (!isCurrent) return;
-            setInstitutions(
-              data.map((item) => ({
-                id: item.id,
-                name: item.name,
-                logoUrl: item.hasLogo ? `/api/v1/institutions/${item.id}/logo` : null,
-              }))
-            );
-          })
-          .catch(() => {})
-      );
-    }
-
     Promise.allSettled(promises).finally(() => {
       if (isCurrent) {
         setInitialLoading(false);
@@ -187,7 +164,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     return () => {
       isCurrent = false;
     };
-  }, [user.name, user.role, canManagePage]);
+  }, [user.name, canManagePage]);
 
   // Page and Watermark settings loader
   useEffect(() => {
@@ -202,12 +179,11 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       .catch(() => toast.error("Unable to load Page Settings."));
 
     setWatermarkLoading(true);
-    void getWatermarkConfiguration(pageInstitutionId)
+    void getWatermarkConfiguration()
       .then(({ data }) => {
         if (!isCurrent) return;
         setWatermarkEnabled(data.enabled);
         setWatermarkElements(data.elements || []);
-        setIsWatermarkOverride(data.isOverride);
       })
       .catch(() => toast.error("Unable to load Watermark configuration."))
       .finally(() => {
@@ -281,39 +257,17 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     setSaving("watermark");
     try {
       const { data } = await saveWatermarkConfiguration({
-        institutionId: pageInstitutionId,
+        institutionId: null,
         enabled: watermarkEnabled,
         elements: watermarkElements,
       });
       setWatermarkElements(data.elements || []);
-      setIsWatermarkOverride(data.isOverride);
-      toast.success(
-        pageInstitutionId
-          ? "Institution watermark configuration saved."
-          : "Network-wide default watermark saved."
-      );
+      toast.success("Global watermark configuration saved.");
     } catch (err: unknown) {
       const errorMsg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       toast.error(errorMsg || "Unable to save watermark configuration.");
     } finally {
       setSaving(null);
-    }
-  }
-
-  async function handleRevertOverride() {
-    if (!pageInstitutionId) return;
-    setRevertingOverride(true);
-    try {
-      await deleteWatermarkOverride(pageInstitutionId);
-      const { data } = await getWatermarkConfiguration(pageInstitutionId);
-      setWatermarkEnabled(data.enabled);
-      setWatermarkElements(data.elements || []);
-      setIsWatermarkOverride(false);
-      toast.success("Institution override removed. Reverted to network default.");
-    } catch {
-      toast.error("Unable to revert institution override.");
-    } finally {
-      setRevertingOverride(false);
     }
   }
 
@@ -419,18 +373,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
             </div>
 
             <div className="settings-studio-header-right">
-              {pageInstitutionId && isWatermarkOverride && (
-                <button
-                  type="button"
-                  className="wm-remove-btn"
-                  onClick={() => void handleRevertOverride()}
-                  disabled={revertingOverride || saving === "watermark"}
-                  title="Delete custom override and revert to network default"
-                >
-                  <i className={revertingOverride ? "ti ti-loader-2 settings-spinner" : "ti ti-arrow-back-up"} />
-                  Revert to Default
-                </button>
-              )}
               <button
                 type="button"
                 className="settings-save-button"
@@ -438,41 +380,12 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                 onClick={() => void saveWatermark()}
               >
                 <i className={saving === "watermark" ? "ti ti-loader-2 settings-spinner" : "ti ti-device-floppy"} />
-                {saving === "watermark"
-                  ? "Saving…"
-                  : pageInstitutionId
-                    ? "Save Institution Watermark"
-                    : "Save Network Default"}
+                {saving === "watermark" ? "Saving..." : "Save Global Watermark"}
               </button>
             </div>
           </header>
 
           <div className="settings-studio-body">
-            {user.role === "admin" && (
-              <div className="settings-scope-panel" style={{ marginBottom: "16px" }}>
-                <div className="settings-scope-icon">
-                  <i className="ti ti-building-community" />
-                </div>
-                <div className="settings-scope-copy">
-                  <label htmlFor="settings-scope-studio">Configuration scope</label>
-                  <span>Choose network defaults or override a specific institution.</span>
-                </div>
-                <select
-                  id="settings-scope-studio"
-                  className="settings-select"
-                  value={selectedInstitutionId}
-                  onChange={(e) => setSelectedInstitutionId(e.target.value)}
-                >
-                  <option value="">Network-wide defaults</option>
-                  {institutions.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
             {watermarkLoading ? (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "60px", color: "var(--d-muted)" }}>
                 <i className="ti ti-loader-2 settings-spinner" style={{ fontSize: "28px", marginRight: "10px" }} />
@@ -483,8 +396,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                 elements={watermarkElements}
                 onChange={setWatermarkElements}
                 disabled={false}
-                institutionName={currentInstitution?.name}
-                institutionLogoUrl={currentInstitution?.logoUrl}
+                institutionName="DASIG Central Visayas"
               />
             )}
           </div>
@@ -711,31 +623,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
           {/* Tab 3: Page Settings (Admins only) */}
           {activeTab === "page" && canManagePage && (
             <div className="settings-page-overview-grid">
-              {user.role === "admin" && (
-                <div className="settings-scope-panel settings-card-wide" style={{ marginBottom: "8px" }}>
-                  <div className="settings-scope-icon">
-                    <i className="ti ti-building-community" />
-                  </div>
-                  <div className="settings-scope-copy">
-                    <label htmlFor="settings-scope">Configuration scope</label>
-                    <span>Choose network defaults or override a specific institution.</span>
-                  </div>
-                  <select
-                    id="settings-scope"
-                    className="settings-select"
-                    value={selectedInstitutionId}
-                    onChange={(e) => setSelectedInstitutionId(e.target.value)}
-                  >
-                    <option value="">Network-wide defaults</option>
-                    {institutions.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
               {/* Card 1: Automated Watermark Studio */}
               <section className="settings-card" id="watermark-card">
                 <SettingsHeader
@@ -755,15 +642,9 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                     <div className="settings-summary-stat">
                       <span className="settings-summary-stat-label">Configuration Scope</span>
                       <span className="settings-summary-stat-val">
-                        {pageInstitutionId && isWatermarkOverride ? (
-                          <span className="wm-elements-badge is-override">
-                            <i className="ti ti-check" /> Override Active
-                          </span>
-                        ) : (
-                          <span className="wm-elements-badge">
-                            <i className="ti ti-world" /> {pageInstitutionId ? "Inheriting Default" : "Network Default"}
-                          </span>
-                        )}
+                        <span className="wm-elements-badge">
+                          <i className="ti ti-world" /> Global Default
+                        </span>
                       </span>
                     </div>
                     <div className="settings-summary-stat">

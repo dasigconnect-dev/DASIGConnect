@@ -28,15 +28,18 @@ class SystemHealthServiceTest {
 
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
     private final ScheduledJobRunRepository scheduledJobRunRepository = mock(ScheduledJobRunRepository.class);
+    private final MediaStorageService mediaStorage = mock(MediaStorageService.class);
 
     private final SystemHealthService service = new SystemHealthService(
             jdbcTemplate,
             scheduledJobRunRepository,
             mock(TokenManagementService.class),
             mock(JavaMailSender.class),
+            mediaStorage,
             1_000_000,
             1_000_000,
             80,
+            95,
             "",
             "");
 
@@ -177,5 +180,59 @@ class SystemHealthServiceTest {
                 run("PublishingSchedulerJob", "FAILED", Instant.now().minusSeconds(30))));
 
         assertThat(jobDto("Publishing Scheduler").status()).isEqualTo(HealthStatus.UNHEALTHY);
+    }
+
+    @Test
+    void mediaStorage_usesLiveObjectStoreScanWhenAvailable() {
+        when(jdbcTemplate.queryForObject("SELECT pg_database_size(current_database())", Long.class))
+                .thenReturn(10_000L);
+        when(mediaStorage.probeUsage()).thenReturn(java.util.Optional.of(
+                new MediaStorageService.StorageUsage(750_000L, 42L, false, Instant.now())));
+
+        var media = service.storage().stream()
+                .filter(s -> s.name().equals("Media storage"))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(media.usedBytes()).isEqualTo(750_000L);
+        assertThat(media.usedPercent()).isEqualTo(75.0); // 750k of the 1,000,000 test budget
+        assertThat(media.detail()).contains("Live object-store scan").contains("42 objects");
+    }
+
+    @Test
+    void mediaStorage_fallsBackToDbSumWhenProbeUnavailable() {
+        when(jdbcTemplate.queryForObject("SELECT pg_database_size(current_database())", Long.class))
+                .thenReturn(10_000L);
+        when(mediaStorage.probeUsage()).thenReturn(java.util.Optional.empty());
+        when(jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(file_size_bytes), 0) FROM media_assets WHERE purged_at IS NULL", Long.class))
+                .thenReturn(200_000L);
+
+        var media = service.storage().stream()
+                .filter(s -> s.name().equals("Media storage"))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(media.usedBytes()).isEqualTo(200_000L);
+        assertThat(media.detail()).contains("Estimated from tracked media asset bytes");
+    }
+
+    @Test
+    void mediaStorage_warnsAt80PercentAndGoesUnhealthyAt95Percent() {
+        when(jdbcTemplate.queryForObject("SELECT pg_database_size(current_database())", Long.class))
+                .thenReturn(10_000L);
+
+        // 85% of the 1,000,000 test budget -> WARNING
+        when(mediaStorage.probeUsage()).thenReturn(java.util.Optional.of(
+                new MediaStorageService.StorageUsage(850_000L, 5L, false, Instant.now())));
+        var warn = service.storage().stream().filter(s -> s.name().equals("Media storage")).findFirst().orElseThrow();
+        assertThat(warn.status()).isEqualTo(HealthStatus.WARNING);
+
+        // 96% -> UNHEALTHY with an overage-charge hint
+        when(mediaStorage.probeUsage()).thenReturn(java.util.Optional.of(
+                new MediaStorageService.StorageUsage(960_000L, 6L, false, Instant.now())));
+        var crit = service.storage().stream().filter(s -> s.name().equals("Media storage")).findFirst().orElseThrow();
+        assertThat(crit.status()).isEqualTo(HealthStatus.UNHEALTHY);
+        assertThat(crit.detail()).contains("overage");
     }
 }
