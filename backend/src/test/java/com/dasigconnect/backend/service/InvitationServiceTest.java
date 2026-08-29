@@ -457,6 +457,36 @@ class InvitationServiceTest {
     }
 
     @Test
+    void createInvitation_whenAdminLimitReached_throws409() {
+        when(userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active))
+                .thenReturn(3L);
+
+        CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
+                "fourth-admin@example.com", null, UserRole.admin);
+
+        assertThatThrownBy(() -> invitationService.createInvitation(dto, adminPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(409);
+    }
+
+    @Test
+    void acceptInvitation_whenAdminLimitReached_throws409() {
+        InvitationToken token = buildToken(false, false, UserRole.admin);
+        token.setInstitution(null);
+        when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
+        when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(new User()));
+        when(userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active))
+                .thenReturn(3L);
+
+        assertThatThrownBy(() -> invitationService.acceptInvitation(
+                new AcceptInvitationRequestDto("validrawtoken", "Ava", "Admin", "password1")))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(409);
+    }
+
+    @Test
     void acceptInvitation_validatorForPendingInstitution_transitionsToActive() {
         institution.setStatus(InstitutionStatus.pending);
         InvitationToken token = buildToken(false, false, UserRole.moderator);

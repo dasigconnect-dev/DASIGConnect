@@ -32,6 +32,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     long countByInstitutionIdAndRoleAndAccountState(UUID institutionId, UserRole role, UserStatus accountState);
 
+    /** Network-wide count for a role in a given account state (e.g. active admins). */
+    long countByRoleAndAccountState(UserRole role, UserStatus accountState);
+
     /**
      * A3: check if institution has any active moderators before reactivating
      */

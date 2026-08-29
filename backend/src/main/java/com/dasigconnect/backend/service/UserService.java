@@ -431,9 +431,10 @@ public class UserService {
 
         User target = userRepository.findById(targetUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        if (target.getRole() != UserRole.moderator || target.getAccountState() != UserStatus.active) {
+        if ((target.getRole() != UserRole.moderator && target.getRole() != UserRole.admin)
+                || target.getAccountState() != UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Admin status can only be transferred to an active Moderator");
+                    "Admin ownership can only be transferred to an active moderator or admin");
         }
         if (target.isAdminOwner()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -463,10 +464,12 @@ public class UserService {
     public UserDto confirmAdminTransfer(JwtUserDetails requester) {
         User incoming = userRepository.findById(requester.userId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        if (incoming.getRole() != UserRole.moderator || incoming.getAccountState() != UserStatus.active) {
+        if ((incoming.getRole() != UserRole.moderator && incoming.getRole() != UserRole.admin)
+                || incoming.getAccountState() != UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only an active Moderator can confirm Admin transfer");
+                    "Only an active moderator or admin can confirm an Admin ownership transfer");
         }
+        boolean incomingWasModerator = incoming.getRole() == UserRole.moderator;
         if (incoming.getSuperAdminTransferRequestedBy() == null
                 || incoming.getSuperAdminTransferExpiresAt() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -494,8 +497,13 @@ public class UserService {
         incoming.setAdminOwner(true);
         incoming.setSuperAdminTransferRequestedBy(null);
         incoming.setSuperAdminTransferExpiresAt(null);
-        outgoing.setRole(UserRole.moderator);
         outgoing.setAdminOwner(false);
+        if (incomingWasModerator) {
+            // Owner-to-moderator handoff is 1-for-1: the outgoing owner steps
+            // down to moderator so the admin headcount stays the same. Handing
+            // ownership to an existing admin leaves both as admins.
+            outgoing.setRole(UserRole.moderator);
+        }
         outgoing.setSuperAdminTransferRequestedBy(null);
         outgoing.setSuperAdminTransferExpiresAt(null);
 
@@ -525,24 +533,49 @@ public class UserService {
     private void validateCanManageUser(User target, JwtUserDetails requester) {
         UUID institutionId = target.getInstitution() != null ? target.getInstitution().getId() : null;
         validateInstitutionScope(institutionId, requester);
-        if (target.getRole() == UserRole.moderator || target.getRole() == UserRole.admin) {
+        if (target.getRole() == UserRole.admin) {
+            // Admin-on-admin actions stay restricted to the Admin Owner.
             User requesterAccount = requireActiveAdminOwner(requester);
             if (requesterAccount.getId().equals(target.getId())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Admin cannot manage their own moderator account status");
+                        "Admins cannot manage their own account status");
             }
+        } else if (target.getRole() == UserRole.moderator) {
+            // Any active admin (Owner or peer) may manage moderator accounts.
+            requireActiveAdmin(requester);
         }
     }
 
     private void validateCanRemoveUser(User target, JwtUserDetails requester) {
         validateCanManageUser(target, requester);
-        if (target.getRole() == UserRole.moderator || target.getRole() == UserRole.admin) {
+        if (target.getRole() == UserRole.admin) {
             User requesterAccount = requireActiveAdminOwner(requester);
             if (requesterAccount.getId().equals(target.getId())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Admin cannot remove their own account");
+                        "Admins cannot remove their own account");
             }
         }
+    }
+
+    /**
+     * Requires the caller to be any active admin (Owner or peer). Used for
+     * actions a peer admin is allowed to perform, such as managing moderator
+     * accounts.
+     */
+    private User requireActiveAdmin(JwtUserDetails requester) {
+        if (requester == null || requester.userId() == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only an admin can manage this account");
+        }
+        User requesterAccount = userRepository.findById(requester.userId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Only an admin can manage this account"));
+        if (requesterAccount.getRole() != UserRole.admin
+                || requesterAccount.getAccountState() != UserStatus.active) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only an admin can manage this account");
+        }
+        return requesterAccount;
     }
 
     private User requireActiveAdminOwner(JwtUserDetails requester) {

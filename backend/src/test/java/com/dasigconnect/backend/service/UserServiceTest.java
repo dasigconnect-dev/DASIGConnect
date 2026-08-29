@@ -353,6 +353,34 @@ class UserServiceTest {
     }
 
     @Test
+    void updateStatus_peerAdminCanDeactivateModerator() {
+        User targetModerator = user(UUID.randomUUID(), "mod@dasigconnect.com", UserRole.moderator, null);
+        User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(targetModerator.getId())).thenReturn(Optional.of(targetModerator));
+        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        when(userRepository.save(targetModerator)).thenReturn(targetModerator);
+
+        UserDto result = userService.updateStatus(targetModerator.getId(), UserStatus.inactive,
+                principal(peerAdmin.getId(), "admin", null));
+
+        assertThat(result.getAccountState()).isEqualTo("inactive");
+    }
+
+    @Test
+    void updateStatus_peerAdminCannotManageFellowAdmin() {
+        User targetAdmin = user(UUID.randomUUID(), "other@dasigconnect.com", UserRole.admin, null);
+        User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+
+        assertThatThrownBy(() -> userService.updateStatus(targetAdmin.getId(), UserStatus.inactive,
+                principal(peerAdmin.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
     void requestAdminTransfer_setsPendingConfirmation() {
         User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.moderator, null);
         User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.admin, null);
@@ -391,6 +419,27 @@ class UserServiceTest {
         assertThat(incoming.getSuperAdminTransferRequestedBy()).isNull();
         verify(jwtService).invalidateUserTokens(outgoing.getId());
         verify(auditLogService).record(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void confirmAdminTransfer_toExistingAdmin_keepsOutgoingAsAdmin() {
+        User outgoing = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        outgoing.setAdminOwner(true);
+        User incoming = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        incoming.setSuperAdminTransferRequestedBy(outgoing.getId());
+        incoming.setSuperAdminTransferExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        when(userRepository.findById(incoming.getId())).thenReturn(Optional.of(incoming));
+        when(userRepository.findById(outgoing.getId())).thenReturn(Optional.of(outgoing));
+        when(userRepository.save(incoming)).thenReturn(incoming);
+        when(userRepository.save(outgoing)).thenReturn(outgoing);
+
+        UserDto result = userService.confirmAdminTransfer(
+                principal(incoming.getId(), "admin", null));
+
+        assertThat(result.isAdminOwner()).isTrue();
+        assertThat(incoming.getRole()).isEqualTo(UserRole.admin);
+        assertThat(outgoing.isAdminOwner()).isFalse();
+        assertThat(outgoing.getRole()).isEqualTo(UserRole.admin);
     }
 
     @Test

@@ -39,6 +39,13 @@ public class InvitationService {
 
     private static final Logger log = LoggerFactory.getLogger(InvitationService.class);
 
+    /**
+     * Administrative policy cap: at most three admin accounts network-wide.
+     * Enforced when an admin invitation is created and again when it is
+     * accepted, so a stale invite can never push the network past the limit.
+     */
+    private static final long MAX_ADMINS = 3;
+
     private final InvitationTokenRepository invitationTokenRepository;
     private final UserRepository userRepository;
     private final EntityManager entityManager;
@@ -76,6 +83,10 @@ public class InvitationService {
         String recipientEmail = dto.recipientEmail().trim().toLowerCase();
         Institution institution = resolveInvitationInstitution(dto);
         validateInviterScope(dto, inviter);
+
+        if (dto.assignedRole() == UserRole.admin) {
+            assertAdminCapAllows(recipientEmail);
+        }
 
         // Reject invitation to inactive institution
         if (institution != null && institution.getStatus() == InstitutionStatus.inactive) {
@@ -149,6 +160,11 @@ public class InvitationService {
                 .orElseGet(User::new);
         if (user.getAccountState() == UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Account is already active");
+        }
+        if (token.getAssignedRole() == UserRole.admin
+                && userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active) >= MAX_ADMINS) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Admin limit reached (" + MAX_ADMINS + "). This invitation can no longer be accepted.");
         }
         user.setEmail(token.getRecipientEmail());
         user.setRole(token.getAssignedRole());
@@ -442,6 +458,27 @@ public class InvitationService {
         return Map.of(
                 "pendingInvitations",
                 invitationTokenRepository.countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(institutionId, Instant.now()));
+    }
+
+    /**
+     * Enforces the three-admin policy cap. Counts active admins plus distinct
+     * pending admin invitations (other than one already outstanding for this
+     * same recipient, which a resend would simply replace).
+     */
+    private void assertAdminCapAllows(String recipientEmail) {
+        long activeAdmins = userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active);
+        long pendingAdminInvites = invitationTokenRepository
+                .findPendingNetworkRoleInvitations(UserRole.admin, Instant.now())
+                .stream()
+                .map(InvitationToken::getRecipientEmail)
+                .filter(email -> !email.equalsIgnoreCase(recipientEmail))
+                .distinct()
+                .count();
+        if (activeAdmins + pendingAdminInvites >= MAX_ADMINS) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Admin limit reached (" + MAX_ADMINS
+                            + "). Remove or transfer an existing admin before inviting another.");
+        }
     }
 
     private void validateInviterScope(CreateInvitationRequestDto dto, JwtUserDetails inviter) {
