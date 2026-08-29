@@ -493,14 +493,45 @@ public class FacebookPublisherService {
 
     // ── Token health check (called by TokenHealthCheckJob) ────────────────────
 
+    /** What the {@code debug_token} probe concluded about the active page token. */
+    public enum TokenValidationOutcome {
+        /** {@code is_valid: true} and Graph returned a real {@code expires_at}. */
+        VALID,
+        /** {@code is_valid: true} with {@code expires_at: 0} — a long-lived / non-expiring token. Healthy. */
+        VALID_NON_EXPIRING,
+        /** Graph says the page token is invalid or expired — needs re-authorization. */
+        REJECTED,
+        /** Nothing to validate (no active token, or app id/secret not set so {@code debug_token} can't be called). */
+        NOT_CONFIGURED,
+        /** Graph could not be reached / parsed — transient, retry next run. */
+        UNREACHABLE
+    }
+
+    /** Result of {@link #validateToken()}. {@code expiresAt} is only set for {@link TokenValidationOutcome#VALID}. */
+    public record TokenValidation(TokenValidationOutcome outcome, Instant expiresAt, String detail) {
+        public boolean healthy() {
+            return outcome == TokenValidationOutcome.VALID
+                    || outcome == TokenValidationOutcome.VALID_NON_EXPIRING
+                    || outcome == TokenValidationOutcome.NOT_CONFIGURED;
+        }
+    }
+
     /**
-     * Validates the active token via the Graph API debug_token endpoint.
-     * Returns the token expiry time, or null if invalid/missing.
-     * Used by TokenHealthCheckJob (GR-T4).
+     * Validates the active token via the Graph API {@code debug_token} endpoint.
+     * Never throws — every failure mode maps to a {@link TokenValidation} outcome
+     * so the caller (TokenHealthCheckJob, GR-T4) can tell a dead token apart from
+     * an unconfigured app or a transient network error.
      */
-    public Instant validateToken() {
+    public TokenValidation validateToken() {
+        if (appId == null || appId.isBlank() || appSecret == null || appSecret.isBlank()) {
+            return new TokenValidation(TokenValidationOutcome.NOT_CONFIGURED, null,
+                    "Facebook app id/secret are not set; debug_token cannot be called.");
+        }
         String token = resolveActiveTokenValue();
-        if (token == null) return null;
+        if (token == null) {
+            return new TokenValidation(TokenValidationOutcome.NOT_CONFIGURED, null,
+                    "No active Facebook page token is available to validate.");
+        }
 
         try {
             String url = "https://graph.facebook.com/" + apiVersion + "/debug_token"
@@ -515,28 +546,43 @@ public class FacebookPublisherService {
             JsonNode node = objectMapper.readTree(response.body());
             JsonNode data = node.path("data");
 
-            boolean isValid = data.path("is_valid").asBoolean(false);
-            if (!isValid) {
-                log.warn("Facebook page token failed validation.");
-                return null;
+            // A top-level error with no data node means the request itself was
+            // rejected (usually a bad app id/secret) — not a verdict on the token.
+            if (node.has("error") && !data.isObject()) {
+                String msg = node.path("error").path("message").asText("debug_token request was rejected.");
+                log.warn("Facebook debug_token request rejected (verify app id/secret): {}", msg);
+                return new TokenValidation(TokenValidationOutcome.NOT_CONFIGURED, null,
+                        "debug_token request rejected — verify app id/secret: " + msg);
             }
 
-            // Update last_validated_at in DB
+            boolean isValid = data.path("is_valid").asBoolean(false);
+            if (!isValid) {
+                String reason = data.path("error").path("message")
+                        .asText("Graph API reports the page token as invalid or expired.");
+                log.warn("Facebook page token failed validation: {}", reason);
+                return new TokenValidation(TokenValidationOutcome.REJECTED, null, reason);
+            }
+
+            long expiresAtEpoch = data.path("expires_at").asLong(0L);
+            Instant expiresAt = expiresAtEpoch > 0 ? Instant.ofEpochSecond(expiresAtEpoch) : null;
+
+            // Refresh last_validated_at (and expiry, when the token actually has one).
             pageTokenRepository.findByPageIdAndIsActiveTrue(pageId).ifPresent(t -> {
                 t.setLastValidatedAt(Instant.now());
-                long expiresAt = data.path("expires_at").asLong(0L);
-                if (expiresAt > 0) {
-                    t.setExpiresAt(Instant.ofEpochSecond(expiresAt));
+                if (expiresAt != null) {
+                    t.setExpiresAt(expiresAt);
                 }
                 pageTokenRepository.save(t);
             });
 
-            long expiresAt = data.path("expires_at").asLong(0L);
-            return expiresAt > 0 ? Instant.ofEpochSecond(expiresAt) : null;
-
+            return expiresAt != null
+                    ? new TokenValidation(TokenValidationOutcome.VALID, expiresAt, "Token is valid.")
+                    : new TokenValidation(TokenValidationOutcome.VALID_NON_EXPIRING, null,
+                            "Token is valid and does not expire.");
         } catch (Exception ex) {
             log.error("Token validation request failed: {}", ex.getMessage());
-            return null;
+            return new TokenValidation(TokenValidationOutcome.UNREACHABLE, null,
+                    "Could not reach the Facebook Graph API to validate the token: " + ex.getMessage());
         }
     }
 
