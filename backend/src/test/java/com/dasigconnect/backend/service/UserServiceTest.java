@@ -69,6 +69,8 @@ class UserServiceTest {
     private AccountLockoutRepository accountLockoutRepository;
     @Mock
     private ReviewLockRepository reviewLockRepository;
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private UserService userService;
@@ -93,6 +95,7 @@ class UserServiceTest {
 
         contributor = user(userId, "contributor@cit.edu.ph", UserRole.contributor, institution);
         adminPrincipal = principal(UUID.randomUUID(), "admin", null);
+        org.springframework.test.util.ReflectionTestUtils.setField(userService, "maxAdmins", 3L);
     }
 
     @Test
@@ -149,15 +152,17 @@ class UserServiceTest {
     }
 
     @Test
-    void listByInstitution_moderatorCannotListOtherInstitution() {
+    void listByInstitution_moderatorCanListOtherInstitution() {
+        // Moderators are network-wide now — no institution comparison applies.
         UUID otherInstitution = UUID.randomUUID();
+        when(userRepository.findByInstitutionIdOrderByCreatedAtDesc(otherInstitution))
+                .thenReturn(List.of(contributor));
 
-        assertThatThrownBy(() -> userService.listByInstitution(
+        List<UserDto> result = userService.listByInstitution(
                 otherInstitution,
-                principal(UUID.randomUUID(), "moderator", institutionId)))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN);
+                principal(UUID.randomUUID(), "moderator", null));
+
+        assertThat(result).extracting(UserDto::getEmail).containsExactly("contributor@cit.edu.ph");
     }
 
     @Test
@@ -207,14 +212,17 @@ class UserServiceTest {
     }
 
     @Test
-    void countByRole_moderatorCannotCountOtherInstitution() {
+    void countByRole_moderatorCanCountOtherInstitution() {
+        // Moderators are network-wide now — no institution comparison applies.
         UUID otherInstitution = UUID.randomUUID();
-        assertThatThrownBy(() -> userService.countByRole(
+        when(userRepository.countByInstitutionIdAndRoleAndAccountState(otherInstitution, UserRole.contributor, UserStatus.active)).thenReturn(3L);
+        when(userRepository.countByInstitutionIdAndRoleAndAccountState(otherInstitution, UserRole.moderator, UserStatus.active)).thenReturn(0L);
+
+        Map<String, Long> result = userService.countByRole(
                 otherInstitution,
-                principal(UUID.randomUUID(), "moderator", institutionId)))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN);
+                principal(UUID.randomUUID(), "moderator", null));
+
+        assertThat(result).containsEntry("contributors", 3L);
     }
 
     @Test
@@ -227,14 +235,14 @@ class UserServiceTest {
     }
 
     @Test
-    void getById_moderatorCannotViewOtherInstitutionUser() {
+    void getById_moderatorCanViewOtherInstitutionUser() {
+        // Moderators are network-wide now — no institution comparison applies.
         when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
 
-        assertThatThrownBy(() -> userService.getById(userId,
-                principal(UUID.randomUUID(), "moderator", UUID.randomUUID())))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.FORBIDDEN);
+        UserDto result = userService.getById(userId,
+                principal(UUID.randomUUID(), "moderator", UUID.randomUUID()));
+
+        assertThat(result.getEmail()).isEqualTo("contributor@cit.edu.ph");
     }
 
     @Test
@@ -348,6 +356,34 @@ class UserServiceTest {
     }
 
     @Test
+    void updateStatus_peerAdminCanDeactivateModerator() {
+        User targetModerator = user(UUID.randomUUID(), "mod@dasigconnect.com", UserRole.moderator, null);
+        User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(targetModerator.getId())).thenReturn(Optional.of(targetModerator));
+        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        when(userRepository.save(targetModerator)).thenReturn(targetModerator);
+
+        UserDto result = userService.updateStatus(targetModerator.getId(), UserStatus.inactive,
+                principal(peerAdmin.getId(), "admin", null));
+
+        assertThat(result.getAccountState()).isEqualTo("inactive");
+    }
+
+    @Test
+    void updateStatus_peerAdminCannotManageFellowAdmin() {
+        User targetAdmin = user(UUID.randomUUID(), "other@dasigconnect.com", UserRole.admin, null);
+        User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+
+        assertThatThrownBy(() -> userService.updateStatus(targetAdmin.getId(), UserStatus.inactive,
+                principal(peerAdmin.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
     void requestAdminTransfer_setsPendingConfirmation() {
         User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.moderator, null);
         User superAdmin = user(UUID.randomUUID(), "super@dasigconnect.com", UserRole.admin, null);
@@ -386,6 +422,272 @@ class UserServiceTest {
         assertThat(incoming.getSuperAdminTransferRequestedBy()).isNull();
         verify(jwtService).invalidateUserTokens(outgoing.getId());
         verify(auditLogService).record(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void confirmAdminTransfer_toExistingAdmin_keepsOutgoingAsAdmin() {
+        User outgoing = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        outgoing.setAdminOwner(true);
+        User incoming = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        incoming.setSuperAdminTransferRequestedBy(outgoing.getId());
+        incoming.setSuperAdminTransferExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        when(userRepository.findById(incoming.getId())).thenReturn(Optional.of(incoming));
+        when(userRepository.findById(outgoing.getId())).thenReturn(Optional.of(outgoing));
+        when(userRepository.save(incoming)).thenReturn(incoming);
+        when(userRepository.save(outgoing)).thenReturn(outgoing);
+
+        UserDto result = userService.confirmAdminTransfer(
+                principal(incoming.getId(), "admin", null));
+
+        assertThat(result.isAdminOwner()).isTrue();
+        assertThat(incoming.getRole()).isEqualTo(UserRole.admin);
+        assertThat(outgoing.isAdminOwner()).isFalse();
+        assertThat(outgoing.getRole()).isEqualTo(UserRole.admin);
+    }
+
+    // ── changeRole (promotion / demotion) ────────────────────────────────
+
+    @Test
+    void changeRole_promoteContributorToModerator_clearsInstitutionAndInvalidatesTokens() {
+        User target = user(UUID.randomUUID(), "c@cit.edu.ph", UserRole.contributor, institution);
+        User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        when(userRepository.save(target)).thenReturn(target);
+
+        UserDto result = userService.changeRole(target.getId(), UserRole.moderator, null,
+                principal(peerAdmin.getId(), "admin", null));
+
+        assertThat(result.getRole()).isEqualTo("moderator");
+        assertThat(target.getInstitution()).isNull();
+        verify(jwtService).invalidateUserTokens(target.getId());
+        verify(eventPublisher).publishEvent(
+                org.mockito.ArgumentMatchers.any(com.dasigconnect.backend.event.UserRoleChangedEvent.class));
+    }
+
+    @Test
+    void changeRole_demoteModeratorToContributor_withoutInstitution_returns400() {
+        User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+
+        assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.contributor, null,
+                principal(peerAdmin.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void changeRole_demoteModeratorToContributor_setsInstitutionAndClearsReviewLocks() {
+        User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(institution));
+        when(userRepository.save(target)).thenReturn(target);
+
+        UserDto result = userService.changeRole(target.getId(), UserRole.contributor, institutionId,
+                principal(peerAdmin.getId(), "admin", null));
+
+        assertThat(result.getRole()).isEqualTo("contributor");
+        assertThat(target.getInstitution()).isEqualTo(institution);
+        verify(reviewLockRepository).deleteByLockedById(target.getId());
+        verify(jwtService).invalidateUserTokens(target.getId());
+    }
+
+    @Test
+    void changeRole_peerAdminCannotPromoteToAdmin() {
+        User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+
+        assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.admin, null,
+                principal(peerAdmin.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void changeRole_ownerPromoteToAdmin_blockedAtCap() {
+        User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active)).thenReturn(3L);
+
+        assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.admin, null,
+                principal(owner.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void changeRole_ownerPromoteModeratorToAdmin_succeeds() {
+        User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active)).thenReturn(2L);
+        when(userRepository.save(target)).thenReturn(target);
+
+        UserDto result = userService.changeRole(target.getId(), UserRole.admin, null,
+                principal(owner.getId(), "admin", null));
+
+        assertThat(result.getRole()).isEqualTo("admin");
+        assertThat(target.isAdminOwner()).isFalse();
+        verify(jwtService).invalidateUserTokens(target.getId());
+    }
+
+    @Test
+    void changeRole_cannotChangeOwnRole() {
+        UUID sameId = UUID.randomUUID();
+        assertThatThrownBy(() -> userService.changeRole(sameId, UserRole.moderator, null,
+                principal(sameId, "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void changeRole_cannotChangeTheAdminOwnersRole() {
+        User targetOwner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        targetOwner.setAdminOwner(true);
+        User requester = user(UUID.randomUUID(), "req@dasigconnect.com", UserRole.admin, null);
+        requester.setAdminOwner(true);
+        when(userRepository.findById(targetOwner.getId())).thenReturn(Optional.of(targetOwner));
+        when(userRepository.findById(requester.getId())).thenReturn(Optional.of(requester));
+
+        assertThatThrownBy(() -> userService.changeRole(targetOwner.getId(), UserRole.moderator, null,
+                principal(requester.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void changeRole_sameRole_returns400() {
+        User target = user(UUID.randomUUID(), "c@cit.edu.ph", UserRole.contributor, institution);
+        User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+
+        assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.contributor, null,
+                principal(peerAdmin.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    // ── erasePersonalData (right to be forgotten) ────────────────────────
+
+    @Test
+    void erasePersonalData_anonymizesAccountAndPurgesUnattachedMedia() {
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        User target = user(UUID.randomUUID(), "jane@cit.edu.ph", UserRole.contributor, institution);
+        target.setAccountState(UserStatus.inactive);
+        target.setAvatarData(new byte[]{1, 2, 3});
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.save(target)).thenReturn(target);
+        when(mediaAssetRepository.softDeleteUnattachedAssetsByUploader(target.getId(), owner.getId())).thenReturn(2);
+
+        UserService.ErasureResult result = userService.erasePersonalData(
+                target.getId(), principal(owner.getId(), "admin", null));
+
+        assertThat(result.mediaAssetsPurged()).isEqualTo(2);
+        assertThat(result.anonymizedEmail()).endsWith("@deleted.invalid");
+        assertThat(target.getEmail()).endsWith("@deleted.invalid");
+        assertThat(target.getFirstName()).isNull();
+        assertThat(target.getDisplayName()).isEqualTo("Removed user");
+        assertThat(target.getAvatarData()).isNull();
+        assertThat(target.getPurgedAt()).isNotNull();
+        assertThat(target.getPurgedByUserId()).isEqualTo(owner.getId());
+        verify(jwtService).invalidateUserTokens(target.getId());
+        verify(notificationRepository).deleteByRecipientId(target.getId());
+        verify(userRepository).deleteMessengerConnectionByUserId(target.getId());
+        verify(auditLogService).record(any(), eq("USER_ANONYMIZED"), any(), any(), any(), any());
+    }
+
+    @Test
+    void erasePersonalData_nonOwnerIsForbidden() {
+        User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+
+        assertThatThrownBy(() -> userService.erasePersonalData(
+                UUID.randomUUID(), principal(peerAdmin.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void erasePersonalData_selfIsRejected() {
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+
+        assertThatThrownBy(() -> userService.erasePersonalData(
+                owner.getId(), principal(owner.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void erasePersonalData_ownerTargetIsRejected() {
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        User otherOwner = user(UUID.randomUUID(), "co-owner@dasigconnect.com", UserRole.admin, null);
+        otherOwner.setAdminOwner(true);
+        otherOwner.setAccountState(UserStatus.inactive);
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(otherOwner.getId())).thenReturn(Optional.of(otherOwner));
+
+        assertThatThrownBy(() -> userService.erasePersonalData(
+                otherOwner.getId(), principal(owner.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void erasePersonalData_activeAccountIsRejected() {
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        User target = user(UUID.randomUUID(), "jane@cit.edu.ph", UserRole.contributor, institution);
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+
+        assertThatThrownBy(() -> userService.erasePersonalData(
+                target.getId(), principal(owner.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void erasePersonalData_alreadyErased_returns409() {
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        User target = user(UUID.randomUUID(), "deleted+x@deleted.invalid", UserRole.contributor, institution);
+        target.setAccountState(UserStatus.inactive);
+        target.setPurgedAt(java.time.Instant.now().minusSeconds(60));
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+
+        assertThatThrownBy(() -> userService.erasePersonalData(
+                target.getId(), principal(owner.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
     }
 
     @Test

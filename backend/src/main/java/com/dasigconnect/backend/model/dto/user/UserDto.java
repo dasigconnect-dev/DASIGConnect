@@ -24,6 +24,7 @@ public class UserDto {
     private boolean notifyEmail;
     private boolean hasAvatar;
     private Instant avatarUpdatedAt;
+    private Instant purgedAt;
 
     public static UserDto from(User user) {
         UserDto dto = new UserDto();
@@ -44,6 +45,7 @@ public class UserDto {
         dto.notifyEmail = user.isNotifyEmail();
         dto.hasAvatar = user.getAvatarData() != null && user.getAvatarData().length > 0;
         dto.avatarUpdatedAt = user.getAvatarUpdatedAt();
+        dto.purgedAt = user.getPurgedAt();
         return dto;
     }
 
@@ -105,6 +107,10 @@ public class UserDto {
 
     public Instant getAvatarUpdatedAt() {
         return avatarUpdatedAt;
+    }
+
+    public Instant getPurgedAt() {
+        return purgedAt;
     }
 
     public boolean isNotifyInApp() { return notifyInApp; }

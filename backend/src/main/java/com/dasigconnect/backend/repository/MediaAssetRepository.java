@@ -98,6 +98,23 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     boolean existsByUploaderId(UUID uploaderId);
 
+    /**
+     * Personal-data erasure: soft-delete every still-live asset this account
+     * uploaded that isn't attached to a submission. Attached assets are
+     * institutional/published content and are left in place (the uploader link
+     * is anonymised separately). The retention purge job clears the storage
+     * objects on its next run.
+     */
+    @Modifying
+    @Query(value = """
+        UPDATE media_assets
+        SET deleted_at = NOW(), deleted_by_user_id = :actorId
+        WHERE uploader_id = :uploaderId
+          AND deleted_at IS NULL
+          AND id NOT IN (SELECT media_asset_id FROM submission_media_assets)
+        """, nativeQuery = true)
+    int softDeleteUnattachedAssetsByUploader(@Param("uploaderId") UUID uploaderId, @Param("actorId") UUID actorId);
+
     @Modifying
     @Transactional
     @Query(value = """

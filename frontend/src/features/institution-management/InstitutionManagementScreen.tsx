@@ -1295,6 +1295,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
               role={inviteRole}
               selectedInstitution={selectedInstitutionOption}
               canChooseRole={false}
+              embedded
               sending={sending}
               onDraftChange={setEmailDraft}
               onAddChip={(email) => {

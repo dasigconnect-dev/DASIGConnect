@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  cancelInvitation,
+  cancelInvitationByUser,
+  changeUserRole,
   confirmAdminTransfer,
   deleteUser,
+  eraseUserData,
   inviteUser,
   listAdmins,
+  listInstitutions,
   listPendingAdminInvitations,
   requestAdminTransfer,
   resendInvitation,
@@ -15,12 +18,14 @@ import type { PendingInvitationResponse, UserProfileResponse } from '../../api/a
 import type { User } from '../../types/auth.types'
 import { useToast } from '../../context/ToastContext'
 import { getUserDisplayName } from '../../lib/userIdentity'
+import ChangeRoleModal from '../user-management/components/ChangeRoleModal'
 import ConfirmDialog from '../user-management/components/ConfirmDialog'
 import DeliveryIssuesAlert from '../user-management/components/DeliveryIssuesAlert'
 import InstitutionUsersCard from '../user-management/components/InstitutionUsersCard'
 import InvitationComposer from '../user-management/components/InvitationComposer'
 import { SkeletonBlock } from '../user-management/components/LoadingPrimitives'
-import type { InviteResults } from '../user-management/types'
+import type { InstitutionOption, InviteResults } from '../user-management/types'
+import { toInstitutionOption } from '../user-management/types'
 
 interface AdminManagementScreenProps {
   user: User
@@ -32,6 +37,7 @@ interface ConfirmDialogState {
   message: string
   confirmLabel: string
   dangerous: boolean
+  requireTypedConfirmation?: string
   onConfirm: () => void
 }
 
@@ -66,15 +72,40 @@ export default function AdminManagementScreen({
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
 
+  // Change role modal (demote a peer admin to moderator/contributor).
+  const [institutions, setInstitutions] = useState<InstitutionOption[]>([])
+  const [roleUser, setRoleUser] = useState<UserProfileResponse | null>(null)
+  const [roleBusy, setRoleBusy] = useState(false)
+  const [roleError, setRoleError] = useState('')
+
   const currentAdminRecord = useMemo(
     () => admins.find((item) => item.email.toLowerCase() === user.email.toLowerCase()) ?? null,
     [admins, user.email],
   )
   const pendingTransfer = Boolean(currentAdminRecord?.superAdminTransferRequestedBy && currentAdminRecord.superAdminTransferExpiresAt)
 
+  // Only the Admin Owner can invite, remove, or transfer admin accounts. Peer
+  // admins get a read-only view of the roster.
+  const isOwner = currentAdminRecord?.adminOwner === true
+  const ADMIN_LIMIT = 3
+  const activeAdminCount = useMemo(
+    () => admins.filter((item) => item.accountState.toLowerCase() === 'active').length,
+    [admins],
+  )
+  const atAdminLimit = activeAdminCount >= ADMIN_LIMIT
+  // A batch can only fill the admin slots that are still open (active + already-pending count against the cap).
+  const remainingAdminSlots = Math.max(0, ADMIN_LIMIT - activeAdminCount - pendingInvitations.length)
+
   useEffect(() => {
     void loadAdminManagement()
   }, [])
+
+  useEffect(() => {
+    if (!isOwner) return
+    listInstitutions()
+      .then((response) => setInstitutions(response.data.map(toInstitutionOption)))
+      .catch(() => setInstitutions([]))
+  }, [isOwner])
 
   // Keep the cross-route cache in sync with the latest lists (incl. mutations).
   useEffect(() => {
@@ -166,11 +197,19 @@ export default function AdminManagementScreen({
       return
     }
 
-    if (inviteEmails.length > 15) {
+    if (inviteEmails.length > remainingAdminSlots) {
       setInviteResults({
         total: inviteEmails.length,
         success: [],
-        failed: [{ email: 'Batch', reason: 'Batch exceeds maximum of 15 invitations.' }],
+        failed: [
+          {
+            email: 'Batch',
+            reason:
+              remainingAdminSlots === 0
+                ? `The network is at its ${ADMIN_LIMIT}-admin limit. Remove or transfer an admin first.`
+                : `Only ${remainingAdminSlots} admin slot${remainingAdminSlots === 1 ? '' : 's'} remain (limit ${ADMIN_LIMIT}).`,
+          },
+        ],
       })
       return
     }
@@ -269,11 +308,15 @@ export default function AdminManagementScreen({
   }
 
   function handleDeleteUser(managedUser: UserProfileResponse) {
+    const isErased = Boolean(managedUser.purgedAt)
     setConfirmDialog({
-      title: 'Remove Admin',
-      message: `Remove ${getUserDisplayName(managedUser)}? Accounts with historical records will be kept inactive for audit integrity.`,
-      confirmLabel: 'Remove',
+      title: isErased ? 'Remove Record' : 'Remove Admin',
+      message: isErased
+        ? `This account's personal data has already been erased. Removing the record permanently deletes it if nothing references it; if it has historical records it stays as an anonymised inactive row.`
+        : `Remove ${getUserDisplayName(managedUser)}? Accounts with historical records are kept inactive for audit integrity; otherwise the account is permanently deleted and cannot be recovered.`,
+      confirmLabel: isErased ? 'Remove record' : 'Remove account',
       dangerous: true,
+      requireTypedConfirmation: isErased ? 'DELETE' : managedUser.email,
       onConfirm: () => {
         setConfirmDialog(null)
         void executeDeleteUser(managedUser)
@@ -298,6 +341,36 @@ export default function AdminManagementScreen({
       }
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to remove admin.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  function handleEraseData(managedUser: UserProfileResponse) {
+    setConfirmDialog({
+      title: 'Erase personal data',
+      message: `Permanently scrub ${getUserDisplayName(managedUser)}'s name, email, avatar, credentials, and unpublished media uploads. Their submissions and review history remain but no longer identify them. This cannot be undone.`,
+      confirmLabel: 'Erase personal data',
+      dangerous: true,
+      requireTypedConfirmation: managedUser.email,
+      onConfirm: () => {
+        setConfirmDialog(null)
+        void executeEraseData(managedUser)
+      },
+    })
+  }
+
+  async function executeEraseData(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
+    try {
+      const response = await eraseUserData(managedUser.id)
+      const purged = response.data.mediaAssetsPurged
+      toast.success(
+        `Personal data erased.${purged > 0 ? ` ${purged} media file${purged === 1 ? '' : 's'} queued for purge.` : ''}`,
+      )
+      await loadAdminManagement()
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Unable to erase personal data.'))
     } finally {
       setUpdatingUserId(null)
     }
@@ -350,22 +423,16 @@ export default function AdminManagementScreen({
     }
   }
 
-  async function handleCancelInvitation(id: string) {
+  async function handleCancelInvitationFromUser(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
     try {
-      await cancelInvitation(id)
+      await cancelInvitationByUser(managedUser.id)
       toast.success('Invitation cancelled.')
       await loadAdminManagement()
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to cancel invitation.'))
-    }
-  }
-
-  function handleCancelInvitationFromUser(managedUser: UserProfileResponse) {
-    const match = pendingInvitations.find(
-      (item) => item.recipientEmail.toLowerCase() === managedUser.email.toLowerCase(),
-    )
-    if (match) {
-      void handleCancelInvitation(match.id)
+    } finally {
+      setUpdatingUserId(null)
     }
   }
 
@@ -375,6 +442,36 @@ export default function AdminManagementScreen({
     )
     if (match) {
       void handleResendInvitation(match.id)
+    }
+  }
+
+  function handleOpenChangeRole(managedUser: UserProfileResponse) {
+    setRoleUser(managedUser)
+    setRoleError('')
+  }
+
+  function handleCloseChangeRole() {
+    if (roleBusy) return
+    setRoleUser(null)
+    setRoleError('')
+  }
+
+  async function handleConfirmChangeRole(
+    role: 'contributor' | 'moderator' | 'admin',
+    institutionId: string | null,
+  ) {
+    if (!roleUser) return
+    setRoleBusy(true)
+    setRoleError('')
+    try {
+      await changeUserRole(roleUser.id, role, institutionId)
+      toast.success(`${getUserDisplayName(roleUser)} is now a ${role}.`)
+      await loadAdminManagement()
+      setRoleUser(null)
+    } catch (err: unknown) {
+      setRoleError(getApiErrorMessage(err, 'Unable to change role.'))
+    } finally {
+      setRoleBusy(false)
     }
   }
 
@@ -403,6 +500,11 @@ export default function AdminManagementScreen({
                   </div>
                   <div id="am-invite-modal-subtitle" className="dash-modal-sub">
                     Send a single-use activation link for a network-wide Admin account.
+                    {' '}The network allows {ADMIN_LIMIT} admins&nbsp;&mdash;{' '}
+                    <strong>
+                      {remainingAdminSlots} slot{remainingAdminSlots === 1 ? '' : 's'} open
+                    </strong>
+                    .
                   </div>
                 </div>
                 <button
@@ -423,6 +525,8 @@ export default function AdminManagementScreen({
                 selectedInstitution={null}
                 canChooseRole={false}
                 networkWide
+                embedded
+                maxRecipients={remainingAdminSlots}
                 sending={sending}
                 onDraftChange={setEmailDraft}
                 onAddChip={(email) => {
@@ -452,12 +556,27 @@ export default function AdminManagementScreen({
         <header className="im-page-header">
           <div>
             <h1>Admin Management</h1>
-            <p>Invite and manage network-level admin accounts.</p>
+            <p>
+              {isOwner
+                ? 'Invite, remove, and transfer network-level admin accounts.'
+                : 'View network-level admin accounts. Only the Admin Owner can make changes.'}
+              {' '}
+              <strong>{activeAdminCount} / {ADMIN_LIMIT}</strong> admin
+              {activeAdminCount === 1 ? '' : 's'} in use.
+            </p>
           </div>
-          <button type="button" className="im-add-btn" onClick={handleOpenInviteModal}>
-            <i className="ti ti-user-plus" aria-hidden="true"></i>
-            Invite Admin
-          </button>
+          {isOwner && (
+            <button
+              type="button"
+              className="im-add-btn"
+              onClick={handleOpenInviteModal}
+              disabled={atAdminLimit}
+              title={atAdminLimit ? `Admin limit of ${ADMIN_LIMIT} reached` : undefined}
+            >
+              <i className="ti ti-user-plus" aria-hidden="true"></i>
+              Invite Admin
+            </button>
+          )}
         </header>
 
         {pendingTransfer && (
@@ -490,11 +609,14 @@ export default function AdminManagementScreen({
               loading={loading}
               updatingUserId={updatingUserId}
               resendingUserId={updatingUserId}
+              readOnly={!isOwner}
               onToggleUserStatus={handleToggleUserStatus}
               onDeleteUser={handleDeleteUser}
               onCancelInvitation={handleCancelInvitationFromUser}
               onResendInvitation={handleResendInvitationFromUser}
               onRequestSuperAdminTransfer={handleRequestTransfer}
+              onChangeRole={isOwner ? handleOpenChangeRole : undefined}
+              onEraseData={isOwner ? handleEraseData : undefined}
               showRoleControls={false}
               showInstitutionColumn={false}
               showFilterPills
@@ -512,11 +634,25 @@ export default function AdminManagementScreen({
           message={confirmDialog.message}
           confirmLabel={confirmDialog.confirmLabel}
           dangerous={confirmDialog.dangerous}
+          requireTypedConfirmation={confirmDialog.requireTypedConfirmation}
           onConfirm={confirmDialog.onConfirm}
           onCancel={() => setConfirmDialog(null)}
         />
       )}
       {inviteAdminModal}
+
+      {roleUser && (
+        <ChangeRoleModal
+          user={roleUser}
+          institutions={institutions}
+          isOwner={isOwner}
+          adminSlotsOpen={remainingAdminSlots}
+          busy={roleBusy}
+          error={roleError}
+          onConfirm={(role, institutionId) => void handleConfirmChangeRole(role, institutionId)}
+          onClose={handleCloseChangeRole}
+        />
+      )}
     </div>
   )
 }

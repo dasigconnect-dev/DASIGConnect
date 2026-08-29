@@ -78,6 +78,7 @@ class InvitationServiceTest {
         institution.setStatus(InstitutionStatus.active); // default for most tests
         adminPrincipal = new JwtUserDetails(UUID.randomUUID(), "admin@dasigconnect.com", "admin", null);
         validatorPrincipal = new JwtUserDetails(UUID.randomUUID(), "moderator@example.com", "moderator", institutionId);
+        org.springframework.test.util.ReflectionTestUtils.setField(invitationService, "maxAdmins", 3L);
     }
 
     private InvitationToken buildToken(boolean used, boolean expired) {
@@ -234,11 +235,11 @@ class InvitationServiceTest {
         existingAdmin.setEmail("admin@example.com");
         existingAdmin.setRole(UserRole.moderator);
         existingAdmin.setAccountState(UserStatus.inactive);
-        when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
         when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(existingAdmin));
 
+        // Moderators are network-wide now — no institution is attached to the invite.
         CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
-                "admin@example.com", institutionId, UserRole.moderator);
+                "admin@example.com", null, UserRole.moderator);
 
         assertThatThrownBy(() -> invitationService.createInvitation(dto, adminPrincipal))
                 .isInstanceOf(ResponseStatusException.class)
@@ -257,8 +258,9 @@ class InvitationServiceTest {
         });
         when(emailService.buildInvitationLink(any())).thenReturn("http://localhost:5173/invite?token=token");
 
+        // Contributor invites still carry an institution; moderators no longer do.
         invitationService.createInvitation(
-                new CreateInvitationRequestDto("moderator2@example.com", institutionId, UserRole.moderator),
+                new CreateInvitationRequestDto("contributor2@example.com", institutionId, UserRole.contributor),
                 adminPrincipal);
 
         verify(institutionService, never()).transitionToPending(any());
@@ -274,13 +276,13 @@ class InvitationServiceTest {
         });
         when(emailService.buildInvitationLink(any())).thenReturn("http://localhost:5173/invite?token=token");
         CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
-                "moderator@gmail.com", institutionId, UserRole.moderator);
+                "contributor@gmail.com", institutionId, UserRole.contributor);
 
         InvitationResponseDto result = invitationService.createInvitation(dto, adminPrincipal);
 
-        assertThat(result.recipientEmail()).isEqualTo("moderator@gmail.com");
-        assertThat(result.assignedRole()).isEqualTo(UserRole.moderator);
-        verify(emailService).sendInvitationEmail(eq("moderator@gmail.com"), any());
+        assertThat(result.recipientEmail()).isEqualTo("contributor@gmail.com");
+        assertThat(result.assignedRole()).isEqualTo(UserRole.contributor);
+        verify(emailService).sendInvitationEmail(eq("contributor@gmail.com"), any());
     }
 
     @Test
@@ -456,6 +458,36 @@ class InvitationServiceTest {
     }
 
     @Test
+    void createInvitation_whenAdminLimitReached_throws409() {
+        when(userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active))
+                .thenReturn(3L);
+
+        CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
+                "fourth-admin@example.com", null, UserRole.admin);
+
+        assertThatThrownBy(() -> invitationService.createInvitation(dto, adminPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(409);
+    }
+
+    @Test
+    void acceptInvitation_whenAdminLimitReached_throws409() {
+        InvitationToken token = buildToken(false, false, UserRole.admin);
+        token.setInstitution(null);
+        when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
+        when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(new User()));
+        when(userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active))
+                .thenReturn(3L);
+
+        assertThatThrownBy(() -> invitationService.acceptInvitation(
+                new AcceptInvitationRequestDto("validrawtoken", "Ava", "Admin", "password1")))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(409);
+    }
+
+    @Test
     void acceptInvitation_validatorForPendingInstitution_transitionsToActive() {
         institution.setStatus(InstitutionStatus.pending);
         InvitationToken token = buildToken(false, false, UserRole.moderator);
@@ -610,6 +642,58 @@ class InvitationServiceTest {
         assertThat(pendingUser.getAccountState()).isEqualTo(UserStatus.cancelled);
         verify(userRepository).save(pendingUser);
         verify(invitationTokenRepository).delete(token);
+    }
+
+    @Test
+    void cancelPendingUserInvitation_expiredToken_stillCancelsUserAndClearsTokens() {
+        UUID userId = UUID.randomUUID();
+        User pendingUser = new User();
+        pendingUser.setId(userId);
+        pendingUser.setEmail("Invitee@Example.com");
+        pendingUser.setAccountState(UserStatus.pending);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(pendingUser));
+        when(invitationTokenRepository.deleteByRecipientEmailIgnoreCase("Invitee@Example.com")).thenReturn(0);
+
+        invitationService.cancelPendingUserInvitation(userId, adminPrincipal);
+
+        assertThat(pendingUser.getAccountState()).isEqualTo(UserStatus.cancelled);
+        verify(userRepository).save(pendingUser);
+        verify(invitationTokenRepository).deleteByRecipientEmailIgnoreCase("Invitee@Example.com");
+    }
+
+    @Test
+    void cancelPendingUserInvitation_activeUser_throws409() {
+        UUID userId = UUID.randomUUID();
+        User activeUser = new User();
+        activeUser.setId(userId);
+        activeUser.setEmail("active@example.com");
+        activeUser.setAccountState(UserStatus.active);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(activeUser));
+
+        assertThatThrownBy(() -> invitationService.cancelPendingUserInvitation(userId, adminPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(409);
+    }
+
+    @Test
+    void cancelPendingUserInvitation_missingUser_throws404() {
+        UUID userId = UUID.randomUUID();
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> invitationService.cancelPendingUserInvitation(userId, adminPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(404);
+    }
+
+    @Test
+    void cancelPendingUserInvitation_nonAdmin_throws403() {
+        assertThatThrownBy(() -> invitationService.cancelPendingUserInvitation(
+                UUID.randomUUID(), validatorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(403);
     }
 
     private static JwtUserDetails principal(String role, UUID institutionId) {

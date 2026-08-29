@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
+import com.dasigconnect.backend.model.dto.user.ChangeUserRoleRequestDto;
 import com.dasigconnect.backend.model.dto.user.ReassignContributorRequest;
 import com.dasigconnect.backend.model.dto.user.AdminTransferResponseDto;
 import com.dasigconnect.backend.model.dto.user.UpdateUserStatusRequestDto;
@@ -91,6 +92,17 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success(userService.listModerators(user)));
     }
 
+    /**
+     * GET /api/v1/users/network Lists all contributor and moderator accounts
+     * across every institution. Admin-only.
+     */
+    @GetMapping("/users/network")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<List<UserDto>>> listNetworkUsers(
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.listNetworkUsers(user)));
+    }
+
     @GetMapping("/users/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR')")
     public ResponseEntity<ApiResponse<UserDto>> getUser(
@@ -106,6 +118,22 @@ public class UserController {
             @RequestBody @Valid UpdateUserStatusRequestDto request,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(userService.updateStatus(id, request.accountState(), user)));
+    }
+
+    /**
+     * PATCH /api/v1/users/{id}/role Promotes or demotes an account between
+     * contributor, moderator, and admin. Admin-authenticated; the service layer
+     * refines this (peer admin for contributor/moderator, Admin Owner for
+     * anything touching an admin account).
+     */
+    @PatchMapping("/users/{id}/role")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<UserDto>> changeRole(
+            @PathVariable UUID id,
+            @RequestBody @Valid ChangeUserRoleRequestDto request,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(
+                userService.changeRole(id, request.role(), request.institutionId(), user)));
     }
 
     /**
@@ -149,6 +177,19 @@ public class UserController {
             @AuthenticationPrincipal JwtUserDetails user) {
         String action = userService.removeUser(id, user);
         return ResponseEntity.ok(ApiResponse.success(java.util.Map.of("action", action)));
+    }
+
+    /**
+     * POST /api/v1/users/{id}/erase Anonymises an account's personal data
+     * ("right to be forgotten"). Admin Owner only (enforced in the service).
+     * The account must already be deactivated or cancelled.
+     */
+    @PostMapping("/users/{id}/erase")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<UserService.ErasureResult>> erasePersonalData(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.erasePersonalData(id, user)));
     }
 
     @PostMapping("/users/{id}/admin-transfer")

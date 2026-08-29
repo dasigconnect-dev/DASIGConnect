@@ -61,6 +61,7 @@ export interface UserProfileResponse {
   hasAvatar: boolean;
   avatarUpdatedAt: string | null;
   avatarUrl?: string | null;
+  purgedAt?: string | null;
 }
 
 export function login(email: string, password: string) {
@@ -237,6 +238,16 @@ export function listAdmins() {
   });
 }
 
+export function listNetworkUsers() {
+  return api.get<UserProfileResponse[]>("/users/network", {}).then((response) => {
+    response.data = response.data.map((user) => ({
+      ...user,
+      avatarUrl: user.hasAvatar ? getUserAvatarUrl(user.id, user.avatarUpdatedAt) : null,
+    }));
+    return response;
+  });
+}
+
 export function updateUserStatus(
   id: string,
   accountState: "active" | "inactive" | "cancelled",
@@ -249,6 +260,17 @@ export function updateUserStatus(
 export function reassignContributor(id: string, targetInstitutionId: string) {
   return api.patch<UserProfileResponse>(`/users/${id}/institution`, {
     targetInstitutionId,
+  });
+}
+
+export function changeUserRole(
+  id: string,
+  role: "contributor" | "moderator" | "admin",
+  institutionId?: string | null,
+) {
+  return api.patch<UserProfileResponse>(`/users/${id}/role`, {
+    role,
+    institutionId: role === "contributor" ? institutionId ?? null : null,
   });
 }
 export function uploadUserAvatar(id: string, file: File) {
@@ -283,6 +305,10 @@ export function listPendingAdminInvitations() {
   return api.get<PendingInvitationResponse[]>("/invitations/pending/admins");
 }
 
+export function listPendingNetworkInvitations() {
+  return api.get<PendingInvitationResponse[]>("/invitations/pending/network");
+}
+
 export function getPendingInvitationCount(institutionId: string) {
   return api.get<{ pendingInvitations: number }>("/invitations/pending/count", {
     params: { institutionId },
@@ -307,8 +333,22 @@ export function deleteUser(id: string) {
   return api.delete<{ action: 'deactivated' | 'deleted' }>(`/users/${id}`);
 }
 
+export function eraseUserData(id: string) {
+  return api.post<{ anonymizedEmail: string; mediaAssetsPurged: number }>(
+    `/users/${id}/erase`,
+  );
+}
+
 export function cancelInvitation(id: string) {
   return api.delete(`/invitations/${id}`);
+}
+
+/**
+ * Cancels a pending account by user id. Reliable even when the invitation token
+ * has expired (DELETE /invitations/{id} needs a live token).
+ */
+export function cancelInvitationByUser(userId: string) {
+  return api.delete(`/invitations/by-user/${userId}`);
 }
 
 export interface AdminTransferResponse {

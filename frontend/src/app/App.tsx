@@ -32,6 +32,7 @@ import SubmissionScreen from "../features/submission/SubmissionScreen";
 import ValidationQueueScreen from "../features/validation/ValidationQueueScreen";
 import InstitutionManagementScreen from "../features/institution-management/InstitutionManagementScreen";
 import AdminManagementScreen from "../features/administrator-management/AdministratorManagementScreen";
+import UserManagementScreen from "../features/user-management/UserManagementScreen";
 import SystemHealthScreen from "../features/system-health/SystemHealthScreen";
 import AuditLogScreen from "../features/audit-log/AuditLogScreen";
 import CalendarScreen from "../features/calendar/CalendarScreen";
@@ -755,8 +756,12 @@ function App() {
             }
           />
           <Route
-            path="/admin/user-management/*"
-            element={<Navigate to="/admin/admin-management" replace />}
+            path="/admin/user-management"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
+                <UserManagementScreen user={currentUser!} />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/admin/administrator-management"
