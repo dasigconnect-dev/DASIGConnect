@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -63,4 +64,18 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     /** Batch load with institution eagerly fetched — avoids an N+1 when rendering lists. */
     @Query("select user from User user left join fetch user.institution where user.id in :ids")
     List<User> findAllByIdWithInstitution(@Param("ids") Collection<UUID> ids);
+
+    // ── Personal-data erasure: drop satellite rows that hold the account's PII ──
+
+    @Modifying
+    @Query(value = "DELETE FROM password_reset_tokens WHERE user_id = :userId", nativeQuery = true)
+    void deletePasswordResetTokensByUserId(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query(value = "DELETE FROM messenger_connections WHERE user_id = :userId", nativeQuery = true)
+    void deleteMessengerConnectionByUserId(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query(value = "DELETE FROM invitation_tokens WHERE lower(recipient_email) = lower(:email)", nativeQuery = true)
+    void deleteInvitationTokensByRecipientEmail(@Param("email") String email);
 }

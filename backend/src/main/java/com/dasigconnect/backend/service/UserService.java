@@ -344,6 +344,89 @@ public class UserService {
         return "deleted";
     }
 
+    /** Summary returned after a personal-data erasure. */
+    public record ErasureResult(String anonymizedEmail, int mediaAssetsPurged) {
+    }
+
+    /**
+     * Erase an account's personal data ("right to be forgotten"). The users row
+     * is anonymised in place — name, email, avatar, and credentials are
+     * scrubbed — because every FK to users(id) is RESTRICT and audit_log is
+     * append-only, so the row itself cannot be deleted once the account has
+     * acted. Their unattached media uploads are soft-deleted (the retention job
+     * purges the storage objects); submissions, validation logs, override
+     * requests, and prior audit entries are kept but now reference a scrubbed
+     * account. Admin Owner only.
+     */
+    @Transactional
+    public ErasureResult erasePersonalData(UUID id, JwtUserDetails requester) {
+        User actor = requireActiveAdminOwner(requester);
+
+        User target = userRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        if (actor.getId().equals(target.getId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You cannot erase your own account.");
+        }
+        if (target.isAdminOwner()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Transfer admin ownership before erasing this account.");
+        }
+        if (target.getPurgedAt() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This account has already been erased.");
+        }
+        if (target.getAccountState() != UserStatus.inactive && target.getAccountState() != UserStatus.cancelled) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Deactivate or cancel the account before erasing it.");
+        }
+
+        String originalEmail = target.getEmail();
+        jwtService.invalidateUserTokens(target.getId());
+
+        int mediaPurged = mediaAssetRepository.softDeleteUnattachedAssetsByUploader(target.getId(), actor.getId());
+
+        notificationRepository.deleteByRecipientId(target.getId());
+        emailDeliveryLogRepository.deleteByRecipientId(target.getId());
+        accountLockoutRepository.deleteByUserId(target.getId());
+        reviewLockRepository.deleteByLockedById(target.getId());
+        userRepository.deletePasswordResetTokensByUserId(target.getId());
+        userRepository.deleteMessengerConnectionByUserId(target.getId());
+        if (originalEmail != null) {
+            userRepository.deleteInvitationTokensByRecipientEmail(originalEmail);
+        }
+
+        String tombstoneEmail = "deleted+" + target.getId() + "@deleted.invalid";
+        target.setFirstName(null);
+        target.setLastName(null);
+        target.setDisplayName("Removed user");
+        target.setEmail(tombstoneEmail);
+        target.setPasswordHash("purged:" + UUID.randomUUID());
+        target.setAvatarData(null);
+        target.setAvatarContentType(null);
+        target.setAvatarUpdatedAt(null);
+        target.setNotifyInApp(false);
+        target.setNotifyEmail(false);
+        target.setAdminOwner(false);
+        target.setSuperAdminTransferRequestedBy(null);
+        target.setSuperAdminTransferExpiresAt(null);
+        target.setAccountState(UserStatus.inactive);
+        target.setPurgedAt(Instant.now());
+        target.setPurgedByUserId(actor.getId());
+        userRepository.save(target);
+
+        auditLogService.record(
+                actor,
+                "USER_ANONYMIZED",
+                null, null,
+                target.getId(),
+                Map.of(
+                        "originalEmail", originalEmail != null ? originalEmail : "",
+                        "role", target.getRole().name(),
+                        "mediaAssetsPurged", String.valueOf(mediaPurged)));
+
+        return new ErasureResult(tombstoneEmail, mediaPurged);
+    }
+
     /**
      * Promote or demote an account between contributor, moderator, and admin.
      *

@@ -82,6 +82,12 @@ public class User {
     @Column(name = "avatar_updated_at")
     private Instant avatarUpdatedAt;
 
+    @Column(name = "purged_at")
+    private Instant purgedAt;
+
+    @Column(name = "purged_by_user_id")
+    private UUID purgedByUserId;
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
@@ -224,5 +230,21 @@ public class User {
 
     public void setAvatarUpdatedAt(Instant avatarUpdatedAt) {
         this.avatarUpdatedAt = avatarUpdatedAt;
+    }
+
+    public Instant getPurgedAt() {
+        return purgedAt;
+    }
+
+    public void setPurgedAt(Instant purgedAt) {
+        this.purgedAt = purgedAt;
+    }
+
+    public UUID getPurgedByUserId() {
+        return purgedByUserId;
+    }
+
+    public void setPurgedByUserId(UUID purgedByUserId) {
+        this.purgedByUserId = purgedByUserId;
     }
 }

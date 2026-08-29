@@ -179,6 +179,19 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success(java.util.Map.of("action", action)));
     }
 
+    /**
+     * POST /api/v1/users/{id}/erase Anonymises an account's personal data
+     * ("right to be forgotten"). Admin Owner only (enforced in the service).
+     * The account must already be deactivated or cancelled.
+     */
+    @PostMapping("/users/{id}/erase")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<UserService.ErasureResult>> erasePersonalData(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.erasePersonalData(id, user)));
+    }
+
     @PostMapping("/users/{id}/admin-transfer")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<AdminTransferResponseDto>> requestAdminTransfer(

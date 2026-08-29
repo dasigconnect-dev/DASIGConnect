@@ -178,6 +178,27 @@ class UserControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
+    void erasePersonalData_asAdmin_returnsSummary() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(userService.erasePersonalData(any(), any()))
+                .thenReturn(new com.dasigconnect.backend.service.UserService.ErasureResult(
+                        "deleted+" + userId + "@deleted.invalid", 3));
+
+        mockMvc.perform(post("/api/v1/users/{id}/erase", userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mediaAssetsPurged").value(3))
+                .andExpect(jsonPath("$.data.anonymizedEmail").value("deleted+" + userId + "@deleted.invalid"));
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void erasePersonalData_asModerator_isForbidden() throws Exception {
+        mockMvc.perform(post("/api/v1/users/{id}/erase", UUID.randomUUID()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
     void updateStatus_missingStatus_returns400() throws Exception {
         mockMvc.perform(patch("/api/v1/users/{id}/status", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)

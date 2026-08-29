@@ -585,6 +585,111 @@ class UserServiceTest {
                 .isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
+    // ── erasePersonalData (right to be forgotten) ────────────────────────
+
+    @Test
+    void erasePersonalData_anonymizesAccountAndPurgesUnattachedMedia() {
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        User target = user(UUID.randomUUID(), "jane@cit.edu.ph", UserRole.contributor, institution);
+        target.setAccountState(UserStatus.inactive);
+        target.setAvatarData(new byte[]{1, 2, 3});
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.save(target)).thenReturn(target);
+        when(mediaAssetRepository.softDeleteUnattachedAssetsByUploader(target.getId(), owner.getId())).thenReturn(2);
+
+        UserService.ErasureResult result = userService.erasePersonalData(
+                target.getId(), principal(owner.getId(), "admin", null));
+
+        assertThat(result.mediaAssetsPurged()).isEqualTo(2);
+        assertThat(result.anonymizedEmail()).endsWith("@deleted.invalid");
+        assertThat(target.getEmail()).endsWith("@deleted.invalid");
+        assertThat(target.getFirstName()).isNull();
+        assertThat(target.getDisplayName()).isEqualTo("Removed user");
+        assertThat(target.getAvatarData()).isNull();
+        assertThat(target.getPurgedAt()).isNotNull();
+        assertThat(target.getPurgedByUserId()).isEqualTo(owner.getId());
+        verify(jwtService).invalidateUserTokens(target.getId());
+        verify(notificationRepository).deleteByRecipientId(target.getId());
+        verify(userRepository).deleteMessengerConnectionByUserId(target.getId());
+        verify(auditLogService).record(any(), eq("USER_ANONYMIZED"), any(), any(), any(), any());
+    }
+
+    @Test
+    void erasePersonalData_nonOwnerIsForbidden() {
+        User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+
+        assertThatThrownBy(() -> userService.erasePersonalData(
+                UUID.randomUUID(), principal(peerAdmin.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void erasePersonalData_selfIsRejected() {
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+
+        assertThatThrownBy(() -> userService.erasePersonalData(
+                owner.getId(), principal(owner.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void erasePersonalData_ownerTargetIsRejected() {
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        User otherOwner = user(UUID.randomUUID(), "co-owner@dasigconnect.com", UserRole.admin, null);
+        otherOwner.setAdminOwner(true);
+        otherOwner.setAccountState(UserStatus.inactive);
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(otherOwner.getId())).thenReturn(Optional.of(otherOwner));
+
+        assertThatThrownBy(() -> userService.erasePersonalData(
+                otherOwner.getId(), principal(owner.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void erasePersonalData_activeAccountIsRejected() {
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        User target = user(UUID.randomUUID(), "jane@cit.edu.ph", UserRole.contributor, institution);
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+
+        assertThatThrownBy(() -> userService.erasePersonalData(
+                target.getId(), principal(owner.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void erasePersonalData_alreadyErased_returns409() {
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        User target = user(UUID.randomUUID(), "deleted+x@deleted.invalid", UserRole.contributor, institution);
+        target.setAccountState(UserStatus.inactive);
+        target.setPurgedAt(java.time.Instant.now().minusSeconds(60));
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+
+        assertThatThrownBy(() -> userService.erasePersonalData(
+                target.getId(), principal(owner.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
     @Test
     void reassignContributor_success_transfersInstitutionAndSaves() {
         UUID targetInstId = UUID.randomUUID();
