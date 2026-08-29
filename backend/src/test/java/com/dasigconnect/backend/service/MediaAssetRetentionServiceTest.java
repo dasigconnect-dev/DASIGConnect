@@ -27,7 +27,7 @@ class MediaAssetRetentionServiceTest {
         MediaAssetRepository mediaAssetRepository = mock(MediaAssetRepository.class);
         MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository = mock(MediaAssetEmbeddingRepository.class);
         AssetTagRepository assetTagRepository = mock(AssetTagRepository.class);
-        R2StorageService storageService = mock(R2StorageService.class);
+        MediaStorageService storageService = mock(MediaStorageService.class);
         PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
         TransactionStatus txStatus = mock(TransactionStatus.class);
         when(txManager.getTransaction(any())).thenReturn(txStatus);

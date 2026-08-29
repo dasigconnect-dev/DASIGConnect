@@ -61,7 +61,7 @@ class MediaAssetServiceTest {
     @Mock
     private SubmissionService submissionService;
     @Mock
-    private R2StorageService r2StorageService;
+    private MediaStorageService mediaStorage;
     @Mock
     private AIClassificationService aiClassificationService;
     @Mock
@@ -89,7 +89,7 @@ class MediaAssetServiceTest {
                 mediaAssetEmbeddingRepository,
                 institutionRepository,
                 submissionService,
-                r2StorageService,
+                mediaStorage,
                 aiClassificationService,
                 voyageAIClient,
                 auditLogService,

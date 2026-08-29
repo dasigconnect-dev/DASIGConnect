@@ -385,9 +385,17 @@ function App() {
       toast.success("Account activated. Welcome to DASIGConnect.");
       setInviteState("success");
       navigate("/dashboard");
-    } catch {
-      toast.error("We could not activate this invitation. Please request a new link.");
-      setInviteState("expired");
+    } catch (err: unknown) {
+      const message = getApiErrorMessage(
+        err,
+        "We could not activate this invitation. Please try again.",
+      );
+      toast.error(message);
+      if (isAlreadyUsedInviteError(message)) {
+        setInviteState("already");
+      } else if (isExpiredInviteError(message)) {
+        setInviteState("expired");
+      }
     } finally {
       setInviteLoading(false);
     }
@@ -519,7 +527,7 @@ function App() {
 
   async function validateInviteToken(token: string) {
     try {
-      const response = await validateInvitation(token);
+      const response = await validateInvitation(token.trim());
       const data = response.data;
       setInviteEmail(data.recipientEmail);
       setInviteRole(formatRoleLabel(data.assignedRole));
@@ -530,8 +538,13 @@ function App() {
       setInvitePassword("");
       setInviteConfirmPassword("");
       setInviteState("form");
-    } catch {
-      setInviteState("expired");
+    } catch (err: unknown) {
+      const message = getApiErrorMessage(err, "Invalid invitation token.");
+      if (isAlreadyUsedInviteError(message)) {
+        setInviteState("already");
+      } else {
+        setInviteState("expired");
+      }
     }
   }
 
@@ -992,10 +1005,26 @@ function getApiErrorMessage(error: unknown, fallback: string) {
     const data = response.data;
     if (isRecord(data)) {
       if (typeof data.error === "string") return data.error;
+      // ApiResponse envelope: { success, data, error: { code, message } }
+      if (isRecord(data.error) && typeof data.error.message === "string") {
+        return data.error.message;
+      }
       if (typeof data.message === "string") return data.message;
     }
   }
   return typeof error.message === "string" ? error.message : fallback;
+}
+
+// Matches the backend reason strings from InvitationService#assertTokenUnused
+// and #acceptInvitation ("Invitation has expired", "Invitation has already
+// been used", "Account is already active").
+function isExpiredInviteError(message: string) {
+  return message.toLowerCase().includes("expired");
+}
+
+function isAlreadyUsedInviteError(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes("already been used") || normalized.includes("already active");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
