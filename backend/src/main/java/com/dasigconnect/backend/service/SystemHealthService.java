@@ -66,10 +66,12 @@ public class SystemHealthService {
     private final ScheduledJobRunRepository scheduledJobRunRepository;
     private final TokenManagementService tokenManagementService;
     private final JavaMailSender mailSender;
+    private final MediaStorageService mediaStorage;
     private final HttpClient httpClient;
     private final long databaseLimitBytes;
     private final long mediaLimitBytes;
     private final double storageWarningThreshold;
+    private final double storageCriticalThreshold;
     private final String anthropicApiKey;
     private final String voyageApiKey;
 
@@ -78,18 +80,24 @@ public class SystemHealthService {
             ScheduledJobRunRepository scheduledJobRunRepository,
             TokenManagementService tokenManagementService,
             JavaMailSender mailSender,
-            @Value("${app.system-health.database-limit-bytes:1073741824}") long databaseLimitBytes,
-            @Value("${app.system-health.media-limit-bytes:1073741824}") long mediaLimitBytes,
+            MediaStorageService mediaStorage,
+            // Defaults track the current free tiers: Supabase Postgres 500 MB,
+            // Cloudflare R2 10 GB-month (storage billed only past that).
+            @Value("${app.system-health.database-limit-bytes:500000000}") long databaseLimitBytes,
+            @Value("${app.system-health.media-limit-bytes:10000000000}") long mediaLimitBytes,
             @Value("${app.system-health.storage-warning-threshold-percent:80}") double storageWarningThreshold,
+            @Value("${app.system-health.storage-critical-threshold-percent:95}") double storageCriticalThreshold,
             @Value("${anthropic.api.key:}") String anthropicApiKey,
             @Value("${voyage.api.key:}") String voyageApiKey) {
         this.jdbcTemplate = jdbcTemplate;
         this.scheduledJobRunRepository = scheduledJobRunRepository;
         this.tokenManagementService = tokenManagementService;
         this.mailSender = mailSender;
+        this.mediaStorage = mediaStorage;
         this.databaseLimitBytes = databaseLimitBytes;
         this.mediaLimitBytes = mediaLimitBytes;
         this.storageWarningThreshold = storageWarningThreshold;
+        this.storageCriticalThreshold = Math.max(storageCriticalThreshold, storageWarningThreshold);
         this.anthropicApiKey = anthropicApiKey;
         this.voyageApiKey = voyageApiKey;
         this.httpClient = HttpClient.newBuilder()
@@ -203,12 +211,30 @@ public class SystemHealthService {
     }
 
     private StorageMetricDto mediaStorage() {
+        // Prefer a real bucket scan (counts every stored object, including
+        // watermarked derivatives and orphans); fall back to the DB byte sum
+        // when the object store is unreachable or not configured.
+        try {
+            var probe = mediaStorage.probeUsage();
+            if (probe.isPresent()) {
+                var usage = probe.get();
+                String detail = String.format(
+                        "Live object-store scan: %,d object%s%s, against the configured budget.",
+                        usage.objectCount(),
+                        usage.objectCount() == 1 ? "" : "s",
+                        usage.partial() ? " (partial scan)" : "");
+                return storageMetric("Media storage", usage.totalBytes(), mediaLimitBytes, detail);
+            }
+        } catch (Exception ex) {
+            log.warn("Media storage probe failed, falling back to DB estimate: {}", ex.getMessage());
+        }
+
         try {
             Long used = jdbcTemplate.queryForObject(
                     "SELECT COALESCE(SUM(file_size_bytes), 0) FROM media_assets WHERE purged_at IS NULL",
                     Long.class);
             return storageMetric("Media storage", used == null ? 0 : used, mediaLimitBytes,
-                    "Tracked media asset bytes relative to configured platform tier limit.");
+                    "Estimated from tracked media asset bytes (object-store scan unavailable), against the configured budget.");
         } catch (Exception ex) {
             return new StorageMetricDto("Media storage", HealthStatus.UNAVAILABLE, 0, mediaLimitBytes,
                     0, storageWarningThreshold, "Media storage metric could not be retrieved.");
@@ -218,9 +244,26 @@ public class SystemHealthService {
     private StorageMetricDto storageMetric(String name, long used, long limit, String detail) {
         double percent = limit > 0 ? round(used * 100.0 / limit) : 0;
         HealthStatus status = limit <= 0 ? HealthStatus.UNAVAILABLE
+                : percent >= storageCriticalThreshold ? HealthStatus.UNHEALTHY
                 : percent >= storageWarningThreshold ? HealthStatus.WARNING
                 : HealthStatus.HEALTHY;
-        return new StorageMetricDto(name, status, used, limit, percent, storageWarningThreshold, detail);
+        String escalated = status == HealthStatus.UNHEALTHY
+                ? detail + String.format(" Usage is at %.0f%% of the %s budget — reduce usage or raise the plan to avoid overage charges.",
+                        percent, humanBytes(limit))
+                : status == HealthStatus.WARNING
+                        ? detail + String.format(" Usage is at %.0f%% of the %s budget.", percent, humanBytes(limit))
+                        : detail;
+        return new StorageMetricDto(name, status, used, limit, percent, storageWarningThreshold, escalated);
+    }
+
+    private static String humanBytes(long bytes) {
+        if (bytes >= 1_000_000_000L) {
+            return String.format("%.0f GB", bytes / 1_000_000_000.0);
+        }
+        if (bytes >= 1_000_000L) {
+            return String.format("%.0f MB", bytes / 1_000_000.0);
+        }
+        return bytes + " B";
     }
 
     private ExternalServiceHealthDto facebookTokenHealth() {

@@ -573,7 +573,6 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
     const value = Math.min(Math.max(item.value, 0), maxScale);
     const percent = (value / maxScale) * 100;
     const targetPercent = (24 / maxScale) * 100;
-    const isOver = item.value > 24;
 
     return (
       <div className="sys-hires-sla-wrap">
@@ -676,6 +675,9 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
     const radius = 30;
     const circumference = 2 * Math.PI * radius;
     const strokeDash = (percent / 100) * circumference;
+    const succeeded = Math.round((percent / 100) * item.sampleSize);
+    const failed = Math.max(item.sampleSize - succeeded, 0);
+    const allClean = failed === 0;
 
     return (
       <div className="sys-hires-donut-layout">
@@ -694,7 +696,7 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
               cy="38"
               r={radius}
               fill="none"
-              stroke="#10b981"
+              stroke={allClean ? "#10b981" : "#f59e0b"}
               strokeWidth="7"
               strokeDasharray={`${strokeDash} ${circumference}`}
               strokeDashoffset="0"
@@ -703,7 +705,7 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
             />
           </svg>
           <div className="sys-donut-center-stat">
-            <i className="ti ti-check sys-check-green" />
+            {allClean && <i className="ti ti-check sys-check-green" />}
             <strong>{percent.toFixed(0)}%</strong>
           </div>
         </div>
@@ -712,15 +714,19 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
           <div className="sys-legend-item">
             <span className="sys-legend-dot sys-dot-emerald" />
             <div>
-              <strong>{item.sampleSize} of {item.sampleSize} Published Successfully</strong>
+              <strong>{succeeded} of {item.sampleSize} Published Successfully</strong>
               <span>Direct automated Facebook Graph API dispatches</span>
             </div>
           </div>
           <div className="sys-legend-item">
             <span className="sys-legend-dot sys-dot-slate" />
             <div>
-              <strong>0 Failed Post Attempts</strong>
-              <span>Zero network timeouts or API rejections recorded</span>
+              <strong>{failed} Failed Post Attempt{failed === 1 ? "" : "s"}</strong>
+              <span>
+                {allClean
+                  ? "Zero network timeouts or API rejections recorded"
+                  : "Network timeouts or Graph API rejections — see Resolution Center"}
+              </span>
             </div>
           </div>
         </div>
@@ -809,8 +815,13 @@ function getMetricExplanation(item: OperationalMetric): string {
       return `${item.value.toFixed(1)}% of submissions required revisions before approval. Standard direct-approval threshold is ≥85%.`;
     case "manual_fallback_resolution_rate":
       return "Percentage of automated posting failures that were resolved via manual fallback.";
-    case "publish_success_rate":
-      return "100% of approved posts were published cleanly to connected social channels with zero dispatch errors.";
+    case "publish_success_rate": {
+      const succeeded = Math.round((Math.min(Math.max(item.value, 0), 100) / 100) * item.sampleSize);
+      const failed = Math.max(item.sampleSize - succeeded, 0);
+      return failed === 0
+        ? `All ${item.sampleSize} approved post${item.sampleSize === 1 ? "" : "s"} published cleanly to connected social channels with zero dispatch errors.`
+        : `${item.value.toFixed(1)}% published cleanly — ${failed} of ${item.sampleSize} dispatch${failed === 1 ? "" : "es"} failed and need review in the Resolution Center.`;
+    }
     case "live_event_fast_track_volume":
       return "High-priority live event posts routed through expedited moderator workflows.";
     default:
@@ -820,7 +831,7 @@ function getMetricExplanation(item: OperationalMetric): string {
 
 function getMetricBenchmark(item: OperationalMetric): string {
   if (item.key === "approval_turnaround_time") return item.value <= 24 ? "Target SLA: ≤ 24h (Met)" : "Target SLA: ≤ 24h (Over)";
-  if (item.key === "publish_success_rate") return "Target: ≥ 98% (Met)";
+  if (item.key === "publish_success_rate") return item.value >= 98 ? "Target: ≥ 98% (Met)" : "Target: ≥ 98% (Below)";
   if (item.key === "edit_approve_rate") return "Benchmark: ≤ 15%";
   if (item.key === "manual_fallback_resolution_rate") return "Target: 100% Resolved";
   if (item.key === "live_event_fast_track_volume") return "Expedited Window";
@@ -1045,11 +1056,13 @@ function overallStatusIcon(status: HealthStatus) {
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  // Decimal (1000) units so the figures line up with how Cloudflare R2 and
+  // Supabase report quota in their dashboards (10 GB, 500 MB, …).
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
   let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
     unit += 1;
   }
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
