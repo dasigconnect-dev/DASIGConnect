@@ -50,8 +50,8 @@ class SystemHealthControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
-    void summary_asAdministrator_returnsSystemHealthPayload() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void summary_asModerator_returnsSystemHealthPayload() throws Exception {
         when(systemHealthService.summary()).thenReturn(new SystemHealthSummaryDto(
                 Instant.parse("2026-08-27T00:00:00Z"),
                 HealthStatus.WARNING,
@@ -70,8 +70,8 @@ class SystemHealthControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
-    void export_asSuperAdministrator_returnsCsvAttachment() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void export_asSuperModerator_returnsCsvAttachment() throws Exception {
         when(systemHealthService.exportSnapshotCsv()).thenReturn("section,metric,status,value,unit,detail\n");
 
         mockMvc.perform(get("/api/v1/system-health/export"))

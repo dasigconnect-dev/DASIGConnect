@@ -16,7 +16,7 @@ import com.dasigconnect.backend.service.ScheduledJobHealthService;
 /**
  * T-12: Weekly scan of EMBEDDING_FAILED assets.
  * If failed assets exist, dispatches a summary digest notification to the
- * Super Administrator.
+ * Admin.
  */
 @Component
 public class EmbeddingFailureDigestJob {

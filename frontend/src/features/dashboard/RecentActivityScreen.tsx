@@ -33,7 +33,7 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
   const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
-    if (user?.role === "administrator" && user.institutionId) {
+    if (user?.role === "moderator" && user.institutionId) {
       setInstitutions([
         {
           id: user.institutionId,
@@ -44,7 +44,7 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
       ]);
       return;
     }
-    if (user?.role !== "super_administrator") return;
+    if (user?.role !== "admin") return;
     listInstitutions()
       .then((response) => {
         const mapped = response.data.map((item) => ({
@@ -378,7 +378,7 @@ function statusDisplay(status: SubmissionSummary["status"]): ActivityItem["statu
 
 function getInstitutionName(user: User | null): string {
   if (!user) return "Institution";
-  if (user.role === "super_administrator") return "DASIG";
+  if (user.role === "admin") return "DASIG";
   const explicit = user.inst?.trim();
   if (explicit && explicit !== user.institutionId) return explicit;
   const emailDomain =

@@ -88,7 +88,7 @@ class AuditLogServiceTest {
         actor.setEmail("validator@dasig.gov.ph");
         actor.setFirstName("Maria");
         actor.setLastName("Clara");
-        actor.setRole(UserRole.administrator);
+        actor.setRole(UserRole.moderator);
         when(userRepository.findAllByIdWithInstitution(any())).thenReturn(List.of(actor));
 
         AuditLog log = new AuditLog();

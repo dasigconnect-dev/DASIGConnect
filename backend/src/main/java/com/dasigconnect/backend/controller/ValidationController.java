@@ -66,7 +66,7 @@ public class ValidationController {
      * sorted by scheduledAt DESC. Used by the History tab in the validation UI.
      */
     @GetMapping("/queue")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<SubmissionSummaryDto>>> getQueue(
             @RequestParam(defaultValue = "false") boolean history,
             @AuthenticationPrincipal JwtUserDetails caller) {
@@ -81,7 +81,7 @@ public class ValidationController {
      * frontend to restore lock UI state after a page refresh. data is null if unlocked.
      */
     @GetMapping("/{id}/lock")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<ReviewLockDto>> getLockStatus(@PathVariable UUID id) {
         ReviewLockDto dto = reviewLockService.getActiveLock(id).map(ReviewLockDto::from).orElse(null);
         return ResponseEntity.ok(ApiResponse.success(dto));
@@ -93,7 +93,7 @@ public class ValidationController {
      * Returns 409 if another validator holds an active lock.
      */
     @PostMapping("/{id}/lock")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<ReviewLockDto>> acquireLock(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails caller) {
@@ -106,7 +106,7 @@ public class ValidationController {
      * Releases the review lock. Reverts IN_REVIEW → PENDING if no action was taken.
      */
     @DeleteMapping("/{id}/lock")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<Void> releaseLock(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails caller) {
@@ -119,7 +119,7 @@ public class ValidationController {
      * Approves a submission: transitions to SCHEDULED and confirms slot reservation.
      */
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<Void> approve(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails caller) {
@@ -130,10 +130,10 @@ public class ValidationController {
     /**
      * POST /api/v1/validation/{id}/edit
      * A9: applies a direct inline edit to any editable field. The submission stays
-     * IN_REVIEW — the Administrator must still choose a terminal action afterwards.
+     * IN_REVIEW — the Moderator must still choose a terminal action afterwards.
      */
     @PostMapping("/{id}/edit")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<Void> edit(
             @PathVariable UUID id,
             @Valid @RequestBody SubmissionUpdateDto dto,
@@ -145,7 +145,7 @@ public class ValidationController {
     // ── A9: media edits during review (admin only) ──────────────────────────
 
     @PostMapping("/{id}/media/upload-url")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<SignedUploadUrlResponse>> reviewMediaUploadUrl(
             @PathVariable UUID id,
             @Valid @RequestBody SignedUploadUrlRequest dto,
@@ -154,7 +154,7 @@ public class ValidationController {
     }
 
     @PostMapping("/{id}/media")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<SubmissionResponseDto>> attachReviewMedia(
             @PathVariable UUID id,
             @Valid @RequestBody AttachMediaDto dto,
@@ -164,7 +164,7 @@ public class ValidationController {
     }
 
     @PostMapping("/{id}/assets")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<SubmissionResponseDto>> attachReviewLibraryAsset(
             @PathVariable UUID id,
             @Valid @RequestBody AttachAssetDto dto,
@@ -174,7 +174,7 @@ public class ValidationController {
     }
 
     @DeleteMapping("/{id}/assets/{assetId}")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<Void> detachReviewMedia(
             @PathVariable UUID id,
             @PathVariable UUID assetId,
@@ -184,7 +184,7 @@ public class ValidationController {
     }
 
     @PatchMapping("/{id}/media/order")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<SubmissionResponseDto>> reorderReviewMedia(
             @PathVariable UUID id,
             @Valid @RequestBody SubmissionMediaOrderDto dto,
@@ -198,7 +198,7 @@ public class ValidationController {
      * Body: { remarks: string (10–1000 chars, BR-VAL-02) }
      */
     @PostMapping("/{id}/revise")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<Void> requestRevision(
             @PathVariable UUID id,
             @Valid @RequestBody RevisionRequestDto body,
@@ -213,7 +213,7 @@ public class ValidationController {
      * Body: { reasonCode: string (BR-VAL-03), notes: string? (required if OTHER) }
      */
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<Void> reject(
             @PathVariable UUID id,
             @Valid @RequestBody RejectionRequestDto body,
@@ -227,7 +227,7 @@ public class ValidationController {
      * Returns the validation audit log for a submission, newest first.
      */
     @GetMapping("/{id}/log")
-    @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<ValidationLogDto>>> getLog(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails caller) {

@@ -215,7 +215,7 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     linkLabel: "View Post Record",
     badgeClass: "badge-published",
   },
-  institution_no_validator: {
+  institution_no_moderator: {
     trigger: "SYSTEM",
     category: "system",
     icon: "ti ti-building",

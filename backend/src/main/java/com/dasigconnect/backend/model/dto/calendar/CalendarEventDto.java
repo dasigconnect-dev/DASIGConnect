@@ -47,7 +47,7 @@ public class CalendarEventDto {
         return dto;
     }
 
-    /** For cross-institution slots visible to contributors/validators: timing and title visible, sensitive content (caption, media, description, contributor) masked. */
+    /** For cross-institution slots visible to contributors/moderators: timing and title visible, sensitive content (caption, media, description, contributor) masked. */
     public static CalendarEventDto masked(Submission s) {
         CalendarEventDto dto = new CalendarEventDto();
         dto.id = s.getId();

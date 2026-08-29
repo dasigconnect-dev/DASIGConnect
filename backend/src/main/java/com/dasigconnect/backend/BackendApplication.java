@@ -98,7 +98,7 @@ public class BackendApplication {
                 System.out.println("JDBC URL: " + metaData.getURL());
                 System.out.println("Database Product Version: " + metaData.getDatabaseProductVersion());
 
-                // Seed Default Administrator
+                // Seed Default Admin
                 String adminEmail = "admin@dasigconnect.com";
 
                 System.out.println("Configuring database user and tables for clean RLS bypassing...");
@@ -196,21 +196,21 @@ public class BackendApplication {
                 }
 
                 if (userRepository.findByEmail(adminEmail).isEmpty()) {
-                    System.out.println("No administrator found. Seeding default administrator...");
+                    System.out.println("No admin found. Seeding default admin...");
                     com.dasigconnect.backend.model.entity.User admin = new com.dasigconnect.backend.model.entity.User();
                     admin.setEmail(adminEmail);
                     admin.setFirstName("DASIG");
-                    admin.setLastName("Administrator");
-                    admin.setRole(com.dasigconnect.backend.model.entity.UserRole.super_administrator);
-                    admin.setSuperAdministrator(true);
+                    admin.setLastName("Admin");
+                    admin.setRole(com.dasigconnect.backend.model.entity.UserRole.admin);
+                    admin.setAdminOwner(true);
                     admin.setPasswordHash(passwordEncoder.encode("admin123"));
                     admin.setAccountState(com.dasigconnect.backend.model.entity.UserStatus.active);
                     userRepository.save(admin);
-                    System.out.println("Default administrator created successfully!");
+                    System.out.println("Default admin created successfully!");
                     System.out.println(" -> Email: " + adminEmail);
                     System.out.println(" -> Password: admin123");
                 } else {
-                    System.out.println("Administrator already exists: " + adminEmail);
+                    System.out.println("Admin already exists: " + adminEmail);
                 }
 
                 System.out.println("Current Tables in Schema 'public':");

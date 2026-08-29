@@ -108,7 +108,7 @@ function putToSupabase(
 export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenProps) {
   const toast = useToast();
   const navigate = useNavigate();
-  const isAdmin = user.role === "administrator" || user.role === "super_administrator";
+  const isAdmin = user.role === "admin";
 
   // Admins browse network-wide by default; the per-institution filter narrows it.
   const networkView = isAdmin;

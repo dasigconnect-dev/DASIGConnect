@@ -21,7 +21,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const location = useLocation();
   const navigate = useNavigate();
 
-  const canManagePage = user.role !== "contributor";
+  const canManagePage = user.role === "admin";
   const [initialLoading, setInitialLoading] = useState(true);
 
   // Tab State
@@ -45,7 +45,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [facebookPageId, setFacebookPageId] = useState("");
   const [institutions, setInstitutions] = useState<{ id: string; name: string; logoUrl?: string | null }[]>([]);
   const [selectedInstitutionId, setSelectedInstitutionId] = useState("");
-  const [userInstitutionId, setUserInstitutionId] = useState<string | null>(user.institutionId || null);
 
   // Watermark Studio States
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
@@ -60,7 +59,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [copiedCode, setCopiedCode] = useState(false);
 
   const [saving, setSaving] = useState<"account" | "password" | "page" | "watermark" | "messenger" | null>(null);
-  const pageInstitutionId = user.role === "administrator" ? (userInstitutionId || user.institutionId || null) : selectedInstitutionId || null;
+  const pageInstitutionId = selectedInstitutionId || null;
 
   const currentInstitution = institutions.find((i) => i.id === pageInstitutionId);
 
@@ -114,19 +113,21 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   }, [location.hash, canManagePage]);
 
   function switchTab(tab: SettingsTab) {
+    if (tab === "page" && !canManagePage) return;
     setActiveTab(tab);
     setIsStudioOpen(false);
     navigate(`/settings#${tab}`, { replace: true });
   }
 
   function openStudio() {
+    if (!canManagePage) return;
     setIsStudioOpen(true);
     navigate(`/settings#watermark-studio`, { replace: true });
   }
 
   function closeStudio() {
     setIsStudioOpen(false);
-    navigate(`/settings#page`, { replace: true });
+    navigate(`/settings#${canManagePage ? "page" : "account"}`, { replace: true });
   }
 
   // Initial mount: load profile, institutions, and messenger status
@@ -144,9 +145,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
           setInitialNotifyInApp(data.notifyInApp);
           setNotifyEmail(data.notifyEmail);
           setInitialNotifyEmail(data.notifyEmail);
-          if (data.institutionId) {
-            setUserInstitutionId(data.institutionId);
-          }
         })
         .catch(() => {}),
     ];
@@ -163,7 +161,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       );
     }
 
-    if (user.role === "super_administrator") {
+    if (user.role === "admin") {
       promises.push(
         listInstitutions()
           .then(({ data }) => {
@@ -452,7 +450,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
           </header>
 
           <div className="settings-studio-body">
-            {user.role === "super_administrator" && (
+            {user.role === "admin" && (
               <div className="settings-scope-panel" style={{ marginBottom: "16px" }}>
                 <div className="settings-scope-icon">
                   <i className="ti ti-building-community" />
@@ -715,7 +713,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
           {/* Tab 3: Page Settings (Admins only) */}
           {activeTab === "page" && canManagePage && (
             <div className="settings-page-overview-grid">
-              {user.role === "super_administrator" && (
+              {user.role === "admin" && (
                 <div className="settings-scope-panel settings-card-wide" style={{ marginBottom: "8px" }}>
                   <div className="settings-scope-icon">
                     <i className="ti ti-building-community" />
@@ -955,5 +953,5 @@ function Toggle({ icon, title, description, checked, onChange }: { icon?: string
 }
 
 function formatRole(role: User["role"]) {
-  return role === "super_administrator" ? "Super Administrator" : role === "administrator" ? "Administrator" : "Contributor";
+  return role === "admin" ? "Admin" : role === "moderator" ? "Moderator" : "Contributor";
 }

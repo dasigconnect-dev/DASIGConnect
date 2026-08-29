@@ -41,9 +41,9 @@ public class MessengerConnectionService {
 
     @Transactional
     public MessengerLinkCodeDto createLinkCode(JwtUserDetails user) {
-        if (!"administrator".equals(user.role()) && !"super_administrator".equals(user.role())) {
+        if (!"moderator".equals(user.role()) && !"admin".equals(user.role())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only administrators can connect Messenger.");
+                    "Only moderators and admins can connect Messenger.");
         }
         String code = randomCode();
         Instant expiresAt = Instant.now().plus(10, ChronoUnit.MINUTES);

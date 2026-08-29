@@ -44,7 +44,7 @@ public class ValidationTimeoutService {
             "DUPLICATE_EVENT", "WRONG_INSTITUTION", "OTHER");
 
     private static final String DEFERRAL_REMARK =
-            "Publication deferred by Administrator due to validation timeout. "
+            "Publication deferred by Moderator due to validation timeout. "
             + "The original time slot has been released. "
             + "Please select a new publication time and resubmit as soon as possible.";
 

@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size;
 /**
  * Request body for POST /api/admin/institutions.
  *
- * Only Administrators may call this endpoint (enforced via @PreAuthorize in
+ * Only Moderators may call this endpoint (enforced via @PreAuthorize in
  * InstitutionController). Spring's @Valid annotation triggers the constraint
  * checks below before the request reaches the service layer.
  *

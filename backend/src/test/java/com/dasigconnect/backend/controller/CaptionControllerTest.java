@@ -86,7 +86,7 @@ class CaptionControllerTest {
     }
 
     @Test
-    void generateCaption_asAdministrator_returnsVariants() throws Exception {
+    void generateCaption_asModerator_returnsVariants() throws Exception {
         UUID submissionId = UUID.randomUUID();
         when(captionGenerationService.generateCaptions(
                 ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
@@ -106,7 +106,7 @@ class CaptionControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "MODERATOR")
     void generateCaption_asValidator_returns403() throws Exception {
         mockMvc.perform(post("/api/v1/ai/caption")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -202,8 +202,8 @@ class CaptionControllerTest {
 
     private static UsernamePasswordAuthenticationToken adminAuth() {
         JwtUserDetails principal = new JwtUserDetails(
-                UUID.randomUUID(), "admin@dasig.gov.ph", "super_administrator", null);
+                UUID.randomUUID(), "admin@dasig.gov.ph", "admin", null);
         return new UsernamePasswordAuthenticationToken(
-                principal, null, List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMINISTRATOR")));
+                principal, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
     }
 }

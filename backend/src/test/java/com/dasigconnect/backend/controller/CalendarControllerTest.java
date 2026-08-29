@@ -91,9 +91,9 @@ class CalendarControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH /api/v1/submissions/{id}/reschedule as Administrator returns 200 OK")
-    @WithMockUser(username = "admin@dasig.org", roles = {"ADMINISTRATOR"})
-    void reschedule_asAdministrator_returns200() throws Exception {
+    @DisplayName("PATCH /api/v1/submissions/{id}/reschedule as Moderator returns 200 OK")
+    @WithMockUser(username = "admin@dasig.org", roles = {"MODERATOR"})
+    void reschedule_asModerator_returns200() throws Exception {
         UUID submissionId = UUID.randomUUID();
         
         com.dasigconnect.backend.model.entity.Institution inst = new com.dasigconnect.backend.model.entity.Institution();

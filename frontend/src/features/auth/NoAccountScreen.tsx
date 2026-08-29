@@ -39,7 +39,7 @@ export default function NoAccountScreen({
             </div>
             <div className="l-desc">
               DASIGConnect is a closed platform for DOST Region 7 DASIG member
-              institutions. All accounts are provisioned by Administrators.
+              institutions. All accounts are provisioned by Moderators.
             </div>
           </div>
         </LeftPanel>
@@ -51,7 +51,7 @@ export default function NoAccountScreen({
             <div className="form-title">How to get access.</div>
             <div className="form-desc">
               DASIGConnect does not have self-registration. Accounts are created
-              by the DASIG Administrator and activated by you via invitation
+              by the DASIG Moderator and activated by you via invitation
               email.
             </div>
           </div>
@@ -59,7 +59,7 @@ export default function NoAccountScreen({
             <i className="ti ti-info-circle"></i>
             <div>
               If you are a member of a DASIG HEI, contact your institution's
-              Administrator or the DASIG Super Administrator with your official
+              Moderator or the DASIG Admin with your official
               institutional email address.
             </div>
           </div>
@@ -98,7 +98,7 @@ export default function NoAccountScreen({
                   1
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>
-                  Administrator creates your account and dispatches an invitation
+                  Moderator creates your account and dispatches an invitation
                   email to your institutional address.
                 </div>
               </div>

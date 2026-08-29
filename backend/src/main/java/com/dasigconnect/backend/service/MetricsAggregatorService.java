@@ -239,19 +239,20 @@ public class MetricsAggregatorService {
     }
 
     private boolean isAdmin(String role) {
-        return "administrator".equals(role) || "super_administrator".equals(role);
+        return "admin".equals(role);
     }
 
     private AnalyticsScope scopeFor(JwtUserDetails user, UUID institutionId, String category) {
         String role = user.role() == null ? "" : user.role().toLowerCase(Locale.ROOT);
         String normalizedCategory = category == null || category.isBlank() ? null : category.trim();
         return switch (role) {
-            case "administrator", "super_administrator" ->
-                    new AnalyticsScope(role, institutionId, null, normalizedCategory);
+            case "admin" -> new AnalyticsScope(role, institutionId, null, normalizedCategory);
+            case "moderator" -> throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Analytics is available to admins and contributors only.");
             case "contributor" -> {
                 if (institutionId != null) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                            "Institution analytics filters are available to administrators only.");
+                            "Institution analytics filters are available to admins only.");
                 }
                 yield new AnalyticsScope("contributor", user.institutionId(), user.userId(), normalizedCategory);
             }
@@ -339,7 +340,7 @@ public class MetricsAggregatorService {
     private void assertMetricAllowed(String metric, AnalyticsScope scope) {
         if (("operational-health".equals(metric) || "ai-performance".equals(metric)) && !isAdmin(scope.role())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "This analytics metric is available to administrators only.");
+                    "This analytics metric is available to admins only.");
         }
     }
 
@@ -363,7 +364,7 @@ public class MetricsAggregatorService {
 
     private String csvFilename(String metric, ReportingPeriod period, AnalyticsScope scope) {
         String role = switch (scope.role()) {
-            case "super_administrator", "administrator" -> "Administrator";
+            case "admin" -> "Admin";
             case "contributor" -> "Contributor";
             default -> "User";
         };

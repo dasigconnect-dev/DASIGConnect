@@ -113,7 +113,7 @@ class SubmissionServiceTest {
         contributor = user(contributorId, "contributor@cit.edu.ph", UserRole.contributor, institution);
         contributorPrincipal = principal(contributorId, "contributor", institutionId);
 
-        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.administrator))
+        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.moderator))
                 .thenReturn(List.of());
 
         ReflectionTestUtils.setField(submissionService, "entityManager", entityManager);
@@ -139,14 +139,14 @@ class SubmissionServiceTest {
     }
 
     @Test
-    void create_byAdministratorWithoutInstitutionId_defaultsToDasigCentralVisayas() {
+    void create_byModeratorWithoutInstitutionId_defaultsToDasigCentralVisayas() {
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
         SubmissionCreateDto dto = createDto(scheduledAt);
         dto.setInstitutionId(null); // Omitted institution_id
 
         UUID adminId = UUID.randomUUID();
-        User admin = user(adminId, "admin@dasigconnect.com", UserRole.super_administrator, null);
-        JwtUserDetails adminPrincipal = principal(adminId, "super_administrator", null);
+        User admin = user(adminId, "admin@dasigconnect.com", UserRole.admin, null);
+        JwtUserDetails adminPrincipal = principal(adminId, "admin", null);
 
         UUID dasigInstId = UUID.randomUUID();
         Institution dasigInst = new Institution();
@@ -234,14 +234,14 @@ class SubmissionServiceTest {
         UUID submissionId = UUID.randomUUID();
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
-        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.administrator, institution);
+        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.moderator, institution);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
-        when(userRepository.findByRole(UserRole.administrator))
+        when(userRepository.findByRole(UserRole.moderator))
                 .thenReturn(List.of(validator));
 
         SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
@@ -634,7 +634,7 @@ class SubmissionServiceTest {
         when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId))
                 .thenReturn(List.of(staged));
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
-        when(userRepository.findByRole(UserRole.administrator)).thenReturn(List.of());
+        when(userRepository.findByRole(UserRole.moderator)).thenReturn(List.of());
 
         submissionService.submit(submissionId, contributorPrincipal);
 
@@ -648,7 +648,7 @@ class SubmissionServiceTest {
         UUID submissionId = UUID.randomUUID();
         UUID newInstitutionId = UUID.randomUUID();
         Institution newInstitution = institution(newInstitutionId);
-        JwtUserDetails adminPrincipal = principal(contributorId, "administrator", institutionId);
+        JwtUserDetails adminPrincipal = principal(contributorId, "moderator", institutionId);
 
         Submission submission = submission(submissionId, SubmissionStatus.draft, null);
         MediaAsset stagedAsset = new MediaAsset();

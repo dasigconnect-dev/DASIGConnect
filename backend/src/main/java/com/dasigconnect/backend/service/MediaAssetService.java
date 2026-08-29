@@ -164,12 +164,12 @@ public class MediaAssetService {
         String trimmedCategory = aiCategory == null ? "" : aiCategory.trim();
         String trimmedMediaType = mediaType == null ? "" : mediaType.trim().toLowerCase();
 
-        boolean administrator = isAdmin(user);
-        boolean networkScope = administrator && "network".equalsIgnoreCase(scope);
+        boolean moderator = isAdmin(user);
+        boolean networkScope = moderator && "network".equalsIgnoreCase(scope);
         List<MediaAsset> source;
-        if (administrator && institutionId != null) {
+        if (moderator && institutionId != null) {
             source = mediaAssetRepository.findActiveByInstitution(institutionId);
-        } else if (administrator || networkScope) {
+        } else if (moderator || networkScope) {
             source = mediaAssetRepository.findAllActive();
         } else {
             // Own institution + the shared default institution.
@@ -221,14 +221,14 @@ public class MediaAssetService {
         if (trimmed.length() < 2) {
             return new MediaAssetListResponseDto(List.of(), 0, 1, 0);
         }
-        boolean administrator = isAdmin(user);
+        boolean moderator = isAdmin(user);
 
         List<MediaAsset> scope;
         java.util.Set<UUID> institutionScope = null; // null => network-wide (admin)
-        if (administrator && institutionId != null) {
+        if (moderator && institutionId != null) {
             institutionScope = java.util.Set.of(institutionId);
             scope = mediaAssetRepository.findActiveByInstitution(institutionId);
-        } else if (administrator) {
+        } else if (moderator) {
             scope = mediaAssetRepository.findAllActive();
         } else {
             institutionScope = visibleInstitutionIds(user);
@@ -715,7 +715,7 @@ public class MediaAssetService {
     }
 
     /**
-     * Load an album for deletion. Admins may delete any folder; validators any
+     * Load an album for deletion. Admins may delete any folder; moderators any
      * in their institution; contributors only folders they created themselves.
      */
     private MediaAlbum loadAlbumForDelete(UUID albumId, JwtUserDetails user) {
@@ -728,7 +728,7 @@ public class MediaAssetService {
     }
 
     /**
-     * Admin → any; validator → own institution; contributor → own institution
+     * Admin → any; moderator → own institution; contributor → own institution
      * AND creator.
      */
     private boolean canDeleteAlbum(MediaAlbum album, JwtUserDetails user) {

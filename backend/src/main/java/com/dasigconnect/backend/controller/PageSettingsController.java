@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/settings/page")
-@PreAuthorize("hasAnyRole('ADMINISTRATOR','SUPER_ADMINISTRATOR')")
+@PreAuthorize("hasRole('ADMIN')")
 public class PageSettingsController {
     private final PageSettingsService service;
     public PageSettingsController(PageSettingsService service) { this.service = service; }

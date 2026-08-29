@@ -60,8 +60,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     String role = claims.getOrDefault("role", "").toString();
                     String userIdStr = claims.getOrDefault("user_id", "").toString();
                     String email = claims.getOrDefault("email", "").toString();
-                    boolean superAdministrator = Boolean.parseBoolean(
-                            claims.getOrDefault("super_administrator", "false").toString());
+                    boolean adminOwner = Boolean.parseBoolean(
+                            claims.getOrDefault(
+                                    "admin_owner",
+                                    claims.getOrDefault("admin", "false"))
+                                    .toString());
                     Object instClaim = claims.get("institution_id");
                     String instStr = instClaim != null ? instClaim.toString() : null;
 
@@ -100,7 +103,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             email,
                             role,
                             institutionId,
-                            superAdministrator);
+                            adminOwner);
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(principal, null, authorities);
                     SecurityContextHolder.getContext().setAuthentication(authentication);

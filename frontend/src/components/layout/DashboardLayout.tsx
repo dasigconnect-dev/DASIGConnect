@@ -19,6 +19,8 @@ interface DashboardLayoutProps {
 
 function getActiveNav(pathname: string): DashboardNavId {
   if (pathname.startsWith('/admin/institution-management')) return 'institution-management'
+  if (pathname.startsWith('/admin/admin-management')) return 'user-management'
+  if (pathname.startsWith('/admin/moderator-management')) return 'user-management'
   if (pathname.startsWith('/admin/administrator-management')) return 'user-management'
   if (pathname.startsWith('/admin/user-management')) return 'user-management'
   if (pathname.startsWith('/admin/system-health')) return 'system-health'

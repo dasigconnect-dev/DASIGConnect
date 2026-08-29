@@ -33,13 +33,13 @@ import com.dasigconnect.backend.service.ManualPublishingService;
 import jakarta.validation.Valid;
 
 /**
- * UC-3.4 Resolution Center — administrator-only endpoints for handling
+ * UC-3.4 Resolution Center — moderator-only endpoints for handling
  * PUBLISH_FAILED and (during token failure) SCHEDULED submissions.
  * Base path: /api/v1/resolution
  */
 @RestController
 @RequestMapping("/api/v1/resolution")
-@PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
+@PreAuthorize("hasRole('ADMIN')")
 public class ResolutionController {
 
     private final SubmissionRepository submissionRepository;

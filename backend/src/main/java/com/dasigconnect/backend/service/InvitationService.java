@@ -69,13 +69,10 @@ public class InvitationService {
 
     public InvitationResponseDto createInvitation(CreateInvitationRequestDto dto) {
         throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "An authenticated administrator is required to create invitations");
+                "An authenticated admin is required to create invitations");
     }
 
     public InvitationResponseDto createInvitation(CreateInvitationRequestDto dto, JwtUserDetails inviter) {
-        if (dto.assignedRole() == UserRole.super_administrator) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Super Administrator accounts cannot be invited through institution onboarding");
-        }
         String recipientEmail = dto.recipientEmail().trim().toLowerCase();
         Institution institution = resolveInvitationInstitution(dto);
         validateInviterScope(dto, inviter);
@@ -206,11 +203,12 @@ public class InvitationService {
         if (user.getAccountState() == UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "An active account already exists for this email");
         }
-        if (user.getRole() == UserRole.administrator && user.getAccountState() == UserStatus.inactive) {
+        if ((user.getRole() == UserRole.moderator || user.getRole() == UserRole.admin)
+                && user.getAccountState() == UserStatus.inactive) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "A deactivated Administrator must be reactivated by the Super Administrator");
+                    "A deactivated account must be reactivated by an admin");
         }
-        user.setSuperAdministrator(false);
+        user.setAdminOwner(false);
         user.setSuperAdminTransferRequestedBy(null);
         user.setSuperAdminTransferExpiresAt(null);
         user.setRole(role);
@@ -220,16 +218,16 @@ public class InvitationService {
     }
 
     private Institution resolveInvitationInstitution(CreateInvitationRequestDto dto) {
-        if (dto.assignedRole() == UserRole.administrator) {
+        if (dto.assignedRole() == UserRole.admin) {
             if (dto.institutionId() != null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Administrator invitations must not be assigned to an institution");
+                        "Admin invitations must not be assigned to an institution");
             }
             return null;
         }
         if (dto.institutionId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Institution is required for contributor invitations");
+                    "Institution is required for contributor and moderator invitations");
         }
         Institution institution = entityManager.find(Institution.class, dto.institutionId());
         if (institution == null) {
@@ -369,9 +367,9 @@ public class InvitationService {
         InvitationToken token = invitationTokenRepository.findById(tokenId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invitation not found."));
 
-        if (!isAdministrator(requester)) {
+        if (!isAdmin(requester)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only administrators and super administrators can cancel invitations.");
+                    "Only admins can cancel invitations.");
         }
 
         if (token.getUsedAt() != null) {
@@ -408,13 +406,13 @@ public class InvitationService {
     }
 
     @Transactional(readOnly = true)
-    public List<PendingInvitationDto> listPendingAdministrators(JwtUserDetails requester) {
-        if (!isAdministrator(requester)) {
+    public List<PendingInvitationDto> listPendingAdmins(JwtUserDetails requester) {
+        if (!isAdmin(requester)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only administrators and super administrators can view administrator invitations");
+                    "Only admins can view admin invitations");
         }
         return invitationTokenRepository
-                .findPendingNetworkRoleInvitations(UserRole.administrator, Instant.now())
+                .findPendingNetworkRoleInvitations(UserRole.admin, Instant.now())
                 .stream()
                 .map(PendingInvitationDto::from)
                 .toList();
@@ -429,11 +427,22 @@ public class InvitationService {
     }
 
     private void validateInviterScope(CreateInvitationRequestDto dto, JwtUserDetails inviter) {
-        if (isAdministrator(inviter)) {
+        if (isAdmin(inviter)) {
+            return;
+        }
+        if (inviter != null && "moderator".equalsIgnoreCase(inviter.role())) {
+            if (dto.assignedRole() != UserRole.contributor) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Only admins can invite moderators or admins");
+            }
+            if (inviter.institutionId() == null || !inviter.institutionId().equals(dto.institutionId())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Moderators can only invite contributors to their own institution");
+            }
             return;
         }
         throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Only administrators and super administrators can send invitations");
+                "Only admins can send invitations");
     }
 
     private void invalidateOpenInvitations(String recipientEmail, Instant now) {
@@ -445,16 +454,21 @@ public class InvitationService {
                 });
     }
 
-    private boolean isAdministrator(JwtUserDetails inviter) {
-        return inviter != null && ("super_administrator".equalsIgnoreCase(inviter.role())
-                || "administrator".equalsIgnoreCase(inviter.role()));
+    private boolean isAdmin(JwtUserDetails inviter) {
+        return inviter != null && "admin".equalsIgnoreCase(inviter.role());
     }
 
     private void validateInstitutionScope(UUID institutionId, JwtUserDetails requester) {
-        if (isAdministrator(requester)) {
+        if (isAdmin(requester)) {
+            return;
+        }
+        if (requester != null
+                && "moderator".equalsIgnoreCase(requester.role())
+                && requester.institutionId() != null
+                && requester.institutionId().equals(institutionId)) {
             return;
         }
         throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Only administrators and super administrators can view invitations");
+                "Only admins and same-institution moderators can view invitations");
     }
 }

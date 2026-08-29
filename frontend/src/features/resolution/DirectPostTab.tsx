@@ -243,10 +243,10 @@ export default function DirectPostTab() {
               About Direct Posts
             </div>
             <ul className="rc-dp-info-list">
-              <li>Bypasses the standard Contributor → Validator → Administrator workflow entirely.</li>
+              <li>Bypasses the standard Contributor → Moderator → Moderator workflow entirely.</li>
               <li>Reserved for crisis, emergency, or strategic scenarios.</li>
               <li>Every direct post is immutably logged with your identity, content, timing, and reason.</li>
-              <li>Institution Validators are notified upon successful publication.</li>
+              <li>Institution Moderators are notified upon successful publication.</li>
               <li>On API failure, the post appears in the API Failures tab for retry or manual fallback.</li>
             </ul>
           </div>

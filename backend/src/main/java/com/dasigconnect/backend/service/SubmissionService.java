@@ -259,11 +259,11 @@ public class SubmissionService {
                 || requestedInstitutionId.equals(submission.getInstitution().getId())) {
             return;
         }
-        boolean isAdmin = "administrator".equalsIgnoreCase(user.role())
-                || "super_administrator".equalsIgnoreCase(user.role());
+        boolean isAdmin = "moderator".equalsIgnoreCase(user.role())
+                || "admin".equalsIgnoreCase(user.role());
         if (!isAdmin) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only network administrators can change a submission's institution.");
+                    "Only network moderators can change a submission's institution.");
         }
         Institution target = institutionRepository.findById(requestedInstitutionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -468,7 +468,7 @@ public class SubmissionService {
                         ? Map.of("scheduledAt", submission.getScheduledAt().toString())
                         : Map.of());
 
-        // T-01 / T-11 — notify institution administrators via domain events
+        // T-01 / T-11 — notify institution moderators via domain events
         if (eventPublisher != null) {
             if (fastTrack) {
                 eventPublisher.publishEvent(new FastTrackSubmissionEvent(submission));
@@ -524,7 +524,7 @@ public class SubmissionService {
     /**
      * Lists submissions filtered by the caller's role: - CONTRIBUTOR: only
      * their own submissions for their institution - VALIDATOR: all submissions
-     * for their institution - ADMINISTRATOR: own editable drafts plus submitted
+     * for their institution - MODERATOR: own editable drafts plus submitted
      * network records for monitoring/approval handoff
      */
     @Transactional(readOnly = true)
@@ -538,7 +538,7 @@ public class SubmissionService {
 
     /**
      * Returns full submission detail. Accessible by the owning contributor, any
-     * validator of the same institution, or any administrator.
+     * validator of the same institution, or any moderator.
      */
     @Transactional(readOnly = true)
     public SubmissionResponseDto get(UUID submissionId, JwtUserDetails user) {
@@ -769,7 +769,7 @@ public class SubmissionService {
     // ── UC-3.1 Admin Reschedule ───────────────────────────────────────────────
 
     /**
-     * Allows an Administrator to move a SCHEDULED submission to a new slot.
+     * Allows an Moderator to move a SCHEDULED submission to a new slot.
      *
      * Guard rails are re-evaluated. Hard violations block the move unless the
      * admin supplies an overrideReason, which is then written to the audit log.
@@ -827,7 +827,7 @@ public class SubmissionService {
     }
 
     private UUID resolveSubmissionInstitutionId(UUID requestedInstitutionId, JwtUserDetails user) {
-        if ("administrator".equalsIgnoreCase(user.role()) || "super_administrator".equalsIgnoreCase(user.role())) {
+        if ("moderator".equalsIgnoreCase(user.role()) || "admin".equalsIgnoreCase(user.role())) {
             if (requestedInstitutionId != null) {
                 return requestedInstitutionId;
             }
@@ -857,7 +857,7 @@ public class SubmissionService {
 
     private void assertReadAccess(Submission submission, JwtUserDetails user) {
         switch (user.role().toLowerCase()) {
-            case "administrator", "super_administrator" -> {
+            case "moderator", "admin" -> {
                 if (isEditableStatus(submission)
                         && !submission.getContributor().getId().equals(user.userId())) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied.");

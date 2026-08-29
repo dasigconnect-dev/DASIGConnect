@@ -85,8 +85,8 @@ public class ValidationService {
 
     /**
      * Returns the network-wide approval queue: PENDING + IN_REVIEW submissions
-     * sorted by scheduledAt ASC (UC-2.4 Main Flow step 2). Administrator and
-     * Super Administrator accounts are both network-wide roles.
+     * sorted by scheduledAt ASC (UC-2.4 Main Flow step 2). Moderator and
+     * Admin accounts are both network-wide roles.
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> getQueue(JwtUserDetails caller) {
@@ -148,7 +148,7 @@ public class ValidationService {
 
     /**
      * A9: applies a direct inline edit to any editable field of a submission that is
-     * currently IN_REVIEW. The submission stays IN_REVIEW — the Administrator must
+     * currently IN_REVIEW. The submission stays IN_REVIEW — the Moderator must
      * still select a terminal action afterwards. Each edit records its own
      * before/after diff in the audit log (A10), so repeated edits within a review
      * session are all traceable.
@@ -313,7 +313,7 @@ public class ValidationService {
     }
 
     private Submission loadSubmissionInScope(UUID submissionId, JwtUserDetails caller) {
-        // Administrator and Super Administrator are both network-wide roles, so any
+        // Moderator and Admin are both network-wide roles, so any
         // submission is in scope for review — no institution comparison is needed.
         return submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -377,7 +377,7 @@ public class ValidationService {
      * A10: aggregates the before/after diffs of every standalone {@code edited}
      * action taken since the current review lock was acquired into one combined
      * diff, so a terminal action (approve/revise/reject) records the full picture
-     * of what the Administrator changed. Returns null when no edit happened this
+     * of what the Moderator changed. Returns null when no edit happened this
      * session.
      */
     private String combinedSessionEditDiff(UUID submissionId) {

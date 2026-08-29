@@ -47,7 +47,7 @@ export default function AnalyticsDashboardPage({ user }: Props) {
   const [exportBusy, setExportBusy] = useState(false);
 
   const role = summary?.scopeRole ?? user.role;
-  const isAdminView = summary?.adminView ?? (role === "administrator" || role === "super_administrator");
+  const isAdminView = summary?.adminView ?? role === "admin";
   const isContributorView = role === "contributor";
 
   return (

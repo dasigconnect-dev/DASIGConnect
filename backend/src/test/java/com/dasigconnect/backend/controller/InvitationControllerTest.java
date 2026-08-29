@@ -56,8 +56,8 @@ class InvitationControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
-    void createInvitation_asAdministrator_returns201() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void createInvitation_asAdmin_returns201() throws Exception {
         InvitationResponseDto response = new InvitationResponseDto(
                 UUID.randomUUID(), "user@example.com", UserRole.contributor,
                 INSTITUTION_ID, Instant.now().plusSeconds(3600), Instant.now(),
@@ -76,7 +76,7 @@ class InvitationControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
+    @WithMockUser(roles = "ADMIN")
     void createInvitation_missingRecipientEmail_returns400() throws Exception {
         mockMvc.perform(post("/api/v1/invitations")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -99,7 +99,7 @@ class InvitationControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "MODERATOR")
     void createInvitation_asValidator_reachesService() throws Exception {
         InvitationResponseDto response = new InvitationResponseDto(
                 UUID.randomUUID(), "user@example.com", UserRole.contributor,
@@ -164,8 +164,8 @@ class InvitationControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
-    void resend_asAdministrator_returnsInvitation() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void resend_asAdmin_returnsInvitation() throws Exception {
         UUID invitationId = UUID.randomUUID();
         InvitationResponseDto response = new InvitationResponseDto(
                 UUID.randomUUID(), "user@example.com", UserRole.contributor,
@@ -180,7 +180,7 @@ class InvitationControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "MODERATOR")
     void pending_asValidator_returnsPendingInvitations() throws Exception {
         UUID invitationId = UUID.randomUUID();
         when(invitationService.listPending(any(), any())).thenReturn(List.of(new PendingInvitationDto(
@@ -198,18 +198,18 @@ class InvitationControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
-    void pendingAdministrators_asAdministrator_returnsPendingAdministratorInvitations() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void pendingAdmins_asAdmin_returnsPendingAdminInvitations() throws Exception {
         UUID invitationId = UUID.randomUUID();
-        when(invitationService.listPendingAdministrators(any())).thenReturn(List.of(new PendingInvitationDto(
+        when(invitationService.listPendingAdmins(any())).thenReturn(List.of(new PendingInvitationDto(
                 invitationId,
                 "admin@example.com",
-                UserRole.administrator,
+                UserRole.admin,
                 null,
                 Instant.now().plusSeconds(3600),
                 Instant.now())));
 
-        mockMvc.perform(get("/api/v1/invitations/pending/administrators"))
+        mockMvc.perform(get("/api/v1/invitations/pending/admins"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].id").value(invitationId.toString()))
                 .andExpect(jsonPath("$.data[0].recipientEmail").value("admin@example.com"))
@@ -217,7 +217,7 @@ class InvitationControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "MODERATOR")
     void pendingCount_asValidator_returnsCount() throws Exception {
         when(invitationService.countPending(any(), any())).thenReturn(Map.of("pendingInvitations", 3L));
 

@@ -84,7 +84,7 @@ export default function ResolutionCenterScreen({ user }: ResolutionCenterScreenP
         <div>
           <h1 className="screen-title">Resolution Center</h1>
           <p className="screen-subtitle">
-            Administrator exception-handling hub — UC-3.5
+            Moderator exception-handling hub — UC-3.5
           </p>
         </div>
         <button type="button" className="btn-secondary" onClick={refresh} disabled={failLoading}>
