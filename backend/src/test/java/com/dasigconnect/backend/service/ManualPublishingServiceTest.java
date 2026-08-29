@@ -64,7 +64,7 @@ class ManualPublishingServiceTest {
     void setUp() {
         submissionId = UUID.randomUUID();
         adminId = UUID.randomUUID();
-        admin = new JwtUserDetails(adminId, "admin@dasig.gov.ph", "super_administrator", null);
+        admin = new JwtUserDetails(adminId, "admin@dasig.gov.ph", "admin", null);
 
         // @PersistenceContext is not injected by @InjectMocks — inject manually
         ReflectionTestUtils.setField(service, "entityManager", entityManager);
@@ -365,7 +365,7 @@ class ManualPublishingServiceTest {
         User u = new User();
         u.setId(id);
         u.setEmail("admin@dasig.gov.ph");
-        u.setRole(UserRole.super_administrator);
+        u.setRole(UserRole.admin);
         return u;
     }
 }

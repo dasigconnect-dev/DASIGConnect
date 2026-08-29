@@ -5,11 +5,11 @@ interface DemoBarProps {
   onForgot: () => void
   onForgotSent: () => void
   onInviteContributor: () => void
-  onInviteValidator: () => void
+  onInviteModerator: () => void
   onInviteExpired: () => void
   onInviteAlready: () => void
   onDashboardAdmin: () => void
-  onDashboardValidator: () => void
+  onDashboardModerator: () => void
   onDashboardContributor: () => void
   onSessionWarning: () => void
   onSessionExpired: () => void
@@ -23,11 +23,11 @@ export default function DemoBar({
   onForgot,
   onForgotSent,
   onInviteContributor,
-  onInviteValidator,
+  onInviteModerator,
   onInviteExpired,
   onInviteAlready,
   onDashboardAdmin,
-  onDashboardValidator,
+  onDashboardModerator,
   onDashboardContributor,
   onSessionWarning,
   onSessionExpired,
@@ -54,8 +54,8 @@ export default function DemoBar({
       <button className="db" onClick={onInviteContributor}>
         6 Invite - Contributor
       </button>
-      <button className="db" onClick={onInviteValidator}>
-        7 Invite - Validator
+      <button className="db" onClick={onInviteModerator}>
+        7 Invite - Moderator
       </button>
       <button className="db" onClick={onInviteExpired}>
         8 Invite - Expired
@@ -66,8 +66,8 @@ export default function DemoBar({
       <button className="db" onClick={onDashboardAdmin}>
         10 Dashboard - Admin
       </button>
-      <button className="db" onClick={onDashboardValidator}>
-        11 Dashboard - Validator
+      <button className="db" onClick={onDashboardModerator}>
+        11 Dashboard - Moderator
       </button>
       <button className="db" onClick={onDashboardContributor}>
         12 Dashboard - Contributor

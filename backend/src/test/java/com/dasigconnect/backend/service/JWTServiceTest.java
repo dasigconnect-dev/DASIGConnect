@@ -52,36 +52,37 @@ class JWTServiceTest {
     @Test
     void token_containsRequiredClaims() {
         UUID institutionId = UUID.randomUUID();
-        User user = buildUser(UserRole.administrator, institutionId);
+        User user = buildUser(UserRole.moderator, institutionId);
 
         String token = jwtService.generateAccessToken(user);
         Claims claims = jwtService.extractClaims(token);
 
-        assertThat(claims.get("role", String.class)).isEqualTo("administrator");
+        assertThat(claims.get("role", String.class)).isEqualTo("moderator");
         assertThat(claims.get("user_id", String.class)).isEqualTo(user.getId().toString());
         assertThat(claims.get("email", String.class)).isEqualTo("user@example.com");
         assertThat(claims.get("institution_id", String.class)).isEqualTo(institutionId.toString());
         assertThat(claims.get("session_version", Number.class).longValue()).isZero();
-        assertThat(claims.get("super_administrator", Boolean.class)).isFalse();
+        assertThat(claims.get("admin", Boolean.class)).isFalse();
     }
 
     @Test
-    void administrator_token_hasNoInstitutionId() {
-        User admin = buildUser(UserRole.super_administrator, null);
+    void admin_token_hasNoInstitutionId() {
+        User admin = buildUser(UserRole.admin, null);
         String token = jwtService.generateAccessToken(admin);
         Claims claims = jwtService.extractClaims(token);
         assertThat(claims.get("institution_id")).isNull();
     }
 
     @Test
-    void superAdministrator_token_containsSuperAdministratorClaim() {
-        User admin = buildUser(UserRole.super_administrator, null);
-        admin.setSuperAdministrator(true);
+    void admin_token_containsAdminAndAdminOwnerClaims() {
+        User admin = buildUser(UserRole.admin, null);
+        admin.setAdminOwner(true);
 
         String token = jwtService.generateAccessToken(admin);
         Claims claims = jwtService.extractClaims(token);
 
-        assertThat(claims.get("super_administrator", Boolean.class)).isTrue();
+        assertThat(claims.get("admin", Boolean.class)).isTrue();
+        assertThat(claims.get("admin_owner", Boolean.class)).isTrue();
     }
 
     @Test
@@ -132,7 +133,7 @@ class JWTServiceTest {
 
     @Test
     void invalidateUserTokens_revokesExistingUserToken() {
-        User user = buildUser(UserRole.administrator, null);
+        User user = buildUser(UserRole.moderator, null);
         String token = jwtService.generateAccessToken(user);
 
         jwtService.invalidateUserTokens(user.getId());

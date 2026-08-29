@@ -48,9 +48,6 @@ public class WatermarkConfigurationService {
 
     @Transactional(readOnly = true)
     public WatermarkConfigurationDto get(UUID institutionId, JwtUserDetails actor) {
-        if (institutionId == null && "administrator".equalsIgnoreCase(actor.role()) && actor.institutionId() != null) {
-            institutionId = actor.institutionId();
-        }
         authorizeRead(institutionId, actor);
 
         if (institutionId != null) {
@@ -90,9 +87,6 @@ public class WatermarkConfigurationService {
     @Transactional
     public WatermarkConfigurationDto save(WatermarkConfigurationRequestDto request, JwtUserDetails actor) {
         UUID institutionId = request.institutionId();
-        if (institutionId == null && "administrator".equalsIgnoreCase(actor.role()) && actor.institutionId() != null) {
-            institutionId = actor.institutionId();
-        }
         authorizeWrite(institutionId, actor);
 
         if (request.elements() != null && request.elements().size() > 3) {
@@ -151,19 +145,12 @@ public class WatermarkConfigurationService {
     }
 
     private void authorizeRead(UUID institutionId, JwtUserDetails actor) {
-        if ("super_administrator".equalsIgnoreCase(actor.role())) return;
-        if ("administrator".equalsIgnoreCase(actor.role())) {
-            if (institutionId == null || institutionId.equals(actor.institutionId())) return;
-        }
+        if (actor != null && "admin".equalsIgnoreCase(actor.role())) return;
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Watermark configuration read access denied");
     }
 
     private void authorizeWrite(UUID institutionId, JwtUserDetails actor) {
-        if ("super_administrator".equalsIgnoreCase(actor.role())) return;
-        if ("administrator".equalsIgnoreCase(actor.role())) {
-            if (institutionId != null && institutionId.equals(actor.institutionId())) return;
-            if (institutionId == null && actor.institutionId() == null) return;
-        }
+        if (actor != null && "admin".equalsIgnoreCase(actor.role())) return;
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Watermark configuration write access denied");
     }
 

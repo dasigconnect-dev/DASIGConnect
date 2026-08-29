@@ -1,7 +1,7 @@
 package com.dasigconnect.backend.controller;
 
 import com.dasigconnect.backend.config.SecurityConfig;
-import com.dasigconnect.backend.model.dto.user.SuperAdministratorTransferResponseDto;
+import com.dasigconnect.backend.model.dto.user.AdminTransferResponseDto;
 import com.dasigconnect.backend.model.dto.user.UserDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.User;
@@ -70,7 +70,7 @@ class UserControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "MODERATOR")
     void listUsers_asValidator_returnsUsers() throws Exception {
         UUID institutionId = UUID.randomUUID();
         when(userService.listByInstitution(any(), any())).thenReturn(List.of(userDto(
@@ -82,15 +82,15 @@ class UserControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
-    void listAdministrators_asAdministrator_returnsAdministrators() throws Exception {
-        when(userService.listAdministrators(any())).thenReturn(List.of(userDto(
-                UUID.randomUUID(), "admin@dasigconnect.com", UserRole.administrator, null)));
+    @WithMockUser(roles = "ADMIN")
+    void listModerators_asAdmin_returnsModerators() throws Exception {
+        when(userService.listModerators(any())).thenReturn(List.of(userDto(
+                UUID.randomUUID(), "admin@dasigconnect.com", UserRole.moderator, null)));
 
-        mockMvc.perform(get("/api/v1/users/administrators"))
+        mockMvc.perform(get("/api/v1/users/moderators"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].email").value("admin@dasigconnect.com"))
-                .andExpect(jsonPath("$.data[0].role").value("administrator"));
+                .andExpect(jsonPath("$.data[0].role").value("moderator"));
     }
 
     @Test
@@ -101,26 +101,26 @@ class UserControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
-    void userCounts_asAdministrator_returnsCounts() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void userCounts_asAdmin_returnsCounts() throws Exception {
         UUID institutionId = UUID.randomUUID();
-        when(userService.countByRole(any(), any())).thenReturn(Map.of("contributors", 5L, "validators", 1L));
+        when(userService.countByRole(any(), any())).thenReturn(Map.of("contributors", 5L, "moderators", 1L));
 
         mockMvc.perform(get("/api/v1/users/counts").param("institutionId", institutionId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.contributors").value(5))
-                .andExpect(jsonPath("$.data.validators").value(1));
+                .andExpect(jsonPath("$.data.moderators").value(1));
     }
 
     @Test
-    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
+    @WithMockUser(roles = "ADMIN")
     void userCounts_missingInstitutionId_returns400() throws Exception {
         mockMvc.perform(get("/api/v1/users/counts"))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "MODERATOR")
     void getUser_asValidator_returnsUser() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID institutionId = UUID.randomUUID();
@@ -134,8 +134,8 @@ class UserControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
-    void updateStatus_asAdministrator_returnsUpdatedUser() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void updateStatus_asAdmin_returnsUpdatedUser() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID institutionId = UUID.randomUUID();
         User inactive = user(userId, "contributor@cit.edu.ph", UserRole.contributor, institution(institutionId));
@@ -152,7 +152,7 @@ class UserControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
+    @WithMockUser(roles = "ADMIN")
     void updateStatus_missingStatus_returns400() throws Exception {
         mockMvc.perform(patch("/api/v1/users/{id}/status", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -161,18 +161,18 @@ class UserControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
-    void requestSuperAdministratorTransfer_asSuperAdministrator_returnsPendingTransfer() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void requestAdminTransfer_asAdmin_returnsPendingTransfer() throws Exception {
         UUID targetId = UUID.randomUUID();
         UUID requesterId = UUID.randomUUID();
-        when(userService.requestSuperAdministratorTransfer(any(), any()))
-                .thenReturn(new SuperAdministratorTransferResponseDto(
+        when(userService.requestAdminTransfer(any(), any()))
+                .thenReturn(new AdminTransferResponseDto(
                         targetId,
                         requesterId,
                         java.time.Instant.now().plusSeconds(3600),
                         "pending_confirmation"));
 
-        mockMvc.perform(post("/api/v1/users/{id}/super-administrator-transfer", targetId))
+        mockMvc.perform(post("/api/v1/users/{id}/admin-transfer", targetId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.targetUserId").value(targetId.toString()))
                 .andExpect(jsonPath("$.data.requestedBy").value(requesterId.toString()))
@@ -180,16 +180,16 @@ class UserControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
-    void confirmSuperAdministratorTransfer_asAdministrator_returnsIncomingSuperAdministrator() throws Exception {
-        User incoming = user(UUID.randomUUID(), "incoming@dasigconnect.com", UserRole.administrator, null);
-        incoming.setSuperAdministrator(true);
-        when(userService.confirmSuperAdministratorTransfer(any())).thenReturn(UserDto.from(incoming));
+    @WithMockUser(roles = "MODERATOR")
+    void confirmAdminTransfer_asModerator_returnsIncomingAdmin() throws Exception {
+        User incoming = user(UUID.randomUUID(), "incoming@dasigconnect.com", UserRole.moderator, null);
+        incoming.setAdminOwner(true);
+        when(userService.confirmAdminTransfer(any())).thenReturn(UserDto.from(incoming));
 
-        mockMvc.perform(post("/api/v1/users/super-administrator-transfer/confirm"))
+        mockMvc.perform(post("/api/v1/users/admin-transfer/confirm"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.email").value("incoming@dasigconnect.com"))
-                .andExpect(jsonPath("$.data.superAdministrator").value(true));
+                .andExpect(jsonPath("$.data.adminOwner").value(true));
     }
 
     private static UserDto userDto(UUID id, String email, UserRole role, UUID institutionId) {

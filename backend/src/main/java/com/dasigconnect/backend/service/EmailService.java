@@ -82,7 +82,7 @@ public class EmailService {
                                   </tr>
                                   <tr>
                                     <td style="padding:0 32px 18px 32px;font-size:15px;line-height:1.6;color:#33415c;">
-                                      An administrator invited you to join DASIGConnect. Use the button below to set up your account.
+                                      An moderator invited you to join DASIGConnect. Use the button below to set up your account.
                                     </td>
                                   </tr>
                                   <tr>

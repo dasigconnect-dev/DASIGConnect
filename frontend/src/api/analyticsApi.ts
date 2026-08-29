@@ -49,7 +49,7 @@ export interface OperationalHealthDto {
   publishingSuccessRate: number;
   onTimePublications: number;
   onTimePublicationRate: number;
-  administratorActions: number;
+  moderatorActions: number;
 }
 
 export interface ContributorBreakdownDto {
@@ -102,7 +102,7 @@ export interface ValidatorAnalyticsDto {
 
 export interface AdminAnalyticsDto {
   facebookApiFailureCount: number;
-  administratorActions: number;
+  moderatorActions: number;
   adminDirectPosts: number;
 }
 

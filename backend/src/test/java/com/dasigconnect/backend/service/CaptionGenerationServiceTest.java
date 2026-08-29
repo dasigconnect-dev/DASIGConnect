@@ -222,7 +222,7 @@ class CaptionGenerationServiceTest {
         ));
         when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        // null institutionId = administrator bypasses institution check
+        // null institutionId = moderator bypasses institution check
         CaptionResponseDto result = service.generateCaptions(submissionId, UUID.randomUUID(), null, null, null, null);
 
         assertThat(result.getSubmissionId()).isEqualTo(submissionId);

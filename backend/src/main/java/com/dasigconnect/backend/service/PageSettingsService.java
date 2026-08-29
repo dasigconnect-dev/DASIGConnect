@@ -52,9 +52,7 @@ public class PageSettingsService {
     }
 
     private void authorize(UUID institutionId, JwtUserDetails actor) {
-        if ("super_administrator".equalsIgnoreCase(actor.role())) return;
-        if ("administrator".equalsIgnoreCase(actor.role()) && institutionId != null
-                && institutionId.equals(actor.institutionId())) return;
+        if (actor != null && "admin".equalsIgnoreCase(actor.role())) return;
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Page Settings access denied");
     }
 

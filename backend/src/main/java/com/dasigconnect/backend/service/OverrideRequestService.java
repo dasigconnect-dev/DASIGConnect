@@ -29,7 +29,7 @@ import com.dasigconnect.backend.security.JwtUserDetails;
 /**
  * UC-3.5 Category C — Guard Rail Override Requests.
  *
- * Handles the Administrator triage of pending override requests:
+ * Handles the Moderator triage of pending override requests:
  * approve (bypasses the guard rail for this submission), suggest alternative slot,
  * or deny. Also auto-dismisses expired requests via {@link #dismissExpiredRequests()}.
  */

@@ -11,7 +11,7 @@ interface InvitationComposerProps {
   selectedInstitution: InstitutionOption | null
   canChooseRole: boolean
   sending: boolean
-  /** Network-wide invites (e.g. administrators) that are not bound to an institution workspace. */
+  /** Network-wide invites (e.g. moderators) that are not bound to an institution workspace. */
   networkWide?: boolean
   onDraftChange: (value: string) => void
   onAddChip: (email: string) => void
@@ -26,8 +26,8 @@ function composerSubtitle(
   role: InviteRole,
   networkWide: boolean,
 ) {
-  if (networkWide) return 'Invite administrators with network-wide access. Activation links expire after 72 hours.'
-  if (canChooseRole) return 'Invite contributors or administrators securely into this institution workspace.'
+  if (networkWide) return 'Invite moderators with network-wide access. Activation links expire after 72 hours.'
+  if (canChooseRole) return 'Invite contributors or moderators securely into this institution workspace.'
   if (role === 'contributor') return 'Invite contributors securely into this institution workspace.'
   return 'Invite contributors securely into this institution workspace.'
 }
@@ -97,7 +97,7 @@ export default function InvitationComposer({
             disabled={sending}
             placeholder={
               networkWide
-                ? 'administrator@example.edu.ph, office@example.edu.ph'
+                ? 'moderator@example.edu.ph, office@example.edu.ph'
                 : 'name@institution.edu.ph, office@institution.edu.ph'
             }
             inputId="invitation-recipient-input"
@@ -144,17 +144,17 @@ export default function InvitationComposer({
               </button>
               <button
                 type="button"
-                className={`um-role-pill${role === 'administrator' ? ' is-active' : ''}`}
-                onClick={() => onRoleChange('administrator')}
+                className={`um-role-pill${role === 'moderator' ? ' is-active' : ''}`}
+                onClick={() => onRoleChange('moderator')}
                 disabled={sending}
                 role="radio"
-                aria-checked={role === 'administrator'}
+                aria-checked={role === 'moderator'}
               >
                 <span className="um-role-pill-icon">
                   <i className="ti ti-shield-check" aria-hidden="true"></i>
                 </span>
                 <span>
-                  <strong>Administrator</strong>
+                  <strong>Moderator</strong>
                   <small>Reviews and approves submissions</small>
                 </span>
               </button>

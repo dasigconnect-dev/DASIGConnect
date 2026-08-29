@@ -62,7 +62,7 @@ class WatermarkConfigurationServiceTest {
 
     @Test
     void superAdminGetsNetworkDefaultWhenNoneSaved() {
-        var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "super_administrator", null);
+        var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "admin", null);
         when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
 
         WatermarkConfigurationDto dto = service.get(null, actor);
@@ -76,7 +76,7 @@ class WatermarkConfigurationServiceTest {
     @Test
     void institutionFallsBackToNetworkDefaultWhenNoOverride() {
         UUID instId = UUID.randomUUID();
-        var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "administrator", instId);
+        var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", instId);
 
         Institution inst = new Institution();
         inst.setId(instId);
@@ -101,7 +101,7 @@ class WatermarkConfigurationServiceTest {
 
     @Test
     void saveWatermarkConfigurationPersistsElements() {
-        var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "super_administrator", null);
+        var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "admin", null);
 
         List<WatermarkElementDto> elements = new ArrayList<>();
         WatermarkElementDto el1 = new WatermarkElementDto();
@@ -127,7 +127,7 @@ class WatermarkConfigurationServiceTest {
 
     @Test
     void rejectsMoreThan3Elements() {
-        var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "super_administrator", null);
+        var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "admin", null);
 
         List<WatermarkElementDto> elements = new ArrayList<>();
         for (int i = 0; i < 4; i++) {

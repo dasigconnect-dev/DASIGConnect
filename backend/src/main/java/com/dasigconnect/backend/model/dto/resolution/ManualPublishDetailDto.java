@@ -11,7 +11,7 @@ import java.util.UUID;
 
 /**
  * Full post-content payload for the UC-3.4 Manual Publishing Fallback panel.
- * Includes all fields the Administrator needs to copy and post to Facebook.
+ * Includes all fields the Moderator needs to copy and post to Facebook.
  */
 public class ManualPublishDetailDto {
 

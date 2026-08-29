@@ -30,7 +30,7 @@ public class GuardRailController {
     }
 
     @PostMapping("/validate")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<GuardRailResult>> validate(
             @Valid @RequestBody GuardRailValidateRequest dto,
             @AuthenticationPrincipal JwtUserDetails user) {

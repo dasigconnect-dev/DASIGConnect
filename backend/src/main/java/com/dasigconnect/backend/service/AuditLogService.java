@@ -367,8 +367,8 @@ public class AuditLogService {
         if (u != null) {
             String name = resolveUserName(u);
             String role = u.getRole() != null ? u.getRole().name() : "USER";
-            if (u.isSuperAdministrator()) {
-                role = "SUPER_ADMINISTRATOR";
+            if (u.isAdminOwner()) {
+                role = "ADMIN";
             }
             String instName = u.getInstitution() != null ? u.getInstitution().getName() : null;
             actorDto = new AuditLogDto.ActorDto(u.getId(), name, u.getEmail(), role, null, instName);
@@ -435,7 +435,7 @@ public class AuditLogService {
             case USER -> {
                 User u = lookups.users().get(resourceId);
                 if (u != null) {
-                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), resolveUserName(u), true, "/admin/administrator-management");
+                    return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), resolveUserName(u), true, "/admin/moderator-management");
                 }
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "[Entity no longer available]", false, null);
             }

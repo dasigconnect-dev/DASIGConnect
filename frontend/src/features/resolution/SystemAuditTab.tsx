@@ -210,7 +210,7 @@ export default function SystemAuditTab({ refreshSignal, onIssueCount, tokenSecti
               Exception-Handling Audit Log
             </h2>
             <p className="rc-section-sub">
-              Immutable record of all Administrator exception-handling actions.
+              Immutable record of all Moderator exception-handling actions.
               Entries cannot be edited or deleted per Section 3.4.5 of the SDD.
             </p>
           </div>

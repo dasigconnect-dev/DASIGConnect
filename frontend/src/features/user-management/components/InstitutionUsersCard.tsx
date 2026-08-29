@@ -31,7 +31,7 @@ interface InstitutionUsersCardProps {
   showHeader?: boolean
 }
 
-type RoleFilter = 'all' | 'administrator' | 'contributor'
+type RoleFilter = 'all' | 'moderator' | 'contributor'
 type StatusFilter = 'all' | 'active' | 'pending' | 'cancelled' | 'inactive'
 
 export default function InstitutionUsersCard({
@@ -134,7 +134,7 @@ export default function InstitutionUsersCard({
           <div className="um-filter-pills-wrap">
             {showRoleControls && (
               <div className="um-filter-pills" role="group" aria-label="Filter by role">
-                {(['all', 'administrator', 'contributor'] as RoleFilter[]).map((r) => (
+                {(['all', 'moderator', 'contributor'] as RoleFilter[]).map((r) => (
                   <button
                     key={r}
                     type="button"
@@ -283,7 +283,7 @@ export default function InstitutionUsersCard({
                               dangerous: isActive,
                             }
                           : null,
-                        canManage && !isActive && !isInactive
+                        canManage && !isActive
                           ? {
                               label: 'Delete user',
                               icon: 'ti ti-trash',
@@ -300,7 +300,7 @@ export default function InstitutionUsersCard({
                           : null,
                         onRequestSuperAdminTransfer && canRequestSuperAdminTransfer(currentUser, managedUser)
                           ? {
-                              label: 'Transfer Super Administrator',
+                              label: 'Transfer Admin',
                               icon: 'ti ti-shield-up',
                               onClick: () => onRequestSuperAdminTransfer(managedUser),
                             }
@@ -512,17 +512,17 @@ function canToggleUserStatus(currentUser: User | null, managedUser: UserProfileR
   const state = managedUser.accountState.toLowerCase()
   if (state !== 'active' && state !== 'inactive') return false
   const targetRole = managedUser.role.toLowerCase()
-  if (targetRole === 'administrator' || targetRole === 'super_administrator') {
-    return currentUser.role === 'super_administrator' && currentUser.email.toLowerCase() !== managedUser.email.toLowerCase()
+  if (targetRole === 'moderator' || targetRole === 'admin') {
+    return currentUser.role === 'admin' && currentUser.email.toLowerCase() !== managedUser.email.toLowerCase()
   }
-  return currentUser.role === 'super_administrator' || currentUser.role === 'administrator'
+  return currentUser.role === 'admin' || currentUser.role === 'moderator'
 }
 
 function canRequestSuperAdminTransfer(currentUser: User | null, managedUser: UserProfileResponse) {
   return Boolean(
     currentUser &&
-      currentUser.role === 'super_administrator' &&
-      managedUser.role.toLowerCase() === 'administrator' &&
+      currentUser.role === 'admin' &&
+      managedUser.role.toLowerCase() === 'moderator' &&
       managedUser.accountState.toLowerCase() === 'active' &&
       currentUser.email.toLowerCase() !== managedUser.email.toLowerCase(),
   )

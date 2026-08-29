@@ -37,6 +37,6 @@ export interface FacebookPreviewDetailsData {
   fileValidation: FacebookPreviewDetailItem;
   slotConfirmation: FacebookPreviewDetailItem;
   aiCaptionAssist: FacebookPreviewDetailItem;
-  validatorNotes: string;
+  moderatorNotes: string;
   missingItems: string[];
 }

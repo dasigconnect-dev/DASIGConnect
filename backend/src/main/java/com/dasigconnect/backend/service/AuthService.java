@@ -41,8 +41,8 @@ public class AuthService {
 
     @Transactional
     public LoginResponseDto login(LoginRequestDto dto, HttpServletRequest request) {
-        // Temporarily elevate scope to administrator to bypass RLS during authentication lookup
-        tenantScopeService.bindTenantScope(null, null, "super_administrator");
+        // Temporarily elevate scope to moderator to bypass RLS during authentication lookup
+        tenantScopeService.bindTenantScope(null, null, "admin");
 
         User user = userRepository.findByEmail(dto.email())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
@@ -59,8 +59,8 @@ public class AuthService {
         if (user.getAccountState() != UserStatus.active) {
             String message = switch (user.getAccountState()) {
                 case pending, pending_email_undelivered -> "Account pending activation. Check your invitation email.";
-                case expired -> "Account invitation expired. Contact an Administrator for reissue.";
-                case inactive -> "Account has been deactivated. Contact an Administrator.";
+                case expired -> "Account invitation expired. Contact an Moderator for reissue.";
+                case inactive -> "Account has been deactivated. Contact an Moderator.";
                 default -> "Account is not active";
             };
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, message);

@@ -41,7 +41,7 @@ export default function SystemHealthScreen({ user }: Props) {
   const [exporting, setExporting] = useState(false);
   const [busyTokenId, setBusyTokenId] = useState<string | null>(null);
 
-  const canReauthorize = user.role === "super_administrator" || user.role === "administrator";
+  const canReauthorize = user.role === "admin";
 
   useEffect(() => {
     if (cachedSummary && Date.now() - cachedAt < CACHE_TTL_MS) return;

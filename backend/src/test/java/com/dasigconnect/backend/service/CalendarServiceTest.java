@@ -95,13 +95,13 @@ class CalendarServiceTest {
     }
 
     @Test
-    @DisplayName("Super Administrator receives full event details for all institutions")
+    @DisplayName("Admin receives full event details for all institutions")
     void getCalendarEvents_asSuperAdmin_returnsFullEventsForAll() {
         Submission s1 = createSubmission(UUID.randomUUID(), "CIT Tech Fest", myInstitution, SubmissionStatus.scheduled);
         Submission s2 = createSubmission(UUID.randomUUID(), "UP Hackathon", otherInstitution, SubmissionStatus.scheduled);
         when(submissionRepository.findAllWithScheduledSlot()).thenReturn(List.of(s1, s2));
 
-        JwtUserDetails adminUser = createPrincipal(UUID.randomUUID(), "super_administrator", null);
+        JwtUserDetails adminUser = createPrincipal(UUID.randomUUID(), "admin", null);
         List<CalendarEventDto> results = calendarService.getCalendarEvents(adminUser);
 
         assertThat(results).hasSize(2);
@@ -111,15 +111,15 @@ class CalendarServiceTest {
     }
 
     @Test
-    @DisplayName("Administrator receives full event details for all institutions (network-wide role)")
-    void getCalendarEvents_asAdministrator_returnsFullEventsForAll() {
+    @DisplayName("Moderator receives full event details for all institutions (network-wide role)")
+    void getCalendarEvents_asModerator_returnsFullEventsForAll() {
         Submission s1 = createSubmission(UUID.randomUUID(), "CIT Tech Fest", myInstitution, SubmissionStatus.scheduled);
         Submission s2 = createSubmission(UUID.randomUUID(), "UP Hackathon", otherInstitution, SubmissionStatus.scheduled);
         when(submissionRepository.findAllWithScheduledSlot()).thenReturn(List.of(s1, s2));
 
-        // Administrator accounts always have a null institutionId — this must not
+        // Moderator accounts always have a null institutionId — this must not
         // fall through to the masked/scoped calendar path.
-        JwtUserDetails adminUser = createPrincipal(UUID.randomUUID(), "administrator", null);
+        JwtUserDetails adminUser = createPrincipal(UUID.randomUUID(), "moderator", null);
         List<CalendarEventDto> results = calendarService.getCalendarEvents(adminUser);
 
         assertThat(results).hasSize(2);
@@ -135,7 +135,7 @@ class CalendarServiceTest {
         when(submissionRepository.findAllWithScheduledSlot()).thenReturn(List.of(locked, unlocked));
         when(slotReservationRepository.findLockedSubmissionIds(any())).thenReturn(List.of(locked.getId()));
 
-        JwtUserDetails adminUser = createPrincipal(UUID.randomUUID(), "super_administrator", null);
+        JwtUserDetails adminUser = createPrincipal(UUID.randomUUID(), "admin", null);
         List<CalendarEventDto> results = calendarService.getCalendarEvents(adminUser);
 
         CalendarEventDto lockedEvent = results.stream().filter(e -> e.getId().equals(locked.getId())).findFirst().orElseThrow();

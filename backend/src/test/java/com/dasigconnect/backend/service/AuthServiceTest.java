@@ -128,8 +128,8 @@ class AuthServiceTest {
     }
 
     @Test
-    void login_administrator_returnsNullInstitutionId() {
-        activeUser.setRole(UserRole.super_administrator);
+    void login_moderator_returnsNullInstitutionId() {
+        activeUser.setRole(UserRole.admin);
         activeUser.setInstitution(null);
 
         when(userRepository.findByEmail(activeUser.getEmail())).thenReturn(Optional.of(activeUser));
@@ -140,7 +140,7 @@ class AuthServiceTest {
         LoginResponseDto result = authService.login(new LoginRequestDto(activeUser.getEmail(), RAW_PASSWORD), request);
 
         assertThat(result.institutionId()).isNull();
-        assertThat(result.role()).isEqualTo("super_administrator");
+        assertThat(result.role()).isEqualTo("admin");
     }
 
     @Test

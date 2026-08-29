@@ -25,7 +25,7 @@ import com.dasigconnect.backend.service.ScheduledJobHealthService;
 /**
  * T8 — Fires every 5 minutes. For each PENDING/IN_REVIEW submission whose
  * scheduled_at is within the next 30 minutes, sends an URGENT notification to
- * all validators at the institution and to all administrators. A dedup check
+ * all moderators at the institution and to all admins. A dedup check
  * prevents the same alert from being sent twice within any 30-minute window.
  */
 @Component
@@ -67,7 +67,7 @@ public class ValidationDeadlineNotificationJob {
             if (!urgent.isEmpty()) {
                 log.info("T8 deadline check: {} submission(s) approaching publication without validation.", urgent.size());
 
-                List<User> admins = userRepository.findByRole(UserRole.super_administrator);
+                List<User> admins = userRepository.findByRole(UserRole.admin);
 
                 for (Submission s : urgent) {
                     String link = "/submissions/" + s.getId();
@@ -75,10 +75,10 @@ public class ValidationDeadlineNotificationJob {
                             + "' is scheduled to publish in less than 30 minutes and has not been validated. "
                             + "Immediate action required.";
 
-                    List<User> validators = userRepository
-                            .findByInstitutionIdAndRoleOrderByCreatedAtDesc(s.getInstitution().getId(), UserRole.administrator);
+                    List<User> moderators = userRepository
+                            .findByInstitutionIdAndRoleOrderByCreatedAtDesc(s.getInstitution().getId(), UserRole.moderator);
 
-                    for (User v : validators) {
+                    for (User v : moderators) {
                         if (alreadyNotified(v, link)) continue;
                         notificationService.createNotification(v, NotificationEventType.validation_timeout, msg, link);
                         emailDeliveryService.send(v,

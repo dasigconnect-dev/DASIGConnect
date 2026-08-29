@@ -325,10 +325,10 @@ public class AIRecommendationService {
     private Submission loadAndAuthorise(UUID submissionId, JwtUserDetails user) {
         Submission submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found."));
-        boolean isSuperAdministrator = "super_administrator".equalsIgnoreCase(user.role());
+        boolean isAdmin = "admin".equalsIgnoreCase(user.role());
         boolean sameInstitution = submission.getInstitution().getId().equals(user.institutionId());
         boolean ownsSubmission = submission.getContributor().getId().equals(user.userId());
-        if (!isSuperAdministrator && (!sameInstitution
+        if (!isAdmin && (!sameInstitution
                 || ("contributor".equalsIgnoreCase(user.role()) && !ownsSubmission))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Submission does not belong to your institution.");

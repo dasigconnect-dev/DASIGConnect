@@ -116,7 +116,7 @@ public class ReviewLockService {
 
         // Only the lock holder (or an admin) can release
         if (!lock.getLockedBy().getId().equals(caller.userId())
-                && !"super_administrator".equals(caller.role())) {
+                && !"admin".equals(caller.role())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "You do not hold the review lock for this submission.");
         }
@@ -166,11 +166,11 @@ public class ReviewLockService {
 
     /**
      * Asserts that the caller holds an active review lock for the submission.
-     * Administrators bypass this check.
+     * Moderators bypass this check.
      * Throws 403 if no active lock exists or if another validator holds it.
      */
     public void assertCallerHoldsLock(UUID submissionId, JwtUserDetails caller) {
-        if ("super_administrator".equals(caller.role())) return;
+        if ("admin".equals(caller.role())) return;
 
         ReviewLock lock = reviewLockRepository.findBySubmissionId(submissionId).orElse(null);
         if (lock == null || lock.getExpiresAt().isBefore(Instant.now())) {
@@ -211,7 +211,7 @@ public class ReviewLockService {
     }
 
     private Submission loadSubmissionInScope(UUID submissionId, JwtUserDetails caller) {
-        // Administrator and Super Administrator are both network-wide roles, so any
+        // Moderator and Admin are both network-wide roles, so any
         // submission is in scope for review — no institution comparison is needed.
         return submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,

@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/settings/watermark")
-@PreAuthorize("hasAnyRole('ADMINISTRATOR','SUPER_ADMINISTRATOR')")
+@PreAuthorize("hasRole('ADMIN')")
 public class WatermarkConfigurationController {
 
     private final WatermarkConfigurationService service;
