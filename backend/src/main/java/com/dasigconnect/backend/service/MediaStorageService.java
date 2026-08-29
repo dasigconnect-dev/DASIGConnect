@@ -22,22 +22,25 @@ import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequ
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
 /**
- * Cloudflare R2 object storage, accessed through the S3-compatible API.
+ * Media object storage, accessed through the S3-compatible API.
+ *
+ * <p>The concrete host (Cloudflare R2, Supabase Storage, MinIO, plain S3, …) is
+ * an implementation/config detail — any S3-compatible endpoint works. Callers
+ * depend only on this type.
  *
  * <p>The browser uploads file bytes directly to a short-lived presigned PUT URL
  * ({@link #createSignedUploadUrl}); the URL stored in the database and used for
  * {@code <img>} tags, Claude Vision input, and downloads is the public read URL
- * ({@link #getPublicUrl}), served from the bucket's r2.dev development URL or a
+ * ({@link #getPublicUrl}), served from the bucket's public development URL or a
  * connected custom domain.
  *
- * <p>Kept API-compatible with the former {@code SupabaseStorageService} so callers
- * ({@code MediaAssetService}, {@code SubmissionService}, {@code WatermarkApplicationService},
- * {@code MediaAssetRetentionService}) did not have to change beyond the type name.
+ * <p>Configured via {@code app.r2.*} (kept as the stable config key namespace so
+ * existing {@code R2_*} environment variables keep working).
  */
 @Service
-public class R2StorageService {
+public class MediaStorageService {
 
-    private static final Logger log = LoggerFactory.getLogger(R2StorageService.class);
+    private static final Logger log = LoggerFactory.getLogger(MediaStorageService.class);
     private static final Duration UPLOAD_URL_TTL = Duration.ofMinutes(15);
 
     private final String bucket;
@@ -46,7 +49,7 @@ public class R2StorageService {
     private final S3Presigner presigner;
     private final boolean configured;
 
-    public R2StorageService(
+    public MediaStorageService(
             @Value("${app.r2.account-id:}") String accountId,
             @Value("${app.r2.endpoint:}") String endpoint,
             @Value("${app.r2.access-key-id:}") String accessKeyId,
@@ -66,7 +69,7 @@ public class R2StorageService {
                 && !secretAccessKey.isBlank();
 
         if (!configured) {
-            log.warn("Cloudflare R2 storage is not configured; media upload/delete will fail until app.r2.* is set.");
+            log.warn("Media storage is not configured; media upload/delete will fail until app.r2.* is set.");
             this.s3Client = null;
             this.presigner = null;
             return;
@@ -127,7 +130,7 @@ public class R2StorageService {
 
             return presigned.url().toString();
         } catch (Exception ex) {
-            throw new IllegalStateException("Failed to create R2 signed upload URL: " + ex.getMessage(), ex);
+            throw new IllegalStateException("Failed to create signed upload URL: " + ex.getMessage(), ex);
         }
     }
 
@@ -147,7 +150,7 @@ public class R2StorageService {
                     RequestBody.fromBytes(content));
             return getPublicUrl(objectPath);
         } catch (Exception ex) {
-            throw new IllegalStateException("Failed to upload object to R2: " + ex.getMessage(), ex);
+            throw new IllegalStateException("Failed to upload object to media storage: " + ex.getMessage(), ex);
         }
     }
 
@@ -157,22 +160,22 @@ public class R2StorageService {
 
     public boolean deletePublicObject(String publicUrl) {
         if (!configured) {
-            log.warn("R2 storage is not configured; skipping object purge.");
+            log.warn("Media storage is not configured; skipping object purge.");
             return false;
         }
         String objectPath = objectPathFromPublicUrl(publicUrl);
         if (objectPath == null || objectPath.isBlank()) {
-            log.warn("Could not derive R2 object key from URL; skipping object purge.");
+            log.warn("Could not derive object key from URL; skipping object purge.");
             return false;
         }
         try {
             s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(objectPath).build());
             return true;
         } catch (NoSuchKeyException ex) {
-            log.info("R2 object already missing during purge: {}", objectPath);
+            log.info("Storage object already missing during purge: {}", objectPath);
             return true;
         } catch (Exception ex) {
-            log.warn("Failed to purge R2 object {}: {}", objectPath, ex.getMessage());
+            log.warn("Failed to purge storage object {}: {}", objectPath, ex.getMessage());
             return false;
         }
     }
@@ -196,7 +199,7 @@ public class R2StorageService {
 
     private void requireConfigured() {
         if (!configured) {
-            throw new IllegalStateException("Cloudflare R2 storage is not configured.");
+            throw new IllegalStateException("Media storage is not configured.");
         }
     }
 }

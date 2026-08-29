@@ -42,7 +42,7 @@ class WatermarkApplicationServiceTest {
     private InstitutionRepository institutionRepository;
 
     @Mock
-    private R2StorageService storageService;
+    private MediaStorageService storageService;
 
     private WatermarkApplicationService service;
     private HttpServer imageServer;

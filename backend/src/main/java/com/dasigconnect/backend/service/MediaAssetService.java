@@ -73,7 +73,7 @@ public class MediaAssetService {
     private final MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     private final InstitutionRepository institutionRepository;
     private final SubmissionService submissionService;
-    private final R2StorageService r2StorageService;
+    private final MediaStorageService mediaStorage;
     private final AIClassificationService aiClassificationService;
     private final com.dasigconnect.backend.external.VoyageAIClient voyageAIClient;
     private final AuditLogService auditLogService;
@@ -93,7 +93,7 @@ public class MediaAssetService {
             MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
             InstitutionRepository institutionRepository,
             SubmissionService submissionService,
-            R2StorageService r2StorageService,
+            MediaStorageService mediaStorage,
             AIClassificationService aiClassificationService,
             com.dasigconnect.backend.external.VoyageAIClient voyageAIClient,
             AuditLogService auditLogService,
@@ -108,7 +108,7 @@ public class MediaAssetService {
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
         this.institutionRepository = institutionRepository;
         this.submissionService = submissionService;
-        this.r2StorageService = r2StorageService;
+        this.mediaStorage = mediaStorage;
         this.aiClassificationService = aiClassificationService;
         this.voyageAIClient = voyageAIClient;
         this.auditLogService = auditLogService;
@@ -880,7 +880,7 @@ public class MediaAssetService {
         UUID institutionId = resolveTargetInstitutionId(dto.getInstitutionId(), user);
 
         // Opaque, immutable key. The folder tree lives in the database (media_albums),
-        // never in the storage key, so folder rename/move/re-home never has to touch R2.
+        // never in the storage key, so folder rename/move/re-home never has to touch the store.
         //   media/<institution-code>/<per-asset-id>/<original-filename>
         // The per-asset segment is a home for future derivatives (thumbnails, watermarked
         // copies) alongside the original.
@@ -890,12 +890,12 @@ public class MediaAssetService {
                 + UUID.randomUUID() + "/"
                 + safeFileName;
 
-        String signedUrl = r2StorageService.createSignedUploadUrl(objectPath);
-        String publicUrl = r2StorageService.getPublicUrl(objectPath);
+        String signedUrl = mediaStorage.createSignedUploadUrl(objectPath);
+        String publicUrl = mediaStorage.getPublicUrl(objectPath);
         return new MediaAssetUploadUrlResponseDto(signedUrl, publicUrl, objectPath);
     }
 
-    /** Tenant partition for the R2 key — the institution's short code, falling back to name then id. */
+    /** Tenant partition for the storage key — the institution's short code, falling back to name then id. */
     private String institutionFolderSegment(UUID institutionId) {
         return institutionRepository.findById(institutionId)
                 .map(inst -> {
@@ -906,7 +906,7 @@ public class MediaAssetService {
                 .orElse(institutionId.toString());
     }
 
-    /** One path segment, safe for an S3/R2 object key. */
+    /** One path segment, safe for an S3-compatible object key. */
     private String slugSegment(String raw) {
         if (raw == null) return "";
         String slug = raw.trim()

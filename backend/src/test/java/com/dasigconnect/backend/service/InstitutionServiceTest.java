@@ -75,7 +75,7 @@ class InstitutionServiceTest {
     private WatermarkConfigurationRepository watermarkConfigurationRepository;
 
     @Mock
-    private R2StorageService mediaStorage;
+    private MediaStorageService mediaStorage;
 
     @Mock
     private WorkspaceProvisionerService workspaceProvisioner;
@@ -442,7 +442,7 @@ class InstitutionServiceTest {
         }
 
         @Test
-        @DisplayName("best-effort purges the R2 object of every lingering asset (soft-deleted included)")
+        @DisplayName("best-effort purges the stored object of every lingering asset (soft-deleted included)")
         void shouldPurgeOrphanedStorageObjects() {
             mockInstitution.setProtected(false);
             when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));

@@ -62,8 +62,8 @@ public class InstitutionService {
     private final OverrideRequestRepository overrideRequestRepository;
     private final PageSettingsRepository pageSettingsRepository;
     private final WatermarkConfigurationRepository watermarkConfigurationRepository;
-    /** Media object store — concrete host (R2, Supabase, …) is abstracted behind this service. */
-    private final R2StorageService mediaStorage;
+    /** Media object store — the concrete host is abstracted behind this service. */
+    private final MediaStorageService mediaStorage;
     private final WorkspaceProvisionerService workspaceProvisioner;
     private final AuditLogService auditLogService;
 
@@ -78,7 +78,7 @@ public class InstitutionService {
             OverrideRequestRepository overrideRequestRepository,
             PageSettingsRepository pageSettingsRepository,
             WatermarkConfigurationRepository watermarkConfigurationRepository,
-            R2StorageService mediaStorage,
+            MediaStorageService mediaStorage,
             WorkspaceProvisionerService workspaceProvisioner,
             AuditLogService auditLogService) {
         this.institutionRepository = institutionRepository;
