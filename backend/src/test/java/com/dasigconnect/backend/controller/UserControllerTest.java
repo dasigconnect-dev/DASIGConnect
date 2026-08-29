@@ -71,7 +71,8 @@ class UserControllerTest {
 
     @Test
     @WithMockUser(roles = "MODERATOR")
-    void listUsers_asValidator_returnsUsers() throws Exception {
+    void listUsers_asModerator_returnsUsers() throws Exception {
+        // Moderators may view the contributor roster; they just cannot mutate it.
         UUID institutionId = UUID.randomUUID();
         when(userService.listByInstitution(any(), any())).thenReturn(List.of(userDto(
                 UUID.randomUUID(), "contributor@cit.edu.ph", UserRole.contributor, institutionId)));
@@ -121,7 +122,7 @@ class UserControllerTest {
 
     @Test
     @WithMockUser(roles = "MODERATOR")
-    void getUser_asValidator_returnsUser() throws Exception {
+    void getUser_asModerator_returnsUser() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID institutionId = UUID.randomUUID();
         when(userService.getById(any(), any())).thenReturn(userDto(
@@ -131,6 +132,15 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(userId.toString()))
                 .andExpect(jsonPath("$.data.email").value("contributor@cit.edu.ph"));
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void updateStatus_asModerator_returns403() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/{id}/status", UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"accountState\":\"inactive\"}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test

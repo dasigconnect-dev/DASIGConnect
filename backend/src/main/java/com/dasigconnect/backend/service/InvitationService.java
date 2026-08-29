@@ -393,8 +393,11 @@ public class InvitationService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invitation not found."));
 
         if (!isAdmin(requester)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only admins can cancel invitations.");
+            boolean moderator = requester != null && "moderator".equalsIgnoreCase(requester.role());
+            if (!(moderator && token.getAssignedRole() == UserRole.contributor)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Only admins can cancel this invitation.");
+            }
         }
 
         if (token.getUsedAt() != null) {

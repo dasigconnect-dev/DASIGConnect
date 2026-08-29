@@ -544,7 +544,9 @@ function canToggleUserStatus(currentUser: User | null, managedUser: UserProfileR
   if (targetRole === 'moderator' || targetRole === 'admin') {
     return currentUser.role === 'admin' && currentUser.email.toLowerCase() !== managedUser.email.toLowerCase()
   }
-  return currentUser.role === 'admin' || currentUser.role === 'moderator'
+  // Activate/deactivate is an admin-only mutation. Moderators may view the
+  // contributor roster but only manage invitations (invite / resend / cancel).
+  return currentUser.role === 'admin'
 }
 
 /** Delete is allowed once an account is deactivated, cancelled, or expired — the states `removeUser` accepts. */
@@ -556,7 +558,7 @@ function canRemove(currentUser: User | null, managedUser: UserProfileResponse) {
   if (targetRole === 'moderator' || targetRole === 'admin') {
     return currentUser.role === 'admin' && currentUser.email.toLowerCase() !== managedUser.email.toLowerCase()
   }
-  return currentUser.role === 'admin' || currentUser.role === 'moderator'
+  return currentUser.role === 'admin'
 }
 
 function canChangeRole(currentUser: User | null, managedUser: UserProfileResponse) {

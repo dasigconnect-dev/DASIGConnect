@@ -112,7 +112,7 @@ public class UserController {
     }
 
     @PatchMapping("/users/{id}/status")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<UserDto>> updateStatus(
             @PathVariable UUID id,
             @RequestBody @Valid UpdateUserStatusRequestDto request,
@@ -143,7 +143,7 @@ public class UserController {
      * institution attribution.
      */
     @PatchMapping("/users/{id}/institution")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<UserDto>> reassignInstitution(
             @PathVariable UUID id,
             @RequestBody @Valid ReassignContributorRequest request,

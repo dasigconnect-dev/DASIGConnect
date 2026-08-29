@@ -275,7 +275,7 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       icon: 'ti ti-chart-bar',
       label: 'Analytics',
       path: '/analytics',
-      visible: user.role !== 'moderator',
+      visible: true,
     },
   ]
 }

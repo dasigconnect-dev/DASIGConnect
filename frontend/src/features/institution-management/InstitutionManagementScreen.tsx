@@ -87,6 +87,9 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const toast = useToast()
   const location = useLocation()
   const navigate = useNavigate()
+  // Admins get full institution lifecycle control; moderators are limited to
+  // inviting contributors and managing those pending invitations.
+  const isAdmin = user.role === 'admin'
   const searchInputRef = useRef<HTMLInputElement>(null)
   const instActionsMenuRef = useRef<HTMLDivElement>(null)
 
@@ -1335,6 +1338,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
               <i className="ti ti-arrow-left" aria-hidden="true"></i>
               Back to Institution Management
             </button>
+            {isAdmin && (
             <div className="im-topbar-actions" ref={instActionsMenuRef}>
               <button
                 type="button"
@@ -1394,6 +1398,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
                 </div>
               )}
             </div>
+            )}
           </div>
 
           <div className={`im-detail-header${selectedInstitution.logoUrl ? ' has-logo' : ''}${selectedInstitutionIsDefault ? ' is-default' : ''}`}>
@@ -1619,17 +1624,19 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             <h1>Institution Management</h1>
             <p>Manage member HEI workspaces and their users.</p>
           </div>
-          <button
-            type="button"
-            className="im-add-btn"
-            onClick={() => setShowAddModal(true)}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
-              <i className="ti ti-plus" style={{ fontSize: "12px", fontWeight: "bold" }} aria-hidden="true" />
-              <i className="ti ti-building" style={{ fontSize: "15px" }} aria-hidden="true" />
-            </span>
-            <span>Add Institution</span>
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              className="im-add-btn"
+              onClick={() => setShowAddModal(true)}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                <i className="ti ti-plus" style={{ fontSize: "12px", fontWeight: "bold" }} aria-hidden="true" />
+                <i className="ti ti-building" style={{ fontSize: "15px" }} aria-hidden="true" />
+              </span>
+              <span>Add Institution</span>
+            </button>
+          )}
         </header>
 
         {listError && (
@@ -1674,6 +1681,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             <p className="im-empty-sub">
               Provision the first HEI workspace to get started.
             </p>
+            {isAdmin && (
             <button
               type="button"
               className="im-add-btn"
@@ -1685,6 +1693,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
               </span>
               <span>Add first institution</span>
             </button>
+            )}
           </div>
         )}
 

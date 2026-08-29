@@ -826,7 +826,7 @@ function App() {
           <Route
             path="/analytics"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["admin", "moderator", "contributor"]}>
                 <AnalyticsDashboardPage user={currentUser!} />
               </ProtectedRoute>
             }
