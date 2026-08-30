@@ -394,6 +394,7 @@
   padding: 16px 22px;
   border-bottom: 1px solid #e2e8f0;
   background: #ffffff;
+  flex-shrink: 0;
 }
 
 .audit-modal-title-wrap {
@@ -443,9 +444,17 @@
 .audit-modal-body {
   padding: 18px 22px;
   overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* Direct children must keep their natural height so the body scrolls
+   instead of the flex layout compressing the cards. */
+.audit-modal-body > * {
+  flex-shrink: 0;
 }
 
 /* Custom Sleek Scrollbar */
@@ -719,7 +728,11 @@ details[open] .audit-expand-hint {
   border-radius: 7px;
   font-size: 11.5px;
   line-height: 1.4;
-  overflow-x: auto;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
@@ -730,4 +743,5 @@ details[open] .audit-expand-hint {
   padding: 12px 22px;
   border-top: 1px solid #e2e8f0;
   background: #f8fafc;
+  flex-shrink: 0;
 }

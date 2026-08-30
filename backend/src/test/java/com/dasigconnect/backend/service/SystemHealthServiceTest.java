@@ -135,7 +135,7 @@ class SystemHealthServiceTest {
 
         List<BackgroundJobHealthDto> jobs = service.backgroundJobs();
 
-        assertThat(jobs).hasSize(15);
+        assertThat(jobs).hasSize(14);
         assertThat(jobs).extracting(BackgroundJobHealthDto::jobName)
                 .contains("Review Lock Cleanup", "Validation Deadline Notification",
                         "Embedding Failure Digest", "Empty Schedule Warning", "Job Run Retention");

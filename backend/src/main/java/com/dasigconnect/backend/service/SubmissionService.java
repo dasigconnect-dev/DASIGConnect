@@ -242,7 +242,7 @@ public class SubmissionService {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
         maybeRehomeSubmission(submission, dto.getInstitutionId(), user);
-        submission = applySubmissionEdits(submission, dto);
+        submission = applySubmissionEdits(submission, dto, user);
         return buildResponse(submission);
     }
 
@@ -301,7 +301,7 @@ public class SubmissionService {
      * ValidationService's admin Edit & Approve action — callers own their own
      * ownership/status checks before calling this.
      */
-    Submission applySubmissionEdits(Submission submission, SubmissionUpdateDto dto) {
+    Submission applySubmissionEdits(Submission submission, SubmissionUpdateDto dto, JwtUserDetails user) {
         UUID submissionId = submission.getId();
 
         if (dto.getEventTitle() != null) {
@@ -356,10 +356,32 @@ public class SubmissionService {
         }
 
         if (!submission.isFastTrack() && dto.getScheduledAt() != null && !dto.getScheduledAt().equals(submission.getScheduledAt())) {
-            if (guardRailsEnforced) {
-                GuardRailResult guardRailResult = guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt());
-                if (guardRailResult.isBlocked()) {
-                    throw new GuardRailViolationException(guardRailResult.getHardBlocks());
+            boolean isAdmin = isAdmin(user);
+            boolean isReviewer = isAdmin || isModerator(user);
+            // Reviewers always have guard rails applied on a schedule change; for a
+            // contributor's own edit it follows the app.guardrails.enforced flag.
+            if (guardRailsEnforced || isReviewer) {
+                GuardRailResult gr = guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt(), submission.getId());
+                if (gr.isBlocked()) {
+                    String reason = dto.getOverrideReason() == null ? "" : dto.getOverrideReason().trim();
+                    if (isAdmin) {
+                        // Only an administrator can bypass a hard guard rail — with a reason, audited.
+                        if (reason.isEmpty()) {
+                            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                                    "This slot is blocked by a guard rail. Provide an override reason to bypass it.");
+                        }
+                        auditLogService.record(
+                                entityManager.getReference(User.class, user.userId()),
+                                "SCHEDULE_GUARDRAIL_OVERRIDE", null, null, submissionId,
+                                Map.of("newSlot", dto.getScheduledAt().toString(),
+                                       "overrideReason", reason,
+                                       "violations", gr.getHardBlocks().toString()));
+                    } else if (isModerator(user)) {
+                        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                "This slot is blocked by a guard rail. Only an administrator can override it.");
+                    } else {
+                        throw new GuardRailViolationException(gr.getHardBlocks());
+                    }
                 }
             }
             submission.setScheduledAt(dto.getScheduledAt());
@@ -368,6 +390,14 @@ public class SubmissionService {
         }
 
         return submissionRepository.save(submission);
+    }
+
+    private static boolean isAdmin(JwtUserDetails user) {
+        return user != null && "admin".equalsIgnoreCase(user.role());
+    }
+
+    private static boolean isModerator(JwtUserDetails user) {
+        return user != null && "moderator".equalsIgnoreCase(user.role());
     }
 
     /**
@@ -420,7 +450,7 @@ public class SubmissionService {
 
         // Re-run guard rails — slot may have been taken since draft was saved
         if (!fastTrack && guardRailsEnforced && submission.getScheduledAt() != null) {
-            GuardRailResult result = guardRailService.validate(submission.getInstitution().getId(), submission.getScheduledAt());
+            GuardRailResult result = guardRailService.validate(submission.getInstitution().getId(), submission.getScheduledAt(), submission.getId());
             if (result.isBlocked()) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Guard rail violation: " + result.getHardBlocks().get(0).getMessage());
@@ -518,7 +548,7 @@ public class SubmissionService {
     @Transactional(readOnly = true)
     public GuardRailResult evaluateSlot(UUID submissionId, SlotEvaluateRequestDto dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
-        return guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt());
+        return guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt(), submission.getId());
     }
 
     /**
@@ -786,10 +816,16 @@ public class SubmissionService {
         Instant originalSlot = submission.getScheduledAt();
         Instant newSlot = dto.getScheduledAt();
 
-        GuardRailResult guardRailResult = guardRailService.validate(submission.getInstitution().getId(), newSlot);
+        GuardRailResult guardRailResult = guardRailService.validate(submission.getInstitution().getId(), newSlot, submissionId);
         if (guardRailResult.isBlocked()) {
             if (dto.getOverrideReason() == null || dto.getOverrideReason().isBlank()) {
                 throw new GuardRailViolationException(guardRailResult.getHardBlocks());
+            }
+            if (!isAdmin(user)) {
+                // Moderators cannot bypass a guard rail — they raise an override
+                // request for an administrator to decide.
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Only an administrator can bypass a guard rail. Submit an override request instead.");
             }
             auditLogService.record(
                     entityManager.getReference(User.class, user.userId()),

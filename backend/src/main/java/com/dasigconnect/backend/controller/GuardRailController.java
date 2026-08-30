@@ -36,6 +36,7 @@ public class GuardRailController {
             @AuthenticationPrincipal JwtUserDetails user) {
         java.util.UUID institutionId = user.institutionId() != null
                 ? user.institutionId() : dto.getInstitutionId();
-        return ResponseEntity.ok(ApiResponse.success(guardRailService.validate(institutionId, dto.getScheduledAt())));
+        return ResponseEntity.ok(ApiResponse.success(
+                guardRailService.validate(institutionId, dto.getScheduledAt(), dto.getSubmissionId())));
     }
 }

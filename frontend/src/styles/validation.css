@@ -2377,6 +2377,11 @@
 }
 .val-edit-gr-block { background: #fee2e2; color: #b91c1c; }
 .val-edit-gr-warn { background: #fef3c7; color: #92400e; }
+.val-edit-gr-note {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--val-muted);
+}
 
 /* ── Edit mode: form beside a scaled-down submission preview ── */
 .val-edit-layout--off { display: contents; }

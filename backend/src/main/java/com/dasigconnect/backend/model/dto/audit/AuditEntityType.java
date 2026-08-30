@@ -24,7 +24,12 @@ public enum AuditEntityType {
         if (action == null) return SYSTEM;
         String a = action.toUpperCase();
 
-        if (a.startsWith("SUBMISSION") || a.startsWith("TIMEOUT") || a.startsWith("OVERRIDE") || a.startsWith("DIRECT_POST") || a.startsWith("MANUAL_PUBLISH") || a.startsWith("MISSED_REVIEW")) {
+        if (a.startsWith("SUBMISSION") || a.startsWith("TIMEOUT") || a.startsWith("OVERRIDE")
+                || a.startsWith("DIRECT_POST") || a.startsWith("MANUAL_PUBLISH") || a.startsWith("MISSED_REVIEW")
+                || a.startsWith("PUBLISH") || a.contains("_OVERRIDE")
+                // bare ValidationAction codes (stored lowercase, e.g. "edited", "approved")
+                || a.equals("EDITED") || a.equals("APPROVED") || a.equals("REJECTED")
+                || a.equals("NEEDS_REVISION") || a.equals("REVISION_REQUESTED") || a.equals("EDITED_AND_APPROVED")) {
             return SUBMISSION;
         }
         if (a.startsWith("MEDIA_ALBUM")) {
@@ -33,7 +38,9 @@ public enum AuditEntityType {
         if (a.startsWith("MEDIA_") || a.startsWith("ASSET_")) {
             return MEDIA_ASSET;
         }
-        if (a.startsWith("USER_") || a.contains("SUPER_ADMIN") || a.contains("INVITATION") || a.contains("PASSWORD") || a.startsWith("LOGIN_") || a.equals("LOGOUT")) {
+        if (a.startsWith("USER_") || a.contains("SUPER_ADMIN") || a.contains("ADMIN_TRANSFER") || a.contains("ADMIN_OWNER")
+                || a.startsWith("CONTRIBUTOR_") || a.contains("INVITATION") || a.contains("PASSWORD")
+                || a.startsWith("LOGIN_") || a.equals("LOGOUT") || a.contains("ACCOUNT_LOCKED")) {
             return USER;
         }
         if (a.startsWith("INSTITUTION_")) {

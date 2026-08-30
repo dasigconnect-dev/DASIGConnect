@@ -598,7 +598,7 @@ public class UserService {
         var actor = userRepository.findById(requester.userId()).orElse(null);
         auditLogService.record(
                 actor,
-                "contributor.reassigned",
+                "CONTRIBUTOR_REASSIGNED",
                 null, null,
                 userId,
                 Map.of(

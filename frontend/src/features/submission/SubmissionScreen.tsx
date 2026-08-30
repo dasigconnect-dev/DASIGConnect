@@ -560,7 +560,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       }
 
       setGuardRailsLoading(true);
-      validateGuardRails(scheduledAt, selectedInstitutionId || undefined)
+      validateGuardRails(scheduledAt, selectedInstitutionId || undefined, form.id || undefined)
         .then((response) => {
           setGuardRails(response.data);
           setGuardRailError("");

@@ -83,6 +83,8 @@ class AuthServiceTest {
     void login_wrongPassword_throws401AndRecordsFailedAttempt() {
         when(userRepository.findByEmail(activeUser.getEmail())).thenReturn(Optional.of(activeUser));
         when(accountLockoutService.isLocked(userId)).thenReturn(false);
+        when(accountLockoutService.recordFailedAttempt(activeUser))
+                .thenReturn(new AccountLockoutService.FailedAttemptResult(1, false));
         when(passwordEncoder.matches(RAW_PASSWORD, HASHED_PASSWORD)).thenReturn(false);
 
         assertThatThrownBy(() -> authService.login(new LoginRequestDto(activeUser.getEmail(), RAW_PASSWORD), request))

@@ -161,7 +161,7 @@ public class ValidationService {
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
 
         Map<String, Object> before = snapshotEditableFields(submission);
-        submission = submissionService.applySubmissionEdits(submission, dto);
+        submission = submissionService.applySubmissionEdits(submission, dto, caller);
         submissionService.assertContentComplete(submission);
         String editDiff = buildEditDiff(before, snapshotEditableFields(submission));
 

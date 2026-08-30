@@ -54,7 +54,19 @@ public class AuthService {
         }
 
         if (!passwordEncoder.matches(dto.password(), user.getPasswordHash())) {
-            accountLockoutService.recordFailedAttempt(user);
+            AccountLockoutService.FailedAttemptResult attempt = accountLockoutService.recordFailedAttempt(user);
+            String ip = request.getRemoteAddr();
+            String ua = request.getHeader("User-Agent");
+            auditLogService.record(user, "LOGIN_FAILED", ip, ua, user.getId(),
+                    Map.of("email", user.getEmail(),
+                            "failedAttempts", attempt.failedAttempts(),
+                            "reason", "incorrect password"));
+            if (attempt.justLocked()) {
+                auditLogService.record(user, "ACCOUNT_LOCKED", ip, ua, user.getId(),
+                        Map.of("email", user.getEmail(),
+                                "failedAttempts", attempt.failedAttempts(),
+                                "lockMinutes", 15));
+            }
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
 

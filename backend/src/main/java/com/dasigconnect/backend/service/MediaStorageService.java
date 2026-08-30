@@ -224,6 +224,22 @@ public class MediaStorageService {
         }
     }
 
+    /**
+     * Cheap connectivity probe for the health dashboard: a one-key
+     * {@code ListObjectsV2} against the bucket. Returns the bucket name on
+     * success; throws on any credential / endpoint / permission failure so the
+     * caller can surface the reason. Not cached — it is meant to reflect the
+     * live state each time System Health is opened.
+     */
+    public String pingBucket() {
+        requireConfigured();
+        s3Client.listObjectsV2(ListObjectsV2Request.builder()
+                .bucket(bucket)
+                .maxKeys(1)
+                .build());
+        return bucket;
+    }
+
     public boolean deletePublicObject(String publicUrl) {
         if (!configured) {
             log.warn("Media storage is not configured; skipping object purge.");

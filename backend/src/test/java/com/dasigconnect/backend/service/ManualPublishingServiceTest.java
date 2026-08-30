@@ -246,7 +246,7 @@ class ManualPublishingServiceTest {
         s.setRetryCount(2);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
         when(submissionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-        when(guardRailService.validate(any(), any())).thenReturn(new GuardRailResult());
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult());
 
         RescheduleRequestDto dto = new RescheduleRequestDto();
         Instant newSlot = Instant.now().plusSeconds(7200);
@@ -279,7 +279,7 @@ class ManualPublishingServiceTest {
     void retryWithNewSchedule_blockedWithoutOverride_throwsGuardRailViolation() {
         Submission s = submission(submissionId, SubmissionStatus.publish_failed);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
-        when(guardRailService.validate(any(), any())).thenReturn(new GuardRailResult(
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult(
                 java.util.List.of(new com.dasigconnect.backend.model.dto.guardrail.GuardRailViolation("GR-H2", "Too soon")),
                 java.util.List.of()));
 
@@ -297,7 +297,7 @@ class ManualPublishingServiceTest {
         Submission s = submission(submissionId, SubmissionStatus.missed_review);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
         when(submissionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-        when(guardRailService.validate(any(), any())).thenReturn(new GuardRailResult());
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult());
 
         RescheduleRequestDto dto = new RescheduleRequestDto();
         Instant newSlot = Instant.now().plusSeconds(7200);
@@ -316,7 +316,7 @@ class ManualPublishingServiceTest {
     void retryWithNewSchedule_missedReview_blockedWithoutOverride_throwsGuardRailViolation() {
         Submission s = submission(submissionId, SubmissionStatus.missed_review);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
-        when(guardRailService.validate(any(), any())).thenReturn(new GuardRailResult(
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult(
                 java.util.List.of(new com.dasigconnect.backend.model.dto.guardrail.GuardRailViolation("GR-H2", "Too soon")),
                 java.util.List.of()));
 

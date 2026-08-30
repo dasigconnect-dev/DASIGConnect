@@ -8,10 +8,12 @@ import com.dasigconnect.backend.model.dto.systemhealth.ExternalServiceHealthDto;
 import com.dasigconnect.backend.model.dto.systemhealth.OperationalMetricDto;
 import com.dasigconnect.backend.model.dto.systemhealth.StorageMetricDto;
 import com.dasigconnect.backend.model.dto.systemhealth.SystemHealthSummaryDto;
+import com.dasigconnect.backend.service.AuditLogService;
 import com.dasigconnect.backend.service.ManualJobRunner;
 import com.dasigconnect.backend.service.SystemHealthService;
 import com.dasigconnect.backend.service.TokenManagementService;
 import com.dasigconnect.backend.security.JwtUserDetails;
+import java.util.Map;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.http.ContentDisposition;
@@ -34,14 +36,17 @@ public class SystemHealthController {
     private final SystemHealthService systemHealthService;
     private final TokenManagementService tokenManagementService;
     private final ManualJobRunner manualJobRunner;
+    private final AuditLogService auditLogService;
 
     public SystemHealthController(
             SystemHealthService systemHealthService,
             TokenManagementService tokenManagementService,
-            ManualJobRunner manualJobRunner) {
+            ManualJobRunner manualJobRunner,
+            AuditLogService auditLogService) {
         this.systemHealthService = systemHealthService;
         this.tokenManagementService = tokenManagementService;
         this.manualJobRunner = manualJobRunner;
+        this.auditLogService = auditLogService;
     }
 
     @GetMapping("/summary")
@@ -88,21 +93,30 @@ public class SystemHealthController {
      * class name, as shown in {@code BackgroundJobHealthDto.key}. 404 if unknown.
      */
     @PostMapping("/jobs/{jobKey}/run")
-    public ResponseEntity<ApiResponse<List<BackgroundJobHealthDto>>> runJob(@PathVariable String jobKey) {
+    public ResponseEntity<ApiResponse<List<BackgroundJobHealthDto>>> runJob(
+            @PathVariable String jobKey,
+            @AuthenticationPrincipal JwtUserDetails admin) {
         manualJobRunner.run(jobKey);
+        auditLogService.recordByActorId(admin != null ? admin.userId() : null,
+                "BACKGROUND_JOB_RUN", null, null, null, Map.of("jobKey", jobKey));
         return ResponseEntity.ok(ApiResponse.success(systemHealthService.backgroundJobs()));
     }
 
     /** Back-compat shortcut for the most common manual run. */
     @PostMapping("/tokens/recheck")
-    public ResponseEntity<ApiResponse<List<BackgroundJobHealthDto>>> recheckTokenHealth() {
+    public ResponseEntity<ApiResponse<List<BackgroundJobHealthDto>>> recheckTokenHealth(
+            @AuthenticationPrincipal JwtUserDetails admin) {
         manualJobRunner.run("TokenHealthCheckJob");
+        auditLogService.recordByActorId(admin != null ? admin.userId() : null,
+                "BACKGROUND_JOB_RUN", null, null, null, Map.of("jobKey", "TokenHealthCheckJob"));
         return ResponseEntity.ok(ApiResponse.success(systemHealthService.backgroundJobs()));
     }
 
     @GetMapping(value = "/export", produces = "text/csv")
-    public ResponseEntity<String> exportSnapshot() {
+    public ResponseEntity<String> exportSnapshot(@AuthenticationPrincipal JwtUserDetails admin) {
         String filename = "DASIGConnect_System_Health_" + LocalDate.now() + ".csv";
+        auditLogService.recordByActorId(admin != null ? admin.userId() : null,
+                "SYSTEM_HEALTH_EXPORTED", null, null, null, Map.of());
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .header(HttpHeaders.CONTENT_DISPOSITION,

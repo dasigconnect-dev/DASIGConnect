@@ -206,8 +206,16 @@ export function getSubmissionLookups(signal?: AbortSignal) {
   return api.get<SubmissionLookups>("/submissions/lookups", { signal });
 }
 
-export function validateGuardRails(scheduledAt: string, institutionId?: string | null) {
-  return api.post<GuardRailResult>("/guardrails/validate", { scheduledAt, institutionId });
+export function validateGuardRails(
+  scheduledAt: string,
+  institutionId?: string | null,
+  submissionId?: string | null,
+) {
+  return api.post<GuardRailResult>("/guardrails/validate", {
+    scheduledAt,
+    institutionId,
+    submissionId: submissionId || undefined,
+  });
 }
 
 export function getEngagementRecommendations(institutionId?: string | null, signal?: AbortSignal) {

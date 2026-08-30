@@ -247,7 +247,7 @@ class ValidationServiceTest {
 
         when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
         when(userRepository.findById(adminId)).thenReturn(Optional.of(adminUser));
-        when(submissionService.applySubmissionEdits(any(), any())).thenAnswer(invocation -> {
+        when(submissionService.applySubmissionEdits(any(), any(), any())).thenAnswer(invocation -> {
             Submission s = invocation.getArgument(0);
             s.setEventTitle("Edited Title");
             return s;
