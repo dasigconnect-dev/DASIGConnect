@@ -147,11 +147,47 @@ public class SystemHealthService {
     @Transactional(readOnly = true)
     public List<ExternalServiceHealthDto> externalServices() {
         List<ExternalServiceHealthDto> services = new ArrayList<>();
+        services.add(databaseHealth());
+        services.add(mediaObjectStorageHealth());
         services.add(facebookTokenHealth());
         services.add(httpReachability("Anthropic Claude Vision API", "https://api.anthropic.com/v1/messages", anthropicApiKey));
         services.add(httpReachability("Voyage AI API", "https://api.voyageai.com/v1/embeddings", voyageApiKey));
         services.add(emailHealth());
         return services;
+    }
+
+    /** Supabase PostgreSQL — a timed {@code SELECT 1}. Slow-but-up is a WARNING;
+     *  the Session Pooler + Hikari-5 setup makes latency worth watching. */
+    private ExternalServiceHealthDto databaseHealth() {
+        long startNanos = System.nanoTime();
+        try {
+            jdbcTemplate.queryForObject("SELECT 1", Integer.class);
+            long ms = (System.nanoTime() - startNanos) / 1_000_000;
+            HealthStatus status = ms >= 1000 ? HealthStatus.WARNING : HealthStatus.HEALTHY;
+            String detail = status == HealthStatus.WARNING
+                    ? String.format("Connection responded in %d ms — slower than expected for the connection pooler.", ms)
+                    : String.format("Connection responded in %d ms.", ms);
+            return service("Supabase PostgreSQL", status, detail, null, null);
+        } catch (Exception ex) {
+            return service("Supabase PostgreSQL", HealthStatus.UNHEALTHY,
+                    "Database connection probe failed.", null, null);
+        }
+    }
+
+    /** Cloudflare R2 media bucket — a one-key list to confirm creds + endpoint. */
+    private ExternalServiceHealthDto mediaObjectStorageHealth() {
+        if (!mediaStorage.isConfigured()) {
+            return service("Cloudflare R2 (Media Storage)", HealthStatus.UNAVAILABLE,
+                    "Object storage credentials are not configured.", null, null);
+        }
+        try {
+            String bucket = mediaStorage.pingBucket();
+            return service("Cloudflare R2 (Media Storage)", HealthStatus.HEALTHY,
+                    "Bucket '" + bucket + "' is reachable.", null, null);
+        } catch (Exception ex) {
+            return service("Cloudflare R2 (Media Storage)", HealthStatus.UNHEALTHY,
+                    "Bucket could not be reached — check the R2 credentials and endpoint.", null, null);
+        }
     }
 
     @Transactional(readOnly = true)
