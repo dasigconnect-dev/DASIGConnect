@@ -8,4 +8,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface PageSettingsRepository extends JpaRepository<PageSettings, UUID> {
     Optional<PageSettings> findByInstitutionId(UUID institutionId);
     Optional<PageSettings> findByInstitutionIsNull();
+    void deleteByInstitutionId(UUID institutionId);
 }

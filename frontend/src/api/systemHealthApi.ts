@@ -22,6 +22,8 @@ export interface ExternalServiceHealth {
 }
 
 export interface BackgroundJobHealth {
+  /** Job simple class name — the id used by runSystemHealthJob(). */
+  key: string;
   jobName: string;
   status: HealthStatus;
   lastStartedAt: string | null;
@@ -68,6 +70,11 @@ export function getSystemHealthSummary(signal?: AbortSignal) {
 
 export function getSystemHealthTokens(signal?: AbortSignal) {
   return api.get<TokenStatus[]>("/system-health/tokens", { signal });
+}
+
+/** Runs one scheduled background job now (bypasses its cron) and returns the refreshed job list. */
+export function runSystemHealthJob(jobKey: string) {
+  return api.post<BackgroundJobHealth[]>(`/system-health/jobs/${encodeURIComponent(jobKey)}/run`);
 }
 
 export function initSystemHealthOAuth(tokenId: string) {

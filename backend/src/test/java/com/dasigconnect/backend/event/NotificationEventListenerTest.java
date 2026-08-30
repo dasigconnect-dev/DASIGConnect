@@ -72,7 +72,8 @@ class NotificationEventListenerTest {
         superAdmin.setEmail("superadmin@dost.gov.ph");
         superAdmin.setRole(UserRole.admin);
 
-        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institution.getId(), UserRole.moderator))
+        // Moderators are network-wide now — notified via findByRole, not institution scoping.
+        when(userRepository.findByRole(UserRole.moderator))
                 .thenReturn(List.of(admin));
         when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institution.getId(), UserRole.contributor))
                 .thenReturn(List.of(contributor));

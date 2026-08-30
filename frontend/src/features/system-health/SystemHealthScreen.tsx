@@ -4,6 +4,7 @@ import {
   getSystemHealthSummary,
   getSystemHealthTokens,
   initSystemHealthOAuth,
+  runSystemHealthJob,
   type BackgroundJobHealth,
   type ExternalServiceHealth,
   type HealthStatus,
@@ -40,6 +41,7 @@ export default function SystemHealthScreen({ user }: Props) {
   const [tokens, setTokens] = useState<TokenStatus[]>(cachedTokens);
   const [loading, setLoading] = useState(!cachedSummary);
   const [exporting, setExporting] = useState(false);
+  const [runningJobKey, setRunningJobKey] = useState<string | null>(null);
   const [busyTokenId, setBusyTokenId] = useState<string | null>(null);
 
   // Active top-level tab (jobs | integrations | performance | storage)
@@ -108,6 +110,19 @@ export default function SystemHealthScreen({ user }: Props) {
       toast.error("Unable to export snapshot.");
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function handleRunJob(job: BackgroundJobHealth) {
+    setRunningJobKey(job.key);
+    try {
+      await runSystemHealthJob(job.key);
+      await load(undefined, true);
+      toast.success(`Ran ${job.jobName}.`);
+    } catch {
+      toast.error(`Unable to run ${job.jobName}.`);
+    } finally {
+      setRunningJobKey(null);
     }
   }
 
@@ -476,7 +491,11 @@ export default function SystemHealthScreen({ user }: Props) {
                     </div>
                   </div>
 
-                  <JobTable jobs={filteredJobs} />
+                  <JobTable
+                    jobs={filteredJobs}
+                    runningJobKey={runningJobKey}
+                    onRun={(job) => void handleRunJob(job)}
+                  />
                 </div>
               </div>
             )}
@@ -673,6 +692,9 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
 
   if (item.key === "publish_success_rate") {
     const percent = Math.min(Math.max(item.value, 0), 100);
+    const succeeded = Math.round((percent / 100) * item.sampleSize);
+    const failed = Math.max(item.sampleSize - succeeded, 0);
+    const allClean = failed === 0;
     const radius = 30;
     const circumference = 2 * Math.PI * radius;
     const strokeDash = (percent / 100) * circumference;
@@ -694,7 +716,7 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
               cy="38"
               r={radius}
               fill="none"
-              stroke="#10b981"
+              stroke={allClean ? "#10b981" : "#f59e0b"}
               strokeWidth="7"
               strokeDasharray={`${strokeDash} ${circumference}`}
               strokeDashoffset="0"
@@ -703,7 +725,7 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
             />
           </svg>
           <div className="sys-donut-center-stat">
-            <i className="ti ti-check sys-check-green" />
+            {allClean && <i className="ti ti-check sys-check-green" />}
             <strong>{percent.toFixed(0)}%</strong>
           </div>
         </div>
@@ -712,15 +734,19 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
           <div className="sys-legend-item">
             <span className="sys-legend-dot sys-dot-emerald" />
             <div>
-              <strong>{item.sampleSize} of {item.sampleSize} Published Successfully</strong>
+              <strong>{succeeded} of {item.sampleSize} Published Successfully</strong>
               <span>Direct automated Facebook Graph API dispatches</span>
             </div>
           </div>
           <div className="sys-legend-item">
             <span className="sys-legend-dot sys-dot-slate" />
             <div>
-              <strong>0 Failed Post Attempts</strong>
-              <span>Zero network timeouts or API rejections recorded</span>
+              <strong>{failed} Failed Post Attempt{failed === 1 ? "" : "s"}</strong>
+              <span>
+                {allClean
+                  ? "Zero network timeouts or API rejections recorded"
+                  : "Network timeouts or Graph API rejections — see Resolution Center"}
+              </span>
             </div>
           </div>
         </div>
@@ -806,11 +832,16 @@ function getMetricExplanation(item: OperationalMetric): string {
         ? "Moderator review latency is operating well within the 24-hour SLA benchmark."
         : `Average turnaround time is currently ${item.value.toFixed(1)}h (+${(item.value - 24).toFixed(1)}h above the 24h SLA target). Reviewing pending queues is advised.`;
     case "edit_approve_rate":
-      return `${item.value.toFixed(1)}% of submissions required revisions before approval. Standard direct-approval threshold is ≥85%.`;
+      return `${item.value.toFixed(1)}% of submissions required revisions before approval. Standard direct-approval threshold is ≤15%.`;
     case "manual_fallback_resolution_rate":
       return "Percentage of automated posting failures that were resolved via manual fallback.";
-    case "publish_success_rate":
-      return "100% of approved posts were published cleanly to connected social channels with zero dispatch errors.";
+    case "publish_success_rate": {
+      const succeeded = Math.round((Math.min(Math.max(item.value, 0), 100) / 100) * item.sampleSize);
+      const failed = Math.max(item.sampleSize - succeeded, 0);
+      return failed === 0
+        ? `All ${item.sampleSize} approved post${item.sampleSize === 1 ? "" : "s"} published cleanly to connected social channels with zero dispatch errors.`
+        : `${item.value.toFixed(1)}% published cleanly — ${failed} of ${item.sampleSize} dispatch${failed === 1 ? "" : "es"} failed and need review in the Resolution Center.`;
+    }
     case "live_event_fast_track_volume":
       return "High-priority live event posts routed through expedited moderator workflows.";
     default:
@@ -820,7 +851,7 @@ function getMetricExplanation(item: OperationalMetric): string {
 
 function getMetricBenchmark(item: OperationalMetric): string {
   if (item.key === "approval_turnaround_time") return item.value <= 24 ? "Target SLA: ≤ 24h (Met)" : "Target SLA: ≤ 24h (Over)";
-  if (item.key === "publish_success_rate") return "Target: ≥ 98% (Met)";
+  if (item.key === "publish_success_rate") return item.value >= 98 ? "Target: ≥ 98% (Met)" : "Target: ≥ 98% (Below)";
   if (item.key === "edit_approve_rate") return "Benchmark: ≤ 15%";
   if (item.key === "manual_fallback_resolution_rate") return "Target: 100% Resolved";
   if (item.key === "live_event_fast_track_volume") return "Expedited Window";
@@ -882,7 +913,15 @@ function ServiceCard({ item }: { item: ExternalServiceHealth }) {
   );
 }
 
-function JobTable({ jobs }: { jobs: BackgroundJobHealth[] }) {
+function JobTable({
+  jobs,
+  runningJobKey,
+  onRun,
+}: {
+  jobs: BackgroundJobHealth[];
+  runningJobKey: string | null;
+  onRun: (job: BackgroundJobHealth) => void;
+}) {
   if (jobs.length === 0) {
     return (
       <div className="sys-table-empty">
@@ -892,43 +931,61 @@ function JobTable({ jobs }: { jobs: BackgroundJobHealth[] }) {
     );
   }
 
+  const anyRunning = runningJobKey !== null;
+
   return (
     <table className="data-table sys-jobs-table">
       <thead>
         <tr>
-          <th style={{ width: "34%" }}>JOB NAME</th>
-          <th style={{ width: "16%" }}>STATUS</th>
-          <th style={{ width: "18%" }}>LAST RUN</th>
-          <th style={{ width: "18%" }}>LAST SUCCESS</th>
-          <th style={{ width: "14%" }}>DURATION</th>
+          <th style={{ width: "30%" }}>JOB NAME</th>
+          <th style={{ width: "14%" }}>STATUS</th>
+          <th style={{ width: "16%" }}>LAST RUN</th>
+          <th style={{ width: "16%" }}>LAST SUCCESS</th>
+          <th style={{ width: "12%" }}>DURATION</th>
+          <th style={{ width: "12%", textAlign: "right" }}>ACTIONS</th>
         </tr>
       </thead>
       <tbody>
-        {jobs.map((job) => (
-          <tr key={job.jobName} className="notif-table-row">
-            <td>
-              <div className="sys-job-cell">
-                <span className={`sys-job-dot sys-dot-${job.status.toLowerCase()}`} />
-                <div>
-                  <strong className="sys-job-name">{formatJobName(job.jobName)}</strong>
-                  {job.lastError && (
-                    <span className="sys-job-error-hint" title={job.lastError}>
-                      <i className="ti ti-alert-triangle" /> {job.lastError}
-                    </span>
-                  )}
+        {jobs.map((job) => {
+          const running = runningJobKey === job.key;
+          return (
+            <tr key={job.key} className="notif-table-row">
+              <td>
+                <div className="sys-job-cell">
+                  <span className={`sys-job-dot sys-dot-${job.status.toLowerCase()}`} />
+                  <div>
+                    <strong className="sys-job-name">{formatJobName(job.jobName)}</strong>
+                    {job.lastError && (
+                      <span className="sys-job-error-hint" title={job.lastError}>
+                        <i className="ti ti-alert-triangle" /> {job.lastError}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </td>
-            <td><StatusBadge status={job.status} /></td>
-            <td><span className="sys-date-text">{formatDate(job.lastStartedAt)}</span></td>
-            <td><span className="sys-date-text">{formatDate(job.lastSuccessAt)}</span></td>
-            <td>
-              <span className="sys-duration-pill">
-                {job.lastDurationMs == null ? "—" : `${job.lastDurationMs} ms`}
-              </span>
-            </td>
-          </tr>
-        ))}
+              </td>
+              <td><StatusBadge status={job.status} /></td>
+              <td><span className="sys-date-text">{formatDate(job.lastStartedAt)}</span></td>
+              <td><span className="sys-date-text">{formatDate(job.lastSuccessAt)}</span></td>
+              <td>
+                <span className="sys-duration-pill">
+                  {job.lastDurationMs == null ? "—" : `${job.lastDurationMs} ms`}
+                </span>
+              </td>
+              <td style={{ textAlign: "right" }}>
+                <button
+                  type="button"
+                  className="notif-btn notif-btn-ghost notif-btn-sm"
+                  onClick={() => onRun(job)}
+                  disabled={anyRunning}
+                  title={`Run ${formatJobName(job.jobName)} now instead of waiting for its schedule`}
+                >
+                  <i className={running ? "ti ti-loader-2 sys-spin" : "ti ti-player-play"} aria-hidden="true" />
+                  <span>{running ? "Running..." : "Re-run"}</span>
+                </button>
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

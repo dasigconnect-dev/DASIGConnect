@@ -8,6 +8,7 @@ import com.dasigconnect.backend.model.dto.systemhealth.ExternalServiceHealthDto;
 import com.dasigconnect.backend.model.dto.systemhealth.OperationalMetricDto;
 import com.dasigconnect.backend.model.dto.systemhealth.StorageMetricDto;
 import com.dasigconnect.backend.model.dto.systemhealth.SystemHealthSummaryDto;
+import com.dasigconnect.backend.service.ManualJobRunner;
 import com.dasigconnect.backend.service.SystemHealthService;
 import com.dasigconnect.backend.service.TokenManagementService;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -21,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,12 +33,15 @@ public class SystemHealthController {
 
     private final SystemHealthService systemHealthService;
     private final TokenManagementService tokenManagementService;
+    private final ManualJobRunner manualJobRunner;
 
     public SystemHealthController(
             SystemHealthService systemHealthService,
-            TokenManagementService tokenManagementService) {
+            TokenManagementService tokenManagementService,
+            ManualJobRunner manualJobRunner) {
         this.systemHealthService = systemHealthService;
         this.tokenManagementService = tokenManagementService;
+        this.manualJobRunner = manualJobRunner;
     }
 
     @GetMapping("/summary")
@@ -74,6 +79,25 @@ public class SystemHealthController {
             @PathVariable java.util.UUID tokenId,
             @AuthenticationPrincipal JwtUserDetails admin) {
         return ResponseEntity.ok(ApiResponse.success(tokenManagementService.initOAuth(tokenId, admin)));
+    }
+
+    /**
+     * Runs a scheduled background job on demand (jobs otherwise only fire on their
+     * own cron / fixed-delay schedule) and returns the refreshed job list so the
+     * caller sees the new status immediately. {@code jobKey} is the job's simple
+     * class name, as shown in {@code BackgroundJobHealthDto.key}. 404 if unknown.
+     */
+    @PostMapping("/jobs/{jobKey}/run")
+    public ResponseEntity<ApiResponse<List<BackgroundJobHealthDto>>> runJob(@PathVariable String jobKey) {
+        manualJobRunner.run(jobKey);
+        return ResponseEntity.ok(ApiResponse.success(systemHealthService.backgroundJobs()));
+    }
+
+    /** Back-compat shortcut for the most common manual run. */
+    @PostMapping("/tokens/recheck")
+    public ResponseEntity<ApiResponse<List<BackgroundJobHealthDto>>> recheckTokenHealth() {
+        manualJobRunner.run("TokenHealthCheckJob");
+        return ResponseEntity.ok(ApiResponse.success(systemHealthService.backgroundJobs()));
     }
 
     @GetMapping(value = "/export", produces = "text/csv")

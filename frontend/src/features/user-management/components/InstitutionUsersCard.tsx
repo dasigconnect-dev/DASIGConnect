@@ -15,6 +15,8 @@ interface InstitutionUsersCardProps {
   onCancelInvitation: (user: UserProfileResponse) => void
   onResendInvitation?: (user: UserProfileResponse) => void
   onReassign?: (user: UserProfileResponse) => void
+  onChangeRole?: (user: UserProfileResponse) => void
+  onEraseData?: (user: UserProfileResponse) => void
   onRequestSuperAdminTransfer?: (user: UserProfileResponse) => void
   resendingUserId?: string | null
   showRoleControls?: boolean
@@ -29,6 +31,8 @@ interface InstitutionUsersCardProps {
   userColumnLabel?: string
   /** Render the title/count/description + headerAction row above the filter bar. */
   showHeader?: boolean
+  /** Hide all per-row actions — renders the list as a read-only directory. */
+  readOnly?: boolean
 }
 
 type RoleFilter = 'all' | 'moderator' | 'contributor'
@@ -44,6 +48,8 @@ export default function InstitutionUsersCard({
   onCancelInvitation,
   onResendInvitation,
   onReassign,
+  onChangeRole,
+  onEraseData,
   onRequestSuperAdminTransfer,
   resendingUserId = null,
   showRoleControls = true,
@@ -57,6 +63,7 @@ export default function InstitutionUsersCard({
   showFilterPills = true,
   userColumnLabel = 'User',
   showHeader = true,
+  readOnly = false,
 }: InstitutionUsersCardProps) {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
@@ -66,9 +73,10 @@ export default function InstitutionUsersCard({
     all: users.length,
     active: users.filter((u) => u.accountState.toLowerCase() === 'active').length,
     pending: users.filter((u) => u.accountState.toLowerCase().startsWith('pending')).length,
+    inactive: users.filter((u) => u.accountState.toLowerCase() === 'inactive').length,
     cancelled: users.filter((u) => {
       const s = u.accountState.toLowerCase()
-      return s === 'cancelled' || s === 'expired' || s === 'inactive'
+      return s === 'cancelled' || s === 'expired'
     }).length,
   }), [users])
 
@@ -86,8 +94,10 @@ export default function InstitutionUsersCard({
         if (state !== 'active') return false
       } else if (statusFilter === 'pending') {
         if (!state.startsWith('pending')) return false
-      } else if (statusFilter === 'cancelled' || statusFilter === 'inactive') {
-        if (state !== 'cancelled' && state !== 'expired' && state !== 'inactive') return false
+      } else if (statusFilter === 'inactive') {
+        if (state !== 'inactive') return false
+      } else if (statusFilter === 'cancelled') {
+        if (state !== 'cancelled' && state !== 'expired') return false
       }
     }
     return true
@@ -95,14 +105,10 @@ export default function InstitutionUsersCard({
 
   const hasFilters = search !== '' || (showFilterPills && ((showRoleControls && roleFilter !== 'all') || statusFilter !== 'all'))
 
-  const activeUsersCount = useMemo(() => {
-    return users.filter((u) => {
-      const s = u.accountState.toLowerCase()
-      const isUnactivatedInvite = !u.firstName || u.firstName.trim() === ''
-      const isCancelled = s === 'cancelled' || s === 'expired' || (s === 'inactive' && isUnactivatedInvite)
-      return !isCancelled && s === 'active'
-    }).length
-  }, [users])
+  const activeUsersCount = useMemo(
+    () => users.filter((u) => u.accountState.toLowerCase() === 'active').length,
+    [users],
+  )
 
   return (
     <>
@@ -151,6 +157,7 @@ export default function InstitutionUsersCard({
                 { value: 'all', label: variant === 'directory' ? 'All' : 'All Status', count: statusCounts.all },
                 { value: 'active', label: 'Active', count: statusCounts.active },
                 { value: 'pending', label: 'Pending', count: statusCounts.pending },
+                { value: 'inactive', label: 'Inactive', count: statusCounts.inactive },
                 { value: 'cancelled', label: 'Cancelled', count: statusCounts.cancelled },
               ] as { value: StatusFilter; label: string; count: number }[]).map(({ value, label, count }) => (
                 <button
@@ -243,16 +250,17 @@ export default function InstitutionUsersCard({
                   const isUpdating = updatingUserId === managedUser.id
                   const stateLower = managedUser.accountState.toLowerCase()
                   const isActive = stateLower === 'active'
-                  const isUnactivatedInvite = !managedUser.firstName || managedUser.firstName.trim() === ''
-                  const isCancelled = stateLower === 'cancelled' || stateLower === 'expired' || (stateLower === 'inactive' && isUnactivatedInvite)
-                  const isInactive = stateLower === 'inactive' && !isUnactivatedInvite
+                  const isCancelled = stateLower === 'cancelled' || stateLower === 'expired'
+                  const isInactive = stateLower === 'inactive'
                   const isPending = stateLower.startsWith('pending')
                   const isResending = resendingUserId === managedUser.id
                   const canManage = canToggleUserStatus(currentUser, managedUser)
                   const displayName = getUserDisplayName(managedUser)
                   const initials = getUserInitials(managedUser)
 
-                  const menuItems = isPending
+                  const menuItems = readOnly
+                    ? []
+                    : isPending
                     ? [
                         onResendInvitation
                           ? {
@@ -283,7 +291,7 @@ export default function InstitutionUsersCard({
                               dangerous: isActive,
                             }
                           : null,
-                        canManage && !isActive
+                        canRemove(currentUser, managedUser)
                           ? {
                               label: 'Delete user',
                               icon: 'ti ti-trash',
@@ -291,7 +299,22 @@ export default function InstitutionUsersCard({
                               dangerous: true,
                             }
                           : null,
-                        onReassign && canManage
+                        onEraseData && canEraseData(currentUser, managedUser)
+                          ? {
+                              label: 'Erase personal data',
+                              icon: 'ti ti-eraser',
+                              onClick: () => onEraseData(managedUser),
+                              dangerous: true,
+                            }
+                          : null,
+                        onChangeRole && canChangeRole(currentUser, managedUser)
+                          ? {
+                              label: 'Change role',
+                              icon: 'ti ti-user-cog',
+                              onClick: () => onChangeRole(managedUser),
+                            }
+                          : null,
+                        onReassign && canManage && isActive
                           ? {
                               label: 'Reassign institution',
                               icon: 'ti ti-building-community',
@@ -326,8 +349,13 @@ export default function InstitutionUsersCard({
                               {currentUser?.email.toLowerCase() === managedUser.email.toLowerCase() && (
                                 <span className="um-you-pill">You</span>
                               )}
+                              {managedUser.purgedAt && (
+                                <span className="um-erased-pill">Erased</span>
+                              )}
                             </strong>
-                            <span className="um-user-email">{managedUser.email}</span>
+                            <span className="um-user-email">
+                              {managedUser.purgedAt ? 'personal data removed' : managedUser.email}
+                            </span>
                           </div>
                         </div>
                       </td>
@@ -479,8 +507,10 @@ function formatRoleLabel(value: string) {
 
 function formatAccountState(user: UserProfileResponse) {
   const n = user.accountState.toLowerCase()
-  const isUnactivatedInvite = !user.firstName || user.firstName.trim() === ''
-  if (n === 'cancelled' || (n === 'inactive' && isUnactivatedInvite)) {
+  // `inactive` always means an account that was activated and later deactivated
+  // — a pending invite can't be deactivated — so never relabel it "Cancelled",
+  // even when its name is missing (legacy / imported rows).
+  if (n === 'cancelled') {
     return 'Cancelled'
   }
   return user.accountState
@@ -497,8 +527,7 @@ function formatDate(value: string) {
 
 function stateClass(user: UserProfileResponse) {
   const n = user.accountState.toLowerCase()
-  const isUnactivatedInvite = !user.firstName || user.firstName.trim() === ''
-  if (n === 'cancelled' || (n === 'inactive' && isUnactivatedInvite)) {
+  if (n === 'cancelled') {
     return 'is-cancelled'
   }
   if (n.includes('inactive')) return 'is-muted'
@@ -518,11 +547,48 @@ function canToggleUserStatus(currentUser: User | null, managedUser: UserProfileR
   return currentUser.role === 'admin' || currentUser.role === 'moderator'
 }
 
-function canRequestSuperAdminTransfer(currentUser: User | null, managedUser: UserProfileResponse) {
+/** Delete is allowed once an account is deactivated, cancelled, or expired — the states `removeUser` accepts. */
+function canRemove(currentUser: User | null, managedUser: UserProfileResponse) {
+  if (!currentUser) return false
+  const state = managedUser.accountState.toLowerCase()
+  if (state !== 'inactive' && state !== 'cancelled' && state !== 'expired') return false
+  const targetRole = managedUser.role.toLowerCase()
+  if (targetRole === 'moderator' || targetRole === 'admin') {
+    return currentUser.role === 'admin' && currentUser.email.toLowerCase() !== managedUser.email.toLowerCase()
+  }
+  return currentUser.role === 'admin' || currentUser.role === 'moderator'
+}
+
+function canChangeRole(currentUser: User | null, managedUser: UserProfileResponse) {
   return Boolean(
     currentUser &&
       currentUser.role === 'admin' &&
-      managedUser.role.toLowerCase() === 'moderator' &&
+      managedUser.accountState.toLowerCase() === 'active' &&
+      currentUser.email.toLowerCase() !== managedUser.email.toLowerCase(),
+  )
+}
+
+function canEraseData(currentUser: User | null, managedUser: UserProfileResponse) {
+  // `inactive` = a real account that was activated then deactivated (a pending
+  // invite can't be deactivated), so it's the one state where a GDPR erase
+  // applies — and the only one the backend accepts alongside `cancelled`.
+  // Withdrawn / expired invites have no footprint, so "Delete user" removes
+  // them outright and erase there would just be noise.
+  return Boolean(
+    currentUser &&
+      currentUser.role === 'admin' &&
+      !managedUser.purgedAt &&
+      managedUser.accountState.toLowerCase() === 'inactive' &&
+      currentUser.email.toLowerCase() !== managedUser.email.toLowerCase(),
+  )
+}
+
+function canRequestSuperAdminTransfer(currentUser: User | null, managedUser: UserProfileResponse) {
+  const targetRole = managedUser.role.toLowerCase()
+  return Boolean(
+    currentUser &&
+      currentUser.role === 'admin' &&
+      (targetRole === 'moderator' || targetRole === 'admin') &&
       managedUser.accountState.toLowerCase() === 'active' &&
       currentUser.email.toLowerCase() !== managedUser.email.toLowerCase(),
   )

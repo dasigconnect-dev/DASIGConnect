@@ -42,7 +42,7 @@ class WatermarkApplicationServiceTest {
     private InstitutionRepository institutionRepository;
 
     @Mock
-    private R2StorageService storageService;
+    private MediaStorageService storageService;
 
     private WatermarkApplicationService service;
     private HttpServer imageServer;
@@ -87,7 +87,7 @@ class WatermarkApplicationServiceTest {
                 "widthPercent":60,"heightPercent":20,"opacity":0.9,"textColor":"#FFFFFF","fontSizePercent":3.2}]
                 """);
 
-        when(configurationRepository.findByInstitutionId(institutionId)).thenReturn(Optional.of(config));
+        when(configurationRepository.findByInstitutionIsNull()).thenReturn(Optional.of(config));
         when(storageService.generatedWatermarkPath(eq(submission.getId()), eq(link.getMediaAsset().getId()), eq("jpg")))
                 .thenReturn("generated/watermarked/sample.jpg");
         when(storageService.uploadPublicObject(eq("generated/watermarked/sample.jpg"), any(byte[].class), eq("image/jpeg")))
@@ -118,7 +118,7 @@ class WatermarkApplicationServiceTest {
                 ]
                 """, base64Logo));
 
-        when(configurationRepository.findByInstitutionId(institutionId)).thenReturn(Optional.of(config));
+        when(configurationRepository.findByInstitutionIsNull()).thenReturn(Optional.of(config));
         when(storageService.generatedWatermarkPath(any(), any(), eq("jpg"))).thenReturn("generated/watermarked/composite.jpg");
         when(storageService.uploadPublicObject(any(), any(), eq("image/jpeg"))).thenReturn("https://storage.example/composite.jpg");
 

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
 
-export type DashboardNavId = 'home' | 'submit' | 'review-queue' | 'institution-management' | 'user-management' | 'system-health' | 'audit-log' | 'scheduler' | 'resolution' | 'analytics' | 'media-repository' | 'notifications'
+export type DashboardNavId = 'home' | 'submit' | 'review-queue' | 'institution-management' | 'user-management' | 'admin-management' | 'system-health' | 'audit-log' | 'scheduler' | 'resolution' | 'analytics' | 'media-repository' | 'notifications'
 
 interface DashboardShellProps {
   user: User
@@ -223,6 +223,13 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
     },
     {
       id: 'user-management',
+      icon: 'ti ti-users',
+      label: 'User Management',
+      path: '/admin/user-management',
+      visible: isAdmin,
+    },
+    {
+      id: 'admin-management',
       icon: 'ti ti-shield-check',
       label: 'Admin Management',
       path: '/admin/admin-management',
@@ -281,7 +288,7 @@ function groupDashboardNavItems(items: DashboardNavItem[]) {
     },
     {
       label: 'Operations',
-      items: items.filter((item) => ['institution-management', 'user-management', 'system-health', 'audit-log', 'analytics'].includes(item.id)),
+      items: items.filter((item) => ['institution-management', 'user-management', 'admin-management', 'system-health', 'audit-log', 'analytics'].includes(item.id)),
     },
   ].filter((group) => group.items.length > 0)
 }

@@ -85,7 +85,7 @@ class SubmissionServiceTest {
     private UserRepository userRepository;
 
     @Mock
-    private R2StorageService r2StorageService;
+    private MediaStorageService mediaStorage;
 
     @Mock
     private EntityManager entityManager;
@@ -490,14 +490,14 @@ class SubmissionServiceTest {
                 .thenReturn(java.util.Set.of());
         when(submissionMediaAssetRepository.existsByMediaAssetId(assetId)).thenReturn(false);
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
-        when(r2StorageService.deletePublicObject(asset.getStorageUrl())).thenReturn(true);
+        when(mediaStorage.deletePublicObject(asset.getStorageUrl())).thenReturn(true);
 
         submissionService.detachAsset(submissionId, assetId, contributorPrincipal);
 
         verify(submissionMediaAssetRepository).delete(link);
         verify(mediaAssetRepository).delete(asset);
         verify(mediaAssetRepository, never()).save(asset);
-        verify(r2StorageService).deletePublicObject(asset.getStorageUrl());
+        verify(mediaStorage).deletePublicObject(asset.getStorageUrl());
     }
 
     @Test

@@ -28,9 +28,17 @@ import com.dasigconnect.backend.model.dto.institution.CreateInstitutionRequest;
 import com.dasigconnect.backend.model.dto.institution.InstitutionDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
+import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
+import com.dasigconnect.backend.repository.MediaAlbumRepository;
+import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.OverrideRequestRepository;
+import com.dasigconnect.backend.repository.PageSettingsRepository;
+import com.dasigconnect.backend.repository.SlotReservationRepository;
+import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
+import com.dasigconnect.backend.repository.WatermarkConfigurationRepository;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
@@ -43,7 +51,31 @@ class InstitutionServiceTest {
     private UserRepository userRepository;
 
     @Mock
+    private SubmissionRepository submissionRepository;
+
+    @Mock
+    private MediaAssetRepository mediaAssetRepository;
+
+    @Mock
+    private MediaAlbumRepository mediaAlbumRepository;
+
+    @Mock
     private InvitationTokenRepository invitationTokenRepository;
+
+    @Mock
+    private SlotReservationRepository slotReservationRepository;
+
+    @Mock
+    private OverrideRequestRepository overrideRequestRepository;
+
+    @Mock
+    private PageSettingsRepository pageSettingsRepository;
+
+    @Mock
+    private WatermarkConfigurationRepository watermarkConfigurationRepository;
+
+    @Mock
+    private MediaStorageService mediaStorage;
 
     @Mock
     private WorkspaceProvisionerService workspaceProvisioner;
@@ -370,14 +402,61 @@ class InstitutionServiceTest {
             mockInstitution.setProtected(false);
             mockInstitution.setStatus(InstitutionStatus.active);
             when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
-            when(userRepository.countByInstitutionId(institutionId)).thenReturn(0L);
-            when(invitationTokenRepository.countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(eq(institutionId), any())).thenReturn(0L);
+            when(userRepository.existsByInstitutionIdAndRoleAndAccountStateIn(eq(institutionId), eq(UserRole.contributor), any()))
+                    .thenReturn(false);
+            when(invitationTokenRepository.countByInstitutionIdAndAssignedRoleAndUsedAtIsNullAndExpiresAtAfter(
+                    eq(institutionId),
+                    eq(UserRole.contributor),
+                    any()))
+                    .thenReturn(0L);
             when(institutionRepository.save(any())).thenReturn(mockInstitution);
 
             InstitutionDto result = institutionService.deactivateInstitution(institutionId);
 
             assertThat(mockInstitution.getStatus()).isEqualTo(InstitutionStatus.inactive);
             verify(institutionRepository).save(mockInstitution);
+        }
+    }
+
+    @Nested
+    @DisplayName("deleteInstitution()")
+    class DeleteInstitutionTests {
+
+        @Test
+        @DisplayName("purges media assets before albums so the self-referencing album FK is not tripped")
+        void shouldPurgeAssetsBeforeAlbums() {
+            mockInstitution.setProtected(false);
+            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+            when(userRepository.existsByInstitutionIdAndRoleAndAccountStateIn(eq(institutionId), eq(UserRole.contributor), any()))
+                    .thenReturn(false);
+            when(submissionRepository.existsByInstitutionId(institutionId)).thenReturn(false);
+            when(mediaAssetRepository.existsActiveByInstitutionId(institutionId)).thenReturn(false);
+
+            institutionService.deleteInstitution(institutionId);
+
+            var inOrder = org.mockito.Mockito.inOrder(
+                    mediaAssetRepository, mediaAlbumRepository, institutionRepository);
+            inOrder.verify(mediaAssetRepository).deleteByInstitutionId(institutionId);
+            inOrder.verify(mediaAlbumRepository).deleteByInstitutionId(institutionId);
+            inOrder.verify(institutionRepository).delete(mockInstitution);
+        }
+
+        @Test
+        @DisplayName("best-effort purges the stored object of every lingering asset (soft-deleted included)")
+        void shouldPurgeOrphanedStorageObjects() {
+            mockInstitution.setProtected(false);
+            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+            when(userRepository.existsByInstitutionIdAndRoleAndAccountStateIn(eq(institutionId), eq(UserRole.contributor), any()))
+                    .thenReturn(false);
+            when(submissionRepository.existsByInstitutionId(institutionId)).thenReturn(false);
+            when(mediaAssetRepository.existsActiveByInstitutionId(institutionId)).thenReturn(false);
+            when(mediaAssetRepository.findStorageUrlsByInstitutionId(institutionId))
+                    .thenReturn(java.util.List.of("https://cdn.example/a.jpg", "https://cdn.example/b.png"));
+
+            institutionService.deleteInstitution(institutionId);
+
+            verify(mediaStorage).deletePublicObject("https://cdn.example/a.jpg");
+            verify(mediaStorage).deletePublicObject("https://cdn.example/b.png");
         }
     }
 }
