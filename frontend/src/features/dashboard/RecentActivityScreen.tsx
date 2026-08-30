@@ -33,17 +33,8 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
   const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
-    if (user?.role === "moderator" && user.institutionId) {
-      setInstitutions([
-        {
-          id: user.institutionId,
-          name: getInstitutionName(user),
-          code: "",
-          emailDomain: "",
-        },
-      ]);
-      return;
-    }
+    // Only admins resolve the institution list; moderators are network-wide with
+    // no owning institution, contributors get their name from the submission DTO.
     if (user?.role !== "admin") return;
     listInstitutions()
       .then((response) => {
@@ -378,7 +369,7 @@ function statusDisplay(status: SubmissionSummary["status"]): ActivityItem["statu
 
 function getInstitutionName(user: User | null): string {
   if (!user) return "Institution";
-  if (user.role === "admin") return "DASIG";
+  if (user.role === "admin" || user.role === "moderator") return "DASIG Network";
   const explicit = user.inst?.trim();
   if (explicit && explicit !== user.institutionId) return explicit;
   const emailDomain =
