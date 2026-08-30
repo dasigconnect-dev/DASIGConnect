@@ -244,7 +244,7 @@ export default function AuditDetailModal({ entry, onClose }: Props) {
           {/* Raw Metadata JSON Inspector */}
           {entry.metadata && Object.keys(entry.metadata).length > 0 && (
             <div className="audit-panel-card audit-json-card">
-              <details className="audit-json-details">
+              <details className="audit-json-details" open>
                 <summary className="audit-json-summary">
                   <div className="audit-json-summary-left">
                     <i className="ti ti-code" style={{ color: "var(--d-blue, #1877f2)", fontSize: 13 }} />

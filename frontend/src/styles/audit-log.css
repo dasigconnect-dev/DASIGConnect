@@ -442,6 +442,12 @@
   gap: 14px;
 }
 
+/* Direct children must keep their natural height so the body scrolls
+   instead of the flex layout compressing the cards. */
+.audit-modal-body > * {
+  flex-shrink: 0;
+}
+
 /* Custom Sleek Scrollbar */
 .audit-modal-body::-webkit-scrollbar {
   width: 6px;
