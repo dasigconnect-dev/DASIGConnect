@@ -31,11 +31,11 @@ public class EmailSmokeTestRunner implements ApplicationRunner {
         }
 
         String recipient = smokeTestRecipient.trim();
-        log.info("Sending SMTP smoke-test email to {}", recipient);
+        log.info("Sending email smoke-test message to {}", recipient);
         emailService.sendPlainText(
                 recipient,
-                "DASIGConnect SMTP smoke test",
-                "DASIGConnect SMTP smoke test sent at " + Instant.now());
-        log.info("SMTP smoke-test email sent to {}", recipient);
+                "DASIGConnect email smoke test",
+                "DASIGConnect email smoke test sent at " + Instant.now());
+        log.info("Email smoke-test message sent to {}", recipient);
     }
 }

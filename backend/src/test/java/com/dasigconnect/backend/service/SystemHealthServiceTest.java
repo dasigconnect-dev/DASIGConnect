@@ -22,7 +22,6 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mail.javamail.JavaMailSender;
 
 class SystemHealthServiceTest {
 
@@ -34,14 +33,15 @@ class SystemHealthServiceTest {
             jdbcTemplate,
             scheduledJobRunRepository,
             mock(TokenManagementService.class),
-            mock(JavaMailSender.class),
             mediaStorage,
             1_000_000,
             1_000_000,
             80,
             95,
             "",
-            "");
+            "",
+            "",
+            "https://api.resend.com");
 
     private static ScheduledJobRun run(String jobName, String status, Instant startedAt) {
         ScheduledJobRun run = new ScheduledJobRun();
