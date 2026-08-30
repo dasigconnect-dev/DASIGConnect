@@ -2,16 +2,17 @@ import { useState, useEffect, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import {
-  getPendingInvitationCount,
-  getUserCounts,
   listInstitutions,
   listNetworkUsers,
+  listPendingAdminInvitations,
+  listPendingNetworkInvitations,
 } from "../../api/authApi";
 import {
   listSubmissions,
   type SubmissionSummary,
 } from "../../api/submissionApi";
 import { getValidationQueue } from "../../api/validationApi";
+import { getAnalyticsSummary } from "../../api/analyticsApi";
 import { getGreetingName } from "../../lib/userIdentity";
 
 interface DashboardScreenProps {
@@ -48,16 +49,28 @@ interface ActivityItem {
 }
 
 interface DashboardStats {
+  /** Contributor only: the caller's own submissions (GET /submissions). */
   submissions: SubmissionSummary[];
+  /** Active contributor accounts, network-wide. */
   contributors: number;
+  /** Active moderator accounts, network-wide. */
   moderators: number;
+  /** Admin only: all active accounts (contributors + moderators + admins). */
+  activeMembers: number;
+  /** Open invitations, network-wide (institution + network-role). */
   pendingInvitations: number;
-  /** Reviewer roles only: live PENDING + IN_REVIEW count from the network queue. */
+  /** Reviewer + admin: live PENDING + IN_REVIEW count from the network queue. */
   reviewQueuePending: number;
-  /** Reviewer roles only: this-month approved + rejected from the review history. */
+  /** Moderator only: this-month approved + rejected from the review history. */
   reviewedApprovedThisMonth: number;
   reviewedRejectedThisMonth: number;
-  /** Reviewer roles only: recent network submissions (queue + history) for the activity table. */
+  /** Admin only: SCHEDULED submissions network-wide (upcoming pipeline). */
+  scheduledNetwork: number;
+  /** Admin only: posts published in the last 30 days, network-wide. */
+  publishedLast30d: number;
+  /** Admin only: publishing success rate (%) over the last 30 days, or null. */
+  publishingSuccessRate: number | null;
+  /** Reviewer + admin: recent network submissions (queue + history) for the activity table. */
   reviewRecent: SubmissionSummary[];
 }
 
@@ -67,16 +80,24 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
   const [institutions, setInstitutions] = useState<
     { id: string; name: string; code: string; emailDomain: string }[]
   >([]);
-  const [loadingSubmissions, setLoadingSubmissions] = useState(true);
-  const [loadingReview, setLoadingReview] = useState(user?.role === "moderator");
+  const [loadingSubmissions, setLoadingSubmissions] = useState(
+    user?.role === "contributor",
+  );
+  const [loadingReview, setLoadingReview] = useState(
+    user?.role === "moderator" || user?.role === "admin",
+  );
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
     submissions: [],
     contributors: 0,
     moderators: 0,
+    activeMembers: 0,
     pendingInvitations: 0,
     reviewQueuePending: 0,
     reviewedApprovedThisMonth: 0,
     reviewedRejectedThisMonth: 0,
+    scheduledNetwork: 0,
+    publishedLast30d: 0,
+    publishingSuccessRate: null,
     reviewRecent: [],
   });
 
@@ -99,9 +120,10 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
       });
   }, [user?.role, user?.institutionId, user?.inst]);
 
+  // GET /submissions returns the caller's OWN submissions only, so it only
+  // feeds the contributor view. Moderators/admins get network data below.
   useEffect(() => {
-    if (!user) return;
-    setLoadingSubmissions(true);
+    if (user?.role !== "contributor") return;
     listSubmissions()
       .then((response) => {
         setDashboardStats((current) => ({
@@ -115,11 +137,10 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
       .finally(() => {
         setLoadingSubmissions(false);
       });
-  }, [user?.role, user?.inst]);
+  }, [user?.role]);
 
   // Moderator home: live review-queue + this-month review history + the
-  // network-wide contributor count. (Admins get their roll-ups from the
-  // institution effect below; the review queue is the moderator's whole job.)
+  // network-wide contributor count. (Admins have their own roll-up effect below.)
   useEffect(() => {
     if (user?.role !== "moderator") return;
     let active = true;
@@ -189,84 +210,87 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
     };
   }, [user?.role]);
 
+  // Admin home: everything network-wide. GET /submissions is own-only, so the
+  // pipeline figures come from the analytics summary and the (network-wide)
+  // validation queue, and the member counts from one /users/network call
+  // instead of a per-institution fan-out.
   useEffect(() => {
-    if (!user) return;
-    if (user.role !== "admin") {
-      return;
-    }
-
-    const institutionIds = institutions.map((institution) => institution.id);
-
-    if (institutionIds.length === 0) {
-      setDashboardStats((current) => ({
-        ...current,
-        contributors: 0,
-        moderators: 0,
-        pendingInvitations: 0,
-      }));
-      return;
-    }
-
+    if (user?.role !== "admin") return;
     let active = true;
-    // Moderators are network-wide, so per-institution counts always report 0
-    // moderators; fetch the real total once instead of summing it per institution.
-    const networkModeratorCount = listNetworkUsers().then(
-      (response) =>
-        response.data.filter(
-          (u) =>
-            u.role.toLowerCase() === "moderator" &&
-            u.accountState.toLowerCase() === "active",
-        ).length,
-    );
+
     Promise.all([
-      Promise.all(
-        institutionIds.map(async (institutionId) => {
-          const [countsResponse, pendingResponse] = await Promise.all([
-            getUserCounts(institutionId),
-            getPendingInvitationCount(institutionId),
-          ]);
-          return {
-            contributors: countsResponse.data.contributors,
-            pendingInvitations: pendingResponse.data.pendingInvitations,
-          };
-        }),
+      getValidationQueue(),
+      getValidationQueue({ history: true }),
+      listNetworkUsers(),
+      listPendingNetworkInvitations(),
+      listPendingAdminInvitations(),
+      getAnalyticsSummary("30d").then(
+        (r) => r,
+        () => null,
       ),
-      networkModeratorCount,
     ])
-      .then(([responses, moderators]) => {
-        if (!active) return;
-        const totals = responses.reduce(
-          (sum, item) => ({
-            contributors: sum.contributors + item.contributors,
-            pendingInvitations:
-              sum.pendingInvitations + item.pendingInvitations,
-          }),
-          { contributors: 0, pendingInvitations: 0 },
-        );
-        setDashboardStats((current) => ({ ...current, ...totals, moderators }));
-      })
-      .catch(() => {
-        if (active) {
+      .then(
+        ([queueRes, historyRes, usersRes, netInvites, adminInvites, summary]) => {
+          if (!active) return;
+          const users = usersRes.data;
+          const activeOf = (role: string) =>
+            users.filter(
+              (u) =>
+                u.role.toLowerCase() === role &&
+                u.accountState.toLowerCase() === "active",
+            ).length;
+          const contributors = activeOf("contributor");
+          const moderators = activeOf("moderator");
+          const admins = activeOf("admin");
+
+          const recent = [...queueRes.data, ...historyRes.data]
+            .sort((a, b) =>
+              (b.submittedAt ?? b.createdAt ?? "").localeCompare(
+                a.submittedAt ?? a.createdAt ?? "",
+              ),
+            )
+            .slice(0, 5);
+
+          const breakdown = summary?.data.statusBreakdown ?? [];
+          const scheduledNetwork =
+            breakdown.find((s) => s.status.toLowerCase() === "scheduled")?.count ??
+            historyRes.data.filter((s) => s.status === "scheduled").length;
+
+          const op = summary?.data.operationalHealth ?? null;
+
           setDashboardStats((current) => ({
             ...current,
-            contributors: 0,
-            moderators: 0,
-            pendingInvitations: 0,
+            contributors,
+            moderators,
+            activeMembers: contributors + moderators + admins,
+            pendingInvitations: netInvites.data.length + adminInvites.data.length,
+            reviewQueuePending: queueRes.data.length,
+            scheduledNetwork,
+            publishedLast30d: summary?.data.totalPostsPublished.value ?? 0,
+            publishingSuccessRate:
+              op && op.publicationAttempts > 0
+                ? Math.round(op.publishingSuccessRate)
+                : null,
+            reviewRecent: recent,
           }));
-        }
+        },
+      )
+      .catch(() => {
+        /* leave stats at their defaults */
+      })
+      .finally(() => {
+        if (active) setLoadingReview(false);
       });
 
     return () => {
       active = false;
     };
-  }, [user?.role, user?.institutionId, institutions]);
+  }, [user?.role]);
 
 
   const actionRoutes: Record<string, string> = {
     "Submit Event Content": "/submissions/new",
     "Add Institution": "/admin/institution-management",
-    "Invite Members": "/admin/institution-management",
-    "Institution Overview": "/admin/institution-management",
     "Institution Management": "/admin/institution-management",
     "Review Queue": "/validation/queue",
     "View Calendar": "/scheduler/calendar",
@@ -283,14 +307,14 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
     navigate(path);
   };
 
-  // Moderators don't author content — their "Recent Activity" is the network
-  // review stream (queue + history), not listSubmissions() (own drafts only).
-  const isReviewer = user?.role === "moderator";
-  const activitySource = isReviewer
+  // Only contributors author content, so only they get a personal submission
+  // feed. Moderators and admins see the network review stream (queue + history).
+  const isNetworkView = user?.role === "moderator" || user?.role === "admin";
+  const activitySource = isNetworkView
     ? dashboardStats.reviewRecent
     : dashboardStats.submissions;
   const activityRows = activityForRole(user, activitySource, institutions);
-  const activityLoading = isReviewer ? loadingReview : loadingSubmissions;
+  const activityLoading = isNetworkView ? loadingReview : loadingSubmissions;
 
   return (
     <div id="screen-dashboard" style={{ background: "var(--d-bg)" }}>
@@ -357,7 +381,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
           <div className="section-title" style={{ margin: 0 }}>
             <i className="ti ti-history"></i> Recent Activity
           </div>
-          {!isReviewer && dashboardStats.submissions.length > 0 && (
+          {user?.role === "contributor" && dashboardStats.submissions.length > 0 && (
             <button
               type="button"
               className="section-link-btn"
@@ -366,13 +390,16 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
               View All <i className="ti ti-arrow-right" style={{ fontSize: 13 }}></i>
             </button>
           )}
-          {isReviewer && activityRows.length > 0 && (
+          {isNetworkView && activityRows.length > 0 && (
             <button
               type="button"
               className="section-link-btn"
-              onClick={() => navigate("/validation/queue")}
+              onClick={() =>
+                navigate(user?.role === "admin" ? "/analytics" : "/validation/queue")
+              }
             >
-              Open Review Queue <i className="ti ti-arrow-right" style={{ fontSize: 13 }}></i>
+              {user?.role === "admin" ? "Open Analytics" : "Open Review Queue"}{" "}
+              <i className="ti ti-arrow-right" style={{ fontSize: 13 }}></i>
             </button>
           )}
         </div>
@@ -445,10 +472,10 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
                         marginBottom: 4,
                       }}
                     >
-                      {isReviewer ? "Nothing to review yet" : "No submissions yet"}
+                      {isNetworkView ? "No recent activity" : "No submissions yet"}
                     </div>
                     <div style={{ color: "#64748b", fontSize: 12.5 }}>
-                      {isReviewer
+                      {isNetworkView
                         ? "Submissions from contributors across the network will appear here."
                         : "Start by submitting your first event content."}
                     </div>
@@ -534,9 +561,23 @@ function notice(user: User | null, stats: DashboardStats) {
     };
   }
   if (user.role === "admin") {
+    const waiting = stats.reviewQueuePending;
+    const rate = stats.publishingSuccessRate;
+    const parts: string[] = [];
+    if (waiting > 0) {
+      parts.push(
+        `<strong>${waiting} submission${waiting === 1 ? "" : "s"}</strong> ${waiting === 1 ? "is" : "are"} waiting in the review queue`,
+      );
+    }
+    if (rate !== null && rate < 100) {
+      parts.push(`publishing success is at <strong>${rate}%</strong> over the last 30 days`);
+    }
+    const tail = parts.length
+      ? ` Right now, ${parts.join(" and ")}.`
+      : " Everything across the network is on track.";
     return {
       icon: "ti ti-shield-check",
-      html: "<strong>Administrator workspace.</strong> You have full network-wide visibility across all member institutions.",
+      html: `<strong>Administrator workspace.</strong> Full network-wide visibility across all member institutions.${tail}`,
     };
   }
   if (user.role === "moderator") {
@@ -586,8 +627,8 @@ function statsForRole(
       {
         icon: "ti ti-users",
         color: "#1877F2",
-        label: "Total Users",
-        value: String(stats.contributors + stats.moderators),
+        label: "Active Members",
+        value: String(stats.activeMembers),
       },
       {
         icon: "ti ti-clock-pause",
@@ -596,16 +637,23 @@ function statsForRole(
         value: String(stats.pendingInvitations),
       },
       {
+        icon: "ti ti-file-time",
+        color: "#1877F2",
+        label: "Awaiting Review",
+        value: String(stats.reviewQueuePending),
+        highlight: stats.reviewQueuePending > 0,
+      },
+      {
         icon: "ti ti-calendar-event",
         color: "#1877F2",
         label: "Scheduled Posts",
-        value: String(scheduledCount),
+        value: String(stats.scheduledNetwork),
       },
       {
         icon: "ti ti-photo-check",
         color: "#1877F2",
-        label: "Published This Month",
-        value: String(publishedCount),
+        label: "Published (30 days)",
+        value: String(stats.publishedLast30d),
       },
     ];
   }
@@ -671,22 +719,23 @@ function actionsForRole(user: User | null): ActionItem[] {
   if (user.role === "admin") {
     return [
       {
+        icon: "ti ti-clipboard-check",
+        accent: "ac-blue",
+        title: "Review Queue",
+        subtitle: "Approve or reschedule submissions network-wide",
+        emphasized: true,
+      },
+      {
         icon: "ti ti-building-community",
         accent: "ac-green",
         title: "Add Institution",
         subtitle: "Provision a new HEI workspace",
       },
       {
-        icon: "ti ti-user-plus",
-        accent: "ac-blue",
-        title: "Invite Members",
-        subtitle: "Send invitations to contributors and moderators",
-      },
-      {
-        icon: "ti ti-layout-grid",
+        icon: "ti ti-chart-bar",
         accent: "ac-purple",
-        title: "Institution Overview",
-        subtitle: "Browse and manage all registered workspaces",
+        title: "Analytics",
+        subtitle: "Network engagement, publishing, and workflow health",
       },
     ];
   }
