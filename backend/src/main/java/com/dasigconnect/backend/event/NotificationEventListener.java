@@ -365,7 +365,25 @@ public class NotificationEventListener {
         }
     }
 
-    // ── Guard rail override request decisions ────────────────────────────────
+    // ── Guard rail override requests ────────────────────────────────────────
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onOverrideRequested(OverrideRequestedEvent event) {
+        Submission s = event.submission();
+        String link = "/submissions/" + s.getId();
+        String msg = who(event.contributor()) + " requested a guard rail override for '"
+                + s.getEventTitle() + "' — " + event.violatedRule() + " at " + fmt(event.requestedSlot())
+                + ". Approve, suggest another slot, or deny it.";
+        for (User admin : superAdmins()) {
+            notificationService.createNotification(admin, NotificationEventType.override_requested, msg, link);
+            emailDeliveryService.send(admin,
+                    NotificationEventType.override_requested.name(),
+                    "DASIGConnect — Guard rail override requested",
+                    msg + (event.reason() != null ? "\n\nReason: " + event.reason() : "")
+                        + "\n\nReview it: " + frontendBaseUrl + link);
+        }
+    }
+
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onOverrideApproved(OverrideApprovedEvent event) {

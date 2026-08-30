@@ -15,11 +15,15 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.event.OverrideApprovedEvent;
 import com.dasigconnect.backend.event.OverrideDeniedEvent;
+import com.dasigconnect.backend.event.OverrideRequestedEvent;
 import com.dasigconnect.backend.event.OverrideSlotSuggestedEvent;
+import com.dasigconnect.backend.model.dto.exception.OverrideRequestCreateDto;
 import com.dasigconnect.backend.model.dto.exception.OverrideRequestDto;
+import com.dasigconnect.backend.model.dto.guardrail.GuardRailResult;
 import com.dasigconnect.backend.model.entity.OverrideRequest;
 import com.dasigconnect.backend.model.entity.OverrideRequestDecision;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.OverrideRequestRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
@@ -41,7 +45,6 @@ public class OverrideRequestService {
 
 
     private final OverrideRequestRepository overrideRequestRepository;
-    @SuppressWarnings("unused")
     private final SubmissionRepository submissionRepository;
     private final UserRepository userRepository;
     private final SlotReservationService slotReservationService;
@@ -64,6 +67,77 @@ public class OverrideRequestService {
         this.guardRailService = guardRailService;
         this.auditLogService = auditLogService;
         this.eventPublisher = eventPublisher;
+    }
+
+    /**
+     * A contributor asks for an override so they can schedule a hard-blocked slot.
+     * The request stays pending until an administrator approves / suggests / denies.
+     */
+    public OverrideRequestDto create(OverrideRequestCreateDto dto, JwtUserDetails caller) {
+        Submission s = submissionRepository.findById(dto.getSubmissionId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found."));
+
+        if (!s.getContributor().getId().equals(caller.userId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not own this submission.");
+        }
+        if (s.getStatus() != SubmissionStatus.draft && s.getStatus() != SubmissionStatus.needs_revision) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "An override can only be requested while the submission is still being edited.");
+        }
+        if (dto.getRequestedSlot() == null || dto.getRequestedSlot().isBefore(Instant.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a future time slot.");
+        }
+        String reason = dto.getReason() == null ? "" : dto.getReason().trim();
+        if (reason.length() < 10) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Give a reason of at least 10 characters.");
+        }
+
+        GuardRailResult result = guardRailService.validate(s.getInstitution().getId(), dto.getRequestedSlot());
+        if (!result.isBlocked()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "That slot is not blocked by a guard rail — schedule it directly, no override needed.");
+        }
+
+        if (!overrideRequestRepository
+                .findBySubmissionIdAndDecision(s.getId(), OverrideRequestDecision.pending).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "You already have a pending override request for this submission.");
+        }
+
+        String violatedRule = result.getHardBlocks().get(0).getCode();
+
+        OverrideRequest r = new OverrideRequest();
+        r.setSubmission(s);
+        r.setContributor(s.getContributor());
+        r.setInstitution(s.getInstitution());
+        r.setRequestedSlot(dto.getRequestedSlot());
+        r.setViolatedRule(violatedRule);
+        r.setOverrideReason(reason);
+        r.setDecision(OverrideRequestDecision.pending);
+        r = overrideRequestRepository.save(r);
+
+        auditLogService.record(s.getContributor(), "OVERRIDE_REQUESTED", null, null, r.getId(),
+                Map.of("submissionId", s.getId().toString(),
+                       "violatedRule", violatedRule,
+                       "requestedSlot", dto.getRequestedSlot().toString()));
+
+        eventPublisher.publishEvent(new OverrideRequestedEvent(
+                s, s.getContributor(), dto.getRequestedSlot(), violatedRule, reason));
+        log.info("Contributor {} requested override {} for submission {} (rule {}).",
+                caller.userId(), r.getId(), s.getId(), violatedRule);
+
+        return OverrideRequestDto.from(r,
+                (int) overrideRequestRepository.countNonExpiredBySubmissionId(s.getId()));
+    }
+
+    /** Non-expired override requests for one submission, newest first — drives the schedule-step status chip. */
+    @Transactional(readOnly = true)
+    public List<OverrideRequestDto> forSubmission(UUID submissionId) {
+        return overrideRequestRepository.findBySubmissionIdAndDecision(submissionId, OverrideRequestDecision.pending)
+                .stream()
+                .map(r -> OverrideRequestDto.from(r,
+                        (int) overrideRequestRepository.countNonExpiredBySubmissionId(submissionId)))
+                .toList();
     }
 
     @Transactional(readOnly = true)

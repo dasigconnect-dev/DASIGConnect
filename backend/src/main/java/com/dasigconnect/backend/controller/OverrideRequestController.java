@@ -15,10 +15,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.exception.OverrideDenyRequestDto;
+import com.dasigconnect.backend.model.dto.exception.OverrideRequestCreateDto;
 import com.dasigconnect.backend.model.dto.exception.OverrideRequestDto;
 import com.dasigconnect.backend.model.dto.exception.OverrideSuggestRequestDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.OverrideRequestService;
+
+import jakarta.validation.Valid;
 
 /**
  * Guard-rail override request triage. A contributor who is hard-blocked while
@@ -38,6 +41,23 @@ public class OverrideRequestController {
 
     public OverrideRequestController(OverrideRequestService overrideRequestService) {
         this.overrideRequestService = overrideRequestService;
+    }
+
+    /** Contributor asks for an override on a hard-blocked slot. */
+    @PostMapping
+    @PreAuthorize("hasRole('CONTRIBUTOR')")
+    public ResponseEntity<ApiResponse<OverrideRequestDto>> create(
+            @Valid @RequestBody OverrideRequestCreateDto dto,
+            @AuthenticationPrincipal JwtUserDetails caller) {
+        return ResponseEntity.status(201)
+                .body(ApiResponse.success(overrideRequestService.create(dto, caller)));
+    }
+
+    /** The submission's pending override request, if any — drives the schedule-step status chip. */
+    @GetMapping("/for-submission/{submissionId}")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<List<OverrideRequestDto>>> forSubmission(@PathVariable UUID submissionId) {
+        return ResponseEntity.ok(ApiResponse.success(overrideRequestService.forSubmission(submissionId)));
     }
 
     /** Pending override requests across the network, soonest requested slot first. */
