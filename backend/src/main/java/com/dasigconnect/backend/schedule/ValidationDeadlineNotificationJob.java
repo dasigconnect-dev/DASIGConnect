@@ -68,15 +68,13 @@ public class ValidationDeadlineNotificationJob {
                 log.info("T8 deadline check: {} submission(s) approaching publication without validation.", urgent.size());
 
                 List<User> admins = userRepository.findByRole(UserRole.admin);
+                // Moderators are network-wide (no owning institution), so notify all of them.
+                List<User> moderators = userRepository.findByRole(UserRole.moderator);
 
                 for (Submission s : urgent) {
                     String link = "/submissions/" + s.getId();
-                    String msg = "URGENT: '" + s.getEventTitle()
-                            + "' is scheduled to publish in less than 30 minutes and has not been validated. "
-                            + "Immediate action required.";
-
-                    List<User> moderators = userRepository
-                            .findByInstitutionIdAndRoleOrderByCreatedAtDesc(s.getInstitution().getId(), UserRole.moderator);
+                    String msg = "'" + s.getEventTitle()
+                            + "' is scheduled to publish in under 30 minutes and has not been reviewed yet.";
 
                     for (User v : moderators) {
                         if (alreadyNotified(v, link)) continue;

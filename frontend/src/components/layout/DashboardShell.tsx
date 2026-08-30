@@ -275,7 +275,7 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       icon: 'ti ti-chart-bar',
       label: 'Analytics',
       path: '/analytics',
-      visible: user.role !== 'moderator',
+      visible: true,
     },
   ]
 }
@@ -300,6 +300,8 @@ function roleChip(user: User) {
 }
 
 function getInstitutionName(user: User) {
+  // Admins and moderators are network-wide — no owning HEI workspace.
+  if (user.role === 'admin' || user.role === 'moderator') return 'DASIG Network'
   return user.inst?.trim() || 'Institution'
 }
 

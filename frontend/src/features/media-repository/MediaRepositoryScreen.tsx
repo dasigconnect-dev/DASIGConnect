@@ -109,10 +109,15 @@ function putToStorage(
 export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenProps) {
   const toast = useToast();
   const navigate = useNavigate();
+  // Strict admin — only gates individual-asset deletion (backend does the same).
   const isAdmin = user.role === "admin";
+  // Admins and moderators are both network-wide (no home institution), so both
+  // browse every institution's media and use the per-institution filter. The
+  // backend already grants moderators this scope (isNetworkRole).
+  const isNetworkBrowser = user.role === "admin" || user.role === "moderator";
 
-  // Admins browse network-wide by default; the per-institution filter narrows it.
-  const networkView = isAdmin;
+  // Network browsers see everything by default; the per-institution filter narrows it.
+  const networkView = isNetworkBrowser;
   const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
   const [selectedInstitutionId, setSelectedInstitutionId] = useState<string | null>(null);
 
@@ -132,7 +137,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   // Admin with no institution filter: the repository shows every institution's
   // top-level albums together, each card badged with its institution.
-  const networkAlbumMode = isAdmin && !selectedInstitutionId;
+  const networkAlbumMode = isNetworkBrowser && !selectedInstitutionId;
   // At that network root (no folder open, no search/tag filter) only folder cards
   // are shown, so the network-wide asset fetch is skipped.
   const skipAssetFetch = networkAlbumMode && !currentAlbumId && !search.trim() && activeTags.size === 0;
@@ -232,7 +237,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   }, [assets]);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isNetworkBrowser) return;
     const controller = new AbortController();
     let active = true;
 
@@ -249,20 +254,20 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       active = false;
       controller.abort();
     };
-  }, [isAdmin, toast]);
+  }, [isNetworkBrowser, toast]);
 
-  // Which institution's albums to load. null + admin ⇒ every institution's albums.
-  const albumScopeInstitutionId = isAdmin ? selectedInstitutionId : (user.institutionId ?? null);
+  // Which institution's albums to load. null + network browser ⇒ every institution's albums.
+  const albumScopeInstitutionId = isNetworkBrowser ? selectedInstitutionId : (user.institutionId ?? null);
 
   const reloadAlbums = useCallback(() => {
-    if (!isAdmin && !albumScopeInstitutionId) {
+    if (!isNetworkBrowser && !albumScopeInstitutionId) {
       setAlbums([]);
       return Promise.resolve();
     }
     return listMediaAlbums(albumScopeInstitutionId ?? undefined)
       .then((res) => setAlbums(res.data ?? []))
       .catch(() => toast.error("Could not load media albums."));
-  }, [isAdmin, albumScopeInstitutionId, toast]);
+  }, [isNetworkBrowser, albumScopeInstitutionId, toast]);
 
   useEffect(() => {
     let active = true;
@@ -285,7 +290,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   // otherwise the admin's selected institution or the user's own.
   const targetInstitutionId =
     currentAlbum?.institutionId ??
-    (isAdmin ? selectedInstitutionId : user.institutionId) ??
+    (isNetworkBrowser ? selectedInstitutionId : user.institutionId) ??
     null;
 
   // Sub-folders directly under the folder being viewed (root = parentAlbumId null).
@@ -354,7 +359,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   // institution filter to that folder's institution, so the dropdown and
   // breadcrumb stay in sync.
   function openFolder(album: MediaAlbum) {
-    if (isAdmin && selectedInstitutionId !== album.institutionId) {
+    if (isNetworkBrowser && selectedInstitutionId !== album.institutionId) {
       setSelectedInstitutionId(album.institutionId);
     }
     navigateToAlbum(album.id);
@@ -384,9 +389,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     };
   }
 
-  // Rename/move/delete: admins anywhere; everyone else only their own institution's folders.
+  // Rename/move/delete: admins and moderators anywhere (backend: isNetworkRole);
+  // everyone else only their own institution's folders.
   function canManageAlbum(album: MediaAlbum) {
-    return isAdmin || album.institutionId === user.institutionId;
+    return isNetworkBrowser || album.institutionId === user.institutionId;
   }
 
   const currentAlbumInstitution = currentAlbum ? institutionById.get(currentAlbum.institutionId) ?? null : null;
@@ -1064,7 +1070,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
       {/* Toolbar: institution · search (+ semantic) · sort · view · tags */}
       <MediaToolbar
-        isAdmin={isAdmin}
+        isAdmin={isNetworkBrowser}
         institutions={institutions}
         selectedInstitutionId={selectedInstitutionId}
         onInstitutionChange={(id) => (id ? openInstitution(id) : goToAllInstitutions())}
@@ -1095,13 +1101,13 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       <nav className="med-breadcrumb" aria-label="Folder path">
         <button
           type="button"
-          className={`med-crumb${(isAdmin ? !selectedInstitutionId : !currentAlbumId) ? " current" : ""}`}
-          onClick={isAdmin ? goToAllInstitutions : () => navigateToAlbum(null)}
+          className={`med-crumb${(isNetworkBrowser ? !selectedInstitutionId : !currentAlbumId) ? " current" : ""}`}
+          onClick={isNetworkBrowser ? goToAllInstitutions : () => navigateToAlbum(null)}
         >
           <i className="ti ti-folders" style={{ fontSize: 14, marginRight: 5, opacity: 0.85 }} />
-          {isAdmin ? "All institutions" : "Library"}
+          {isNetworkBrowser ? "All institutions" : "Library"}
         </button>
-        {isAdmin && crumbInstitution && (
+        {isNetworkBrowser && crumbInstitution && (
           <span className="med-crumb-part">
             <svg className="med-crumb-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="9 18 15 12 9 6" />
@@ -1309,7 +1315,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
                             checked={checkedIds.has(asset.id)}
                             listView={listView}
                             animationDelay={Math.min(idx * 40, 480)}
-                            showInstitutionChip={networkView && isAdmin}
+                            showInstitutionChip={networkView}
                             onClick={() => handleToggleCheck(asset)}
                             onOpen={() => setLightboxAssetId(asset.id)}
                           />
@@ -1377,7 +1383,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         institutionName={user.inst}
         albums={albums}
         currentAlbum={currentAlbum}
-        institutions={isAdmin ? institutions : []}
+        institutions={isNetworkBrowser ? institutions : []}
         defaultInstitutionId={targetInstitutionId}
         onClose={() => setUploadOpen(false)}
         onCreateAlbum={(name, institutionId, parentAlbumId) =>
@@ -1417,7 +1423,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         parentName={albumModal?.mode === "create" ? currentAlbum?.name ?? null : null}
         value={albumName}
         saving={savingAlbum}
-        institutions={albumModal?.mode === "create" && !targetInstitutionId && isAdmin ? institutions : []}
+        institutions={albumModal?.mode === "create" && !targetInstitutionId && isNetworkBrowser ? institutions : []}
         institutionId={albumModalInstitutionId}
         onInstitutionChange={setAlbumModalInstitutionId}
         onChange={setAlbumName}

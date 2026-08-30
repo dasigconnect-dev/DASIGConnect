@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -71,7 +72,8 @@ class UserControllerTest {
 
     @Test
     @WithMockUser(roles = "MODERATOR")
-    void listUsers_asValidator_returnsUsers() throws Exception {
+    void listUsers_asModerator_returnsUsers() throws Exception {
+        // Moderators may view the contributor roster; they just cannot mutate it.
         UUID institutionId = UUID.randomUUID();
         when(userService.listByInstitution(any(), any())).thenReturn(List.of(userDto(
                 UUID.randomUUID(), "contributor@cit.edu.ph", UserRole.contributor, institutionId)));
@@ -121,7 +123,7 @@ class UserControllerTest {
 
     @Test
     @WithMockUser(roles = "MODERATOR")
-    void getUser_asValidator_returnsUser() throws Exception {
+    void getUser_asModerator_returnsUser() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID institutionId = UUID.randomUUID();
         when(userService.getById(any(), any())).thenReturn(userDto(
@@ -131,6 +133,15 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(userId.toString()))
                 .andExpect(jsonPath("$.data.email").value("contributor@cit.edu.ph"));
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void updateStatus_asModerator_returns403() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/{id}/status", UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"accountState\":\"inactive\"}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -195,6 +206,23 @@ class UserControllerTest {
     void erasePersonalData_asModerator_isForbidden() throws Exception {
         mockMvc.perform(post("/api/v1/users/{id}/erase", UUID.randomUUID()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void removeUser_withoutRole_returns403() throws Exception {
+        mockMvc.perform(delete("/api/v1/users/{id}", UUID.randomUUID()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void removeUser_asModerator_reachesService() throws Exception {
+        // The controller now admits moderators; ownership is enforced in the service.
+        when(userService.removeUser(any(), any())).thenReturn("deleted");
+
+        mockMvc.perform(delete("/api/v1/users/{id}", UUID.randomUUID()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.action").value("deleted"));
     }
 
     @Test

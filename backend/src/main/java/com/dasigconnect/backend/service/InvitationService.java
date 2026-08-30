@@ -99,6 +99,7 @@ public class InvitationService {
         User invitedUser = userRepository.findByEmail(recipientEmail)
                 .map(existing -> prepareExistingPendingUser(existing, dto.assignedRole(), institution))
                 .orElseGet(() -> createPendingUser(recipientEmail, dto.assignedRole(), institution));
+        invitedUser.setInvitedByUserId(inviter != null ? inviter.userId() : null);
         userRepository.save(invitedUser);
 
         Instant now = Instant.now();
@@ -113,6 +114,7 @@ public class InvitationService {
         token.setInstitution(institution);
         token.setTokenHash(tokenHash);
         token.setExpiresAt(now.plus(Duration.ofHours(72)));
+        token.setCreatedByUserId(inviter != null ? inviter.userId() : null);
         invitationTokenRepository.save(token);
 
         boolean emailDelivered = true;
@@ -289,6 +291,7 @@ public class InvitationService {
                 original.getRecipientEmail(),
                 original.getInstitution() != null ? original.getInstitution().getId() : null,
                 original.getAssignedRole()), requester);
+        assertMayManageInvitation(original, requester, "resend");
 
         userRepository.findByEmail(original.getRecipientEmail()).ifPresent(user -> {
             if (user.getAccountState() == UserStatus.pending_email_undelivered
@@ -311,6 +314,9 @@ public class InvitationService {
         newToken.setInstitution(original.getInstitution());
         newToken.setTokenHash(tokenHash);
         newToken.setExpiresAt(now.plus(Duration.ofHours(72)));
+        newToken.setCreatedByUserId(original.getCreatedByUserId() != null
+                ? original.getCreatedByUserId()
+                : (requester != null ? requester.userId() : null));
         invitationTokenRepository.save(newToken);
 
         boolean emailDelivered = true;
@@ -392,18 +398,13 @@ public class InvitationService {
         InvitationToken token = invitationTokenRepository.findById(tokenId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invitation not found."));
 
-        if (!isAdmin(requester)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only admins can cancel invitations.");
-        }
+        assertMayManageInvitation(token, requester, "cancel");
 
         if (token.getUsedAt() != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "This invitation has already been accepted.");
         }
 
-        Institution institution = token.getInstitution();
-        UserRole cancelledRole = token.getAssignedRole();
         invitationTokenRepository.delete(token);
         log.info("Invitation {} cancelled by {}", tokenId, requester != null ? requester.userId() : "unknown");
 
@@ -458,8 +459,20 @@ public class InvitationService {
         return invitationTokenRepository
                 .findByInstitutionIdAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(institutionId, Instant.now())
                 .stream()
-                .map(PendingInvitationDto::from)
+                .map(token -> PendingInvitationDto.from(token, mayManageInvitation(token, requester)))
                 .toList();
+    }
+
+    /** Non-throwing counterpart of {@link #assertMayManageInvitation} — used to flag rows in listings. */
+    private boolean mayManageInvitation(InvitationToken token, JwtUserDetails requester) {
+        if (isAdmin(requester)) {
+            return true;
+        }
+        return requester != null
+                && "moderator".equalsIgnoreCase(requester.role())
+                && token.getAssignedRole() == UserRole.contributor
+                && token.getCreatedByUserId() != null
+                && token.getCreatedByUserId().equals(requester.userId());
     }
 
     @Transactional(readOnly = true)
@@ -550,6 +563,17 @@ public class InvitationService {
 
     private boolean isAdmin(JwtUserDetails inviter) {
         return inviter != null && "admin".equalsIgnoreCase(inviter.role());
+    }
+
+    /**
+     * An admin may resend/cancel any invitation. A moderator may only manage a
+     * {@code contributor} invitation that they issued themselves.
+     */
+    private void assertMayManageInvitation(InvitationToken token, JwtUserDetails requester, String action) {
+        if (!mayManageInvitation(token, requester)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You can only " + action + " invitations you sent.");
+        }
     }
 
     private void validateInstitutionScope(UUID institutionId, JwtUserDetails requester) {

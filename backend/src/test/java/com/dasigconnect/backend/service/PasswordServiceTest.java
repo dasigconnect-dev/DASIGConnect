@@ -80,6 +80,19 @@ class PasswordServiceTest {
     }
 
     @Test
+    void requestReset_emailFailure_keepsTokenAndDoesNotThrow() {
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        when(passwordResetTokenRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        doThrow(new IllegalStateException("SMTP down"))
+                .when(emailService).sendPasswordResetEmail(any(), any());
+
+        // No exception propagates — response stays 204, token stays persisted.
+        passwordService.requestReset(new ForgotPasswordRequestDto(user.getEmail()));
+
+        verify(passwordResetTokenRepository).save(any(PasswordResetToken.class));
+    }
+
+    @Test
     void requestReset_tokenExpiresInOneHour() {
         when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
         when(passwordResetTokenRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));

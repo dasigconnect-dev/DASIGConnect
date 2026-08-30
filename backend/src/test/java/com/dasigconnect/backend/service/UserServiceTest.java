@@ -305,6 +305,49 @@ class UserServiceTest {
     }
 
     @Test
+    void removeUser_moderatorCanRemoveOwnCancelledInvitee() {
+        UUID moderatorId = UUID.randomUUID();
+        User invitee = user(UUID.randomUUID(), "invitee@cit.edu.ph", UserRole.contributor, null);
+        invitee.setAccountState(UserStatus.cancelled);
+        invitee.setInvitedByUserId(moderatorId);
+        when(userRepository.findById(invitee.getId())).thenReturn(Optional.of(invitee));
+
+        String result = userService.removeUser(invitee.getId(), principal(moderatorId, "moderator", null));
+
+        assertThat(result).isEqualTo("deleted");
+        verify(userRepository).delete(invitee);
+    }
+
+    @Test
+    void removeUser_moderatorCannotRemoveSomeoneElsesInvitee() {
+        User invitee = user(UUID.randomUUID(), "invitee@cit.edu.ph", UserRole.contributor, null);
+        invitee.setAccountState(UserStatus.cancelled);
+        invitee.setInvitedByUserId(UUID.randomUUID()); // invited by another moderator/admin
+        when(userRepository.findById(invitee.getId())).thenReturn(Optional.of(invitee));
+
+        assertThatThrownBy(() -> userService.removeUser(invitee.getId(),
+                principal(UUID.randomUUID(), "moderator", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void removeUser_moderatorCannotRemoveActivatedContributor() {
+        UUID moderatorId = UUID.randomUUID();
+        User contributor = user(UUID.randomUUID(), "c@cit.edu.ph", UserRole.contributor, null);
+        contributor.setAccountState(UserStatus.inactive); // was active then deactivated
+        contributor.setInvitedByUserId(moderatorId);
+        when(userRepository.findById(contributor.getId())).thenReturn(Optional.of(contributor));
+
+        assertThatThrownBy(() -> userService.removeUser(contributor.getId(),
+                principal(moderatorId, "moderator", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
     void updateAvatar_moderatorCanUploadValidPng() {
         byte[] png = new byte[]{
             (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00

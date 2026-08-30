@@ -342,7 +342,11 @@ function App() {
   }
 
   async function handleForgotSubmit() {
-    const email = forgotEmail.trim() || "yourname@institution.edu.ph";
+    const email = forgotEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Enter a valid email address.");
+      return;
+    }
     setForgotLoading(true);
     try {
       await requestPasswordReset(email);
@@ -826,7 +830,7 @@ function App() {
           <Route
             path="/analytics"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["admin", "moderator", "contributor"]}>
                 <AnalyticsDashboardPage user={currentUser!} />
               </ProtectedRoute>
             }

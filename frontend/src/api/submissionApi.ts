@@ -53,6 +53,10 @@ export interface SubmissionSummary {
   mediaTags?: string[];
   mediaAssets?: SavedMediaAsset[];
   requiresManualPublishing?: boolean;
+  /** Reviewer's reason, present when status is "rejected". */
+  rejectionReason?: string | null;
+  /** Reviewer's notes, present when status is "needs_revision". */
+  validatorRemarks?: string | null;
 }
 
 export interface SubmissionPayload {

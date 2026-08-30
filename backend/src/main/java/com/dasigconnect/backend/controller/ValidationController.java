@@ -90,7 +90,7 @@ public class ValidationController {
     /**
      * POST /api/v1/validation/{id}/lock
      * Acquires a review lock for a submission. Idempotent if caller already holds it.
-     * Returns 409 if another validator holds an active lock.
+     * Returns 409 if another reviewer holds an active lock.
      */
     @PostMapping("/{id}/lock")
     @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")

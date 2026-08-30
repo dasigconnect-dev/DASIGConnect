@@ -68,6 +68,7 @@ public class InstitutionController {
      * 403 Forbidden — caller is not an ADMIN
      */
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<InstitutionDto>> createInstitution(
             @Valid @RequestBody CreateInstitutionRequest request) {
         InstitutionDto created = institutionService.createInstitution(request);
@@ -112,6 +113,7 @@ public class InstitutionController {
     }
 
     @PutMapping(value = "/{institutionId}/logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<InstitutionDto>> updateLogo(
             @PathVariable UUID institutionId,
             @RequestParam("file") MultipartFile file) {
@@ -135,6 +137,7 @@ public class InstitutionController {
      * new name or domain conflicts with another institution.
      */
     @PutMapping("/{institutionId}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<InstitutionDto>> updateInstitution(
             @PathVariable UUID institutionId,
             @Valid @RequestBody UpdateInstitutionRequest request) {
@@ -148,6 +151,7 @@ public class InstitutionController {
      * data retained; new invitations blocked.
      */
     @PatchMapping("/{institutionId}/deactivate")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<InstitutionDto>> deactivateInstitution(@PathVariable UUID institutionId) {
         return ResponseEntity.ok(ApiResponse.success(institutionService.deactivateInstitution(institutionId)));
     }
@@ -159,6 +163,7 @@ public class InstitutionController {
      * depending on whether the institution has active moderators.
      */
     @PatchMapping("/{institutionId}/reactivate")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<InstitutionDto>> reactivateInstitution(@PathVariable UUID institutionId) {
         return ResponseEntity.ok(ApiResponse.success(institutionService.reactivateInstitution(institutionId)));
     }
@@ -170,6 +175,7 @@ public class InstitutionController {
      * still has users or submissions.
      */
     @DeleteMapping("/{institutionId}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteInstitution(@PathVariable UUID institutionId) {
         institutionService.deleteInstitution(institutionId);
         return ResponseEntity.noContent().build();

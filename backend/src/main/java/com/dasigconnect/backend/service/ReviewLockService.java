@@ -56,7 +56,7 @@ public class ReviewLockService {
      * If the caller already holds the lock, its TTL is renewed and the lock is
      * returned (idempotent keep-alive — the review panel pings this while open so a
      * long edit session does not lose the lock to ReviewLockCleanupJob).
-     * If another validator holds a valid lock, returns 409.
+     * If another reviewer holds a valid lock, returns 409.
      * Transitions submission: pending → in_review.
      */
     public ReviewLock acquire(UUID submissionId, JwtUserDetails caller) {
@@ -79,9 +79,9 @@ public class ReviewLockService {
                     existing.setExpiresAt(Instant.now().plus(LOCK_DURATION_MINUTES, ChronoUnit.MINUTES));
                     return reviewLockRepository.save(existing);
                 }
-                // Another validator holds it
+                // Another reviewer holds it
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "This submission is currently being reviewed by another validator.");
+                        "This submission is currently being reviewed by someone else.");
             }
             // Expired lock — clean it up before acquiring
             expireLock(existing, submission);
@@ -166,8 +166,8 @@ public class ReviewLockService {
 
     /**
      * Asserts that the caller holds an active review lock for the submission.
-     * Moderators bypass this check.
-     * Throws 403 if no active lock exists or if another validator holds it.
+     * Admins bypass this check (they act as the override role); moderators must
+     * hold the lock. Throws 403 if no active lock exists or another reviewer holds it.
      */
     public void assertCallerHoldsLock(UUID submissionId, JwtUserDetails caller) {
         if ("admin".equals(caller.role())) return;

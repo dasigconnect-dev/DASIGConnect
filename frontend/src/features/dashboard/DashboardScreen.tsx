@@ -11,6 +11,7 @@ import {
   listSubmissions,
   type SubmissionSummary,
 } from "../../api/submissionApi";
+import { getValidationQueue } from "../../api/validationApi";
 import { getGreetingName } from "../../lib/userIdentity";
 
 interface DashboardScreenProps {
@@ -51,6 +52,13 @@ interface DashboardStats {
   contributors: number;
   moderators: number;
   pendingInvitations: number;
+  /** Reviewer roles only: live PENDING + IN_REVIEW count from the network queue. */
+  reviewQueuePending: number;
+  /** Reviewer roles only: this-month approved + rejected from the review history. */
+  reviewedApprovedThisMonth: number;
+  reviewedRejectedThisMonth: number;
+  /** Reviewer roles only: recent network submissions (queue + history) for the activity table. */
+  reviewRecent: SubmissionSummary[];
 }
 
 
@@ -60,25 +68,21 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
     { id: string; name: string; code: string; emailDomain: string }[]
   >([]);
   const [loadingSubmissions, setLoadingSubmissions] = useState(true);
+  const [loadingReview, setLoadingReview] = useState(user?.role === "moderator");
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
     submissions: [],
     contributors: 0,
     moderators: 0,
     pendingInvitations: 0,
+    reviewQueuePending: 0,
+    reviewedApprovedThisMonth: 0,
+    reviewedRejectedThisMonth: 0,
+    reviewRecent: [],
   });
 
   useEffect(() => {
-    if (user?.role === "moderator" && user.institutionId) {
-      setInstitutions([
-        {
-          id: user.institutionId,
-          name: getInstitutionName(user),
-          code: "",
-          emailDomain: "",
-        },
-      ]);
-      return;
-    }
+    // Moderators are network-wide (no owning institution); only admins load the
+    // institution list for the network-wide roll-ups below.
     if (user?.role !== "admin") return;
     listInstitutions()
       .then((response) => {
@@ -113,24 +117,85 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
       });
   }, [user?.role, user?.inst]);
 
+  // Moderator home: live review-queue + this-month review history + the
+  // network-wide contributor count. (Admins get their roll-ups from the
+  // institution effect below; the review queue is the moderator's whole job.)
+  useEffect(() => {
+    if (user?.role !== "moderator") return;
+    let active = true;
+
+    const monthKey = new Date().toISOString().slice(0, 7); // YYYY-MM
+    // The summary DTO carries no "decided at" timestamp; approximate with the
+    // most decision-relevant date available (published/scheduled, else submitted).
+    const inThisMonth = (s: SubmissionSummary) =>
+      (s.publishedAt ?? s.scheduledAt ?? s.submittedAt ?? s.createdAt ?? "").slice(0, 7) ===
+      monthKey;
+
+    Promise.all([
+      getValidationQueue(),
+      getValidationQueue({ history: true }),
+      listNetworkUsers().then((r) =>
+        r.data.filter(
+          (u) =>
+            u.role.toLowerCase() === "contributor" &&
+            u.accountState.toLowerCase() === "active",
+        ).length,
+      ),
+    ])
+      .then(([queueRes, historyRes, activeContributors]) => {
+        if (!active) return;
+        const history = historyRes.data;
+        const recent = [...queueRes.data, ...history]
+          .sort((a, b) =>
+            (b.submittedAt ?? b.createdAt ?? "").localeCompare(
+              a.submittedAt ?? a.createdAt ?? "",
+            ),
+          )
+          .slice(0, 5);
+        setDashboardStats((current) => ({
+          ...current,
+          reviewRecent: recent,
+          reviewQueuePending: queueRes.data.length,
+          reviewedApprovedThisMonth: history.filter(
+            (s) =>
+              inThisMonth(s) &&
+              (s.status === "scheduled" ||
+                s.status === "published" ||
+                s.status === "published_manual" ||
+                s.status === "admin_direct_post"),
+          ).length,
+          reviewedRejectedThisMonth: history.filter(
+            (s) => inThisMonth(s) && s.status === "rejected",
+          ).length,
+          contributors: activeContributors,
+        }));
+      })
+      .catch(() => {
+        if (active) {
+          setDashboardStats((current) => ({
+            ...current,
+            reviewQueuePending: 0,
+            reviewedApprovedThisMonth: 0,
+            reviewedRejectedThisMonth: 0,
+          }));
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingReview(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.role]);
+
   useEffect(() => {
     if (!user) return;
-    if (user.role === "contributor") {
-      setDashboardStats((current) => ({
-        ...current,
-        contributors: 0,
-        moderators: 0,
-        pendingInvitations: 0,
-      }));
+    if (user.role !== "admin") {
       return;
     }
 
-    const institutionIds =
-      user.role === "admin"
-        ? institutions.map((institution) => institution.id)
-        : user.institutionId
-          ? [user.institutionId]
-          : [];
+    const institutionIds = institutions.map((institution) => institution.id);
 
     if (institutionIds.length === 0) {
       setDashboardStats((current) => ({
@@ -143,19 +208,16 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
     }
 
     let active = true;
-    // Moderators are network-wide now, so per-institution counts always report 0
+    // Moderators are network-wide, so per-institution counts always report 0
     // moderators; fetch the real total once instead of summing it per institution.
-    const networkModeratorCount =
-      user.role === "admin"
-        ? listNetworkUsers().then(
-            (response) =>
-              response.data.filter(
-                (u) =>
-                  u.role.toLowerCase() === "moderator" &&
-                  u.accountState.toLowerCase() === "active",
-              ).length,
-          )
-        : Promise.resolve(0);
+    const networkModeratorCount = listNetworkUsers().then(
+      (response) =>
+        response.data.filter(
+          (u) =>
+            u.role.toLowerCase() === "moderator" &&
+            u.accountState.toLowerCase() === "active",
+        ).length,
+    );
     Promise.all([
       Promise.all(
         institutionIds.map(async (institutionId) => {
@@ -220,6 +282,15 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
     }
     navigate(path);
   };
+
+  // Moderators don't author content — their "Recent Activity" is the network
+  // review stream (queue + history), not listSubmissions() (own drafts only).
+  const isReviewer = user?.role === "moderator";
+  const activitySource = isReviewer
+    ? dashboardStats.reviewRecent
+    : dashboardStats.submissions;
+  const activityRows = activityForRole(user, activitySource, institutions);
+  const activityLoading = isReviewer ? loadingReview : loadingSubmissions;
 
   return (
     <div id="screen-dashboard" style={{ background: "var(--d-bg)" }}>
@@ -286,13 +357,22 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
           <div className="section-title" style={{ margin: 0 }}>
             <i className="ti ti-history"></i> Recent Activity
           </div>
-          {dashboardStats.submissions.length > 0 && (
+          {!isReviewer && dashboardStats.submissions.length > 0 && (
             <button
               type="button"
               className="section-link-btn"
               onClick={() => navigate("/dashboard/recent-activity")}
             >
               View All <i className="ti ti-arrow-right" style={{ fontSize: 13 }}></i>
+            </button>
+          )}
+          {isReviewer && activityRows.length > 0 && (
+            <button
+              type="button"
+              className="section-link-btn"
+              onClick={() => navigate("/validation/queue")}
+            >
+              Open Review Queue <i className="ti ti-arrow-right" style={{ fontSize: 13 }}></i>
             </button>
           )}
         </div>
@@ -307,7 +387,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
               </tr>
             </thead>
             <tbody id="activity-body">
-              {loadingSubmissions ? (
+              {activityLoading ? (
                 Array.from({ length: 5 }).map((_, index) => (
                   <tr key={`skel-row-${index}`} className="dash-skeleton-row">
                     <td>
@@ -326,7 +406,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
                     </td>
                   </tr>
                 ))
-              ) : activityForRole(user, dashboardStats.submissions, institutions).length === 0 ? (
+              ) : activityRows.length === 0 ? (
                 <tr>
                   <td
                     colSpan={4}
@@ -365,15 +445,17 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
                         marginBottom: 4,
                       }}
                     >
-                      No submissions yet
+                      {isReviewer ? "Nothing to review yet" : "No submissions yet"}
                     </div>
                     <div style={{ color: "#64748b", fontSize: 12.5 }}>
-                      Start by submitting your first event content.
+                      {isReviewer
+                        ? "Submissions from contributors across the network will appear here."
+                        : "Start by submitting your first event content."}
                     </div>
                   </td>
                 </tr>
               ) : (
-                activityForRole(user, dashboardStats.submissions, institutions).map((row) => (
+                activityRows.map((row) => (
                   <tr key={`${row.title}-${row.submitted}`}>
                     <td>
                       <div className="act-title">{row.title}</div>
@@ -416,7 +498,8 @@ const DOMAIN_MAP: Record<string, string> = {
 
 function getInstitutionName(user: User | null): string {
   if (!user) return "Institution";
-  if (user.role === "admin") return "DASIG";
+  // Admins and moderators are network-wide — not bound to one HEI workspace.
+  if (user.role === "admin" || user.role === "moderator") return "DASIG Network";
 
   const explicitInstitution = user.inst?.trim();
   if (explicitInstitution && explicitInstitution !== user.institutionId) {
@@ -453,20 +536,17 @@ function notice(user: User | null, stats: DashboardStats) {
   if (user.role === "admin") {
     return {
       icon: "ti ti-shield-check",
-      html: "<strong>Moderator workspace.</strong> You have full network-wide visibility across all member institutions.",
+      html: "<strong>Administrator workspace.</strong> You have full network-wide visibility across all member institutions.",
     };
   }
   if (user.role === "moderator") {
-    const instName = getInstitutionName(user);
-    const pending = stats.submissions.filter(
-      (s) => s.status === "pending" || s.status === "in_review",
-    ).length;
+    const pending = stats.reviewQueuePending;
     const pendingText = pending > 0
-      ? `You have <strong>${pending} submission${pending === 1 ? "" : "s"} awaiting your review</strong> from ${instName} contributors.`
-      : `No submissions are currently pending review from ${instName} contributors.`;
+      ? `You have <strong>${pending} submission${pending === 1 ? "" : "s"} awaiting review</strong> from contributors across the network.`
+      : `The review queue is clear — no submissions are waiting for review.`;
     return {
       icon: "ti ti-clipboard-check",
-      html: `${pendingText} Approved content moves to the DASIG Moderator for scheduling.`,
+      html: `${pendingText} Approved content is scheduled automatically for the DASIG Facebook Page.`,
     };
   }
   const instName = getInstitutionName(user);
@@ -535,26 +615,26 @@ function statsForRole(
         icon: "ti ti-file-time",
         color: "#1877F2",
         label: "Pending Review",
-        value: String(reviewCount),
+        value: String(stats.reviewQueuePending),
+        highlight: stats.reviewQueuePending > 0,
       },
       {
         icon: "ti ti-circle-check",
         color: "#1877F2",
         label: "Approved This Month",
-        value: String(scheduledCount + publishedCount),
+        value: String(stats.reviewedApprovedThisMonth),
+      },
+      {
+        icon: "ti ti-circle-x",
+        color: "#1877F2",
+        label: "Rejected This Month",
+        value: String(stats.reviewedRejectedThisMonth),
       },
       {
         icon: "ti ti-users",
         color: "#1877F2",
-        label: "Contributors",
+        label: "Active Contributors",
         value: String(stats.contributors),
-      },
-      {
-        icon: "ti ti-building",
-        color: "#1877F2",
-        label: "Institution",
-        value: getInstitutionName(user),
-        valueStyle: { fontSize: 16, paddingTop: 6 },
       },
     ];
   }
@@ -620,10 +700,16 @@ function actionsForRole(user: User | null): ActionItem[] {
         emphasized: true,
       },
       {
-        icon: "ti ti-building",
+        icon: "ti ti-user-plus",
         accent: "ac-green",
         title: "Institution Management",
-        subtitle: "Manage HEI workspace and contributors",
+        subtitle: "Invite contributors and manage your invitations",
+      },
+      {
+        icon: "ti ti-chart-bar",
+        accent: "ac-purple",
+        title: "Analytics",
+        subtitle: "Facebook engagement and workflow metrics",
       },
       {
         icon: "ti ti-calendar-event",
