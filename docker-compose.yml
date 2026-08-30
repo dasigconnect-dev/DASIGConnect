@@ -1,0 +1,35 @@
+# Local development database for DASIGConnect.
+#
+# Run:  docker compose up -d
+# Stop: docker compose down          (data is kept in the named volume)
+# Wipe: docker compose down -v
+#
+# Then point backend/.env at it:
+#   DASIG_DATABASE_URL=jdbc:postgresql://localhost:5432/dasigconnect
+#   DASIG_DATABASE_USER=postgres
+#   DASIG_DATABASE_PASSWORD=postgres
+#
+# Do NOT run local development against the shared Supabase database — every
+# local backend runs the full scheduler and the media/analytics queries, and
+# that traffic is billed as Supabase egress.
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: dasigconnect-db
+    environment:
+      POSTGRES_DB: dasigconnect
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - dasigconnect_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dasigconnect"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  dasigconnect_pgdata:

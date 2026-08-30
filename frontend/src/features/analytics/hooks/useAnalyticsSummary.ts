@@ -31,9 +31,13 @@ export function useAnalyticsSummary(initialRange: AnalyticsRange = "30d") {
   }, [range, institutionId, category, refreshKey]);
 
   useEffect(() => {
+    // Background refresh. Kept long and skipped while the tab is hidden — each
+    // tick runs a batch of aggregation queries server-side.
     const intervalId = window.setInterval(() => {
-      setRefreshKey((value) => value + 1);
-    }, 60_000);
+      if (document.visibilityState === "visible") {
+        setRefreshKey((value) => value + 1);
+      }
+    }, 5 * 60_000);
     return () => window.clearInterval(intervalId);
   }, []);
 
