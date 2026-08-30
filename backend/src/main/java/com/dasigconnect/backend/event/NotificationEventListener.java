@@ -173,8 +173,8 @@ public class NotificationEventListener {
                 + "' (scheduled " + slot + "): " + event.errorDetail()
                 + ". Recover it from the Review Queue's Failed tab.";
 
-        // Notify super admins and moderators (both network-wide roles)
-        List<User> targetAdmins = new java.util.ArrayList<>(superAdmins());
+        // Notify every network admin and moderator (both are network-wide roles)
+        List<User> targetAdmins = new java.util.ArrayList<>(admins());
         for (User ia : allModerators()) {
             if (!targetAdmins.contains(ia)) {
                 targetAdmins.add(ia);
@@ -210,7 +210,7 @@ public class NotificationEventListener {
         String adminMsg = "'" + s.getEventTitle() + "' missed its scheduled publication time ("
                 + slot + ") without review. Its slot has been released — assign a new schedule to"
                 + " send it back to the approval queue.";
-        for (User admin : superAdmins()) {
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.submission_missed_review, adminMsg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.submission_missed_review.name(),
@@ -248,7 +248,7 @@ public class NotificationEventListener {
         for (User moderator : allModerators()) {
             notificationService.createNotification(moderator, NotificationEventType.empty_schedule_warning, msg, link);
         }
-        for (User admin : superAdmins()) {
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.empty_schedule_warning, msg, link);
         }
         for (User contributor : institutionContributors(event.institution().getId())) {
@@ -263,7 +263,7 @@ public class NotificationEventListener {
         String msg = "The Facebook page access token expires in " + days(event.daysUntilExpiry())
                 + ". Re-authenticate it under System Health -> Integrations to avoid a publishing outage.";
         String link = "/admin/system-health#integrations";
-        for (User admin : superAdmins()) {
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.token_expiring, msg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.token_expiring.name(),
@@ -279,7 +279,7 @@ public class NotificationEventListener {
         String msg = "The Facebook page access token failed validation. "
                 + "Automated publishing is paused until you re-authenticate it under System Health -> Integrations.";
         String link = "/admin/system-health#integrations";
-        for (User admin : superAdmins()) {
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.token_invalid, msg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.token_invalid.name(),
@@ -311,7 +311,7 @@ public class NotificationEventListener {
         if (event.detail() != null && !event.detail().isBlank()) {
             msg = msg + " Detail: " + event.detail();
         }
-        for (User admin : superAdmins()) {
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.token_invalid, msg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.token_invalid.name(),
@@ -365,7 +365,7 @@ public class NotificationEventListener {
         String msg = sb.toString();
         String link = "/media-repository";
 
-        for (User admin : superAdmins()) {
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.embedding_failure_digest, msg, link);
         }
     }
@@ -377,7 +377,7 @@ public class NotificationEventListener {
         String msg = name + " has no active moderator. Its pending submissions are being escalated "
                 + "until one is assigned.";
         String link = "/admin/institution-management";
-        for (User admin : superAdmins()) {
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.institution_no_moderator, msg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.institution_no_moderator.name(),
@@ -392,7 +392,7 @@ public class NotificationEventListener {
         String name = event.institution().getName();
         String msg = name + " finished onboarding — its moderator account is active and the workspace is ready.";
         String link = "/admin/institution-management";
-        for (User admin : superAdmins()) {
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.institution_onboarded, msg, link);
         }
     }
@@ -434,7 +434,8 @@ public class NotificationEventListener {
         return userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.contributor);
     }
 
-    private List<User> superAdmins() {
+    /** Every network administrator account (the "Owner" flag doesn't affect notification fan-out). */
+    private List<User> admins() {
         return userRepository.findByRole(UserRole.admin);
     }
 

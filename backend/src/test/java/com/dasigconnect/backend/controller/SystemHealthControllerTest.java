@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.model.dto.systemhealth.HealthStatus;
 import com.dasigconnect.backend.model.dto.systemhealth.SystemHealthSummaryDto;
+import com.dasigconnect.backend.service.AuditLogService;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.ManualJobRunner;
 import com.dasigconnect.backend.service.SystemHealthService;
@@ -42,6 +43,9 @@ class SystemHealthControllerTest {
 
     @MockitoBean
     private ManualJobRunner manualJobRunner;
+
+    @MockitoBean
+    private AuditLogService auditLogService;
 
     @MockitoBean
     private JWTService jwtService;
