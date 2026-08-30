@@ -370,7 +370,25 @@ public class NotificationEventListener {
         }
     }
 
-    // ── Additional Operational Events ─────────────────────────────────────────
+    // ── Guard rail override requests ────────────────────────────────────────
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onOverrideRequested(OverrideRequestedEvent event) {
+        Submission s = event.submission();
+        String link = "/submissions/" + s.getId();
+        String msg = who(event.contributor()) + " requested a guard rail override for '"
+                + s.getEventTitle() + "' — " + event.violatedRule() + " at " + fmt(event.requestedSlot())
+                + ". Approve, suggest another slot, or deny it.";
+        for (User admin : superAdmins()) {
+            notificationService.createNotification(admin, NotificationEventType.override_requested, msg, link);
+            emailDeliveryService.send(admin,
+                    NotificationEventType.override_requested.name(),
+                    "DASIGConnect — Guard rail override requested",
+                    msg + (event.reason() != null ? "\n\nReason: " + event.reason() : "")
+                        + "\n\nReview it: " + frontendBaseUrl + link);
+        }
+    }
+
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onOverrideApproved(OverrideApprovedEvent event) {
@@ -409,7 +427,7 @@ public class NotificationEventListener {
     public void onOverrideSlotSuggested(OverrideSlotSuggestedEvent event) {
         Submission s = event.submission();
         String link = "/submissions/" + s.getId();
-        String msg = "A moderator suggested " + fmt(event.suggestedSlot())
+        String msg = "An administrator suggested " + fmt(event.suggestedSlot())
                 + " as an alternative slot for '" + s.getEventTitle()
                 + "'. You can accept it, pick another compliant slot, or submit a new override request.";
 
@@ -418,17 +436,6 @@ public class NotificationEventListener {
                 NotificationEventType.override_slot_suggested.name(),
                 "DASIGConnect — Alternative slot suggested",
                 msg + "\n\nView submission: " + frontendBaseUrl + link);
-    }
-
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onAdminDirectPost(AdminDirectPostEvent event) {
-        String msg = "A post was published directly to the DASIG Facebook Page for "
-                + event.institution().getName() + ": '" + truncate(event.postTitle(), 80) + "'.";
-        String link = event.postUrl() != null ? event.postUrl() : "/";
-        for (User moderator : allModerators()) {
-            notificationService.createNotification(moderator, NotificationEventType.admin_direct_post, msg, link);
-        }
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -504,13 +511,6 @@ public class NotificationEventListener {
             return "TBD";
         }
         return ZonedDateTime.ofInstant(instant, ZoneOffset.UTC).format(SLOT_FMT);
-    }
-
-    private static String truncate(String text, int maxLen) {
-        if (text == null) {
-            return "";
-        }
-        return text.length() <= maxLen ? text : text.substring(0, maxLen);
     }
 
     /** A human label for a contributor — full name if set, otherwise the email. */

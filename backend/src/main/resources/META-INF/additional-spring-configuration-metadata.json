@@ -134,8 +134,8 @@
     {
       "name": "app.facebook.oauth-redirect-uri",
       "type": "java.lang.String",
-      "description": "OAuth callback URI registered in the Meta app for token refresh flow (UC-3.5).",
-      "defaultValue": "http://localhost:8080/api/v1/admin/resolution/tokens/oauth-callback"
+      "description": "OAuth callback URI registered in the Meta app for the Page token re-auth flow (System Health → Integrations).",
+      "defaultValue": "http://localhost:8080/api/v1/facebook/oauth-callback"
     },
     {
       "name": "anthropic.api.key",
