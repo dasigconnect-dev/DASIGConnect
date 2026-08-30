@@ -76,18 +76,34 @@ function getEventStatusBadge(eventType: string) {
     case "submission_publish_failed":
       return { label: "Publish Failed", icon: "ti ti-alert-triangle", className: "pill-failed" };
     case "token_expiring":
+      return { label: "Token Expiring", icon: "ti ti-key", className: "sp-pending" };
     case "token_invalid":
-      return { label: "Token Warning", icon: "ti ti-key", className: "pill-failed" };
+      return { label: "Token Invalid", icon: "ti ti-shield-x", className: "pill-failed" };
     case "empty_schedule_warning":
-      return { label: "Schedule Notice", icon: "ti ti-calendar-off", className: "sp-pending" };
+      return { label: "Empty Schedule", icon: "ti ti-calendar-off", className: "sp-pending" };
     case "deadline_warning":
-      return { label: "Deadline Alert", icon: "ti ti-alert-circle", className: "pill-failed" };
+    case "validation_timeout":
+      return { label: "Deadline", icon: "ti ti-alert-circle", className: "pill-failed" };
+    case "fast_track_submission":
+      return { label: "Fast-Track", icon: "ti ti-bolt", className: "pill-failed" };
+    case "submission_missed_review":
+      return { label: "Missed Review", icon: "ti ti-clock-x", className: "pill-failed" };
     case "override_approved":
       return { label: "Override Approved", icon: "ti ti-check", className: "sp-approved" };
     case "override_denied":
       return { label: "Override Denied", icon: "ti ti-ban", className: "pill-rejected" };
     case "override_slot_suggested":
       return { label: "Slot Suggested", icon: "ti ti-calendar-plus", className: "sp-scheduled" };
+    case "admin_direct_post":
+      return { label: "Direct Post", icon: "ti ti-speakerphone", className: "pill-published" };
+    case "embedding_failure_digest":
+      return { label: "AI Digest", icon: "ti ti-photo-off", className: "sp-pending" };
+    case "institution_onboarded":
+      return { label: "Onboarded", icon: "ti ti-sparkles", className: "sp-approved" };
+    case "institution_no_moderator":
+      return { label: "No Moderator", icon: "ti ti-building", className: "pill-failed" };
+    case "user_role_changed":
+      return { label: "Role Changed", icon: "ti ti-user-cog", className: "sp-scheduled" };
     default:
       return { label: "Update", icon: "ti ti-bell", className: "sp-pending" };
   }
@@ -260,9 +276,7 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
       return (
         n.text.toLowerCase().includes(term) ||
         n.sender.toLowerCase().includes(term) ||
-        n.category.toLowerCase().includes(term) ||
-        n.eventType.toLowerCase().includes(term) ||
-        n.trigger.toLowerCase().includes(term)
+        n.category.toLowerCase().includes(term)
       );
     });
   }, [workflowNotifications, activeFilter, searchQuery]);
@@ -569,10 +583,7 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
                               )}
                               <div style={{ minWidth: 0 }}>
                                 <div className="act-title">{n.text}</div>
-                                <span className="act-category">
-                                  {n.trigger && <span className="notif-trigger-code">{n.trigger}</span>}{" "}
-                                  {n.time}
-                                </span>
+                                <span className="act-category">{n.time}</span>
                               </div>
                             </div>
                           </td>
