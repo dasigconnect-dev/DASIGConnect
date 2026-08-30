@@ -33,6 +33,7 @@ import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
 import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
+import com.dasigconnect.backend.repository.OverrideRequestRepository;
 import com.dasigconnect.backend.repository.PageSettingsRepository;
 import com.dasigconnect.backend.repository.SlotReservationRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
@@ -63,6 +64,9 @@ class InstitutionServiceTest {
 
     @Mock
     private SlotReservationRepository slotReservationRepository;
+
+    @Mock
+    private OverrideRequestRepository overrideRequestRepository;
 
     @Mock
     private PageSettingsRepository pageSettingsRepository;

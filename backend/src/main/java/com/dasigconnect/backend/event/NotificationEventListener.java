@@ -365,6 +365,56 @@ public class NotificationEventListener {
         }
     }
 
+    // ── Guard rail override request decisions ────────────────────────────────
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onOverrideApproved(OverrideApprovedEvent event) {
+        Submission s = event.submission();
+        String link = "/submissions/" + s.getId();
+
+        String contributorMsg = "Your guard rail override for '" + s.getEventTitle()
+                + "' was approved — you can keep your chosen slot.";
+        notificationService.createNotification(event.contributor(), NotificationEventType.override_approved, contributorMsg, link);
+
+        String moderatorMsg = "A guard rail override was approved for " + who(event.contributor())
+                + " — '" + s.getEventTitle() + "'.";
+        for (User moderator : allModerators()) {
+            notificationService.createNotification(moderator, NotificationEventType.override_approved, moderatorMsg, link);
+        }
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onOverrideDenied(OverrideDeniedEvent event) {
+        Submission s = event.submission();
+        String link = "/submissions/" + s.getId();
+        String msg = "Your guard rail override for '" + s.getEventTitle() + "' was not approved.";
+
+        notificationService.createNotification(event.contributor(), NotificationEventType.override_denied, msg, link);
+        String emailBody = msg + (event.reason() != null ? "\n\nReason: " + event.reason() : "")
+                + "\n\nView submission: " + frontendBaseUrl + link;
+        emailDeliveryService.send(event.contributor(),
+                NotificationEventType.override_denied.name(),
+                "DASIGConnect — Override request denied",
+                emailBody);
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onOverrideSlotSuggested(OverrideSlotSuggestedEvent event) {
+        Submission s = event.submission();
+        String link = "/submissions/" + s.getId();
+        String msg = "An administrator suggested " + fmt(event.suggestedSlot())
+                + " as an alternative slot for '" + s.getEventTitle()
+                + "'. You can accept it, pick another compliant slot, or submit a new override request.";
+
+        notificationService.createNotification(event.contributor(), NotificationEventType.override_slot_suggested, msg, link);
+        emailDeliveryService.send(event.contributor(),
+                NotificationEventType.override_slot_suggested.name(),
+                "DASIGConnect — Alternative slot suggested",
+                msg + "\n\nView submission: " + frontendBaseUrl + link);
+    }
+
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onInstitutionNoModerator(InstitutionNoModeratorEvent event) {
