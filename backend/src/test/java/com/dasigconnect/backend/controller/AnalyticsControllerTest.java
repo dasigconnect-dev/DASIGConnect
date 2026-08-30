@@ -42,6 +42,9 @@ class AnalyticsControllerTest {
     private MetricsAggregatorService metricsAggregatorService;
 
     @MockitoBean
+    private com.dasigconnect.backend.service.AuditLogService auditLogService;
+
+    @MockitoBean
     private JWTService jwtService;
 
     @MockitoBean
@@ -84,7 +87,7 @@ class AnalyticsControllerTest {
                 Instant.parse("2026-05-01T00:00:00Z"),
                 Instant.parse("2026-05-31T00:00:00Z"),
                 Instant.parse("2026-05-31T00:00:00Z"),
-                "super_administrator",
+                "admin",
                 true,
                 null,
                 List.of(),

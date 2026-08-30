@@ -58,7 +58,7 @@ class NotificationEventListenerTest {
         admin = new User();
         admin.setId(UUID.randomUUID());
         admin.setEmail("admin@cit.edu");
-        admin.setRole(UserRole.administrator);
+        admin.setRole(UserRole.moderator);
         admin.setInstitution(institution);
 
         contributor = new User();
@@ -70,13 +70,14 @@ class NotificationEventListenerTest {
         superAdmin = new User();
         superAdmin.setId(UUID.randomUUID());
         superAdmin.setEmail("superadmin@dost.gov.ph");
-        superAdmin.setRole(UserRole.super_administrator);
+        superAdmin.setRole(UserRole.admin);
 
-        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institution.getId(), UserRole.administrator))
+        // Moderators are network-wide now — notified via findByRole, not institution scoping.
+        when(userRepository.findByRole(UserRole.moderator))
                 .thenReturn(List.of(admin));
         when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institution.getId(), UserRole.contributor))
                 .thenReturn(List.of(contributor));
-        when(userRepository.findByRole(UserRole.super_administrator))
+        when(userRepository.findByRole(UserRole.admin))
                 .thenReturn(List.of(superAdmin));
     }
 

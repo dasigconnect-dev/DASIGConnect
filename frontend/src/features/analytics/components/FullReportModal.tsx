@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   downloadAnalyticsCsv,
   getAnalyticsReport,
@@ -28,12 +29,12 @@ const REPORT_LABELS: Record<AnalyticsExportMetric, string> = {
 };
 
 const REPORT_ICONS: Record<AnalyticsExportMetric, string> = {
-  "posting-delay": "ti ti-clock",
+  "posting-delay": "ti ti-clock-hour-4",
   "content-completeness": "ti ti-checklist",
   "posts-by-institution": "ti ti-speakerphone",
   "ai-performance": "ti ti-robot",
-  "operational-health": "ti ti-activity",
-  "facebook-engagement": "ti ti-thumb-up",
+  "operational-health": "ti ti-heartbeat",
+  "facebook-engagement": "ti ti-brand-facebook",
 };
 
 const REPORT_UNITS: Record<AnalyticsExportMetric, string> = {
@@ -59,12 +60,25 @@ export default function FullReportModal({
   const [report, setReport] = useState<AnalyticsReportDto | null>(null);
   const [error, setError] = useState<{ key: string; message: string } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  // Tab is bound to the metric it was chosen for — auto-resets to "daily" when metric changes
   const [tabEntry, setTabEntry] = useState<{ forMetric: string; tab: ActiveTab } | null>(null);
   const activeTab: ActiveTab = tabEntry?.forMetric === metric ? tabEntry.tab : "daily";
   const requestKey = metric
     ? `${metric}:${range}:${institutionId ?? "network"}:${category ?? "all"}:${refreshKey}`
     : "";
+
+  useEffect(() => {
+    if (!metric) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [metric, onClose]);
 
   function switchTab(tab: ActiveTab) {
     if (metric) setTabEntry({ forMetric: metric, tab });
@@ -118,18 +132,18 @@ export default function FullReportModal({
     setRefreshKey((v) => v + 1);
   }
 
-  return (
+  return createPortal(
     <div
       className="analytics-modal-backdrop"
       role="presentation"
-      onMouseDown={onClose}
+      onClick={onClose}
     >
       <div
         className="analytics-modal-wide"
         role="dialog"
         aria-modal="true"
         aria-labelledby="report-modal-title"
-        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header ── */}
         <div className="analytics-modal-header">
@@ -169,7 +183,7 @@ export default function FullReportModal({
               onClick={() => switchTab("daily")}
             >
               <i className="ti ti-chart-bar" aria-hidden="true" />
-              Daily Breakdown
+              <span>Daily Breakdown</span>
               <span className="analytics-tab-count">{report.dailyBreakdown.length}</span>
             </button>
             <button
@@ -180,27 +194,37 @@ export default function FullReportModal({
               onClick={() => switchTab("submissions")}
             >
               <i className="ti ti-table" aria-hidden="true" />
-              Submission Detail
+              <span>Submission Detail</span>
               <span className="analytics-tab-count">{report.submissions.length}</span>
             </button>
           </div>
         )}
 
-        {/* ── Body ── */}
+        {/* ── Body with active scrollbar ── */}
         <div className="analytics-report-body">
           {loading && (
             <div className="analytics-report-state">
-              <div className="analytics-skeleton" />
-              <span>Loading report details…</span>
+              <div className="dc-dot-triangle-container" style={{ padding: "40px 0" }}>
+                <div className="loader-dots" />
+                <div className="dc-dot-triangle-label">
+                  Loading Report Details
+                  <span className="dc-dot-triangle-label-dots">
+                    <span className="dc-dot-triangle-dot-char">.</span>
+                    <span className="dc-dot-triangle-dot-char">.</span>
+                    <span className="dc-dot-triangle-dot-char">.</span>
+                  </span>
+                </div>
+              </div>
             </div>
           )}
 
           {!loading && activeError && (
             <div className="analytics-report-state">
-              <i className="ti ti-alert-circle" aria-hidden="true" />
-              <span>{activeError}</span>
-              <button type="button" className="btn-secondary" onClick={reloadReport}>
-                Retry
+              <i className="ti ti-alert-circle" aria-hidden="true" style={{ fontSize: "32px", color: "#ef4444" }} />
+              <strong style={{ color: "#0c1d3d" }}>Unable to load report</strong>
+              <span style={{ color: "#64748b", fontSize: "13px" }}>{activeError}</span>
+              <button type="button" className="notif-btn notif-btn-ghost" onClick={reloadReport} style={{ marginTop: "8px" }}>
+                <i className="ti ti-refresh" /> Retry
               </button>
             </div>
           )}
@@ -210,18 +234,23 @@ export default function FullReportModal({
               {/* Daily Breakdown Tab */}
               {activeTab === "daily" && (
                 <section className="analytics-report-section" role="tabpanel" aria-label="Daily Breakdown">
-                  <h3>Daily Breakdown</h3>
-                  <p>Per-day values for the selected metric and role scope.</p>
+                  <div className="analytics-report-section-header">
+                    <div>
+                      <h3>Daily Breakdown</h3>
+                      <p>Per-day values for {REPORT_LABELS[metric]} over the selected timeframe.</p>
+                    </div>
+                  </div>
                   {report.dailyBreakdown.length === 0 ? (
-                    <div className="analytics-empty">No daily data for this period.</div>
+                    <div className="analytics-empty">No daily data recorded for this period.</div>
                   ) : (
                     <div className="analytics-daily-list">
                       {report.dailyBreakdown.map((point) => (
                         <div className="analytics-daily-row" key={point.date}>
-                          <span>
-                            {new Date(point.date).toLocaleDateString(undefined, {
+                          <span className="analytics-daily-date">
+                            {new Date(point.date).toLocaleDateString("en-PH", {
                               month: "short",
                               day: "numeric",
+                              year: "numeric",
                             })}
                           </span>
                           <div
@@ -231,13 +260,17 @@ export default function FullReportModal({
                           >
                             <span
                               style={{
-                                width: `${(point.value / maxDailyValue) * 100}%`,
+                                width: `${Math.min(100, Math.max((point.value / maxDailyValue) * 100, 3))}%`,
                               }}
                             />
                           </div>
-                          <strong>{formatReportValue(point.value, REPORT_UNITS[metric])}</strong>
+                          <strong className="analytics-daily-val">
+                            {formatReportValue(point.value, REPORT_UNITS[metric])}
+                          </strong>
                           {point.secondaryValue !== null && (
-                            <em>{formatNumber(point.secondaryValue)}</em>
+                            <em className="analytics-daily-sub">
+                              {formatNumber(point.secondaryValue)} total
+                            </em>
                           )}
                         </div>
                       ))}
@@ -249,18 +282,22 @@ export default function FullReportModal({
               {/* Submission Detail Tab */}
               {activeTab === "submissions" && (
                 <section className="analytics-report-section" role="tabpanel" aria-label="Submission Detail">
-                  <h3>Submission Detail</h3>
-                  <p>Rows are scoped by role. Restricted columns are omitted automatically.</p>
+                  <div className="analytics-report-section-header">
+                    <div>
+                      <h3>Submission Detail</h3>
+                      <p>Full itemized list of submissions recorded during this reporting period.</p>
+                    </div>
+                  </div>
                   <div className="analytics-table-wrap">
                     <table className="analytics-table">
                       <thead>
                         <tr>
-                          <th>Submission</th>
-                          <th>State</th>
+                          <th>Submission Title</th>
+                          <th>Publication State</th>
                           <th>First Submitted</th>
-                          <th>Published</th>
+                          <th>Published At</th>
                           <th>Delay</th>
-                          <th>Complete</th>
+                          <th>Completeness</th>
                           {showContributor && <th>Contributor</th>}
                           {showInstitution && <th>Institution</th>}
                           {showRevisions && <th>Revisions</th>}
@@ -269,13 +306,21 @@ export default function FullReportModal({
                       <tbody>
                         {report.submissions.length === 0 ? (
                           <tr>
-                            <td colSpan={9}>No submission rows for this period.</td>
+                            <td colSpan={9} style={{ textAlign: "center", padding: "36px 16px", color: "var(--d-muted)" }}>
+                              No submission rows for this period.
+                            </td>
                           </tr>
                         ) : (
                           report.submissions.map((row) => (
                             <tr key={row.submissionId}>
-                              <td>{row.eventTitle}</td>
-                              <td>{row.publicationState}</td>
+                              <td>
+                                <strong style={{ color: "var(--d-text, #0c1d3d)" }}>{row.eventTitle || "Untitled"}</strong>
+                              </td>
+                              <td>
+                                <span className={`status-pill ${getStatusPillClass(row.publicationState)}`}>
+                                  {row.publicationState}
+                                </span>
+                              </td>
                               <td>{formatNullableDate(row.firstSubmittedAt)}</td>
                               <td>{formatNullableDate(row.publishedAt)}</td>
                               <td>
@@ -293,10 +338,14 @@ export default function FullReportModal({
                                   secondaryValue: null,
                                 })}
                               </td>
-                              <td>{row.complete ? "Yes" : "No"}</td>
-                              {showContributor && <td>{row.contributorName ?? ""}</td>}
-                              {showInstitution && <td>{row.institutionName ?? ""}</td>}
-                              {showRevisions && <td>{row.revisionCycles ?? ""}</td>}
+                              <td>
+                                <span style={{ fontWeight: 600, color: row.complete ? "#16a34a" : "#ca8a04" }}>
+                                  {row.complete ? "100%" : "Partial"}
+                                </span>
+                              </td>
+                              {showContributor && <td>{row.contributorName ?? "—"}</td>}
+                              {showInstitution && <td>{row.institutionName ?? "—"}</td>}
+                              {showRevisions && <td>{row.revisionCycles !== null ? `${row.revisionCycles} cycles` : "—"}</td>}
                             </tr>
                           ))
                         )}
@@ -311,22 +360,32 @@ export default function FullReportModal({
 
         {/* ── Footer Actions ── */}
         <div className="analytics-modal-actions">
-          <button type="button" className="btn-secondary" onClick={onClose}>
-            Close
+          <button type="button" className="notif-btn notif-btn-ghost notif-btn-sm" onClick={onClose}>
+            <span>Close</span>
           </button>
           <button
             type="button"
-            className="btn-primary"
+            className="notif-btn notif-btn-primary notif-btn-sm"
             onClick={() => void handleDownload()}
-            disabled={busy}
+            disabled={busy || loading}
           >
             <i className="ti ti-download" aria-hidden="true" />
-            {busy ? "Preparing…" : "Download CSV"}
+            <span>{busy ? "Preparing Export…" : "Download CSV Report"}</span>
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
+}
+
+function getStatusPillClass(state: string): string {
+  const s = (state || "").toLowerCase();
+  if (s.includes("published")) return "sp-approved";
+  if (s.includes("review") || s.includes("pending")) return "sp-pending";
+  if (s.includes("revision")) return "pill-revision";
+  if (s.includes("scheduled")) return "sp-scheduled";
+  return "sp-scheduled";
 }
 
 function formatReportValue(value: number, unit: string): string {
@@ -336,10 +395,13 @@ function formatReportValue(value: number, unit: string): string {
 }
 
 function formatNullableDate(value: string | null): string {
-  if (!value) return "-";
-  return new Date(value).toLocaleDateString(undefined, {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("en-PH", {
     month: "short",
     day: "numeric",
     year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
   });
 }

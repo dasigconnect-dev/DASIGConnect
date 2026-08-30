@@ -31,9 +31,12 @@ import com.dasigconnect.backend.service.MetricsAggregatorService.CsvExport;
 public class AnalyticsController {
 
     private final MetricsAggregatorService metricsAggregatorService;
+    private final com.dasigconnect.backend.service.AuditLogService auditLogService;
 
-    public AnalyticsController(MetricsAggregatorService metricsAggregatorService) {
+    public AnalyticsController(MetricsAggregatorService metricsAggregatorService,
+            com.dasigconnect.backend.service.AuditLogService auditLogService) {
         this.metricsAggregatorService = metricsAggregatorService;
+        this.auditLogService = auditLogService;
     }
 
     @GetMapping("/summary")
@@ -53,6 +56,10 @@ public class AnalyticsController {
             @RequestParam(required = false) String category,
             @AuthenticationPrincipal JwtUserDetails user) {
         CsvExport export = metricsAggregatorService.export(metric, range, institutionId, category, user);
+        auditLogService.recordByActorId(user != null ? user.userId() : null,
+                "ANALYTICS_EXPORTED", null, null, institutionId,
+                java.util.Map.of("metric", metric, "range", range,
+                        "institutionScope", institutionId != null ? institutionId.toString() : "all"));
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .header(HttpHeaders.CONTENT_DISPOSITION,

@@ -728,9 +728,9 @@
   align-items: center;
   gap: 7px;
   min-height: 46px;
-  padding: 0 24px;
+  padding: 0 28px;
   border: none;
-  border-radius: 10px;
+  border-radius: 9999px;
   background: var(--d-blue);
   color: #fff;
   font-family: var(--ff-body);
@@ -1044,7 +1044,7 @@
 
 .um-search-icon {
   position: absolute;
-  left: 10px;
+  left: 13px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 14px;
@@ -1054,20 +1054,22 @@
 
 .um-search-input {
   width: 100%;
-  height: 34px;
+  height: 38px;
   border: 1px solid var(--d-border);
-  border-radius: 8px;
+  border-radius: 9999px;
   background: var(--d-bg);
   color: var(--d-text);
   font-family: var(--ff-body);
   font-size: 13px;
-  padding: 0 10px 0 32px;
-  transition: border-color var(--um-fast) var(--um-ease);
+  padding: 0 32px 0 36px;
+  box-sizing: border-box;
+  transition: border-color var(--um-fast) var(--um-ease), box-shadow 150ms ease;
 }
 
 .um-search-input:focus {
   outline: none;
   border-color: var(--d-blue);
+  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.1);
 }
 
 .um-search-input::placeholder { color: var(--d-muted); }
@@ -1198,6 +1200,20 @@
   border-radius: 999px;
   background: var(--d-primary-soft, #E8F0FE);
   color: var(--d-primary, #1A56DB);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.um-erased-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #FDECEC;
+  color: #B91C1C;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -1549,9 +1565,9 @@ button.um-user-avatar:focus-visible {
 
 .um-confirm-cancel {
   height: 36px;
-  padding: 0 16px;
+  padding: 0 20px;
   border: 1px solid var(--d-border);
-  border-radius: 8px;
+  border-radius: 9999px;
   background: var(--d-surface);
   color: var(--d-muted);
   font-family: var(--ff-body);
@@ -1565,9 +1581,9 @@ button.um-user-avatar:focus-visible {
 
 .um-confirm-ok {
   height: 36px;
-  padding: 0 18px;
+  padding: 0 22px;
   border: none;
-  border-radius: 8px;
+  border-radius: 9999px;
   background: var(--d-blue);
   color: #fff;
   font-family: var(--ff-body);
@@ -1580,6 +1596,41 @@ button.um-user-avatar:focus-visible {
 .um-confirm-ok:hover { background: #1460CC; }
 .um-confirm-ok.is-danger { background: #DC2626; }
 .um-confirm-ok.is-danger:hover { background: #B91C1C; }
+.um-confirm-ok:disabled { background: #C7CDD9; color: #F5F7FA; cursor: not-allowed; }
+
+.um-confirm-typed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 20px;
+}
+
+.um-confirm-typed-label {
+  color: var(--d-muted);
+  font-size: 13px;
+}
+
+.um-confirm-typed-label strong {
+  color: var(--d-text);
+  font-weight: 650;
+}
+
+.um-confirm-typed-input {
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--d-border);
+  border-radius: 8px;
+  background: var(--d-surface);
+  color: var(--d-text);
+  font-family: var(--ff-body);
+  font-size: 14px;
+}
+
+.um-confirm-typed-input:focus-visible {
+  outline: none;
+  border-color: var(--d-blue);
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.18);
+}
 
 /* ---- Refresh + count pills (used in cards) ---- */
 .um-refresh-pill {

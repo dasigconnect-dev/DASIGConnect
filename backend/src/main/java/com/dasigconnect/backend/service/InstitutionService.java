@@ -2,6 +2,7 @@ package com.dasigconnect.backend.service;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -10,6 +11,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -19,21 +22,25 @@ import com.dasigconnect.backend.model.dto.institution.InstitutionDto;
 import com.dasigconnect.backend.model.dto.institution.UpdateInstitutionRequest;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
+import com.dasigconnect.backend.model.entity.UserRole;
+import com.dasigconnect.backend.model.entity.UserStatus;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
+import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
-import com.dasigconnect.backend.repository.OverrideRequestRepository;
+import com.dasigconnect.backend.repository.PageSettingsRepository;
 import com.dasigconnect.backend.repository.SlotReservationRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
+import com.dasigconnect.backend.repository.WatermarkConfigurationRepository;
 
 /**
  * Manages the institution lifecycle.
  *
- * State machine: INACTIVE → (admin sends validator invitation) → PENDING
- * PENDING → (validator activates account) → ACTIVE ACTIVE → (all validators
- * deactivated) → INACTIVE PENDING → (last validator invitation cancelled, no
- * active validators) → INACTIVE
+ * State machine: INACTIVE → (admin sends moderator invitation) → PENDING
+ * PENDING → (moderator activates account) → ACTIVE ACTIVE → (all moderators
+ * deactivated) → INACTIVE PENDING → (last moderator invitation cancelled, no
+ * active moderators) → INACTIVE
  *
  * Invalid transitions are rejected with IllegalStateException → HTTP 409.
  */
@@ -48,9 +55,13 @@ public class InstitutionService {
     private final UserRepository userRepository;
     private final SubmissionRepository submissionRepository;
     private final MediaAssetRepository mediaAssetRepository;
+    private final MediaAlbumRepository mediaAlbumRepository;
     private final InvitationTokenRepository invitationTokenRepository;
     private final SlotReservationRepository slotReservationRepository;
-    private final OverrideRequestRepository overrideRequestRepository;
+    private final PageSettingsRepository pageSettingsRepository;
+    private final WatermarkConfigurationRepository watermarkConfigurationRepository;
+    /** Media object store — the concrete host is abstracted behind this service. */
+    private final MediaStorageService mediaStorage;
     private final WorkspaceProvisionerService workspaceProvisioner;
     private final AuditLogService auditLogService;
 
@@ -59,18 +70,24 @@ public class InstitutionService {
             UserRepository userRepository,
             SubmissionRepository submissionRepository,
             MediaAssetRepository mediaAssetRepository,
+            MediaAlbumRepository mediaAlbumRepository,
             InvitationTokenRepository invitationTokenRepository,
             SlotReservationRepository slotReservationRepository,
-            OverrideRequestRepository overrideRequestRepository,
+            PageSettingsRepository pageSettingsRepository,
+            WatermarkConfigurationRepository watermarkConfigurationRepository,
+            MediaStorageService mediaStorage,
             WorkspaceProvisionerService workspaceProvisioner,
             AuditLogService auditLogService) {
         this.institutionRepository = institutionRepository;
         this.userRepository = userRepository;
         this.submissionRepository = submissionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
+        this.mediaAlbumRepository = mediaAlbumRepository;
         this.invitationTokenRepository = invitationTokenRepository;
         this.slotReservationRepository = slotReservationRepository;
-        this.overrideRequestRepository = overrideRequestRepository;
+        this.pageSettingsRepository = pageSettingsRepository;
+        this.watermarkConfigurationRepository = watermarkConfigurationRepository;
+        this.mediaStorage = mediaStorage;
         this.workspaceProvisioner = workspaceProvisioner;
         this.auditLogService = auditLogService;
     }
@@ -258,13 +275,16 @@ public class InstitutionService {
                     "Institution '" + institution.getName() + "' is already inactive.");
         }
 
-        long contributorCount = userRepository.countByInstitutionId(institutionId);
+        boolean hasBlockingContributors = hasBlockingContributorAccounts(institutionId);
         long pendingInviteCount = invitationTokenRepository
-                .countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(institutionId, Instant.now());
-        if (contributorCount > 0 || pendingInviteCount > 0) {
+                .countByInstitutionIdAndAssignedRoleAndUsedAtIsNullAndExpiresAtAfter(
+                        institutionId,
+                        UserRole.contributor,
+                        Instant.now());
+        if (hasBlockingContributors || pendingInviteCount > 0) {
             throw new IllegalStateException(
                     "Cannot deactivate institution '" + institution.getName()
-                    + "' while contributors or pending invitations exist. Please transfer or remove contributors first.");
+                    + "' while active contributors or pending contributor invitations exist. Please transfer or remove accounts first.");
         }
 
         String previousStatus = institution.getStatus().name();
@@ -310,7 +330,7 @@ public class InstitutionService {
     }
 
     /**
-     * INACTIVE → PENDING. Called when an admin sends a validator invitation.
+     * INACTIVE → PENDING. Called when an admin sends a moderator invitation.
      */
     public void transitionToPending(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)
@@ -336,7 +356,7 @@ public class InstitutionService {
     }
 
     /**
-     * PENDING → ACTIVE. Called when the first validator activates their
+     * PENDING → ACTIVE. Called when the first moderator activates their
      * account. Also accepts INACTIVE as a precondition to handle edge cases.
      */
     public void transitionToActive(UUID institutionId) {
@@ -365,8 +385,8 @@ public class InstitutionService {
     }
 
     /**
-     * ACTIVE or PENDING → INACTIVE. Called when all validators are
-     * deactivated/removed, or when the last pending validator invitation is
+     * ACTIVE or PENDING → INACTIVE. Called when all moderators are
+     * deactivated/removed, or when the last pending moderator invitation is
      * cancelled.
      */
     public void transitionToInactive(UUID institutionId) {
@@ -407,7 +427,7 @@ public class InstitutionService {
         Institution institution = institutionRepository.findById(institutionId)
                 .orElseThrow(() -> new InstitutionNotFoundException(institutionId));
 
-        if (userRepository.existsByInstitutionId(institutionId)) {
+        if (hasBlockingContributorAccounts(institutionId)) {
             throw new IllegalArgumentException(
                     "\"" + institution.getName() + "\" still has contributors. Transfer or remove all contributors before deleting.");
         }
@@ -422,10 +442,23 @@ public class InstitutionService {
                     "\"" + institution.getName() + "\" has media assets in its library. Delete all media assets before deleting the institution.");
         }
 
+        // Stored objects for any lingering soft-deleted assets — the retention
+        // purge job iterates DB rows, so once those rows are gone below the
+        // objects would be orphaned in the media store. Purge them best-effort
+        // after the delete transaction commits (no DB connection held during the
+        // storage I/O).
+        List<String> orphanStorageUrls = mediaAssetRepository.findStorageUrlsByInstitutionId(institutionId);
+
         // Clean up FK-constrained administrative records before the hard delete.
         invitationTokenRepository.deleteByInstitutionId(institutionId);
         slotReservationRepository.deleteByInstitutionId(institutionId);
-        overrideRequestRepository.deleteByInstitutionId(institutionId);
+        pageSettingsRepository.deleteByInstitutionId(institutionId);
+        watermarkConfigurationRepository.deleteByInstitutionId(institutionId);
+        // Assets first: soft-deleted rows still point at institution_id and
+        // media_album_id, so they must go before the albums (and the
+        // institution) can be removed.
+        mediaAssetRepository.deleteByInstitutionId(institutionId);
+        mediaAlbumRepository.deleteByInstitutionId(institutionId);
 
         String name = institution.getName();
         String code = institution.getCode();
@@ -438,5 +471,47 @@ public class InstitutionService {
         );
 
         log.info("Institution deleted: {} ({})", name, institutionId);
+
+        purgeStorageObjectsAfterCommit(name, orphanStorageUrls);
+    }
+
+    /**
+     * Best-effort removal of the stored objects whose {@code media_assets} rows
+     * were just hard-deleted with the institution. Runs after the transaction
+     * commits so no pooled DB connection is held during the storage calls;
+     * failures are logged and never fail the delete (the rows are already gone
+     * regardless). Storage host is abstracted behind the injected storage service.
+     */
+    private void purgeStorageObjectsAfterCommit(String institutionName, List<String> storageUrls) {
+        if (storageUrls == null || storageUrls.isEmpty()) {
+            return;
+        }
+        Runnable sweep = () -> {
+            int purged = 0;
+            for (String url : storageUrls) {
+                if (url != null && !url.isBlank() && mediaStorage.deletePublicObject(url)) {
+                    purged++;
+                }
+            }
+            log.info("Purged {}/{} orphaned storage objects for deleted institution {}",
+                    purged, storageUrls.size(), institutionName);
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    sweep.run();
+                }
+            });
+        } else {
+            sweep.run();
+        }
+    }
+
+    private boolean hasBlockingContributorAccounts(UUID institutionId) {
+        return userRepository.existsByInstitutionIdAndRoleAndAccountStateIn(
+                institutionId,
+                UserRole.contributor,
+                List.of(UserStatus.pending, UserStatus.pending_email_undelivered, UserStatus.active));
     }
 }

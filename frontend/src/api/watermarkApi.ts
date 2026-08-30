@@ -9,7 +9,3 @@ export async function getWatermarkConfiguration(institutionId?: string | null) {
 export async function saveWatermarkConfiguration(request: WatermarkConfigurationRequest) {
   return api.put<WatermarkConfiguration>("/settings/watermark", request);
 }
-
-export async function deleteWatermarkOverride(institutionId: string) {
-  return api.delete<void>("/settings/watermark", { params: { institutionId } });
-}

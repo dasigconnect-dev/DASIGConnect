@@ -6,6 +6,7 @@ import com.dasigconnect.backend.model.dto.audit.AuditLogDto;
 import com.dasigconnect.backend.model.dto.audit.AuditLogFilterCriteria;
 import com.dasigconnect.backend.model.dto.audit.AuditLogPageDto;
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
+import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.AuditLogService;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -21,6 +22,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -28,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/audit-log")
-@PreAuthorize("hasAnyRole('SUPER_ADMINISTRATOR', 'ADMINISTRATOR')")
+@PreAuthorize("hasRole('ADMIN')")
 public class AuditLogController {
 
     private final AuditLogService auditLogService;
@@ -81,7 +83,8 @@ public class AuditLogController {
             @RequestParam(required = false) String action,
             @RequestParam(required = false) AuditEntityType entityType,
             @RequestParam(required = false) UUID resourceId,
-            @RequestParam(required = false) String search
+            @RequestParam(required = false) String search,
+            @AuthenticationPrincipal JwtUserDetails principal
     ) {
         Instant start = parseInstant(startDate);
         Instant end = parseInstant(endDate);
@@ -92,6 +95,20 @@ public class AuditLogController {
 
         String csvData = auditLogService.exportAuditLogsCsv(criteria);
         String filename = "DASIGConnect_AuditLog_" + LocalDate.now() + ".csv";
+
+        StringBuilder filters = new StringBuilder();
+        if (category != null) filters.append("category=").append(category.name()).append(' ');
+        if (action != null && !action.isBlank()) filters.append("action=").append(action).append(' ');
+        if (entityType != null) filters.append("entityType=").append(entityType.name()).append(' ');
+        if (actorQuery != null && !actorQuery.isBlank()) filters.append("actor~").append(actorQuery).append(' ');
+        if (search != null && !search.isBlank()) filters.append("search~").append(search).append(' ');
+        if (startDate != null && !startDate.isBlank()) filters.append("from=").append(startDate).append(' ');
+        if (endDate != null && !endDate.isBlank()) filters.append("to=").append(endDate).append(' ');
+        auditLogService.recordByActorId(
+                principal != null ? principal.userId() : null,
+                "AUDIT_LOG_EXPORTED", null, null, null,
+                Map.of("rowCount", Math.max(csvData.split("\r\n|\r|\n").length - 1, 0),
+                        "filters", filters.length() == 0 ? "none" : filters.toString().trim()));
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv"))

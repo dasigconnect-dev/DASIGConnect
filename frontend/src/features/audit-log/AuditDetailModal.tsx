@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import type { AuditLogEntry } from "../../api/auditLogApi";
+import { formatActorRole, type AuditLogEntry } from "../../api/auditLogApi";
 
 interface Props {
   entry: AuditLogEntry | null;
@@ -109,9 +109,9 @@ export default function AuditDetailModal({ entry, onClose }: Props) {
                     {entry.actor?.name ? entry.actor.name.charAt(0).toUpperCase() : "S"}
                   </div>
                   <strong>{entry.actor?.name || "System Automation"}</strong>
-                  {entry.actor?.role === "SUPER_ADMINISTRATOR" && (
+                  {entry.actor && (
                     <span className="audit-actor-role">
-                      • Super Admin
+                      • {formatActorRole(entry.actor)}
                     </span>
                   )}
                 </div>
@@ -125,7 +125,7 @@ export default function AuditDetailModal({ entry, onClose }: Props) {
               <div className="audit-kv-item">
                 <span className="audit-kv-label">Role</span>
                 <span className="audit-kv-value">
-                  {entry.actor?.role === "SUPER_ADMINISTRATOR" ? "Super Administrator" : entry.actor?.role || "SYSTEM"}
+                  {entry.actor ? formatActorRole(entry.actor) : "System"}
                 </span>
               </div>
 
@@ -244,7 +244,7 @@ export default function AuditDetailModal({ entry, onClose }: Props) {
           {/* Raw Metadata JSON Inspector */}
           {entry.metadata && Object.keys(entry.metadata).length > 0 && (
             <div className="audit-panel-card audit-json-card">
-              <details className="audit-json-details">
+              <details className="audit-json-details" open>
                 <summary className="audit-json-summary">
                   <div className="audit-json-summary-left">
                     <i className="ti ti-code" style={{ color: "var(--d-blue, #1877f2)", fontSize: 13 }} />

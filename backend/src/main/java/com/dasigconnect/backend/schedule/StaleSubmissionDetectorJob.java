@@ -30,7 +30,7 @@ import org.springframework.context.ApplicationEventPublisher;
  *   <li>Finds PENDING / IN_REVIEW submissions whose scheduled publication time
  *       has passed while still unreviewed (UC-2.4 A6), transitions them to
  *       MISSED_REVIEW, releases the reserved slot, and emits
- *       {@link SubmissionMissedReviewEvent} so administrators are notified.</li>
+ *       {@link SubmissionMissedReviewEvent} so moderators are notified.</li>
  * </ol>
  */
 @Component

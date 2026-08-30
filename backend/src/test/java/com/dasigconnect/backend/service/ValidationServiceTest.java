@@ -82,7 +82,7 @@ class ValidationServiceTest {
 
     @Test
     void getQueue_callsNetworkWideQueryRegardlessOfCallerInstitution() {
-        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
         when(submissionRepository.findValidationQueue()).thenReturn(List.of());
 
         validationService.getQueue(admin);
@@ -92,7 +92,7 @@ class ValidationServiceTest {
 
     @Test
     void getHistory_callsNetworkWideQueryRegardlessOfCallerInstitution() {
-        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
         when(submissionRepository.findValidationHistory()).thenReturn(List.of());
 
         validationService.getHistory(admin);
@@ -101,11 +101,11 @@ class ValidationServiceTest {
     }
 
     @Test
-    void approve_administratorCanActOnSubmissionFromAnyInstitution() {
-        // Administrator accounts are network-wide (institutionId is always null),
+    void approve_moderatorCanActOnSubmissionFromAnyInstitution() {
+        // Moderator accounts are network-wide (institutionId is always null),
         // so a submission belonging to a different institution than the caller's
         // must still be reviewable — this used to 404 before the scoping fix.
-        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
 
         Submission submission = new Submission();
         submission.setId(UUID.randomUUID());
@@ -132,7 +132,7 @@ class ValidationServiceTest {
     void approve_selfReview_isAllowedAndFlaggedInAuditLog() {
         // A5: self-review is allowed, not blocked — but must be distinctly flagged.
         UUID sharedId = UUID.randomUUID();
-        JwtUserDetails admin = new JwtUserDetails(sharedId, "admin@dasigconnect.local", "administrator", null);
+        JwtUserDetails admin = new JwtUserDetails(sharedId, "admin@dasigconnect.local", "moderator", null);
 
         Submission submission = new Submission();
         submission.setId(UUID.randomUUID());
@@ -165,7 +165,7 @@ class ValidationServiceTest {
         // (see SubmissionService.create()), so confirming one would throw
         // IllegalStateException and roll back the whole approval. Approve must skip
         // slot confirmation for fast-track submissions and flag the audit log.
-        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
 
         Submission submission = new Submission();
         submission.setId(UUID.randomUUID());
@@ -197,7 +197,7 @@ class ValidationServiceTest {
 
     @Test
     void approve_standardSubmission_stillConfirmsSlot() {
-        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
 
         Submission submission = new Submission();
         submission.setId(UUID.randomUUID());
@@ -227,7 +227,7 @@ class ValidationServiceTest {
     void edit_keepsSubmissionInReviewAndLogsStandaloneEditedAction() {
         // A9: a standalone edit records its diff but does NOT transition the
         // submission out of IN_REVIEW and never confirms a slot or fires approval.
-        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
 
         Submission submission = new Submission();
         submission.setId(UUID.randomUUID());
@@ -247,7 +247,7 @@ class ValidationServiceTest {
 
         when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
         when(userRepository.findById(adminId)).thenReturn(Optional.of(adminUser));
-        when(submissionService.applySubmissionEdits(any(), any())).thenAnswer(invocation -> {
+        when(submissionService.applySubmissionEdits(any(), any(), any())).thenAnswer(invocation -> {
             Submission s = invocation.getArgument(0);
             s.setEventTitle("Edited Title");
             return s;
@@ -283,7 +283,7 @@ class ValidationServiceTest {
 
     @Test
     void detachReviewMedia_onInReview_delegatesAndLogsEdited() {
-        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
         Submission submission = inReviewSubmission();
         UUID assetId = UUID.randomUUID();
         User adminUser = new User();
@@ -302,7 +302,7 @@ class ValidationServiceTest {
 
     @Test
     void reorderReviewMedia_rejectsSubmissionThatIsNotReviewable() {
-        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
         Submission submission = inReviewSubmission();
         submission.setStatus(SubmissionStatus.scheduled);
         when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
@@ -320,7 +320,7 @@ class ValidationServiceTest {
         // the terminal action as `approved` with the combined before/after diff
         // attached (marking it an edited approval) and notifies the contributor
         // that changes were made.
-        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "administrator", null);
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
 
         Submission submission = new Submission();
         submission.setId(UUID.randomUUID());

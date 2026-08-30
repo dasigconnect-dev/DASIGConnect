@@ -52,8 +52,8 @@ class AuditLogControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
-    void getAuditLogs_asAdministrator_returnsPage() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void getAuditLogs_asModerator_returnsPage() throws Exception {
         UUID logId = UUID.randomUUID();
         AuditLogDto dto = new AuditLogDto(
                 logId,
@@ -62,7 +62,7 @@ class AuditLogControllerTest {
                 "approved",
                 AuditLogCategory.APPROVAL,
                 "Approvals & Direct Posts",
-                new AuditLogDto.ActorDto(UUID.randomUUID(), "Admin John", "admin@dasig.gov.ph", "ADMINISTRATOR", null, "DOST Region 7"),
+                new AuditLogDto.ActorDto(UUID.randomUUID(), "Admin John", "admin@dasig.gov.ph", "moderator", false, null, "DOST Region 7"),
                 new AuditLogDto.EntityRefDto(UUID.randomUUID(), AuditEntityType.SUBMISSION, "Submission", "Tech Expo 2026", true, "/submissions"),
                 new AuditLogDto.ClientInfoDto("192.168.1.1", "Mozilla/5.0"),
                 "Approved submission Tech Expo 2026",
@@ -84,7 +84,7 @@ class AuditLogControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "SUPER_ADMINISTRATOR")
+    @WithMockUser(roles = "ADMIN")
     void getCategories_returnsOptions() throws Exception {
         when(auditLogService.getMetadataOptions()).thenReturn(Map.of(
                 "categories", List.of(Map.of("key", "APPROVAL", "label", "Approvals & Direct Posts")),
@@ -98,7 +98,7 @@ class AuditLogControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "ADMIN")
     void exportCsv_returnsCsvAttachment() throws Exception {
         when(auditLogService.exportAuditLogsCsv(any()))
                 .thenReturn("Log ID,Timestamp (PHT),Actor Name,Action Type\n1,2026-08-27 18:00:00,Admin,APPROVED\n");

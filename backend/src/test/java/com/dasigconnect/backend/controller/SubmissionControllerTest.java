@@ -90,8 +90,8 @@ class SubmissionControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
-    void create_asAdministratorInContributorCapacity_returns201() throws Exception {
+    @WithMockUser(roles = "MODERATOR")
+    void create_asModeratorInContributorCapacity_returns201() throws Exception {
         when(submissionService.create(any(), any())).thenReturn(responseDto(UUID.randomUUID(), SubmissionStatus.draft));
 
         mockMvc.perform(post("/api/v1/submissions")

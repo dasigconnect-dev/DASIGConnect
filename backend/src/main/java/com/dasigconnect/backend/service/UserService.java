@@ -8,13 +8,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.dasigconnect.backend.model.dto.user.SuperAdministratorTransferResponseDto;
+import com.dasigconnect.backend.model.dto.user.AdminTransferResponseDto;
 import com.dasigconnect.backend.model.dto.user.UserDto;
 import com.dasigconnect.backend.model.dto.user.UpdateAccountSettingsRequestDto;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
@@ -52,6 +54,11 @@ public class UserService {
     private final InstitutionRepository institutionRepository;
     private final InvitationTokenRepository invitationTokenRepository;
     private final AuditLogService auditLogService;
+    private final ApplicationEventPublisher eventPublisher;
+
+    /** Administrative policy cap: maximum active admin accounts network-wide (`app.admins.max`, default 3). */
+    @Value("${app.admins.max:3}")
+    private long maxAdmins;
 
     public UserService(
             UserRepository userRepository,
@@ -65,7 +72,8 @@ public class UserService {
             JWTService jwtService,
             InstitutionRepository institutionRepository,
             InvitationTokenRepository invitationTokenRepository,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.notificationRepository = notificationRepository;
         this.emailDeliveryLogRepository = emailDeliveryLogRepository;
@@ -78,6 +86,7 @@ public class UserService {
         this.institutionRepository = institutionRepository;
         this.invitationTokenRepository = invitationTokenRepository;
         this.auditLogService = auditLogService;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -102,28 +111,56 @@ public class UserService {
     }
 
     /**
-     * Both Administrator roles may list users in any institution.
+     * Both Moderator roles may list users in any institution.
      */
     public List<UserDto> listByInstitution(UUID institutionId, JwtUserDetails requester) {
         validateInstitutionScope(institutionId, requester);
 
         return userRepository.findByInstitutionIdOrderByCreatedAtDesc(institutionId)
                 .stream()
+                .map(u -> UserDto.from(u, requester))
+                .toList();
+    }
+
+    /**
+     * Lists network admin accounts. Admin accounts are network-scoped, not
+     * institution-scoped, so they need a dedicated query.
+     */
+    public List<UserDto> listAdmins(JwtUserDetails requester) {
+        if (!isAdminRole(requester)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only admins can access admin accounts.");
+        }
+        return userRepository.findByRolesOrderByCreatedAtDesc(
+                        EnumSet.of(UserRole.admin))
+                .stream()
+                .map(UserDto::from)
+                .toList();
+    }
+
+    public List<UserDto> listModerators(JwtUserDetails requester) {
+        if (!isAdminRole(requester)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only admins can access moderator accounts.");
+        }
+        return userRepository.findByRole(UserRole.moderator)
+                .stream()
                 .map(UserDto::from)
                 .toList();
     }
 
     /**
-     * Lists network administrator accounts for UC-1.1. Administrator accounts
-     * are network-scoped, not institution-scoped, so they need a dedicated query.
+     * Network-wide roster of contributor and moderator accounts across every
+     * institution. Admin-only — used by the User Management page so admins
+     * don't have to open each institution individually.
      */
-    public List<UserDto> listAdministrators(JwtUserDetails requester) {
-        if (!isAdministratorRole(requester)) {
+    public List<UserDto> listNetworkUsers(JwtUserDetails requester) {
+        if (!isAdminRole(requester)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only administrators and super administrators can access administrator accounts.");
+                    "Only admins can access the network-wide user directory.");
         }
-        return userRepository.findByRolesOrderByCreatedAtDesc(
-                        EnumSet.of(UserRole.administrator, UserRole.super_administrator))
+        return userRepository.findByRolesWithInstitutionOrderByCreatedAtDesc(
+                        EnumSet.of(UserRole.contributor, UserRole.moderator))
                 .stream()
                 .map(UserDto::from)
                 .toList();
@@ -199,11 +236,11 @@ public class UserService {
         var user = userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        boolean isAdministrator = isAdministratorRole(requester);
+        boolean isModerator = isModeratorRole(requester);
         boolean isOwnProfile = id.equals(requester.userId());
-        if (!isAdministrator && !isOwnProfile) {
+        if (!isModerator && !isOwnProfile) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only administrators or the account owner can update this profile image.");
+                    "Only moderators or the account owner can update this profile image.");
         }
 
         user.setAvatarData(bytes);
@@ -270,7 +307,9 @@ public class UserService {
 
         validateCanRemoveUser(user, requester);
 
-        if (user.getAccountState() != UserStatus.inactive && user.getAccountState() != UserStatus.cancelled) {
+        if (user.getAccountState() != UserStatus.inactive
+                && user.getAccountState() != UserStatus.cancelled
+                && user.getAccountState() != UserStatus.expired) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only deactivated or cancelled users can be removed. Please deactivate or cancel the invitation first.");
         }
@@ -307,20 +346,213 @@ public class UserService {
         return "deleted";
     }
 
+    /** Summary returned after a personal-data erasure. */
+    public record ErasureResult(String anonymizedEmail, int mediaAssetsPurged) {
+    }
+
+    /**
+     * Erase an account's personal data ("right to be forgotten"). The users row
+     * is anonymised in place — name, email, avatar, and credentials are
+     * scrubbed — because every FK to users(id) is RESTRICT and audit_log is
+     * append-only, so the row itself cannot be deleted once the account has
+     * acted. Their unattached media uploads are soft-deleted (the retention job
+     * purges the storage objects); submissions, validation logs, override
+     * requests, and prior audit entries are kept but now reference a scrubbed
+     * account. Admin Owner only.
+     */
+    @Transactional
+    public ErasureResult erasePersonalData(UUID id, JwtUserDetails requester) {
+        User actor = requireActiveAdminOwner(requester);
+
+        User target = userRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        if (actor.getId().equals(target.getId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You cannot erase your own account.");
+        }
+        if (target.isAdminOwner()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Transfer admin ownership before erasing this account.");
+        }
+        if (target.getPurgedAt() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This account has already been erased.");
+        }
+        if (target.getAccountState() != UserStatus.inactive && target.getAccountState() != UserStatus.cancelled) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Deactivate or cancel the account before erasing it.");
+        }
+
+        String originalEmail = target.getEmail();
+        jwtService.invalidateUserTokens(target.getId());
+
+        int mediaPurged = mediaAssetRepository.softDeleteUnattachedAssetsByUploader(target.getId(), actor.getId());
+
+        notificationRepository.deleteByRecipientId(target.getId());
+        emailDeliveryLogRepository.deleteByRecipientId(target.getId());
+        accountLockoutRepository.deleteByUserId(target.getId());
+        reviewLockRepository.deleteByLockedById(target.getId());
+        userRepository.deletePasswordResetTokensByUserId(target.getId());
+        userRepository.deleteMessengerConnectionByUserId(target.getId());
+        if (originalEmail != null) {
+            userRepository.deleteInvitationTokensByRecipientEmail(originalEmail);
+        }
+
+        String tombstoneEmail = "deleted+" + target.getId() + "@deleted.invalid";
+        target.setFirstName(null);
+        target.setLastName(null);
+        target.setDisplayName("Removed user");
+        target.setEmail(tombstoneEmail);
+        target.setPasswordHash("purged:" + UUID.randomUUID());
+        target.setAvatarData(null);
+        target.setAvatarContentType(null);
+        target.setAvatarUpdatedAt(null);
+        target.setNotifyInApp(false);
+        target.setNotifyEmail(false);
+        target.setAdminOwner(false);
+        target.setSuperAdminTransferRequestedBy(null);
+        target.setSuperAdminTransferExpiresAt(null);
+        target.setAccountState(UserStatus.inactive);
+        target.setPurgedAt(Instant.now());
+        target.setPurgedByUserId(actor.getId());
+        userRepository.save(target);
+
+        auditLogService.record(
+                actor,
+                "USER_ANONYMIZED",
+                null, null,
+                target.getId(),
+                Map.of(
+                        "originalEmail", originalEmail != null ? originalEmail : "",
+                        "role", target.getRole().name(),
+                        "mediaAssetsPurged", String.valueOf(mediaPurged)));
+
+        return new ErasureResult(tombstoneEmail, mediaPurged);
+    }
+
+    /**
+     * Promote or demote an account between contributor, moderator, and admin.
+     *
+     * <ul>
+     *   <li>Any active admin may move an account between contributor and
+     *       moderator; only the Admin Owner may promote to admin or change an
+     *       existing admin's role.</li>
+     *   <li>{@code contributor} requires an active {@code institutionId}; the
+     *       network-wide roles clear the institution.</li>
+     *   <li>Promotion to admin is blocked once the active-admin count reaches
+     *       {@code app.admins.max}.</li>
+     *   <li>The Admin Owner's own role cannot be changed here — transfer
+     *       ownership first. Nobody can change their own role.</li>
+     * </ul>
+     *
+     * The account's tokens are invalidated (role and institution live in the
+     * JWT), so the person must sign in again. Historical submissions, media, and
+     * validation logs keep their original institution and authorship.
+     */
+    @Transactional
+    public UserDto changeRole(UUID userId, UserRole newRole, UUID institutionId, JwtUserDetails requester) {
+        if (newRole == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Target role is required.");
+        }
+        if (requester != null && requester.userId() != null && requester.userId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You cannot change your own role.");
+        }
+
+        User target = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        UserRole fromRole = target.getRole();
+        boolean touchesAdmin = fromRole == UserRole.admin || newRole == UserRole.admin;
+        if (touchesAdmin) {
+            requireActiveAdminOwner(requester);
+        } else {
+            requireActiveAdmin(requester);
+        }
+
+        if (fromRole == UserRole.admin && target.isAdminOwner()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Transfer admin ownership before changing this account's role.");
+        }
+        if (newRole == fromRole) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This account already has that role.");
+        }
+        if (target.getAccountState() != UserStatus.active) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only active accounts can be reassigned. Reactivate or re-invite the account first.");
+        }
+        if (newRole == UserRole.admin
+                && userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active) >= maxAdmins) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Admin limit reached (" + maxAdmins
+                            + "). Remove or transfer an existing admin before promoting another.");
+        }
+
+        UUID fromInstitutionId = target.getInstitution() != null ? target.getInstitution().getId() : null;
+        String fromInstitutionName = target.getInstitution() != null ? target.getInstitution().getName() : "(none)";
+        String toInstitutionName = "(none)";
+
+        if (newRole == UserRole.contributor) {
+            if (institutionId == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "An institution is required when demoting an account to contributor.");
+            }
+            var institution = institutionRepository.findById(institutionId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Target institution not found."));
+            if (institution.getStatus() != InstitutionStatus.active) {
+                throw new ResponseStatusException(org.springframework.http.HttpStatusCode.valueOf(422),
+                        "Target institution is not active. Contributors can only be assigned to active institutions.");
+            }
+            target.setInstitution(institution);
+            toInstitutionName = institution.getName();
+        } else {
+            // moderator and admin are network-wide.
+            target.setInstitution(null);
+        }
+
+        if (newRole != UserRole.admin) {
+            target.setAdminOwner(false);
+        }
+        if (fromRole == UserRole.moderator && newRole != UserRole.moderator) {
+            // Drop any review claims the account holds as a moderator.
+            reviewLockRepository.deleteByLockedById(userId);
+        }
+
+        target.setRole(newRole);
+        User saved = userRepository.save(target);
+        jwtService.invalidateUserTokens(saved.getId());
+
+        auditLogService.record(
+                findRequesterForAudit(requester),
+                "USER_ROLE_CHANGED",
+                null, null,
+                saved.getId(),
+                Map.of(
+                        "email", saved.getEmail(),
+                        "fromRole", fromRole.name(),
+                        "toRole", newRole.name(),
+                        "fromInstitution", fromInstitutionName,
+                        "toInstitution", toInstitutionName));
+
+        String actorEmail = requester != null ? requester.email() : null;
+        eventPublisher.publishEvent(new com.dasigconnect.backend.event.UserRoleChangedEvent(
+                saved, fromRole, newRole, actorEmail));
+
+        return UserDto.from(saved);
+    }
+
     /**
      * A4: Reassigns a contributor to a different institution.
      *
-     * Rules: - Either Administrator role may call this. - Target user must be a
-     * CONTRIBUTOR (administrators are managed via separate flows). - Target
+     * Rules: - Either Moderator role may call this. - Target user must be a
+     * CONTRIBUTOR (moderators are managed via separate flows). - Target
      * institution must exist and be ACTIVE. - Cannot reassign to the user's
      * existing institution. - Historical submissions retain their original
      * institution_id for audit and RLS integrity.
      */
     @Transactional
     public UserDto reassignContributor(UUID userId, UUID targetInstitutionId, JwtUserDetails requester) {
-        if (!isAdministratorRole(requester)) {
+        if (!isModeratorRole(requester)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only administrators can reassign contributors.");
+                    "Only moderators can reassign contributors.");
         }
 
         var user = userRepository.findById(userId)
@@ -328,7 +560,7 @@ public class UserService {
 
         if (user.getRole() != UserRole.contributor) {
             throw new ResponseStatusException(org.springframework.http.HttpStatusCode.valueOf(422),
-                    "Only contributor accounts can be reassigned. Administrators must be managed through institution settings.");
+                    "Only contributor accounts can be reassigned. Moderators must be managed through institution settings.");
         }
 
         var targetInstitution = institutionRepository.findById(targetInstitutionId)
@@ -366,7 +598,7 @@ public class UserService {
         var actor = userRepository.findById(requester.userId()).orElse(null);
         auditLogService.record(
                 actor,
-                "contributor.reassigned",
+                "CONTRIBUTOR_REASSIGNED",
                 null, null,
                 userId,
                 Map.of(
@@ -380,36 +612,37 @@ public class UserService {
     }
 
     /**
-     * Returns counts of contributors and validators for an institution. Used
+     * Returns counts of contributors and moderators for an institution. Used
      * for dashboard summary tiles.
      */
     public Map<String, Long> countByRole(UUID institutionId, JwtUserDetails requester) {
         validateInstitutionScope(institutionId, requester);
         return Map.of(
                 "contributors", userRepository.countByInstitutionIdAndRoleAndAccountState(institutionId, UserRole.contributor, UserStatus.active),
-                "validators", userRepository.countByInstitutionIdAndRoleAndAccountState(institutionId, UserRole.administrator, UserStatus.active)
+                "moderators", userRepository.countByInstitutionIdAndRoleAndAccountState(institutionId, UserRole.moderator, UserStatus.active)
         );
     }
 
     @Transactional
-    public SuperAdministratorTransferResponseDto requestSuperAdministratorTransfer(
+    public AdminTransferResponseDto requestAdminTransfer(
             UUID targetUserId,
             JwtUserDetails requester) {
-        User requesterAccount = requireActiveSuperAdministrator(requester);
+        User requesterAccount = requireActiveAdminOwner(requester);
         if (requesterAccount.getId().equals(targetUserId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Super Administrator cannot transfer status to the same account");
+                    "Admin cannot transfer status to the same account");
         }
 
         User target = userRepository.findById(targetUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        if (target.getRole() != UserRole.administrator || target.getAccountState() != UserStatus.active) {
+        if ((target.getRole() != UserRole.moderator && target.getRole() != UserRole.admin)
+                || target.getAccountState() != UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Super Administrator status can only be transferred to an active Administrator");
+                    "Admin ownership can only be transferred to an active moderator or admin");
         }
-        if (target.isSuperAdministrator()) {
+        if (target.isAdminOwner()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Target account is already the Super Administrator");
+                    "Target account is already the Admin");
         }
 
         Instant expiresAt = Instant.now().plus(SUPER_ADMIN_TRANSFER_TTL);
@@ -419,12 +652,12 @@ public class UserService {
 
         auditLogService.record(
                 requesterAccount,
-                "SUPER_ADMINISTRATOR_TRANSFER_REQUESTED",
+                "ADMIN_TRANSFER_REQUESTED",
                 null, null,
                 target.getId(),
                 java.util.Map.of("targetEmail", target.getEmail(), "expiresAt", expiresAt.toString()));
 
-        return new SuperAdministratorTransferResponseDto(
+        return new AdminTransferResponseDto(
                 target.getId(),
                 requesterAccount.getId(),
                 expiresAt,
@@ -432,42 +665,49 @@ public class UserService {
     }
 
     @Transactional
-    public UserDto confirmSuperAdministratorTransfer(JwtUserDetails requester) {
+    public UserDto confirmAdminTransfer(JwtUserDetails requester) {
         User incoming = userRepository.findById(requester.userId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        if (incoming.getRole() != UserRole.administrator || incoming.getAccountState() != UserStatus.active) {
+        if ((incoming.getRole() != UserRole.moderator && incoming.getRole() != UserRole.admin)
+                || incoming.getAccountState() != UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only an active Administrator can confirm Super Administrator transfer");
+                    "Only an active moderator or admin can confirm an Admin ownership transfer");
         }
+        boolean incomingWasModerator = incoming.getRole() == UserRole.moderator;
         if (incoming.getSuperAdminTransferRequestedBy() == null
                 || incoming.getSuperAdminTransferExpiresAt() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "No pending Super Administrator transfer exists for this account");
+                    "No pending Admin transfer exists for this account");
         }
         if (incoming.getSuperAdminTransferExpiresAt().isBefore(Instant.now())) {
             incoming.setSuperAdminTransferRequestedBy(null);
             incoming.setSuperAdminTransferExpiresAt(null);
             userRepository.save(incoming);
             throw new ResponseStatusException(HttpStatus.GONE,
-                    "Pending Super Administrator transfer has expired");
+                    "Pending Admin transfer has expired");
         }
 
         User outgoing = userRepository.findById(incoming.getSuperAdminTransferRequestedBy())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                "Requesting Super Administrator account no longer exists"));
-        if (outgoing.getRole() != UserRole.super_administrator
+                "Requesting Admin account no longer exists"));
+        if (outgoing.getRole() != UserRole.admin
                 || outgoing.getAccountState() != UserStatus.active
-                || !outgoing.isSuperAdministrator()) {
+                || !outgoing.isAdminOwner()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Requesting account is no longer the active Super Administrator");
+                    "Requesting account is no longer the active Admin");
         }
 
-        incoming.setRole(UserRole.super_administrator);
-        incoming.setSuperAdministrator(true);
+        incoming.setRole(UserRole.admin);
+        incoming.setAdminOwner(true);
         incoming.setSuperAdminTransferRequestedBy(null);
         incoming.setSuperAdminTransferExpiresAt(null);
-        outgoing.setRole(UserRole.administrator);
-        outgoing.setSuperAdministrator(false);
+        outgoing.setAdminOwner(false);
+        if (incomingWasModerator) {
+            // Owner-to-moderator handoff is 1-for-1: the outgoing owner steps
+            // down to moderator so the admin headcount stays the same. Handing
+            // ownership to an existing admin leaves both as admins.
+            outgoing.setRole(UserRole.moderator);
+        }
         outgoing.setSuperAdminTransferRequestedBy(null);
         outgoing.setSuperAdminTransferExpiresAt(null);
 
@@ -477,64 +717,110 @@ public class UserService {
 
         auditLogService.record(
                 incoming,
-                "SUPER_ADMINISTRATOR_TRANSFER_CONFIRMED",
+                "ADMIN_TRANSFER_CONFIRMED",
                 null, null,
                 incoming.getId(),
-                java.util.Map.of("previousSuperAdministratorId", outgoing.getId().toString()));
+                java.util.Map.of("previousAdminOwnerId", outgoing.getId().toString()));
 
         return UserDto.from(savedIncoming);
     }
 
     private void validateInstitutionScope(UUID institutionId, JwtUserDetails requester) {
-        if (!isAdministratorRole(requester)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only administrators and super administrators can access users.");
+        if (isModeratorRole(requester)) {
+            // Moderator and Admin are both network-wide roles — no institution comparison needed.
+            return;
         }
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Only admins or moderators can access users.");
     }
 
     private void validateCanManageUser(User target, JwtUserDetails requester) {
         UUID institutionId = target.getInstitution() != null ? target.getInstitution().getId() : null;
         validateInstitutionScope(institutionId, requester);
-        if (target.getRole() == UserRole.administrator || target.getRole() == UserRole.super_administrator) {
-            User requesterAccount = requireActiveSuperAdministrator(requester);
+        if (target.getRole() == UserRole.admin) {
+            // Admin-on-admin actions stay restricted to the Admin Owner.
+            User requesterAccount = requireActiveAdminOwner(requester);
             if (requesterAccount.getId().equals(target.getId())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Super Administrator cannot manage their own administrator account status");
+                        "Admins cannot manage their own account status");
             }
+        } else if (target.getRole() == UserRole.moderator) {
+            // Any active admin (Owner or peer) may manage moderator accounts.
+            requireActiveAdmin(requester);
         }
     }
 
     private void validateCanRemoveUser(User target, JwtUserDetails requester) {
         validateCanManageUser(target, requester);
-        if (target.getRole() == UserRole.administrator || target.getRole() == UserRole.super_administrator) {
-            User requesterAccount = requireActiveSuperAdministrator(requester);
+        if (target.getRole() == UserRole.admin) {
+            User requesterAccount = requireActiveAdminOwner(requester);
             if (requesterAccount.getId().equals(target.getId())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Super Administrator cannot remove their own account");
+                        "Admins cannot remove their own account");
+            }
+            return;
+        }
+        // A non-admin (moderator) may remove only a contributor they invited
+        // whose invitation was cancelled/expired — never an activated account.
+        if (!"admin".equalsIgnoreCase(requester != null ? requester.role() : null)) {
+            boolean ownCancelledInvitee = target.getRole() == UserRole.contributor
+                    && (target.getAccountState() == UserStatus.cancelled
+                            || target.getAccountState() == UserStatus.expired)
+                    && target.getInvitedByUserId() != null
+                    && requester != null
+                    && target.getInvitedByUserId().equals(requester.userId());
+            if (!ownCancelledInvitee) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "You can only remove a contributor you invited whose invitation was cancelled.");
             }
         }
     }
 
-    private User requireActiveSuperAdministrator(JwtUserDetails requester) {
+    /**
+     * Requires the caller to be any active admin (Owner or peer). Used for
+     * actions a peer admin is allowed to perform, such as managing moderator
+     * accounts.
+     */
+    private User requireActiveAdmin(JwtUserDetails requester) {
         if (requester == null || requester.userId() == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only the Super Administrator can manage Administrator accounts");
+                    "Only an admin can manage this account");
         }
         User requesterAccount = userRepository.findById(requester.userId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Only the Super Administrator can manage Administrator accounts"));
-        if (requesterAccount.getRole() != UserRole.super_administrator
-                || requesterAccount.getAccountState() != UserStatus.active
-                || !requesterAccount.isSuperAdministrator()) {
+                        "Only an admin can manage this account"));
+        if (requesterAccount.getRole() != UserRole.admin
+                || requesterAccount.getAccountState() != UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only the Super Administrator can manage Administrator accounts");
+                    "Only an admin can manage this account");
         }
         return requesterAccount;
     }
 
-    private boolean isAdministratorRole(JwtUserDetails requester) {
-        return requester != null && ("administrator".equalsIgnoreCase(requester.role())
-                || "super_administrator".equalsIgnoreCase(requester.role()));
+    private User requireActiveAdminOwner(JwtUserDetails requester) {
+        if (requester == null || requester.userId() == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the Admin can manage Moderator accounts");
+        }
+        User requesterAccount = userRepository.findById(requester.userId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Only the Admin can manage Moderator accounts"));
+        if (requesterAccount.getRole() != UserRole.admin
+                || requesterAccount.getAccountState() != UserStatus.active
+                || !requesterAccount.isAdminOwner()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the Admin can manage Moderator accounts");
+        }
+        return requesterAccount;
+    }
+
+    private boolean isModeratorRole(JwtUserDetails requester) {
+        return requester != null && ("moderator".equalsIgnoreCase(requester.role())
+                || "admin".equalsIgnoreCase(requester.role()));
+    }
+
+    private boolean isAdminRole(JwtUserDetails requester) {
+        return requester != null && "admin".equalsIgnoreCase(requester.role());
     }
 
     private User findRequesterForAudit(JwtUserDetails requester) {

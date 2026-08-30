@@ -50,7 +50,7 @@ export interface UserProfileResponse {
   displayName: string | null;
   role: string;
   accountState: string;
-  superAdministrator: boolean;
+  adminOwner: boolean;
   superAdminTransferRequestedBy: string | null;
   superAdminTransferExpiresAt: string | null;
   institutionId: string | null;
@@ -61,10 +61,19 @@ export interface UserProfileResponse {
   hasAvatar: boolean;
   avatarUpdatedAt: string | null;
   avatarUrl?: string | null;
+  purgedAt?: string | null;
+  invitedByUserId?: string | null;
+  /** True when the current user may delete this row (e.g. a moderator's own cancelled invitee). */
+  removableByRequester?: boolean;
 }
 
 export function login(email: string, password: string) {
-  return api.post<LoginResponse>("/auth/login", { email, password });
+  delete api.defaults.headers.common.Authorization;
+  return api.post<LoginResponse>(
+    "/auth/login",
+    { email, password },
+    { headers: { Authorization: undefined } }
+  );
 }
 
 export function logout() {
@@ -72,11 +81,13 @@ export function logout() {
 }
 
 export function requestPasswordReset(email: string) {
-  return api.post("/auth/forgot-password", { email });
+  delete api.defaults.headers.common.Authorization;
+  return api.post("/auth/forgot-password", { email }, { headers: { Authorization: undefined } });
 }
 
 export function resetPassword(token: string, newPassword: string) {
-  return api.post("/auth/reset-password", { token, newPassword });
+  delete api.defaults.headers.common.Authorization;
+  return api.post("/auth/reset-password", { token, newPassword }, { headers: { Authorization: undefined } });
 }
 
 export interface InvitationValidateResponse {
@@ -200,7 +211,7 @@ export function getInstitutionLogoUrl(id: string, logoUpdatedAt: string | null) 
 }
 
 export function getUserCounts(institutionId: string) {
-  return api.get<{ contributors: number; validators: number }>(
+  return api.get<{ contributors: number; moderators: number }>(
     "/users/counts",
     {
       params: { institutionId },
@@ -220,8 +231,18 @@ export function listUsers(institutionId: string) {
   });
 }
 
-export function listAdministrators() {
-  return api.get<UserProfileResponse[]>("/users/administrators", {}).then((response) => {
+export function listAdmins() {
+  return api.get<UserProfileResponse[]>("/users/admins", {}).then((response) => {
+    response.data = response.data.map((user) => ({
+      ...user,
+      avatarUrl: user.hasAvatar ? getUserAvatarUrl(user.id, user.avatarUpdatedAt) : null,
+    }));
+    return response;
+  });
+}
+
+export function listNetworkUsers() {
+  return api.get<UserProfileResponse[]>("/users/network", {}).then((response) => {
     response.data = response.data.map((user) => ({
       ...user,
       avatarUrl: user.hasAvatar ? getUserAvatarUrl(user.id, user.avatarUpdatedAt) : null,
@@ -244,6 +265,17 @@ export function reassignContributor(id: string, targetInstitutionId: string) {
     targetInstitutionId,
   });
 }
+
+export function changeUserRole(
+  id: string,
+  role: "contributor" | "moderator" | "admin",
+  institutionId?: string | null,
+) {
+  return api.patch<UserProfileResponse>(`/users/${id}/role`, {
+    role,
+    institutionId: role === "contributor" ? institutionId ?? null : null,
+  });
+}
 export function uploadUserAvatar(id: string, file: File) {
   const formData = new FormData();
   formData.append("file", file);
@@ -264,6 +296,9 @@ export interface PendingInvitationResponse {
   institutionId: string | null;
   expiresAt: string;
   createdAt: string;
+  createdByUserId: string | null;
+  /** Whether the current user may resend/cancel this invitation (admins: always; moderators: only their own). */
+  canManage: boolean;
 }
 
 export function listPendingInvitations(institutionId: string) {
@@ -272,8 +307,12 @@ export function listPendingInvitations(institutionId: string) {
   });
 }
 
-export function listPendingAdministratorInvitations() {
-  return api.get<PendingInvitationResponse[]>("/invitations/pending/administrators");
+export function listPendingAdminInvitations() {
+  return api.get<PendingInvitationResponse[]>("/invitations/pending/admins");
+}
+
+export function listPendingNetworkInvitations() {
+  return api.get<PendingInvitationResponse[]>("/invitations/pending/network");
 }
 
 export function getPendingInvitationCount(institutionId: string) {
@@ -289,7 +328,7 @@ export function resendInvitation(id: string) {
 export interface InviteUserRequest {
   recipientEmail: string;
   institutionId: string | null;
-  assignedRole: "contributor" | "administrator" | "validator";
+  assignedRole: "contributor" | "moderator" | "admin";
 }
 
 export function inviteUser(data: InviteUserRequest) {
@@ -300,23 +339,37 @@ export function deleteUser(id: string) {
   return api.delete<{ action: 'deactivated' | 'deleted' }>(`/users/${id}`);
 }
 
+export function eraseUserData(id: string) {
+  return api.post<{ anonymizedEmail: string; mediaAssetsPurged: number }>(
+    `/users/${id}/erase`,
+  );
+}
+
 export function cancelInvitation(id: string) {
   return api.delete(`/invitations/${id}`);
 }
 
-export interface SuperAdministratorTransferResponse {
+/**
+ * Cancels a pending account by user id. Reliable even when the invitation token
+ * has expired (DELETE /invitations/{id} needs a live token).
+ */
+export function cancelInvitationByUser(userId: string) {
+  return api.delete(`/invitations/by-user/${userId}`);
+}
+
+export interface AdminTransferResponse {
   targetUserId: string;
   requestedByUserId: string;
   expiresAt: string;
   status: string;
 }
 
-export function requestSuperAdministratorTransfer(id: string) {
-  return api.post<SuperAdministratorTransferResponse>(`/users/${id}/super-administrator-transfer`);
+export function requestAdminTransfer(id: string) {
+  return api.post<AdminTransferResponse>(`/users/${id}/admin-transfer`);
 }
 
-export function confirmSuperAdministratorTransfer() {
-  return api.post<UserProfileResponse>("/users/super-administrator-transfer/confirm");
+export function confirmAdminTransfer() {
+  return api.post<UserProfileResponse>("/users/admin-transfer/confirm");
 }
 
 export interface InvitationResponse {

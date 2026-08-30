@@ -165,8 +165,8 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
 
     // Button is disabled when role is null, but guard here for type safety
     if (!inviteRole) return
-    if (inviteRole === 'administrator') {
-      const proceed = await confirmAdministratorInvite()
+    if (inviteRole === 'moderator') {
+      const proceed = await confirmModeratorInvite()
       if (!proceed) return
     }
 
@@ -182,7 +182,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
         try {
           const response = await inviteUser({
             recipientEmail: email,
-            institutionId: inviteRole === 'administrator' ? null : selectedInstitutionId,
+            institutionId: selectedInstitutionId,
             assignedRole: inviteRole,
           })
           if (response.data.emailDelivered) {
@@ -222,19 +222,19 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
     }
   }
 
-  function confirmAdministratorInvite(): Promise<boolean> {
-    const activeAdministrators = managedUsers.filter(
+  function confirmModeratorInvite(): Promise<boolean> {
+    const activeModerators = managedUsers.filter(
       (u) =>
-        u.role.toLowerCase() === 'administrator' && u.accountState.toLowerCase() === 'active',
+        u.role.toLowerCase() === 'moderator' && u.accountState.toLowerCase() === 'active',
     )
-    if (activeAdministrators.length === 0) return Promise.resolve(true)
+    if (activeModerators.length === 0) return Promise.resolve(true)
 
     const name = selectedInstitution?.name || 'this institution'
     return new Promise((resolve) => {
       setConfirmDialog({
-        title: 'Invite Additional Administrator?',
-        message: `${name} already has ${activeAdministrators.length} active administrator${activeAdministrators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
-        confirmLabel: 'Yes, invite administrator',
+        title: 'Invite Additional Moderator?',
+        message: `${name} already has ${activeModerators.length} active moderator${activeModerators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
+        confirmLabel: 'Yes, invite moderator',
         dangerous: false,
         onConfirm: () => {
           setConfirmDialog(null)
@@ -385,7 +385,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
         await inviteUser({
           recipientEmail: managedUser.email,
           institutionId: selectedInstitutionId,
-          assignedRole: (managedUser.role.toLowerCase() as 'contributor' | 'validator'),
+          assignedRole: (managedUser.role.toLowerCase() as 'contributor' | 'moderator'),
         })
       }
       await loadManagementLists(selectedInstitutionId)
@@ -576,8 +576,8 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
                 />
                 <MetricCard
                     icon="ti ti-shield-check"
-                    label="Administrators"
-                    value={managedUsers.filter((u) => u.role.toLowerCase() === 'administrator').length}
+                    label="Moderators"
+                    value={managedUsers.filter((u) => u.role.toLowerCase() === 'moderator').length}
                     loading={managementLoading && managedUsers.length === 0}
                     accent="purple"
                   />
@@ -607,7 +607,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
               onDeleteUser={handleDeleteUser}
               onCancelInvitation={handleCancelInvitationFromUsers}
               onResendInvitation={handleResendInvitationFromUsers}
-              showRoleControls={user.role === 'super_administrator'}
+              showRoleControls={user.role === 'admin'}
             />
           </div>
         )}

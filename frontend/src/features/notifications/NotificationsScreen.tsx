@@ -43,7 +43,7 @@ function isContributorWorkflowNotification(notification: Notification) {
   return ["submissions", "publishing", "deadline", "overrides"].includes(notification.category);
 }
 
-function isValidatorWorkflowNotification(notification: Notification) {
+function isModeratorWorkflowNotification(notification: Notification) {
   return ["submissions", "deadline", "system"].includes(notification.category);
 }
 
@@ -76,24 +76,64 @@ function getEventStatusBadge(eventType: string) {
     case "submission_publish_failed":
       return { label: "Publish Failed", icon: "ti ti-alert-triangle", className: "pill-failed" };
     case "token_expiring":
+      return { label: "Token Expiring", icon: "ti ti-key", className: "sp-pending" };
     case "token_invalid":
-      return { label: "Token Warning", icon: "ti ti-key", className: "pill-failed" };
+      return { label: "Token Invalid", icon: "ti ti-shield-x", className: "pill-failed" };
     case "empty_schedule_warning":
-      return { label: "Schedule Notice", icon: "ti ti-calendar-off", className: "sp-pending" };
+      return { label: "Empty Schedule", icon: "ti ti-calendar-off", className: "sp-pending" };
     case "deadline_warning":
-      return { label: "Deadline Alert", icon: "ti ti-alert-circle", className: "pill-failed" };
+    case "validation_timeout":
+      return { label: "Deadline", icon: "ti ti-alert-circle", className: "pill-failed" };
+    case "fast_track_submission":
+      return { label: "Fast-Track", icon: "ti ti-bolt", className: "pill-failed" };
+    case "submission_missed_review":
+      return { label: "Missed Review", icon: "ti ti-clock-x", className: "pill-failed" };
     case "override_approved":
       return { label: "Override Approved", icon: "ti ti-check", className: "sp-approved" };
     case "override_denied":
       return { label: "Override Denied", icon: "ti ti-ban", className: "pill-rejected" };
     case "override_slot_suggested":
       return { label: "Slot Suggested", icon: "ti ti-calendar-plus", className: "sp-scheduled" };
+    case "admin_direct_post":
+      return { label: "Direct Post", icon: "ti ti-speakerphone", className: "pill-published" };
+    case "embedding_failure_digest":
+      return { label: "AI Digest", icon: "ti ti-photo-off", className: "sp-pending" };
+    case "institution_onboarded":
+      return { label: "Onboarded", icon: "ti ti-sparkles", className: "sp-approved" };
+    case "institution_no_moderator":
+      return { label: "No Moderator", icon: "ti ti-building", className: "pill-failed" };
+    case "user_role_changed":
+      return { label: "Role Changed", icon: "ti ti-user-cog", className: "sp-scheduled" };
     default:
       return { label: "Update", icon: "ti ti-bell", className: "sp-pending" };
   }
 }
 
+// Notifications about the recipient's own submission — always open it in My
+// Submissions, even for a moderator/admin (they may have authored it as a
+// contributor). A rejected/needs-revision post is not in the review queue.
+const OWNER_FACING_EVENTS = new Set([
+  "submission_rejected",
+  "submission_needs_revision",
+  "submission_approved",
+  "submission_rescheduled",
+  "submission_published",
+  "submission_published_manual",
+  "override_denied",
+  "override_slot_suggested",
+]);
+// Notifications that call for a reviewer's action.
+const REVIEW_FACING_EVENTS = new Set([
+  "submission_pending",
+  "fast_track_submission",
+  "validation_timeout",
+]);
+
 function getNotificationTargetRoute(n: Notification, userRole: User["role"]): string {
+  const canReview = userRole === "moderator" || userRole === "admin";
+  const isAdmin = userRole === "admin";
+  const eventType = n.eventType;
+
   if (n.link) {
     if (n.link.startsWith("http://") || n.link.startsWith("https://")) {
       return n.link;
@@ -101,17 +141,17 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
     if (n.link !== "/dashboard" && n.link !== "/notifications" && n.link !== "/") {
       if (n.link.startsWith("/submissions/")) {
         const subId = n.link.replace("/submissions/", "");
-        if (userRole === "administrator" || userRole === "super_administrator") {
-          return `/validation/queue?submissionId=${subId}`;
+        const ownerView = `/submissions?submissionId=${subId}`;
+        if (OWNER_FACING_EVENTS.has(eventType)) return ownerView;
+        if (REVIEW_FACING_EVENTS.has(eventType)) {
+          return canReview ? `/validation/queue?submissionId=${subId}` : ownerView;
         }
-        return `/submissions?id=${subId}`;
+        // dual-audience (e.g. publish failed) — reviewers get the ops view
+        return canReview ? `/validation/queue?submissionId=${subId}` : ownerView;
       }
       return n.link;
     }
   }
-
-  const eventType = n.eventType;
-  const isAdmin = userRole === "administrator" || userRole === "super_administrator";
 
   if (
     eventType === "submission_pending" ||
@@ -119,11 +159,11 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
     eventType === "validation_timeout" ||
     eventType === "submission_missed_review"
   ) {
-    return isAdmin ? "/validation/queue" : "/submissions";
+    return canReview ? "/validation/queue" : "/submissions";
   }
 
   if (eventType === "submission_publish_failed") {
-    return isAdmin ? "/validation/queue?tab=failed" : "/submissions?tab=failed";
+    return canReview ? "/validation/queue?tab=failed" : "/submissions?tab=failed";
   }
 
   if (
@@ -137,7 +177,7 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   if (eventType === "submission_published" || eventType === "submission_published_manual") {
-    return isAdmin ? "/scheduler/calendar" : "/submissions?tab=published";
+    return canReview ? "/scheduler/calendar" : "/submissions?tab=published";
   }
 
   if (eventType === "submission_needs_revision") {
@@ -149,10 +189,11 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   if (eventType === "token_expiring" || eventType === "token_invalid") {
-    return "/settings#page";
+    // Facebook Page token health + "Re-Authenticate" live on System Health.
+    return isAdmin ? "/admin/system-health#integrations" : "/dashboard";
   }
 
-  if (eventType === "institution_onboarded" || eventType === "institution_no_validator") {
+  if (eventType === "institution_onboarded" || eventType === "institution_no_moderator") {
     return "/admin/institution-management";
   }
 
@@ -161,7 +202,7 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   if (n.category === "submissions" || n.category === "overrides") {
-    return isAdmin ? "/validation/queue" : "/submissions";
+    return canReview ? "/validation/queue" : "/submissions";
   }
 
   if (n.category === "publishing" || n.category === "deadline") {
@@ -169,10 +210,10 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   if (n.category === "system") {
-    return isAdmin ? "/admin/system-health" : "/settings";
+    return isAdmin ? "/admin/system-health" : "/dashboard";
   }
 
-  return isAdmin ? "/validation/queue" : "/submissions";
+  return canReview ? "/validation/queue" : "/submissions";
 }
 
 export default function NotificationsScreen({ user }: NotificationsScreenProps) {
@@ -193,17 +234,17 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
   const [showAll, setShowAll] = useState(false);
 
   const isContributor = user.role === "contributor";
-  const isValidator = user.role === "administrator";
+  const isModerator = user.role === "moderator";
 
   const workflowNotifications = useMemo(() => {
     if (isContributor) {
       return allNotifications.filter(isContributorWorkflowNotification);
     }
-    if (isValidator) {
-      return allNotifications.filter(isValidatorWorkflowNotification);
+    if (isModerator) {
+      return allNotifications.filter(isModeratorWorkflowNotification);
     }
     return allNotifications;
-  }, [allNotifications, isContributor, isValidator]);
+  }, [allNotifications, isContributor, isModerator]);
 
   const contributorCounts = useMemo(() => {
     return isContributor
@@ -220,8 +261,8 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
       : counts;
   }, [counts, isContributor, workflowNotifications]);
 
-  const validatorCounts = useMemo(() => {
-    return isValidator
+  const moderatorCounts = useMemo(() => {
+    return isModerator
       ? {
           ...counts,
           all: workflowNotifications.length,
@@ -231,12 +272,12 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
           system: workflowNotifications.filter((n) => n.category === "system").length,
         }
       : counts;
-  }, [counts, isValidator, workflowNotifications]);
+  }, [counts, isModerator, workflowNotifications]);
 
-  const displayCounts = isContributor ? contributorCounts : isValidator ? validatorCounts : counts;
+  const displayCounts = isContributor ? contributorCounts : isModerator ? moderatorCounts : counts;
   const displayFilters = isContributor
     ? CONTRIBUTOR_FILTERS
-    : isValidator
+    : isModerator
     ? VALIDATOR_FILTERS
     : ADMIN_FILTERS;
 
@@ -259,9 +300,7 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
       return (
         n.text.toLowerCase().includes(term) ||
         n.sender.toLowerCase().includes(term) ||
-        n.category.toLowerCase().includes(term) ||
-        n.eventType.toLowerCase().includes(term) ||
-        n.trigger.toLowerCase().includes(term)
+        n.category.toLowerCase().includes(term)
       );
     });
   }, [workflowNotifications, activeFilter, searchQuery]);
@@ -293,13 +332,13 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
 
   const pageTitle = isContributor
     ? "Workflow Inbox"
-    : isValidator
+    : isModerator
     ? "Validation Inbox"
     : "Notifications";
 
   const pageSubtitle = isContributor
     ? "Complete overview of submission feedback and publishing updates across your workspace."
-    : isValidator
+    : isModerator
     ? "Complete overview of incoming submissions and validation deadlines across your workspace."
     : "Complete overview of notifications, alerts, and publishing activities across your workspace.";
 
@@ -314,18 +353,16 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
           </div>
 
           <div
-            className="card-wrap"
             style={{
               minHeight: "380px",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               padding: "60px 20px",
-              background: "var(--d-surface, #ffffff)",
+              background: "transparent",
             }}
           >
             <div className="dc-dot-triangle-container">
-              <div className="loader-dots" />
               <div className="dc-dot-triangle-label">
                 Loading Notifications
                 <span className="dc-dot-triangle-label-dots">
@@ -334,6 +371,7 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
                   <span className="dc-dot-triangle-dot-char">.</span>
                 </span>
               </div>
+              <div className="loader-dots" />
             </div>
           </div>
         </div>
@@ -569,10 +607,7 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
                               )}
                               <div style={{ minWidth: 0 }}>
                                 <div className="act-title">{n.text}</div>
-                                <span className="act-category">
-                                  {n.trigger && <span className="notif-trigger-code">{n.trigger}</span>}{" "}
-                                  {n.time}
-                                </span>
+                                <span className="act-category">{n.time}</span>
                               </div>
                             </div>
                           </td>

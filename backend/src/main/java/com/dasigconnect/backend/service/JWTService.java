@@ -54,8 +54,9 @@ public class JWTService {
                 .claim("email", user.getEmail())
                 .claim("role", user.getRole().name())
                 .claim("session_version", user.getSessionVersion())
-                .claim("super_administrator",
-                        user.getRole() == com.dasigconnect.backend.model.entity.UserRole.super_administrator)
+                .claim("admin",
+                        user.getRole() == com.dasigconnect.backend.model.entity.UserRole.admin)
+                .claim("admin_owner", user.isAdminOwner())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiresAt))
                 .signWith(signingKey, Jwts.SIG.HS256);

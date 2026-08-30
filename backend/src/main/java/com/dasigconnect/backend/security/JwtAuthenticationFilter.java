@@ -41,6 +41,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        return uri.endsWith("/auth/login")
+                || uri.endsWith("/auth/forgot-password")
+                || uri.endsWith("/auth/reset-password")
+                || uri.contains("/invitations/validate")
+                || uri.contains("/invitations/accept");
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String auth = request.getHeader(HttpHeaders.AUTHORIZATION);
@@ -48,7 +58,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = auth.substring(7);
             try {
                 if (!jwtService.validateToken(token)) {
-                    if (request.getRequestURI().endsWith("/auth/logout")) {
+                    if (request.getRequestURI().endsWith("/auth/logout") || request.getRequestURI().endsWith("/auth/login")) {
                         filterChain.doFilter(request, response);
                         return;
                     }
@@ -60,8 +70,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     String role = claims.getOrDefault("role", "").toString();
                     String userIdStr = claims.getOrDefault("user_id", "").toString();
                     String email = claims.getOrDefault("email", "").toString();
-                    boolean superAdministrator = Boolean.parseBoolean(
-                            claims.getOrDefault("super_administrator", "false").toString());
+                    boolean adminOwner = Boolean.parseBoolean(
+                            claims.getOrDefault(
+                                    "admin_owner",
+                                    claims.getOrDefault("admin", "false"))
+                                    .toString());
                     Object instClaim = claims.get("institution_id");
                     String instStr = instClaim != null ? instClaim.toString() : null;
 
@@ -100,7 +113,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             email,
                             role,
                             institutionId,
-                            superAdministrator);
+                            adminOwner);
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(principal, null, authorities);
                     SecurityContextHolder.getContext().setAuthentication(authentication);

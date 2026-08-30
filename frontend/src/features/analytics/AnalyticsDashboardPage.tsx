@@ -8,6 +8,7 @@ import PublishingTrendChart from "./components/PublishingTrendChart";
 import PostsByInstitutionChart from "./components/PostsByInstitutionChart";
 import StatusDonutChart from "./components/StatusDonutChart";
 import CategoryPerformanceChart from "./components/CategoryPerformanceChart";
+import FacebookEngagementPanel from "./components/FacebookEngagementPanel";
 import OperationsAndEngagementCard from "./components/OperationsAndEngagementCard";
 import ContributorAnalyticsView from "./components/ContributorAnalyticsView";
 import ContributorBreakdownTable from "./components/ContributorBreakdownTable";
@@ -47,8 +48,11 @@ export default function AnalyticsDashboardPage({ user }: Props) {
   const [exportBusy, setExportBusy] = useState(false);
 
   const role = summary?.scopeRole ?? user.role;
-  const isAdminView = summary?.adminView ?? (role === "administrator" || role === "super_administrator");
+  const isAdminView = summary?.adminView ?? role === "admin";
   const isContributorView = role === "contributor";
+  // Moderators get the network engagement + workflow view (no admin-only
+  // operational health / override / admin-workload panels).
+  const isModeratorView = role === "moderator";
 
   return (
     <div id="screen-analytics" style={{ background: "var(--d-bg)" }}>
@@ -80,6 +84,8 @@ export default function AnalyticsDashboardPage({ user }: Props) {
                     : "Network Scope"
                   : isContributorView
                   ? "My Submissions"
+                  : isModeratorView
+                  ? "Network Scope"
                   : "Institution Scope"}
               </span>
 
@@ -92,7 +98,7 @@ export default function AnalyticsDashboardPage({ user }: Props) {
         </div>
 
         {/* ── Filter & Time Range Toolbar Card ── */}
-        <div className="card-wrap analytics-toolbar-card">
+        <div className="analytics-toolbar-card">
           <div className="analytics-toolbar-inner">
             <div className="analytics-filters-group">
               {summary?.adminView && (
@@ -206,7 +212,7 @@ export default function AnalyticsDashboardPage({ user }: Props) {
         {!loading && !error && summary && (
           <>
             {/* 1. Top Executive Summary KPI Strip */}
-            <ExecutiveSummaryStrip summary={summary} />
+            <ExecutiveSummaryStrip summary={summary} onOpenReport={setReportMetric} />
 
             {/* 2. Contributor Specific View */}
             {isContributorView && (
@@ -222,7 +228,10 @@ export default function AnalyticsDashboardPage({ user }: Props) {
                     metric={summary.totalPostsPublished}
                     onOpenReport={() => setReportMetric("posts-by-institution")}
                   />
-                  <PostsByInstitutionChart rows={summary.postsByInstitution} />
+                  <PostsByInstitutionChart
+                    rows={summary.postsByInstitution}
+                    onOpenReport={setReportMetric}
+                  />
                 </div>
 
                 {/* Status Donut Chart + Top Categories Performance */}
@@ -236,6 +245,37 @@ export default function AnalyticsDashboardPage({ user }: Props) {
                   <OperationsAndEngagementCard
                     summary={summary}
                     onOpenReport={setReportMetric}
+                  />
+                </div>
+              </>
+            )}
+
+            {/* 3b. Moderator — network engagement + workflow, no admin-only ops panels */}
+            {isModeratorView && (
+              <>
+                <div className="analytics-dashboard-grid">
+                  <PublishingTrendChart
+                    metric={summary.totalPostsPublished}
+                    onOpenReport={() => setReportMetric("posts-by-institution")}
+                  />
+                  <PostsByInstitutionChart rows={summary.postsByInstitution} />
+                </div>
+
+                <div className="analytics-dashboard-grid-equal">
+                  <StatusDonutChart rows={summary.statusBreakdown} />
+                  <CategoryPerformanceChart rows={summary.topCategories} />
+                </div>
+
+                <div className="card-wrap analytics-chart-card" style={{ marginBottom: 20 }}>
+                  <div className="analytics-chart-header">
+                    <div>
+                      <h3 className="analytics-chart-title">Facebook Engagement</h3>
+                      <p className="analytics-chart-subtitle">Network reach and reactions on published posts</p>
+                    </div>
+                  </div>
+                  <FacebookEngagementPanel
+                    data={summary.facebookEngagement}
+                    onOpenReport={() => setReportMetric("facebook-engagement")}
                   />
                 </div>
               </>

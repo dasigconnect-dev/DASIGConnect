@@ -41,10 +41,12 @@ public class AuthService {
 
     @Transactional
     public LoginResponseDto login(LoginRequestDto dto, HttpServletRequest request) {
-        // Temporarily elevate scope to administrator to bypass RLS during authentication lookup
-        tenantScopeService.bindTenantScope(null, null, "super_administrator");
+        // Temporarily elevate scope to moderator to bypass RLS during authentication lookup
+        tenantScopeService.bindTenantScope(null, null, "admin");
 
-        User user = userRepository.findByEmail(dto.email())
+        String email = dto.email() != null ? dto.email().trim() : "";
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .or(() -> userRepository.findByEmail(email))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
 
         if (accountLockoutService.isLocked(user.getId())) {
@@ -52,15 +54,27 @@ public class AuthService {
         }
 
         if (!passwordEncoder.matches(dto.password(), user.getPasswordHash())) {
-            accountLockoutService.recordFailedAttempt(user);
+            AccountLockoutService.FailedAttemptResult attempt = accountLockoutService.recordFailedAttempt(user);
+            String ip = request.getRemoteAddr();
+            String ua = request.getHeader("User-Agent");
+            auditLogService.record(user, "LOGIN_FAILED", ip, ua, user.getId(),
+                    Map.of("email", user.getEmail(),
+                            "failedAttempts", attempt.failedAttempts(),
+                            "reason", "incorrect password"));
+            if (attempt.justLocked()) {
+                auditLogService.record(user, "ACCOUNT_LOCKED", ip, ua, user.getId(),
+                        Map.of("email", user.getEmail(),
+                                "failedAttempts", attempt.failedAttempts(),
+                                "lockMinutes", 15));
+            }
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
 
         if (user.getAccountState() != UserStatus.active) {
             String message = switch (user.getAccountState()) {
                 case pending, pending_email_undelivered -> "Account pending activation. Check your invitation email.";
-                case expired -> "Account invitation expired. Contact an Administrator for reissue.";
-                case inactive -> "Account has been deactivated. Contact an Administrator.";
+                case expired -> "Account invitation expired. Contact an Moderator for reissue.";
+                case inactive -> "Account has been deactivated. Contact an Moderator.";
                 default -> "Account is not active";
             };
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, message);

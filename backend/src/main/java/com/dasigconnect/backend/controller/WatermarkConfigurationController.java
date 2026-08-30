@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/settings/watermark")
-@PreAuthorize("hasAnyRole('ADMINISTRATOR','SUPER_ADMINISTRATOR')")
 public class WatermarkConfigurationController {
 
     private final WatermarkConfigurationService service;
@@ -22,6 +21,7 @@ public class WatermarkConfigurationController {
         this.service = service;
     }
 
+    /** Readable by any authenticated user — every role needs it to render post previews. */
     @GetMapping
     public ResponseEntity<WatermarkConfigurationDto> get(
             @RequestParam(required = false) UUID institutionId,
@@ -31,19 +31,11 @@ public class WatermarkConfigurationController {
     }
 
     @PutMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<WatermarkConfigurationDto> save(
             @RequestBody @Valid WatermarkConfigurationRequestDto request,
             @AuthenticationPrincipal JwtUserDetails actor
     ) {
         return ResponseEntity.ok(service.save(request, actor));
-    }
-
-    @DeleteMapping
-    public ResponseEntity<Void> deleteOverride(
-            @RequestParam UUID institutionId,
-            @AuthenticationPrincipal JwtUserDetails actor
-    ) {
-        service.deleteOverride(institutionId, actor);
-        return ResponseEntity.noContent().build();
     }
 }

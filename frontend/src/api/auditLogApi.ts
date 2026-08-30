@@ -27,9 +27,28 @@ export interface AuditLogActor {
   id: string;
   name: string;
   email: string;
+  /** Role name as stored: "contributor" | "moderator" | "admin" | "user". */
   role: string;
+  /** True when this admin holds the account-owner flag. */
+  adminOwner?: boolean;
   avatarUrl?: string | null;
   institutionName?: string | null;
+}
+
+/** "admin" -> "Admin", with a "· Owner" suffix for the account owner. */
+export function formatActorRole(actor: AuditLogActor | null): string {
+  if (!actor) return "System";
+  const base =
+    actor.role === "admin"
+      ? "Admin"
+      : actor.role === "moderator"
+        ? "Moderator"
+        : actor.role === "contributor"
+          ? "Contributor"
+          : actor.role
+            ? actor.role.charAt(0).toUpperCase() + actor.role.slice(1)
+            : "System";
+  return actor.adminOwner ? `${base} · Owner` : base;
 }
 
 export interface AuditLogEntity {

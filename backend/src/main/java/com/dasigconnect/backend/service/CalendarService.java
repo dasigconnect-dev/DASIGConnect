@@ -21,7 +21,7 @@ import com.dasigconnect.backend.security.JwtUserDetails;
 /**
  * Builds role-scoped calendar event lists from submissions with a scheduled slot.
  *
- * Admin/Super Administrator: both network-wide roles — full detail for all
+ * Admin/Admin: both network-wide roles — full detail for all
  *   institutions, all statuses.
  * Contributor / Validator: full detail for own institution, timing-only (masked) for others.
  *   Only calendar-visible statuses (scheduled, publishing, published variants) are included —
@@ -46,7 +46,7 @@ public class CalendarService {
 
     public List<CalendarEventDto> getCalendarEvents(JwtUserDetails user) {
         return switch (user.role().toLowerCase()) {
-            case "administrator", "super_administrator" -> getAdminCalendar();
+            case "moderator", "admin" -> getAdminCalendar();
             default -> getScopedCalendar(user);
         };
     }

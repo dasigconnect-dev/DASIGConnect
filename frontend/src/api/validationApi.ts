@@ -36,6 +36,8 @@ export interface EditSubmissionPayload {
   category?: string;
   tags?: string[];
   scheduledAt?: string;
+  /** Admin only: reason for bypassing a hard guard rail on the new slot (audited). */
+  overrideReason?: string;
 }
 
 export interface RejectionPayload {

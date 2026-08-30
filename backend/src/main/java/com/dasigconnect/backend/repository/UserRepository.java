@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -16,6 +17,9 @@ import com.dasigconnect.backend.model.entity.UserStatus;
 public interface UserRepository extends JpaRepository<User, UUID> {
 
     Optional<User> findByEmail(String email);
+
+    @Query("select u from User u where lower(u.email) = lower(:email)")
+    Optional<User> findByEmailIgnoreCase(@Param("email") String email);
 
     List<User> findByInstitutionIdOrderByCreatedAtDesc(UUID institutionId);
 
@@ -29,10 +33,18 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     long countByInstitutionIdAndRoleAndAccountState(UUID institutionId, UserRole role, UserStatus accountState);
 
+    /** Network-wide count for a role in a given account state (e.g. active admins). */
+    long countByRoleAndAccountState(UserRole role, UserStatus accountState);
+
     /**
-     * A3: check if institution has any active validators before reactivating
+     * A3: check if institution has any active moderators before reactivating
      */
     boolean existsByInstitutionIdAndAccountState(UUID institutionId, UserStatus accountState);
+
+    boolean existsByInstitutionIdAndRoleAndAccountStateIn(
+            UUID institutionId,
+            UserRole role,
+            Collection<UserStatus> accountStates);
 
     List<User> findByRole(UserRole role);
 
@@ -44,7 +56,31 @@ public interface UserRepository extends JpaRepository<User, UUID> {
             """)
     List<User> findByRolesOrderByCreatedAtDesc(@Param("roles") Collection<UserRole> roles);
 
+    /** Network-wide roster across all institutions, with institution eagerly fetched to avoid N+1. */
+    @Query("""
+            select user
+            from User user
+            left join fetch user.institution
+            where user.role in :roles
+            order by user.createdAt desc
+            """)
+    List<User> findByRolesWithInstitutionOrderByCreatedAtDesc(@Param("roles") Collection<UserRole> roles);
+
     /** Batch load with institution eagerly fetched — avoids an N+1 when rendering lists. */
     @Query("select user from User user left join fetch user.institution where user.id in :ids")
     List<User> findAllByIdWithInstitution(@Param("ids") Collection<UUID> ids);
+
+    // ── Personal-data erasure: drop satellite rows that hold the account's PII ──
+
+    @Modifying
+    @Query(value = "DELETE FROM password_reset_tokens WHERE user_id = :userId", nativeQuery = true)
+    void deletePasswordResetTokensByUserId(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query(value = "DELETE FROM messenger_connections WHERE user_id = :userId", nativeQuery = true)
+    void deleteMessengerConnectionByUserId(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query(value = "DELETE FROM invitation_tokens WHERE lower(recipient_email) = lower(:email)", nativeQuery = true)
+    void deleteInvitationTokensByRecipientEmail(@Param("email") String email);
 }

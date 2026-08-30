@@ -90,7 +90,7 @@ public class SlotReservationService {
 
         if (guardRailsEnforced) {
             // Step 1: Guard rail validation
-            GuardRailResult result = guardRailService.validate(institutionId, requestedSlot);
+            GuardRailResult result = guardRailService.validate(institutionId, requestedSlot, submissionId);
             if (result.isBlocked()) {
                 log.info("Slot reservation rejected for submission {} institution {} slot {}: {}",
                         submissionId, institutionId, requestedSlot, result.getHardBlocks());
@@ -159,7 +159,7 @@ public class SlotReservationService {
      *
      * Transitions: held → locked Once locked, the slot is permanently occupied
      * until the post is published or the submission is cancelled by an
-     * Administrator.
+     * Moderator.
      *
      * @param submissionId the approved submission
      */

@@ -32,16 +32,16 @@ class PageSettingsServiceTest {
     }
 
     @Test
-    void administratorCannotReadOtherInstitutionSettings() {
-        var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "administrator", UUID.randomUUID());
+    void moderatorCannotReadOtherInstitutionSettings() {
+        var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "moderator", UUID.randomUUID());
         assertThatThrownBy(() -> service.get(UUID.randomUUID(), actor))
                 .isInstanceOf(ResponseStatusException.class);
         verifyNoInteractions(repository);
     }
 
     @Test
-    void superAdministratorCanReadNetworkSettings() {
-        var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "super_administrator", null);
+    void adminCanReadNetworkSettings() {
+        var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "admin", null);
         org.mockito.Mockito.when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
         service.get(null, actor);
     }

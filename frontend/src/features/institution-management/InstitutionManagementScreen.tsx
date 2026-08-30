@@ -44,7 +44,7 @@ interface InstitutionWithStats {
   status: string
   logoUrl: string | null
   contributors: number
-  validators: number
+  moderators: number
   pendingInvitations: number
   statsLoading: boolean
   isProtected?: boolean
@@ -87,6 +87,9 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const toast = useToast()
   const location = useLocation()
   const navigate = useNavigate()
+  // Admins get full institution lifecycle control; moderators are limited to
+  // inviting contributors and managing those pending invitations.
+  const isAdmin = user.role === 'admin'
   const searchInputRef = useRef<HTMLInputElement>(null)
   const instActionsMenuRef = useRef<HTMLDivElement>(null)
 
@@ -173,7 +176,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   }, [location.pathname, location.state, navigate])
 
   useEffect(() => {
-    if (user.role !== 'administrator' && user.role !== 'super_administrator') return
+    if (user.role !== 'moderator' && user.role !== 'admin') return
     if (!institutionsMemoryCache.data) {
       setListLoading(true)
     }
@@ -188,7 +191,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
           status: item.status,
           logoUrl: item.hasLogo ? getInstitutionLogoUrl(item.id, item.logoUpdatedAt) : null,
           contributors: 0,
-          validators: 0,
+          moderators: 0,
           pendingInvitations: 0,
           statsLoading: true,
           isProtected: item.isProtected ?? item.protected,
@@ -204,7 +207,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
                     ? {
                       ...i,
                       contributors: countsRes.data.contributors,
-                      validators: countsRes.data.validators,
+                      moderators: countsRes.data.moderators,
                       pendingInvitations: pendingRes.data.pendingInvitations,
                       statsLoading: false,
                     }
@@ -350,8 +353,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
       const contributors = usersData.filter(
         (u) => u.role.toLowerCase() === 'contributor',
       ).length
-      const validators = usersData.filter(
-        (u) => u.role.toLowerCase() === 'administrator',
+      const moderators = usersData.filter(
+        (u) => u.role.toLowerCase() === 'moderator',
       ).length
       const pendingCount = Math.max(
         pendingData.length,
@@ -363,7 +366,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
           ? {
               ...curr,
               contributors,
-              validators,
+              moderators,
               pendingInvitations: pendingCount,
               statsLoading: false,
             }
@@ -376,7 +379,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             ? {
                 ...inst,
                 contributors,
-                validators,
+                moderators,
                 pendingInvitations: pendingCount,
                 statsLoading: false,
               }
@@ -409,7 +412,11 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   }
 
   function handleDeleteInstitution(inst: InstitutionWithStats) {
-    const contributorsCount = managedUsers.filter((u) => u.role.toLowerCase() === 'contributor').length
+    const contributorsCount = managedUsers.filter(
+      (u) =>
+        u.role.toLowerCase() === 'contributor' &&
+        ['active', 'pending', 'pending_email_undelivered'].includes(u.accountState.toLowerCase()),
+    ).length
     if (contributorsCount > 0) {
       setConfirmDialog({
         title: 'Cannot Delete Institution',
@@ -535,7 +542,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
         status: response.data.status,
         logoUrl: null,
         contributors: 0,
-        validators: 0,
+        moderators: 0,
         pendingInvitations: 0,
         statsLoading: false,
       }
@@ -632,25 +639,6 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
       toast.error('Protected institutions cannot be deactivated.')
       return
     }
-    const contributorsCount = managedUsers.filter((u) => u.role.toLowerCase() === 'contributor').length
-    const pendingCount = pendingInvitations.length
-    if (contributorsCount > 0 || pendingCount > 0) {
-      setConfirmDialog({
-        title: 'Cannot Deactivate Institution',
-        message: `"${institution.name}" currently has ${contributorsCount} contributor account(s) and ${pendingCount} pending invitation(s). All contributors must be transferred to another institution or removed before deactivating.`,
-        confirmLabel: contributorsCount > 0 ? 'Transfer Contributors' : 'Close',
-        dangerous: false,
-        onConfirm: () => {
-          setConfirmDialog(null)
-          if (contributorsCount > 0) {
-            const firstContributor = managedUsers.find((u) => u.role.toLowerCase() === 'contributor')
-            if (firstContributor) handleOpenReassign(firstContributor)
-          }
-        },
-      })
-      return
-    }
-
     setConfirmDialog({
       title: 'Deactivate Institution',
       message: `Deactivate "${institution.name}"? New contributor invitations will be blocked. You can reactivate this institution at any time.`,
@@ -744,8 +732,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     }
     if (!inviteRole) return
 
-    if (inviteRole === 'administrator') {
-      const proceed = await confirmAdministratorInvite()
+    if (inviteRole === 'moderator') {
+      const proceed = await confirmModeratorInvite()
       if (!proceed) return
     }
 
@@ -761,7 +749,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
         try {
           const response = await inviteUser({
             recipientEmail: email,
-            institutionId: inviteRole === 'administrator' ? null : selectedInstitution.id,
+            institutionId: selectedInstitution.id,
             assignedRole: inviteRole,
           })
           if (response.data.emailDelivered) {
@@ -804,19 +792,19 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     }
   }
 
-  function confirmAdministratorInvite(): Promise<boolean> {
-    const activeAdministrators = managedUsers.filter(
+  function confirmModeratorInvite(): Promise<boolean> {
+    const activeModerators = managedUsers.filter(
       (u) =>
-        u.role.toLowerCase() === 'administrator' && u.accountState.toLowerCase() === 'active',
+        u.role.toLowerCase() === 'moderator' && u.accountState.toLowerCase() === 'active',
     )
-    if (activeAdministrators.length === 0) return Promise.resolve(true)
+    if (activeModerators.length === 0) return Promise.resolve(true)
 
     const name = selectedInstitution?.name || 'this institution'
     return new Promise((resolve) => {
       setConfirmDialog({
-        title: 'Invite Additional Administrator?',
-        message: `${name} already has ${activeAdministrators.length} active administrator${activeAdministrators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
-        confirmLabel: 'Yes, invite administrator',
+        title: 'Invite Additional Moderator?',
+        message: `${name} already has ${activeModerators.length} active moderator${activeModerators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
+        confirmLabel: 'Yes, invite moderator',
         dangerous: false,
         onConfirm: () => {
           setConfirmDialog(null)
@@ -947,7 +935,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
         await inviteUser({
           recipientEmail: managedUser.email,
           institutionId: selectedInstitution.id,
-          assignedRole: (managedUser.role.toLowerCase() as 'contributor' | 'validator'),
+          assignedRole: (managedUser.role.toLowerCase() as 'contributor' | 'moderator'),
         })
       }
       await loadManagementLists(selectedInstitution.id)
@@ -1310,6 +1298,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
               role={inviteRole}
               selectedInstitution={selectedInstitutionOption}
               canChooseRole={false}
+              embedded
               sending={sending}
               onDraftChange={setEmailDraft}
               onAddChip={(email) => {
@@ -1349,6 +1338,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
               <i className="ti ti-arrow-left" aria-hidden="true"></i>
               Back to Institution Management
             </button>
+            {isAdmin && (
             <div className="im-topbar-actions" ref={instActionsMenuRef}>
               <button
                 type="button"
@@ -1408,6 +1398,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
                 </div>
               )}
             </div>
+            )}
           </div>
 
           <div className={`im-detail-header${selectedInstitution.logoUrl ? ' has-logo' : ''}${selectedInstitutionIsDefault ? ' is-default' : ''}`}>
@@ -1477,6 +1468,13 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             onDeleteUser={handleDeleteUser}
             onCancelInvitation={handleCancelInvitationFromUsers}
             onResendInvitation={handleResendInvitationFromUsers}
+            canManageInvitation={(managedUser) => {
+              if (isAdmin) return true
+              const inv = pendingInvitations.find(
+                (i) => i.recipientEmail.toLowerCase() === managedUser.email.toLowerCase(),
+              )
+              return inv?.canManage ?? false
+            }}
             resendingUserId={updatingUserId}
             onReassign={handleOpenReassign}
             showRoleControls={false}
@@ -1633,17 +1631,19 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             <h1>Institution Management</h1>
             <p>Manage member HEI workspaces and their users.</p>
           </div>
-          <button
-            type="button"
-            className="im-add-btn"
-            onClick={() => setShowAddModal(true)}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
-              <i className="ti ti-plus" style={{ fontSize: "12px", fontWeight: "bold" }} aria-hidden="true" />
-              <i className="ti ti-building" style={{ fontSize: "15px" }} aria-hidden="true" />
-            </span>
-            <span>Add Institution</span>
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              className="im-add-btn"
+              onClick={() => setShowAddModal(true)}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                <i className="ti ti-plus" style={{ fontSize: "12px", fontWeight: "bold" }} aria-hidden="true" />
+                <i className="ti ti-building" style={{ fontSize: "15px" }} aria-hidden="true" />
+              </span>
+              <span>Add Institution</span>
+            </button>
+          )}
         </header>
 
         {listError && (
@@ -1688,6 +1688,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             <p className="im-empty-sub">
               Provision the first HEI workspace to get started.
             </p>
+            {isAdmin && (
             <button
               type="button"
               className="im-add-btn"
@@ -1699,6 +1700,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
               </span>
               <span>Add first institution</span>
             </button>
+            )}
           </div>
         )}
 

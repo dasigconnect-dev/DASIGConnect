@@ -3,9 +3,7 @@ package com.dasigconnect.backend.service;
 import com.dasigconnect.backend.model.dto.settings.WatermarkConfigurationDto;
 import com.dasigconnect.backend.model.dto.settings.WatermarkConfigurationRequestDto;
 import com.dasigconnect.backend.model.dto.settings.WatermarkElementDto;
-import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.WatermarkConfiguration;
-import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.repository.WatermarkConfigurationRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -35,9 +33,6 @@ class WatermarkConfigurationServiceTest {
     private WatermarkConfigurationRepository repository;
 
     @Mock
-    private InstitutionRepository institutions;
-
-    @Mock
     private UserRepository userRepository;
 
     @Mock
@@ -49,20 +44,39 @@ class WatermarkConfigurationServiceTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        service = new WatermarkConfigurationService(repository, institutions, userRepository, auditLogService, objectMapper);
+        service = new WatermarkConfigurationService(repository, userRepository, auditLogService, objectMapper);
     }
 
     @Test
-    void contributorCannotAccessWatermarkConfig() {
+    void contributorCanReadGlobalWatermark() {
         var actor = new JwtUserDetails(UUID.randomUUID(), "contrib@example.com", "contributor", UUID.randomUUID());
-        assertThatThrownBy(() -> service.get(null, actor))
+        when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
+
+        WatermarkConfigurationDto dto = service.get(null, actor);
+
+        assertThat(dto).isNotNull();
+        assertThat(dto.elements()).isNotEmpty();
+    }
+
+    @Test
+    void unauthenticatedCannotReadWatermark() {
+        assertThatThrownBy(() -> service.get(null, null))
+                .isInstanceOf(ResponseStatusException.class);
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void contributorCannotSaveWatermark() {
+        var actor = new JwtUserDetails(UUID.randomUUID(), "contrib@example.com", "contributor", UUID.randomUUID());
+        var request = new WatermarkConfigurationRequestDto(null, true, new ArrayList<>());
+        assertThatThrownBy(() -> service.save(request, actor))
                 .isInstanceOf(ResponseStatusException.class);
         verifyNoInteractions(repository);
     }
 
     @Test
     void superAdminGetsNetworkDefaultWhenNoneSaved() {
-        var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "super_administrator", null);
+        var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "admin", null);
         when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
 
         WatermarkConfigurationDto dto = service.get(null, actor);
@@ -74,15 +88,9 @@ class WatermarkConfigurationServiceTest {
     }
 
     @Test
-    void institutionFallsBackToNetworkDefaultWhenNoOverride() {
+    void institutionRequestUsesGlobalWatermark() {
         UUID instId = UUID.randomUUID();
-        var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "administrator", instId);
-
-        Institution inst = new Institution();
-        inst.setId(instId);
-        inst.setName("CIT University");
-        when(institutions.findById(instId)).thenReturn(Optional.of(inst));
-        when(repository.findByInstitutionId(instId)).thenReturn(Optional.empty());
+        var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", instId);
 
         WatermarkConfiguration defaultConfig = new WatermarkConfiguration();
         defaultConfig.setId(UUID.randomUUID());
@@ -93,15 +101,16 @@ class WatermarkConfigurationServiceTest {
         WatermarkConfigurationDto dto = service.get(instId, actor);
 
         assertThat(dto).isNotNull();
-        assertThat(dto.institutionId()).isEqualTo(instId);
-        assertThat(dto.institutionName()).isEqualTo("CIT University");
+        assertThat(dto.institutionId()).isNull();
+        assertThat(dto.institutionName()).isEqualTo("DASIG Central Visayas (Global)");
         assertThat(dto.isOverride()).isFalse();
         assertThat(dto.elements()).hasSize(1);
+        verify(repository).findByInstitutionIsNull();
     }
 
     @Test
     void saveWatermarkConfigurationPersistsElements() {
-        var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "super_administrator", null);
+        var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "admin", null);
 
         List<WatermarkElementDto> elements = new ArrayList<>();
         WatermarkElementDto el1 = new WatermarkElementDto();
@@ -127,7 +136,7 @@ class WatermarkConfigurationServiceTest {
 
     @Test
     void rejectsMoreThan3Elements() {
-        var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "super_administrator", null);
+        var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "admin", null);
 
         List<WatermarkElementDto> elements = new ArrayList<>();
         for (int i = 0; i < 4; i++) {

@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/engagement-recommendations")
-@PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR')")
+@PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
 public class EngagementRecommendationController {
     private final EngagementRecommendationService service;
 

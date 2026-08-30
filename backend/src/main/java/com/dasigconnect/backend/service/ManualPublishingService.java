@@ -181,8 +181,12 @@ public class ManualPublishingService {
         Instant originalSlot = s.getScheduledAt();
         Instant newSlot = dto.getScheduledAt();
 
-        GuardRailResult guardRailResult = guardRailService.validate(s.getInstitution().getId(), newSlot);
+        GuardRailResult guardRailResult = guardRailService.validate(s.getInstitution().getId(), newSlot, s.getId());
         if (guardRailResult.isBlocked()) {
+            if (!"admin".equalsIgnoreCase(admin.role())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "That time is blocked by a guard rail. Only an administrator can retry onto a blocked slot.");
+            }
             if (dto.getOverrideReason() == null || dto.getOverrideReason().isBlank()) {
                 throw new GuardRailViolationException(guardRailResult.getHardBlocks());
             }

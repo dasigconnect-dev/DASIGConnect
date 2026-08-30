@@ -206,6 +206,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [withdrawing, setWithdrawing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [hydratingId, setHydratingId] = useState<string | null>(null);
+  // Reviewer feedback for the currently-loaded submission (rejected / needs_revision).
+  const [loadedDetail, setLoadedDetail] = useState<
+    { id: string; rejectionReason?: string | null; validatorRemarks?: string | null } | null
+  >(null);
   const [refreshingQueue, setRefreshingQueue] = useState(false);
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
@@ -224,7 +228,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   });
   const [captionPromptOpen, setCaptionPromptOpen] = useState(false);
   const [fancyTextPreviewActive, setFancyTextPreviewActive] = useState(false);
-  const isAdminComposer = user.role === "administrator" || user.role === "super_administrator";
+  const isAdminComposer = user.role === "moderator" || user.role === "admin";
   const isMySubmissionsPage = location.pathname === "/submissions";
   const selectedInstitutionId = isAdminComposer ? form.institutionId : user.institutionId || "";
   const [mediaUploadFailed, setMediaUploadFailed] = useState(false);
@@ -556,7 +560,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       }
 
       setGuardRailsLoading(true);
-      validateGuardRails(scheduledAt, selectedInstitutionId || undefined)
+      validateGuardRails(scheduledAt, selectedInstitutionId || undefined, form.id || undefined)
         .then((response) => {
           setGuardRails(response.data);
           setGuardRailError("");
@@ -1172,6 +1176,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         removedAssetIds: [],
       };
       setForm(nextForm);
+      setLoadedDetail({
+        id: submission.id,
+        rejectionReason: submission.rejectionReason,
+        validatorRemarks: submission.validatorRemarks,
+      });
       setPickerItems((submission.mediaAssets ?? []).map(savedAssetToPickerItem));
       setCaptionMediaKey(null);
       setHashtagInput("");
@@ -2191,6 +2200,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               facebookPreview={facebookPreview}
               activeMediaIndex={activeMediaIndex}
               onMediaIndexChange={setActiveMediaIndex}
+              rejectionReason={loadedDetail?.id === form.id ? loadedDetail.rejectionReason : null}
+              revisionNotes={loadedDetail?.id === form.id ? loadedDetail.validatorRemarks : null}
             />
           ) : (
             <>
@@ -2504,63 +2515,39 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             </Field>
 
             {!isReadOnlySubmission && (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", marginTop: "24px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, color: "#374151", fontSize: "14px" }}>
-                    Publishing Mode
-                    <i
-                        className="ti ti-info-circle"
-                        title="Choose 'Schedule' to plan a future post, or 'Live Event' to bypass the calendar queue for urgent, immediate publication."
-                        style={{ color: "#9ca3af", cursor: "help", fontSize: "15px" }}
-                    />
-                    </div>
-
-                    {/* Segmented Pill Toggle */}
-                    <div style={{ display: "flex", background: "#f3f4f6", padding: "4px", borderRadius: "8px", gap: "4px" }}>
-                    <button
-                        type="button"
-                        style={{
-                        padding: "6px 12px",
-                        border: "none",
-                        borderRadius: "6px",
-                        background: !form.fastTrack ? "#fff" : "transparent",
-                        color: !form.fastTrack ? "#111827" : "#6b7280",
-                        boxShadow: !form.fastTrack ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                        fontWeight: !form.fastTrack ? 600 : 500,
-                        fontSize: "13px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        transition: "all 0.2s"
-                        }}
-                        onClick={() => updateFastTrack(false)}
-                    >
-                        <i className="ti ti-calendar" /> Schedule
-                    </button>
-                    <button
-                        type="button"
-                        style={{
-                        padding: "6px 12px",
-                        border: "none",
-                        borderRadius: "6px",
-                        background: form.fastTrack ? "#fff" : "transparent",
-                        color: form.fastTrack ? "#111827" : "#6b7280",
-                        boxShadow: form.fastTrack ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                        fontWeight: form.fastTrack ? 600 : 500,
-                        fontSize: "13px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        transition: "all 0.2s"
-                        }}
-                        onClick={() => updateFastTrack(true)}
-                    >
-                        <i className="ti ti-bolt" style={{ color: form.fastTrack ? "#eab308" : "inherit" }} /> Live Event
-                    </button>
-                    </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", marginTop: "24px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, color: "#374151", fontSize: "14px" }}>
+                  Publishing Mode
+                  <i
+                    className="ti ti-info-circle"
+                    title="Choose 'Schedule' to plan a future post, or 'Live Event' to bypass the calendar queue for urgent, immediate publication."
+                    style={{ color: "#9ca3af", cursor: "help", fontSize: "15px" }}
+                  />
                 </div>
-                )}
+
+                {/* Segmented Pill Toggle */}
+                <div className="sub-mode-toggle" role="group" aria-label="Publishing mode">
+                  <button
+                    type="button"
+                    className={!form.fastTrack ? "active" : ""}
+                    onClick={() => updateFastTrack(false)}
+                    aria-pressed={!form.fastTrack}
+                  >
+                    <i className="ti ti-calendar" />
+                    <span>Schedule</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={form.fastTrack ? "active" : ""}
+                    onClick={() => updateFastTrack(true)}
+                    aria-pressed={form.fastTrack}
+                  >
+                    <i className="ti ti-bolt" />
+                    <span>Live Event</span>
+                  </button>
+                </div>
+              </div>
+            )}
             {form.fastTrack && (
                 <div className="sub-inline-note" style={{ marginTop: "16px", marginBottom: "8px" }}>
                     <i className="ti ti-info-circle" style={{ marginRight: "6px" }}></i>
@@ -2855,7 +2842,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           description={
             hasRecommendedWarnings
               ? `Required checks are complete, but ${recommendedWarnings.length} recommended item(s) still need attention: ${recommendedWarnings.map((item) => item.title).join(", ")}. You can still submit for approval.`
-              : `This submission will be sent for administrator approval. Readiness score: ${readiness.score} / 100.`
+              : `This submission will be sent for moderator approval. Readiness score: ${readiness.score} / 100.`
           }
           cancelLabel={hasRecommendedWarnings ? "Review Warnings" : "Go Back"}
           confirmLabel={submitting ? "Submitting..." : hasRecommendedWarnings ? "Submit Anyway" : "Confirm Submission"}

@@ -88,7 +88,7 @@ public class SubmissionService {
     private final SlotReservationService slotReservationService;
     private final GuardRailService guardRailService;
     private final AuditLogService auditLogService;
-    private final SupabaseStorageService supabaseStorageService;
+    private final MediaStorageService mediaStorage;
     private final NotificationService notificationService;
     private final EmailDeliveryService emailDeliveryService;
     private final UserRepository userRepository;
@@ -111,7 +111,7 @@ public class SubmissionService {
             SlotReservationService slotReservationService,
             GuardRailService guardRailService,
             AuditLogService auditLogService,
-            SupabaseStorageService supabaseStorageService,
+            MediaStorageService mediaStorage,
             NotificationService notificationService,
             EmailDeliveryService emailDeliveryService,
             UserRepository userRepository,
@@ -125,7 +125,7 @@ public class SubmissionService {
         this.slotReservationService = slotReservationService;
         this.guardRailService = guardRailService;
         this.auditLogService = auditLogService;
-        this.supabaseStorageService = supabaseStorageService;
+        this.mediaStorage = mediaStorage;
         this.notificationService = notificationService;
         this.emailDeliveryService = emailDeliveryService;
         this.userRepository = userRepository;
@@ -145,8 +145,8 @@ public class SubmissionService {
         validateMediaFile(dto.getFileType(), dto.getFileSizeBytes());
         String safeFileName = dto.getFileName().replaceAll("[^a-zA-Z0-9._-]", "-");
         String objectPath = submission.getId() + "/" + UUID.randomUUID() + "-" + safeFileName;
-        String signedUrl = supabaseStorageService.createSignedUploadUrl(objectPath);
-        String publicUrl = supabaseStorageService.getPublicUrl(objectPath);
+        String signedUrl = mediaStorage.createSignedUploadUrl(objectPath);
+        String publicUrl = mediaStorage.getPublicUrl(objectPath);
         return new SignedUploadUrlResponse(signedUrl, publicUrl, objectPath);
     }
 
@@ -242,7 +242,7 @@ public class SubmissionService {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
         maybeRehomeSubmission(submission, dto.getInstitutionId(), user);
-        submission = applySubmissionEdits(submission, dto);
+        submission = applySubmissionEdits(submission, dto, user);
         return buildResponse(submission);
     }
 
@@ -259,11 +259,11 @@ public class SubmissionService {
                 || requestedInstitutionId.equals(submission.getInstitution().getId())) {
             return;
         }
-        boolean isAdmin = "administrator".equalsIgnoreCase(user.role())
-                || "super_administrator".equalsIgnoreCase(user.role());
+        boolean isAdmin = "moderator".equalsIgnoreCase(user.role())
+                || "admin".equalsIgnoreCase(user.role());
         if (!isAdmin) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only network administrators can change a submission's institution.");
+                    "Only network moderators can change a submission's institution.");
         }
         Institution target = institutionRepository.findById(requestedInstitutionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -301,7 +301,7 @@ public class SubmissionService {
      * ValidationService's admin Edit & Approve action — callers own their own
      * ownership/status checks before calling this.
      */
-    Submission applySubmissionEdits(Submission submission, SubmissionUpdateDto dto) {
+    Submission applySubmissionEdits(Submission submission, SubmissionUpdateDto dto, JwtUserDetails user) {
         UUID submissionId = submission.getId();
 
         if (dto.getEventTitle() != null) {
@@ -356,10 +356,32 @@ public class SubmissionService {
         }
 
         if (!submission.isFastTrack() && dto.getScheduledAt() != null && !dto.getScheduledAt().equals(submission.getScheduledAt())) {
-            if (guardRailsEnforced) {
-                GuardRailResult guardRailResult = guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt());
-                if (guardRailResult.isBlocked()) {
-                    throw new GuardRailViolationException(guardRailResult.getHardBlocks());
+            boolean isAdmin = isAdmin(user);
+            boolean isReviewer = isAdmin || isModerator(user);
+            // Reviewers always have guard rails applied on a schedule change; for a
+            // contributor's own edit it follows the app.guardrails.enforced flag.
+            if (guardRailsEnforced || isReviewer) {
+                GuardRailResult gr = guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt(), submission.getId());
+                if (gr.isBlocked()) {
+                    String reason = dto.getOverrideReason() == null ? "" : dto.getOverrideReason().trim();
+                    if (isAdmin) {
+                        // Only an administrator can bypass a hard guard rail — with a reason, audited.
+                        if (reason.isEmpty()) {
+                            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                                    "This slot is blocked by a guard rail. Provide an override reason to bypass it.");
+                        }
+                        auditLogService.record(
+                                entityManager.getReference(User.class, user.userId()),
+                                "SCHEDULE_GUARDRAIL_OVERRIDE", null, null, submissionId,
+                                Map.of("newSlot", dto.getScheduledAt().toString(),
+                                       "overrideReason", reason,
+                                       "violations", gr.getHardBlocks().toString()));
+                    } else if (isModerator(user)) {
+                        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                "This slot is blocked by a guard rail. Only an administrator can override it.");
+                    } else {
+                        throw new GuardRailViolationException(gr.getHardBlocks());
+                    }
                 }
             }
             submission.setScheduledAt(dto.getScheduledAt());
@@ -368,6 +390,14 @@ public class SubmissionService {
         }
 
         return submissionRepository.save(submission);
+    }
+
+    private static boolean isAdmin(JwtUserDetails user) {
+        return user != null && "admin".equalsIgnoreCase(user.role());
+    }
+
+    private static boolean isModerator(JwtUserDetails user) {
+        return user != null && "moderator".equalsIgnoreCase(user.role());
     }
 
     /**
@@ -420,7 +450,7 @@ public class SubmissionService {
 
         // Re-run guard rails — slot may have been taken since draft was saved
         if (!fastTrack && guardRailsEnforced && submission.getScheduledAt() != null) {
-            GuardRailResult result = guardRailService.validate(submission.getInstitution().getId(), submission.getScheduledAt());
+            GuardRailResult result = guardRailService.validate(submission.getInstitution().getId(), submission.getScheduledAt(), submission.getId());
             if (result.isBlocked()) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Guard rail violation: " + result.getHardBlocks().get(0).getMessage());
@@ -468,7 +498,7 @@ public class SubmissionService {
                         ? Map.of("scheduledAt", submission.getScheduledAt().toString())
                         : Map.of());
 
-        // T-01 / T-11 — notify institution administrators via domain events
+        // T-01 / T-11 — notify institution moderators via domain events
         if (eventPublisher != null) {
             if (fastTrack) {
                 eventPublisher.publishEvent(new FastTrackSubmissionEvent(submission));
@@ -518,13 +548,13 @@ public class SubmissionService {
     @Transactional(readOnly = true)
     public GuardRailResult evaluateSlot(UUID submissionId, SlotEvaluateRequestDto dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
-        return guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt());
+        return guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt(), submission.getId());
     }
 
     /**
      * Lists submissions filtered by the caller's role: - CONTRIBUTOR: only
      * their own submissions for their institution - VALIDATOR: all submissions
-     * for their institution - ADMINISTRATOR: own editable drafts plus submitted
+     * for their institution - MODERATOR: own editable drafts plus submitted
      * network records for monitoring/approval handoff
      */
     @Transactional(readOnly = true)
@@ -538,7 +568,7 @@ public class SubmissionService {
 
     /**
      * Returns full submission detail. Accessible by the owning contributor, any
-     * validator of the same institution, or any administrator.
+     * validator of the same institution, or any moderator.
      */
     @Transactional(readOnly = true)
     public SubmissionResponseDto get(UUID submissionId, JwtUserDetails user) {
@@ -709,7 +739,7 @@ public class SubmissionService {
         mediaAssetRepository.findActiveById(mediaAssetId).ifPresent(orphan -> {
             String storageUrl = orphan.getStorageUrl();
             mediaAssetRepository.delete(orphan);
-            boolean storageDeleted = supabaseStorageService.deletePublicObject(storageUrl);
+            boolean storageDeleted = mediaStorage.deletePublicObject(storageUrl);
             log.info("Orphaned draft-only media asset {} permanently deleted ({}, storageDeleted={})",
                     mediaAssetId, context, storageDeleted);
         });
@@ -769,7 +799,7 @@ public class SubmissionService {
     // ── UC-3.1 Admin Reschedule ───────────────────────────────────────────────
 
     /**
-     * Allows an Administrator to move a SCHEDULED submission to a new slot.
+     * Allows an Moderator to move a SCHEDULED submission to a new slot.
      *
      * Guard rails are re-evaluated. Hard violations block the move unless the
      * admin supplies an overrideReason, which is then written to the audit log.
@@ -786,10 +816,16 @@ public class SubmissionService {
         Instant originalSlot = submission.getScheduledAt();
         Instant newSlot = dto.getScheduledAt();
 
-        GuardRailResult guardRailResult = guardRailService.validate(submission.getInstitution().getId(), newSlot);
+        GuardRailResult guardRailResult = guardRailService.validate(submission.getInstitution().getId(), newSlot, submissionId);
         if (guardRailResult.isBlocked()) {
             if (dto.getOverrideReason() == null || dto.getOverrideReason().isBlank()) {
                 throw new GuardRailViolationException(guardRailResult.getHardBlocks());
+            }
+            if (!isAdmin(user)) {
+                // Moderators cannot bypass a guard rail — they raise an override
+                // request for an administrator to decide.
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Only an administrator can bypass a guard rail. Submit an override request instead.");
             }
             auditLogService.record(
                     entityManager.getReference(User.class, user.userId()),
@@ -827,7 +863,7 @@ public class SubmissionService {
     }
 
     private UUID resolveSubmissionInstitutionId(UUID requestedInstitutionId, JwtUserDetails user) {
-        if ("administrator".equalsIgnoreCase(user.role()) || "super_administrator".equalsIgnoreCase(user.role())) {
+        if ("moderator".equalsIgnoreCase(user.role()) || "admin".equalsIgnoreCase(user.role())) {
             if (requestedInstitutionId != null) {
                 return requestedInstitutionId;
             }
@@ -857,7 +893,7 @@ public class SubmissionService {
 
     private void assertReadAccess(Submission submission, JwtUserDetails user) {
         switch (user.role().toLowerCase()) {
-            case "administrator", "super_administrator" -> {
+            case "moderator", "admin" -> {
                 if (isEditableStatus(submission)
                         && !submission.getContributor().getId().equals(user.userId())) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied.");

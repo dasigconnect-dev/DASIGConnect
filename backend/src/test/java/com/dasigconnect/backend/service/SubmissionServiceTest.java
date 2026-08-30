@@ -85,7 +85,7 @@ class SubmissionServiceTest {
     private UserRepository userRepository;
 
     @Mock
-    private SupabaseStorageService supabaseStorageService;
+    private MediaStorageService mediaStorage;
 
     @Mock
     private EntityManager entityManager;
@@ -113,7 +113,7 @@ class SubmissionServiceTest {
         contributor = user(contributorId, "contributor@cit.edu.ph", UserRole.contributor, institution);
         contributorPrincipal = principal(contributorId, "contributor", institutionId);
 
-        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.administrator))
+        when(userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.moderator))
                 .thenReturn(List.of());
 
         ReflectionTestUtils.setField(submissionService, "entityManager", entityManager);
@@ -139,14 +139,14 @@ class SubmissionServiceTest {
     }
 
     @Test
-    void create_byAdministratorWithoutInstitutionId_defaultsToDasigCentralVisayas() {
+    void create_byModeratorWithoutInstitutionId_defaultsToDasigCentralVisayas() {
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
         SubmissionCreateDto dto = createDto(scheduledAt);
         dto.setInstitutionId(null); // Omitted institution_id
 
         UUID adminId = UUID.randomUUID();
-        User admin = user(adminId, "admin@dasigconnect.com", UserRole.super_administrator, null);
-        JwtUserDetails adminPrincipal = principal(adminId, "super_administrator", null);
+        User admin = user(adminId, "admin@dasigconnect.com", UserRole.admin, null);
+        JwtUserDetails adminPrincipal = principal(adminId, "admin", null);
 
         UUID dasigInstId = UUID.randomUUID();
         Institution dasigInst = new Institution();
@@ -196,7 +196,7 @@ class SubmissionServiceTest {
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
-        when(guardRailService.validate(any(), any())).thenReturn(new GuardRailResult(List.of(), List.of()));
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult(List.of(), List.of()));
 
         SubmissionResponseDto result = submissionService.update(submissionId, dto, contributorPrincipal);
 
@@ -234,14 +234,14 @@ class SubmissionServiceTest {
         UUID submissionId = UUID.randomUUID();
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
-        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.administrator, institution);
+        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.moderator, institution);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
-        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(new GuardRailResult());
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
-        when(userRepository.findByRole(UserRole.administrator))
+        when(userRepository.findByRole(UserRole.moderator))
                 .thenReturn(List.of(validator));
 
         SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
@@ -263,7 +263,7 @@ class SubmissionServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST);
-        verify(guardRailService, never()).validate(any(), any());
+        verify(guardRailService, never()).validate(any(), any(), any());
     }
 
     @Test
@@ -273,7 +273,7 @@ class SubmissionServiceTest {
         when(submissionRepository.findById(submissionId))
                 .thenReturn(Optional.of(submission(submissionId, SubmissionStatus.draft, scheduledAt)));
         GuardRailViolation violation = new GuardRailViolation("GR-H1", "Slot already taken");
-        when(guardRailService.validate(institutionId, scheduledAt))
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any()))
                 .thenReturn(new GuardRailResult(List.of(violation), List.of()));
 
         assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
@@ -297,7 +297,7 @@ class SubmissionServiceTest {
         SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
 
         assertThat(result.getStatus()).isEqualTo("pending");
-        verify(guardRailService, never()).validate(any(), any());
+        verify(guardRailService, never()).validate(any(), any(), any());
     }
 
     @Test
@@ -307,7 +307,7 @@ class SubmissionServiceTest {
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
         submission.setCaption("   ");
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
-        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(new GuardRailResult());
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(2L);
 
         assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
@@ -324,7 +324,7 @@ class SubmissionServiceTest {
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
-        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(new GuardRailResult());
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
 
         assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
@@ -371,7 +371,7 @@ class SubmissionServiceTest {
         SlotEvaluateRequestDto dto = new SlotEvaluateRequestDto();
         dto.setScheduledAt(scheduledAt);
         GuardRailResult expected = new GuardRailResult();
-        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(expected);
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(expected);
 
         GuardRailResult result = submissionService.evaluateSlot(submissionId, dto, contributorPrincipal);
 
@@ -490,14 +490,14 @@ class SubmissionServiceTest {
                 .thenReturn(java.util.Set.of());
         when(submissionMediaAssetRepository.existsByMediaAssetId(assetId)).thenReturn(false);
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
-        when(supabaseStorageService.deletePublicObject(asset.getStorageUrl())).thenReturn(true);
+        when(mediaStorage.deletePublicObject(asset.getStorageUrl())).thenReturn(true);
 
         submissionService.detachAsset(submissionId, assetId, contributorPrincipal);
 
         verify(submissionMediaAssetRepository).delete(link);
         verify(mediaAssetRepository).delete(asset);
         verify(mediaAssetRepository, never()).save(asset);
-        verify(supabaseStorageService).deletePublicObject(asset.getStorageUrl());
+        verify(mediaStorage).deletePublicObject(asset.getStorageUrl());
     }
 
     @Test
@@ -627,14 +627,14 @@ class SubmissionServiceTest {
         staged.setStatus(MediaAssetStatus.STAGED);
         staged.setFileType(MediaFileType.jpeg);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
-        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(new GuardRailResult());
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId))
                 .thenReturn(List.of(staged));
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
-        when(userRepository.findByRole(UserRole.administrator)).thenReturn(List.of());
+        when(userRepository.findByRole(UserRole.moderator)).thenReturn(List.of());
 
         submissionService.submit(submissionId, contributorPrincipal);
 
@@ -648,7 +648,7 @@ class SubmissionServiceTest {
         UUID submissionId = UUID.randomUUID();
         UUID newInstitutionId = UUID.randomUUID();
         Institution newInstitution = institution(newInstitutionId);
-        JwtUserDetails adminPrincipal = principal(contributorId, "administrator", institutionId);
+        JwtUserDetails adminPrincipal = principal(contributorId, "moderator", institutionId);
 
         Submission submission = submission(submissionId, SubmissionStatus.draft, null);
         MediaAsset stagedAsset = new MediaAsset();

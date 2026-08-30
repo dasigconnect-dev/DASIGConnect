@@ -15,7 +15,7 @@ public enum NotificationEventType {
     override_denied,
     override_slot_suggested,
     admin_direct_post,
-    institution_no_validator,
+    institution_no_moderator,
     institution_onboarded,
     submission_rescheduled,
     token_expiring,
@@ -23,5 +23,6 @@ public enum NotificationEventType {
     empty_schedule_warning,
     fast_track_submission,
     embedding_failure_digest,
+    user_role_changed,
     generic
 }

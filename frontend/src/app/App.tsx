@@ -31,7 +31,8 @@ import RecentActivityScreen from "../features/dashboard/RecentActivityScreen";
 import SubmissionScreen from "../features/submission/SubmissionScreen";
 import ValidationQueueScreen from "../features/validation/ValidationQueueScreen";
 import InstitutionManagementScreen from "../features/institution-management/InstitutionManagementScreen";
-import AdministratorManagementScreen from "../features/administrator-management/AdministratorManagementScreen";
+import AdminManagementScreen from "../features/administrator-management/AdministratorManagementScreen";
+import UserManagementScreen from "../features/user-management/UserManagementScreen";
 import SystemHealthScreen from "../features/system-health/SystemHealthScreen";
 import AuditLogScreen from "../features/audit-log/AuditLogScreen";
 import CalendarScreen from "../features/calendar/CalendarScreen";
@@ -79,7 +80,7 @@ function App() {
 
   const [modalEmail, setModalEmail] = useState("");
   const [modalPassword, setModalPassword] = useState("");
-  const [modalError, setModalError] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
   const [modalLoginLoading, setModalLoginLoading] = useState(false);
   const [showModalPassword, setShowModalPassword] = useState(false);
 
@@ -341,7 +342,11 @@ function App() {
   }
 
   async function handleForgotSubmit() {
-    const email = forgotEmail.trim() || "yourname@institution.edu.ph";
+    const email = forgotEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Enter a valid email address.");
+      return;
+    }
     setForgotLoading(true);
     try {
       await requestPasswordReset(email);
@@ -385,9 +390,17 @@ function App() {
       toast.success("Account activated. Welcome to DASIGConnect.");
       setInviteState("success");
       navigate("/dashboard");
-    } catch {
-      toast.error("We could not activate this invitation. Please request a new link.");
-      setInviteState("expired");
+    } catch (err: unknown) {
+      const message = getApiErrorMessage(
+        err,
+        "We could not activate this invitation. Please try again.",
+      );
+      toast.error(message);
+      if (isAlreadyUsedInviteError(message)) {
+        setInviteState("already");
+      } else if (isExpiredInviteError(message)) {
+        setInviteState("expired");
+      }
     } finally {
       setInviteLoading(false);
     }
@@ -407,7 +420,7 @@ function App() {
       toast.error(
         getApiErrorMessage(
           err,
-          "Could not resend invitation. Please contact your DASIG Administrator.",
+          "Could not resend invitation. Please contact your DASIG Moderator.",
         ),
       );
     } finally {
@@ -439,22 +452,23 @@ function App() {
   async function handleModalLogin() {
     if (modalLoginLoading || logoutLoading) return;
     setModalLoginLoading(true);
-    setModalError(false);
+    setModalError(null);
     const email = modalEmail.trim().toLowerCase();
     try {
       const response = await login(email, modalPassword);
-      setAuthToken(response.data.accessToken);
-      const fallbackUser = buildUserFromLogin(email, response.data);
+      const apiUser = response.data;
+      setAuthToken(apiUser.accessToken);
+      const fallbackUser = buildUserFromLogin(email, apiUser);
       const user = await loadCurrentUser(fallbackUser);
-      localStorage.setItem("dasigconnect_token", response.data.accessToken);
+      localStorage.setItem("dasigconnect_token", apiUser.accessToken);
       localStorage.setItem("dasigconnect_user", JSON.stringify(user));
       setCurrentUser(user);
-      startSessionCountdown(response.data.accessToken);
+      startSessionCountdown(apiUser.accessToken);
       setShowSessionModal(false);
-      setModalError(false);
+      setModalError(null);
       setModalPassword("");
-    } catch {
-      setModalError(true);
+    } catch (err: unknown) {
+      setModalError(getApiErrorMessage(err, "Invalid credentials. Please try again."));
     } finally {
       setModalLoginLoading(false);
     }
@@ -518,7 +532,7 @@ function App() {
 
   async function validateInviteToken(token: string) {
     try {
-      const response = await validateInvitation(token);
+      const response = await validateInvitation(token.trim());
       const data = response.data;
       setInviteEmail(data.recipientEmail);
       setInviteRole(formatRoleLabel(data.assignedRole));
@@ -529,8 +543,13 @@ function App() {
       setInvitePassword("");
       setInviteConfirmPassword("");
       setInviteState("form");
-    } catch {
-      setInviteState("expired");
+    } catch (err: unknown) {
+      const message = getApiErrorMessage(err, "Invalid invitation token.");
+      if (isAlreadyUsedInviteError(message)) {
+        setInviteState("already");
+      } else {
+        setInviteState("expired");
+      }
     }
   }
 
@@ -724,16 +743,16 @@ function App() {
           <Route
             path="/admin/institution-management"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin"]}>
                 <InstitutionManagementScreen user={currentUser!} />
               </ProtectedRoute>
             }
           />
           <Route
-            path="/admin/administrator-management"
+            path="/admin/admin-management"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
-                <AdministratorManagementScreen
+              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
+                <AdminManagementScreen
                   user={currentUser!}
                   onProfileUpdated={refreshCurrentUserProfile}
                 />
@@ -741,13 +760,25 @@ function App() {
             }
           />
           <Route
-            path="/admin/user-management/*"
-            element={<Navigate to="/admin/administrator-management" replace />}
+            path="/admin/user-management"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
+                <UserManagementScreen user={currentUser!} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/administrator-management"
+            element={<Navigate to="/admin/admin-management" replace />}
+          />
+          <Route
+            path="/admin/moderator-management"
+            element={<Navigate to="/admin/admin-management" replace />}
           />
           <Route
             path="/admin/system-health"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
                 <SystemHealthScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -755,7 +786,7 @@ function App() {
           <Route
             path="/admin/audit-log"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
                 <AuditLogScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -763,7 +794,7 @@ function App() {
           <Route
             path="/validation/queue"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin"]}>
                 <ValidationQueueScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -771,19 +802,15 @@ function App() {
           <Route
             path="/scheduler/calendar"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
                 <CalendarScreen user={currentUser!} />
               </ProtectedRoute>
             }
           />
           <Route
-            path="/admin/resolution"
-            element={<Navigate to="/dashboard" replace />}
-          />
-          <Route
             path="/media-repository"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
                 <MediaRepositoryScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -791,7 +818,7 @@ function App() {
           <Route
             path="/notifications"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
                 <NotificationsScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -799,7 +826,7 @@ function App() {
           <Route
             path="/analytics"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["admin", "moderator", "contributor"]}>
                 <AnalyticsDashboardPage user={currentUser!} />
               </ProtectedRoute>
             }
@@ -807,7 +834,7 @@ function App() {
           <Route
             path="/submissions"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
                 <SubmissionScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -815,28 +842,30 @@ function App() {
           <Route
             path="/settings"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
                 <AccountSettingsScreen user={currentUser!} onProfileUpdated={refreshCurrentUserProfile} />
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/submissions/new"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
-                <SubmissionScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/submissions/:submissionId"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["administrator", "super_administrator", "contributor"]}>
-                <SubmissionScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
         </Route>
+
+        {/* Standalone Full-Screen Submission Editor */}
+        <Route
+          path="/submissions/new"
+          element={
+            <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
+              <SubmissionScreen user={currentUser!} />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/submissions/:submissionId"
+          element={
+            <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
+              <SubmissionScreen user={currentUser!} />
+            </ProtectedRoute>
+          }
+        />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
@@ -874,8 +903,8 @@ function isPasswordResetPath(pathname: string) {
 
 function mapApiRole(role: string): User["role"] {
   const normalized = role.toLowerCase();
-  if (normalized.includes("super")) return "super_administrator";
-  if (normalized.includes("admin")) return "administrator";
+  if (normalized === "admin" || normalized.includes("super")) return "admin";
+  if (normalized === "moderator" || normalized.includes("admin")) return "moderator";
   return "contributor";
 }
 
@@ -981,10 +1010,26 @@ function getApiErrorMessage(error: unknown, fallback: string) {
     const data = response.data;
     if (isRecord(data)) {
       if (typeof data.error === "string") return data.error;
+      // ApiResponse envelope: { success, data, error: { code, message } }
+      if (isRecord(data.error) && typeof data.error.message === "string") {
+        return data.error.message;
+      }
       if (typeof data.message === "string") return data.message;
     }
   }
   return typeof error.message === "string" ? error.message : fallback;
+}
+
+// Matches the backend reason strings from InvitationService#assertTokenUnused
+// and #acceptInvitation ("Invitation has expired", "Invitation has already
+// been used", "Account is already active").
+function isExpiredInviteError(message: string) {
+  return message.toLowerCase().includes("expired");
+}
+
+function isAlreadyUsedInviteError(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes("already been used") || normalized.includes("already active");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

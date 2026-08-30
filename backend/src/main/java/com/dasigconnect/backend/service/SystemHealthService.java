@@ -48,7 +48,6 @@ public class SystemHealthService {
         EXPECTED_JOBS.put("ReviewLockCleanupJob", Duration.ofMinutes(1));
         EXPECTED_JOBS.put("StaleSubmissionDetectorJob", Duration.ofMinutes(5));
         EXPECTED_JOBS.put("AbandonmentDetectorJob", Duration.ofMinutes(5));
-        EXPECTED_JOBS.put("ExpiredOverrideCleanupJob", Duration.ofMinutes(5));
         EXPECTED_JOBS.put("TokenPublishingEscalationJob", Duration.ofMinutes(5));
         EXPECTED_JOBS.put("ValidationDeadlineNotificationJob", Duration.ofMinutes(5));
         EXPECTED_JOBS.put("EmbeddingReconciliationJob", Duration.ofMinutes(5));
@@ -66,10 +65,12 @@ public class SystemHealthService {
     private final ScheduledJobRunRepository scheduledJobRunRepository;
     private final TokenManagementService tokenManagementService;
     private final JavaMailSender mailSender;
+    private final MediaStorageService mediaStorage;
     private final HttpClient httpClient;
     private final long databaseLimitBytes;
     private final long mediaLimitBytes;
     private final double storageWarningThreshold;
+    private final double storageCriticalThreshold;
     private final String anthropicApiKey;
     private final String voyageApiKey;
 
@@ -78,18 +79,24 @@ public class SystemHealthService {
             ScheduledJobRunRepository scheduledJobRunRepository,
             TokenManagementService tokenManagementService,
             JavaMailSender mailSender,
-            @Value("${app.system-health.database-limit-bytes:1073741824}") long databaseLimitBytes,
-            @Value("${app.system-health.media-limit-bytes:1073741824}") long mediaLimitBytes,
+            MediaStorageService mediaStorage,
+            // Defaults track the current free tiers: Supabase Postgres 500 MB,
+            // Cloudflare R2 10 GB-month (storage billed only past that).
+            @Value("${app.system-health.database-limit-bytes:500000000}") long databaseLimitBytes,
+            @Value("${app.system-health.media-limit-bytes:10000000000}") long mediaLimitBytes,
             @Value("${app.system-health.storage-warning-threshold-percent:80}") double storageWarningThreshold,
+            @Value("${app.system-health.storage-critical-threshold-percent:95}") double storageCriticalThreshold,
             @Value("${anthropic.api.key:}") String anthropicApiKey,
             @Value("${voyage.api.key:}") String voyageApiKey) {
         this.jdbcTemplate = jdbcTemplate;
         this.scheduledJobRunRepository = scheduledJobRunRepository;
         this.tokenManagementService = tokenManagementService;
         this.mailSender = mailSender;
+        this.mediaStorage = mediaStorage;
         this.databaseLimitBytes = databaseLimitBytes;
         this.mediaLimitBytes = mediaLimitBytes;
         this.storageWarningThreshold = storageWarningThreshold;
+        this.storageCriticalThreshold = Math.max(storageCriticalThreshold, storageWarningThreshold);
         this.anthropicApiKey = anthropicApiKey;
         this.voyageApiKey = voyageApiKey;
         this.httpClient = HttpClient.newBuilder()
@@ -139,11 +146,47 @@ public class SystemHealthService {
     @Transactional(readOnly = true)
     public List<ExternalServiceHealthDto> externalServices() {
         List<ExternalServiceHealthDto> services = new ArrayList<>();
+        services.add(databaseHealth());
+        services.add(mediaObjectStorageHealth());
         services.add(facebookTokenHealth());
         services.add(httpReachability("Anthropic Claude Vision API", "https://api.anthropic.com/v1/messages", anthropicApiKey));
         services.add(httpReachability("Voyage AI API", "https://api.voyageai.com/v1/embeddings", voyageApiKey));
         services.add(emailHealth());
         return services;
+    }
+
+    /** Supabase PostgreSQL — a timed {@code SELECT 1}. Slow-but-up is a WARNING;
+     *  the Session Pooler + Hikari-5 setup makes latency worth watching. */
+    private ExternalServiceHealthDto databaseHealth() {
+        long startNanos = System.nanoTime();
+        try {
+            jdbcTemplate.queryForObject("SELECT 1", Integer.class);
+            long ms = (System.nanoTime() - startNanos) / 1_000_000;
+            HealthStatus status = ms >= 1000 ? HealthStatus.WARNING : HealthStatus.HEALTHY;
+            String detail = status == HealthStatus.WARNING
+                    ? String.format("Connection responded in %d ms — slower than expected for the connection pooler.", ms)
+                    : String.format("Connection responded in %d ms.", ms);
+            return service("Supabase PostgreSQL", status, detail, null, null);
+        } catch (Exception ex) {
+            return service("Supabase PostgreSQL", HealthStatus.UNHEALTHY,
+                    "Database connection probe failed.", null, null);
+        }
+    }
+
+    /** Cloudflare R2 media bucket — a one-key list to confirm creds + endpoint. */
+    private ExternalServiceHealthDto mediaObjectStorageHealth() {
+        if (!mediaStorage.isConfigured()) {
+            return service("Cloudflare R2 (Media Storage)", HealthStatus.UNAVAILABLE,
+                    "Object storage credentials are not configured.", null, null);
+        }
+        try {
+            String bucket = mediaStorage.pingBucket();
+            return service("Cloudflare R2 (Media Storage)", HealthStatus.HEALTHY,
+                    "Bucket '" + bucket + "' is reachable.", null, null);
+        } catch (Exception ex) {
+            return service("Cloudflare R2 (Media Storage)", HealthStatus.UNHEALTHY,
+                    "Bucket could not be reached — check the R2 credentials and endpoint.", null, null);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -203,12 +246,30 @@ public class SystemHealthService {
     }
 
     private StorageMetricDto mediaStorage() {
+        // Prefer a real bucket scan (counts every stored object, including
+        // watermarked derivatives and orphans); fall back to the DB byte sum
+        // when the object store is unreachable or not configured.
+        try {
+            var probe = mediaStorage.probeUsage();
+            if (probe.isPresent()) {
+                var usage = probe.get();
+                String detail = String.format(
+                        "Live object-store scan: %,d object%s%s, against the configured budget.",
+                        usage.objectCount(),
+                        usage.objectCount() == 1 ? "" : "s",
+                        usage.partial() ? " (partial scan)" : "");
+                return storageMetric("Media storage", usage.totalBytes(), mediaLimitBytes, detail);
+            }
+        } catch (Exception ex) {
+            log.warn("Media storage probe failed, falling back to DB estimate: {}", ex.getMessage());
+        }
+
         try {
             Long used = jdbcTemplate.queryForObject(
                     "SELECT COALESCE(SUM(file_size_bytes), 0) FROM media_assets WHERE purged_at IS NULL",
                     Long.class);
             return storageMetric("Media storage", used == null ? 0 : used, mediaLimitBytes,
-                    "Tracked media asset bytes relative to configured platform tier limit.");
+                    "Estimated from tracked media asset bytes (object-store scan unavailable), against the configured budget.");
         } catch (Exception ex) {
             return new StorageMetricDto("Media storage", HealthStatus.UNAVAILABLE, 0, mediaLimitBytes,
                     0, storageWarningThreshold, "Media storage metric could not be retrieved.");
@@ -218,9 +279,26 @@ public class SystemHealthService {
     private StorageMetricDto storageMetric(String name, long used, long limit, String detail) {
         double percent = limit > 0 ? round(used * 100.0 / limit) : 0;
         HealthStatus status = limit <= 0 ? HealthStatus.UNAVAILABLE
+                : percent >= storageCriticalThreshold ? HealthStatus.UNHEALTHY
                 : percent >= storageWarningThreshold ? HealthStatus.WARNING
                 : HealthStatus.HEALTHY;
-        return new StorageMetricDto(name, status, used, limit, percent, storageWarningThreshold, detail);
+        String escalated = status == HealthStatus.UNHEALTHY
+                ? detail + String.format(" Usage is at %.0f%% of the %s budget — reduce usage or raise the plan to avoid overage charges.",
+                        percent, humanBytes(limit))
+                : status == HealthStatus.WARNING
+                        ? detail + String.format(" Usage is at %.0f%% of the %s budget.", percent, humanBytes(limit))
+                        : detail;
+        return new StorageMetricDto(name, status, used, limit, percent, storageWarningThreshold, escalated);
+    }
+
+    private static String humanBytes(long bytes) {
+        if (bytes >= 1_000_000_000L) {
+            return String.format("%.0f GB", bytes / 1_000_000_000.0);
+        }
+        if (bytes >= 1_000_000L) {
+            return String.format("%.0f MB", bytes / 1_000_000.0);
+        }
+        return bytes + " B";
     }
 
     private ExternalServiceHealthDto facebookTokenHealth() {
@@ -296,9 +374,9 @@ public class SystemHealthService {
             Duration interval = EXPECTED_JOBS.get(jobName);
             boolean infrequent = interval != null && interval.compareTo(INFREQUENT_JOB_THRESHOLD) >= 0;
             return infrequent
-                    ? new BackgroundJobHealthDto(displayName, HealthStatus.SCHEDULED,
+                    ? new BackgroundJobHealthDto(jobName, displayName, HealthStatus.SCHEDULED,
                             null, null, null, null, null, "Awaiting first run.")
-                    : new BackgroundJobHealthDto(displayName, HealthStatus.UNAVAILABLE,
+                    : new BackgroundJobHealthDto(jobName, displayName, HealthStatus.UNAVAILABLE,
                             null, null, null, null, null, "No recorded run yet.");
         }
         boolean failed = "FAILED".equalsIgnoreCase(run.getStatus());
@@ -308,6 +386,7 @@ public class SystemHealthService {
                 : run.getStartedAt().isBefore(staleCutoff) ? HealthStatus.WARNING
                 : HealthStatus.HEALTHY;
         return new BackgroundJobHealthDto(
+                jobName,
                 displayName,
                 status,
                 run.getStartedAt(),
@@ -366,7 +445,7 @@ public class SystemHealthService {
             double rate = round(edited * 100.0 / approvals);
             return metric("edit_approve_rate", "Edit & Approve rate", rate, "percent", approvals,
                     HealthStatus.HEALTHY,
-                    "Share of approvals where the Administrator edited the submission before approving, over the last 30 days.");
+                    "Share of approvals where the Moderator edited the submission before approving, over the last 30 days.");
         } catch (Exception ex) {
             return unavailableMetric("edit_approve_rate", "Edit & Approve rate", "percent", ex);
         }
@@ -486,7 +565,6 @@ public class SystemHealthService {
             case "TokenPublishingEscalationJob" -> "Token Publishing Escalation";
             case "SocialEngagementSyncJob" -> "Social Engagement Sync";
             case "AbandonmentDetectorJob" -> "Abandonment Detector";
-            case "ExpiredOverrideCleanupJob" -> "Expired Override Cleanup";
             case "ReviewLockCleanupJob" -> "Review Lock Cleanup";
             case "ValidationDeadlineNotificationJob" -> "Validation Deadline Notification";
             case "EmbeddingFailureDigestJob" -> "Embedding Failure Digest";

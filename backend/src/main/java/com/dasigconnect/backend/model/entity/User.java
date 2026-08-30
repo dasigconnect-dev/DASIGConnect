@@ -58,8 +58,8 @@ public class User {
     @Column(name = "account_state", nullable = false, length = 30)
     private UserStatus accountState = UserStatus.pending;
 
-    @Column(name = "is_super_administrator", nullable = false)
-    private boolean superAdministrator;
+    @Column(name = "is_admin", nullable = false)
+    private boolean adminOwner;
 
     @Column(name = "super_admin_transfer_requested_by")
     private UUID superAdminTransferRequestedBy;
@@ -81,6 +81,16 @@ public class User {
 
     @Column(name = "avatar_updated_at")
     private Instant avatarUpdatedAt;
+
+    @Column(name = "purged_at")
+    private Instant purgedAt;
+
+    @Column(name = "purged_by_user_id")
+    private UUID purgedByUserId;
+
+    /** User id of the admin/moderator who invited this account. Null for legacy / self-registered rows. */
+    @Column(name = "invited_by_user_id")
+    private UUID invitedByUserId;
 
     @PrePersist
     void onCreate() {
@@ -170,12 +180,12 @@ public class User {
         this.accountState = accountState;
     }
 
-    public boolean isSuperAdministrator() {
-        return superAdministrator;
+    public boolean isAdminOwner() {
+        return adminOwner;
     }
 
-    public void setSuperAdministrator(boolean superAdministrator) {
-        this.superAdministrator = superAdministrator;
+    public void setAdminOwner(boolean adminOwner) {
+        this.adminOwner = adminOwner;
     }
 
     public UUID getSuperAdminTransferRequestedBy() {
@@ -224,5 +234,29 @@ public class User {
 
     public void setAvatarUpdatedAt(Instant avatarUpdatedAt) {
         this.avatarUpdatedAt = avatarUpdatedAt;
+    }
+
+    public Instant getPurgedAt() {
+        return purgedAt;
+    }
+
+    public void setPurgedAt(Instant purgedAt) {
+        this.purgedAt = purgedAt;
+    }
+
+    public UUID getInvitedByUserId() {
+        return invitedByUserId;
+    }
+
+    public void setInvitedByUserId(UUID invitedByUserId) {
+        this.invitedByUserId = invitedByUserId;
+    }
+
+    public UUID getPurgedByUserId() {
+        return purgedByUserId;
+    }
+
+    public void setPurgedByUserId(UUID purgedByUserId) {
+        this.purgedByUserId = purgedByUserId;
     }
 }

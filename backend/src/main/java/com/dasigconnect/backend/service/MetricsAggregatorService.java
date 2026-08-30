@@ -60,6 +60,9 @@ public class MetricsAggregatorService {
         AnalyticsScope scope = scopeFor(user, institutionId, category);
         boolean adminView = isAdmin(scope.role());
         boolean contributorView = "contributor".equals(scope.role());
+        // Admins and (network-wide) moderators both see cross-institution data;
+        // only the admin-only operational blocks below stay gated on adminView.
+        boolean networkView = adminView || "moderator".equals(scope.role());
         boolean institutionDrilldown = adminView && scope.institutionId() != null;
 
         PostingDelayStats delay = analyticsRepository.averagePostingDelay(period.start(), period.end(), scope);
@@ -182,7 +185,7 @@ public class MetricsAggregatorService {
                         analyticsRepository.publishedPostsSparkline(period.start(), period.end(), scope),
                         "Admin direct posts",
                         posts.adminDirectCount()),
-                adminView ? analyticsRepository.postsByInstitution(period.start(), period.end(), scope) : List.of(),
+                networkView ? analyticsRepository.postsByInstitution(period.start(), period.end(), scope) : List.of(),
                 contributorBreakdown,
                 analyticsRepository.statusBreakdown(scope),
                 analyticsRepository.contentIssues(period.start(), period.end(), scope),
@@ -239,19 +242,29 @@ public class MetricsAggregatorService {
     }
 
     private boolean isAdmin(String role) {
-        return "administrator".equals(role) || "super_administrator".equals(role);
+        return "admin".equals(role);
     }
 
     private AnalyticsScope scopeFor(JwtUserDetails user, UUID institutionId, String category) {
         String role = user.role() == null ? "" : user.role().toLowerCase(Locale.ROOT);
         String normalizedCategory = category == null || category.isBlank() ? null : category.trim();
         return switch (role) {
-            case "administrator", "super_administrator" ->
-                    new AnalyticsScope(role, institutionId, null, normalizedCategory);
+            case "admin" -> new AnalyticsScope(role, institutionId, null, normalizedCategory);
+            case "moderator" -> {
+                // Moderators are network-wide: they get the network engagement +
+                // workflow view (no institution filter). The admin-only blocks in
+                // summary()/assertMetricAllowed() (operational health, AI performance,
+                // override rate, admin workload) stay gated on isAdmin().
+                if (institutionId != null) {
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                            "Institution analytics filters are available to admins only.");
+                }
+                yield new AnalyticsScope("moderator", null, null, normalizedCategory);
+            }
             case "contributor" -> {
                 if (institutionId != null) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                            "Institution analytics filters are available to administrators only.");
+                            "Institution analytics filters are available to admins only.");
                 }
                 yield new AnalyticsScope("contributor", user.institutionId(), user.userId(), normalizedCategory);
             }
@@ -339,7 +352,7 @@ public class MetricsAggregatorService {
     private void assertMetricAllowed(String metric, AnalyticsScope scope) {
         if (("operational-health".equals(metric) || "ai-performance".equals(metric)) && !isAdmin(scope.role())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "This analytics metric is available to administrators only.");
+                    "This analytics metric is available to admins only.");
         }
     }
 
@@ -363,7 +376,7 @@ public class MetricsAggregatorService {
 
     private String csvFilename(String metric, ReportingPeriod period, AnalyticsScope scope) {
         String role = switch (scope.role()) {
-            case "super_administrator", "administrator" -> "Administrator";
+            case "admin" -> "Admin";
             case "contributor" -> "Contributor";
             default -> "User";
         };

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
 
-export type DashboardNavId = 'home' | 'submit' | 'review-queue' | 'institution-management' | 'user-management' | 'system-health' | 'audit-log' | 'scheduler' | 'resolution' | 'analytics' | 'media-repository' | 'notifications'
+export type DashboardNavId = 'home' | 'submit' | 'review-queue' | 'institution-management' | 'user-management' | 'admin-management' | 'system-health' | 'audit-log' | 'scheduler' | 'analytics' | 'media-repository' | 'notifications'
 
 interface DashboardShellProps {
   user: User
@@ -185,12 +185,13 @@ export default function DashboardShell({
   )
 }
 
-function isAdministratorRole(user: User) {
-  return user.role === 'administrator' || user.role === 'super_administrator'
+function isModeratorRole(user: User) {
+  return user.role === 'moderator' || user.role === 'admin'
 }
 
 function dashboardNavItems(user: User): DashboardNavItem[] {
-  const isAdministrator = isAdministratorRole(user)
+  const isModerator = isModeratorRole(user)
+  const isAdmin = user.role === 'admin'
   return [
     {
       id: 'home',
@@ -204,42 +205,49 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       icon: 'ti ti-photo-up',
       label: 'My Submissions',
       path: '/submissions',
-      visible: user.role === 'contributor' || isAdministrator,
+      visible: user.role === 'contributor' || isModerator,
     },
     {
       id: 'review-queue',
       icon: 'ti ti-clipboard-check',
       label: 'Review Queue',
       path: '/validation/queue',
-      visible: isAdministrator,
+      visible: isModerator,
     },
     {
       id: 'institution-management',
       icon: 'ti ti-building',
       label: 'Institution Management',
       path: '/admin/institution-management',
-      visible: isAdministrator,
+      visible: isModerator,
     },
     {
       id: 'user-management',
+      icon: 'ti ti-users',
+      label: 'User Management',
+      path: '/admin/user-management',
+      visible: isAdmin,
+    },
+    {
+      id: 'admin-management',
       icon: 'ti ti-shield-check',
-      label: 'Administrator Management',
-      path: '/admin/administrator-management',
-      visible: isAdministrator,
+      label: 'Admin Management',
+      path: '/admin/admin-management',
+      visible: isAdmin,
     },
     {
       id: 'system-health',
       icon: 'ti ti-activity-heartbeat',
       label: 'System Health',
       path: '/admin/system-health',
-      visible: isAdministrator,
+      visible: isAdmin,
     },
     {
       id: 'audit-log',
       icon: 'ti ti-history',
       label: 'Audit Log',
       path: '/admin/audit-log',
-      visible: isAdministrator,
+      visible: isAdmin,
     },
     {
       id: 'media-repository',
@@ -280,18 +288,20 @@ function groupDashboardNavItems(items: DashboardNavItem[]) {
     },
     {
       label: 'Operations',
-      items: items.filter((item) => ['institution-management', 'user-management', 'system-health', 'audit-log', 'analytics'].includes(item.id)),
+      items: items.filter((item) => ['institution-management', 'user-management', 'admin-management', 'system-health', 'audit-log', 'analytics'].includes(item.id)),
     },
   ].filter((group) => group.items.length > 0)
 }
 
 function roleChip(user: User) {
-  if (user.role === 'super_administrator') return { className: 'chip-admin', label: 'Super Administrator' }
-  if (user.role === 'administrator') return { className: 'chip-admin', label: 'Administrator' }
+  if (user.role === 'admin') return { className: 'chip-admin', label: 'Admin' }
+  if (user.role === 'moderator') return { className: 'chip-admin', label: 'Moderator' }
   return { className: 'chip-contributor', label: 'Contributor' }
 }
 
 function getInstitutionName(user: User) {
+  // Admins and moderators are network-wide — no owning HEI workspace.
+  if (user.role === 'admin' || user.role === 'moderator') return 'DASIG Network'
   return user.inst?.trim() || 'Institution'
 }
 

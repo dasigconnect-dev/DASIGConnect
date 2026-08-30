@@ -65,6 +65,8 @@ function toFcEvents(events: CalendarEvent[], user: User, draggable: boolean) {
       id: e.id,
       title: eventTitle(e),
       start: e.scheduledAt,
+      end: e.scheduledAt,
+      allDay: false,
       backgroundColor: color.bg,
       borderColor: color.bg,
       textColor: color.text,
@@ -231,6 +233,10 @@ export default function CalendarView({
         slotMaxTime={showFullDay ? "24:00:00" : "20:00:00"}
         scrollTime={`${Math.max(new Date().getHours() - 1, showFullDay ? 0 : 8).toString().padStart(2, "0")}:00:00`}
         nowIndicator
+        defaultTimedEventDuration="00:00:00"
+        nextDayThreshold="24:00:00"
+        forceEventDuration={false}
+        eventDisplay="block"
         editable={draggable}
         eventStartEditable={draggable}
         eventDurationEditable={false}

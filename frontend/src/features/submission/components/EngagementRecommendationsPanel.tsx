@@ -15,7 +15,8 @@ export function EngagementRecommendationsPanel({
   if (loading) {
     return (
       <div className="sub-engagement-panel sub-engagement-loading" aria-live="polite">
-        <i className="ti ti-loader-2"></i> Finding the best engagement times…
+        <i className="ti ti-loader-2 sub-spin" aria-hidden="true" />
+        <span>Finding the best engagement times…</span>
       </div>
     );
   }

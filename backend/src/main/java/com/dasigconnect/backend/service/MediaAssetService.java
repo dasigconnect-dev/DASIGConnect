@@ -73,7 +73,7 @@ public class MediaAssetService {
     private final MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     private final InstitutionRepository institutionRepository;
     private final SubmissionService submissionService;
-    private final SupabaseStorageService supabaseStorageService;
+    private final MediaStorageService mediaStorage;
     private final AIClassificationService aiClassificationService;
     private final com.dasigconnect.backend.external.VoyageAIClient voyageAIClient;
     private final AuditLogService auditLogService;
@@ -93,7 +93,7 @@ public class MediaAssetService {
             MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
             InstitutionRepository institutionRepository,
             SubmissionService submissionService,
-            SupabaseStorageService supabaseStorageService,
+            MediaStorageService mediaStorage,
             AIClassificationService aiClassificationService,
             com.dasigconnect.backend.external.VoyageAIClient voyageAIClient,
             AuditLogService auditLogService,
@@ -108,7 +108,7 @@ public class MediaAssetService {
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
         this.institutionRepository = institutionRepository;
         this.submissionService = submissionService;
-        this.supabaseStorageService = supabaseStorageService;
+        this.mediaStorage = mediaStorage;
         this.aiClassificationService = aiClassificationService;
         this.voyageAIClient = voyageAIClient;
         this.auditLogService = auditLogService;
@@ -164,12 +164,12 @@ public class MediaAssetService {
         String trimmedCategory = aiCategory == null ? "" : aiCategory.trim();
         String trimmedMediaType = mediaType == null ? "" : mediaType.trim().toLowerCase();
 
-        boolean administrator = isAdmin(user);
-        boolean networkScope = administrator && "network".equalsIgnoreCase(scope);
+        boolean moderator = isNetworkRole(user);
+        boolean networkScope = moderator && "network".equalsIgnoreCase(scope);
         List<MediaAsset> source;
-        if (administrator && institutionId != null) {
+        if (moderator && institutionId != null) {
             source = mediaAssetRepository.findActiveByInstitution(institutionId);
-        } else if (administrator || networkScope) {
+        } else if (moderator || networkScope) {
             source = mediaAssetRepository.findAllActive();
         } else {
             // Own institution + the shared default institution.
@@ -221,14 +221,14 @@ public class MediaAssetService {
         if (trimmed.length() < 2) {
             return new MediaAssetListResponseDto(List.of(), 0, 1, 0);
         }
-        boolean administrator = isAdmin(user);
+        boolean moderator = isNetworkRole(user);
 
         List<MediaAsset> scope;
         java.util.Set<UUID> institutionScope = null; // null => network-wide (admin)
-        if (administrator && institutionId != null) {
+        if (moderator && institutionId != null) {
             institutionScope = java.util.Set.of(institutionId);
             scope = mediaAssetRepository.findActiveByInstitution(institutionId);
-        } else if (administrator) {
+        } else if (moderator) {
             scope = mediaAssetRepository.findAllActive();
         } else {
             institutionScope = visibleInstitutionIds(user);
@@ -304,7 +304,7 @@ public class MediaAssetService {
         if (asset.getInstitution() == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
         }
-        if (!isAdmin(user) && !visibleInstitutionIds(user).contains(asset.getInstitution().getId())) {
+        if (!isNetworkRole(user) && !visibleInstitutionIds(user).contains(asset.getInstitution().getId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
         }
         if (!isPublishedToRepository(asset)) {
@@ -333,7 +333,7 @@ public class MediaAssetService {
         MediaAsset asset = mediaAssetRepository.findActiveById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
         if (asset.getInstitution() == null
-                || (!isAdmin(user) && !visibleInstitutionIds(user).contains(asset.getInstitution().getId()))
+                || (!isNetworkRole(user) && !visibleInstitutionIds(user).contains(asset.getInstitution().getId()))
                 || !isPublishedToRepository(asset)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
         }
@@ -574,7 +574,7 @@ public class MediaAssetService {
     public List<MediaAlbumDto> listAlbums(UUID requestedInstitutionId, JwtUserDetails user) {
         // Admin with no institution filter → every institution's albums in one list,
         // so the Media Repository "All institutions" root can show them side by side.
-        if (isAdmin(user) && requestedInstitutionId == null) {
+        if (isNetworkRole(user) && requestedInstitutionId == null) {
             java.util.Map<UUID, Long> childCounts = toCountMap(mediaAlbumRepository.countChildAlbumsByParentAllInstitutions());
             java.util.Map<UUID, Long> assetCounts = toCountMap(mediaAssetRepository.countActiveAssetsByAlbumAllInstitutions());
             return mediaAlbumRepository.findAll()
@@ -589,7 +589,7 @@ public class MediaAssetService {
         }
 
         // Admin filtered to one institution → just that institution's albums.
-        if (isAdmin(user) && requestedInstitutionId != null) {
+        if (isNetworkRole(user) && requestedInstitutionId != null) {
             java.util.Map<UUID, Long> childCounts = toCountMap(mediaAlbumRepository.countChildAlbumsByParent(requestedInstitutionId));
             java.util.Map<UUID, Long> assetCounts = toCountMap(mediaAssetRepository.countActiveAssetsByAlbum(requestedInstitutionId));
             return mediaAlbumRepository.findByInstitutionIdOrderByName(requestedInstitutionId)
@@ -671,7 +671,7 @@ public class MediaAssetService {
                 : requestedInstitutionId != null ? requestedInstitutionId : currentInstitutionId;
 
         boolean institutionChanges = !targetInstitutionId.equals(currentInstitutionId);
-        if (institutionChanges && !isAdmin(user) && !targetInstitutionId.equals(sharedInstitutionId())) {
+        if (institutionChanges && !isNetworkRole(user) && !targetInstitutionId.equals(sharedInstitutionId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "You can only move folders within your institution or into the shared library.");
         }
@@ -715,7 +715,7 @@ public class MediaAssetService {
     }
 
     /**
-     * Load an album for deletion. Admins may delete any folder; validators any
+     * Load an album for deletion. Admins may delete any folder; moderators any
      * in their institution; contributors only folders they created themselves.
      */
     private MediaAlbum loadAlbumForDelete(UUID albumId, JwtUserDetails user) {
@@ -728,11 +728,11 @@ public class MediaAssetService {
     }
 
     /**
-     * Admin → any; validator → own institution; contributor → own institution
+     * Admin → any; moderator → own institution; contributor → own institution
      * AND creator.
      */
     private boolean canDeleteAlbum(MediaAlbum album, JwtUserDetails user) {
-        if (isAdmin(user)) {
+        if (isNetworkRole(user)) {
             return true;
         }
         boolean sameInstitution = album.getInstitution().getId().equals(user.institutionId());
@@ -749,7 +749,7 @@ public class MediaAssetService {
     private MediaAlbum loadAlbumForManage(UUID albumId, JwtUserDetails user) {
         MediaAlbum album = mediaAlbumRepository.findById(albumId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Album not found."));
-        if (!isAdmin(user) && !album.getInstitution().getId().equals(user.institutionId())) {
+        if (!isNetworkRole(user) && !album.getInstitution().getId().equals(user.institutionId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "You can only manage folders in your own institution.");
         }
@@ -819,10 +819,10 @@ public class MediaAssetService {
             // Moving the asset into another institution — only its uploader or an
             // admin, and (for non-admins) only into the shared default library.
             boolean owner = asset.getUploader() != null && asset.getUploader().getId().equals(user.userId());
-            if (!isAdmin(user) && !owner) {
+            if (!isNetworkRole(user) && !owner) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only move assets you uploaded.");
             }
-            if (!isAdmin(user) && !targetInstitutionId.equals(sharedInstitutionId())) {
+            if (!isNetworkRole(user) && !targetInstitutionId.equals(sharedInstitutionId())) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "You can only move assets within your institution or into the shared library.");
             }
@@ -877,11 +877,43 @@ public class MediaAssetService {
     }
 
     public MediaAssetUploadUrlResponseDto createUploadUrl(MediaAssetUploadUrlRequestDto dto, JwtUserDetails user) {
+        UUID institutionId = resolveTargetInstitutionId(dto.getInstitutionId(), user);
+
+        // Opaque, immutable key. The folder tree lives in the database (media_albums),
+        // never in the storage key, so folder rename/move/re-home never has to touch the store.
+        //   media/<institution-code>/<per-asset-id>/<original-filename>
+        // The per-asset segment is a home for future derivatives (thumbnails, watermarked
+        // copies) alongside the original.
         String safeFileName = dto.getFileName().replaceAll("[^a-zA-Z0-9._-]", "-");
-        String objectPath = user.institutionId() + "/" + UUID.randomUUID() + "-" + safeFileName;
-        String signedUrl = supabaseStorageService.createSignedUploadUrl(objectPath);
-        String publicUrl = supabaseStorageService.getPublicUrl(objectPath);
+        String objectPath = "media/"
+                + slugSegment(institutionFolderSegment(institutionId)) + "/"
+                + UUID.randomUUID() + "/"
+                + safeFileName;
+
+        String signedUrl = mediaStorage.createSignedUploadUrl(objectPath);
+        String publicUrl = mediaStorage.getPublicUrl(objectPath);
         return new MediaAssetUploadUrlResponseDto(signedUrl, publicUrl, objectPath);
+    }
+
+    /** Tenant partition for the storage key — the institution's short code, falling back to name then id. */
+    private String institutionFolderSegment(UUID institutionId) {
+        return institutionRepository.findById(institutionId)
+                .map(inst -> {
+                    if (inst.getCode() != null && !inst.getCode().isBlank()) return inst.getCode();
+                    if (inst.getName() != null && !inst.getName().isBlank()) return inst.getName();
+                    return institutionId.toString();
+                })
+                .orElse(institutionId.toString());
+    }
+
+    /** One path segment, safe for an S3-compatible object key. */
+    private String slugSegment(String raw) {
+        if (raw == null) return "";
+        String slug = raw.trim()
+                .replaceAll("[^A-Za-z0-9._-]+", "-")
+                .replaceAll("-{2,}", "-")
+                .replaceAll("^-+|-+$", "");
+        return slug.isBlank() ? "untitled" : slug;
     }
 
     private String generateAssetCode() {
@@ -896,8 +928,13 @@ public class MediaAssetService {
         return user.role() != null && user.role().toLowerCase().contains("admin");
     }
 
+    /** Moderator and Admin are both network-wide roles — neither is bound to one institution. */
+    private boolean isNetworkRole(JwtUserDetails user) {
+        return isAdmin(user) || (user.role() != null && "moderator".equalsIgnoreCase(user.role()));
+    }
+
     private UUID resolveTargetInstitutionId(UUID requestedInstitutionId, JwtUserDetails user) {
-        if (isAdmin(user) && requestedInstitutionId != null) {
+        if (isNetworkRole(user) && requestedInstitutionId != null) {
             return requestedInstitutionId;
         }
         // Non-admins may also add folders/files to the shared default institution.
@@ -1022,7 +1059,7 @@ public class MediaAssetService {
     private MediaAsset loadAsset(UUID assetId, JwtUserDetails user) {
         MediaAsset asset = mediaAssetRepository.findActiveById(assetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found."));
-        if (!isAdmin(user) && !asset.getInstitution().getId().equals(user.institutionId())) {
+        if (!isNetworkRole(user) && !asset.getInstitution().getId().equals(user.institutionId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Media asset not found.");
         }
         if (!isPublishedToRepository(asset)) {

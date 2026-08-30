@@ -2,9 +2,11 @@ import type { CalendarEvent } from "../../api/calendarApi";
 import { getSubmission } from "../../api/submissionApi";
 import type { SavedMediaAsset, SubmissionSummary } from "../../api/submissionApi";
 import type { User } from "../../types/auth.types";
-import { visibleStatusColor, visibleStatusLabel, visibleCalendarStatus } from "./calendarStatus";
+import { visibleStatusColor, visibleStatusLabel } from "./calendarStatus";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useToast } from "../../context/ToastContext";
+import "../../styles/calendar.css";
 
 function formatDatetime(iso: string) {
   return new Date(iso).toLocaleString("en-PH", {
@@ -28,10 +30,12 @@ export default function CalendarEventDetailModal({
   user,
   onClose,
 }: CalendarEventDetailModalProps) {
+  const toast = useToast();
   const drawerBodyRef = useRef<HTMLDivElement>(null);
   const [submissionDetail, setSubmissionDetail] = useState<SubmissionSummary | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!event) return;
@@ -47,7 +51,7 @@ export default function CalendarEventDetailModal({
     };
   }, [event, onClose]);
 
-  const isContributor = user.role !== "administrator" && user.role !== "super_administrator";
+  const isContributor = user.role !== "moderator" && user.role !== "admin";
   const isOwnInstitution = Boolean(user.institutionId && event?.institutionId && user.institutionId === event.institutionId);
   const isCrossInstitutionIsolated = isContributor && !isOwnInstitution;
 
@@ -84,15 +88,26 @@ export default function CalendarEventDetailModal({
     drawerBodyRef.current?.scrollTo({ top: 0, left: 0 });
   }, [event]);
 
+  function handleCopyCaption(text: string) {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      toast.success("Caption copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      toast.error("Unable to copy caption");
+    });
+  }
+
   if (!event) return null;
 
   const mediaAssets = submissionDetail?.mediaAssets ?? [];
   const caption = submissionDetail?.caption?.trim();
-  const displayStatus = visibleCalendarStatus(event.status, user.role, isOwnInstitution, event.mine);
   const displayColor = visibleStatusColor(event.status, user.role, isOwnInstitution, event.mine);
   const rawStatus = (event.status || "").toLowerCase();
-  const isPendingApproval = rawStatus === "pending" || rawStatus === "in_review";
-  const isAdmin = user.role === "administrator" || user.role === "super_administrator";
+  const isPendingApproval = rawStatus === "pending" || rawStatus === "in_review" || rawStatus === "needs_revision";
+  const isPublished = rawStatus === "published" || rawStatus === "published_manual";
+  const isAdmin = user.role === "moderator" || user.role === "admin";
 
   return createPortal(
     <div
@@ -103,97 +118,149 @@ export default function CalendarEventDetailModal({
       aria-label="Calendar event detail"
     >
       <aside className="cal-workflow-drawer" onClick={(e) => e.stopPropagation()}>
+        {/* Drawer Header */}
         <div className="cal-drawer-header">
-          <div>
-            <h2>{isCrossInstitutionIsolated ? "Reserved publishing slot" : (event.title ?? "Reserved publishing slot")}</h2>
-            <div className="cal-drawer-header-meta">
-              <span>{event.institutionName}</span>
-              <span>{formatDatetime(event.scheduledAt)}</span>
+          <div className="cal-drawer-header-content">
+            <div className="cal-drawer-header-tags">
+              <span className="cal-drawer-inst-tag">
+                <i className="ti ti-building" aria-hidden="true" />
+                {event.institutionName}
+                {event.institutionCode && <span className="cal-inst-code">({event.institutionCode})</span>}
+              </span>
+              <span
+                className="status-badge"
+                style={{ background: displayColor.bg, color: displayColor.text, fontSize: "11.5px", fontWeight: 700 }}
+              >
+                {visibleStatusLabel(event.status, user.role, isOwnInstitution, event.mine)}
+              </span>
+              {event.locked && (
+                <span className="cal-drawer-lock-pill" title="Slot permanently locked">
+                  <i className="ti ti-lock" aria-hidden="true" />
+                  Locked
+                </span>
+              )}
+            </div>
+
+            <h2 className="cal-drawer-title">
+              {isCrossInstitutionIsolated ? "Reserved publishing slot" : (event.title ?? "Reserved publishing slot")}
+            </h2>
+
+            <div className="cal-drawer-header-sub">
+              <i className="ti ti-clock" aria-hidden="true" />
+              <span>Scheduled for {formatDatetime(event.scheduledAt)}</span>
             </div>
           </div>
+
           <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close">
             <i className="ti ti-x" />
           </button>
         </div>
 
+        {/* Drawer Clean Scrollable Body */}
         <div className="cal-drawer-body" ref={drawerBodyRef}>
-          <section className="cal-drawer-priority">
-            <span
-              className="status-badge"
-              style={{ background: displayColor.bg, color: displayColor.text }}
-            >
-              {visibleStatusLabel(event.status, user.role, isOwnInstitution, event.mine)}
-            </span>
-            {event.locked && (
-              <span className="status-badge cal-locked-badge">
-                <i className="ti ti-lock" /> Slot Locked
-              </span>
-            )}
-            <p>{workflowHint(displayStatus)}</p>
-          </section>
+          {/* Frameless Facebook Post Content */}
+          {!isCrossInstitutionIsolated && (
+            <div className="cal-post-flow">
+              <div className="cal-post-header">
+                <div className="cal-post-header-author">
+                  <div className="cal-post-avatar">
+                    <i className="ti ti-brand-facebook" />
+                  </div>
+                  <div>
+                    <strong className="cal-post-author-name">{event.institutionName}</strong>
+                    <span className="cal-post-sub-meta">
+                      <i className="ti ti-world" /> Facebook Page Post · {formatDatetime(event.scheduledAt)}
+                    </span>
+                  </div>
+                </div>
 
-          <section className="cal-drawer-section">
-            <div className="cal-detail-row">
-              <span className="cal-detail-label">Institution</span>
-              <span className="cal-detail-value">
-                {event.institutionName}
-                {event.institutionCode && (
-                  <span className="cal-detail-code"> ({event.institutionCode})</span>
+                {caption && (
+                  <button
+                    type="button"
+                    className="cal-post-copy-btn"
+                    onClick={() => handleCopyCaption(caption)}
+                    title="Copy caption text"
+                  >
+                    <i className={copied ? "ti ti-check" : "ti ti-copy"} />
+                    <span>{copied ? "Copied" : "Copy"}</span>
+                  </button>
                 )}
-              </span>
-            </div>
-            {!isCrossInstitutionIsolated && (
-              <div className="cal-detail-row">
-                <span className="cal-detail-label">Contributor</span>
-                <span className="cal-detail-value">
-                  {event.contributorName || submissionDetail?.contributorEmail || "—"}
-                </span>
               </div>
-            )}
-            <div className="cal-detail-row">
-              <span className="cal-detail-label">Scheduled</span>
-              <span className="cal-detail-value">{formatDatetime(event.scheduledAt)}</span>
-            </div>
-            {event.publishedAt && (
-              <div className="cal-detail-row">
-                <span className="cal-detail-label">Published</span>
-                <span className="cal-detail-value">{formatDatetime(event.publishedAt)}</span>
+
+              {/* Post Caption */}
+              <div className="cal-post-caption">
+                {detailLoading ? (
+                  <div className="cal-loading-shimmer" style={{ height: "48px" }} />
+                ) : caption ? (
+                  <p className="cal-post-text">{caption}</p>
+                ) : (
+                  <p className="cal-post-empty-text">No caption attached to this submission.</p>
+                )}
               </div>
-            )}
-          </section>
 
-          {isCrossInstitutionIsolated ? (
-            <p className="cal-detail-muted" style={{ marginTop: "12px", fontSize: "12px" }}>
-              Caption, media, and contributor details from other institutions are kept private.
-            </p>
-          ) : (
-            <>
-              {isPendingApproval && isAdmin && (
-                <a className="cal-drawer-link" href="/validation/queue">
-                  <i className="ti ti-checklist" aria-hidden="true" />
-                  Open approval queue
-                  <i className="ti ti-arrow-right" aria-hidden="true" />
-                </a>
-              )}
-
-              <section className="cal-drawer-section">
-                <div className="cal-modal-section-label">Caption</div>
-                <p className="cal-detail-value cal-detail-muted" style={{ margin: 0 }}>
-                  {detailLoading
-                    ? "Loading…"
-                    : caption || "No caption attached."}
-                </p>
-              </section>
-
-              <section className="cal-drawer-section">
-                <div className="cal-modal-section-label">Media</div>
+              {/* Post Media Attachment */}
+              <div className="cal-post-media">
                 <CalendarMediaPreview
                   assets={mediaAssets}
                   loading={detailLoading}
                   error={detailError}
                 />
-              </section>
-            </>
+              </div>
+            </div>
+          )}
+
+          {/* Minimal Contributor Metadata Footer */}
+          {!isCrossInstitutionIsolated && (event.contributorName || submissionDetail?.contributorEmail) && (
+            <div className="cal-meta-strip">
+              <span><i className="ti ti-user" /> Contributor: <strong>{event.contributorName || submissionDetail?.contributorEmail}</strong></span>
+              {event.publishedAt && (
+                <span><i className="ti ti-circle-check" /> Published: <strong>{formatDatetime(event.publishedAt)}</strong></span>
+              )}
+            </div>
+          )}
+
+          {isCrossInstitutionIsolated && (
+            <div className="cal-private-callout">
+              <i className="ti ti-shield-lock" aria-hidden="true" />
+              <div>
+                <strong>Cross-Institution Privacy</strong>
+                <p>Caption, media attachments, and contributor identity are restricted to members of {event.institutionName}.</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Drawer Sticky Footer Toolbar */}
+        <div className="cal-drawer-footer">
+          {isPendingApproval && isAdmin && (
+            <a className="cal-drawer-cta-btn" href="/validation/queue">
+              <i className="ti ti-checklist" aria-hidden="true" />
+              <span>Open in Approval Queue</span>
+              <i className="ti ti-arrow-right" aria-hidden="true" />
+            </a>
+          )}
+
+          {isPublished && (
+            <div className="cal-drawer-footer-actions">
+              <button
+                type="button"
+                className="notif-btn notif-btn-ghost notif-btn-sm"
+                onClick={onClose}
+              >
+                <span>Close Details</span>
+              </button>
+            </div>
+          )}
+
+          {!isPendingApproval && !isPublished && (
+            <button
+              type="button"
+              className="notif-btn notif-btn-ghost notif-btn-sm"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={onClose}
+            >
+              <span>Close</span>
+            </button>
           )}
         </div>
       </aside>
@@ -213,18 +280,19 @@ function CalendarMediaPreview({
 }) {
   if (loading) {
     return (
-      <div className="cal-media-preview-loading" aria-label="Loading media preview">
-        <span />
-        <span />
+      <div className="cal-media-loading-skeleton" aria-label="Loading media preview">
+        <div className="dc-dot-triangle-container" style={{ padding: "30px 0" }}>
+          <div className="loader-dots" />
+        </div>
       </div>
     );
   }
 
   if (assets.length > 0) {
     return (
-      <div className={`cal-media-preview-grid${assets.length === 1 ? " is-single" : ""}`}>
+      <div className="cal-media-gallery">
         {assets.map((asset, index) => (
-          <figure className="cal-media-preview-item" key={asset.id}>
+          <figure className="cal-media-tile" key={asset.id}>
             {isVideoAsset(asset) ? (
               <video
                 src={asset.storageUrl}
@@ -240,9 +308,9 @@ function CalendarMediaPreview({
                 loading="lazy"
               />
             )}
-            <figcaption>
-              <span>{index + 1}</span>
-              {isVideoAsset(asset) ? "Video" : "Image"}
+            <figcaption className="cal-media-tile-badge">
+              <i className={isVideoAsset(asset) ? "ti ti-video" : "ti ti-photo"} />
+              <span>{assets.length > 1 ? `${index + 1} of ${assets.length}` : isVideoAsset(asset) ? "Video" : "Image"}</span>
             </figcaption>
           </figure>
         ))}
@@ -251,27 +319,14 @@ function CalendarMediaPreview({
   }
 
   return (
-    <div className="cal-detail-media-placeholder">
-      <i className={error ? "ti ti-lock" : "ti ti-photo"} aria-hidden="true" />
-      <span>
-        {error
-          ? "Media preview is unavailable for this item."
-          : "No media attached."}
-      </span>
+    <div className="cal-post-no-media">
+      <i className={error ? "ti ti-lock" : "ti ti-photo-off"} aria-hidden="true" />
+      <span>{error ? "Media preview is unavailable for this item." : "No media attachments."}</span>
     </div>
   );
 }
 
 function isVideoAsset(asset: SavedMediaAsset) {
-  const type = asset.fileType.toLowerCase();
+  const type = asset.fileType?.toLowerCase() || "";
   return ["mp4", "mov", "webm", "video"].some((value) => type.includes(value));
-}
-
-function workflowHint(status: string) {
-  const value = status.toLowerCase();
-  if (value.includes("failed")) return "Needs attention before this content can move forward.";
-  if (value === "published" || value === "published_manual") return "Published.";
-  if (value === "admin_direct_post" || value === "direct_post_scheduled") return "Administrator-managed post.";
-  if (["pending", "in_review", "needs_revision", "rejected"].includes(value)) return "Awaiting review.";
-  return "Queued in the publishing schedule.";
 }

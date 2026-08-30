@@ -83,6 +83,8 @@ class AuthServiceTest {
     void login_wrongPassword_throws401AndRecordsFailedAttempt() {
         when(userRepository.findByEmail(activeUser.getEmail())).thenReturn(Optional.of(activeUser));
         when(accountLockoutService.isLocked(userId)).thenReturn(false);
+        when(accountLockoutService.recordFailedAttempt(activeUser))
+                .thenReturn(new AccountLockoutService.FailedAttemptResult(1, false));
         when(passwordEncoder.matches(RAW_PASSWORD, HASHED_PASSWORD)).thenReturn(false);
 
         assertThatThrownBy(() -> authService.login(new LoginRequestDto(activeUser.getEmail(), RAW_PASSWORD), request))
@@ -128,8 +130,8 @@ class AuthServiceTest {
     }
 
     @Test
-    void login_administrator_returnsNullInstitutionId() {
-        activeUser.setRole(UserRole.super_administrator);
+    void login_moderator_returnsNullInstitutionId() {
+        activeUser.setRole(UserRole.admin);
         activeUser.setInstitution(null);
 
         when(userRepository.findByEmail(activeUser.getEmail())).thenReturn(Optional.of(activeUser));
@@ -140,7 +142,7 @@ class AuthServiceTest {
         LoginResponseDto result = authService.login(new LoginRequestDto(activeUser.getEmail(), RAW_PASSWORD), request);
 
         assertThat(result.institutionId()).isNull();
-        assertThat(result.role()).isEqualTo("super_administrator");
+        assertThat(result.role()).isEqualTo("admin");
     }
 
     @Test

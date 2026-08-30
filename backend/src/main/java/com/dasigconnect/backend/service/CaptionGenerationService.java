@@ -108,7 +108,7 @@ public class CaptionGenerationService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Submission not found."));
 
-        // institutionId is null for administrators — they can generate for any institution
+        // institutionId is null for moderators — they can generate for any institution
         if (institutionId != null && !submission.getInstitution().getId().equals(institutionId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Submission does not belong to your institution.");

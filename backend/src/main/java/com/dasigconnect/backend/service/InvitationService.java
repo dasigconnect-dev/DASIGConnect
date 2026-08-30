@@ -48,6 +48,15 @@ public class InvitationService {
     private final AuditLogService auditLogService;
     private final InstitutionService institutionService;
 
+    /**
+     * Administrative policy cap: maximum active admin accounts network-wide
+     * (`app.admins.max`, default 3). Enforced when an admin invitation is
+     * created and again when it is accepted, so a stale invite can never push
+     * the network past the limit.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.admins.max:3}")
+    private long maxAdmins;
+
     public InvitationService(
             InvitationTokenRepository invitationTokenRepository,
             UserRepository userRepository,
@@ -69,16 +78,17 @@ public class InvitationService {
 
     public InvitationResponseDto createInvitation(CreateInvitationRequestDto dto) {
         throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "An authenticated administrator is required to create invitations");
+                "An authenticated admin is required to create invitations");
     }
 
     public InvitationResponseDto createInvitation(CreateInvitationRequestDto dto, JwtUserDetails inviter) {
-        if (dto.assignedRole() == UserRole.super_administrator) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Super Administrator accounts cannot be invited through institution onboarding");
-        }
         String recipientEmail = dto.recipientEmail().trim().toLowerCase();
         Institution institution = resolveInvitationInstitution(dto);
         validateInviterScope(dto, inviter);
+
+        if (dto.assignedRole() == UserRole.admin) {
+            assertAdminCapAllows(recipientEmail);
+        }
 
         // Reject invitation to inactive institution
         if (institution != null && institution.getStatus() == InstitutionStatus.inactive) {
@@ -89,6 +99,7 @@ public class InvitationService {
         User invitedUser = userRepository.findByEmail(recipientEmail)
                 .map(existing -> prepareExistingPendingUser(existing, dto.assignedRole(), institution))
                 .orElseGet(() -> createPendingUser(recipientEmail, dto.assignedRole(), institution));
+        invitedUser.setInvitedByUserId(inviter != null ? inviter.userId() : null);
         userRepository.save(invitedUser);
 
         Instant now = Instant.now();
@@ -103,6 +114,7 @@ public class InvitationService {
         token.setInstitution(institution);
         token.setTokenHash(tokenHash);
         token.setExpiresAt(now.plus(Duration.ofHours(72)));
+        token.setCreatedByUserId(inviter != null ? inviter.userId() : null);
         invitationTokenRepository.save(token);
 
         boolean emailDelivered = true;
@@ -128,7 +140,7 @@ public class InvitationService {
 
     @Transactional(readOnly = true)
     public InvitationValidateResponseDto validateToken(String rawToken) {
-        String tokenHash = TokenHashUtils.sha256Hex(rawToken);
+        String tokenHash = TokenHashUtils.sha256Hex(normalizeRawToken(rawToken));
         InvitationToken token = invitationTokenRepository.findByTokenHash(tokenHash)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid invitation token"));
 
@@ -142,7 +154,7 @@ public class InvitationService {
     }
 
     public LoginResponseDto acceptInvitation(AcceptInvitationRequestDto dto) {
-        String tokenHash = TokenHashUtils.sha256Hex(dto.token());
+        String tokenHash = TokenHashUtils.sha256Hex(normalizeRawToken(dto.token()));
         InvitationToken token = invitationTokenRepository.findByTokenHash(tokenHash)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid invitation token"));
 
@@ -152,6 +164,11 @@ public class InvitationService {
                 .orElseGet(User::new);
         if (user.getAccountState() == UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Account is already active");
+        }
+        if (token.getAssignedRole() == UserRole.admin
+                && userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active) >= maxAdmins) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Admin limit reached (" + maxAdmins + "). This invitation can no longer be accepted.");
         }
         user.setEmail(token.getRecipientEmail());
         user.setRole(token.getAssignedRole());
@@ -189,6 +206,13 @@ public class InvitationService {
         }
     }
 
+    private String normalizeRawToken(String rawToken) {
+        if (rawToken == null || rawToken.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invitation token is required");
+        }
+        return rawToken.trim();
+    }
+
     private String normalizeName(String value) {
         return value == null ? null : value.trim().replaceAll("\\s+", " ");
     }
@@ -206,11 +230,12 @@ public class InvitationService {
         if (user.getAccountState() == UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "An active account already exists for this email");
         }
-        if (user.getRole() == UserRole.administrator && user.getAccountState() == UserStatus.inactive) {
+        if ((user.getRole() == UserRole.moderator || user.getRole() == UserRole.admin)
+                && user.getAccountState() == UserStatus.inactive) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "A deactivated Administrator must be reactivated by the Super Administrator");
+                    "A deactivated account must be reactivated by an admin");
         }
-        user.setSuperAdministrator(false);
+        user.setAdminOwner(false);
         user.setSuperAdminTransferRequestedBy(null);
         user.setSuperAdminTransferExpiresAt(null);
         user.setRole(role);
@@ -220,10 +245,10 @@ public class InvitationService {
     }
 
     private Institution resolveInvitationInstitution(CreateInvitationRequestDto dto) {
-        if (dto.assignedRole() == UserRole.administrator) {
+        if (dto.assignedRole() == UserRole.admin || dto.assignedRole() == UserRole.moderator) {
             if (dto.institutionId() != null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Administrator invitations must not be assigned to an institution");
+                        "Admin and moderator invitations must not be assigned to an institution");
             }
             return null;
         }
@@ -266,6 +291,7 @@ public class InvitationService {
                 original.getRecipientEmail(),
                 original.getInstitution() != null ? original.getInstitution().getId() : null,
                 original.getAssignedRole()), requester);
+        assertMayManageInvitation(original, requester, "resend");
 
         userRepository.findByEmail(original.getRecipientEmail()).ifPresent(user -> {
             if (user.getAccountState() == UserStatus.pending_email_undelivered
@@ -288,6 +314,9 @@ public class InvitationService {
         newToken.setInstitution(original.getInstitution());
         newToken.setTokenHash(tokenHash);
         newToken.setExpiresAt(now.plus(Duration.ofHours(72)));
+        newToken.setCreatedByUserId(original.getCreatedByUserId() != null
+                ? original.getCreatedByUserId()
+                : (requester != null ? requester.userId() : null));
         invitationTokenRepository.save(newToken);
 
         boolean emailDelivered = true;
@@ -316,7 +345,7 @@ public class InvitationService {
     public void resendExpiredToken(String rawToken, String email) {
         InvitationToken targetToken = null;
         if (rawToken != null && !rawToken.isBlank()) {
-            String hash = TokenHashUtils.sha256Hex(rawToken.trim());
+            String hash = TokenHashUtils.sha256Hex(normalizeRawToken(rawToken));
             targetToken = invitationTokenRepository.findByTokenHash(hash).orElse(null);
         }
 
@@ -369,18 +398,13 @@ public class InvitationService {
         InvitationToken token = invitationTokenRepository.findById(tokenId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invitation not found."));
 
-        if (!isAdministrator(requester)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only administrators and super administrators can cancel invitations.");
-        }
+        assertMayManageInvitation(token, requester, "cancel");
 
         if (token.getUsedAt() != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "This invitation has already been accepted.");
         }
 
-        Institution institution = token.getInstitution();
-        UserRole cancelledRole = token.getAssignedRole();
         invitationTokenRepository.delete(token);
         log.info("Invitation {} cancelled by {}", tokenId, requester != null ? requester.userId() : "unknown");
 
@@ -397,24 +421,86 @@ public class InvitationService {
         });
     }
 
+    /**
+     * Cancels a pending account by user id rather than token id. Works even when
+     * the invitation token has expired or was cleaned up — the pending user row
+     * is what the management screens actually show, and it must reliably move to
+     * CANCELLED. Removes every token for the address and marks the account
+     * cancelled. Admin-only.
+     */
+    public void cancelPendingUserInvitation(UUID userId, JwtUserDetails requester) {
+        if (!isAdmin(requester)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can cancel invitations.");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found."));
+
+        UserStatus state = user.getAccountState();
+        if (state != UserStatus.pending
+                && state != UserStatus.pending_email_undelivered
+                && state != UserStatus.expired) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only pending accounts can have their invitation cancelled.");
+        }
+
+        int removed = user.getEmail() != null
+                ? invitationTokenRepository.deleteByRecipientEmailIgnoreCase(user.getEmail())
+                : 0;
+        user.setAccountState(UserStatus.cancelled);
+        userRepository.save(user);
+        log.info("Pending invitation for {} cancelled by {} ({} token(s) removed)",
+                userId, requester != null ? requester.userId() : "unknown", removed);
+    }
+
     @Transactional(readOnly = true)
     public List<PendingInvitationDto> listPending(UUID institutionId, JwtUserDetails requester) {
         validateInstitutionScope(institutionId, requester);
         return invitationTokenRepository
                 .findByInstitutionIdAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(institutionId, Instant.now())
                 .stream()
+                .map(token -> PendingInvitationDto.from(token, mayManageInvitation(token, requester)))
+                .toList();
+    }
+
+    /** Non-throwing counterpart of {@link #assertMayManageInvitation} — used to flag rows in listings. */
+    private boolean mayManageInvitation(InvitationToken token, JwtUserDetails requester) {
+        if (isAdmin(requester)) {
+            return true;
+        }
+        return requester != null
+                && "moderator".equalsIgnoreCase(requester.role())
+                && token.getAssignedRole() == UserRole.contributor
+                && token.getCreatedByUserId() != null
+                && token.getCreatedByUserId().equals(requester.userId());
+    }
+
+    @Transactional(readOnly = true)
+    public List<PendingInvitationDto> listPendingAdmins(JwtUserDetails requester) {
+        if (!isAdmin(requester)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only admins can view admin invitations");
+        }
+        return invitationTokenRepository
+                .findPendingNetworkRoleInvitations(UserRole.admin, Instant.now())
+                .stream()
                 .map(PendingInvitationDto::from)
                 .toList();
     }
 
+    /**
+     * Pending contributor/moderator invitations across every institution.
+     * Admin-only — backs the network-wide User Management page.
+     */
     @Transactional(readOnly = true)
-    public List<PendingInvitationDto> listPendingAdministrators(JwtUserDetails requester) {
-        if (!isAdministrator(requester)) {
+    public List<PendingInvitationDto> listPendingNetwork(JwtUserDetails requester) {
+        if (!isAdmin(requester)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only administrators and super administrators can view administrator invitations");
+                    "Only admins can view network-wide invitations");
         }
         return invitationTokenRepository
-                .findPendingNetworkRoleInvitations(UserRole.administrator, Instant.now())
+                .findPendingRoleInvitationsAcrossInstitutions(
+                        java.util.EnumSet.of(UserRole.contributor, UserRole.moderator), Instant.now())
                 .stream()
                 .map(PendingInvitationDto::from)
                 .toList();
@@ -428,12 +514,42 @@ public class InvitationService {
                 invitationTokenRepository.countByInstitutionIdAndUsedAtIsNullAndExpiresAtAfter(institutionId, Instant.now()));
     }
 
+    /**
+     * Enforces the three-admin policy cap. Counts active admins plus distinct
+     * pending admin invitations (other than one already outstanding for this
+     * same recipient, which a resend would simply replace).
+     */
+    private void assertAdminCapAllows(String recipientEmail) {
+        long activeAdmins = userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active);
+        long pendingAdminInvites = invitationTokenRepository
+                .findPendingNetworkRoleInvitations(UserRole.admin, Instant.now())
+                .stream()
+                .map(InvitationToken::getRecipientEmail)
+                .filter(email -> !email.equalsIgnoreCase(recipientEmail))
+                .distinct()
+                .count();
+        if (activeAdmins + pendingAdminInvites >= maxAdmins) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Admin limit reached (" + maxAdmins
+                            + "). Remove or transfer an existing admin before inviting another.");
+        }
+    }
+
     private void validateInviterScope(CreateInvitationRequestDto dto, JwtUserDetails inviter) {
-        if (isAdministrator(inviter)) {
+        if (isAdmin(inviter)) {
+            return;
+        }
+        if (inviter != null && "moderator".equalsIgnoreCase(inviter.role())) {
+            if (dto.assignedRole() != UserRole.contributor) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Only admins can invite moderators or admins");
+            }
+            // Moderators are network-wide (no owning institution) — they may invite
+            // contributors to any institution, same as admins.
             return;
         }
         throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Only administrators and super administrators can send invitations");
+                "Only admins can send invitations");
     }
 
     private void invalidateOpenInvitations(String recipientEmail, Instant now) {
@@ -445,16 +561,27 @@ public class InvitationService {
                 });
     }
 
-    private boolean isAdministrator(JwtUserDetails inviter) {
-        return inviter != null && ("super_administrator".equalsIgnoreCase(inviter.role())
-                || "administrator".equalsIgnoreCase(inviter.role()));
+    private boolean isAdmin(JwtUserDetails inviter) {
+        return inviter != null && "admin".equalsIgnoreCase(inviter.role());
+    }
+
+    /**
+     * An admin may resend/cancel any invitation. A moderator may only manage a
+     * {@code contributor} invitation that they issued themselves.
+     */
+    private void assertMayManageInvitation(InvitationToken token, JwtUserDetails requester, String action) {
+        if (!mayManageInvitation(token, requester)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You can only " + action + " invitations you sent.");
+        }
     }
 
     private void validateInstitutionScope(UUID institutionId, JwtUserDetails requester) {
-        if (isAdministrator(requester)) {
+        if (isAdmin(requester) || (requester != null && "moderator".equalsIgnoreCase(requester.role()))) {
+            // Moderator and Admin are both network-wide roles — no institution comparison needed.
             return;
         }
         throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Only administrators and super administrators can view invitations");
+                "Only admins and moderators can view invitations");
     }
 }
