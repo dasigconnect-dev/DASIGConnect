@@ -51,12 +51,15 @@ export default function DashboardLayout({
   useEffect(() => {
     let active = true
     const fetchCount = () => {
+      if (document.visibilityState !== 'visible') return
       getUnreadCount()
         .then((res) => { if (active) setNotificationBadge(res.data.unreadCount) })
         .catch(() => {})
     }
     fetchCount()
-    const intervalId = window.setInterval(fetchCount, 30000)
+    // Background poll; the SSE stream delivers new notifications in real time,
+    // so this only needs to catch reads made on another device.
+    const intervalId = window.setInterval(fetchCount, 3 * 60_000)
     const onFocus = () => fetchCount()
     window.addEventListener('focus', onFocus)
     return () => {
