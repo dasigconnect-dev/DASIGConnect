@@ -62,7 +62,7 @@ class AuditLogControllerTest {
                 "approved",
                 AuditLogCategory.APPROVAL,
                 "Approvals & Direct Posts",
-                new AuditLogDto.ActorDto(UUID.randomUUID(), "Admin John", "admin@dasig.gov.ph", "MODERATOR", null, "DOST Region 7"),
+                new AuditLogDto.ActorDto(UUID.randomUUID(), "Admin John", "admin@dasig.gov.ph", "moderator", false, null, "DOST Region 7"),
                 new AuditLogDto.EntityRefDto(UUID.randomUUID(), AuditEntityType.SUBMISSION, "Submission", "Tech Expo 2026", true, "/submissions"),
                 new AuditLogDto.ClientInfoDto("192.168.1.1", "Mozilla/5.0"),
                 "Approved submission Tech Expo 2026",

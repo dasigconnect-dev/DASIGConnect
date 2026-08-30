@@ -380,12 +380,9 @@ public class AuditLogService {
         User u = actorId != null ? lookups.users().get(actorId) : null;
         if (u != null) {
             String name = resolveUserName(u);
-            String role = u.getRole() != null ? u.getRole().name() : "USER";
-            if (u.isAdminOwner()) {
-                role = "ADMIN";
-            }
+            String role = u.getRole() != null ? u.getRole().name() : "user";
             String instName = u.getInstitution() != null ? u.getInstitution().getName() : null;
-            actorDto = new AuditLogDto.ActorDto(u.getId(), name, u.getEmail(), role, null, instName);
+            actorDto = new AuditLogDto.ActorDto(u.getId(), name, u.getEmail(), role, u.isAdminOwner(), null, instName);
         }
 
         // Entity resolution

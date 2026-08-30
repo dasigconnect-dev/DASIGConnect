@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   downloadAuditLogCsv,
+  formatActorRole,
   getAuditCategories,
   getAuditLogs,
   type AuditEntityType,
@@ -531,9 +532,9 @@ export default function AuditLogScreen({ user: _user }: Props) {
                               <div className="audit-actor-text">
                                 <span className="audit-actor-name-row">
                                   <strong>{entry.actor?.name || entry.actor?.email || "System Automation"}</strong>
-                                  {entry.actor?.role === "ADMIN" && (
+                                  {entry.actor && (
                                     <span className="audit-actor-role">
-                                      • Super Admin
+                                      • {formatActorRole(entry.actor)}
                                     </span>
                                   )}
                                 </span>
