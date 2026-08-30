@@ -364,19 +364,21 @@ public class SubmissionService {
                 GuardRailResult gr = guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt());
                 if (gr.isBlocked()) {
                     String reason = dto.getOverrideReason() == null ? "" : dto.getOverrideReason().trim();
-                    if (isAdmin && !reason.isEmpty()) {
+                    if (isAdmin) {
+                        // Only an administrator can bypass a hard guard rail — with a reason, audited.
+                        if (reason.isEmpty()) {
+                            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                                    "This slot is blocked by a guard rail. Provide an override reason to bypass it.");
+                        }
                         auditLogService.record(
                                 entityManager.getReference(User.class, user.userId()),
                                 "SCHEDULE_GUARDRAIL_OVERRIDE", null, null, submissionId,
                                 Map.of("newSlot", dto.getScheduledAt().toString(),
                                        "overrideReason", reason,
                                        "violations", gr.getHardBlocks().toString()));
-                        // admin bypass — fall through
-                    } else if (isReviewer) {
-                        throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
-                                isAdmin
-                                    ? "This slot is blocked by a guard rail. Provide an override reason to bypass it."
-                                    : "This slot is blocked by a guard rail. Request an override — an administrator must approve it.");
+                    } else if (isModerator(user)) {
+                        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                "This slot is blocked by a guard rail. Only an administrator can override it.");
                     } else {
                         throw new GuardRailViolationException(gr.getHardBlocks());
                     }

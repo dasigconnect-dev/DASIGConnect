@@ -11,7 +11,6 @@ public enum NotificationEventType {
     submission_published,
     submission_published_manual,
     validation_timeout,
-    override_requested,
     override_approved,
     override_denied,
     override_slot_suggested,

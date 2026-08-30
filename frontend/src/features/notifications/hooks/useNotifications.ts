@@ -179,16 +179,6 @@ const EVENT_META: Record<string, EventDisplayMeta> = {
     badgeClass: "badge-pending",
     warning: true,
   },
-  override_requested: {
-    trigger: "OVERRIDE",
-    category: "overrides",
-    icon: "ti ti-shield-question",
-    iconClass: "icon-purple",
-    sender: "Guard rail override",
-    linkLabel: "Review Request",
-    badgeClass: "badge-pending",
-    warning: true,
-  },
   override_approved: {
     trigger: "OVERRIDE",
     category: "overrides",

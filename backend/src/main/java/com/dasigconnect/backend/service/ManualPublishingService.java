@@ -183,6 +183,10 @@ public class ManualPublishingService {
 
         GuardRailResult guardRailResult = guardRailService.validate(s.getInstitution().getId(), newSlot);
         if (guardRailResult.isBlocked()) {
+            if (!"admin".equalsIgnoreCase(admin.role())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "That time is blocked by a guard rail. Only an administrator can retry onto a blocked slot.");
+            }
             if (dto.getOverrideReason() == null || dto.getOverrideReason().isBlank()) {
                 throw new GuardRailViolationException(guardRailResult.getHardBlocks());
             }
