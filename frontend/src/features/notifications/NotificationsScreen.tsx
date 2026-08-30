@@ -88,6 +88,8 @@ function getEventStatusBadge(eventType: string) {
       return { label: "Fast-Track", icon: "ti ti-bolt", className: "pill-failed" };
     case "submission_missed_review":
       return { label: "Missed Review", icon: "ti ti-clock-x", className: "pill-failed" };
+    case "override_requested":
+      return { label: "Override Requested", icon: "ti ti-shield-question", className: "sp-pending" };
     case "override_approved":
       return { label: "Override Approved", icon: "ti ti-check", className: "sp-approved" };
     case "override_denied":
@@ -127,6 +129,7 @@ const REVIEW_FACING_EVENTS = new Set([
   "submission_pending",
   "fast_track_submission",
   "validation_timeout",
+  "override_requested",
 ]);
 
 function getNotificationTargetRoute(n: Notification, userRole: User["role"]): string {

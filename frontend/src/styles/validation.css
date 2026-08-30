@@ -2736,3 +2736,52 @@
   .val-libpick-backdrop,
   .val-libpick { animation: none; }
 }
+
+/* ── Guard-rail override request (admin decision panel + moderator notice) ── */
+.val-override-panel {
+  border: 1.5px solid #c4b5fd;
+  background: #f5f3ff;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin: 10px 0;
+}
+:root[data-theme="dark"] .val-override-panel,
+:root:not([data-theme="light"]) .val-override-panel {
+  border-color: #6d28d9;
+  background: rgba(109, 40, 217, 0.15);
+}
+.val-override-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6d28d9;
+  font-size: 13.5px;
+}
+:root[data-theme="dark"] .val-override-head,
+:root:not([data-theme="light"]) .val-override-head { color: #c4b5fd; }
+.val-override-meta { margin: 8px 0 4px; font-size: 13px; }
+.val-override-reason {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--val-text-2, #475569);
+}
+.val-override-actions { display: flex; gap: 8px; margin-bottom: 10px; }
+.val-override-suggest {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  border-top: 1px solid #ddd6fe;
+  padding-top: 10px;
+}
+:root[data-theme="dark"] .val-override-suggest,
+:root:not([data-theme="light"]) .val-override-suggest { border-top-color: #5b21b6; }
+.val-override-suggest input {
+  padding: 6px 8px;
+  border: 1px solid var(--val-border, #cbd5e1);
+  border-radius: 7px;
+  font-size: 12.5px;
+  background: var(--val-surface, #fff);
+  color: inherit;
+}

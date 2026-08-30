@@ -38,6 +38,14 @@ import {
 } from "./hooks/useValidationQueue";
 import { useResolutionFailures } from "../../hooks/useResolutionFailures";
 import type { FailedPublication } from "../../api/resolutionApi";
+import {
+  approveOverrideRequest,
+  createOverrideRequest,
+  denyOverrideRequest,
+  getOverrideRequestForSubmission,
+  suggestOverrideSlot,
+  type OverrideRequest,
+} from "../../api/overrideApi";
 import ResolutionRetryModal from "./ResolutionRetryModal";
 import ManualPublishWorkflowPanel from "./ManualPublishWorkflowPanel";
 import "../../styles/dasig-loader.css";
@@ -182,6 +190,10 @@ export default function ValidationQueueScreen({
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [editTab, setEditTab] = useState<"details" | "media" | "schedule">("details");
   const [overrideReason, setOverrideReason] = useState("");
+  const isAdmin = user.role === "admin";
+  const [pendingOverride, setPendingOverride] = useState<OverrideRequest | null>(null);
+  const [overrideBusy, setOverrideBusy] = useState(false);
+  const [suggestValue, setSuggestValue] = useState("");
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const editCaptionRef = useRef<HTMLTextAreaElement | null>(null);
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -407,10 +419,18 @@ export default function ValidationQueueScreen({
     setEditMode(false);
     setEditedThisSession(false);
 
+    setPendingOverride(null);
+
     try {
       const detail = await getSubmission(summary.id);
       if (requestId !== openRequestRef.current) return;
       setSelected(detail.data);
+
+      getOverrideRequestForSubmission(summary.id)
+        .then((res) => {
+          if (requestId === openRequestRef.current) setPendingOverride(res.data[0] ?? null);
+        })
+        .catch(() => {});
 
       // Restore lock UI state (e.g. after a page refresh) without acquiring
       // anything — a read-only check against the backend's current lock.
@@ -621,8 +641,62 @@ export default function ValidationQueueScreen({
   }, [editMode, scheduleChanged, editScheduledAtIso, selected]);
 
   const hardBlocked = (guardRails?.hardBlocks?.length ?? 0) > 0;
+  // Admins bypass a hard block inline with a reason; moderators cannot save one
+  // and must raise an override request instead.
   const canSaveEdit =
-    !editSaving && (!hardBlocked || overrideReason.trim().length >= 10);
+    !editSaving &&
+    (!hardBlocked || (isAdmin && overrideReason.trim().length >= 10));
+
+  async function handleRequestOverride() {
+    if (!selected || !editScheduledAtIso || overrideReason.trim().length < 10) return;
+    setOverrideBusy(true);
+    try {
+      const res = await createOverrideRequest({
+        submissionId: selected.id,
+        requestedSlot: editScheduledAtIso,
+        reason: overrideReason.trim(),
+      });
+      setPendingOverride(res.data);
+      setOverrideReason("");
+      setEditMode(false);
+      setGuardRails(null);
+      toast.success("Override request sent — an administrator will decide.");
+    } catch (err: unknown) {
+      toast.error(readApiError(err, "Could not send the override request."));
+    } finally {
+      setOverrideBusy(false);
+    }
+  }
+
+  async function handleOverrideDecision(action: "approve" | "deny" | "suggest", suggestedSlot?: string) {
+    if (!pendingOverride) return;
+    setOverrideBusy(true);
+    try {
+      if (action === "approve") await approveOverrideRequest(pendingOverride.id);
+      else if (action === "deny")
+        await denyOverrideRequest(pendingOverride.id, overrideReason.trim() || undefined);
+      else if (action === "suggest" && suggestedSlot)
+        await suggestOverrideSlot(pendingOverride.id, suggestedSlot);
+      toast.success(
+        action === "approve"
+          ? "Override approved — the submission is on the requested slot."
+          : action === "deny"
+            ? "Override denied."
+            : "Alternative slot sent to the moderator.",
+      );
+      setPendingOverride(null);
+      setOverrideReason("");
+      if (selected) {
+        const d = await getSubmission(selected.id);
+        setSelected(d.data);
+      }
+      refresh();
+    } catch (err: unknown) {
+      toast.error(readApiError(err, "Could not record the decision."));
+    } finally {
+      setOverrideBusy(false);
+    }
+  }
 
   function updateMedia(key: string, patch: Partial<EditMediaItem>) {
     setEditForm((f) => ({
@@ -738,7 +812,8 @@ export default function ValidationQueueScreen({
         eventTitle: editForm.eventTitle,
         eventDate: editForm.eventDate || undefined,
         caption: editForm.caption,
-        description: hardBlocked && overrideReason.trim() ? overrideReason.trim() : undefined,
+        overrideReason:
+          isAdmin && hardBlocked && overrideReason.trim() ? overrideReason.trim() : undefined,
         tags: editForm.tags
           ? editForm.tags.split(",").map((t) => t.trim()).filter(Boolean)
           : undefined,
@@ -1253,6 +1328,67 @@ export default function ValidationQueueScreen({
               {lockNotice && (
                 <NoticeBar tone="warn" icon="ti-lock" text={lockNotice} />
               )}
+              {pendingOverride && isAdmin && (
+                <div className="val-override-panel">
+                  <div className="val-override-head">
+                    <i className="ti ti-shield-question" aria-hidden />
+                    <strong>Guard rail override requested</strong>
+                  </div>
+                  <p className="val-override-meta">
+                    {pendingOverride.requestedByName ?? "A moderator"} wants to move this post to{" "}
+                    <strong>{formatDateTime(pendingOverride.requestedSlot)}</strong> — blocked by{" "}
+                    {pendingOverride.violatedRule}.
+                  </p>
+                  <p className="val-override-reason">“{pendingOverride.overrideReason}”</p>
+                  <div className="val-override-actions">
+                    <button
+                      type="button"
+                      className="val-btn val-btn-primary"
+                      disabled={overrideBusy}
+                      onClick={() => void handleOverrideDecision("approve")}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      className="val-btn val-btn-danger-outline"
+                      disabled={overrideBusy}
+                      onClick={() => void handleOverrideDecision("deny")}
+                    >
+                      Deny
+                    </button>
+                  </div>
+                  <div className="val-override-suggest">
+                    <input
+                      type="datetime-local"
+                      value={suggestValue}
+                      onChange={(e) => setSuggestValue(e.target.value)}
+                      aria-label="Suggested alternative slot"
+                    />
+                    <button
+                      type="button"
+                      className="val-btn val-btn-secondary"
+                      disabled={overrideBusy || !suggestValue}
+                      onClick={() => {
+                        void handleOverrideDecision(
+                          "suggest",
+                          new Date(suggestValue).toISOString(),
+                        );
+                        setSuggestValue("");
+                      }}
+                    >
+                      Suggest this slot instead
+                    </button>
+                  </div>
+                </div>
+              )}
+              {pendingOverride && !isAdmin && (
+                <NoticeBar
+                  tone="warn"
+                  icon="ti-shield-question"
+                  text="Your override request for this slot is awaiting an administrator's decision."
+                />
+              )}
               {activeLock && (
                 <NoticeBar
                   tone="info"
@@ -1496,15 +1632,37 @@ export default function ValidationQueueScreen({
                             </div>
                           )}
 
-                          {hardBlocked && (
+                          {hardBlocked && !pendingOverride && (
                             <label className="val-edit-field">
-                              <span>Override reason (required — a guard rail is blocked)</span>
+                              <span>
+                                {isAdmin
+                                  ? "Override reason (required — an administrator can bypass a guard rail)"
+                                  : "Reason for the override request (an administrator must approve it)"}
+                              </span>
                               <textarea
                                 rows={3}
                                 value={overrideReason}
                                 onChange={(e) => setOverrideReason(e.target.value)}
+                                placeholder="Explain why this slot is needed…"
                               />
+                              {!isAdmin && (
+                                <button
+                                  type="button"
+                                  className="val-btn val-btn-secondary"
+                                  style={{ marginTop: 8 }}
+                                  disabled={overrideBusy || overrideReason.trim().length < 10}
+                                  onClick={() => void handleRequestOverride()}
+                                >
+                                  {overrideBusy ? "Sending…" : "Request Override"}
+                                </button>
+                              )}
                             </label>
+                          )}
+                          {hardBlocked && pendingOverride && (
+                            <div className="val-edit-gr-warn" style={{ marginTop: 8 }}>
+                              An override request for this submission is awaiting an
+                              administrator's decision. The slot can't change until it's resolved.
+                            </div>
                           )}
                         </div>
                       )}

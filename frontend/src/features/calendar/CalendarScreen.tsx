@@ -4,6 +4,7 @@ import type { DatesSetArg } from "@fullcalendar/core";
 import { createPortal } from "react-dom";
 import type { CalendarEvent } from "../../api/calendarApi";
 import { rescheduleSubmission } from "../../api/calendarApi";
+import { createOverrideRequest } from "../../api/overrideApi";
 import type { User } from "../../types/auth.types";
 import { useCalendarEvents } from "../../hooks/useCalendarEvents";
 import { useToast } from "../../context/ToastContext";
@@ -116,11 +117,26 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
 
   async function handleRescheduleConfirm(reason: string) {
     if (!pendingReschedule) return;
-    await rescheduleSubmission(
-      pendingReschedule.event.id,
-      pendingReschedule.newStart.toISOString(),
-      reason,
-    );
+    const submissionId = pendingReschedule.event.id;
+    const slotIso = pendingReschedule.newStart.toISOString();
+    try {
+      await rescheduleSubmission(submissionId, slotIso, reason);
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      // A moderator cannot bypass a guard rail — the backend returns 403 and the
+      // slot needs an admin-approved override request instead.
+      if (user.role === "moderator" && (status === 403 || status === 422)) {
+        await createOverrideRequest({ submissionId, requestedSlot: slotIso, reason });
+        toast.info("This slot is blocked — an override request was sent to an administrator.");
+        setPendingReschedule(null);
+        pendingReschedule.revert();
+        setTimeout(() => {
+          document.querySelectorAll(".fc-event-mirror").forEach((el) => el.remove());
+        }, 0);
+        return;
+      }
+      throw err;
+    }
     setPendingReschedule(null);
     setTimeout(() => {
       document.querySelectorAll(".fc-event-mirror").forEach((el) => el.remove());
