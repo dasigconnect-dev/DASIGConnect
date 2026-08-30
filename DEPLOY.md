@@ -12,40 +12,61 @@ Deploy the `dev` branch.
 ## 1. Backend — Render
 
 ### Service
-- Blueprint: `backend/render.yaml`, root directory `backend/`, Docker runtime.
-- **Plan: Starter or higher.** The free plan sleeps when idle, which stops the
-  every-minute publishing scheduler and the token/timeout jobs.
-- Health check path: `/health` (already set in the blueprint; open, no auth).
-- Custom domain `api-dev.dasigconnect.com` → add in Render dashboard → Settings → Custom Domains.
+- Blueprint: `backend/render.yaml` — `rootDir: backend`, Docker runtime, `plan: free`.
+- Health check path: `/health` (open, no auth).
+- Custom domain `api-dev.dasigconnect.com` → Render dashboard → Settings → Custom Domains.
+
+### Free-tier reality
+- The service **spins down after ~15 min idle**. While asleep, no `@Scheduled`
+  job runs — a Facebook post scheduled for 2:00 PM does not publish until the
+  service is awake; `StaleSubmissionDetectorJob` then publishes the missed
+  window on its next run. Net effect: posts are **late (~10–15 min)**, not lost.
+- **Keep it warm:** point an uptime monitor (UptimeRobot / cron-job.org, free)
+  at `https://api-dev.dasigconnect.com/health` every ~10 min. `.github/workflows/keepalive.yml`
+  is a backup pinger — enable Actions on the repo for it to run.
+- 512 MB RAM → `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=70 -XX:+UseSerialGC` (in the blueprint).
+- 750 instance-hours/month. A warm service uses ~730 h, so this must be your
+  **only** Render service — a second free service tips you over and both suspend.
+- Cold start after idle is 30–60 s. Ping it before any scheduled demo.
 
 ### Environment variables (Render dashboard → Environment)
-Everything marked `sync: false` in `render.yaml` must be set here. Non-secret
-values (`APP_FRONTEND_BASE_URL`, `FACEBOOK_OAUTH_REDIRECT_URI`, `FACEBOOK_API_VERSION`,
-`MAIL_FROM_NAME`, `R2_BUCKET`, `APP_GUARDRAILS_ENFORCED`) are already in the file.
+Set everything marked `sync: false` in `render.yaml`. Start with the minimum and
+add Facebook / AI only when you actually demo those features.
+
+**Set now:**
 
 | Key | Value |
 |---|---|
 | `DASIG_DATABASE_URL` | `jdbc:postgresql://<supabase-pooler-host>:5432/postgres` |
 | `DASIG_DATABASE_USER` | `postgres.<project-ref>` |
 | `DASIG_DATABASE_PASSWORD` | Supabase DB password |
-| `JWT_SECRET` | 64-hex random (`openssl rand -hex 64`) — **not** the local one |
+| `JWT_SECRET` | fresh 64-hex (`openssl rand -hex 64`) — **not** the local/leaked one |
 | `RESEND_API_KEY` | `re_…` |
-| `MAIL_FROM` | `no-reply@dasigconnect.com` (domain verified in Resend) |
+| `MAIL_FROM` | address on a Resend-verified domain |
 | `MAIL_REPLY_TO` | a monitored inbox |
-| `FACEBOOK_PAGE_ACCESS_TOKEN` | long-lived page token |
-| `FACEBOOK_PAGE_ID` / `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET` | from the Meta app |
-| `ANTHROPIC_API_KEY` / `VOYAGE_API_KEY` | provider keys |
 | `R2_ACCOUNT_ID` / `R2_ENDPOINT` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_PUBLIC_BASE_URL` | from Cloudflare R2 |
-| `DASIG_SUPABASE_SERVICE_ROLE_KEY` | optional; leave unset unless Claude Vision 401s on images |
+
+**Leave unset until needed:**
+
+| Key | Why wait |
+|---|---|
+| `FACEBOOK_PAGE_ACCESS_TOKEN` / `FACEBOOK_PAGE_ID` / `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET` | Publishing self-disables while blank. When you do set it, use a **test** Facebook page — a dev submission that reaches `published` posts publicly. |
+| `FACEBOOK_API_VERSION` (`v25.0`) / `FACEBOOK_OAUTH_REDIRECT_URI` | Only meaningful once the tokens above are set. |
+| `ANTHROPIC_API_KEY` / `VOYAGE_API_KEY` | **Billed per call.** AI caption/classification/suggestion degrade gracefully while blank, and `EmbeddingReconciliationJob` skips itself. Set a spend limit in the Anthropic console before adding the key. |
+| `DASIG_SUPABASE_SERVICE_ROLE_KEY` | Only if Claude Vision 401s fetching Supabase-hosted images. |
 
 ### One-time external config
-- **Meta app → Facebook Login → Settings → Valid OAuth Redirect URIs:** add
-  `https://api-dev.dasigconnect.com/api/v1/facebook/oauth-callback`.
-- **Meta app → App Domains / Site URL:** add `dasigconnect.com`.
-- **Resend → Domains:** `dasigconnect.com` verified (SPF + DKIM DNS records).
-- **Supabase:** confirm `flyway_schema_history` max version matches the highest
-  `backend/src/main/resources/db/migration/V*.sql` before first deploy. The app
-  runs `flyway.repair()` then `migrate()` on boot; a checksum mismatch fails startup.
+- **Resend → Domains:** verify your sending domain (SPF + DKIM DNS records) —
+  needed for any email to send.
+- **Supabase:** before the first deploy, run
+  `SELECT max(version) FROM flyway_schema_history;` and confirm it matches the
+  highest `backend/src/main/resources/db/migration/V*.sql`. The app runs
+  `flyway.repair()` then `migrate()` on boot; a mismatch fails startup.
+- **Backup:** `pg_dump` the Supabase DB before the first deploy and before any
+  risky migration — free Supabase has no point-in-time recovery.
+- **Only when enabling Facebook:** Meta app → Facebook Login → Valid OAuth
+  Redirect URIs → add `https://api-dev.dasigconnect.com/api/v1/facebook/oauth-callback`;
+  App Domains → add `dasigconnect.com`.
 
 ---
 

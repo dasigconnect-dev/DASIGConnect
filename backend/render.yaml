@@ -1,20 +1,30 @@
 # Render Blueprint for the DASIGConnect backend (dev environment).
 #
-# Custom domain (api-dev.dasigconnect.com) and the plan are configured in the
-# Render dashboard. Use at least the Starter plan — the free plan spins the
-# service down when idle, which stops the every-minute publishing scheduler.
+# Custom domain (api-dev.dasigconnect.com) is configured in the Render dashboard.
 #
-# `sync: false` = the value is a secret / environment-specific; set it in the
-# Render dashboard, not in this file. Values written inline are non-secret.
+# plan: free — the service spins down after ~15 min idle. While asleep the
+# scheduled jobs do not run, so a scheduled Facebook post publishes late (the
+# StaleSubmissionDetectorJob recovers it once the service is awake again). An
+# external uptime monitor hitting /health every ~10 min keeps it warm; a backup
+# pinger lives in .github/workflows/keepalive.yml.
+#
+# `sync: false` = secret / environment-specific; set it in the Render dashboard.
+# Inline values are non-secret. Facebook and AI keys are intentionally omitted
+# here — leave them unset until you are ready to use (and pay for) those
+# features; the code paths self-disable when the keys are blank.
 
 services:
   - type: web
     name: dasigconnect-backend
     runtime: docker
+    plan: free
+    rootDir: backend
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health
     envVars:
+      - key: JAVA_TOOL_OPTIONS
+        value: -XX:MaxRAMPercentage=70 -XX:+UseSerialGC
       # ── Database (Supabase Session Pooler) ──────────────────────────────
       - key: DASIG_DATABASE_URL
         sync: false
@@ -46,25 +56,17 @@ services:
       - key: MAIL_REPLY_TO
         sync: false
 
-      # ── Facebook Graph API ─────────────────────────────────────────────
-      - key: FACEBOOK_PAGE_ACCESS_TOKEN
-        sync: false
-      - key: FACEBOOK_PAGE_ID
-        sync: false
-      - key: FACEBOOK_APP_ID
-        sync: false
-      - key: FACEBOOK_APP_SECRET
-        sync: false
-      - key: FACEBOOK_API_VERSION
-        value: v25.0
-      - key: FACEBOOK_OAUTH_REDIRECT_URI
-        value: https://api-dev.dasigconnect.com/api/v1/facebook/oauth-callback
+      # ── Facebook Graph API — add in the dashboard only when demoing publish.
+      #    Point FACEBOOK_PAGE_ACCESS_TOKEN at a TEST page, not the live DASIG
+      #    page. Whitelist FACEBOOK_OAUTH_REDIRECT_URI in the Meta app first.
+      #    FACEBOOK_PAGE_ACCESS_TOKEN / FACEBOOK_PAGE_ID / FACEBOOK_APP_ID /
+      #    FACEBOOK_APP_SECRET / FACEBOOK_API_VERSION=v25.0 /
+      #    FACEBOOK_OAUTH_REDIRECT_URI=https://api-dev.dasigconnect.com/api/v1/facebook/oauth-callback
 
-      # ── External AI APIs ───────────────────────────────────────────────
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: VOYAGE_API_KEY
-        sync: false
+      # ── External AI APIs — billed per call. Add in the dashboard only when
+      #    demoing AI features, after setting a spend limit in the provider
+      #    console. Blank => AI caption/classification/suggestion self-disable.
+      #    ANTHROPIC_API_KEY / VOYAGE_API_KEY
 
       # ── Cloudflare R2 object storage ───────────────────────────────────
       - key: R2_ACCOUNT_ID
