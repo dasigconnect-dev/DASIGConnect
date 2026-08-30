@@ -23,6 +23,10 @@ interface SubmissionReadOnlyBodyProps {
   facebookPreview: FacebookPreviewData;
   activeMediaIndex: number;
   onMediaIndexChange: (index: number) => void;
+  /** Shown when the submission was rejected. */
+  rejectionReason?: string | null;
+  /** Shown when the submission needs revision. */
+  revisionNotes?: string | null;
 }
 
 /**
@@ -39,8 +43,14 @@ export default function SubmissionReadOnlyBody({
   facebookPreview,
   activeMediaIndex,
   onMediaIndexChange,
+  rejectionReason,
+  revisionNotes,
 }: SubmissionReadOnlyBodyProps) {
   const [tab, setTab] = useState<"details" | "preview">("details");
+
+  const isRejected = form.status === "rejected";
+  const needsRevision = form.status === "needs_revision";
+  const feedbackText = isRejected ? rejectionReason : needsRevision ? revisionNotes : null;
 
   const schedule = form.fastTrack
     ? "Live event — no scheduled slot"
@@ -86,6 +96,23 @@ export default function SubmissionReadOnlyBody({
         </section>
       ) : (
         <>
+      {(isRejected || needsRevision) && (
+        <section className={`sub-ro-card sub-ro-feedback${isRejected ? " is-rejected" : " is-revision"}`}>
+          <h2 className="sub-ro-card-title">
+            <i className={isRejected ? "ti ti-circle-x" : "ti ti-pencil"} aria-hidden />
+            {isRejected ? "Reason for rejection" : "Requested changes"}
+          </h2>
+          {feedbackText && feedbackText.trim() ? (
+            <p className="sub-ro-caption" style={{ whiteSpace: "pre-wrap" }}>{feedbackText}</p>
+          ) : (
+            <p className="sub-ro-value is-empty">
+              {isRejected
+                ? "No reason was recorded. Check your email for details."
+                : "No notes were recorded. Check your email for details."}
+            </p>
+          )}
+        </section>
+      )}
       <section className="sub-ro-card">
         <h2 className="sub-ro-card-title">Post Details</h2>
         <dl className="sub-ro-dl">

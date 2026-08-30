@@ -206,6 +206,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [withdrawing, setWithdrawing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [hydratingId, setHydratingId] = useState<string | null>(null);
+  // Reviewer feedback for the currently-loaded submission (rejected / needs_revision).
+  const [loadedDetail, setLoadedDetail] = useState<
+    { id: string; rejectionReason?: string | null; validatorRemarks?: string | null } | null
+  >(null);
   const [refreshingQueue, setRefreshingQueue] = useState(false);
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
@@ -1172,6 +1176,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         removedAssetIds: [],
       };
       setForm(nextForm);
+      setLoadedDetail({
+        id: submission.id,
+        rejectionReason: submission.rejectionReason,
+        validatorRemarks: submission.validatorRemarks,
+      });
       setPickerItems((submission.mediaAssets ?? []).map(savedAssetToPickerItem));
       setCaptionMediaKey(null);
       setHashtagInput("");
@@ -2191,6 +2200,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               facebookPreview={facebookPreview}
               activeMediaIndex={activeMediaIndex}
               onMediaIndexChange={setActiveMediaIndex}
+              rejectionReason={loadedDetail?.id === form.id ? loadedDetail.rejectionReason : null}
+              revisionNotes={loadedDetail?.id === form.id ? loadedDetail.validatorRemarks : null}
             />
           ) : (
             <>

@@ -109,7 +109,31 @@ function getEventStatusBadge(eventType: string) {
   }
 }
 
+// Notifications about the recipient's own submission — always open it in My
+// Submissions, even for a moderator/admin (they may have authored it as a
+// contributor). A rejected/needs-revision post is not in the review queue.
+const OWNER_FACING_EVENTS = new Set([
+  "submission_rejected",
+  "submission_needs_revision",
+  "submission_approved",
+  "submission_rescheduled",
+  "submission_published",
+  "submission_published_manual",
+  "override_denied",
+  "override_slot_suggested",
+]);
+// Notifications that call for a reviewer's action.
+const REVIEW_FACING_EVENTS = new Set([
+  "submission_pending",
+  "fast_track_submission",
+  "validation_timeout",
+]);
+
 function getNotificationTargetRoute(n: Notification, userRole: User["role"]): string {
+  const canReview = userRole === "moderator" || userRole === "admin";
+  const isAdmin = userRole === "admin";
+  const eventType = n.eventType;
+
   if (n.link) {
     if (n.link.startsWith("http://") || n.link.startsWith("https://")) {
       return n.link;
@@ -117,18 +141,17 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
     if (n.link !== "/dashboard" && n.link !== "/notifications" && n.link !== "/") {
       if (n.link.startsWith("/submissions/")) {
         const subId = n.link.replace("/submissions/", "");
-        if (userRole === "moderator" || userRole === "admin") {
-          return `/validation/queue?submissionId=${subId}`;
+        const ownerView = `/submissions?submissionId=${subId}`;
+        if (OWNER_FACING_EVENTS.has(eventType)) return ownerView;
+        if (REVIEW_FACING_EVENTS.has(eventType)) {
+          return canReview ? `/validation/queue?submissionId=${subId}` : ownerView;
         }
-        return `/submissions?id=${subId}`;
+        // dual-audience (e.g. publish failed) — reviewers get the ops view
+        return canReview ? `/validation/queue?submissionId=${subId}` : ownerView;
       }
       return n.link;
     }
   }
-
-  const eventType = n.eventType;
-  const canReview = userRole === "moderator" || userRole === "admin";
-  const isAdmin = userRole === "admin";
 
   if (
     eventType === "submission_pending" ||
