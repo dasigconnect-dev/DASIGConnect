@@ -1,11 +1,12 @@
-import type { InstitutionPostsDto } from "../../../api/analyticsApi";
+import type { AnalyticsExportMetric, InstitutionPostsDto } from "../../../api/analyticsApi";
 import { BLUE_GRADIENT_PALETTE, formatNumber } from "../analyticsUtils";
 
 interface Props {
   rows: InstitutionPostsDto[];
+  onOpenReport?: (metric: AnalyticsExportMetric) => void;
 }
 
-export default function PostsByInstitutionChart({ rows }: Props) {
+export default function PostsByInstitutionChart({ rows, onOpenReport }: Props) {
   const sorted = [...rows].sort((a, b) => b.totalPublished - a.totalPublished);
   const max = Math.max(...sorted.map((r) => r.totalPublished), 1);
 
@@ -16,6 +17,16 @@ export default function PostsByInstitutionChart({ rows }: Props) {
           <h3 className="analytics-chart-title">Posts by Institution</h3>
           <p className="analytics-chart-subtitle">Workflow volume ranking across network members</p>
         </div>
+        {onOpenReport && (
+          <button
+            type="button"
+            className="analytics-text-btn"
+            onClick={() => onOpenReport("posts-by-institution")}
+          >
+            <span>View Report</span>
+            <i className="ti ti-arrow-right" />
+          </button>
+        )}
       </div>
 
       {sorted.length === 0 ? (
