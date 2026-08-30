@@ -13,6 +13,7 @@ import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import AuditDetailModal from "./AuditDetailModal";
+import { SkeletonRows } from "../user-management/components/LoadingPrimitives";
 import "../../styles/audit-log.css";
 import "../../styles/dasig-loader.css";
 
@@ -427,37 +428,9 @@ export default function AuditLogScreen({ user: _user }: Props) {
         </div>
 
         {/* ── Main Data Table Card ── */}
+        {/* ── Main Data Table Card ── */}
         <div className="card-wrap audit-table-card">
-          {loading && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                minHeight: "360px",
-                width: "100%",
-                padding: "64px 24px",
-              }}
-              role="status"
-              aria-label="Loading Audit Log"
-            >
-              <div className="dc-dot-triangle-container">
-                <div className="dc-dot-triangle-label">
-                  <span>Loading Audit Log</span>
-                  <span className="dc-dot-triangle-label-dots">
-                    <span className="dc-dot-triangle-dot-char">.</span>
-                    <span className="dc-dot-triangle-dot-char">.</span>
-                    <span className="dc-dot-triangle-dot-char">.</span>
-                  </span>
-                </div>
-                <div className="loader-stage" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div className="loader-dots" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {!loading && loadError && logs.length === 0 && (
+          {!loading && loadError && logs.length === 0 ? (
             <div className="audit-state-box">
               <i className="ti ti-alert-triangle" style={{ fontSize: 32, color: "#ef4444", marginBottom: 8 }} />
               <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0C1D3D", margin: "0 0 4px" }}>
@@ -472,9 +445,7 @@ export default function AuditLogScreen({ user: _user }: Props) {
                 <i className="ti ti-refresh" /> Retry
               </button>
             </div>
-          )}
-
-          {!loading && !loadError && logs.length === 0 && (
+          ) : !loading && logs.length === 0 ? (
             <div className="audit-state-box">
               <i className="ti ti-search-off" style={{ fontSize: 32, color: "#94a3b8", marginBottom: 8 }} />
               <h3 style={{ fontSize: 15, fontWeight: 700, color: "#0C1D3D", margin: "0 0 4px" }}>
@@ -493,128 +464,114 @@ export default function AuditLogScreen({ user: _user }: Props) {
                 </button>
               )}
             </div>
-          )}
-
-          {!loading && !loadError && logs.length > 0 && (
+          ) : (
             <>
               <div className="audit-table-wrap">
                 <table className="data-table" id="audit-main-table">
                   <thead>
                     <tr>
-                      <th style={{ width: "22%" }}>ACTOR</th>
+                      <th style={{ width: "24%" }}>ACTOR</th>
                       <th style={{ width: "20%" }}>TIMESTAMP (PHT)</th>
                       <th style={{ width: "18%" }}>ACTION / CATEGORY</th>
                       <th style={{ width: "18%" }}>AFFECTED ENTITY</th>
-                      <th style={{ width: "16%" }}>SUMMARY</th>
-                      <th style={{ width: "6%", textAlign: "right" }}>DETAIL</th>
+                      <th style={{ width: "20%" }}>SUMMARY</th>
                     </tr>
                   </thead>
-                  <tbody className="act-table-animate">
-                    {logs.map((entry) => {
-                      const relative = timeAgo(entry.timestamp);
-                      const formatted = formatDate(entry.timestamp);
-                      const isEntityActive = entry.entity.exists;
-                      const badgeClass = categoryBadgeClass(entry.category);
+                  <tbody className={loading ? undefined : "act-table-animate"}>
+                    {loading ? (
+                      <SkeletonRows rows={6} columns={5} />
+                    ) : (
+                      logs.map((entry) => {
+                        const relative = timeAgo(entry.timestamp);
+                        const formatted = formatDate(entry.timestamp);
+                        const isEntityActive = entry.entity.exists;
+                        const badgeClass = categoryBadgeClass(entry.category);
 
-                      return (
-                        <tr
-                          key={entry.id}
-                          onClick={() => setSelectedEntry(entry)}
-                          style={{ cursor: "pointer" }}
-                        >
-                          {/* Actor */}
-                          <td>
-                            <div className="audit-cell-actor">
-                              <div className="audit-avatar-circle">
-                                {entry.actor?.name ? entry.actor.name.charAt(0).toUpperCase() : "S"}
-                              </div>
-                              <div className="audit-actor-text">
-                                <span className="audit-actor-name-row">
-                                  <strong>{entry.actor?.name || entry.actor?.email || "System Automation"}</strong>
-                                  {entry.actor?.role === "ADMIN" && (
-                                    <span className="audit-actor-role">
-                                      • Super Admin
-                                    </span>
+                        return (
+                          <tr
+                            key={entry.id}
+                            className="audit-clickable-row"
+                            onClick={() => setSelectedEntry(entry)}
+                            title="Click to view full event details and diffs"
+                          >
+                            {/* Actor */}
+                            <td>
+                              <div className="audit-cell-actor">
+                                <div className="audit-avatar-circle">
+                                  {entry.actor?.name ? entry.actor.name.charAt(0).toUpperCase() : "S"}
+                                </div>
+                                <div className="audit-actor-text">
+                                  <span className="audit-actor-name-row">
+                                    <strong>{entry.actor?.name || entry.actor?.email || "System Automation"}</strong>
+                                    {entry.actor?.role === "ADMIN" && (
+                                      <span className="audit-actor-role">
+                                        • Super Admin
+                                      </span>
+                                    )}
+                                  </span>
+                                  {entry.actor?.name && entry.actor?.email && (
+                                    <span className="audit-actor-sub">{entry.actor.email}</span>
                                   )}
-                                </span>
-                                {entry.actor?.name && entry.actor?.email && (
-                                  <span className="audit-actor-sub">{entry.actor.email}</span>
-                                )}
+                                </div>
                               </div>
-                            </div>
-                          </td>
+                            </td>
 
-                          {/* Timestamp */}
-                          <td>
-                            <div className="audit-cell-timestamp">
-                              <span className="act-title" style={{ fontSize: "12.5px" }}>{formatted}</span>
-                              {relative && <span className="act-category">{relative}</span>}
-                            </div>
-                          </td>
+                            {/* Timestamp */}
+                            <td>
+                              <div className="audit-cell-timestamp">
+                                <span className="act-title" style={{ fontSize: "12.5px" }}>{formatted}</span>
+                                {relative && <span className="act-category">{relative}</span>}
+                              </div>
+                            </td>
 
-                          {/* Category & Action */}
-                          <td>
-                            <div className="audit-cell-cat">
-                              <span className={`status-pill ${badgeClass}`}>
-                                {entry.categoryLabel}
-                              </span>
-                              <span className="audit-action-label">
-                                {entry.actionLabel}
-                              </span>
-                            </div>
-                          </td>
-
-                          {/* Affected Entity */}
-                          <td>
-                            {isEntityActive ? (
-                              entry.entity.jumpUrl ? (
-                                <a
-                                  href={entry.entity.jumpUrl}
-                                  className="audit-entity-link"
-                                  onClick={(e) => e.stopPropagation()}
-                                  title="Jump to entity"
-                                >
-                                  <i className="ti ti-link" style={{ fontSize: 12 }} />
-                                  <span>{entry.entity.label}</span>
-                                </a>
-                              ) : (
-                                <span className="audit-entity-tag">
-                                  {entry.entity.label}
+                            {/* Category & Action */}
+                            <td>
+                              <div className="audit-cell-cat">
+                                <span className={`status-pill ${badgeClass}`}>
+                                  {entry.categoryLabel}
                                 </span>
-                              )
-                            ) : (
-                              <span className="audit-entity-unavailable" title="Entity no longer available">
-                                <i className="ti ti-alert-circle" style={{ fontSize: 12 }} />
-                                <span>Deleted / Unavailable</span>
-                              </span>
-                            )}
-                          </td>
+                                <span className="audit-action-label">
+                                  {entry.actionLabel}
+                                </span>
+                              </div>
+                            </td>
 
-                          {/* Summary */}
-                          <td>
-                            <div className="audit-summary-text" title={entry.summary}>
-                              {entry.summary || "—"}
-                            </div>
-                          </td>
+                            {/* Affected Entity */}
+                            <td>
+                              {isEntityActive ? (
+                                entry.entity.jumpUrl ? (
+                                  <a
+                                    href={entry.entity.jumpUrl}
+                                    className="audit-entity-link"
+                                    onClick={(e) => e.stopPropagation()}
+                                    title="Jump to entity"
+                                  >
+                                    <i className="ti ti-link" style={{ fontSize: 12 }} />
+                                    <span>{entry.entity.label}</span>
+                                  </a>
+                                ) : (
+                                  <span className="audit-entity-tag">
+                                    {entry.entity.label}
+                                  </span>
+                                )
+                              ) : (
+                                <span className="audit-entity-unavailable" title="Entity no longer available">
+                                  <i className="ti ti-alert-circle" style={{ fontSize: 12 }} />
+                                  <span>Deleted / Unavailable</span>
+                                </span>
+                              )}
+                            </td>
 
-                          {/* Action Details Button */}
-                          <td style={{ textAlign: "right" }}>
-                            <button
-                              type="button"
-                              className="audit-view-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedEntry(entry);
-                              }}
-                              title="Inspect full audit event details and diffs"
-                            >
-                              <i className="ti ti-eye" style={{ fontSize: 13 }} />
-                              <span>View</span>
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                            {/* Summary */}
+                            <td>
+                              <div className="audit-summary-text" title={entry.summary}>
+                                {entry.summary || "—"}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>

@@ -542,8 +542,8 @@ body {
   background: var(--blue);
   color: #fff;
   border: none;
-  border-radius: var(--r-sm);
-  padding: 13px;
+  border-radius: 9999px;
+  padding: 12px 24px;
   font-family: var(--ff-body);
   font-size: 14px;
   font-weight: 600;
@@ -589,8 +589,8 @@ body {
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--border-2);
-  border-radius: var(--r-sm);
-  padding: 12px;
+  border-radius: 9999px;
+  padding: 12px 24px;
   font-family: var(--ff-body);
   font-size: 14px;
   cursor: pointer;

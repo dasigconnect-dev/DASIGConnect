@@ -24,15 +24,15 @@
 .audit-export-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 16px;
-  border-radius: 8px;
+  gap: 7px;
+  height: 38px;
+  padding: 0 20px;
+  border-radius: 9999px;
   background: var(--d-blue, #1877f2);
   border: 1px solid var(--d-blue, #1877f2);
   color: #ffffff;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 650;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s ease;
@@ -304,14 +304,23 @@
   gap: 8px;
 }
 
+.audit-clickable-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.audit-clickable-row:hover td {
+  background: #f8faff !important;
+}
+
 .audit-page-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 32px;
-  padding: 0 13px;
-  border-radius: 7px;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 9999px;
   border: 1px solid #E2E8F0;
   background: #FFFFFF;
   color: #0C1D3D;

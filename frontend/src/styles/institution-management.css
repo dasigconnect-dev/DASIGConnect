@@ -40,9 +40,9 @@
   justify-content: center;
   gap: 7px;
   height: 38px;
-  padding: 0 16px;
+  padding: 0 20px;
   border: 1px solid var(--d-blue);
-  border-radius: 7px;
+  border-radius: 9999px;
   background: var(--d-blue);
   color: #fff;
   font-family: var(--ff-body);
@@ -1127,9 +1127,9 @@
   justify-content: center;
   gap: 8px;
   min-height: 42px;
-  padding: 0 16px;
+  padding: 0 20px;
   border: 1px solid var(--d-blue);
-  border-radius: 8px;
+  border-radius: 9999px;
   background: var(--d-blue);
   color: #fff;
   font-family: var(--ff-body);
