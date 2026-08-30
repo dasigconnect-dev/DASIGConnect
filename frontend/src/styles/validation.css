@@ -2785,3 +2785,74 @@
   background: var(--val-surface, #fff);
   color: inherit;
 }
+
+/* ── Pending override requests card (admin, top of the review queue) ── */
+.val-oq-card {
+  margin: 0 12px 10px;
+  border: 1.5px solid #c4b5fd;
+  background: #faf5ff;
+  border-radius: 10px;
+  overflow: hidden;
+}
+:root[data-theme="dark"] .val-oq-card,
+:root:not([data-theme="light"]) .val-oq-card {
+  border-color: #6d28d9;
+  background: rgba(109, 40, 217, 0.14);
+}
+.val-oq-card-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6d28d9;
+}
+:root[data-theme="dark"] .val-oq-card-head,
+:root:not([data-theme="light"]) .val-oq-card-head { color: #c4b5fd; }
+.val-oq-count {
+  margin-left: auto;
+  background: #6d28d9;
+  color: #fff;
+  border-radius: 999px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 11.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.val-oq-list { list-style: none; margin: 0; padding: 0 8px 8px; }
+.val-oq-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--val-surface, #fff);
+  border: 1px solid #ede9fe;
+}
+.val-oq-row + .val-oq-row { margin-top: 6px; }
+:root[data-theme="dark"] .val-oq-row,
+:root:not([data-theme="light"]) .val-oq-row { border-color: #5b21b6; background: rgba(0,0,0,0.15); }
+.val-oq-open {
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: inherit;
+  padding: 0;
+}
+.val-oq-open strong { font-size: 13px; }
+.val-oq-meta { font-size: 11.5px; color: var(--val-text-2, #64748b); }
+.val-oq-reason { font-size: 12px; font-style: italic; color: var(--val-text-2, #64748b); }
+.val-oq-actions { display: flex; gap: 6px; }
+.val-btn-sm { padding: 4px 10px; font-size: 12px; }

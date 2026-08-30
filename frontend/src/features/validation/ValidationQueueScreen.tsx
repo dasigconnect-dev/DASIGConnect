@@ -43,6 +43,7 @@ import {
   createOverrideRequest,
   denyOverrideRequest,
   getOverrideRequestForSubmission,
+  listPendingOverrideRequests,
   suggestOverrideSlot,
   type OverrideRequest,
 } from "../../api/overrideApi";
@@ -194,6 +195,19 @@ export default function ValidationQueueScreen({
   const [pendingOverride, setPendingOverride] = useState<OverrideRequest | null>(null);
   const [overrideBusy, setOverrideBusy] = useState(false);
   const [suggestValue, setSuggestValue] = useState("");
+  const [overrideQueue, setOverrideQueue] = useState<OverrideRequest[]>([]);
+  const [overrideQueueOpen, setOverrideQueueOpen] = useState(true);
+
+  const loadOverrideQueue = useCallback(() => {
+    if (user.role !== "admin") return;
+    listPendingOverrideRequests()
+      .then((res) => setOverrideQueue(res.data))
+      .catch(() => {});
+  }, [user.role]);
+
+  useEffect(() => {
+    loadOverrideQueue();
+  }, [loadOverrideQueue]);
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const editCaptionRef = useRef<HTMLTextAreaElement | null>(null);
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -668,15 +682,18 @@ export default function ValidationQueueScreen({
     }
   }
 
-  async function handleOverrideDecision(action: "approve" | "deny" | "suggest", suggestedSlot?: string) {
-    if (!pendingOverride) return;
+  async function handleOverrideDecision(
+    action: "approve" | "deny" | "suggest",
+    suggestedSlot?: string,
+    requestId?: string,
+  ) {
+    const id = requestId ?? pendingOverride?.id;
+    if (!id) return;
     setOverrideBusy(true);
     try {
-      if (action === "approve") await approveOverrideRequest(pendingOverride.id);
-      else if (action === "deny")
-        await denyOverrideRequest(pendingOverride.id, overrideReason.trim() || undefined);
-      else if (action === "suggest" && suggestedSlot)
-        await suggestOverrideSlot(pendingOverride.id, suggestedSlot);
+      if (action === "approve") await approveOverrideRequest(id);
+      else if (action === "deny") await denyOverrideRequest(id, overrideReason.trim() || undefined);
+      else if (action === "suggest" && suggestedSlot) await suggestOverrideSlot(id, suggestedSlot);
       toast.success(
         action === "approve"
           ? "Override approved — the submission is on the requested slot."
@@ -684,8 +701,12 @@ export default function ValidationQueueScreen({
             ? "Override denied."
             : "Alternative slot sent to the moderator.",
       );
-      setPendingOverride(null);
-      setOverrideReason("");
+      if (id === pendingOverride?.id) {
+        setPendingOverride(null);
+        setOverrideReason("");
+      }
+      setOverrideQueue((q) => q.filter((r) => r.id !== id));
+      loadOverrideQueue();
       if (selected) {
         const d = await getSubmission(selected.id);
         setSelected(d.data);
@@ -1005,6 +1026,70 @@ export default function ValidationQueueScreen({
             >
               <i className="ti ti-send"></i> Submitted
             </button>
+          </div>
+        )}
+
+        {isAdmin && !isFailedMode && overrideQueue.length > 0 && (
+          <div className="val-oq-card">
+            <button
+              type="button"
+              className="val-oq-card-head"
+              aria-expanded={overrideQueueOpen}
+              onClick={() => setOverrideQueueOpen((o) => !o)}
+            >
+              <i className="ti ti-shield-question" aria-hidden />
+              <span>Pending override requests</span>
+              <span className="val-oq-count">{overrideQueue.length}</span>
+              <i className={`ti ti-chevron-${overrideQueueOpen ? "up" : "down"}`} aria-hidden />
+            </button>
+            {overrideQueueOpen && (
+              <ul className="val-oq-list">
+                {overrideQueue.map((r) => (
+                  <li key={r.id} className="val-oq-row">
+                    <button
+                      type="button"
+                      className="val-oq-open"
+                      onClick={() => {
+                        const found = [...activeQueue, ...allQueue].find(
+                          (s) => s.id === r.submissionId,
+                        );
+                        if (found) void openSubmission(found);
+                        else {
+                          setFilter("all");
+                          setSearch(r.eventTitle);
+                        }
+                      }}
+                      title="Open in the review panel"
+                    >
+                      <strong>{r.eventTitle}</strong>
+                      <span className="val-oq-meta">
+                        {r.requestedByName ?? "A moderator"} → {formatDateTime(r.requestedSlot)} ·{" "}
+                        {r.violatedRule}
+                      </span>
+                      <span className="val-oq-reason">“{r.overrideReason}”</span>
+                    </button>
+                    <div className="val-oq-actions">
+                      <button
+                        type="button"
+                        className="val-btn val-btn-primary val-btn-sm"
+                        disabled={overrideBusy}
+                        onClick={() => void handleOverrideDecision("approve", undefined, r.id)}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="val-btn val-btn-danger-outline val-btn-sm"
+                        disabled={overrideBusy}
+                        onClick={() => void handleOverrideDecision("deny", undefined, r.id)}
+                      >
+                        Deny
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 
