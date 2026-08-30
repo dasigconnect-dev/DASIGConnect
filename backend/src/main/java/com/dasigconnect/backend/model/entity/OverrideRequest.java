@@ -28,6 +28,11 @@ public class OverrideRequest {
     @JoinColumn(name = "contributor_id", nullable = false)
     private User contributor;
 
+    /** The moderator who raised this request while rescheduling. Null for legacy rows. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "requested_by_user_id")
+    private User requestedBy;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "institution_id", nullable = false)
     private Institution institution;
@@ -75,6 +80,9 @@ public class OverrideRequest {
 
     public User getContributor() { return contributor; }
     public void setContributor(User contributor) { this.contributor = contributor; }
+
+    public User getRequestedBy() { return requestedBy; }
+    public void setRequestedBy(User requestedBy) { this.requestedBy = requestedBy; }
 
     public Institution getInstitution() { return institution; }
     public void setInstitution(Institution institution) { this.institution = institution; }

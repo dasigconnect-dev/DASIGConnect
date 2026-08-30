@@ -376,9 +376,9 @@ public class NotificationEventListener {
     public void onOverrideRequested(OverrideRequestedEvent event) {
         Submission s = event.submission();
         String link = "/submissions/" + s.getId();
-        String msg = who(event.contributor()) + " requested a guard rail override for '"
-                + s.getEventTitle() + "' — " + event.violatedRule() + " at " + fmt(event.requestedSlot())
-                + ". Approve, suggest another slot, or deny it.";
+        String msg = who(event.requestedBy()) + " requested a guard rail override to reschedule '"
+                + s.getEventTitle() + "' to " + fmt(event.requestedSlot())
+                + " (" + event.violatedRule() + "). Approve, suggest another slot, or deny it.";
         for (User admin : superAdmins()) {
             notificationService.createNotification(admin, NotificationEventType.override_requested, msg, link);
             emailDeliveryService.send(admin,
