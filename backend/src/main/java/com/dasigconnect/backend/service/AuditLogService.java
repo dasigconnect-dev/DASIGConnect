@@ -474,6 +474,9 @@ public class AuditLogService {
             case WATERMARK_CONFIG -> {
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "Watermark Configuration", true, "/settings");
             }
+            case MEDIA_ALBUM -> {
+                return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "Media folder", true, "/media-repository");
+            }
             default -> {
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "Entity #" + resourceId.toString().substring(0, 8), true, null);
             }
@@ -489,10 +492,11 @@ public class AuditLogService {
             case "SUBMISSION_UPDATED" -> "Draft edited";
             case "SUBMISSION_SUBMITTED" -> "Submitted for review";
             case "SUBMISSION_WITHDRAWN" -> "Submission withdrawn to draft";
-            case "SUBMISSION_APPROVED", "APPROVED" -> "Approved & scheduled";
-            case "SUBMISSION_EDITED_AND_APPROVED", "EDITED_AND_APPROVED" -> "Edited during review, then approved";
-            case "SUBMISSION_REJECTED", "REJECTED" -> "Rejected";
-            case "SUBMISSION_REVISION_REQUESTED", "REVISION_REQUESTED" -> "Revision requested";
+            case "SUBMISSION_APPROVED", "APPROVED", "approved" -> "Approved & scheduled";
+            case "SUBMISSION_EDITED_AND_APPROVED", "EDITED_AND_APPROVED", "edited_and_approved" -> "Edited during review, then approved";
+            case "edited" -> "Edited during review";
+            case "SUBMISSION_REJECTED", "REJECTED", "rejected" -> "Rejected";
+            case "SUBMISSION_REVISION_REQUESTED", "REVISION_REQUESTED", "needs_revision" -> "Revision requested";
             case "SUBMISSION_RESCHEDULED", "RESCHEDULE" -> "Rescheduled";
             case "SUBMISSION_PUBLISHED" -> "Published to Facebook";
             case "PUBLISH_FAILED" -> "Publishing failed";
@@ -637,16 +641,18 @@ public class AuditLogService {
         String reason = firstNonBlank(m.get("overrideReason"), m.get("reason"), m.get("decisionReason"));
 
         return switch (action) {
-            case "SUBMISSION_APPROVED", "APPROVED", "SUBMISSION_EDITED_AND_APPROVED", "EDITED_AND_APPROVED" -> {
+            case "SUBMISSION_APPROVED", "APPROVED", "approved",
+                 "SUBMISSION_EDITED_AND_APPROVED", "EDITED_AND_APPROVED", "edited_and_approved" -> {
                 String slot = fmtSlot(m.get("scheduledAt"));
                 yield "Approved " + what + (slot != null ? ", scheduled for " + slot : "")
-                        + (action.contains("EDIT") ? " (edited during review)" : "");
+                        + (action.toUpperCase().contains("EDIT") ? " (edited during review)" : "");
             }
-            case "SUBMISSION_REJECTED", "REJECTED" -> {
+            case "edited" -> "Edited " + what + " during review";
+            case "SUBMISSION_REJECTED", "REJECTED", "rejected" -> {
                 String r = firstNonBlank(m.get("rejectionReason"), m.get("reasonCode"), m.get("remarks"));
                 yield "Rejected " + what + (r != null ? " — " + r : "");
             }
-            case "SUBMISSION_REVISION_REQUESTED", "REVISION_REQUESTED" -> {
+            case "SUBMISSION_REVISION_REQUESTED", "REVISION_REQUESTED", "needs_revision" -> {
                 String r = firstNonBlank(m.get("remarks"), m.get("reason"));
                 yield "Sent " + what + " back for changes" + (r != null ? " — " + r : "");
             }

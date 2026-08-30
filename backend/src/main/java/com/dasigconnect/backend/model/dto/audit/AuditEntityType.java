@@ -24,7 +24,12 @@ public enum AuditEntityType {
         if (action == null) return SYSTEM;
         String a = action.toUpperCase();
 
-        if (a.startsWith("SUBMISSION") || a.startsWith("TIMEOUT") || a.startsWith("OVERRIDE") || a.startsWith("DIRECT_POST") || a.startsWith("MANUAL_PUBLISH") || a.startsWith("MISSED_REVIEW") || a.startsWith("PUBLISH")) {
+        if (a.startsWith("SUBMISSION") || a.startsWith("TIMEOUT") || a.startsWith("OVERRIDE")
+                || a.startsWith("DIRECT_POST") || a.startsWith("MANUAL_PUBLISH") || a.startsWith("MISSED_REVIEW")
+                || a.startsWith("PUBLISH") || a.contains("_OVERRIDE")
+                // bare ValidationAction codes (stored lowercase, e.g. "edited", "approved")
+                || a.equals("EDITED") || a.equals("APPROVED") || a.equals("REJECTED")
+                || a.equals("NEEDS_REVISION") || a.equals("REVISION_REQUESTED") || a.equals("EDITED_AND_APPROVED")) {
             return SUBMISSION;
         }
         if (a.startsWith("MEDIA_ALBUM")) {
