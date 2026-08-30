@@ -53,33 +53,34 @@ class OverrideRequestServiceTest {
 
     @InjectMocks private OverrideRequestService service;
 
-    private UUID contributorId;
+    private UUID moderatorId;
     private UUID submissionId;
     private Instant slot;
     private Submission submission;
-    private JwtUserDetails caller;
+    private JwtUserDetails moderator;
 
     @BeforeEach
     void setUp() {
-        contributorId = UUID.randomUUID();
+        moderatorId = UUID.randomUUID();
         submissionId = UUID.randomUUID();
         slot = Instant.now().plus(2, ChronoUnit.DAYS);
 
         User contributor = new User();
-        contributor.setId(contributorId);
+        contributor.setId(UUID.randomUUID());
         Institution institution = new Institution();
         institution.setId(UUID.randomUUID());
 
         submission = new Submission();
         submission.setId(submissionId);
         submission.setEventTitle("Launch");
-        submission.setStatus(SubmissionStatus.draft);
+        submission.setStatus(SubmissionStatus.in_review);
         submission.setContributor(contributor);
         submission.setInstitution(institution);
 
-        caller = new JwtUserDetails(contributorId, "c@x.edu.ph", "contributor", institution.getId());
+        moderator = new JwtUserDetails(moderatorId, "m@x.edu.ph", "moderator", null);
 
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(userRepository.getReferenceById(moderatorId)).thenReturn(new User());
         when(overrideRequestRepository.save(any(OverrideRequest.class)))
                 .thenAnswer(inv -> {
                     OverrideRequest r = inv.getArgument(0);
@@ -107,20 +108,30 @@ class OverrideRequestServiceTest {
     void create_blockedSlotWithReason_savesPendingAndPublishesEvent() {
         slotIsBlocked();
 
-        service.create(dto(), caller);
+        service.create(dto(), moderator);
 
         verify(overrideRequestRepository).save(any(OverrideRequest.class));
         verify(eventPublisher).publishEvent(any(OverrideRequestedEvent.class));
     }
 
     @Test
-    void create_notOwner_throwsForbidden() {
+    void create_scheduledSubmission_isAllowed() {
+        submission.setStatus(SubmissionStatus.scheduled);
         slotIsBlocked();
-        JwtUserDetails stranger = new JwtUserDetails(UUID.randomUUID(), "s@x.edu.ph", "contributor", null);
 
-        assertThatThrownBy(() -> service.create(dto(), stranger))
+        service.create(dto(), moderator);
+
+        verify(overrideRequestRepository).save(any(OverrideRequest.class));
+    }
+
+    @Test
+    void create_draftSubmission_throwsConflict() {
+        submission.setStatus(SubmissionStatus.draft);
+        slotIsBlocked();
+
+        assertThatThrownBy(() -> service.create(dto(), moderator))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("do not own");
+                .hasMessageContaining("in review or already scheduled");
         verify(overrideRequestRepository, never()).save(any());
     }
 
@@ -128,7 +139,7 @@ class OverrideRequestServiceTest {
     void create_slotNotBlocked_throws422() {
         when(guardRailService.validate(any(), eq(slot))).thenReturn(new GuardRailResult());
 
-        assertThatThrownBy(() -> service.create(dto(), caller))
+        assertThatThrownBy(() -> service.create(dto(), moderator))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("not blocked");
         verify(overrideRequestRepository, never()).save(any());
@@ -140,9 +151,9 @@ class OverrideRequestServiceTest {
         when(overrideRequestRepository.findBySubmissionIdAndDecision(submissionId, OverrideRequestDecision.pending))
                 .thenReturn(List.of(new OverrideRequest()));
 
-        assertThatThrownBy(() -> service.create(dto(), caller))
+        assertThatThrownBy(() -> service.create(dto(), moderator))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("already have a pending");
+                .hasMessageContaining("already a pending");
     }
 
     @Test
@@ -151,18 +162,8 @@ class OverrideRequestServiceTest {
         OverrideRequestCreateDto d = dto();
         d.setReason("too short");
 
-        assertThatThrownBy(() -> service.create(d, caller))
+        assertThatThrownBy(() -> service.create(d, moderator))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("at least 10");
-    }
-
-    @Test
-    void create_submissionAlreadyScheduled_throwsConflict() {
-        slotIsBlocked();
-        submission.setStatus(SubmissionStatus.scheduled);
-
-        assertThatThrownBy(() -> service.create(dto(), caller))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("still being edited");
     }
 }

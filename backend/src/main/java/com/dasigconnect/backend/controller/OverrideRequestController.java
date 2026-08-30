@@ -43,9 +43,9 @@ public class OverrideRequestController {
         this.overrideRequestService = overrideRequestService;
     }
 
-    /** Contributor asks for an override on a hard-blocked slot. */
+    /** A moderator asks for an override so a hard-blocked reschedule can go ahead. */
     @PostMapping
-    @PreAuthorize("hasRole('CONTRIBUTOR')")
+    @PreAuthorize("hasRole('MODERATOR')")
     public ResponseEntity<ApiResponse<OverrideRequestDto>> create(
             @Valid @RequestBody OverrideRequestCreateDto dto,
             @AuthenticationPrincipal JwtUserDetails caller) {
@@ -53,7 +53,7 @@ public class OverrideRequestController {
                 .body(ApiResponse.success(overrideRequestService.create(dto, caller)));
     }
 
-    /** The submission's pending override request, if any — drives the schedule-step status chip. */
+    /** The submission's pending override request, if any — drives the schedule status chip. */
     @GetMapping("/for-submission/{submissionId}")
     @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<OverrideRequestDto>>> forSubmission(@PathVariable UUID submissionId) {

@@ -45,6 +45,13 @@ public class SubmissionUpdateDto {
 
     private List<String> tags;
 
+    /**
+     * Only honoured for an ADMIN editing the schedule onto a hard-blocked slot:
+     * the admin's reason for bypassing the guard rail (audited). Moderators
+     * cannot bypass and must raise an override request instead.
+     */
+    private String overrideReason;
+
     public UUID getInstitutionId() {
         return institutionId;
     }
@@ -147,5 +154,13 @@ public class SubmissionUpdateDto {
 
     public void setLiveEventName(String liveEventName) {
         this.liveEventName = liveEventName;
+    }
+
+    public String getOverrideReason() {
+        return overrideReason;
+    }
+
+    public void setOverrideReason(String overrideReason) {
+        this.overrideReason = overrideReason;
     }
 }

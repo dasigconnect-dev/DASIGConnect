@@ -70,19 +70,18 @@ public class OverrideRequestService {
     }
 
     /**
-     * A contributor asks for an override so they can schedule a hard-blocked slot.
-     * The request stays pending until an administrator approves / suggests / denies.
+     * A moderator asks for a guard-rail override so a submission can be
+     * (re)scheduled onto a hard-blocked slot. Only an administrator can then
+     * approve / suggest an alternative / deny it. Contributors cannot request;
+     * administrators bypass guard rails directly and never file a request.
      */
     public OverrideRequestDto create(OverrideRequestCreateDto dto, JwtUserDetails caller) {
         Submission s = submissionRepository.findById(dto.getSubmissionId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found."));
 
-        if (!s.getContributor().getId().equals(caller.userId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not own this submission.");
-        }
-        if (s.getStatus() != SubmissionStatus.draft && s.getStatus() != SubmissionStatus.needs_revision) {
+        if (s.getStatus() != SubmissionStatus.in_review && s.getStatus() != SubmissionStatus.scheduled) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "An override can only be requested while the submission is still being edited.");
+                    "Override requests only apply to a submission that is in review or already scheduled.");
         }
         if (dto.getRequestedSlot() == null || dto.getRequestedSlot().isBefore(Instant.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a future time slot.");
@@ -95,20 +94,22 @@ public class OverrideRequestService {
         GuardRailResult result = guardRailService.validate(s.getInstitution().getId(), dto.getRequestedSlot());
         if (!result.isBlocked()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
-                    "That slot is not blocked by a guard rail — schedule it directly, no override needed.");
+                    "That slot is not blocked by a guard rail — reschedule it directly, no override needed.");
         }
 
         if (!overrideRequestRepository
                 .findBySubmissionIdAndDecision(s.getId(), OverrideRequestDecision.pending).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "You already have a pending override request for this submission.");
+                    "There is already a pending override request for this submission.");
         }
 
         String violatedRule = result.getHardBlocks().get(0).getCode();
+        User requestedBy = userRepository.getReferenceById(caller.userId());
 
         OverrideRequest r = new OverrideRequest();
         r.setSubmission(s);
         r.setContributor(s.getContributor());
+        r.setRequestedBy(requestedBy);
         r.setInstitution(s.getInstitution());
         r.setRequestedSlot(dto.getRequestedSlot());
         r.setViolatedRule(violatedRule);
@@ -116,21 +117,21 @@ public class OverrideRequestService {
         r.setDecision(OverrideRequestDecision.pending);
         r = overrideRequestRepository.save(r);
 
-        auditLogService.record(s.getContributor(), "OVERRIDE_REQUESTED", null, null, r.getId(),
+        auditLogService.record(requestedBy, "OVERRIDE_REQUESTED", null, null, r.getId(),
                 Map.of("submissionId", s.getId().toString(),
                        "violatedRule", violatedRule,
                        "requestedSlot", dto.getRequestedSlot().toString()));
 
         eventPublisher.publishEvent(new OverrideRequestedEvent(
-                s, s.getContributor(), dto.getRequestedSlot(), violatedRule, reason));
-        log.info("Contributor {} requested override {} for submission {} (rule {}).",
+                s, requestedBy, dto.getRequestedSlot(), violatedRule, reason));
+        log.info("Moderator {} requested override {} for submission {} (rule {}).",
                 caller.userId(), r.getId(), s.getId(), violatedRule);
 
         return OverrideRequestDto.from(r,
                 (int) overrideRequestRepository.countNonExpiredBySubmissionId(s.getId()));
     }
 
-    /** Non-expired override requests for one submission, newest first — drives the schedule-step status chip. */
+    /** Non-expired override requests for one submission — drives the schedule status chip. */
     @Transactional(readOnly = true)
     public List<OverrideRequestDto> forSubmission(UUID submissionId) {
         return overrideRequestRepository.findBySubmissionIdAndDecision(submissionId, OverrideRequestDecision.pending)
@@ -150,7 +151,8 @@ public class OverrideRequestService {
     }
 
     /**
-     * C(i) — Approve Override: bypasses the violated guard rail and reserves the requested slot.
+     * C(i) — Approve Override: bypasses the violated guard rail, reserves the
+     * requested slot and moves the submission onto it.
      */
     public void approve(UUID requestId, JwtUserDetails admin) {
         OverrideRequest r = loadPending(requestId);
@@ -158,6 +160,8 @@ public class OverrideRequestService {
 
         // Reserve the slot, bypassing guard rails (by calling reserveLockedSlot)
         slotReservationService.reserveLockedSlot(s.getId(), s.getInstitution().getId(), r.getRequestedSlot());
+        s.setScheduledAt(r.getRequestedSlot());
+        submissionRepository.save(s);
 
         User adminUser = loadUser(admin.userId());
         r.setDecision(OverrideRequestDecision.approved);
