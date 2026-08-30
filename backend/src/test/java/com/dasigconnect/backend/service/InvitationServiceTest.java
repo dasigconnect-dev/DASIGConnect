@@ -59,8 +59,6 @@ class InvitationServiceTest {
     AuditLogService auditLogService;
     @Mock
     InstitutionService institutionService;
-    @Mock
-    UserService userService;
     @InjectMocks
     InvitationService invitationService;
 
@@ -667,22 +665,21 @@ class InvitationServiceTest {
     }
 
     @Test
-    void cancel_pendingUser_removesTheNeverActivatedInvitee() {
+    void cancel_pendingUser_setsAccountStateToCancelled() {
         InvitationToken token = buildToken(false, false);
         UUID tokenId = UUID.randomUUID();
         when(invitationTokenRepository.findById(tokenId)).thenReturn(Optional.of(token));
 
         User pendingUser = new User();
-        pendingUser.setId(UUID.randomUUID());
         pendingUser.setEmail("invitee@example.com");
         pendingUser.setAccountState(UserStatus.pending);
         when(userRepository.findByEmail("invitee@example.com")).thenReturn(Optional.of(pendingUser));
 
         invitationService.cancel(tokenId, adminPrincipal);
 
+        assertThat(pendingUser.getAccountState()).isEqualTo(UserStatus.cancelled);
+        verify(userRepository).save(pendingUser);
         verify(invitationTokenRepository).delete(token);
-        // Option A: no lingering "Cancelled" row — removeUser is delegated to.
-        verify(userService).removeUser(pendingUser.getId(), adminPrincipal);
     }
 
     @Test
@@ -697,8 +694,9 @@ class InvitationServiceTest {
 
         invitationService.cancelPendingUserInvitation(userId, adminPrincipal);
 
+        assertThat(pendingUser.getAccountState()).isEqualTo(UserStatus.cancelled);
+        verify(userRepository).save(pendingUser);
         verify(invitationTokenRepository).deleteByRecipientEmailIgnoreCase("Invitee@Example.com");
-        verify(userService).removeUser(userId, adminPrincipal);
     }
 
     @Test

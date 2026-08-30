@@ -47,7 +47,6 @@ public class InvitationService {
     private final EmailService emailService;
     private final AuditLogService auditLogService;
     private final InstitutionService institutionService;
-    private final UserService userService;
 
     /**
      * Administrative policy cap: maximum active admin accounts network-wide
@@ -66,8 +65,7 @@ public class InvitationService {
             JWTService jwtService,
             EmailService emailService,
             AuditLogService auditLogService,
-            InstitutionService institutionService,
-            UserService userService) {
+            InstitutionService institutionService) {
         this.invitationTokenRepository = invitationTokenRepository;
         this.userRepository = userRepository;
         this.entityManager = entityManager;
@@ -76,7 +74,6 @@ public class InvitationService {
         this.emailService = emailService;
         this.auditLogService = auditLogService;
         this.institutionService = institutionService;
-        this.userService = userService;
     }
 
     public InvitationResponseDto createInvitation(CreateInvitationRequestDto dto) {
@@ -414,12 +411,8 @@ public class InvitationService {
             if (user.getAccountState() == UserStatus.pending
                     || user.getAccountState() == UserStatus.pending_email_undelivered
                     || user.getAccountState() == UserStatus.expired) {
-                // A never-activated invite leaves no tombstone: mark cancelled,
-                // then let removeUser hard-delete it (it keeps a record only if
-                // the account somehow has submissions/media/validation history).
                 user.setAccountState(UserStatus.cancelled);
                 userRepository.save(user);
-                userService.removeUser(user.getId(), requester);
             } else {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Cancel invitation is only allowed for pending accounts.");
@@ -429,10 +422,10 @@ public class InvitationService {
 
     /**
      * Cancels a pending account by user id rather than token id. Works even when
-     * the invitation token has expired or was cleaned up. Removes every token for
-     * the address and, since the invite was never activated, removes the user row
-     * itself (falls back to a cancelled tombstone only if it somehow has history).
-     * Admin-only.
+     * the invitation token has expired or was cleaned up — the pending user row
+     * is what the management screens actually show, and it must reliably move to
+     * CANCELLED. Removes every token for the address and marks the account
+     * cancelled. Admin-only.
      */
     public void cancelPendingUserInvitation(UUID userId, JwtUserDetails requester) {
         if (!isAdmin(requester)) {
@@ -453,10 +446,8 @@ public class InvitationService {
         int removed = user.getEmail() != null
                 ? invitationTokenRepository.deleteByRecipientEmailIgnoreCase(user.getEmail())
                 : 0;
-        // A never-activated invite leaves no tombstone (see cancel()).
         user.setAccountState(UserStatus.cancelled);
         userRepository.save(user);
-        userService.removeUser(user.getId(), requester);
         log.info("Pending invitation for {} cancelled by {} ({} token(s) removed)",
                 userId, requester != null ? requester.userId() : "unknown", removed);
     }
