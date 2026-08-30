@@ -808,10 +808,6 @@ function App() {
             }
           />
           <Route
-            path="/admin/resolution"
-            element={<Navigate to="/dashboard" replace />}
-          />
-          <Route
             path="/media-repository"
             element={
               <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>

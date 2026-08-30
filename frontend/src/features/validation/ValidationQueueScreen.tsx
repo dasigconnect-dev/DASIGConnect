@@ -38,8 +38,8 @@ import {
 } from "./hooks/useValidationQueue";
 import { useResolutionFailures } from "../../hooks/useResolutionFailures";
 import type { FailedPublication } from "../../api/resolutionApi";
-import ResolutionRetryModal from "../resolution/ResolutionRetryModal";
-import ManualPublishWorkflowPanel from "../resolution/ManualPublishWorkflowPanel";
+import ResolutionRetryModal from "./ResolutionRetryModal";
+import ManualPublishWorkflowPanel from "./ManualPublishWorkflowPanel";
 import "../../styles/dasig-loader.css";
 import "../../styles/resolution.css";
 
