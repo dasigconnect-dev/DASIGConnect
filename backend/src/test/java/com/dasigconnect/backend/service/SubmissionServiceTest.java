@@ -196,7 +196,7 @@ class SubmissionServiceTest {
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
-        when(guardRailService.validate(any(), any())).thenReturn(new GuardRailResult(List.of(), List.of()));
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult(List.of(), List.of()));
 
         SubmissionResponseDto result = submissionService.update(submissionId, dto, contributorPrincipal);
 
@@ -236,7 +236,7 @@ class SubmissionServiceTest {
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
         User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.moderator, institution);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
-        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(new GuardRailResult());
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
@@ -263,7 +263,7 @@ class SubmissionServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST);
-        verify(guardRailService, never()).validate(any(), any());
+        verify(guardRailService, never()).validate(any(), any(), any());
     }
 
     @Test
@@ -273,7 +273,7 @@ class SubmissionServiceTest {
         when(submissionRepository.findById(submissionId))
                 .thenReturn(Optional.of(submission(submissionId, SubmissionStatus.draft, scheduledAt)));
         GuardRailViolation violation = new GuardRailViolation("GR-H1", "Slot already taken");
-        when(guardRailService.validate(institutionId, scheduledAt))
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any()))
                 .thenReturn(new GuardRailResult(List.of(violation), List.of()));
 
         assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
@@ -297,7 +297,7 @@ class SubmissionServiceTest {
         SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
 
         assertThat(result.getStatus()).isEqualTo("pending");
-        verify(guardRailService, never()).validate(any(), any());
+        verify(guardRailService, never()).validate(any(), any(), any());
     }
 
     @Test
@@ -307,7 +307,7 @@ class SubmissionServiceTest {
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
         submission.setCaption("   ");
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
-        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(new GuardRailResult());
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(2L);
 
         assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
@@ -324,7 +324,7 @@ class SubmissionServiceTest {
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
-        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(new GuardRailResult());
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
 
         assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
@@ -371,7 +371,7 @@ class SubmissionServiceTest {
         SlotEvaluateRequestDto dto = new SlotEvaluateRequestDto();
         dto.setScheduledAt(scheduledAt);
         GuardRailResult expected = new GuardRailResult();
-        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(expected);
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(expected);
 
         GuardRailResult result = submissionService.evaluateSlot(submissionId, dto, contributorPrincipal);
 
@@ -627,7 +627,7 @@ class SubmissionServiceTest {
         staged.setStatus(MediaAssetStatus.STAGED);
         staged.setFileType(MediaFileType.jpeg);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
-        when(guardRailService.validate(institutionId, scheduledAt)).thenReturn(new GuardRailResult());
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(new GuardRailResult());
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);

@@ -361,7 +361,7 @@ public class SubmissionService {
             // Reviewers always have guard rails applied on a schedule change; for a
             // contributor's own edit it follows the app.guardrails.enforced flag.
             if (guardRailsEnforced || isReviewer) {
-                GuardRailResult gr = guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt());
+                GuardRailResult gr = guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt(), submission.getId());
                 if (gr.isBlocked()) {
                     String reason = dto.getOverrideReason() == null ? "" : dto.getOverrideReason().trim();
                     if (isAdmin) {
@@ -450,7 +450,7 @@ public class SubmissionService {
 
         // Re-run guard rails — slot may have been taken since draft was saved
         if (!fastTrack && guardRailsEnforced && submission.getScheduledAt() != null) {
-            GuardRailResult result = guardRailService.validate(submission.getInstitution().getId(), submission.getScheduledAt());
+            GuardRailResult result = guardRailService.validate(submission.getInstitution().getId(), submission.getScheduledAt(), submission.getId());
             if (result.isBlocked()) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Guard rail violation: " + result.getHardBlocks().get(0).getMessage());
@@ -548,7 +548,7 @@ public class SubmissionService {
     @Transactional(readOnly = true)
     public GuardRailResult evaluateSlot(UUID submissionId, SlotEvaluateRequestDto dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
-        return guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt());
+        return guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt(), submission.getId());
     }
 
     /**
@@ -816,7 +816,7 @@ public class SubmissionService {
         Instant originalSlot = submission.getScheduledAt();
         Instant newSlot = dto.getScheduledAt();
 
-        GuardRailResult guardRailResult = guardRailService.validate(submission.getInstitution().getId(), newSlot);
+        GuardRailResult guardRailResult = guardRailService.validate(submission.getInstitution().getId(), newSlot, submissionId);
         if (guardRailResult.isBlocked()) {
             if (dto.getOverrideReason() == null || dto.getOverrideReason().isBlank()) {
                 throw new GuardRailViolationException(guardRailResult.getHardBlocks());

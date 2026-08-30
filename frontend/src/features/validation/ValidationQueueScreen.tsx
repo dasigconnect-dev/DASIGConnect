@@ -614,7 +614,7 @@ export default function ValidationQueueScreen({
     }
     const controller = new AbortController();
     setGuardRailsLoading(true);
-    validateGuardRails(editScheduledAtIso, selected.institutionId)
+    validateGuardRails(editScheduledAtIso, selected.institutionId, selected.id)
       .then((res) => setGuardRails(res.data))
       .catch(() => setGuardRails(null))
       .finally(() => setGuardRailsLoading(false));
@@ -1498,6 +1498,11 @@ export default function ValidationQueueScreen({
                                   <i className="ti ti-info-circle" /> {v.message}
                                 </div>
                               ))}
+                              {hardBlocked && !isAdmin && (
+                                <p className="val-edit-gr-note">
+                                  Only an administrator can override a guard rail — choose a compliant time.
+                                </p>
+                              )}
                             </div>
                           )}
 
@@ -1511,12 +1516,6 @@ export default function ValidationQueueScreen({
                                 placeholder="Explain why this slot is necessary…"
                               />
                             </label>
-                          )}
-                          {hardBlocked && !isAdmin && (
-                            <div className="val-edit-gr-warn" style={{ marginTop: 8 }}>
-                              This slot is blocked by a guard rail. Only an administrator can
-                              override it — pick a compliant time.
-                            </div>
                           )}
                         </div>
                       )}
@@ -1737,6 +1736,7 @@ export default function ValidationQueueScreen({
 
       <ResolutionRetryModal
         item={retryItem}
+        canOverride={isAdmin}
         busy={retryItem ? failureBusy === retryItem.submissionId : false}
         onConfirmWithNewSchedule={(scheduledAt, overrideReason) => {
           if (retryItem) {

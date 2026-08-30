@@ -5,6 +5,8 @@ import { validateGuardRails, type GuardRailResult } from "../../api/submissionAp
 
 interface ResolutionRetryModalProps {
   item: FailedPublication | null;
+  /** Only an admin can retry onto a guard-rail-blocked slot (with a reason). */
+  canOverride: boolean;
   busy: boolean;
   onConfirmWithNewSchedule: (scheduledAt: string, overrideReason?: string) => void;
   onClose: () => void;
@@ -20,6 +22,7 @@ function toDatetimeLocal(iso: string | null) {
 
 export default function ResolutionRetryModal({
   item,
+  canOverride,
   busy,
   onConfirmWithNewSchedule,
   onClose,
@@ -50,7 +53,7 @@ export default function ResolutionRetryModal({
     const iso = new Date(scheduledAt).toISOString();
     const t = window.setTimeout(() => {
       setChecking(true);
-      validateGuardRails(iso, item.institutionId)
+      validateGuardRails(iso, item.institutionId, item.submissionId)
         .then((res) => setGuardRails(res.data))
         .catch(() => setGuardRails(null))
         .finally(() => setChecking(false));
@@ -62,7 +65,9 @@ export default function ResolutionRetryModal({
 
   const hardBlocked = (guardRails?.hardBlocks?.length ?? 0) > 0;
   const canConfirm =
-    !busy && !!scheduledAt && (!hardBlocked || overrideReason.trim().length >= 10);
+    !busy &&
+    !!scheduledAt &&
+    (!hardBlocked || (canOverride && overrideReason.trim().length >= 10));
 
   function handleClose() {
     setOverrideReason("");
@@ -140,7 +145,7 @@ export default function ResolutionRetryModal({
             </div>
           )}
 
-          {hardBlocked && (
+          {hardBlocked && canOverride && (
             <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--val-red)" }}>
                 Override reason <span style={{ fontWeight: 500 }}>(required — this slot breaks a guard rail; the override is audited)</span>
@@ -163,6 +168,11 @@ export default function ResolutionRetryModal({
                 onChange={(e) => setOverrideReason(e.target.value)}
               />
             </label>
+          )}
+          {hardBlocked && !canOverride && (
+            <p style={{ margin: 0, fontSize: "12px", color: "var(--val-muted)" }}>
+              Only an administrator can retry onto a slot that breaks a guard rail — choose a compliant time.
+            </p>
           )}
         </div>
 
