@@ -118,7 +118,7 @@ public class UserService {
 
         return userRepository.findByInstitutionIdOrderByCreatedAtDesc(institutionId)
                 .stream()
-                .map(UserDto::from)
+                .map(u -> UserDto.from(u, requester))
                 .toList();
     }
 
@@ -307,7 +307,9 @@ public class UserService {
 
         validateCanRemoveUser(user, requester);
 
-        if (user.getAccountState() != UserStatus.inactive && user.getAccountState() != UserStatus.cancelled) {
+        if (user.getAccountState() != UserStatus.inactive
+                && user.getAccountState() != UserStatus.cancelled
+                && user.getAccountState() != UserStatus.expired) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only deactivated or cancelled users can be removed. Please deactivate or cancel the invitation first.");
         }
@@ -755,6 +757,21 @@ public class UserService {
             if (requesterAccount.getId().equals(target.getId())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Admins cannot remove their own account");
+            }
+            return;
+        }
+        // A non-admin (moderator) may remove only a contributor they invited
+        // whose invitation was cancelled/expired — never an activated account.
+        if (!"admin".equalsIgnoreCase(requester != null ? requester.role() : null)) {
+            boolean ownCancelledInvitee = target.getRole() == UserRole.contributor
+                    && (target.getAccountState() == UserStatus.cancelled
+                            || target.getAccountState() == UserStatus.expired)
+                    && target.getInvitedByUserId() != null
+                    && requester != null
+                    && target.getInvitedByUserId().equals(requester.userId());
+            if (!ownCancelledInvitee) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "You can only remove a contributor you invited whose invitation was cancelled.");
             }
         }
     }

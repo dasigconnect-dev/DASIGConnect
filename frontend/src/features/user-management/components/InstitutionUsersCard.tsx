@@ -568,7 +568,9 @@ function canRemove(currentUser: User | null, managedUser: UserProfileResponse) {
   if (targetRole === 'moderator' || targetRole === 'admin') {
     return currentUser.role === 'admin' && currentUser.email.toLowerCase() !== managedUser.email.toLowerCase()
   }
-  return currentUser.role === 'admin'
+  // Contributor: admins always; a moderator only for a cancelled/expired invite
+  // they sent (backend flags this per row).
+  return currentUser.role === 'admin' || managedUser.removableByRequester === true
 }
 
 function canChangeRole(currentUser: User | null, managedUser: UserProfileResponse) {

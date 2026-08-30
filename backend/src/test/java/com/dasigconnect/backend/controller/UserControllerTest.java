@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -205,6 +206,23 @@ class UserControllerTest {
     void erasePersonalData_asModerator_isForbidden() throws Exception {
         mockMvc.perform(post("/api/v1/users/{id}/erase", UUID.randomUUID()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void removeUser_withoutRole_returns403() throws Exception {
+        mockMvc.perform(delete("/api/v1/users/{id}", UUID.randomUUID()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void removeUser_asModerator_reachesService() throws Exception {
+        // The controller now admits moderators; ownership is enforced in the service.
+        when(userService.removeUser(any(), any())).thenReturn("deleted");
+
+        mockMvc.perform(delete("/api/v1/users/{id}", UUID.randomUUID()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.action").value("deleted"));
     }
 
     @Test

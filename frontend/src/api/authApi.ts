@@ -62,6 +62,9 @@ export interface UserProfileResponse {
   avatarUpdatedAt: string | null;
   avatarUrl?: string | null;
   purgedAt?: string | null;
+  invitedByUserId?: string | null;
+  /** True when the current user may delete this row (e.g. a moderator's own cancelled invitee). */
+  removableByRequester?: boolean;
 }
 
 export function login(email: string, password: string) {

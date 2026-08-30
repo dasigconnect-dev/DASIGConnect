@@ -88,6 +88,10 @@ public class User {
     @Column(name = "purged_by_user_id")
     private UUID purgedByUserId;
 
+    /** User id of the admin/moderator who invited this account. Null for legacy / self-registered rows. */
+    @Column(name = "invited_by_user_id")
+    private UUID invitedByUserId;
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
@@ -238,6 +242,14 @@ public class User {
 
     public void setPurgedAt(Instant purgedAt) {
         this.purgedAt = purgedAt;
+    }
+
+    public UUID getInvitedByUserId() {
+        return invitedByUserId;
+    }
+
+    public void setInvitedByUserId(UUID invitedByUserId) {
+        this.invitedByUserId = invitedByUserId;
     }
 
     public UUID getPurgedByUserId() {

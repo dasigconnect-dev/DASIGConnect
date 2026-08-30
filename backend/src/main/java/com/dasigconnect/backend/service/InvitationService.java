@@ -99,6 +99,7 @@ public class InvitationService {
         User invitedUser = userRepository.findByEmail(recipientEmail)
                 .map(existing -> prepareExistingPendingUser(existing, dto.assignedRole(), institution))
                 .orElseGet(() -> createPendingUser(recipientEmail, dto.assignedRole(), institution));
+        invitedUser.setInvitedByUserId(inviter != null ? inviter.userId() : null);
         userRepository.save(invitedUser);
 
         Instant now = Instant.now();

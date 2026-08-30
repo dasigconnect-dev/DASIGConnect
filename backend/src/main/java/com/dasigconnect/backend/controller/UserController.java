@@ -171,7 +171,7 @@ public class UserController {
     }
 
     @DeleteMapping("/users/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MODERATOR')")
     public ResponseEntity<ApiResponse<java.util.Map<String, String>>> removeUser(
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
