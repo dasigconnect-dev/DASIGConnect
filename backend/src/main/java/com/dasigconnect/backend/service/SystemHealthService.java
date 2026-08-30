@@ -26,8 +26,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,7 +62,6 @@ public class SystemHealthService {
     private final JdbcTemplate jdbcTemplate;
     private final ScheduledJobRunRepository scheduledJobRunRepository;
     private final TokenManagementService tokenManagementService;
-    private final JavaMailSender mailSender;
     private final MediaStorageService mediaStorage;
     private final HttpClient httpClient;
     private final long databaseLimitBytes;
@@ -73,12 +70,13 @@ public class SystemHealthService {
     private final double storageCriticalThreshold;
     private final String anthropicApiKey;
     private final String voyageApiKey;
+    private final String mailApiKey;
+    private final String mailApiBaseUrl;
 
     public SystemHealthService(
             JdbcTemplate jdbcTemplate,
             ScheduledJobRunRepository scheduledJobRunRepository,
             TokenManagementService tokenManagementService,
-            JavaMailSender mailSender,
             MediaStorageService mediaStorage,
             // Defaults track the current free tiers: Supabase Postgres 500 MB,
             // Cloudflare R2 10 GB-month (storage billed only past that).
@@ -87,11 +85,12 @@ public class SystemHealthService {
             @Value("${app.system-health.storage-warning-threshold-percent:80}") double storageWarningThreshold,
             @Value("${app.system-health.storage-critical-threshold-percent:95}") double storageCriticalThreshold,
             @Value("${anthropic.api.key:}") String anthropicApiKey,
-            @Value("${voyage.api.key:}") String voyageApiKey) {
+            @Value("${voyage.api.key:}") String voyageApiKey,
+            @Value("${app.mail.api-key:}") String mailApiKey,
+            @Value("${app.mail.api-base-url:https://api.resend.com}") String mailApiBaseUrl) {
         this.jdbcTemplate = jdbcTemplate;
         this.scheduledJobRunRepository = scheduledJobRunRepository;
         this.tokenManagementService = tokenManagementService;
-        this.mailSender = mailSender;
         this.mediaStorage = mediaStorage;
         this.databaseLimitBytes = databaseLimitBytes;
         this.mediaLimitBytes = mediaLimitBytes;
@@ -99,6 +98,8 @@ public class SystemHealthService {
         this.storageCriticalThreshold = Math.max(storageCriticalThreshold, storageWarningThreshold);
         this.anthropicApiKey = anthropicApiKey;
         this.voyageApiKey = voyageApiKey;
+        this.mailApiKey = mailApiKey;
+        this.mailApiBaseUrl = mailApiBaseUrl;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(3))
                 .build();
@@ -350,18 +351,7 @@ public class SystemHealthService {
     }
 
     private ExternalServiceHealthDto emailHealth() {
-        if (mailSender instanceof JavaMailSenderImpl sender) {
-            try {
-                sender.testConnection();
-                return service("Email Service Provider", HealthStatus.HEALTHY,
-                        "SMTP connection succeeded.", null, null);
-            } catch (Exception ex) {
-                return service("Email Service Provider", HealthStatus.UNAVAILABLE,
-                        "SMTP connection could not be verified.", null, null);
-            }
-        }
-        return service("Email Service Provider", HealthStatus.UNAVAILABLE,
-                "Mail sender does not expose a connection health probe.", null, null);
+        return httpReachability("Email Service Provider", mailApiBaseUrl, mailApiKey);
     }
 
     /** A job that is expected no more than once a day is not "unavailable" just because
