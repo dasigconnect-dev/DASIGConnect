@@ -365,67 +365,6 @@ public class NotificationEventListener {
         }
     }
 
-    // ── Additional Operational Events ─────────────────────────────────────────
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onOverrideApproved(OverrideApprovedEvent event) {
-        Submission s = event.submission();
-        String link = "/submissions/" + s.getId();
-
-        String contributorMsg = "Your guard rail override for '" + s.getEventTitle()
-                + "' was approved — you can keep your chosen slot.";
-        notificationService.createNotification(event.contributor(), NotificationEventType.override_approved, contributorMsg, link);
-
-        String moderatorMsg = "A guard rail override was approved for " + who(event.contributor())
-                + " — '" + s.getEventTitle() + "'.";
-        for (User moderator : allModerators()) {
-            notificationService.createNotification(moderator, NotificationEventType.override_approved, moderatorMsg, link);
-        }
-    }
-
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onOverrideDenied(OverrideDeniedEvent event) {
-        Submission s = event.submission();
-        String link = "/submissions/" + s.getId();
-        String msg = "Your guard rail override for '" + s.getEventTitle() + "' was not approved.";
-
-        notificationService.createNotification(event.contributor(), NotificationEventType.override_denied, msg, link);
-        String emailBody = msg + (event.reason() != null ? "\n\nReason: " + event.reason() : "")
-                + "\n\nView submission: " + frontendBaseUrl + link;
-        emailDeliveryService.send(event.contributor(),
-                NotificationEventType.override_denied.name(),
-                "DASIGConnect — Override request denied",
-                emailBody);
-    }
-
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onOverrideSlotSuggested(OverrideSlotSuggestedEvent event) {
-        Submission s = event.submission();
-        String link = "/submissions/" + s.getId();
-        String msg = "A moderator suggested " + fmt(event.suggestedSlot())
-                + " as an alternative slot for '" + s.getEventTitle()
-                + "'. You can accept it, pick another compliant slot, or submit a new override request.";
-
-        notificationService.createNotification(event.contributor(), NotificationEventType.override_slot_suggested, msg, link);
-        emailDeliveryService.send(event.contributor(),
-                NotificationEventType.override_slot_suggested.name(),
-                "DASIGConnect — Alternative slot suggested",
-                msg + "\n\nView submission: " + frontendBaseUrl + link);
-    }
-
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onAdminDirectPost(AdminDirectPostEvent event) {
-        String msg = "A post was published directly to the DASIG Facebook Page for "
-                + event.institution().getName() + ": '" + truncate(event.postTitle(), 80) + "'.";
-        String link = event.postUrl() != null ? event.postUrl() : "/";
-        for (User moderator : allModerators()) {
-            notificationService.createNotification(moderator, NotificationEventType.admin_direct_post, msg, link);
-        }
-    }
-
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onInstitutionNoModerator(InstitutionNoModeratorEvent event) {
@@ -499,13 +438,6 @@ public class NotificationEventListener {
             return "TBD";
         }
         return ZonedDateTime.ofInstant(instant, ZoneOffset.UTC).format(SLOT_FMT);
-    }
-
-    private static String truncate(String text, int maxLen) {
-        if (text == null) {
-            return "";
-        }
-        return text.length() <= maxLen ? text : text.substring(0, maxLen);
     }
 
     /** A human label for a contributor — full name if set, otherwise the email. */

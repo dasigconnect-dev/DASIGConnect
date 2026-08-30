@@ -5,12 +5,12 @@ import java.util.List;
 import com.dasigconnect.backend.model.dto.guardrail.GuardRailViolation;
 
 /**
- * Thrown by SlotReservationService when one or more HARD guard rail rules
- * (GR-H1, GR-H2, GR-H3) block a slot reservation.
+ * Thrown by SlotReservationService / SubmissionService / ManualPublishingService
+ * when one or more HARD guard rail rules (GR-H1, GR-H2, GR-H3) block a slot.
  *
- * Caught by ExceptionHandlingController (M1's global handler) and returned as
- * HTTP 422 Unprocessable Entity with the violations list in the body, so the
- * frontend (M5) can render the hard block UI with suggested slots.
+ * Caught by {@code GlobalExceptionHandler} and returned as HTTP 422
+ * Unprocessable Entity with the violations list in the body, so the frontend
+ * can render the hard-block UI with suggested slots.
  */
 public class GuardRailViolationException extends RuntimeException {
 

@@ -48,7 +48,6 @@ public class SystemHealthService {
         EXPECTED_JOBS.put("ReviewLockCleanupJob", Duration.ofMinutes(1));
         EXPECTED_JOBS.put("StaleSubmissionDetectorJob", Duration.ofMinutes(5));
         EXPECTED_JOBS.put("AbandonmentDetectorJob", Duration.ofMinutes(5));
-        EXPECTED_JOBS.put("ExpiredOverrideCleanupJob", Duration.ofMinutes(5));
         EXPECTED_JOBS.put("TokenPublishingEscalationJob", Duration.ofMinutes(5));
         EXPECTED_JOBS.put("ValidationDeadlineNotificationJob", Duration.ofMinutes(5));
         EXPECTED_JOBS.put("EmbeddingReconciliationJob", Duration.ofMinutes(5));
@@ -530,7 +529,6 @@ public class SystemHealthService {
             case "TokenPublishingEscalationJob" -> "Token Publishing Escalation";
             case "SocialEngagementSyncJob" -> "Social Engagement Sync";
             case "AbandonmentDetectorJob" -> "Abandonment Detector";
-            case "ExpiredOverrideCleanupJob" -> "Expired Override Cleanup";
             case "ReviewLockCleanupJob" -> "Review Lock Cleanup";
             case "ValidationDeadlineNotificationJob" -> "Validation Deadline Notification";
             case "EmbeddingFailureDigestJob" -> "Embedding Failure Digest";

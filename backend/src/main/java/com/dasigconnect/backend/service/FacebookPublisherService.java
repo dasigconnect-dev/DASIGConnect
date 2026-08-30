@@ -395,12 +395,10 @@ public class FacebookPublisherService {
         clearTokenSuspension(s);
         submissionRepository.save(s);
         String postUrl = "https://www.facebook.com/" + postId.replace("_", "/posts/");
-        if (isDirectPost) {
-            eventPublisher.publishEvent(new com.dasigconnect.backend.event.AdminDirectPostEvent(
-                    s.getInstitution(), s.getCaption(), postUrl));
-        } else {
-            eventPublisher.publishEvent(new PostPublishedEvent(s, postUrl));
-        }
+        // `direct_post_*` is a legacy lifecycle (the admin Direct Post UI was
+        // removed); any remaining such rows still publish and are marked
+        // `admin_direct_post`, and fire the normal "published" event.
+        eventPublisher.publishEvent(new PostPublishedEvent(s, postUrl));
         log.info("Submission {} published successfully as post {} (status={}).",
                 s.getId(), postId, s.getStatus());
     }
