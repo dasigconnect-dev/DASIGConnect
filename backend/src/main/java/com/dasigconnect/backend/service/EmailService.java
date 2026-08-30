@@ -56,8 +56,21 @@ public class EmailService {
         }
     }
 
+    /**
+     * When the frontend base URL is localhost (i.e. a dev/test environment),
+     * print the action link to the log so a developer can follow the flow
+     * without opening a mailbox. Never fires for a real (public) base URL, so
+     * tokens are not logged in production.
+     */
+    private void logLinkForLocalDev(String kind, String to, String link) {
+        if (isLocalhostUrl(appBaseUrl)) {
+            log.info("[local-dev] {} link for {} -> {}", kind, to, link);
+        }
+    }
+
     public void sendInvitationEmail(String to, String token) {
         String link = buildInvitationLink(token);
+        logLinkForLocalDev("invitation", to, link);
         String escapedLink = escapeHtml(link);
         sendHtml(
                 to,
@@ -119,6 +132,7 @@ public class EmailService {
 
     public void sendPasswordResetEmail(String to, String token) {
         String link = appBaseUrl.replaceAll("/$", "") + "/forgot-password/reset?token=" + token;
+        logLinkForLocalDev("password reset", to, link);
         String escapedLink = escapeHtml(link);
         sendHtml(
                 to,
