@@ -171,7 +171,7 @@ public class NotificationEventListener {
 
         String adminMsg = "Automated publishing failed for '" + s.getEventTitle()
                 + "' (scheduled " + slot + "): " + event.errorDetail()
-                + ". It needs manual action in the Resolution Center.";
+                + ". Recover it from the Review Queue's Failed tab.";
 
         // Notify super admins and moderators (both network-wide roles)
         List<User> targetAdmins = new java.util.ArrayList<>(superAdmins());
@@ -186,7 +186,7 @@ public class NotificationEventListener {
             emailDeliveryService.send(admin,
                     NotificationEventType.submission_publish_failed.name(),
                     "DASIGConnect — Publishing failed",
-                    adminMsg + "\n\nResolution Center: " + frontendBaseUrl + "/admin/resolution");
+                    adminMsg + "\n\nRecover it here: " + frontendBaseUrl + "/validation/queue?tab=failed");
             // Messenger alert (A4 / A5)
             String messengerAlert = "Urgent: automated publishing failed for \"" + s.getEventTitle()
                     + "\". Manual action required: " + frontendBaseUrl + link;
@@ -241,11 +241,16 @@ public class NotificationEventListener {
         String msg = sb.toString();
         String link = "/scheduler/calendar";
 
-        // In-app to institution admins
-        for (User admin : allModerators()) {
+        // A week-long content gap for a member HEI is a review + network
+        // planning concern — notify every moderator, every admin, and that
+        // institution's own contributors. Roles are mutually exclusive, so the
+        // three lists never overlap.
+        for (User moderator : allModerators()) {
+            notificationService.createNotification(moderator, NotificationEventType.empty_schedule_warning, msg, link);
+        }
+        for (User admin : superAdmins()) {
             notificationService.createNotification(admin, NotificationEventType.empty_schedule_warning, msg, link);
         }
-        // In-app to institution contributors
         for (User contributor : institutionContributors(event.institution().getId())) {
             notificationService.createNotification(contributor, NotificationEventType.empty_schedule_warning, msg, link);
         }
@@ -256,8 +261,8 @@ public class NotificationEventListener {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onTokenExpiryWarning(TokenExpiryWarningEvent event) {
         String msg = "The Facebook page access token expires in " + days(event.daysUntilExpiry())
-                + ". Re-authenticate it in the Resolution Center to avoid a publishing outage.";
-        String link = "/admin/resolution";
+                + ". Re-authenticate it under System Health -> Integrations to avoid a publishing outage.";
+        String link = "/admin/system-health#integrations";
         for (User admin : superAdmins()) {
             notificationService.createNotification(admin, NotificationEventType.token_expiring, msg, link);
             emailDeliveryService.send(admin,
@@ -272,14 +277,14 @@ public class NotificationEventListener {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onTokenValidationFailed(TokenValidationFailedEvent event) {
         String msg = "The Facebook page access token failed validation. "
-                + "Automated publishing is paused until you re-authenticate it in the Resolution Center.";
-        String link = "/admin/resolution";
+                + "Automated publishing is paused until you re-authenticate it under System Health -> Integrations.";
+        String link = "/admin/system-health#integrations";
         for (User admin : superAdmins()) {
             notificationService.createNotification(admin, NotificationEventType.token_invalid, msg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.token_invalid.name(),
                     "DASIGConnect — CRITICAL: Token validation failed",
-                    msg + "\n\nResolution Center: " + frontendBaseUrl + link);
+                    msg + "\n\nManage the token: " + frontendBaseUrl + link);
         }
     }
 
@@ -311,7 +316,7 @@ public class NotificationEventListener {
             emailDeliveryService.send(admin,
                     NotificationEventType.token_invalid.name(),
                     "DASIGConnect - Facebook token publishing alert",
-                    msg + "\n\nResolution Center: " + frontendBaseUrl + link);
+                    msg + "\n\nView submission: " + frontendBaseUrl + link);
         }
     }
 
