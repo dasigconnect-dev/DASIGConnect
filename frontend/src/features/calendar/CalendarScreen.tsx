@@ -116,6 +116,9 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
 
   async function handleRescheduleConfirm(reason: string) {
     if (!pendingReschedule) return;
+    // The reason is sent as an override reason: an admin bypasses a hard guard
+    // rail with it; for a moderator the backend rejects a blocked slot (403) and
+    // the modal surfaces that message.
     await rescheduleSubmission(
       pendingReschedule.event.id,
       pendingReschedule.newStart.toISOString(),

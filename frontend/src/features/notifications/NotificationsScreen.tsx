@@ -189,7 +189,8 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   if (eventType === "token_expiring" || eventType === "token_invalid") {
-    return isAdmin ? "/settings#page" : "/dashboard";
+    // Facebook Page token health + "Re-Authenticate" live on System Health.
+    return isAdmin ? "/admin/system-health#integrations" : "/dashboard";
   }
 
   if (eventType === "institution_onboarded" || eventType === "institution_no_moderator") {

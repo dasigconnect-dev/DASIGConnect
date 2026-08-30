@@ -42,7 +42,9 @@ public enum AuditLogCategory {
         if (a.contains("MANUAL_PUBLISH") || a.contains("PUBLISH") || a.contains("MISSED_REVIEW")) {
             return PUBLISHING;
         }
-        if (a.startsWith("USER_") || a.contains("SUPER_ADMIN") || a.contains("INVITATION") || a.contains("PASSWORD") || a.startsWith("LOGIN_") || a.equals("LOGOUT")) {
+        if (a.startsWith("USER_") || a.contains("SUPER_ADMIN") || a.contains("ADMIN_TRANSFER") || a.contains("ADMIN_OWNER")
+                || a.startsWith("CONTRIBUTOR_") || a.contains("INVITATION") || a.contains("PASSWORD")
+                || a.startsWith("LOGIN_") || a.equals("LOGOUT")) {
             return ACCOUNT_MANAGEMENT;
         }
         if (a.startsWith("INSTITUTION_")) {
@@ -51,10 +53,11 @@ public enum AuditLogCategory {
         if (a.startsWith("MEDIA_") || a.startsWith("ASSET_") || a.contains("ALBUM")) {
             return MEDIA_LIFECYCLE;
         }
-        if (a.contains("WATERMARK") || a.contains("GUARD_RAIL") || a.contains("PAGE_SETTINGS") || a.contains("CONFIG")) {
+        if (a.contains("WATERMARK") || a.contains("GUARD_RAIL") || a.contains("PAGE_SETTINGS") || a.contains("CONFIG")
+                || a.contains("JOB_RUN")) {
             return CONFIGURATION;
         }
-        if (a.contains("TOKEN") || a.contains("AUTH")) {
+        if (a.contains("TOKEN") || a.contains("AUTH") || a.contains("ACCOUNT_LOCKED") || a.contains("EXPORT")) {
             return SECURITY;
         }
         return OTHER;

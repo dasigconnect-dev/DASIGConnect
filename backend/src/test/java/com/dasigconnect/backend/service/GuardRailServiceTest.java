@@ -41,8 +41,8 @@ class GuardRailServiceTest {
         institutionId = UUID.randomUUID();
 
         // Default: no conflicts, no unpublished posts
-        lenient().when(slotReservationRepository.existsActiveWithin30Minutes(any(), any())).thenReturn(false);
-        lenient().when(slotReservationRepository.countActiveOnDay(any(), any())).thenReturn(0L);
+        lenient().when(slotReservationRepository.existsActiveWithin30Minutes(any(), any(), any())).thenReturn(false);
+        lenient().when(slotReservationRepository.countActiveOnDay(any(), any(), any())).thenReturn(0L);
         lenient().when(submissionRepository.countUnpublishedByInstitution(any())).thenReturn(0L);
         lenient().when(slotReservationRepository.findActiveInWindow(any(), any())).thenReturn(List.of());
     }
@@ -55,7 +55,7 @@ class GuardRailServiceTest {
         @Test
         @DisplayName("should block when a reservation exists within 30 minutes")
         void shouldBlock_whenConflictExists() {
-            when(slotReservationRepository.existsActiveWithin30Minutes(any(), any())).thenReturn(true);
+            when(slotReservationRepository.existsActiveWithin30Minutes(any(), any(), any())).thenReturn(true);
             Instant slot = validFutureSlot();
 
             GuardRailResult result = guardRailService.validate(institutionId, slot);
@@ -67,7 +67,7 @@ class GuardRailServiceTest {
         @Test
         @DisplayName("should pass when no reservations exist within 30 minutes")
         void shouldPass_whenNoConflict() {
-            when(slotReservationRepository.existsActiveWithin30Minutes(any(), any())).thenReturn(false);
+            when(slotReservationRepository.existsActiveWithin30Minutes(any(), any(), any())).thenReturn(false);
             Instant slot = validFutureSlot();
 
             GuardRailResult result = guardRailService.validate(institutionId, slot);
@@ -78,7 +78,7 @@ class GuardRailServiceTest {
         @Test
         @DisplayName("GR-H1 violation should include suggested alternative slots")
         void shouldIncludeSuggestedSlots_onGrH1Violation() {
-            when(slotReservationRepository.existsActiveWithin30Minutes(any(), any())).thenReturn(true);
+            when(slotReservationRepository.existsActiveWithin30Minutes(any(), any(), any())).thenReturn(true);
             Instant slot = validFutureSlot();
 
             GuardRailResult result = guardRailService.validate(institutionId, slot);
@@ -204,7 +204,7 @@ class GuardRailServiceTest {
         @Test
         @DisplayName("should warn when 6 or more posts are scheduled on the same day")
         void shouldWarn_whenDailyCountAtThreshold() {
-            when(slotReservationRepository.countActiveOnDay(any(), any())).thenReturn(6L);
+            when(slotReservationRepository.countActiveOnDay(any(), any(), any())).thenReturn(6L);
             Instant slot = validFutureSlot();
 
             GuardRailResult result = guardRailService.validate(institutionId, slot);
@@ -217,7 +217,7 @@ class GuardRailServiceTest {
         @Test
         @DisplayName("should not warn when fewer than 6 posts are on the same day")
         void shouldNotWarn_whenDailyCountBelowThreshold() {
-            when(slotReservationRepository.countActiveOnDay(any(), any())).thenReturn(5L);
+            when(slotReservationRepository.countActiveOnDay(any(), any(), any())).thenReturn(5L);
             Instant slot = validFutureSlot();
 
             GuardRailResult result = guardRailService.validate(institutionId, slot);
@@ -228,7 +228,7 @@ class GuardRailServiceTest {
         @Test
         @DisplayName("GR-S2 warning should not block submission")
         void grS2ShouldBeNonBlocking() {
-            when(slotReservationRepository.countActiveOnDay(any(), any())).thenReturn(10L);
+            when(slotReservationRepository.countActiveOnDay(any(), any(), any())).thenReturn(10L);
             Instant slot = validFutureSlot();
 
             GuardRailResult result = guardRailService.validate(institutionId, slot);
@@ -258,7 +258,7 @@ class GuardRailServiceTest {
         @DisplayName("multiple hard blocks can fire simultaneously")
         void shouldCollectMultipleHardBlocks() {
             // GR-H1 conflict AND GR-H2 (slot too soon)
-            when(slotReservationRepository.existsActiveWithin30Minutes(any(), any())).thenReturn(true);
+            when(slotReservationRepository.existsActiveWithin30Minutes(any(), any(), any())).thenReturn(true);
             Instant tooSoon = Instant.now().plus(30, ChronoUnit.MINUTES);
 
             GuardRailResult result = guardRailService.validate(institutionId, tooSoon);
@@ -269,7 +269,7 @@ class GuardRailServiceTest {
         @Test
         @DisplayName("hard block and soft warning can coexist")
         void shouldHaveBothBlockAndWarning_whenMultipleRulesFire() {
-            when(slotReservationRepository.existsActiveWithin30Minutes(any(), any())).thenReturn(true);
+            when(slotReservationRepository.existsActiveWithin30Minutes(any(), any(), any())).thenReturn(true);
             when(submissionRepository.countUnpublishedByInstitution(any())).thenReturn(5L);
             Instant slot = validFutureSlot();
 
@@ -288,7 +288,7 @@ class GuardRailServiceTest {
         @Test
         @DisplayName("isBlocked returns true only when hardBlocks is non-empty")
         void isBlocked_returnsTrueOnlyWhenHardBlocksPresent() {
-            when(slotReservationRepository.existsActiveWithin30Minutes(any(), any())).thenReturn(true);
+            when(slotReservationRepository.existsActiveWithin30Minutes(any(), any(), any())).thenReturn(true);
 
             GuardRailResult result = guardRailService.validate(institutionId, validFutureSlot());
 

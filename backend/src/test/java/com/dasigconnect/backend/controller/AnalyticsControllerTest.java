@@ -42,6 +42,9 @@ class AnalyticsControllerTest {
     private MetricsAggregatorService metricsAggregatorService;
 
     @MockitoBean
+    private com.dasigconnect.backend.service.AuditLogService auditLogService;
+
+    @MockitoBean
     private JWTService jwtService;
 
     @MockitoBean

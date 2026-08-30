@@ -38,8 +38,8 @@ import {
 } from "./hooks/useValidationQueue";
 import { useResolutionFailures } from "../../hooks/useResolutionFailures";
 import type { FailedPublication } from "../../api/resolutionApi";
-import ResolutionRetryModal from "../resolution/ResolutionRetryModal";
-import ManualPublishWorkflowPanel from "../resolution/ManualPublishWorkflowPanel";
+import ResolutionRetryModal from "./ResolutionRetryModal";
+import ManualPublishWorkflowPanel from "./ManualPublishWorkflowPanel";
 import "../../styles/dasig-loader.css";
 import "../../styles/resolution.css";
 
@@ -182,6 +182,7 @@ export default function ValidationQueueScreen({
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [editTab, setEditTab] = useState<"details" | "media" | "schedule">("details");
   const [overrideReason, setOverrideReason] = useState("");
+  const isAdmin = user.role === "admin";
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const editCaptionRef = useRef<HTMLTextAreaElement | null>(null);
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -613,7 +614,7 @@ export default function ValidationQueueScreen({
     }
     const controller = new AbortController();
     setGuardRailsLoading(true);
-    validateGuardRails(editScheduledAtIso, selected.institutionId)
+    validateGuardRails(editScheduledAtIso, selected.institutionId, selected.id)
       .then((res) => setGuardRails(res.data))
       .catch(() => setGuardRails(null))
       .finally(() => setGuardRailsLoading(false));
@@ -621,8 +622,11 @@ export default function ValidationQueueScreen({
   }, [editMode, scheduleChanged, editScheduledAtIso, selected]);
 
   const hardBlocked = (guardRails?.hardBlocks?.length ?? 0) > 0;
+  // Only an admin can bypass a hard block — with a reason. Moderators cannot
+  // save a blocked slot at all.
   const canSaveEdit =
-    !editSaving && (!hardBlocked || overrideReason.trim().length >= 10);
+    !editSaving &&
+    (!hardBlocked || (isAdmin && overrideReason.trim().length >= 10));
 
   function updateMedia(key: string, patch: Partial<EditMediaItem>) {
     setEditForm((f) => ({
@@ -738,7 +742,8 @@ export default function ValidationQueueScreen({
         eventTitle: editForm.eventTitle,
         eventDate: editForm.eventDate || undefined,
         caption: editForm.caption,
-        description: hardBlocked && overrideReason.trim() ? overrideReason.trim() : undefined,
+        overrideReason:
+          isAdmin && hardBlocked && overrideReason.trim() ? overrideReason.trim() : undefined,
         tags: editForm.tags
           ? editForm.tags.split(",").map((t) => t.trim()).filter(Boolean)
           : undefined,
@@ -1493,16 +1498,22 @@ export default function ValidationQueueScreen({
                                   <i className="ti ti-info-circle" /> {v.message}
                                 </div>
                               ))}
+                              {hardBlocked && !isAdmin && (
+                                <p className="val-edit-gr-note">
+                                  Only an administrator can override a guard rail — choose a compliant time.
+                                </p>
+                              )}
                             </div>
                           )}
 
-                          {hardBlocked && (
+                          {hardBlocked && isAdmin && (
                             <label className="val-edit-field">
-                              <span>Override reason (required — a guard rail is blocked)</span>
+                              <span>Override reason (required — bypassing a guard rail is audited)</span>
                               <textarea
                                 rows={3}
                                 value={overrideReason}
                                 onChange={(e) => setOverrideReason(e.target.value)}
+                                placeholder="Explain why this slot is necessary…"
                               />
                             </label>
                           )}
@@ -1725,6 +1736,7 @@ export default function ValidationQueueScreen({
 
       <ResolutionRetryModal
         item={retryItem}
+        canOverride={isAdmin}
         busy={retryItem ? failureBusy === retryItem.submissionId : false}
         onConfirmWithNewSchedule={(scheduledAt, overrideReason) => {
           if (retryItem) {

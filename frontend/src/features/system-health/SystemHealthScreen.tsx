@@ -744,7 +744,7 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
               <span>
                 {allClean
                   ? "Zero network timeouts or API rejections recorded"
-                  : "Network timeouts or Graph API rejections — see Resolution Center"}
+                  : "Network timeouts or Graph API rejections — see the Review Queue's Failed tab"}
               </span>
             </div>
           </div>
@@ -839,7 +839,7 @@ function getMetricExplanation(item: OperationalMetric): string {
       const failed = Math.max(item.sampleSize - succeeded, 0);
       return failed === 0
         ? `All ${item.sampleSize} approved post${item.sampleSize === 1 ? "" : "s"} published cleanly to connected social channels with zero dispatch errors.`
-        : `${item.value.toFixed(1)}% published cleanly — ${failed} of ${item.sampleSize} dispatch${failed === 1 ? "" : "es"} failed and need review in the Resolution Center.`;
+        : `${item.value.toFixed(1)}% published cleanly — ${failed} of ${item.sampleSize} dispatch${failed === 1 ? "" : "es"} failed and need review in the Review Queue's Failed tab.`;
     }
     case "live_event_fast_track_volume":
       return "High-priority live event posts routed through expedited moderator workflows.";

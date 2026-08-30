@@ -28,7 +28,6 @@ import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
 import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
-import com.dasigconnect.backend.repository.OverrideRequestRepository;
 import com.dasigconnect.backend.repository.PageSettingsRepository;
 import com.dasigconnect.backend.repository.SlotReservationRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
@@ -59,7 +58,6 @@ public class InstitutionService {
     private final MediaAlbumRepository mediaAlbumRepository;
     private final InvitationTokenRepository invitationTokenRepository;
     private final SlotReservationRepository slotReservationRepository;
-    private final OverrideRequestRepository overrideRequestRepository;
     private final PageSettingsRepository pageSettingsRepository;
     private final WatermarkConfigurationRepository watermarkConfigurationRepository;
     /** Media object store — the concrete host is abstracted behind this service. */
@@ -75,7 +73,6 @@ public class InstitutionService {
             MediaAlbumRepository mediaAlbumRepository,
             InvitationTokenRepository invitationTokenRepository,
             SlotReservationRepository slotReservationRepository,
-            OverrideRequestRepository overrideRequestRepository,
             PageSettingsRepository pageSettingsRepository,
             WatermarkConfigurationRepository watermarkConfigurationRepository,
             MediaStorageService mediaStorage,
@@ -88,7 +85,6 @@ public class InstitutionService {
         this.mediaAlbumRepository = mediaAlbumRepository;
         this.invitationTokenRepository = invitationTokenRepository;
         this.slotReservationRepository = slotReservationRepository;
-        this.overrideRequestRepository = overrideRequestRepository;
         this.pageSettingsRepository = pageSettingsRepository;
         this.watermarkConfigurationRepository = watermarkConfigurationRepository;
         this.mediaStorage = mediaStorage;
@@ -456,7 +452,6 @@ public class InstitutionService {
         // Clean up FK-constrained administrative records before the hard delete.
         invitationTokenRepository.deleteByInstitutionId(institutionId);
         slotReservationRepository.deleteByInstitutionId(institutionId);
-        overrideRequestRepository.deleteByInstitutionId(institutionId);
         pageSettingsRepository.deleteByInstitutionId(institutionId);
         watermarkConfigurationRepository.deleteByInstitutionId(institutionId);
         // Assets first: soft-deleted rows still point at institution_id and

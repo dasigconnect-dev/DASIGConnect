@@ -98,9 +98,13 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
       );
       refresh();
     } catch (err: unknown) {
+      const data = (err as { response?: { data?: unknown } })?.response?.data as
+        | { message?: string; error?: string | { message?: string } }
+        | undefined;
       const message =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        "Could not reschedule this submission.";
+        (typeof data?.error === "object" ? data?.error?.message : data?.error) ||
+        data?.message ||
+        "Could not reschedule this submission — the new time may break a guard rail.";
       toast.error(message);
       throw err;
     } finally {

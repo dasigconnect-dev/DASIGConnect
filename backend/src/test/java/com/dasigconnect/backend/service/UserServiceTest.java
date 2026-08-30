@@ -754,7 +754,7 @@ class UserServiceTest {
         assertThat(contributor.getInstitution()).isEqualTo(targetInst);
         assertThat(result.getInstitutionId()).isEqualTo(targetInstId);
         verify(userRepository).save(contributor);
-        verify(auditLogService).record(any(), eq("contributor.reassigned"), any(), any(), eq(userId), any());
+        verify(auditLogService).record(any(), eq("CONTRIBUTOR_REASSIGNED"), any(), any(), eq(userId), any());
     }
 
     @Test
