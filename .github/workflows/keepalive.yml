@@ -1,0 +1,22 @@
+name: keepalive
+
+# Pings the Render free-tier backend so it does not spin down (which would
+# stop the scheduled publishing jobs). This is a backup — a dedicated uptime
+# monitor (UptimeRobot / cron-job.org) is more reliable because GitHub cron
+# can be delayed several minutes under load.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: GET /health
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 \
+            https://api-dev.dasigconnect.com/health)
+          echo "HTTP $code"
+          test "$code" = "200"
