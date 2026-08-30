@@ -1,3 +1,12 @@
+# Render Blueprint for the DASIGConnect backend (dev environment).
+#
+# Custom domain (api-dev.dasigconnect.com) and the plan are configured in the
+# Render dashboard. Use at least the Starter plan — the free plan spins the
+# service down when idle, which stops the every-minute publishing scheduler.
+#
+# `sync: false` = the value is a secret / environment-specific; set it in the
+# Render dashboard, not in this file. Values written inline are non-secret.
+
 services:
   - type: web
     name: dasigconnect-backend
@@ -6,58 +15,67 @@ services:
     dockerContext: .
     healthCheckPath: /health
     envVars:
-      # Database
+      # ── Database (Supabase Session Pooler) ──────────────────────────────
       - key: DASIG_DATABASE_URL
         sync: false
       - key: DASIG_DATABASE_USER
         sync: false
       - key: DASIG_DATABASE_PASSWORD
         sync: false
-      # Supabase
-      - key: DASIG_SUPABASE_URL
-        sync: false
+      # Optional — only for Claude Vision fetching Supabase-hosted images.
       - key: DASIG_SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: DASIG_SUPABASE_STORAGE_BUCKET
-        sync: false
-      # JWT
+
+      # ── Auth ───────────────────────────────────────────────────────────
       - key: JWT_SECRET
         sync: false
-      # Mail
-      - key: MAIL_HOST
-        sync: false
-      - key: MAIL_PORT
-        sync: false
-      - key: MAIL_USERNAME
-        sync: false
-      - key: MAIL_PASSWORD
+
+      # ── URLs ───────────────────────────────────────────────────────────
+      - key: APP_FRONTEND_BASE_URL
+        value: https://dev.dasigconnect.com
+      - key: APP_GUARDRAILS_ENFORCED
+        value: "true"
+
+      # ── Email (Resend HTTP API) ────────────────────────────────────────
+      - key: RESEND_API_KEY
         sync: false
       - key: MAIL_FROM
         sync: false
       - key: MAIL_FROM_NAME
-        sync: false
+        value: DASIGConnect
       - key: MAIL_REPLY_TO
         sync: false
-      - key: MAIL_SMTP_AUTH
+
+      # ── Facebook Graph API ─────────────────────────────────────────────
+      - key: FACEBOOK_PAGE_ACCESS_TOKEN
         sync: false
-      - key: MAIL_SMTP_STARTTLS_ENABLE
+      - key: FACEBOOK_PAGE_ID
         sync: false
-      - key: MAIL_SMTP_STARTTLS_REQUIRED
+      - key: FACEBOOK_APP_ID
         sync: false
-      - key: MAIL_SMTP_SSL_TRUST
+      - key: FACEBOOK_APP_SECRET
         sync: false
-      - key: MAIL_SMTP_CONNECTION_TIMEOUT
+      - key: FACEBOOK_API_VERSION
+        value: v25.0
+      - key: FACEBOOK_OAUTH_REDIRECT_URI
+        value: https://api-dev.dasigconnect.com/api/v1/facebook/oauth-callback
+
+      # ── External AI APIs ───────────────────────────────────────────────
+      - key: ANTHROPIC_API_KEY
         sync: false
-      - key: MAIL_SMTP_TIMEOUT
+      - key: VOYAGE_API_KEY
         sync: false
-      - key: MAIL_SMTP_WRITE_TIMEOUT
+
+      # ── Cloudflare R2 object storage ───────────────────────────────────
+      - key: R2_ACCOUNT_ID
         sync: false
-      - key: MAIL_SMTP_DEBUG
+      - key: R2_ENDPOINT
         sync: false
-      - key: MAIL_SMTP_DEBUG_AUTH
+      - key: R2_ACCESS_KEY_ID
         sync: false
-      # App
-      - key: APP_FRONTEND_BASE_URL
-        value: https://dasigconnect.vercel.app
-      - key: APP_GUARDRAILS_ENFORCED
-        value: "true"
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        value: dasigconnect-media
+      - key: R2_PUBLIC_BASE_URL
+        sync: false
