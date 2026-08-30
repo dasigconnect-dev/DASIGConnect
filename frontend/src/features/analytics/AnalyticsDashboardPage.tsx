@@ -206,7 +206,7 @@ export default function AnalyticsDashboardPage({ user }: Props) {
         {!loading && !error && summary && (
           <>
             {/* 1. Top Executive Summary KPI Strip */}
-            <ExecutiveSummaryStrip summary={summary} />
+            <ExecutiveSummaryStrip summary={summary} onOpenReport={setReportMetric} />
 
             {/* 2. Contributor Specific View */}
             {isContributorView && (
@@ -222,7 +222,10 @@ export default function AnalyticsDashboardPage({ user }: Props) {
                     metric={summary.totalPostsPublished}
                     onOpenReport={() => setReportMetric("posts-by-institution")}
                   />
-                  <PostsByInstitutionChart rows={summary.postsByInstitution} />
+                  <PostsByInstitutionChart
+                    rows={summary.postsByInstitution}
+                    onOpenReport={setReportMetric}
+                  />
                 </div>
 
                 {/* Status Donut Chart + Top Categories Performance */}

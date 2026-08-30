@@ -592,7 +592,6 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
     const value = Math.min(Math.max(item.value, 0), maxScale);
     const percent = (value / maxScale) * 100;
     const targetPercent = (24 / maxScale) * 100;
-    const isOver = item.value > 24;
 
     return (
       <div className="sys-hires-sla-wrap">
