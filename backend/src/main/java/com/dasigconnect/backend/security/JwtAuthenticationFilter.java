@@ -1,9 +1,12 @@
 package com.dasigconnect.backend.security;
 
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.TenantScopeService;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.model.entity.UserStatus;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import io.jsonwebtoken.Claims;
 import java.io.IOException;
@@ -13,6 +16,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -32,12 +36,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JWTService jwtService;
     private final TenantScopeService tenantScopeService;
     private final ObjectProvider<UserRepository> userRepositoryProvider;
+    private final ObjectMapper objectMapper;
 
     public JwtAuthenticationFilter(JWTService jwtService, TenantScopeService tenantScopeService,
-            ObjectProvider<UserRepository> userRepositoryProvider) {
+            ObjectProvider<UserRepository> userRepositoryProvider,
+            ObjectProvider<ObjectMapper> objectMapperProvider) {
         this.jwtService = jwtService;
         this.tenantScopeService = tenantScopeService;
         this.userRepositoryProvider = userRepositoryProvider;
+        this.objectMapper = objectMapperProvider.getIfAvailable(() -> JsonMapper.builder().findAndAddModules().build());
     }
 
     @Override
@@ -62,7 +69,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         filterChain.doFilter(request, response);
                         return;
                     }
-                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Session is invalid or expired");
+                    writeUnauthorized(response, "Session is invalid or expired");
                     return;
                 }
                 {
@@ -98,7 +105,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         var currentUser = userId == null ? null : userRepository.findById(userId).orElse(null);
                         if (currentUser == null || currentUser.getAccountState() != UserStatus.active
                                 || currentUser.getSessionVersion() != tokenSessionVersion) {
-                            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Session has been revoked");
+                            writeUnauthorized(response, "Session has been revoked");
                             return;
                         }
                     }
@@ -122,10 +129,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 }
             } catch (Exception ex) {
                 log.debug("JWT validation failed: {}", ex.getMessage());
-                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Session is invalid or expired");
+                writeUnauthorized(response, "Session is invalid or expired");
                 return;
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {
+        if (response.isCommitted()) {
+            return;
+        }
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        objectMapper.writeValue(response.getWriter(), ApiResponse.error("UNAUTHORIZED", message, null));
     }
 }

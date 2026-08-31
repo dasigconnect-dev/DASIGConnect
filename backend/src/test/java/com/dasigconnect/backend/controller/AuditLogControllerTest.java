@@ -46,9 +46,9 @@ class AuditLogControllerTest {
     private TenantScopeService tenantScopeService;
 
     @Test
-    void getAuditLogs_withoutAdminRole_returns403() throws Exception {
+    void getAuditLogs_withoutAuth_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/audit-log"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

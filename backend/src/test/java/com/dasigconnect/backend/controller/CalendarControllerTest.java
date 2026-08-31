@@ -52,9 +52,9 @@ class CalendarControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/calendar without auth returns 403 Forbidden")
-    void getCalendar_unauthenticated_returnsForbidden() throws Exception {
+    void getCalendar_unauthenticated_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/calendar"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

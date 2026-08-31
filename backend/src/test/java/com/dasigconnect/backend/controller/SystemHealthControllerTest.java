@@ -54,9 +54,9 @@ class SystemHealthControllerTest {
     private TenantScopeService tenantScopeService;
 
     @Test
-    void summary_withoutAdminRole_returns403() throws Exception {
+    void summary_withoutAuth_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/system-health/summary"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -80,9 +80,9 @@ class SystemHealthControllerTest {
     }
 
     @Test
-    void runJob_withoutAdminRole_returns403() throws Exception {
+    void runJob_withoutAuth_returns401() throws Exception {
         mockMvc.perform(post("/api/v1/system-health/jobs/TokenHealthCheckJob/run"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
