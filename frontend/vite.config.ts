@@ -12,12 +12,14 @@ const baseSecurityHeaders = {
   "Cross-Origin-Resource-Policy": "same-origin",
 };
 
-// Loosened for the dev server only: HMR needs inline scripts + ws:, and the
-// local backend is served over plain http on :8080.
+// Loosened for the dev server only: HMR needs inline scripts + ws:, the local
+// backend is served over plain http on :8080, and dev tooling may create blob
+// workers. Keep this narrower than script-src; do not add unsafe-eval.
 const devSecurityHeaders = {
   "Content-Security-Policy": [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline'",
+    "worker-src 'self' blob:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net",
@@ -36,6 +38,7 @@ const prodSecurityHeaders = {
   "Content-Security-Policy": [
     "default-src 'self'",
     "script-src 'self'",
+    "worker-src 'self'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net",
