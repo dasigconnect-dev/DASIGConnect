@@ -14,6 +14,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -113,5 +114,28 @@ class NotificationServiceTest {
         notificationService.markAllRead(userPrincipal);
 
         verify(notificationRepository).markAllRead(eq(userId), any(Instant.class));
+    }
+
+    @Test
+    void createNotification_recipientWithInAppOn_persists() {
+        // recipient.notifyInApp defaults to true
+        when(notificationRepository.save(any(Notification.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Notification result = notificationService.createNotification(
+                recipient, NotificationEventType.submission_pending, "msg", "/link");
+
+        assertThat(result).isNotNull();
+        verify(notificationRepository).save(any(Notification.class));
+    }
+
+    @Test
+    void createNotification_recipientWithInAppOff_isSkipped() {
+        recipient.setNotifyInApp(false);
+
+        Notification result = notificationService.createNotification(
+                recipient, NotificationEventType.submission_pending, "msg", "/link");
+
+        assertThat(result).isNull();
+        verify(notificationRepository, never()).save(any(Notification.class));
     }
 }

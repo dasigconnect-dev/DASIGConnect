@@ -136,8 +136,6 @@ export function changePassword(currentPassword: string, newPassword: string) {
 
 export interface PageSettingsResponse {
   institutionId: string | null;
-  watermarkEnabled: boolean;
-  watermarkText: string | null;
   facebookPageId: string | null;
   updatedAt: string | null;
 }
@@ -146,7 +144,12 @@ export function getPageSettings(institutionId?: string | null) {
   return api.get<PageSettingsResponse>("/settings/page", { params: institutionId ? { institutionId } : {} });
 }
 
-export function updatePageSettings(data: Omit<PageSettingsResponse, "institutionId" | "updatedAt">, institutionId?: string | null) {
+// Page Settings is the Facebook Page ID only. Watermark on/off + layout are
+// saved via saveWatermarkConfiguration (/settings/watermark).
+export function updatePageSettings(
+  data: { facebookPageId: string | null },
+  institutionId?: string | null,
+) {
   return api.put<PageSettingsResponse>("/settings/page", data, { params: institutionId ? { institutionId } : {} });
 }
 

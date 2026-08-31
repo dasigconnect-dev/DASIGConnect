@@ -1,5 +1,5 @@
 import "../../styles/dasig-loader.css";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { WatermarkElement } from "../../types/watermark.types";
@@ -40,6 +40,9 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const navigate = useNavigate();
 
   const canManagePage = user.role === "admin";
+  // Messenger alerts are a per-account delivery channel; only moderators and
+  // admins actually receive Messenger deliveries (see NotificationEventListener).
+  const canUseMessenger = user.role === "moderator" || user.role === "admin";
   const [initialLoading, setInitialLoading] = useState(cachedProfileSettings === null);
 
   // Tab State
@@ -72,6 +75,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [messengerStatus, setMessengerStatus] = useState<MessengerConnection | null>(null);
   const [linkCode, setLinkCode] = useState<MessengerLinkCode | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [messengerExpanded, setMessengerExpanded] = useState(false);
 
   const [saving, setSaving] = useState<"account" | "password" | "page" | "watermark" | "messenger" | null>(null);
   const pageInstitutionId = null;
@@ -108,7 +112,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   });
 
   const loadMessenger = () => {
-    if (!canManagePage) return;
+    if (!canUseMessenger) return;
     getMessengerConnectionStatus()
       .then((data) => setMessengerStatus(data))
       .catch(() => setMessengerStatus(null));
@@ -184,7 +188,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       );
     }
 
-    if (canManagePage) {
+    if (canUseMessenger) {
       promises.push(
         getMessengerConnectionStatus()
           .then((data) => {
@@ -205,11 +209,14 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     return () => {
       isCurrent = false;
     };
-  }, [canManagePage]);
+  }, [canUseMessenger]);
 
-  // Page and Watermark settings loader
+  // Page + Watermark data — loaded once, the first time the admin opens the
+  // Page tab (not eagerly on every settings mount).
+  const pageDataLoadedRef = useRef(false);
   useEffect(() => {
-    if (!canManagePage) return;
+    if (!canManagePage || activeTab !== "page" || pageDataLoadedRef.current) return;
+    pageDataLoadedRef.current = true;
 
     let isCurrent = true;
     void getPageSettings(pageInstitutionId)
@@ -234,7 +241,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     return () => {
       isCurrent = false;
     };
-  }, [canManagePage, pageInstitutionId]);
+  }, [canManagePage, activeTab, pageInstitutionId]);
 
   async function saveAccount() {
     const cleanName = displayName.trim().replace(/\s+/g, " ");
@@ -292,10 +299,10 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   async function savePage() {
     setSaving("page");
     try {
-      await updatePageSettings({ watermarkEnabled, watermarkText: "", facebookPageId }, pageInstitutionId);
-      toast.success("Facebook settings updated.");
+      await updatePageSettings({ facebookPageId }, pageInstitutionId);
+      toast.success("Facebook Page ID updated.");
     } catch {
-      toast.error("Unable to update Facebook settings.");
+      toast.error("Unable to update Facebook Page ID.");
     } finally {
       setSaving(null);
     }
@@ -309,8 +316,9 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
         enabled: watermarkEnabled,
         elements: watermarkElements,
       });
+      setWatermarkEnabled(data.enabled);
       setWatermarkElements(data.elements || []);
-      toast.success("Global watermark configuration saved.");
+      toast.success("Watermark settings saved.");
     } catch (err: unknown) {
       const errorMsg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       toast.error(errorMsg || "Unable to save watermark configuration.");
@@ -325,7 +333,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       const res = await createMessengerLinkCode();
       setLinkCode(res);
       setCopiedCode(false);
-      toast.success("Messenger link code generated. Send it to the official Page.");
+      toast.success("Link code ready — copy the command and send it in Messenger.");
     } catch {
       toast.error("Unable to generate Messenger link code.");
     } finally {
@@ -340,6 +348,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       await disconnectMessenger();
       setMessengerStatus({ connected: false, enabled: false, linkedAt: null });
       setLinkCode(null);
+      setMessengerExpanded(false);
       toast.success("Facebook Messenger disconnected.");
     } catch {
       toast.error("Unable to disconnect Messenger.");
@@ -350,12 +359,25 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
 
   function handleCopyCode() {
     if (!linkCode) return;
+    // linkCode.code is already the full command ("CONNECT <token>") from the API.
     void navigator.clipboard.writeText(linkCode.code).then(() => {
       setCopiedCode(true);
-      toast.success("Code copied to clipboard!");
+      toast.success("Command copied — paste it into Messenger.");
       setTimeout(() => setCopiedCode(false), 3000);
     });
   }
+
+  // Live countdown for the link code (server issues a 10-minute window). A
+  // ticking clock forces the re-render; the value itself is derived in render.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!linkCode) return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [linkCode]);
+  const codeSecondsLeft = linkCode
+    ? Math.max(0, Math.round((new Date(linkCode.expiresAt).getTime() - nowMs) / 1000))
+    : 0;
 
   if (initialLoading) {
     return (
@@ -425,10 +447,11 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                 type="button"
                 className="settings-save-button"
                 disabled={saving === "watermark" || watermarkLoading}
+                aria-busy={saving === "watermark"}
                 onClick={() => void saveWatermark()}
               >
                 <i className={saving === "watermark" ? "ti ti-loader-2 settings-spinner" : "ti ti-device-floppy"} />
-                {saving === "watermark" ? "Saving..." : "Save Global Watermark"}
+                {saving === "watermark" ? "Saving..." : "Save"}
               </button>
             </div>
           </header>
@@ -590,6 +613,115 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                       checked={notifyEmail}
                       onChange={setNotifyEmail}
                     />
+
+                    {canUseMessenger && (
+                      <>
+                        <div className="settings-toggle-row settings-channel-row">
+                          <span className="settings-toggle-icon"><i className="ti ti-brand-messenger" /></span>
+                          <span className="settings-toggle-copy">
+                            <strong>Facebook Messenger</strong>
+                            <span>
+                              {messengerStatus?.connected
+                                ? `Connected${messengerStatus.linkedAt ? " " + new Date(messengerStatus.linkedAt).toLocaleDateString() : ""} — alerts also push to Messenger.`
+                                : "Also push your alerts to your personal Facebook Messenger."}
+                            </span>
+                          </span>
+                          {messengerStatus?.connected ? (
+                            <button
+                              type="button"
+                              className="settings-channel-btn is-danger"
+                              disabled={saving === "messenger"}
+                              onClick={() => void handleDisconnectMessenger()}
+                            >
+                              Disconnect
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="settings-channel-btn"
+                              aria-expanded={messengerExpanded}
+                              onClick={() => setMessengerExpanded((v) => !v)}
+                            >
+                              {messengerExpanded ? "Cancel" : "Set up"}
+                            </button>
+                          )}
+                        </div>
+
+                        {messengerExpanded && !messengerStatus?.connected && (
+                          <div className="settings-channel-panel">
+                            <div className="settings-messenger-steps">
+                              <ol>
+                                <li>Generate a one-time code below — it&apos;s valid for 10 minutes.</li>
+                                <li>
+                                  In Messenger, open a chat with the official <strong>DASIGConnect</strong>{" "}
+                                  Page and send it the command shown below (use <strong>Copy</strong> so it&apos;s exact).
+                                </li>
+                                <li>
+                                  The Page replies to confirm; then hit{" "}
+                                  <strong>I&apos;ve sent it — check status</strong>.
+                                </li>
+                              </ol>
+                            </div>
+
+                            {linkCode ? (
+                              <div className="settings-messenger-linkcode">
+                                <span className="settings-messenger-code-label">
+                                  Send this exact message to the DASIGConnect Page
+                                </span>
+                                <div className="settings-messenger-code-container">
+                                  <code className="settings-messenger-code-value">{linkCode.code}</code>
+                                  <button
+                                    type="button"
+                                    className="settings-messenger-copy-btn"
+                                    onClick={handleCopyCode}
+                                  >
+                                    <i className={copiedCode ? "ti ti-check" : "ti ti-copy"} />
+                                    {copiedCode ? "Copied" : "Copy"}
+                                  </button>
+                                </div>
+                                <div className="settings-messenger-code-meta">
+                                  <span className={codeSecondsLeft <= 60 ? "is-expiring" : undefined}>
+                                    <i className="ti ti-clock" />{" "}
+                                    {codeSecondsLeft > 0
+                                      ? `Expires in ${Math.floor(codeSecondsLeft / 60)}:${String(codeSecondsLeft % 60).padStart(2, "0")}`
+                                      : "Code expired"}
+                                  </span>
+                                  <span className="settings-messenger-meta-actions">
+                                    {codeSecondsLeft === 0 && (
+                                      <button
+                                        type="button"
+                                        className="settings-messenger-link-btn"
+                                        disabled={saving === "messenger"}
+                                        onClick={() => void generateMessengerCode()}
+                                      >
+                                        Generate new code
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      className="settings-messenger-link-btn"
+                                      onClick={loadMessenger}
+                                    >
+                                      I&apos;ve sent it — check status
+                                    </button>
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className="settings-save-button settings-messenger-generate-btn"
+                                disabled={saving === "messenger"}
+                                onClick={() => void generateMessengerCode()}
+                              >
+                                <i className={saving === "messenger" ? "ti ti-loader-2 settings-spinner" : "ti ti-key"} />
+                                {saving === "messenger" ? "Generating…" : "Generate link code"}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -729,14 +861,24 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                     </div>
                   </div>
                 </div>
-                <footer className="settings-card-footer">
+                <footer className="settings-card-footer" style={{ gap: 10 }}>
                   <button
                     type="button"
-                    className="settings-save-button"
+                    className="settings-launch-studio-btn"
                     onClick={openStudio}
                   >
                     <i className="ti ti-palette" />
                     Open Watermark Studio
+                  </button>
+                  <button
+                    type="button"
+                    className="settings-save-button"
+                    disabled={saving === "watermark" || watermarkLoading}
+                    aria-busy={saving === "watermark"}
+                    onClick={() => void saveWatermark()}
+                  >
+                    <i className={saving === "watermark" ? "ti ti-loader-2 settings-spinner" : "ti ti-device-floppy"} />
+                    {saving === "watermark" ? "Saving…" : "Save"}
                   </button>
                 </footer>
               </section>
@@ -771,93 +913,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                   busy={saving === "page"}
                   onClick={() => void savePage()}
                 />
-              </section>
-
-              {/* Card 3: Facebook Messenger Alerts */}
-              <section className="settings-card" id="messenger-card">
-                <SettingsHeader
-                  icon="ti ti-brand-messenger"
-                  title="Facebook Messenger Alerts"
-                  description="Receive instant alerts for submissions, schedule warnings, and critical publishing events directly on Messenger."
-                  accent={
-                    messengerStatus?.connected ? (
-                      <span className="settings-admin-chip" style={{ background: "#dcfce7", color: "#166534" }}>
-                        <i className="ti ti-circle-check" /> Connected
-                      </span>
-                    ) : (
-                      <span className="settings-admin-chip">
-                        <i className="ti ti-plug" /> Integration
-                      </span>
-                    )
-                  }
-                />
-                <div className="settings-card-body">
-                  {messengerStatus?.connected ? (
-                    <div className="settings-messenger-connected">
-                      <div className="settings-messenger-badge">
-                        <span className="settings-messenger-status-dot" />
-                        <div className="settings-messenger-badge-text">
-                          <strong>Messenger Account Linked & Active</strong>
-                          <span>Connected {messengerStatus.linkedAt ? new Date(messengerStatus.linkedAt).toLocaleDateString() : ""} — Real-time alerts enabled</span>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="settings-messenger-disconnect-btn"
-                        disabled={saving === "messenger"}
-                        onClick={() => void handleDisconnectMessenger()}
-                      >
-                        <i className="ti ti-plug-connected-x" /> Disconnect
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="settings-messenger-box">
-                      <div className="settings-messenger-steps">
-                        <p>Link your personal Facebook Messenger to receive automated real-time alerts (T-01, T-07, T-11, T-12) directly from DASIGConnect.</p>
-                        <ol>
-                          <li>Click <strong>Generate Link Code</strong> below to receive a secure 10-minute code.</li>
-                          <li>Open Facebook Messenger and send the exact command to the official DASIGConnect Page.</li>
-                          <li>DASIGConnect will verify the code and immediately confirm your connection.</li>
-                        </ol>
-                      </div>
-
-                      {linkCode ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                          <div className="settings-messenger-code-container">
-                            <span>{linkCode.code}</span>
-                            <button type="button" className="settings-messenger-copy-btn" onClick={handleCopyCode}>
-                              <i className={copiedCode ? "ti ti-check" : "ti ti-copy"} />
-                              {copiedCode ? "Copied" : "Copy"}
-                            </button>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "var(--d-muted)" }}>
-                            <span>Expires in 10 minutes</span>
-                            <button
-                              type="button"
-                              style={{ background: "none", border: "none", color: "var(--d-blue)", cursor: "pointer", textDecoration: "underline", fontSize: "11px" }}
-                              onClick={loadMessenger}
-                            >
-                              Check Connection Status
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <button
-                            type="button"
-                            className="settings-save-button"
-                            style={{ display: "inline-flex", alignItems: "center", gap: "8px", width: "auto" }}
-                            disabled={saving === "messenger"}
-                            onClick={() => void generateMessengerCode()}
-                          >
-                            <i className={saving === "messenger" ? "ti ti-loader-2 settings-spinner" : "ti ti-key"} />
-                            Generate Link Code
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
               </section>
             </div>
           )}

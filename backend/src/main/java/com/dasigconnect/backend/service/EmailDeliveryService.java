@@ -30,8 +30,18 @@ public class EmailDeliveryService {
     /**
      * Sends a plain-text email and records the attempt in email_delivery_log.
      * Never throws — a delivery failure is logged and recorded as failed.
+     *
+     * <p>Honours the recipient's "Email notifications" account preference: if it
+     * is off, nothing is sent or logged. Transactional emails that must always
+     * arrive (invitations, password reset) go through {@code EmailService}
+     * directly and never reach this method.
      */
     public void send(User recipient, String templateCode, String subject, String body) {
+        if (recipient == null || !recipient.isNotifyEmail()) {
+            logger.debug("Email [{}] suppressed — recipient has email notifications off", templateCode);
+            return;
+        }
+
         EmailDeliveryLog record = new EmailDeliveryLog();
         record.setRecipient(recipient);
         record.setTemplateCode(templateCode);
