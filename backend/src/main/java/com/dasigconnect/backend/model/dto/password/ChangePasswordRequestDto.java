@@ -5,4 +5,4 @@ import jakarta.validation.constraints.Size;
 
 public record ChangePasswordRequestDto(
         @NotBlank String currentPassword,
-        @NotBlank @Size(min = 8) String newPassword) {}
+        @NotBlank @Size(min = 12) String newPassword) {}

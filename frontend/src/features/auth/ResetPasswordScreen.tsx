@@ -1,6 +1,7 @@
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
+import { getPasswordRules } from '../../lib/passwordPolicy'
 
 interface ResetPasswordScreenProps {
   active: boolean
@@ -36,7 +37,9 @@ export default function ResetPasswordScreen({
   onBack,
 }: ResetPasswordScreenProps) {
   const passwordsMatch = confirmPassword.length > 0 && password === confirmPassword
-  const canSubmit = password.length >= 8 && passwordsMatch && !loading
+  const rules = getPasswordRules(password)
+  const passwordOk = Object.values(rules).every(Boolean)
+  const canSubmit = passwordOk && passwordsMatch && !loading
 
   return (
     <Screen id="reset-password" active={active}>
@@ -115,6 +118,29 @@ export default function ResetPasswordScreen({
                   <button type="button" className="eye-btn" onClick={onTogglePassword} aria-label="Toggle">
                     <i className={showPassword ? 'ti ti-eye' : 'ti ti-eye-off'}></i>
                   </button>
+                </div>
+                <div className="pw-rules">
+                  <div className={`pw-rule${rules.length ? ' pass' : ''}`}>
+                    <i className={rules.length ? 'ti ti-circle-check' : 'ti ti-circle'}></i> 12+ characters
+                  </div>
+                  <div className={`pw-rule${rules.upper ? ' pass' : ''}`}>
+                    <i className={rules.upper ? 'ti ti-circle-check' : 'ti ti-circle'}></i> Uppercase letter
+                  </div>
+                  <div className={`pw-rule${rules.lower ? ' pass' : ''}`}>
+                    <i className={rules.lower ? 'ti ti-circle-check' : 'ti ti-circle'}></i> Lowercase letter
+                  </div>
+                  <div className={`pw-rule${rules.number ? ' pass' : ''}`}>
+                    <i className={rules.number ? 'ti ti-circle-check' : 'ti ti-circle'}></i> Number
+                  </div>
+                  <div className={`pw-rule${rules.symbol ? ' pass' : ''}`}>
+                    <i className={rules.symbol ? 'ti ti-circle-check' : 'ti ti-circle'}></i> Special character
+                  </div>
+                  <div className={`pw-rule${rules.noSpaces ? ' pass' : ''}`}>
+                    <i className={rules.noSpaces ? 'ti ti-circle-check' : 'ti ti-circle'}></i> No spaces
+                  </div>
+                  <div className={`pw-rule${rules.notCommon ? ' pass' : ''}`}>
+                    <i className={rules.notCommon ? 'ti ti-circle-check' : 'ti ti-circle'}></i> Not common or sequential
+                  </div>
                 </div>
               </div>
               <div className="fgroup">

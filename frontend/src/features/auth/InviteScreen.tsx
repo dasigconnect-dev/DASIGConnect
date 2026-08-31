@@ -9,8 +9,12 @@ interface InviteRules {
   lastName: boolean
   length: boolean
   upper: boolean
+  lower: boolean
   number: boolean
   symbol: boolean
+  noSpaces: boolean
+  notCommon: boolean
+  noIdentity: boolean
   match: boolean
 }
 
@@ -302,13 +306,19 @@ export default function InviteScreen({
                   <i
                     className={rules.length ? 'ti ti-circle-check' : 'ti ti-circle'}
                   ></i>{' '}
-                  8+ characters
+                  12+ characters
                 </div>
                 <div className={`pw-rule${rules.upper ? ' pass' : ''}`} id="r-up">
                   <i
                     className={rules.upper ? 'ti ti-circle-check' : 'ti ti-circle'}
                   ></i>{' '}
                   Uppercase letter
+                </div>
+                <div className={`pw-rule${rules.lower ? ' pass' : ''}`}>
+                  <i
+                    className={rules.lower ? 'ti ti-circle-check' : 'ti ti-circle'}
+                  ></i>{' '}
+                  Lowercase letter
                 </div>
                 <div className={`pw-rule${rules.number ? ' pass' : ''}`} id="r-num">
                   <i
@@ -321,6 +331,24 @@ export default function InviteScreen({
                     className={rules.symbol ? 'ti ti-circle-check' : 'ti ti-circle'}
                   ></i>{' '}
                   Special character
+                </div>
+                <div className={`pw-rule${rules.noSpaces ? ' pass' : ''}`}>
+                  <i
+                    className={rules.noSpaces ? 'ti ti-circle-check' : 'ti ti-circle'}
+                  ></i>{' '}
+                  No spaces
+                </div>
+                <div className={`pw-rule${rules.notCommon ? ' pass' : ''}`}>
+                  <i
+                    className={rules.notCommon ? 'ti ti-circle-check' : 'ti ti-circle'}
+                  ></i>{' '}
+                  Not common or sequential
+                </div>
+                <div className={`pw-rule${rules.noIdentity ? ' pass' : ''}`}>
+                  <i
+                    className={rules.noIdentity ? 'ti ti-circle-check' : 'ti ti-circle'}
+                  ></i>{' '}
+                  Does not include your name or email
                 </div>
               </div>
             </div>
@@ -376,8 +404,12 @@ export default function InviteScreen({
                   rules.lastName &&
                   rules.length &&
                   rules.upper &&
+                  rules.lower &&
                   rules.number &&
                   rules.symbol &&
+                  rules.noSpaces &&
+                  rules.notCommon &&
+                  rules.noIdentity &&
                   rules.match
                 )
               }
