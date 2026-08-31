@@ -8,6 +8,7 @@ import { createMessengerLinkCode, disconnectMessenger, getMessengerConnectionSta
 import { getWatermarkConfiguration, saveWatermarkConfiguration } from "../../api/watermarkApi";
 import WatermarkCanvasEditor from "../settings/components/WatermarkCanvasEditor";
 import { useToast } from "../../context/ToastContext";
+import { registerAppCacheReset } from "../../lib/appCache";
 import { firstPasswordError, getPasswordRules } from "../../lib/passwordPolicy";
 
 interface Props {
@@ -17,13 +18,29 @@ interface Props {
 
 type SettingsTab = "account" | "password" | "page";
 
+// The profile-settings slice of GET /api/v1/me (display name + notification
+// prefs). Cached module-wide so revisiting /settings within the TTL skips the
+// round-trip. Cleared on logout via the app cache registry.
+type ProfileSettingsCache = {
+  name: string;
+  notifyInApp: boolean;
+  notifyEmail: boolean;
+};
+let cachedProfileSettings: ProfileSettingsCache | null = null;
+let cachedProfileAt = 0;
+const PROFILE_CACHE_TTL_MS = 60_000;
+registerAppCacheReset(() => {
+  cachedProfileSettings = null;
+  cachedProfileAt = 0;
+});
+
 export default function AccountSettingsScreen({ user, onProfileUpdated }: Props) {
   const toast = useToast();
   const location = useLocation();
   const navigate = useNavigate();
 
   const canManagePage = user.role === "admin";
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(cachedProfileSettings === null);
 
   // Tab State
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
@@ -33,12 +50,13 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     return "account";
   });
 
-  const [displayName, setDisplayName] = useState(user.displayName || user.name);
-  const [initialDisplayName, setInitialDisplayName] = useState(user.displayName || user.name);
-  const [notifyInApp, setNotifyInApp] = useState(true);
-  const [initialNotifyInApp, setInitialNotifyInApp] = useState(true);
-  const [notifyEmail, setNotifyEmail] = useState(true);
-  const [initialNotifyEmail, setInitialNotifyEmail] = useState(true);
+  const seedName = cachedProfileSettings?.name || user.displayName || user.name;
+  const [displayName, setDisplayName] = useState(seedName);
+  const [initialDisplayName, setInitialDisplayName] = useState(seedName);
+  const [notifyInApp, setNotifyInApp] = useState(cachedProfileSettings?.notifyInApp ?? true);
+  const [initialNotifyInApp, setInitialNotifyInApp] = useState(cachedProfileSettings?.notifyInApp ?? true);
+  const [notifyEmail, setNotifyEmail] = useState(cachedProfileSettings?.notifyEmail ?? true);
+  const [initialNotifyEmail, setInitialNotifyEmail] = useState(cachedProfileSettings?.notifyEmail ?? true);
   const [currentPassword, setCurrentPassword] = useState("");
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -131,24 +149,40 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     navigate(`/settings#${canManagePage ? "page" : "account"}`, { replace: true });
   }
 
-  // Initial mount: load profile and messenger status
+  // Hydrate the form from the server. Deliberately NOT keyed on `user.name`:
+  // saveAccount() bumps that prop via onProfileUpdated and must not retrigger a
+  // redundant GET /me (we already applied the change locally).
   useEffect(() => {
     let isCurrent = true;
-    const promises: Promise<unknown>[] = [
-      getMe()
-        .then(({ data }) => {
-          if (!isCurrent) return;
-          const fullName = [data.firstName, data.lastName].filter(Boolean).join(" ");
-          const name = data.displayName || fullName || user.name || "";
-          setDisplayName(name);
-          setInitialDisplayName(name);
-          setNotifyInApp(data.notifyInApp);
-          setInitialNotifyInApp(data.notifyInApp);
-          setNotifyEmail(data.notifyEmail);
-          setInitialNotifyEmail(data.notifyEmail);
-        })
-        .catch(() => {}),
-    ];
+    const promises: Promise<unknown>[] = [];
+
+    const profileFresh =
+      cachedProfileSettings !== null &&
+      Date.now() - cachedProfileAt < PROFILE_CACHE_TTL_MS;
+
+    if (!profileFresh) {
+      promises.push(
+        getMe()
+          .then(({ data }) => {
+            if (!isCurrent) return;
+            const fullName = [data.firstName, data.lastName].filter(Boolean).join(" ");
+            const name = data.displayName || fullName || "";
+            setDisplayName(name);
+            setInitialDisplayName(name);
+            setNotifyInApp(data.notifyInApp);
+            setInitialNotifyInApp(data.notifyInApp);
+            setNotifyEmail(data.notifyEmail);
+            setInitialNotifyEmail(data.notifyEmail);
+            cachedProfileSettings = {
+              name,
+              notifyInApp: data.notifyInApp,
+              notifyEmail: data.notifyEmail,
+            };
+            cachedProfileAt = Date.now();
+          })
+          .catch(() => {}),
+      );
+    }
 
     if (canManagePage) {
       promises.push(
@@ -171,7 +205,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     return () => {
       isCurrent = false;
     };
-  }, [user.name, canManagePage]);
+  }, [canManagePage]);
 
   // Page and Watermark settings loader
   useEffect(() => {
@@ -214,6 +248,8 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       setInitialDisplayName(cleanName);
       setInitialNotifyInApp(notifyInApp);
       setInitialNotifyEmail(notifyEmail);
+      cachedProfileSettings = { name: cleanName, notifyInApp, notifyEmail };
+      cachedProfileAt = Date.now();
       await onProfileUpdated();
       toast.success("Account settings updated.");
     } catch {

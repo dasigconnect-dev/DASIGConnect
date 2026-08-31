@@ -7,6 +7,7 @@ const LEGEND_STATUSES = [
   "publish_failed",
   "admin_direct_post",
   "pending",
+  "rejected",
   "missed_review",
 ];
 

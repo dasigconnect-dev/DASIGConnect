@@ -53,6 +53,7 @@ import {
   initialsFromEmail,
 } from "../lib/userIdentity";
 import { firstPasswordError, getPasswordRules } from "../lib/passwordPolicy";
+import { clearAppCaches } from "../lib/appCache";
 
 const LOCKOUT_LIMIT = 5;
 const LOCKOUT_SECONDS = 15 * 60;
@@ -289,6 +290,9 @@ function App() {
     setAuthToken(null);
     localStorage.removeItem("dasigconnect_token");
     localStorage.removeItem("dasigconnect_user");
+    // Drop any in-memory caches from a prior session on this tab so a new
+    // account never sees the previous user's role-scoped data.
+    clearAppCaches();
     const email = loginEmail.trim().toLowerCase();
     try {
       const response = await login(email, loginPassword);
@@ -457,6 +461,7 @@ function App() {
     localStorage.removeItem("dasigconnect_token");
     localStorage.removeItem("dasigconnect_user");
     setAuthToken(null);
+    clearAppCaches();
     setCurrentUser(null);
     setShowDropdown(false);
     setShowSessionModal(false);

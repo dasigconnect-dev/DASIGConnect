@@ -1,4 +1,5 @@
 import type { SavedMediaAsset, SubmissionStatus } from "../../api/submissionApi";
+import { registerAppCacheReset } from "../../lib/appCache";
 import type { FormState } from "./types";
 
 export const initialForm: FormState = {
@@ -117,6 +118,11 @@ export const submissionDetailsMemoryCache: Record<
   string,
   { caption: string; mediaAssets: SavedMediaAsset[] }
 > = {};
+registerAppCacheReset(() => {
+  for (const key of Object.keys(submissionDetailsMemoryCache)) {
+    delete submissionDetailsMemoryCache[key];
+  }
+});
 
 export const DEFAULT_INSTITUTION_NAME = "dasig central visayas";
 export const DEFAULT_INSTITUTION_CODE = "dasig-cv";

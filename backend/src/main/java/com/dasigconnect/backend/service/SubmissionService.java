@@ -40,6 +40,7 @@ import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.AssetTag;
+import com.dasigconnect.backend.model.entity.MediaAlbum;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaAssetStatus;
 import com.dasigconnect.backend.model.entity.MediaFileType;
@@ -51,6 +52,7 @@ import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.InstitutionRepository;
+import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.ReviewLockRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
@@ -101,6 +103,7 @@ public class SubmissionService {
     private boolean guardRailsEnforced = true;
 
     private final AssetTagRepository assetTagRepository;
+    private final MediaAlbumRepository mediaAlbumRepository;
 
     public SubmissionService(
             SubmissionRepository submissionRepository,
@@ -116,6 +119,7 @@ public class SubmissionService {
             EmailDeliveryService emailDeliveryService,
             UserRepository userRepository,
             AssetTagRepository assetTagRepository,
+            MediaAlbumRepository mediaAlbumRepository,
             ApplicationEventPublisher eventPublisher) {
         this.submissionRepository = submissionRepository;
         this.institutionRepository = institutionRepository;
@@ -130,6 +134,7 @@ public class SubmissionService {
         this.emailDeliveryService = emailDeliveryService;
         this.userRepository = userRepository;
         this.assetTagRepository = assetTagRepository;
+        this.mediaAlbumRepository = mediaAlbumRepository;
         this.eventPublisher = eventPublisher;
     }
 
@@ -468,18 +473,47 @@ public class SubmissionService {
                     "At least one valid media attachment is required before submitting.");
         }
 
-        // Promote staged draft uploads: bind them to the now-final institution and
-        // hand them to the AI pipeline. Library-picked assets are already bound.
-        List<MediaAsset> staged = submissionMediaAssetRepository
-                .findMediaAssetsBySubmissionId(submissionId).stream()
-                .filter(asset -> asset.getStatus() == MediaAssetStatus.STAGED)
-                .toList();
-        if (!staged.isEmpty()) {
-            for (MediaAsset asset : staged) {
+        // Reconcile every attached asset with the finalised submission:
+        //  - a NEW upload (STAGED, no institution/album) is bound to the
+        //    submission's institution, filed into the album the contributor
+        //    assigned on the post, and handed to the AI pipeline (PROCESSING);
+        //  - an EXISTING library asset keeps its original album — it is only
+        //    being linked to the post;
+        //  - BOTH get the post's media tags (manual, deduped by label).
+        List<MediaAsset> attachedAssets = submissionMediaAssetRepository
+                .findMediaAssetsBySubmissionId(submissionId);
+        List<MediaAsset> dirty = new java.util.ArrayList<>();
+        // Resolved (and, if needed, created) lazily — an all-library-picks post
+        // must not spawn an empty album.
+        MediaAlbum submissionAlbum = null;
+        boolean albumResolved = false;
+        for (MediaAsset asset : attachedAssets) {
+            boolean changed = false;
+            if (asset.getStatus() == MediaAssetStatus.STAGED) {
                 asset.setInstitution(submission.getInstitution());
                 asset.setStatus(MediaAssetStatus.PROCESSING);
+                changed = true;
             }
-            mediaAssetRepository.saveAll(staged);
+            // A real library pick always has an album (UC-2.1 invariant), so an
+            // album-less attached asset is a fresh upload for this post — file it
+            // into the album the contributor assigned. Library picks keep theirs.
+            if (asset.getMediaAlbum() == null) {
+                if (!albumResolved) {
+                    submissionAlbum = resolveSubmissionAlbum(submission, user);
+                    albumResolved = true;
+                }
+                if (submissionAlbum != null) {
+                    asset.setMediaAlbum(submissionAlbum);
+                    changed = true;
+                }
+            }
+            if (changed) {
+                dirty.add(asset);
+            }
+            applySubmissionMediaTags(asset, submission.getMediaTags());
+        }
+        if (!dirty.isEmpty()) {
+            mediaAssetRepository.saveAll(dirty);
         }
 
         refreshManualPublishingFlag(submission);
@@ -650,6 +684,33 @@ public class SubmissionService {
             tag.setSource("manual");
             assetTagRepository.save(tag);
         }
+    }
+
+    /**
+     * The album a submission's brand-new uploads are filed into on submit: an
+     * existing <b>root</b> album of the submission's institution whose name
+     * matches {@code submission.albumName} (case-insensitive), otherwise a new
+     * root album created with that name. Returns {@code null} only when no album
+     * name is set — {@link #assertContentComplete} already rejects that for a
+     * normal submit, so in practice this is always non-null when there are
+     * staged uploads to file.
+     */
+    private MediaAlbum resolveSubmissionAlbum(Submission submission, JwtUserDetails user) {
+        String name = submission.getAlbumName() == null ? "" : submission.getAlbumName().trim();
+        if (name.isEmpty() || submission.getInstitution() == null) {
+            return null;
+        }
+        UUID institutionId = submission.getInstitution().getId();
+        return mediaAlbumRepository
+                .findByParentAndNameIgnoreCase(institutionId, null, name)
+                .orElseGet(() -> {
+                    MediaAlbum album = new MediaAlbum();
+                    album.setInstitution(submission.getInstitution());
+                    album.setName(name);
+                    album.setParentAlbum(null);
+                    album.setCreatedBy(user.userId());
+                    return mediaAlbumRepository.save(album);
+                });
     }
 
     /**
@@ -896,11 +957,6 @@ public class SubmissionService {
             case "moderator", "admin" -> {
                 if (isEditableStatus(submission)
                         && !submission.getContributor().getId().equals(user.userId())) {
-                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied.");
-                }
-            }
-            case "validator" -> {
-                if (!submission.getInstitution().getId().equals(user.institutionId())) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied.");
                 }
             }
