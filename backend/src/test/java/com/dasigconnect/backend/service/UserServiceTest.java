@@ -60,7 +60,11 @@ class UserServiceTest {
     @Mock
     private MediaAssetRepository mediaAssetRepository;
     @Mock
+    private com.dasigconnect.backend.repository.MediaAlbumRepository mediaAlbumRepository;
+    @Mock
     private ValidationLogRepository validationLogRepository;
+    @Mock
+    private com.dasigconnect.backend.repository.AuditLogRepository auditLogRepository;
     @Mock
     private NotificationRepository notificationRepository;
     @Mock
@@ -846,6 +850,25 @@ class UserServiceTest {
 
         assertThat(result).isEqualTo("deleted");
         verify(userRepository).delete(contributor);
+    }
+
+    @Test
+    void removeUser_inactiveUserWithOnlyAuditHistory_isRetainedNotDeleted() {
+        // No submissions / media / validation logs, but the account has acted
+        // (audit_log.actor_id rows) — a hard delete would trip the FK, so it
+        // must be retained as an anonymised inactive row.
+        contributor.setAccountState(UserStatus.inactive);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        when(submissionRepository.existsByContributorId(userId)).thenReturn(false);
+        when(mediaAssetRepository.existsByUploaderId(userId)).thenReturn(false);
+        when(validationLogRepository.existsByValidatorId(userId)).thenReturn(false);
+        when(mediaAlbumRepository.existsByCreatedBy(userId)).thenReturn(false);
+        when(auditLogRepository.existsByActorId(userId)).thenReturn(true);
+
+        String result = userService.removeUser(userId, adminPrincipal);
+
+        assertThat(result).isEqualTo("deactivated");
+        verify(userRepository, org.mockito.Mockito.never()).delete(any(com.dasigconnect.backend.model.entity.User.class));
     }
 
     @Test

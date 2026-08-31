@@ -27,6 +27,9 @@ public interface MediaAlbumRepository extends JpaRepository<MediaAlbum, UUID> {
 
     boolean existsByInstitutionIdAndNameIgnoreCase(UUID institutionId, String name);
 
+    /** True if the user created any album — a RESTRICT FK that blocks a hard user-row delete. */
+    boolean existsByCreatedBy(UUID createdBy);
+
     /** Name lookup scoped to a parent folder — {@code parentAlbumId} null means the institution root. */
     @Query("""
             SELECT a FROM MediaAlbum a

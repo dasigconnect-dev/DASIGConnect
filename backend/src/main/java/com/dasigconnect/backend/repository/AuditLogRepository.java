@@ -9,4 +9,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 public interface AuditLogRepository extends JpaRepository<AuditLog, UUID>, JpaSpecificationExecutor<AuditLog> {
 
     List<AuditLog> findByResourceIdOrderByCreatedAtDesc(UUID resourceId);
+
+    /** True if the user is the actor on any audit row — i.e. they have "acted" and cannot be row-deleted. */
+    boolean existsByActorId(UUID actorId);
 }

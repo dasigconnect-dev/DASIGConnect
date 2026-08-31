@@ -20,10 +20,25 @@ const COMMON_FRAGMENTS = [
   "abc",
 ];
 
+const NO_RULES_MET: PasswordRules = {
+  length: false,
+  upper: false,
+  lower: false,
+  number: false,
+  symbol: false,
+  noSpaces: false,
+  notCommon: false,
+  noIdentity: false,
+};
+
 export function getPasswordRules(
   password: string,
   identityValues: Array<string | undefined | null> = [],
 ): PasswordRules {
+  // An empty field means nothing has been entered yet — don't show "no spaces"
+  // / "not common" / "no identity" as satisfied just because there's no input.
+  if (!password) return { ...NO_RULES_MET };
+
   const normalized = password.toLowerCase();
   return {
     length: password.length >= 12,
