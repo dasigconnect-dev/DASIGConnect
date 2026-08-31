@@ -8,6 +8,7 @@ import { createMessengerLinkCode, disconnectMessenger, getMessengerConnectionSta
 import { getWatermarkConfiguration, saveWatermarkConfiguration } from "../../api/watermarkApi";
 import WatermarkCanvasEditor from "../settings/components/WatermarkCanvasEditor";
 import { useToast } from "../../context/ToastContext";
+import { firstPasswordError, getPasswordRules } from "../../lib/passwordPolicy";
 
 interface Props {
   user: User;
@@ -56,6 +57,12 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
 
   const [saving, setSaving] = useState<"account" | "password" | "page" | "watermark" | "messenger" | null>(null);
   const pageInstitutionId = null;
+  const newPasswordRules = getPasswordRules(newPassword, [
+    user.email,
+    user.name,
+    user.displayName,
+  ]);
+  const newPasswordOk = Object.values(newPasswordRules).every(Boolean);
 
   // Display Name Validation
   function validateDisplayName(name: string) {
@@ -227,7 +234,12 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   }
 
   async function savePassword() {
-    if (newPassword.length < 8) return toast.error("New password must be at least 8 characters.");
+    const passwordError = firstPasswordError(newPassword, [
+      user.email,
+      user.name,
+      user.displayName,
+    ]);
+    if (passwordError) return toast.error(passwordError);
     setSaving("password");
     try {
       await changePassword(currentPassword, newPassword);
@@ -595,7 +607,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                       type={showNewPassword ? "text" : "password"}
                       autoComplete="new-password"
                       value={newPassword}
-                      placeholder="At least 8 characters"
+                      placeholder="At least 12 characters"
                       onChange={(e) => setNewPassword(e.target.value)}
                     />
                     <button
@@ -607,6 +619,32 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                       <i className={showNewPassword ? "ti ti-eye-off" : "ti ti-eye"} />
                     </button>
                   </div>
+                  <div className="pw-rules">
+                    <div className={`pw-rule${newPasswordRules.length ? " pass" : ""}`}>
+                      <i className={newPasswordRules.length ? "ti ti-circle-check" : "ti ti-circle"} /> 12+ characters
+                    </div>
+                    <div className={`pw-rule${newPasswordRules.upper ? " pass" : ""}`}>
+                      <i className={newPasswordRules.upper ? "ti ti-circle-check" : "ti ti-circle"} /> Uppercase letter
+                    </div>
+                    <div className={`pw-rule${newPasswordRules.lower ? " pass" : ""}`}>
+                      <i className={newPasswordRules.lower ? "ti ti-circle-check" : "ti ti-circle"} /> Lowercase letter
+                    </div>
+                    <div className={`pw-rule${newPasswordRules.number ? " pass" : ""}`}>
+                      <i className={newPasswordRules.number ? "ti ti-circle-check" : "ti ti-circle"} /> Number
+                    </div>
+                    <div className={`pw-rule${newPasswordRules.symbol ? " pass" : ""}`}>
+                      <i className={newPasswordRules.symbol ? "ti ti-circle-check" : "ti ti-circle"} /> Special character
+                    </div>
+                    <div className={`pw-rule${newPasswordRules.noSpaces ? " pass" : ""}`}>
+                      <i className={newPasswordRules.noSpaces ? "ti ti-circle-check" : "ti ti-circle"} /> No spaces
+                    </div>
+                    <div className={`pw-rule${newPasswordRules.notCommon ? " pass" : ""}`}>
+                      <i className={newPasswordRules.notCommon ? "ti ti-circle-check" : "ti ti-circle"} /> Not common or sequential
+                    </div>
+                    <div className={`pw-rule${newPasswordRules.noIdentity ? " pass" : ""}`}>
+                      <i className={newPasswordRules.noIdentity ? "ti ti-circle-check" : "ti ti-circle"} /> Does not include your name or email
+                    </div>
+                  </div>
                   <span className="settings-field-hint">Changing it here keeps your other signed-in sessions active.</span>
                 </div>
               </div>
@@ -614,7 +652,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                 label="Change Password"
                 icon="ti ti-key"
                 busy={saving === "password"}
-                disabled={!currentPassword || !newPassword}
+                disabled={!currentPassword || !newPasswordOk}
                 onClick={() => void savePassword()}
               />
             </section>

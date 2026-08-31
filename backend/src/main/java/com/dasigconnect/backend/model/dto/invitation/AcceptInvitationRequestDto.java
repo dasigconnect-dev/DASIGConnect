@@ -12,4 +12,4 @@ public record AcceptInvitationRequestDto(
         @NotBlank @Size(min = 1, max = 100)
         @Pattern(regexp = "^[\\p{L}][\\p{L} '\\-]*$", message = "must contain only letters, spaces, hyphens, or apostrophes")
         String lastName,
-        @NotBlank @Size(min = 8) String password) {}
+        @NotBlank @Size(min = 12) String password) {}

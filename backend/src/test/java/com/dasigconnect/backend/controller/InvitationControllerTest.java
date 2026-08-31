@@ -136,7 +136,7 @@ class InvitationControllerTest {
         mockMvc.perform(post("/api/v1/invitations/accept")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                                {"token":"sometoken","firstName":"Mark","lastName":"Camoro","password":"password123"}
+                                {"token":"sometoken","firstName":"Mark","lastName":"Camoro","password":"Riv3r!Moonlight"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.accessToken").value("new.jwt.token"));
@@ -158,7 +158,7 @@ class InvitationControllerTest {
         mockMvc.perform(post("/api/v1/invitations/accept")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                                {"token":"sometoken","lastName":"Camoro","password":"password123"}
+                                {"token":"sometoken","lastName":"Camoro","password":"Riv3r!Moonlight"}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.details.fields.firstName").exists());

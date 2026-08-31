@@ -58,7 +58,7 @@ class PasswordControllerTest {
         mockMvc.perform(post("/api/v1/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"token":"sometoken","newPassword":"newpassword123"}
+                                {"token":"sometoken","newPassword":"Riv3r!Moonlight"}
                                 """))
                 .andExpect(status().isNoContent());
     }
@@ -79,7 +79,7 @@ class PasswordControllerTest {
         mockMvc.perform(post("/api/v1/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"newPassword":"newpassword123"}
+                                {"newPassword":"Riv3r!Moonlight"}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.details.fields.token").exists());
