@@ -90,6 +90,7 @@ public class PasswordService {
         }
 
         User user = resetToken.getUser();
+        PasswordPolicy.validate(dto.newPassword(), user.getEmail(), user.getFirstName(), user.getLastName());
         user.setPasswordHash(passwordEncoder.encode(dto.newPassword()));
         user.setSessionVersion(user.getSessionVersion() + 1);
         userRepository.save(user);
@@ -109,6 +110,7 @@ public class PasswordService {
         if (passwordEncoder.matches(dto.newPassword(), user.getPasswordHash())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password must be different");
         }
+        PasswordPolicy.validate(dto.newPassword(), user.getEmail(), user.getFirstName(), user.getLastName());
         user.setPasswordHash(passwordEncoder.encode(dto.newPassword()));
         userRepository.save(user);
         auditLogService.record(user, "PASSWORD_CHANGED", null, null, user.getId(), Map.of());
