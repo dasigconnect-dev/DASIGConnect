@@ -14,6 +14,7 @@ import {
   type TokenStatus,
 } from "../../api/systemHealthApi";
 import { useToast } from "../../context/ToastContext";
+import { registerAppCacheReset } from "../../lib/appCache";
 import type { User } from "../../types/auth.types";
 import "../../styles/system-health.css";
 import "../../styles/dasig-loader.css";
@@ -34,6 +35,11 @@ const CACHE_TTL_MS = 60_000;
 let cachedSummary: SystemHealthSummary | null = null;
 let cachedTokens: TokenStatus[] = [];
 let cachedAt = 0;
+registerAppCacheReset(() => {
+  cachedSummary = null;
+  cachedTokens = [];
+  cachedAt = 0;
+});
 
 export default function SystemHealthScreen({ user }: Props) {
   const toast = useToast();

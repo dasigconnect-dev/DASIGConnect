@@ -11,6 +11,7 @@ import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
 import com.dasigconnect.backend.model.entity.Institution;
+import com.dasigconnect.backend.model.entity.MediaAlbum;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaAssetStatus;
 import com.dasigconnect.backend.model.entity.MediaFileType;
@@ -50,6 +51,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -92,6 +94,9 @@ class SubmissionServiceTest {
 
     @Mock
     private com.dasigconnect.backend.repository.AssetTagRepository assetTagRepository;
+
+    @Mock
+    private com.dasigconnect.backend.repository.MediaAlbumRepository mediaAlbumRepository;
 
     @Mock
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
@@ -641,6 +646,53 @@ class SubmissionServiceTest {
         assertThat(staged.getStatus()).isEqualTo(MediaAssetStatus.PROCESSING);
         assertThat(staged.getInstitution()).isEqualTo(institution);
         verify(mediaAssetRepository).saveAll(List.of(staged));
+    }
+
+    @Test
+    void submit_filesNewMediaIntoAssignedAlbum_keepsLibraryAssetAlbum_andTagsBoth() {
+        UUID submissionId = UUID.randomUUID();
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
+        submission.setMediaTags("expo, dost7");
+
+        MediaAsset newUpload = new MediaAsset();
+        newUpload.setId(UUID.randomUUID());
+        newUpload.setStatus(MediaAssetStatus.STAGED);
+        newUpload.setFileType(MediaFileType.jpeg);
+
+        MediaAlbum originalAlbum = new MediaAlbum();
+        originalAlbum.setId(UUID.randomUUID());
+        MediaAsset libraryPick = mediaAsset(UUID.randomUUID(), institution);
+        libraryPick.setStatus(MediaAssetStatus.READY);
+        libraryPick.setMediaAlbum(originalAlbum);
+
+        MediaAlbum assignedAlbum = new MediaAlbum();
+        assignedAlbum.setId(UUID.randomUUID());
+        assignedAlbum.setName("Research Expo Album");
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(new GuardRailResult());
+        when(submissionRepository.save(submission)).thenReturn(submission);
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(2L);
+        when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId))
+                .thenReturn(List.of(newUpload, libraryPick));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+        when(userRepository.findByRole(UserRole.moderator)).thenReturn(List.of());
+        when(mediaAlbumRepository.findByParentAndNameIgnoreCase(institutionId, null, "Research Expo Album"))
+                .thenReturn(Optional.of(assignedAlbum));
+        when(assetTagRepository.existsByMediaAssetIdAndLabel(any(), any())).thenReturn(false);
+
+        submissionService.submit(submissionId, contributorPrincipal);
+
+        // New upload: promoted and filed into the album the contributor assigned on the post.
+        assertThat(newUpload.getStatus()).isEqualTo(MediaAssetStatus.PROCESSING);
+        assertThat(newUpload.getMediaAlbum()).isEqualTo(assignedAlbum);
+        // Existing library asset: album and status left untouched — only linked to the post.
+        assertThat(libraryPick.getMediaAlbum()).isEqualTo(originalAlbum);
+        assertThat(libraryPick.getStatus()).isEqualTo(MediaAssetStatus.READY);
+        // Both assets receive the post's media tags (2 tags x 2 assets).
+        verify(assetTagRepository, times(4)).save(any());
     }
 
     @Test

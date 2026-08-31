@@ -24,6 +24,7 @@ import {
   uploadUserAvatar,
 } from '../../api/authApi'
 import type { PendingInvitationResponse, UserProfileResponse } from '../../api/authApi'
+import { registerAppCacheReset } from '../../lib/appCache'
 import { getUserDisplayName } from '../../lib/userIdentity'
 import type { User } from '../../types/auth.types'
 import BrandedSelect from '../../components/ui/BrandedSelect'
@@ -82,6 +83,9 @@ type InstitutionStatusFilter = 'all' | 'active' | 'pending'
 const institutionsMemoryCache: {
   data: InstitutionWithStats[] | null;
 } = { data: null }
+registerAppCacheReset(() => {
+  institutionsMemoryCache.data = null
+})
 
 export default function InstitutionManagementScreen({ user }: InstitutionManagementScreenProps) {
   const toast = useToast()

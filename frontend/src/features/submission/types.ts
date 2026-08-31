@@ -26,7 +26,7 @@ export interface FormState {
   removedAssetIds: string[];
 }
 
-export type QueueFilter = "drafts" | "submitted" | "published" | "failed" | "all";
+export type QueueFilter = "drafts" | "action-needed" | "submitted" | "published" | "failed" | "all";
 export type ModalState =
   | "submit"
   | "success"

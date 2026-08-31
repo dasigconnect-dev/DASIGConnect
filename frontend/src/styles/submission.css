@@ -353,6 +353,20 @@
   background: rgba(255, 255, 255, 0.24);
   color: #fff;
 }
+.sub-status-tab.has-alert:not(.is-active) {
+  color: #b45309;
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+.sub-status-tab.has-alert:not(.is-active):hover {
+  color: #92400e;
+  border-color: #fbbf24;
+  background: #fef3c7;
+}
+.sub-status-tab.has-alert:not(.is-active) .sub-status-tab-count {
+  color: #b45309;
+  background: #fde68a;
+}
 .sub-search-wrap {
   position: relative;
   display: flex;

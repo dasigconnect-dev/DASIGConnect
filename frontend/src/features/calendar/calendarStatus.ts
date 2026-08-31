@@ -38,14 +38,19 @@ export function statusLabel(status: string) {
   return STATUS_LABELS[status.toLowerCase()] ?? status;
 }
 
-export function canSeePrivateCalendarStatus(role: string, isOwnInstitution: boolean) {
-  return role === "admin" || (role === "moderator" && isOwnInstitution);
+/**
+ * Admin and moderator are both network-wide staff roles — they get the full,
+ * unmasked calendar (backend {@code getAdminCalendar()}). Contributors never do.
+ * (Moderator accounts carry no institution, so this is not institution-scoped.)
+ */
+export function canSeePrivateCalendarStatus(role: string) {
+  const value = role.toLowerCase();
+  return value === "admin" || value === "moderator";
 }
 
 export function visibleCalendarStatus(
   status: string,
   role: string,
-  isOwnInstitution: boolean,
   isMine = false,
 ) {
   const value = status.toLowerCase();
@@ -53,29 +58,20 @@ export function visibleCalendarStatus(
   if (isMine) {
     return value;
   }
-  if (PRIVATE_WORKFLOW_STATUSES.has(value) && !canSeePrivateCalendarStatus(role, isOwnInstitution)) {
-    return "scheduled";
-  }
-  if (role !== "admin" && value === "direct_post_scheduled") {
-    return "scheduled";
+  // Contributors see cross-workflow rows only as a neutral "scheduled" slot;
+  // network staff (admin / moderator) see the real status.
+  if (!canSeePrivateCalendarStatus(role)) {
+    if (PRIVATE_WORKFLOW_STATUSES.has(value) || value === "direct_post_scheduled") {
+      return "scheduled";
+    }
   }
   return value;
 }
 
-export function visibleStatusColor(
-  status: string,
-  role: string,
-  isOwnInstitution: boolean,
-  isMine = false,
-) {
-  return statusColor(visibleCalendarStatus(status, role, isOwnInstitution, isMine));
+export function visibleStatusColor(status: string, role: string, isMine = false) {
+  return statusColor(visibleCalendarStatus(status, role, isMine));
 }
 
-export function visibleStatusLabel(
-  status: string,
-  role: string,
-  isOwnInstitution: boolean,
-  isMine = false,
-) {
-  return statusLabel(visibleCalendarStatus(status, role, isOwnInstitution, isMine));
+export function visibleStatusLabel(status: string, role: string, isMine = false) {
+  return statusLabel(visibleCalendarStatus(status, role, isMine));
 }

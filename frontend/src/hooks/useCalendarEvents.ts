@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getCalendarEvents, type CalendarEvent } from "../api/calendarApi";
+import { registerAppCacheReset } from "../lib/appCache";
 
 export interface UseCalendarEventsResult {
   events: CalendarEvent[];
@@ -9,6 +10,9 @@ export interface UseCalendarEventsResult {
 }
 
 let cachedCalendarEvents: CalendarEvent[] | null = null;
+registerAppCacheReset(() => {
+  cachedCalendarEvents = null;
+});
 
 export function useCalendarEvents(): UseCalendarEventsResult {
   const [events, setEvents] = useState<CalendarEvent[]>(() => cachedCalendarEvents ?? []);

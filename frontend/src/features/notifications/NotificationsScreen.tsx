@@ -21,7 +21,7 @@ const CONTRIBUTOR_FILTERS: NotificationFilter[] = [
   "deadline",
 ];
 
-const VALIDATOR_FILTERS: NotificationFilter[] = [
+const MODERATOR_FILTERS: NotificationFilter[] = [
   "all",
   "unread",
   "submissions",
@@ -180,12 +180,9 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
     return canReview ? "/scheduler/calendar" : "/submissions?tab=published";
   }
 
-  if (eventType === "submission_needs_revision") {
-    return "/submissions?tab=drafts";
-  }
-
-  if (eventType === "submission_rejected") {
-    return "/submissions";
+  if (eventType === "submission_needs_revision" || eventType === "submission_rejected") {
+    // Both live under the "Action Needed" tab in My Submissions.
+    return "/submissions?tab=action-needed";
   }
 
   if (eventType === "token_expiring" || eventType === "token_invalid") {
@@ -278,7 +275,7 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
   const displayFilters = isContributor
     ? CONTRIBUTOR_FILTERS
     : isModerator
-    ? VALIDATOR_FILTERS
+    ? MODERATOR_FILTERS
     : ADMIN_FILTERS;
 
   const filteredNotifications = useMemo(() => {
