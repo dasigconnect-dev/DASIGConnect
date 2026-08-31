@@ -24,9 +24,11 @@ import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
 import com.dasigconnect.backend.repository.AccountLockoutRepository;
+import com.dasigconnect.backend.repository.AuditLogRepository;
 import com.dasigconnect.backend.repository.EmailDeliveryLogRepository;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
+import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.NotificationRepository;
 import com.dasigconnect.backend.repository.ReviewLockRepository;
@@ -49,7 +51,9 @@ public class UserService {
     private final ReviewLockRepository reviewLockRepository;
     private final SubmissionRepository submissionRepository;
     private final MediaAssetRepository mediaAssetRepository;
+    private final MediaAlbumRepository mediaAlbumRepository;
     private final ValidationLogRepository validationLogRepository;
+    private final AuditLogRepository auditLogRepository;
     private final JWTService jwtService;
     private final InstitutionRepository institutionRepository;
     private final InvitationTokenRepository invitationTokenRepository;
@@ -68,7 +72,9 @@ public class UserService {
             ReviewLockRepository reviewLockRepository,
             SubmissionRepository submissionRepository,
             MediaAssetRepository mediaAssetRepository,
+            MediaAlbumRepository mediaAlbumRepository,
             ValidationLogRepository validationLogRepository,
+            AuditLogRepository auditLogRepository,
             JWTService jwtService,
             InstitutionRepository institutionRepository,
             InvitationTokenRepository invitationTokenRepository,
@@ -81,7 +87,9 @@ public class UserService {
         this.reviewLockRepository = reviewLockRepository;
         this.submissionRepository = submissionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
+        this.mediaAlbumRepository = mediaAlbumRepository;
         this.validationLogRepository = validationLogRepository;
+        this.auditLogRepository = auditLogRepository;
         this.jwtService = jwtService;
         this.institutionRepository = institutionRepository;
         this.invitationTokenRepository = invitationTokenRepository;
@@ -314,9 +322,16 @@ public class UserService {
                     "Only deactivated or cancelled users can be removed. Please deactivate or cancel the invitation first.");
         }
 
+        // Any FK reference from a RESTRICT table blocks a hard user-row delete.
+        // audit_log.actor_id in particular is set for anyone who has ever acted
+        // (submitted, uploaded, created an album, accepted an invite), and
+        // audit rows are append-only — so an erased account almost always lands
+        // here and is retained as an anonymised inactive row.
         boolean hasData = submissionRepository.existsByContributorId(id)
                 || mediaAssetRepository.existsByUploaderId(id)
-                || validationLogRepository.existsByValidatorId(id);
+                || validationLogRepository.existsByValidatorId(id)
+                || mediaAlbumRepository.existsByCreatedBy(id)
+                || auditLogRepository.existsByActorId(id);
 
         if (hasData) {
             // Already inactive; invalidate tokens and record removal audit

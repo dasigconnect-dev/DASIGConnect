@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { WatermarkElement } from "../../types/watermark.types";
-import { changePassword, getMe, getPageSettings, updateAccountSettings, updatePageSettings } from "../../api/authApi";
+import { changePassword, getMe, getPageSettings, requestPasswordReset, updateAccountSettings, updatePageSettings } from "../../api/authApi";
 import { createMessengerLinkCode, disconnectMessenger, getMessengerConnectionStatus, type MessengerConnection, type MessengerLinkCode } from "../../api/messengerApi";
 import { getWatermarkConfiguration, saveWatermarkConfiguration } from "../../api/watermarkApi";
 import WatermarkCanvasEditor from "../settings/components/WatermarkCanvasEditor";
@@ -62,6 +62,9 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [initialNotifyEmail, setInitialNotifyEmail] = useState(cachedProfileSettings?.notifyEmail ?? true);
   const [currentPassword, setCurrentPassword] = useState("");
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [currentPwEditable, setCurrentPwEditable] = useState(false);
+  const [resetLinkSending, setResetLinkSending] = useState(false);
+  const [resetLinkSent, setResetLinkSent] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [facebookPageId, setFacebookPageId] = useState("");
@@ -276,6 +279,20 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     }
   }
 
+  async function handleSendResetLink() {
+    if (resetLinkSending) return;
+    setResetLinkSending(true);
+    try {
+      await requestPasswordReset(user.email);
+      setResetLinkSent(true);
+      toast.success(`We've emailed a password reset link to ${user.email}.`);
+    } catch {
+      toast.error("Couldn't send the reset link. Please try again.");
+    } finally {
+      setResetLinkSending(false);
+    }
+  }
+
   async function savePassword() {
     const passwordError = firstPasswordError(newPassword, [
       user.email,
@@ -288,6 +305,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       await changePassword(currentPassword, newPassword);
       setCurrentPassword("");
       setNewPassword("");
+      setCurrentPwEditable(false);
       toast.success("Password changed. Other signed-in devices remain active.");
     } catch {
       toast.error("Password change failed. Check your current password.");
@@ -749,9 +767,14 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                   <div className="settings-input-wrapper">
                     <input
                       id="settings-current-password"
+                      name="dc-current-password"
                       className="settings-input"
                       type={showCurrentPassword ? "text" : "password"}
-                      autoComplete="current-password"
+                      autoComplete="off"
+                      // Read-only until focused so the browser doesn't autofill
+                      // the saved password on load — the user must type it.
+                      readOnly={!currentPwEditable}
+                      onFocus={() => setCurrentPwEditable(true)}
                       value={currentPassword}
                       placeholder="Enter current password"
                       onChange={(e) => setCurrentPassword(e.target.value)}
@@ -765,6 +788,21 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                       <i className={showCurrentPassword ? "ti ti-eye-off" : "ti ti-eye"} />
                     </button>
                   </div>
+                  {resetLinkSent ? (
+                    <span className="settings-field-hint is-success settings-forgot-pw-btn">
+                      <i className="ti ti-mail-check" /> Reset link sent to {user.email}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="settings-field-action-btn settings-forgot-pw-btn"
+                      disabled={resetLinkSending}
+                      onClick={() => void handleSendResetLink()}
+                    >
+                      <i className={resetLinkSending ? "ti ti-loader-2 settings-spinner" : "ti ti-mail"} />
+                      {resetLinkSending ? "Sending…" : "Forgot your password?"}
+                    </button>
+                  )}
                 </div>
                 <div className="settings-field">
                   <label htmlFor="settings-new-password">New password</label>
