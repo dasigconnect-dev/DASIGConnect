@@ -1,3 +1,4 @@
+import type { FormEvent } from "react"
 import Spinner from "../common/Spinner"
 
 interface SessionModalProps {
@@ -52,55 +53,65 @@ export default function SessionModal({
             ? error
             : "Invalid credentials. Please try again."}
         </div>
-        <div className="fgroup">
-          <label className="flabel">Institutional Email</label>
-          <input
-            id="modal-email"
-            className="finput"
-            type="email"
-            placeholder="yourname@institution.edu.ph"
-            disabled={actionLoading}
-            value={email}
-            onChange={(event) => onEmailChange(event.target.value)}
-          />
-        </div>
-        <div className="fgroup">
-          <label className="flabel">Password</label>
-          <div className="pw-wrap">
-            <input
-              id="modal-pw"
-              className="finput"
-              type={showPassword ? "text" : "password"}
-              placeholder="**********"
-              disabled={actionLoading}
-              value={password}
-              onChange={(event) => onPasswordChange(event.target.value)}
-            />
-            <button
-              type="button"
-              className="eye-btn"
-              onClick={onTogglePassword}
-              disabled={actionLoading}
-              aria-label="Toggle password visibility"
-            >
-              <i className={showPassword ? "ti ti-eye" : "ti ti-eye-off"}></i>
-            </button>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={onSubmit}
-          disabled={actionLoading}
-          aria-busy={submitLoading}
+        <form
+          onSubmit={(event: FormEvent<HTMLFormElement>) => {
+            event.preventDefault()
+            onSubmit()
+          }}
         >
-          {submitLoading ? (
-            <Spinner size="xs" color="white" aria-label="Signing in" />
-          ) : (
-            <i className="ti ti-login"></i>
-          )}
-          Sign In & Resume
-        </button>
+          <div className="fgroup">
+            <label className="flabel" htmlFor="modal-email">Institutional Email</label>
+            <input
+              id="modal-email"
+              name="email"
+              className="finput"
+              type="email"
+              autoComplete="email"
+              placeholder="yourname@institution.edu.ph"
+              disabled={actionLoading}
+              value={email}
+              onChange={(event) => onEmailChange(event.target.value)}
+            />
+          </div>
+          <div className="fgroup">
+            <label className="flabel" htmlFor="modal-pw">Password</label>
+            <div className="pw-wrap">
+              <input
+                id="modal-pw"
+                name="password"
+                className="finput"
+                type={showPassword ? "text" : "password"}
+                placeholder="**********"
+                autoComplete="current-password"
+                disabled={actionLoading}
+                value={password}
+                onChange={(event) => onPasswordChange(event.target.value)}
+              />
+              <button
+                type="button"
+                className="eye-btn"
+                onClick={onTogglePassword}
+                disabled={actionLoading}
+                aria-label="Toggle password visibility"
+              >
+                <i className={showPassword ? "ti ti-eye" : "ti ti-eye-off"}></i>
+              </button>
+            </div>
+          </div>
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={actionLoading}
+            aria-busy={submitLoading}
+          >
+            {submitLoading ? (
+              <Spinner size="xs" color="white" aria-label="Signing in" />
+            ) : (
+              <i className="ti ti-login"></i>
+            )}
+            Sign In & Resume
+          </button>
+        </form>
         <button
           type="button"
           className="btn-ghost session-signout-btn"

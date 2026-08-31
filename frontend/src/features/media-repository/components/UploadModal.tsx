@@ -240,7 +240,6 @@ export default function UploadModal({
         onClose();
       }, 600);
     } catch (err) {
-      console.error("[UploadModal] upload failed:", err);
       setUploading(false);
       setProgress(0);
       const detail = err instanceof Error ? err.message : String(err);

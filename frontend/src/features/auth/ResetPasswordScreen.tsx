@@ -1,3 +1,4 @@
+import type { FormEvent } from 'react'
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
@@ -93,7 +94,12 @@ export default function ResetPasswordScreen({
               </button>
             </div>
           ) : (
-            <>
+            <form
+              onSubmit={(event: FormEvent<HTMLFormElement>) => {
+                event.preventDefault()
+                onSubmit()
+              }}
+            >
               <div className="form-head">
                 <div className="form-title">Reset password</div>
                 <div className="form-desc">
@@ -107,11 +113,14 @@ export default function ResetPasswordScreen({
                 </div>
               )}
               <div className="fgroup">
-                <label className="flabel">New Password</label>
+                <label className="flabel" htmlFor="reset-new-password">New Password</label>
                 <div className="pw-wrap">
                   <input
+                    id="reset-new-password"
+                    name="new-password"
                     className="finput"
                     type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
                     value={password}
                     onChange={(event) => onPasswordChange(event.target.value)}
                   />
@@ -144,11 +153,14 @@ export default function ResetPasswordScreen({
                 </div>
               </div>
               <div className="fgroup">
-                <label className="flabel">Confirm Password</label>
+                <label className="flabel" htmlFor="reset-confirm-password">Confirm Password</label>
                 <div className="pw-wrap">
                   <input
+                    id="reset-confirm-password"
+                    name="confirm-new-password"
                     className={`finput ${confirmPassword && !passwordsMatch ? 'err' : ''}`}
                     type={showConfirmPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
                     value={confirmPassword}
                     onChange={(event) => onConfirmPasswordChange(event.target.value)}
                   />
@@ -158,16 +170,15 @@ export default function ResetPasswordScreen({
                 </div>
               </div>
               <button
-                type="button"
+                type="submit"
                 className="btn-primary"
-                onClick={onSubmit}
                 disabled={!canSubmit}
                 aria-busy={loading}
               >
                 <i className={`ti ${loading ? 'ti-loader-2 auth-btn-spinner' : 'ti-key'}`}></i>
                 {loading ? 'Updating...' : 'Update Password'}
               </button>
-            </>
+            </form>
           )}
         </RightPanel>
       </div>

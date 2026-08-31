@@ -1,7 +1,7 @@
 import path from "path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, type Plugin, type UserConfig } from "vite";
 
 const baseSecurityHeaders = {
   "X-Frame-Options": "DENY",
@@ -125,23 +125,56 @@ function blockSensitiveDevFiles(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [blockSensitiveDevFiles(), react(), tailwindcss()],
-  server: {
-    headers: devSecurityHeaders,
-    proxy: {
-      "/api": {
-        target: "http://localhost:8080",
-        changeOrigin: true,
+function stripProductionDebugOutput(): Plugin {
+  const consoleReferencePattern =
+    /\bconsole\.(?:debug|log|info|warn|error|trace|table|group|groupCollapsed|groupEnd)\b/g;
+
+  return {
+    name: "strip-production-debug-output",
+    apply: "build",
+    enforce: "post",
+    transform(code, id) {
+      if (!/\.[cm]?[jt]sx?$/.test(id) || id.includes("node_modules")) {
+        return null;
+      }
+      const stripped = code
+        .split(/\r?\n/)
+        .filter((line) => {
+          const trimmed = line.trim();
+          return !trimmed.startsWith("debugger") && !trimmed.startsWith("console.");
+        })
+        .join("\n");
+      return stripped === code ? null : { code: stripped, map: null };
+    },
+    renderChunk(code) {
+      const stripped = code
+        .replace(/\bdebugger;?/g, "")
+        .replace(consoleReferencePattern, "(() => {})");
+      return stripped === code ? null : { code: stripped, map: null };
+    },
+  };
+}
+
+export default defineConfig(() => {
+  const config: UserConfig = {
+    plugins: [blockSensitiveDevFiles(), stripProductionDebugOutput(), react(), tailwindcss()],
+    server: {
+      headers: devSecurityHeaders,
+      proxy: {
+        "/api": {
+          target: "http://localhost:8080",
+          changeOrigin: true,
+        },
       },
     },
-  },
-  preview: {
-    headers: prodSecurityHeaders,
-  },
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+    preview: {
+      headers: prodSecurityHeaders,
     },
-  },
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
+      },
+    },
+  };
+  return config;
 });
