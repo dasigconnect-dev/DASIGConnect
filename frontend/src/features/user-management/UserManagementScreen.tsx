@@ -288,7 +288,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     setConfirmDialog({
       title: isErased ? 'Remove Record' : 'Remove User',
       message: isErased
-        ? `This account's personal data has already been erased. Removing the record permanently deletes it if nothing references it; if it has submissions or media it stays as an anonymised inactive row.`
+        ? `This account's personal data has already been erased. If it has any activity history (submissions, media, or audit records) it stays as an anonymised inactive row for the audit trail; only a footprint-free record is permanently deleted.`
         : `Remove ${getUserDisplayName(managedUser)}? If they have existing content or media, their account is deactivated to preserve data integrity. Otherwise it is permanently deleted and cannot be recovered.`,
       confirmLabel: isErased ? 'Remove record' : 'Remove account',
       dangerous: true,
@@ -308,10 +308,14 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
         setManagedUsers((current) =>
           current.map((item) => (item.id === managedUser.id ? { ...item, accountState: 'inactive' } : item)),
         )
-        toast.info('Account deactivated. Their content and media have been preserved.')
+        toast.info(
+          managedUser.purgedAt
+            ? 'This record has activity history and is kept as an anonymised tombstone for the audit trail — it cannot be removed.'
+            : 'Account deactivated. Their content and media have been preserved.',
+        )
       } else {
         setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
-        toast.success('User permanently removed.')
+        toast.success(managedUser.purgedAt ? 'Record removed.' : 'User permanently removed.')
       }
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to remove user.'))
