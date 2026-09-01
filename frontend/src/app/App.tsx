@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   Routes,
   Route,
@@ -25,20 +25,6 @@ import ForgotSentScreen from "../features/auth/ForgotSentScreen";
 import ResetPasswordScreen from "../features/auth/ResetPasswordScreen";
 import InviteScreen from "../features/auth/InviteScreen";
 import NoAccountScreen from "../features/auth/NoAccountScreen";
-import AccountSettingsScreen from "../features/auth/AccountSettingsScreen";
-import DashboardScreen from "../features/dashboard/DashboardScreen";
-import RecentActivityScreen from "../features/dashboard/RecentActivityScreen";
-import SubmissionScreen from "../features/submission/SubmissionScreen";
-import ValidationQueueScreen from "../features/validation/ValidationQueueScreen";
-import InstitutionManagementScreen from "../features/institution-management/InstitutionManagementScreen";
-import AdminManagementScreen from "../features/administrator-management/AdministratorManagementScreen";
-import UserManagementScreen from "../features/user-management/UserManagementScreen";
-import SystemHealthScreen from "../features/system-health/SystemHealthScreen";
-import AuditLogScreen from "../features/audit-log/AuditLogScreen";
-import CalendarScreen from "../features/calendar/CalendarScreen";
-import MediaRepositoryScreen from "../features/media-repository/MediaRepositoryScreen";
-import NotificationsScreen from "../features/notifications/NotificationsScreen";
-import AnalyticsDashboardPage from "../features/analytics/AnalyticsDashboardPage";
 import DashboardLayout from "../components/layout/DashboardLayout";
 import SessionModal from "../components/modals/SessionModal";
 import Toast from "../components/common/Toast";
@@ -58,6 +44,22 @@ import { clearAppCaches } from "../lib/appCache";
 const LOCKOUT_LIMIT = 5;
 const LOCKOUT_SECONDS = 15 * 60;
 const SESSION_WARNING_SECONDS = 5 * 60;
+const TABLER_ICONS_STYLESHEET = "https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css";
+
+const AccountSettingsScreen = lazy(() => import("../features/auth/AccountSettingsScreen"));
+const DashboardScreen = lazy(() => import("../features/dashboard/DashboardScreen"));
+const RecentActivityScreen = lazy(() => import("../features/dashboard/RecentActivityScreen"));
+const SubmissionScreen = lazy(() => import("../features/submission/SubmissionScreen"));
+const ValidationQueueScreen = lazy(() => import("../features/validation/ValidationQueueScreen"));
+const InstitutionManagementScreen = lazy(() => import("../features/institution-management/InstitutionManagementScreen"));
+const AdminManagementScreen = lazy(() => import("../features/administrator-management/AdministratorManagementScreen"));
+const UserManagementScreen = lazy(() => import("../features/user-management/UserManagementScreen"));
+const SystemHealthScreen = lazy(() => import("../features/system-health/SystemHealthScreen"));
+const AuditLogScreen = lazy(() => import("../features/audit-log/AuditLogScreen"));
+const CalendarScreen = lazy(() => import("../features/calendar/CalendarScreen"));
+const MediaRepositoryScreen = lazy(() => import("../features/media-repository/MediaRepositoryScreen"));
+const NotificationsScreen = lazy(() => import("../features/notifications/NotificationsScreen"));
+const AnalyticsDashboardPage = lazy(() => import("../features/analytics/AnalyticsDashboardPage"));
 
 function App() {
   const navigate = useNavigate();
@@ -132,6 +134,19 @@ function App() {
   const [, setSessionWarningDismissed] = useState(false);
   const bannerTimerRef = useRef<number | null>(null);
   const sessionWarningDismissedRef = useRef(false);
+
+  useEffect(() => {
+    if (document.querySelector<HTMLLinkElement>('link[data-dasig-tabler-icons="true"]')) {
+      return;
+    }
+
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = TABLER_ICONS_STYLESHEET;
+    link.crossOrigin = "anonymous";
+    link.dataset.dasigTablerIcons = "true";
+    document.head.appendChild(link);
+  }, []);
 
   const inviteRules = useMemo(() => {
     const firstName = isValidProfileName(inviteFirstName);
@@ -584,7 +599,8 @@ function App() {
     <>
       <Toast />
       <LoginSplash user={splashUser} visible={showSplash} />
-      <Routes>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
         <Route
           path="/"
           element={
@@ -890,8 +906,9 @@ function App() {
           }
         />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
 
       <SessionModal
         open={showSessionModal}

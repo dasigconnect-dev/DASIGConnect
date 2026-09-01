@@ -327,6 +327,8 @@ export default function ManualPublishWorkflowPanel({
                         <img
                           src={img.storageUrl}
                           alt={img.fileName}
+                          loading="lazy"
+                          decoding="async"
                           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                         />
                       </a>

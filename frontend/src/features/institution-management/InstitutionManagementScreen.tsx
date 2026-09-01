@@ -35,6 +35,8 @@ import InvitationComposer from '../user-management/components/InvitationComposer
 import { SkeletonBlock } from '../user-management/components/LoadingPrimitives'
 import type { InviteResults, InviteRole } from '../user-management/types'
 import { useToast } from '../../context/ToastContext'
+import '../../styles/institution-management.css'
+import '../../styles/user-management.css'
 
 
 interface InstitutionWithStats {

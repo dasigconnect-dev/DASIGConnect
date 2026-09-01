@@ -1,4 +1,5 @@
 import "../../styles/dasig-loader.css";
+import "../../styles/settings.css";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";

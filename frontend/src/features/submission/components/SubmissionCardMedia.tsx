@@ -58,6 +58,7 @@ export function SubmissionCardMedia({
             setHasError(true);
           }}
           loading="lazy"
+          decoding="async"
         />
       ) : isVid ? (
         <video

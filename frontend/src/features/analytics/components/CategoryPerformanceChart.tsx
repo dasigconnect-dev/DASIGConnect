@@ -5,6 +5,10 @@ interface Props {
   rows: CategoryPerformanceDto[];
 }
 
+function categoryPerformanceKey(row: CategoryPerformanceDto, index: number) {
+  return `${row.category || "uncategorized"}:${row.postCount}:${row.completenessRate}:${index}`;
+}
+
 export default function CategoryPerformanceChart({ rows }: Props) {
   const sorted = [...rows].sort((a, b) => b.postCount - a.postCount);
   const max = Math.max(...sorted.map((r) => r.postCount), 1);
@@ -28,7 +32,7 @@ export default function CategoryPerformanceChart({ rows }: Props) {
               const widthPct = Math.max((row.postCount / max) * 100, 4);
 
               return (
-                <div className="analytics-ranked-row" key={row.category}>
+                <div className="analytics-ranked-row" key={categoryPerformanceKey(row, idx)}>
                   <div className="analytics-ranked-label" title={row.category}>
                     <strong>{row.category}</strong>
                     <span>{formatPercent(row.completenessRate)} completeness</span>

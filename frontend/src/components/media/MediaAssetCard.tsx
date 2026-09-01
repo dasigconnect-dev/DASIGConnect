@@ -71,6 +71,7 @@ export default function MediaAssetCard({
             alt={fileName}
             className="mac-img"
             loading="lazy"
+            decoding="async"
           />
         )}
         {(selected || alreadyAdded) && (

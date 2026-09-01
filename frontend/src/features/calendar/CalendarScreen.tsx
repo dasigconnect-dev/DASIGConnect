@@ -17,6 +17,7 @@ import CalendarToolbar, { type CalendarViewMode } from "./CalendarToolbar";
 import { CalendarErrorState } from "./CalendarStates";
 import { visibleCalendarStatus } from "./calendarStatus";
 import PageLoader from "../../components/common/PageLoader";
+import "../../styles/calendar.css";
 
 interface CalendarScreenProps {
   user: User;

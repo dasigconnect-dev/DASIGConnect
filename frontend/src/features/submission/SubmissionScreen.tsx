@@ -47,6 +47,7 @@ import FancyTextTool, { type FancyTextSelection } from "./components/FancyTextTo
 import SubmissionReadOnlyBody from "./components/SubmissionReadOnlyView";
 import AlbumCombobox from "../../components/ui/AlbumCombobox";
 import "../../styles/dasig-loader.css";
+import "../../styles/submission.css";
 
 import type { CenterMode, FormState, ModalState, PendingLeaveAction, ProgressStep, QueueFilter, ReadinessTarget, SaveState } from "./types";
 import { initialForm, postTemplates, statusLabels, submissionDetailsMemoryCache } from "./constants";

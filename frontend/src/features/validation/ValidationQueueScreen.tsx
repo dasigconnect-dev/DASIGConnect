@@ -42,6 +42,7 @@ import ResolutionRetryModal from "./ResolutionRetryModal";
 import ManualPublishWorkflowPanel from "./ManualPublishWorkflowPanel";
 import "../../styles/dasig-loader.css";
 import "../../styles/resolution.css";
+import "../../styles/validation.css";
 
 interface ValidationQueueScreenProps {
   user: User;
@@ -1416,7 +1417,7 @@ export default function ValidationQueueScreen({
                               <div key={item.key} className="val-edit-media-row">
                                 <div className="val-edit-media-thumb">
                                   {item.isImage ? (
-                                    <img src={item.previewUrl} alt={item.fileName} />
+                                    <img src={item.previewUrl} alt={item.fileName} loading="lazy" decoding="async" />
                                   ) : (
                                     <video src={item.previewUrl} muted />
                                   )}
@@ -2047,7 +2048,7 @@ function FacebookPostPreviewCard({
               title={asset.fileName}
             >
               {isImage(asset.fileType) ? (
-                <img src={asset.storageUrl} alt="" />
+                <img src={asset.storageUrl} alt="" loading="lazy" decoding="async" />
               ) : (
                 <div className="val-fb-thumb-video"><i className="ti ti-video" /></div>
               )}

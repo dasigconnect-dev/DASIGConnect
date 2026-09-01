@@ -111,6 +111,7 @@ function SimilarAssetCard({
           src={asset.storageUrl}
           alt={asset.fileName}
           loading="lazy"
+          decoding="async"
           className="similar-media-img"
         />
       </div>
