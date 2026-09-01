@@ -6,6 +6,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -32,8 +33,19 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    // Optional: absent from the slice context of @WebMvcTest, present in the full app.
+    private final ObjectProvider<AccessDeniedAuditRecorder> accessDeniedAuditRecorder;
+
+    public GlobalExceptionHandler(ObjectProvider<AccessDeniedAuditRecorder> accessDeniedAuditRecorder) {
+        this.accessDeniedAuditRecorder = accessDeniedAuditRecorder;
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<ApiResponse<Void>> handleResponseStatus(ResponseStatusException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleResponseStatus(ResponseStatusException ex,
+            HttpServletRequest request) {
+        if (ex.getStatusCode().value() == 403) {
+            accessDeniedAuditRecorder.ifAvailable(r -> r.record(request, ex.getReason()));
+        }
         String message = ex.getReason() != null ? ex.getReason() : ex.getMessage();
         return ResponseEntity.status(ex.getStatusCode())
                 .body(ApiResponse.error(codeForStatus(ex.getStatusCode().value()), message, null));
@@ -148,7 +160,11 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(AccessDeniedException.class)
-    public void handleAccessDenied(AccessDeniedException ex) throws AccessDeniedException {
+    public void handleAccessDenied(AccessDeniedException ex, HttpServletRequest request)
+            throws AccessDeniedException {
+        // Covers @PreAuthorize denials (AuthorizationDeniedException extends this).
+        accessDeniedAuditRecorder.ifAvailable(r -> r.record(request, "method-security"));
+        // Rethrow so Spring Security's ExceptionTranslationFilter renders the 403.
         throw ex;
     }
 
