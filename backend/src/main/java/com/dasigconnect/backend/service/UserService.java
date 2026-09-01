@@ -115,7 +115,17 @@ public class UserService {
         user.setDisplayName(displayName == null || displayName.isBlank() ? null : displayName);
         user.setNotifyInApp(request.notifyInApp());
         user.setNotifyEmail(request.notifyEmail());
-        return UserDto.from(userRepository.save(user));
+        var saved = userRepository.save(user);
+        auditLogService.record(
+                saved,
+                "USER_SETTINGS_UPDATED",
+                null,
+                null,
+                saved.getId(),
+                Map.of(
+                        "notifyInApp", saved.isNotifyInApp(),
+                        "notifyEmail", saved.isNotifyEmail()));
+        return UserDto.from(saved);
     }
 
     /**
@@ -334,14 +344,21 @@ public class UserService {
                 || auditLogRepository.existsByActorId(id);
 
         if (hasData) {
-            // Already inactive; invalidate tokens and record removal audit
-            jwtService.invalidateUserTokens(user.getId());
-            auditLogService.record(
-                    findRequesterForAudit(requester),
-                    "USER_REMOVED",
-                    null, null,
-                    user.getId(),
-                    java.util.Map.of("email", user.getEmail(), "role", user.getRole().name()));
+            // The account can't be row-deleted (RESTRICT FKs) and is already at
+            // rest, so "remove" here is a no-op that just confirms it stays as an
+            // inactive/anonymised row. Record it once — an already-erased account,
+            // or one already marked USER_REMOVED, needs no further audit noise.
+            boolean alreadyTerminal = user.getPurgedAt() != null
+                    || auditLogRepository.existsByActionAndResourceId("USER_REMOVED", id);
+            if (!alreadyTerminal) {
+                jwtService.invalidateUserTokens(user.getId());
+                auditLogService.record(
+                        findRequesterForAudit(requester),
+                        "USER_REMOVED",
+                        null, null,
+                        user.getId(),
+                        java.util.Map.of("email", user.getEmail(), "role", user.getRole().name()));
+            }
             return "deactivated";
         }
 
@@ -437,9 +454,13 @@ public class UserService {
                 null, null,
                 target.getId(),
                 Map.of(
-                        "originalEmail", originalEmail != null ? originalEmail : "",
                         "role", target.getRole().name(),
                         "mediaAssetsPurged", String.valueOf(mediaPurged)));
+
+        // Right-to-be-forgotten also covers PII copied into prior audit metadata
+        // (e.g. the "email" key written on LOGIN_FAILED / ACCOUNT_LOCKED rows).
+        // The audit rows themselves are kept; only the personal fields are dropped.
+        auditLogRepository.scrubPersonalMetadataForUser(target.getId());
 
         return new ErasureResult(tombstoneEmail, mediaPurged);
     }

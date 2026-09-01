@@ -513,12 +513,14 @@ public class AuditLogService {
             case "LOGIN_SUCCESS" -> "Signed in";
             case "LOGIN_FAILED" -> "Failed sign-in attempt";
             case "ACCOUNT_LOCKED" -> "Account locked after repeated failed sign-ins";
+            case "ACCESS_DENIED" -> "Access denied";
             case "LOGOUT" -> "Signed out";
             case "PASSWORD_CHANGED" -> "Password changed";
             case "PASSWORD_RESET" -> "Password reset via email link";
             case "USER_ROLE_CHANGED" -> "Account role changed";
             case "USER_STATUS_UPDATED" -> "Account status changed";
             case "USER_AVATAR_UPDATED" -> "Profile photo updated";
+            case "USER_SETTINGS_UPDATED" -> "Notification preferences updated";
             case "USER_REMOVED" -> "Account deactivated";
             case "USER_DELETED" -> "Account permanently deleted";
             case "USER_ANONYMIZED" -> "Personal data erased";
@@ -539,6 +541,7 @@ public class AuditLogService {
             // ── Media ──
             case "MEDIA_ASSET_UPLOADED" -> "Media uploaded";
             case "MEDIA_ASSET_DELETED" -> "Media deleted";
+            case "MEDIA_BULK_DELETED" -> "Media deleted in bulk";
             case "MEDIA_ASSET_MOVED" -> "Media moved to another folder";
             case "MEDIA_ASSET_TAG_ADDED" -> "Media tag added";
             case "MEDIA_ASSET_TAG_REMOVED" -> "Media tag removed";
@@ -695,6 +698,11 @@ public class AuditLogService {
                     + " for 15 minutes after " + firstNonBlank(m.get("failedAttempts"), "5") + " failed sign-in attempts";
             case "LOGIN_FAILED" -> "Failed sign-in for " + firstNonBlank(m.get("email"), "an account")
                     + (m.get("reason") != null ? " — " + m.get("reason") : "");
+            case "ACCESS_DENIED" -> "Blocked " + firstNonBlank(m.get("method"), "a request") + " "
+                    + firstNonBlank(m.get("path"), "a protected endpoint")
+                    + (m.get("reason") != null ? " — " + m.get("reason") : "");
+            case "MEDIA_BULK_DELETED" -> "Deleted " + firstNonBlank(m.get("count"), "several")
+                    + " media asset(s) in one bulk action";
             case "AUDIT_LOG_EXPORTED", "ANALYTICS_EXPORTED", "SYSTEM_HEALTH_EXPORTED" ->
                     formatActionLabel(action) + (m.get("rowCount") != null ? " (" + m.get("rowCount") + " rows)" : "")
                     + (m.get("filters") != null ? " with filters " + m.get("filters") : "");

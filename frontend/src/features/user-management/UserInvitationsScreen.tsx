@@ -319,10 +319,14 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
             item.id === managedUser.id ? { ...item, accountState: 'inactive' } : item,
           ),
         )
-        toast.info('Account deactivated. Their content and media have been preserved.')
+        toast.info(
+          managedUser.purgedAt
+            ? 'This record has activity history and is kept as an anonymised tombstone for the audit trail — it cannot be removed.'
+            : 'Account deactivated. Their content and media have been preserved.',
+        )
       } else {
         setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
-        toast.success('User permanently removed.')
+        toast.success(managedUser.purgedAt ? 'Record removed.' : 'User permanently removed.')
       }
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to remove user.'))

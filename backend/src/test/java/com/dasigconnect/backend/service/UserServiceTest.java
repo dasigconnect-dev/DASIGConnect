@@ -129,6 +129,21 @@ class UserServiceTest {
     }
 
     @Test
+    void updateSettings_persistsPreferencesAndWritesAudit() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        when(userRepository.save(contributor)).thenReturn(contributor);
+
+        userService.updateSettings(
+                principal(userId, "contributor", institutionId),
+                new com.dasigconnect.backend.model.dto.user.UpdateAccountSettingsRequestDto("Nick", true, false));
+
+        assertThat(contributor.isNotifyInApp()).isTrue();
+        assertThat(contributor.isNotifyEmail()).isFalse();
+        verify(auditLogService).record(
+                eq(contributor), eq("USER_SETTINGS_UPDATED"), any(), any(), eq(userId), any());
+    }
+
+    @Test
     void listByInstitution_moderator_canListAnyInstitution() {
         UUID requestedInstitutionId = UUID.randomUUID();
         User moderator = user(UUID.randomUUID(), "moderator@cit.edu.ph", UserRole.moderator, institution);
@@ -660,7 +675,14 @@ class UserServiceTest {
         verify(jwtService).invalidateUserTokens(target.getId());
         verify(notificationRepository).deleteByRecipientId(target.getId());
         verify(userRepository).deleteMessengerConnectionByUserId(target.getId());
-        verify(auditLogService).record(any(), eq("USER_ANONYMIZED"), any(), any(), any(), any());
+
+        org.mockito.ArgumentCaptor<java.util.Map<String, ?>> meta =
+                org.mockito.ArgumentCaptor.forClass(java.util.Map.class);
+        verify(auditLogService).record(any(), eq("USER_ANONYMIZED"), any(), any(), any(), meta.capture());
+        assertThat(meta.getValue()).doesNotContainKey("originalEmail");
+
+        // right-to-be-forgotten also strips PII copied into earlier audit metadata
+        verify(auditLogRepository).scrubPersonalMetadataForUser(target.getId());
     }
 
     @Test
@@ -869,6 +891,24 @@ class UserServiceTest {
 
         assertThat(result).isEqualTo("deactivated");
         verify(userRepository, org.mockito.Mockito.never()).delete(any(com.dasigconnect.backend.model.entity.User.class));
+    }
+
+    @Test
+    void removeUser_alreadyErasedAccount_isIdempotentAndWritesNoAudit() {
+        // "Remove Record" on an account that's already erased + inactive does
+        // nothing — no re-audit, no token churn — so repeat clicks don't spam
+        // the audit log.
+        contributor.setAccountState(UserStatus.inactive);
+        contributor.setPurgedAt(java.time.Instant.now());
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        when(submissionRepository.existsByContributorId(userId)).thenReturn(true);
+
+        String result = userService.removeUser(userId, adminPrincipal);
+
+        assertThat(result).isEqualTo("deactivated");
+        verify(auditLogService, org.mockito.Mockito.never())
+                .record(any(), org.mockito.ArgumentMatchers.eq("USER_REMOVED"), any(), any(), any(), any());
+        verify(jwtService, org.mockito.Mockito.never()).invalidateUserTokens(any());
     }
 
     @Test

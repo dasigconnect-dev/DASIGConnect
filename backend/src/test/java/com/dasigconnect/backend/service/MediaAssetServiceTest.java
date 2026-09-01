@@ -151,6 +151,9 @@ class MediaAssetServiceTest {
         mediaAssetService.bulkDelete(dto, user(UUID.randomUUID(), "admin", null));
 
         verify(mediaAssetRepository).saveAll(List.of(first, second));
+        // one summary row for the whole operation, not one per asset
+        verify(auditLogService).record(any(), eq("MEDIA_BULK_DELETED"), isNull(), isNull(), isNull(), any());
+        verify(auditLogService, never()).record(any(), eq("MEDIA_ASSET_DELETED"), any(), any(), any(), any());
     }
 
     @Test
