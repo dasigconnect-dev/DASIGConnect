@@ -19,12 +19,6 @@ import {
 } from "../api/authApi";
 import type { LoginResponse, UserProfileResponse } from "../api/authApi";
 import type { User } from "../types/auth.types";
-import LoginScreen from "../features/auth/LoginScreen";
-import ForgotScreen from "../features/auth/ForgotScreen";
-import ForgotSentScreen from "../features/auth/ForgotSentScreen";
-import ResetPasswordScreen from "../features/auth/ResetPasswordScreen";
-import InviteScreen from "../features/auth/InviteScreen";
-import NoAccountScreen from "../features/auth/NoAccountScreen";
 import DashboardLayout from "../components/layout/DashboardLayout";
 import SessionModal from "../components/modals/SessionModal";
 import Toast from "../components/common/Toast";
@@ -46,6 +40,12 @@ const LOCKOUT_SECONDS = 15 * 60;
 const SESSION_WARNING_SECONDS = 5 * 60;
 const TABLER_ICONS_STYLESHEET = "https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css";
 
+const LoginScreen = lazy(() => import("../features/auth/LoginScreen"));
+const ForgotScreen = lazy(() => import("../features/auth/ForgotScreen"));
+const ForgotSentScreen = lazy(() => import("../features/auth/ForgotSentScreen"));
+const ResetPasswordScreen = lazy(() => import("../features/auth/ResetPasswordScreen"));
+const InviteScreen = lazy(() => import("../features/auth/InviteScreen"));
+const NoAccountScreen = lazy(() => import("../features/auth/NoAccountScreen"));
 const AccountSettingsScreen = lazy(() => import("../features/auth/AccountSettingsScreen"));
 const DashboardScreen = lazy(() => import("../features/dashboard/DashboardScreen"));
 const RecentActivityScreen = lazy(() => import("../features/dashboard/RecentActivityScreen"));
