@@ -2131,7 +2131,7 @@ function ValidationHistoryModal({
                 height: "36px",
                 borderRadius: "10px",
                 background: "#eff6ff",
-                color: "#1877f2",
+                color: "var(--val-blue, #0B5FCC)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -2180,7 +2180,7 @@ function ValidationHistoryModal({
             )}
             <div className="val-history-meta-item">
               <span>Status</span>
-              <strong style={{ color: "#1877f2", textTransform: "capitalize" }}>
+              <strong style={{ color: "var(--val-blue, #0B5FCC)", textTransform: "capitalize" }}>
                 {statusLabel[normalizeStatus(submission.status)] || normalizeStatus(submission.status).replace(/_/g, " ") || "Unknown"}
               </strong>
             </div>

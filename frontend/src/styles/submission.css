@@ -8,8 +8,8 @@
   --sub-text-2: #3a506b;
   --sub-muted: #6a7f9a;
   --sub-muted-2: #a0b0c8;
-  --sub-blue: #1877f2;
-  --sub-blue-2: #1565d8;
+  --sub-blue: #0b5fcc;
+  --sub-blue-2: #084a9f;
   --sub-blue-dim: #eff6ff;
   --sub-blue-bdr: #bfdbfe;
   --sub-gold: #d97706;
@@ -81,7 +81,7 @@
   height: 36px;
   border: none;
   background: transparent;
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -250,7 +250,7 @@
 .sub-list-new {
   border: none;
   border-radius: 999px;
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: white;
   min-height: 38px;
   height: 38px;
@@ -323,15 +323,15 @@
   box-sizing: border-box;
 }
 .sub-status-tab:hover {
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
   border-color: #bfdbfe;
   background: #eff6ff;
 }
 .sub-status-tab.is-active {
   color: #fff;
   font-weight: 650;
-  background: var(--sub-blue, #1877f2);
-  border-color: var(--sub-blue, #1877f2);
+  background: var(--sub-blue, #0B5FCC);
+  border-color: var(--sub-blue, #0B5FCC);
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
 }
 .sub-status-tab-count {
@@ -342,7 +342,7 @@
   height: 19px;
   padding: 0 6px;
   border-radius: 999px;
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
   background: #dbeafe;
   font-size: 10px;
   font-weight: 700;
@@ -402,7 +402,7 @@
 }
 .sub-search-input:focus {
   outline: none;
-  border-color: var(--sub-blue, #1877f2);
+  border-color: var(--sub-blue, #0B5FCC);
   box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.1);
 }
 .sub-list-results {
@@ -449,7 +449,7 @@
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: var(--sub-blue, #1877f2);
+  background: var(--sub-blue, #0B5FCC);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -549,7 +549,7 @@
   width: 32px;
   height: 32px;
   border: 3px solid #e2e8f0;
-  border-top-color: var(--sub-blue, #1877f2);
+  border-top-color: var(--sub-blue, #0B5FCC);
   border-radius: 50%;
   animation: sub-fb-spin 0.75s linear infinite;
 }
@@ -638,7 +638,7 @@
 }
 
 .sub-fb-react-icon.fb-like-icon {
-  background: #1877f2;
+  background: #0B5FCC;
 }
 
 .sub-fb-react-icon.fb-heart-icon {
@@ -659,7 +659,7 @@
   gap: 3px;
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
 }
 
 .sub-fb-actions-bar {
@@ -686,7 +686,7 @@
 }
 .sub-fb-action-btn:hover {
   background: #f1f5f9;
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
 }
 .sub-sidebar,
 .sub-guard-panel {
@@ -904,7 +904,7 @@
 .sub-sidebar-template-save {
   border: 1px solid var(--sub-blue-bdr, #bfdbfe);
   background: var(--sub-blue-dim, #eff6ff);
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
   border-radius: 999px;
   min-height: 38px;
   height: 38px;
@@ -921,8 +921,8 @@
   box-sizing: border-box;
 }
 .sub-sidebar-template-save:hover:not(:disabled) {
-  background: var(--sub-blue, #1877f2);
-  border-color: var(--sub-blue, #1877f2);
+  background: var(--sub-blue, #0B5FCC);
+  border-color: var(--sub-blue, #0B5FCC);
   color: #fff;
   transform: translateY(-0.5px);
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
@@ -1386,7 +1386,7 @@
 .status-direct_post_scheduled,
 .status-admin_direct_post {
   background: #eff6ff !important;
-  color: #1877f2 !important;
+  color: #0B5FCC !important;
   border: 1px solid #bfdbfe !important;
 }
 .status-published,
@@ -1451,7 +1451,7 @@
 }
 .sub-btn-new,
 .sub-guard-submit-btn {
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: white;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
 }
@@ -1481,7 +1481,7 @@
 .sub-guard-save-btn:hover:not(:disabled) {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   transform: translateY(-0.5px);
 }
 
@@ -1550,13 +1550,13 @@
 .sub-btn-ghost:hover {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
   transform: translateY(-0.5px);
 }
 .sub-btn-ghost.save:hover:not(:disabled) {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
 }
 .sub-btn-ghost.danger:hover:not(:disabled) {
   background: var(--sub-red-dim);
@@ -1564,7 +1564,7 @@
   color: var(--sub-red);
 }
 .sub-btn-primary {
-  background: var(--sub-blue, #1877f2);
+  background: var(--sub-blue, #0B5FCC);
   color: white;
   border: none;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
@@ -1746,12 +1746,12 @@
 .sub-step-panel-btn.secondary:hover:not(:disabled) {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   transform: translateY(-0.5px);
 }
 .sub-step-panel-btn.primary {
-  background: var(--d-blue, #1877f2);
-  border-color: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
+  border-color: var(--d-blue, #0B5FCC);
   color: white;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
 }
@@ -1977,7 +1977,7 @@
 .sub-section-icon.gold,
 .sub-section-icon.purple {
   background: var(--sub-blue-dim, #eff6ff);
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
 }
 .sub-section-title {
   font-size: 14px;
@@ -2721,7 +2721,7 @@ textarea.sub-finput {
   line-height: 1;
 }
 .sub-caption-counter.warn { color: var(--sub-muted-2, #94a3b8); }
-.sub-caption-counter.ok   { color: var(--sub-blue, #1877f2); }
+.sub-caption-counter.ok   { color: var(--sub-blue, #0B5FCC); }
 .sub-field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2742,7 +2742,7 @@ textarea.sub-finput {
   width: 18px;
   height: 18px;
   margin-top: 1px;
-  accent-color: var(--sub-blue, #1877f2);
+  accent-color: var(--sub-blue, #0B5FCC);
   flex-shrink: 0;
 }
 .sub-fast-track-toggle strong,
@@ -2777,7 +2777,7 @@ textarea.sub-finput {
   width: 18px;
   height: 18px;
   margin-top: 2px;
-  accent-color: var(--sub-blue, #1877f2);
+  accent-color: var(--sub-blue, #0B5FCC);
   flex-shrink: 0;
 }
 .sub-watermark-toggle span,
@@ -2844,7 +2844,7 @@ textarea.sub-finput {
   height: 42px;
   border: none;
   border-radius: 999px;
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: white;
   cursor: pointer;
   display: inline-flex;
@@ -2937,7 +2937,7 @@ textarea.sub-finput {
 
 .sub-posting-select.is-default .dc-select-trigger:hover:not(:disabled),
 .sub-posting-select.is-default .dc-select-trigger.open {
-  border-color: var(--sub-blue, #1877f2);
+  border-color: var(--sub-blue, #0B5FCC);
   box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.12);
   background: #ffffff;
 }
@@ -3516,7 +3516,7 @@ textarea.sub-finput {
   font-weight: 800;
 }
 .fb-preview-insights button:last-child {
-  background: #1877f2;
+  background: #0B5FCC;
   color: white;
   padding: 8px 12px;
 }
@@ -5841,12 +5841,12 @@ textarea.sub-finput {
 }
 
 .sub-mode-toggle button:hover:not(.active) {
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   background: rgba(255, 255, 255, 0.7);
 }
 
 .sub-mode-toggle button.active {
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: #ffffff;
   font-weight: 650;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
@@ -5870,7 +5870,7 @@ textarea.sub-finput {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -5880,7 +5880,7 @@ textarea.sub-finput {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
 }
 
 .sub-engagement-heading small,
@@ -5936,12 +5936,12 @@ textarea.sub-finput {
 
 .sub-engagement-slots button.selected {
   background: #eff6ff;
-  border: 1.5px solid var(--d-blue, #1877f2);
+  border: 1.5px solid var(--d-blue, #0B5FCC);
   box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.15);
 }
 
 .sub-engagement-slots button.selected strong {
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
 }
 
 .sub-engagement-slots span {
@@ -5970,7 +5970,7 @@ textarea.sub-finput {
 .sub-spin {
   animation: sub-spin 0.85s linear infinite;
   display: inline-block;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   font-size: 16px;
 }
 

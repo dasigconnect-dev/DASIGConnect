@@ -76,15 +76,15 @@
 .dc-select-trigger:hover:not(:disabled) {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
   transform: translateY(-0.5px);
 }
 
 .dc-select-trigger.open,
 .dc-select.is-open .dc-select-trigger {
   background: #eff6ff;
-  border-color: var(--sub-blue, #1877f2);
-  color: var(--sub-blue, #1877f2);
+  border-color: var(--sub-blue, #0B5FCC);
+  color: var(--sub-blue, #0B5FCC);
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.14);
 }
 
@@ -117,7 +117,7 @@
 
 .dc-select.is-open .dc-select-trigger i.ti-chevron-down {
   transform: rotate(180deg);
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
 }
 
 .dc-select-popover {
@@ -167,7 +167,7 @@
 .dc-select.mlt-select .dc-select-trigger:hover {
   border-color: #bfdbfe;
   background: #eff6ff;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   transform: translateY(-0.5px);
 }
 .dc-select.med-sort-select .dc-select-popover,
@@ -229,7 +229,7 @@
 
 .dc-select-option:hover:not(:disabled) {
   background: #eff6ff;
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
 }
 
 .dc-select-option.default-option {
@@ -240,19 +240,19 @@
 
 .dc-select-option.default-option:hover:not(:disabled) {
   background: #eff6ff;
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
 }
 
 .dc-select-option.selected {
   background: #eff6ff;
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
   font-weight: 650;
   box-shadow: none;
 }
 
 .dc-select-option.selected:hover {
   background: #eff6ff;
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
 }
 
 .dc-select-option:disabled {
@@ -360,7 +360,7 @@
 
 .dc-multi.is-open .dc-multi-chevron {
   transform: rotate(180deg);
-  color: var(--sub-blue, #1877f2);
+  color: var(--sub-blue, #0B5FCC);
 }
 
 /* Optional institution-code (etc.) pill on a select option */

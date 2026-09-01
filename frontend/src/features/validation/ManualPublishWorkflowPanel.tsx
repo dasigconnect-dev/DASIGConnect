@@ -272,7 +272,7 @@ export default function ManualPublishWorkflowPanel({
               {/* Step 1 — Copy Content */}
               <section style={{ padding: "18px 24px", borderBottom: "1px solid var(--val-border, #e2e8f0)", display: "flex", flexDirection: "column", gap: "12px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 700, color: "var(--val-text)" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "50%", background: "#1877f2", color: "white", fontSize: "12px", fontWeight: 800 }}>1</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "50%", background: "var(--val-blue, #0B5FCC)", color: "white", fontSize: "12px", fontWeight: 800 }}>1</span>
                   Copy Content
                 </div>
 
@@ -364,7 +364,7 @@ export default function ManualPublishWorkflowPanel({
               {/* Step 2 — Post to Facebook */}
               <section style={{ padding: "18px 24px", borderBottom: "1px solid var(--val-border, #e2e8f0)", display: "flex", flexDirection: "column", gap: "12px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 700, color: "var(--val-text)" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "50%", background: "#1877f2", color: "white", fontSize: "12px", fontWeight: 800 }}>2</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "50%", background: "var(--val-blue, #0B5FCC)", color: "white", fontSize: "12px", fontWeight: 800 }}>2</span>
                   Post to Facebook
                 </div>
                 <a
@@ -383,7 +383,7 @@ export default function ManualPublishWorkflowPanel({
               {/* Step 3 — Record Details */}
               <section style={{ padding: "18px 24px", display: "flex", flexDirection: "column", gap: "14px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 700, color: "var(--val-text)" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "50%", background: "#1877f2", color: "white", fontSize: "12px", fontWeight: 800 }}>3</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px", borderRadius: "50%", background: "var(--val-blue, #0B5FCC)", color: "white", fontSize: "12px", fontWeight: 800 }}>3</span>
                   Record Details
                 </div>
 

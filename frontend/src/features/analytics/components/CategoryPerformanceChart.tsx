@@ -53,7 +53,7 @@ export default function CategoryPerformanceChart({ rows }: Props) {
 
           <div style={{ marginTop: "auto", paddingTop: "14px", borderTop: "1px solid var(--d-border, #E2E8F0)", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px", color: "var(--d-muted, #5A6F8A)" }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
-              <i className="ti ti-chart-bar" style={{ color: "#1877F2" }} />
+              <i className="ti ti-chart-bar" style={{ color: "var(--d-blue, #0B5FCC)" }} />
               Categories Tracked: <strong style={{ color: "#0C1D3D" }}>{sorted.length}</strong>
             </span>
             <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>

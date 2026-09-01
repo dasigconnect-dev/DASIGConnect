@@ -8,8 +8,8 @@ interface ScreenProps {
 
 export default function Screen({ id, active, children }: ScreenProps) {
   return (
-    <div id={`screen-${id}`} className={`screen${active ? ' active' : ''}`}>
+    <main id={`screen-${id}`} className={`screen${active ? ' active' : ''}`}>
       {children}
-    </div>
+    </main>
   )
 }

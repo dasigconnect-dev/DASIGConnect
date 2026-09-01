@@ -550,7 +550,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
         </nav>
 
         {/* Right Main Content Area */}
-        <main className="settings-content-area">
+        <div className="settings-content-area">
           {/* Tab 1: Account Settings */}
           {activeTab === "account" && (
             <section className="settings-card" id="account">
@@ -963,7 +963,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
               </section>
             </div>
           )}
-        </main>
+        </div>
       </div>
     </div>
   );

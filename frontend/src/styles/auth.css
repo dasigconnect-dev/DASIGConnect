@@ -10,10 +10,10 @@
   --ink-2: #0c1d3d;
   --ink-3: #112347;
   --ink-4: #1a3060;
-  --blue: #1877f2;
-  --blue-2: #2563eb;
-  --blue-dim: rgba(24, 119, 242, 0.12);
-  --blue-border: rgba(24, 119, 242, 0.28);
+  --blue: #0b5fcc;
+  --blue-2: #084a9f;
+  --blue-dim: rgba(11, 95, 204, 0.12);
+  --blue-border: rgba(11, 95, 204, 0.28);
   --gold: #f59e0b;
   --gold-2: #fbbf24;
   --gold-dim: rgba(245, 158, 11, 0.1);
@@ -36,7 +36,7 @@
   --d-border: #dde3ee;
   --d-text: #0c1d3d;
   --d-muted: #5a6f8a;
-  --d-blue: #1877f2;
+  --d-blue: #0b5fcc;
   --d-gold: #d97706;
   --d-gold-bg: #fffbeb;
   --d-gold-bdr: #fde68a;
@@ -560,7 +560,7 @@ body {
   gap: 7px;
 }
 .btn-primary:hover:not(:disabled) {
-  background: #1565d8;
+  background: #084a9f;
 }
 .btn-primary:active:not(:disabled) {
   transform: scale(0.99);
@@ -1116,7 +1116,7 @@ body {
 
 #session-modal .finput:focus {
   background: #ffffff;
-  border-color: #1877f2;
+  border-color: #0B5FCC;
   box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.14);
   outline: none;
 }
@@ -1155,7 +1155,7 @@ body {
 #session-modal .btn-primary {
   width: 100%;
   height: 42px;
-  background: #1877f2;
+  background: #0B5FCC;
   border: none;
   border-radius: 9px;
   color: #ffffff;
@@ -1173,7 +1173,7 @@ body {
 }
 
 #session-modal .btn-primary:hover:not(:disabled) {
-  background: #1565d8;
+  background: #084a9f;
   box-shadow: 0 4px 12px rgba(24, 119, 242, 0.32);
   transform: translateY(-1px);
 }
@@ -1406,6 +1406,10 @@ body {
   min-width: 0;
   background: var(--d-bg);
 }
+.dash-main {
+  flex: 1;
+  min-width: 0;
+}
 .dash-nav-right {
   display: flex;
   align-items: center;
@@ -1526,7 +1530,7 @@ body {
 }
 .udrop-item:hover {
   background: var(--d-bg);
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   transform: translateX(2px);
 }
 .udrop-item.danger {
@@ -1571,7 +1575,7 @@ body {
 }
 
 .first-login-notice {
-  background: #1877f2;
+  background: #0B5FCC;
   border: 1px solid #166fe5;
   border-radius: var(--r, 10px);
   padding: 14px 18px;
@@ -1621,7 +1625,7 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 18px;
-  color: #1877f2;
+  color: #0B5FCC;
   margin-bottom: 12px;
 }
 .stat-label {
@@ -1781,7 +1785,7 @@ body {
 .section-link-btn {
   background: #ffffff;
   border: 1px solid var(--d-border, #e2e8f0);
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   font-family: var(--ff-body);
   font-size: 12px;
   font-weight: 600;
@@ -1802,7 +1806,7 @@ body {
 .section-link-btn:hover {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: #1565d8;
+  color: #084a9f;
   transform: translateY(-0.5px);
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.12);
 }
@@ -1813,7 +1817,7 @@ body {
   font-size: 13px;
 }
 .data-table thead {
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
 }
 .data-table th {
   text-align: left;
@@ -1890,7 +1894,7 @@ body {
 }
 .pill-scheduled,
 .sp-scheduled {
-  color: #1877f2;
+  color: #0B5FCC;
 }
 .pill-pending,
 .pill-review,
@@ -1918,7 +1922,7 @@ body {
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   font-family: var(--ff-body, system-ui, sans-serif);
   font-size: 13.5px;
   font-weight: 600;
@@ -1931,7 +1935,7 @@ body {
   display: inline-block;
 }
 .dash-back-btn:hover {
-  color: #1565d8;
+  color: #084a9f;
   transform: translateX(-4px);
 }
 .dash-view-header {
@@ -1999,7 +2003,7 @@ body {
 }
 .dash-search-input:focus {
   outline: none;
-  border-color: #1877f2;
+  border-color: #0B5FCC;
   box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.12);
 }
 
@@ -2027,7 +2031,7 @@ body {
 }
 
 .fb-bar {
-  background: linear-gradient(135deg, #1877f2 0%, #165ac8 100%);
+  background: linear-gradient(135deg, #0B5FCC 0%, #165ac8 100%);
   border-radius: var(--r);
   padding: 16px 20px;
   display: flex;
@@ -2057,7 +2061,7 @@ body {
 }
 .fb-btn {
   background: white;
-  color: #1877f2;
+  color: #0B5FCC;
   border: none;
   padding: 8px 18px;
   border-radius: 6px;

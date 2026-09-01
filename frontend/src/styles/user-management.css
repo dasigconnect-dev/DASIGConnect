@@ -1156,7 +1156,7 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #ffffff;
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   white-space: nowrap;
 }
