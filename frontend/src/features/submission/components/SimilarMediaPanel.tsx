@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { SimilarMediaAsset } from "../../../api/aiApi";
 import type { SimilarMediaState } from "../../../hooks/useSimilarMedia";
 import { logAiInteraction } from "../../../api/aiApi";
+import OptimizedImage, { canTransformImageType } from "../../../components/media/OptimizedImage";
 
 interface Props {
   state: SimilarMediaState;
@@ -107,11 +108,14 @@ function SimilarAssetCard({
   return (
     <div className="similar-media-card">
       <div className="similar-media-thumb">
-        <img
+        <OptimizedImage
           src={asset.storageUrl}
           alt={asset.fileName}
-          loading="lazy"
-          decoding="async"
+          width={180}
+          height={135}
+          sizes="180px"
+          candidateWidths={[180, 360]}
+          transform={canTransformImageType(asset.fileType)}
           className="similar-media-img"
         />
       </div>

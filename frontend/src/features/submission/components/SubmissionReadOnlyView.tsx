@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import OptimizedImage, { canTransformImageType } from "../../../components/media/OptimizedImage";
 import FacebookPreviewCard from "../../../components/facebook/FacebookPreviewCard";
 import type { FacebookPreviewMediaItem } from "../../../types/facebook";
 import type { SubmissionMediaItem } from "../../../types/media";
@@ -156,7 +157,15 @@ export default function SubmissionReadOnlyBody({
                     preload="metadata"
                   />
                 ) : (
-                  <img src={item.previewUrl} alt={item.fileName} loading="lazy" />
+                  <OptimizedImage
+                    src={item.previewUrl}
+                    alt={item.fileName}
+                    width={320}
+                    height={240}
+                    sizes="(max-width: 768px) 50vw, 220px"
+                    candidateWidths={[220, 320, 440]}
+                    transform={item.source !== "upload" && canTransformImageType(item.fileName.split(".").pop())}
+                  />
                 )}
                 <figcaption>
                   <span className="sub-ro-media-name">{item.fileName}</span>

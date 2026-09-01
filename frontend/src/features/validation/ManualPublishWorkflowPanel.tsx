@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ManualPublishDetail } from "../../api/resolutionApi";
+import OptimizedImage, { canTransformImageType } from "../../components/media/OptimizedImage";
 
 const FACEBOOK_PAGE_URL = "https://www.facebook.com/DostDasig";
 const ABANDONMENT_MS = 2 * 60 * 60 * 1000; // 2 hours
@@ -324,11 +325,14 @@ export default function ManualPublishWorkflowPanel({
                         }}
                         title={`Download ${img.fileName}`}
                       >
-                        <img
+                        <OptimizedImage
                           src={img.storageUrl}
                           alt={img.fileName}
-                          loading="lazy"
-                          decoding="async"
+                          width={72}
+                          height={72}
+                          sizes="72px"
+                          candidateWidths={[72, 144]}
+                          transform={canTransformImageType(img.fileType)}
                           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                         />
                       </a>

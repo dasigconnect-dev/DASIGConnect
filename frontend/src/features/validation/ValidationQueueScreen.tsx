@@ -31,6 +31,7 @@ import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
 import { getWatermarkConfiguration } from "../../api/watermarkApi";
 import type { WatermarkConfiguration } from "../../types/watermark.types";
+import OptimizedImage, { canTransformImageType } from "../../components/media/OptimizedImage";
 import WatermarkOverlay from "../../components/watermark/WatermarkOverlay";
 import {
   useValidationLog,
@@ -1417,7 +1418,15 @@ export default function ValidationQueueScreen({
                               <div key={item.key} className="val-edit-media-row">
                                 <div className="val-edit-media-thumb">
                                   {item.isImage ? (
-                                    <img src={item.previewUrl} alt={item.fileName} loading="lazy" decoding="async" />
+                                    <OptimizedImage
+                                      src={item.previewUrl}
+                                      alt={item.fileName}
+                                      width={96}
+                                      height={72}
+                                      sizes="96px"
+                                      candidateWidths={[96, 192]}
+                                      transform={Boolean(item.assetId) && canTransformImageType(item.fileName.split(".").pop())}
+                                    />
                                   ) : (
                                     <video src={item.previewUrl} muted />
                                   )}
@@ -2048,7 +2057,15 @@ function FacebookPostPreviewCard({
               title={asset.fileName}
             >
               {isImage(asset.fileType) ? (
-                <img src={asset.storageUrl} alt="" loading="lazy" decoding="async" />
+                <OptimizedImage
+                  src={asset.storageUrl}
+                  alt=""
+                  width={72}
+                  height={72}
+                  sizes="72px"
+                  candidateWidths={[72, 144]}
+                  transform={canTransformImageType(asset.fileType)}
+                />
               ) : (
                 <div className="val-fb-thumb-video"><i className="ti ti-video" /></div>
               )}

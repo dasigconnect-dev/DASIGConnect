@@ -30,6 +30,7 @@ These changes are already developed on the current frontend performance branch.
 | Bundle budgets | Added local production bundle budget check | Low | `npm run analyze:bundle` builds the frontend, prints the largest assets, and fails when JS/CSS chunks exceed agreed thresholds. |
 | Submission CSS splitting | Moved deferred submission panel styles into component-owned CSS chunks | Low | Reduced the main `SubmissionScreen` CSS chunk from about `103 kB` to `90 kB`; AI prompt, AI suggestions, engagement recommendations, and read-only view styles now load with their async components. |
 | Auth route splitting | Lazy-loaded public auth screens and moved auth layout CSS into an auth-owned async CSS chunk | Low | Keeps login/invite/reset/no-account layout styles out of the main global CSS path while preserving shared dashboard/session primitives globally. |
+| Thumbnail image loading | Added a Supabase-aware optimized image helper for card/list thumbnails | Low | Review Queue, Media Repository, calendar attachment tiles, selected-media strips, and related thumbnail-only views now request bounded resized image variants where supported and fall back to originals. Full-screen/lightbox inspection still uses original assets. |
 
 ## Priority 1 - Safe Frontend-Only Fixes
 
@@ -84,7 +85,9 @@ These should be done next because they do not require backend changes or databas
 
 **Problem:** The scanner reported forced reflow warnings around 40-55 ms. Some were already reduced, but we should confirm with profiling before adding complex changes.
 
-**Fix:** Use DevTools Performance or React Profiler to identify whether remaining reflows are from our components, browser autofill, icon font loading, or image layout.
+**Fix:** Use DevTools Performance or React Profiler to identify whether remaining reflows are from our components, browser autofill, icon font loading, image layout, or browser extensions.
+
+**Latest finding:** Code audit found only scoped measurement points in select/popover/menu positioning plus modal scroll reset behavior. The reported ~71 ms McAfee WebAdvisor main-thread activity is browser-extension overhead and should be excluded by profiling with extensions disabled before changing application code.
 
 **Likely files if optimization is needed:**
 
@@ -162,6 +165,8 @@ These are still frontend-only, but they touch larger user workflows and need car
 
 **Additional update:** Public auth screens are now lazy route chunks, and their left/right panel branding layout styles have been moved from global auth CSS into `auth-layout.css`, which is imported only through the auth `Screen` layout component.
 
+**Image loading update:** Thumbnail-only views now use an `OptimizedImage` helper that converts known Supabase public object URLs to bounded render/image URLs with `width`, `height`, `resize`, and `quality` parameters, plus `srcSet`/`sizes` and original-source fallback. Primary inspection views, full-screen lightbox media, and local blob previews keep their original URLs.
+
 **Likely files:**
 
 - `frontend/src/styles/index.css`
@@ -183,6 +188,8 @@ These changes can produce the largest payload reduction for media-heavy pages, b
 **Problem:** Media grid cards may load original images from storage instead of smaller optimized thumbnails.
 
 **Preferred fix:** Generate thumbnail derivatives on upload and serve thumbnails to list/grid views while preserving originals.
+
+**Frontend-only mitigation completed:** Card/list thumbnails now request resized Supabase image-rendering URLs when available. A true WebP/AVIF derivative pipeline remains deferred because the current backend data model only exposes `storageUrl`; it does not store thumbnail URLs, dimensions, or generated derivative metadata.
 
 **Possible approaches:**
 

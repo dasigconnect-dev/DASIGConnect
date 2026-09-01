@@ -6,6 +6,7 @@ import {
   type MediaAsset,
   type MediaAssetHistoryEntry,
 } from "../../../api/mediaApi";
+import OptimizedImage, { canTransformImageType } from "../../../components/media/OptimizedImage";
 import { formatFileSize, formatUploadDate, formatResolution, formatFileTypeName, isVideoType } from "../utils";
 import { buildAlbumOptions } from "../albumTree";
 
@@ -157,7 +158,15 @@ export default function AssetDetailPanel({
                 >
                   <div className="med-sel-thumb">
                     {sel.storageUrl ? (
-                      <img src={sel.storageUrl} alt={sel.title} loading="lazy" />
+                      <OptimizedImage
+                        src={sel.storageUrl}
+                        alt={sel.title}
+                        width={48}
+                        height={48}
+                        sizes="48px"
+                        candidateWidths={[48, 96]}
+                        transform={canTransformImageType(sel.fileType)}
+                      />
                     ) : (
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -226,7 +235,16 @@ export default function AssetDetailPanel({
                   isVideoType(asset.fileType) ? (
                     <video src={asset.storageUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} controls muted playsInline preload="metadata" />
                   ) : (
-                    <img src={asset.storageUrl} alt={asset.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <OptimizedImage
+                      src={asset.storageUrl}
+                      alt={asset.title}
+                      width={640}
+                      height={400}
+                      sizes="(max-width: 768px) 100vw, 360px"
+                      candidateWidths={[360, 640, 960]}
+                      transform={canTransformImageType(asset.fileType)}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
                   )
                 ) : (
                   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">

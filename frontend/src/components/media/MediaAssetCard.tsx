@@ -1,3 +1,5 @@
+import OptimizedImage, { canTransformImageType } from "./OptimizedImage";
+
 interface MediaAssetCardProps {
   id: string;
   storageUrl: string;
@@ -66,12 +68,15 @@ export default function MediaAssetCard({
             <i className="ti ti-video" aria-hidden />
           </div>
         ) : (
-          <img
+          <OptimizedImage
             src={storageUrl}
             alt={fileName}
             className="mac-img"
-            loading="lazy"
-            decoding="async"
+            width={176}
+            height={132}
+            sizes="176px"
+            candidateWidths={[176, 352]}
+            transform={canTransformImageType(fileType)}
           />
         )}
         {(selected || alreadyAdded) && (
