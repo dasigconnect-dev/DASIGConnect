@@ -586,6 +586,54 @@
   font-size: 12.5px;
 }
 
+/* ── Social Engagement (dedicated headline card) ────────────────────────── */
+.analytics-social-card {
+  border-left: 3px solid var(--d-blue, #1877f2);
+}
+
+.analytics-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.analytics-stat-cell {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.analytics-stat-cell-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--d-muted, #5a6f8a);
+}
+
+.analytics-stat-cell-value {
+  font-size: 24px;
+  font-weight: 800;
+  color: #0c1d3d;
+  line-height: 1.1;
+}
+
+.analytics-panel-report-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+@media (max-width: 640px) {
+  .analytics-stat-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Responsive Queries ─────────────────────────────────────────────────── */
 @media (max-width: 1200px) {
   .analytics-kpi-strip-wrap {

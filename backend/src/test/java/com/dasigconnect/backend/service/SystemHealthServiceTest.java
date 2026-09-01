@@ -13,6 +13,7 @@ import com.dasigconnect.backend.model.dto.systemhealth.BackgroundJobHealthDto;
 import com.dasigconnect.backend.model.dto.systemhealth.HealthStatus;
 import com.dasigconnect.backend.model.dto.systemhealth.OperationalMetricDto;
 import com.dasigconnect.backend.model.entity.ScheduledJobRun;
+import com.dasigconnect.backend.repository.PublishSuccessRateRepository;
 import com.dasigconnect.backend.repository.ScheduledJobRunRepository;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -28,12 +29,14 @@ class SystemHealthServiceTest {
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
     private final ScheduledJobRunRepository scheduledJobRunRepository = mock(ScheduledJobRunRepository.class);
     private final MediaStorageService mediaStorage = mock(MediaStorageService.class);
+    private final PublishSuccessRateRepository publishSuccessRateRepository = mock(PublishSuccessRateRepository.class);
 
     private final SystemHealthService service = new SystemHealthService(
             jdbcTemplate,
             scheduledJobRunRepository,
             mock(TokenManagementService.class),
             mediaStorage,
+            publishSuccessRateRepository,
             1_000_000,
             1_000_000,
             80,
@@ -65,10 +68,11 @@ class SystemHealthServiceTest {
         when(jdbcTemplate.queryForMap(anyString(), any()))
                 .thenReturn(Map.of("value", 0, "sample_size", 0))
                 .thenReturn(Map.of("approvals", 0, "edited", 0))
-                .thenReturn(Map.of("started", 0, "completed", 0))
-                .thenReturn(Map.of("attempts", 0, "successes", 0));
+                .thenReturn(Map.of("started", 0, "completed", 0));
         when(jdbcTemplate.queryForObject(anyString(), eq(Long.class), any()))
                 .thenReturn(0L);
+        when(publishSuccessRateRepository.networkWide(any(), any()))
+                .thenReturn(new PublishSuccessRateRepository.Stats(0, 0));
 
         List<OperationalMetricDto> metrics = service.operationalMetrics();
 
@@ -95,10 +99,11 @@ class SystemHealthServiceTest {
         when(jdbcTemplate.queryForMap(anyString(), any()))
                 .thenThrow(new IllegalStateException("validation_logs is missing"))
                 .thenReturn(Map.of("approvals", 4, "edited", 1))
-                .thenReturn(Map.of("started", 2, "completed", 2))
-                .thenReturn(Map.of("attempts", 5, "successes", 5));
+                .thenReturn(Map.of("started", 2, "completed", 2));
         when(jdbcTemplate.queryForObject(anyString(), eq(Long.class), any()))
                 .thenReturn(1L);
+        when(publishSuccessRateRepository.networkWide(any(), any()))
+                .thenReturn(new PublishSuccessRateRepository.Stats(5, 5));
 
         List<OperationalMetricDto> metrics = service.operationalMetrics();
 
@@ -117,6 +122,8 @@ class SystemHealthServiceTest {
         when(jdbcTemplate.queryForMap(anyString(), any()))
                 .thenReturn(Map.of("value", 0, "sample_size", 0));
         when(jdbcTemplate.queryForObject(anyString(), eq(Long.class), any())).thenReturn(0L);
+        when(publishSuccessRateRepository.networkWide(any(), any()))
+                .thenReturn(new PublishSuccessRateRepository.Stats(0, 0));
 
         service.operationalMetrics();
 
