@@ -227,10 +227,11 @@ public class AnalyticsRepository {
     }
 
     public List<StatusBreakdownDto> statusBreakdown(AnalyticsScope scope) {
+        // Drafts are the contributor's private workspace — never surfaced in analytics.
         String sql = """
             SELECT s.status, COUNT(*) AS status_count
             FROM submissions s
-            WHERE 1 = 1 %s
+            WHERE s.status <> 'draft' %s
             GROUP BY s.status
             ORDER BY s.status ASC
             """.formatted(scope.scopedFilter("s"));
@@ -244,18 +245,22 @@ public class AnalyticsRepository {
             FROM (
                 SELECT 'Missing event title' AS issue, COUNT(*) AS issue_count FROM submissions s
                 WHERE COALESCE(s.submitted_at, s.created_at) >= :start AND COALESCE(s.submitted_at, s.created_at) < :end
+                  AND s.status <> 'draft'
                   AND (s.event_title IS NULL OR LENGTH(TRIM(s.event_title)) = 0) %1$s
                 UNION ALL
                 SELECT 'Missing event date' AS issue, COUNT(*) AS issue_count FROM submissions s
                 WHERE COALESCE(s.submitted_at, s.created_at) >= :start AND COALESCE(s.submitted_at, s.created_at) < :end
+                  AND s.status <> 'draft'
                   AND s.event_date IS NULL %1$s
                 UNION ALL
                 SELECT 'Missing caption' AS issue, COUNT(*) AS issue_count FROM submissions s
                 WHERE COALESCE(s.submitted_at, s.created_at) >= :start AND COALESCE(s.submitted_at, s.created_at) < :end
+                  AND s.status <> 'draft'
                   AND (s.caption IS NULL OR LENGTH(TRIM(s.caption)) = 0) %1$s
                 UNION ALL
                 SELECT 'Missing media' AS issue, COUNT(*) AS issue_count FROM submissions s
                 WHERE COALESCE(s.submitted_at, s.created_at) >= :start AND COALESCE(s.submitted_at, s.created_at) < :end
+                  AND s.status <> 'draft'
                   AND NOT EXISTS (SELECT 1 FROM submission_media_assets sma WHERE sma.submission_id = s.id) %1$s
             ) issues
             GROUP BY issue
