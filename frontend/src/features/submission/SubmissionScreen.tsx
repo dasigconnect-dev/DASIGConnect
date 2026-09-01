@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
 import {
@@ -37,14 +37,10 @@ import type { SubmissionMediaItem } from "../../types/media";
 import type { CaptionTone } from "../../api/aiApi";
 import { useToast } from "../../context/ToastContext";
 import { registerAppCacheReset } from "../../lib/appCache";
-import MediaAssetsPicker from "../../components/media/MediaAssetsPicker";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import AiCaptionButton from "./components/AiCaptionButton";
-import AiCaptionPromptDialog from "./components/AiCaptionPromptDialog";
-import AiCaptionSuggestion from "./components/AiCaptionSuggestion";
-import FancyTextTool, { type FancyTextSelection } from "./components/FancyTextTool";
-import SubmissionReadOnlyBody from "./components/SubmissionReadOnlyView";
+import type { FancyTextSelection } from "./components/FancyTextTool";
 import AlbumCombobox from "../../components/ui/AlbumCombobox";
 import "../../styles/dasig-loader.css";
 import "../../styles/submission.css";
@@ -108,11 +104,25 @@ import {
   SectionHead,
 } from "./components/SharedPrimitives";
 import { StepPanelActions, StepProgress } from "./components/StepProgress";
-import { EngagementRecommendationsPanel } from "./components/EngagementRecommendationsPanel";
-import { InPageFacebookPreview } from "./components/InPageFacebookPreview";
 import { CalendarDateField } from "./components/CalendarDateField";
 import { TimePickerField } from "./components/TimePickerField";
 import { SubmissionCardMedia } from "./components/SubmissionCardMedia";
+
+const MediaAssetsPicker = lazy(() => import("../../components/media/MediaAssetsPicker"));
+const AiCaptionPromptDialog = lazy(() => import("./components/AiCaptionPromptDialog"));
+const AiCaptionSuggestion = lazy(() => import("./components/AiCaptionSuggestion"));
+const FancyTextTool = lazy(() => import("./components/FancyTextTool"));
+const SubmissionReadOnlyBody = lazy(() => import("./components/SubmissionReadOnlyView"));
+const EngagementRecommendationsPanel = lazy(() =>
+  import("./components/EngagementRecommendationsPanel").then((module) => ({
+    default: module.EngagementRecommendationsPanel,
+  })),
+);
+const InPageFacebookPreview = lazy(() =>
+  import("./components/InPageFacebookPreview").then((module) => ({
+    default: module.InPageFacebookPreview,
+  })),
+);
 
 const AUTO_SAVE_DELAY_MS = 1200;
 
@@ -132,6 +142,15 @@ type ComposerTemplate = (typeof postTemplates)[number] & {
   sourceSubmissionId?: string | null;
   createdAt?: string;
 };
+
+function DeferredSubmissionPanelFallback() {
+  return (
+    <div className="sub-inline-note" role="status">
+      <i className="ti ti-loader-2 sub-spin" aria-hidden="true" />
+      Loading panel...
+    </div>
+  );
+}
 
 function apiTemplateToComposerTemplate(template: ApiPostTemplate): ComposerTemplate {
   return {
@@ -2205,42 +2224,46 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           </div>
 
           {centerMode === "preview" ? (
-            <InPageFacebookPreview
-              pageName={facebookPreview.pageName}
-              pageAvatarUrl={facebookPreview.pageAvatarUrl}
-              publishDate={facebookPreview.publishDate}
-              caption={facebookPreview.caption}
-              mediaItems={facebookPreview.mediaItems}
-              activeMediaIndex={activeMediaIndex}
-              canSaveDraft={form.status === "draft" && isDirty}
-              canSubmitForReview={canSubmitCurrentSubmission}
-              submitDisabledReason={
-                canSubmitCurrentSubmission
-                  ? submitDisabledReason
-                  : "This submission has already moved beyond draft status."
-              }
-              isSaving={saveState === "saving"}
-              isSubmitting={submitting}
-              reorderDisabled={isReadOnlySubmission || reorderingMedia || saveState === "saving" || submitting}
-              onMediaIndexChange={setActiveMediaIndex}
-              onReorderMedia={(orderedIds) => void handleReorderMedia(orderedIds)}
-              onSaveDraft={() => void handleSave()}
-              onSubmitForReview={() => setModal("submit")}
-              onEditDetails={handleEditPreviewDetails}
-            />
+            <Suspense fallback={<DeferredSubmissionPanelFallback />}>
+              <InPageFacebookPreview
+                pageName={facebookPreview.pageName}
+                pageAvatarUrl={facebookPreview.pageAvatarUrl}
+                publishDate={facebookPreview.publishDate}
+                caption={facebookPreview.caption}
+                mediaItems={facebookPreview.mediaItems}
+                activeMediaIndex={activeMediaIndex}
+                canSaveDraft={form.status === "draft" && isDirty}
+                canSubmitForReview={canSubmitCurrentSubmission}
+                submitDisabledReason={
+                  canSubmitCurrentSubmission
+                    ? submitDisabledReason
+                    : "This submission has already moved beyond draft status."
+                }
+                isSaving={saveState === "saving"}
+                isSubmitting={submitting}
+                reorderDisabled={isReadOnlySubmission || reorderingMedia || saveState === "saving" || submitting}
+                onMediaIndexChange={setActiveMediaIndex}
+                onReorderMedia={(orderedIds) => void handleReorderMedia(orderedIds)}
+                onSaveDraft={() => void handleSave()}
+                onSubmitForReview={() => setModal("submit")}
+                onEditDetails={handleEditPreviewDetails}
+              />
+            </Suspense>
           ) : isReadOnlySubmission ? (
-            <SubmissionReadOnlyBody
-              form={form}
-              scheduledAt={scheduledAt}
-              mediaItems={pickerItems}
-              captionHashtags={captionHashtags}
-              mediaTags={effectiveMediaTags(form)}
-              facebookPreview={facebookPreview}
-              activeMediaIndex={activeMediaIndex}
-              onMediaIndexChange={setActiveMediaIndex}
-              rejectionReason={loadedDetail?.id === form.id ? loadedDetail.rejectionReason : null}
-              revisionNotes={loadedDetail?.id === form.id ? loadedDetail.validatorRemarks : null}
-            />
+            <Suspense fallback={<DeferredSubmissionPanelFallback />}>
+              <SubmissionReadOnlyBody
+                form={form}
+                scheduledAt={scheduledAt}
+                mediaItems={pickerItems}
+                captionHashtags={captionHashtags}
+                mediaTags={effectiveMediaTags(form)}
+                facebookPreview={facebookPreview}
+                activeMediaIndex={activeMediaIndex}
+                onMediaIndexChange={setActiveMediaIndex}
+                rejectionReason={loadedDetail?.id === form.id ? loadedDetail.rejectionReason : null}
+                revisionNotes={loadedDetail?.id === form.id ? loadedDetail.validatorRemarks : null}
+              />
+            </Suspense>
           ) : (
             <>
           {!isReadOnlySubmission && (
@@ -2322,15 +2345,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               action={
                 !isReadOnlySubmission ? (
                   <div className="sub-caption-actions">
-                    <FancyTextTool
-                      caption={form.caption}
-                      selection={captionSelection}
-                      disabled={isReadOnlySubmission}
-                      onReplaceSelection={updateCaptionSelection}
-                      onPreviewSelection={updateCaptionSelection}
-                      onRestoreSelection={restoreCaptionSelection}
-                      onPreviewStateChange={setFancyTextPreviewActive}
-                    />
+                    <Suspense fallback={null}>
+                      <FancyTextTool
+                        caption={form.caption}
+                        selection={captionSelection}
+                        disabled={isReadOnlySubmission}
+                        onReplaceSelection={updateCaptionSelection}
+                        onPreviewSelection={updateCaptionSelection}
+                        onRestoreSelection={restoreCaptionSelection}
+                        onPreviewStateChange={setFancyTextPreviewActive}
+                      />
+                    </Suspense>
                     {canUseAiCaption && !form.fastTrack && (
                       <AiCaptionButton
                         state={aiCaption.state}
@@ -2365,30 +2390,34 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 </span>
               </div>
               {canUseAiCaption && !form.fastTrack && aiCaption.variants && (
-                <AiCaptionSuggestion
-                  variants={aiCaption.variants}
-                  onApply={(caption, tone, action) => {
-                    if (!canUseAiCaption) return;
-                    updateCaption(caption);
-                    aiCaption.logApply(tone, action);
-                  }}
-                  onDismissOne={aiCaption.logDismissOne}
-                  onDismissAll={aiCaption.dismissAll}
-                  onRegenerate={aiCaption.regenerate}
-                />
+                <Suspense fallback={<DeferredSubmissionPanelFallback />}>
+                  <AiCaptionSuggestion
+                    variants={aiCaption.variants}
+                    onApply={(caption, tone, action) => {
+                      if (!canUseAiCaption) return;
+                      updateCaption(caption);
+                      aiCaption.logApply(tone, action);
+                    }}
+                    onDismissOne={aiCaption.logDismissOne}
+                    onDismissAll={aiCaption.dismissAll}
+                    onRegenerate={aiCaption.regenerate}
+                  />
+                </Suspense>
               )}
               <div className="sub-finput-hint">
                 Captions can contain up to {CAPTION_WORD_LIMIT} characters. Include relevant tags.
               </div>
-              {canUseAiCaption && !form.fastTrack && (
-                <AiCaptionPromptDialog
-                  open={captionPromptOpen}
-                  state={aiCaption.state}
-                  hasImageAssets={hasImageAssets}
-                  existingCaption={form.caption}
-                  onClose={() => setCaptionPromptOpen(false)}
-                  onSubmit={(prompt, tone) => void handleAiCaptionPromptSubmit(prompt, tone)}
-                />
+              {canUseAiCaption && !form.fastTrack && captionPromptOpen && (
+                <Suspense fallback={null}>
+                  <AiCaptionPromptDialog
+                    open={captionPromptOpen}
+                    state={aiCaption.state}
+                    hasImageAssets={hasImageAssets}
+                    existingCaption={form.caption}
+                    onClose={() => setCaptionPromptOpen(false)}
+                    onSubmit={(prompt, tone) => void handleAiCaptionPromptSubmit(prompt, tone)}
+                  />
+                </Suspense>
               )}
             </Field>
 
@@ -2449,18 +2478,20 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               title="Add Media"
               subtitle="Upload files, pick from your library, or let AI suggest relevant assets."
             />
-            <MediaAssetsPicker
-              items={pickerItems}
-              onItemsChange={handlePickerChange}
-              submissionId={form.id}
-              eventTitle={form.eventTitle}
-              caption={form.caption}
-              category=""
-              tags={captionHashtags.map((hashtag) => hashtag.slice(1))}
-              disabled={!isEditableSubmission}
-              onItemClick={openMediaCaption}
-              getItemCaption={(item) => form.mediaCaptions[pickerMediaKey(item)] ?? ""}
-            />
+            <Suspense fallback={<DeferredSubmissionPanelFallback />}>
+              <MediaAssetsPicker
+                items={pickerItems}
+                onItemsChange={handlePickerChange}
+                submissionId={form.id}
+                eventTitle={form.eventTitle}
+                caption={form.caption}
+                category=""
+                tags={captionHashtags.map((hashtag) => hashtag.slice(1))}
+                disabled={!isEditableSubmission}
+                onItemClick={openMediaCaption}
+                getItemCaption={(item) => form.mediaCaptions[pickerMediaKey(item)] ?? ""}
+              />
+            </Suspense>
             {pickerItems.some((item) => item.mediaType === "image") &&
               pickerItems.some((item) => item.mediaType === "video") && (
                 <div className="sub-inline-warning" role="status">
@@ -2594,12 +2625,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
             {!form.fastTrack && (
               <>
-            <EngagementRecommendationsPanel
-              loading={engagementLoading}
-              recommendations={engagementRecommendations}
-              selectedAt={scheduledAt}
-              onSelect={applyEngagementSlot}
-            />
+            <Suspense fallback={<DeferredSubmissionPanelFallback />}>
+              <EngagementRecommendationsPanel
+                loading={engagementLoading}
+                recommendations={engagementRecommendations}
+                selectedAt={scheduledAt}
+                onSelect={applyEngagementSlot}
+              />
+            </Suspense>
             <div className="sub-field-row">
               <Field label="Preferred Date">
                 <CalendarDateField

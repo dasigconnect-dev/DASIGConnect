@@ -26,6 +26,7 @@ These changes are already developed on the current frontend performance branch.
 | Image rendering | Added `decoding="async"` and lazy loading where safe | Low | Keeps important selected preview eager while making secondary images cheaper. |
 | Duplicate route font imports | Removed repeated Google Font imports from media repository and notifications CSS | Low | Prevents duplicate route-level font CSS requests because the same families are already loaded globally with `display=swap`. |
 | Calendar route splitting | Lazy-loaded FullCalendar view and calendar modals | Low to Medium | Reduced the calendar route wrapper chunk from about `293.67 kB` to `18.30 kB`; FullCalendar now loads in a separate async `CalendarView` chunk. |
+| Submission route splitting | Lazy-loaded heavier submission leaf panels | Low to Medium | Reduced the submission route wrapper chunk to about `74.95 kB`; media picker, AI caption UI, rich caption tool, read-only view, engagement recommendations, and in-page Facebook preview now load as separate async chunks. |
 
 ## Priority 1 - Safe Frontend-Only Fixes
 
@@ -104,14 +105,16 @@ These are still frontend-only, but they touch larger user workflows and need car
 
 **Fix:** Split expensive internal panels with dynamic imports, especially features that are not needed immediately.
 
-**Status:** Pending. Calendar has already received this treatment because it was the largest route chunk. Submission is now the largest remaining feature route chunk.
+**Status:** Completed for the safest leaf components. The editor still owns all form state and business flow, while optional panels load as async chunks.
 
 **Candidate split points:**
 
-- Media picker/modal
-- AI caption tools
-- Template picker
-- Facebook preview/publishing panels
+- Media picker
+- AI caption tools and prompt dialog
+- Rich caption formatting tool
+- Read-only submission view
+- Facebook preview/publishing panel
+- Engagement recommendations panel
 - Advanced metadata sections
 
 **Likely files:**
