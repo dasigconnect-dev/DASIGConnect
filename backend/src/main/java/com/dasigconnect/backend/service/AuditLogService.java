@@ -519,6 +519,7 @@ public class AuditLogService {
             case "USER_ROLE_CHANGED" -> "Account role changed";
             case "USER_STATUS_UPDATED" -> "Account status changed";
             case "USER_AVATAR_UPDATED" -> "Profile photo updated";
+            case "USER_SETTINGS_UPDATED" -> "Notification preferences updated";
             case "USER_REMOVED" -> "Account deactivated";
             case "USER_DELETED" -> "Account permanently deleted";
             case "USER_ANONYMIZED" -> "Personal data erased";

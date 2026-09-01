@@ -115,7 +115,17 @@ public class UserService {
         user.setDisplayName(displayName == null || displayName.isBlank() ? null : displayName);
         user.setNotifyInApp(request.notifyInApp());
         user.setNotifyEmail(request.notifyEmail());
-        return UserDto.from(userRepository.save(user));
+        var saved = userRepository.save(user);
+        auditLogService.record(
+                saved,
+                "USER_SETTINGS_UPDATED",
+                null,
+                null,
+                saved.getId(),
+                Map.of(
+                        "notifyInApp", saved.isNotifyInApp(),
+                        "notifyEmail", saved.isNotifyEmail()));
+        return UserDto.from(saved);
     }
 
     /**
@@ -444,9 +454,13 @@ public class UserService {
                 null, null,
                 target.getId(),
                 Map.of(
-                        "originalEmail", originalEmail != null ? originalEmail : "",
                         "role", target.getRole().name(),
                         "mediaAssetsPurged", String.valueOf(mediaPurged)));
+
+        // Right-to-be-forgotten also covers PII copied into prior audit metadata
+        // (e.g. the "email" key written on LOGIN_FAILED / ACCOUNT_LOCKED rows).
+        // The audit rows themselves are kept; only the personal fields are dropped.
+        auditLogRepository.scrubPersonalMetadataForUser(target.getId());
 
         return new ErasureResult(tombstoneEmail, mediaPurged);
     }
