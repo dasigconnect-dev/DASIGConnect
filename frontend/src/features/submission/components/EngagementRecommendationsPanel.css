@@ -1,0 +1,116 @@
+/* Engagement recommendations panel. Loaded only with the scheduling helper. */
+.sub-engagement-panel {
+  margin: 0 0 16px;
+  padding: 14px 18px;
+  border: 1px solid #dbeafe;
+  border-radius: 16px;
+  background: #f8fbff;
+}
+
+.sub-engagement-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--d-blue, #0B5FCC);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.sub-engagement-heading > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--d-blue, #0B5FCC);
+}
+
+.sub-engagement-heading small,
+.sub-engagement-manual {
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.sub-engagement-notice {
+  margin: 6px 0 10px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.sub-engagement-slots {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0 8px;
+}
+
+.sub-engagement-slots button {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 18px;
+  text-align: left;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1e293b;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 3px rgba(10, 22, 40, 0.03);
+}
+
+.sub-engagement-slots button strong {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #0c1d3d;
+  line-height: 1.2;
+}
+
+.sub-engagement-slots button:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  transform: translateY(-0.5px);
+  box-shadow: 0 4px 12px rgba(24, 119, 242, 0.08);
+}
+
+.sub-engagement-slots button.selected {
+  background: #eff6ff;
+  border: 1.5px solid var(--d-blue, #0B5FCC);
+  box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.15);
+}
+
+.sub-engagement-slots button.selected strong {
+  color: var(--d-blue, #0B5FCC);
+}
+
+.sub-engagement-slots span {
+  color: #64748b;
+  font-size: 10.5px;
+  font-style: normal;
+  line-height: 1.2;
+}
+
+.sub-engagement-slots em {
+  color: #d97706;
+  font-size: 10.5px;
+  font-style: normal;
+}
+
+.sub-engagement-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 550;
+  padding: 16px;
+}
+
+@media (max-width: 760px) {
+  .sub-engagement-slots { grid-template-columns: 1fr; }
+  .sub-engagement-heading { align-items: flex-start; flex-direction: column; }
+}
+

@@ -28,6 +28,7 @@ These changes are already developed on the current frontend performance branch.
 | Calendar route splitting | Lazy-loaded FullCalendar view and calendar modals | Low to Medium | Reduced the calendar route wrapper chunk from about `293.67 kB` to `18.30 kB`; FullCalendar now loads in a separate async `CalendarView` chunk. |
 | Submission route splitting | Lazy-loaded heavier submission leaf panels | Low to Medium | Reduced the submission route wrapper chunk to about `74.95 kB`; media picker, AI caption UI, rich caption tool, read-only view, engagement recommendations, and in-page Facebook preview now load as separate async chunks. |
 | Bundle budgets | Added local production bundle budget check | Low | `npm run analyze:bundle` builds the frontend, prints the largest assets, and fails when JS/CSS chunks exceed agreed thresholds. |
+| Submission CSS splitting | Moved deferred submission panel styles into component-owned CSS chunks | Low | Reduced the main `SubmissionScreen` CSS chunk from about `103 kB` to `90 kB`; AI prompt, AI suggestions, engagement recommendations, and read-only view styles now load with their async components. |
 
 ## Priority 1 - Safe Frontend-Only Fixes
 
@@ -155,6 +156,8 @@ These are still frontend-only, but they touch larger user workflows and need car
 **Fix:** Continue moving feature-specific selectors into route-loaded CSS, remove duplicate selectors, and keep global CSS limited to tokens, resets, layout primitives, and shared UI.
 
 **Status:** In progress. Duplicate route-level imports for globally loaded fonts have been removed from media repository and notifications styles. Remaining cleanup should focus on selector ownership, not broad rewrites.
+
+**Latest update:** Deferred submission panel styles have been moved out of the main submission route stylesheet and into component CSS files loaded with their corresponding lazy chunks.
 
 **Likely files:**
 

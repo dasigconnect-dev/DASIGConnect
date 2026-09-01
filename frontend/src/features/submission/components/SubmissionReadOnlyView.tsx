@@ -5,6 +5,7 @@ import type { FacebookPreviewMediaItem } from "../../../types/facebook";
 import type { SubmissionMediaItem } from "../../../types/media";
 import type { FormState } from "../types";
 import { formatDateTime, formatLongDate } from "../utils";
+import "./SubmissionReadOnlyView.css";
 
 interface FacebookPreviewData {
   pageName: string;
