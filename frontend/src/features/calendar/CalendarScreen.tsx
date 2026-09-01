@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import FullCalendar from "@fullcalendar/react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import type FullCalendar from "@fullcalendar/react";
 import type { DatesSetArg } from "@fullcalendar/core";
 import { createPortal } from "react-dom";
 import type { CalendarEvent } from "../../api/calendarApi";
@@ -9,15 +9,17 @@ import { useCalendarEvents } from "../../hooks/useCalendarEvents";
 import { useToast } from "../../context/ToastContext";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import MultiSelect from "../../components/ui/MultiSelect";
-import CalendarView, { type CalendarDropInfo } from "./CalendarView";
-import CalendarEventDetailModal from "./CalendarEventDetailModal";
-import CalendarRescheduleModal from "./CalendarRescheduleModal";
+import type { CalendarDropInfo } from "./CalendarView";
 import CalendarLegend from "./CalendarLegend";
 import CalendarToolbar, { type CalendarViewMode } from "./CalendarToolbar";
 import { CalendarErrorState } from "./CalendarStates";
 import { visibleCalendarStatus } from "./calendarStatus";
 import PageLoader from "../../components/common/PageLoader";
 import "../../styles/calendar.css";
+
+const CalendarView = lazy(() => import("./CalendarView"));
+const CalendarEventDetailModal = lazy(() => import("./CalendarEventDetailModal"));
+const CalendarRescheduleModal = lazy(() => import("./CalendarRescheduleModal"));
 
 interface CalendarScreenProps {
   user: User;
@@ -403,37 +405,45 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
 
       {!error && (
         <>
-          <CalendarView
-            events={filteredEvents}
-            initialView={calendarView}
-            calendarRef={calendarRef}
-            showFullDay={showFullDay}
-            highlightedEventId={highlightedEventId}
-            scrollToEventId={scrollTargetId}
-            onScrollComplete={() => setScrollTargetId(null)}
-            isBusy={isCalendarBusy}
-            user={user}
-            onEventClick={setSelected}
-            onDatesSet={handleDatesSet}
-            onEventDrop={isAdmin ? handleEventDrop : undefined}
-          />
+          <Suspense fallback={<CalendarViewFallback />}>
+            <CalendarView
+              events={filteredEvents}
+              initialView={calendarView}
+              calendarRef={calendarRef}
+              showFullDay={showFullDay}
+              highlightedEventId={highlightedEventId}
+              scrollToEventId={scrollTargetId}
+              onScrollComplete={() => setScrollTargetId(null)}
+              isBusy={isCalendarBusy}
+              user={user}
+              onEventClick={setSelected}
+              onDatesSet={handleDatesSet}
+              onEventDrop={isAdmin ? handleEventDrop : undefined}
+            />
+          </Suspense>
           <CalendarLegend />
         </>
       )}
 
-      <CalendarEventDetailModal
-        event={selected}
-        user={user}
-        onClose={() => setSelected(null)}
-      />
+      {selected && (
+        <Suspense fallback={null}>
+          <CalendarEventDetailModal
+            event={selected}
+            user={user}
+            onClose={() => setSelected(null)}
+          />
+        </Suspense>
+      )}
 
       {pendingReschedule && (
-        <CalendarRescheduleModal
-          event={pendingReschedule.event}
-          newStart={pendingReschedule.newStart}
-          onConfirm={handleRescheduleConfirm}
-          onCancel={handleRescheduleCancel}
-        />
+        <Suspense fallback={null}>
+          <CalendarRescheduleModal
+            event={pendingReschedule.event}
+            newStart={pendingReschedule.newStart}
+            onConfirm={handleRescheduleConfirm}
+            onCancel={handleRescheduleCancel}
+          />
+        </Suspense>
       )}
 
       <CalendarMetricResultsPanel
@@ -470,6 +480,14 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
 }
 
 type MetricKey = "scheduled" | "published" | "failed" | "attention" | "today";
+
+function CalendarViewFallback() {
+  return (
+    <div className="cal-loading-shell" aria-live="polite" aria-label="Loading calendar">
+      <PageLoader />
+    </div>
+  );
+}
 
 function MetricCard({
   metric,

@@ -25,6 +25,7 @@ These changes are already developed on the current frontend performance branch.
 | Layout churn | `BrandedSelect` avoids repeated state updates when measured placement/height did not change | Low | Reduces avoidable forced layout work. |
 | Image rendering | Added `decoding="async"` and lazy loading where safe | Low | Keeps important selected preview eager while making secondary images cheaper. |
 | Duplicate route font imports | Removed repeated Google Font imports from media repository and notifications CSS | Low | Prevents duplicate route-level font CSS requests because the same families are already loaded globally with `display=swap`. |
+| Calendar route splitting | Lazy-loaded FullCalendar view and calendar modals | Low to Medium | Reduced the calendar route wrapper chunk from about `293.67 kB` to `18.30 kB`; FullCalendar now loads in a separate async `CalendarView` chunk. |
 
 ## Priority 1 - Safe Frontend-Only Fixes
 
@@ -102,6 +103,8 @@ These are still frontend-only, but they touch larger user workflows and need car
 **Problem:** `SubmissionScreen.tsx` is still a large route chunk. Route lazy loading keeps it out of the initial shell, but once the submission page opens it still loads a lot at once.
 
 **Fix:** Split expensive internal panels with dynamic imports, especially features that are not needed immediately.
+
+**Status:** Pending. Calendar has already received this treatment because it was the largest route chunk. Submission is now the largest remaining feature route chunk.
 
 **Candidate split points:**
 
