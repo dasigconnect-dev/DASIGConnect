@@ -27,6 +27,7 @@ These changes are already developed on the current frontend performance branch.
 | Duplicate route font imports | Removed repeated Google Font imports from media repository and notifications CSS | Low | Prevents duplicate route-level font CSS requests because the same families are already loaded globally with `display=swap`. |
 | Calendar route splitting | Lazy-loaded FullCalendar view and calendar modals | Low to Medium | Reduced the calendar route wrapper chunk from about `293.67 kB` to `18.30 kB`; FullCalendar now loads in a separate async `CalendarView` chunk. |
 | Submission route splitting | Lazy-loaded heavier submission leaf panels | Low to Medium | Reduced the submission route wrapper chunk to about `74.95 kB`; media picker, AI caption UI, rich caption tool, read-only view, engagement recommendations, and in-page Facebook preview now load as separate async chunks. |
+| Bundle budgets | Added local production bundle budget check | Low | `npm run analyze:bundle` builds the frontend, prints the largest assets, and fails when JS/CSS chunks exceed agreed thresholds. |
 
 ## Priority 1 - Safe Frontend-Only Fixes
 
@@ -225,7 +226,7 @@ These should be confirmed before making more invasive code changes.
 | :--- | :--- | :--- |
 | Confirm Brotli/Gzip in production | Reduce JS/CSS transfer size | Low |
 | Confirm HTTP/2 or HTTP/3 | Make many requests cheaper | Low |
-| Add bundle visualizer script | Identify exact dependency weight | Low |
+| Add bundle budget script | Identify exact bundle weight and block regressions | Low |
 | Add Lighthouse budgets | Prevent regressions | Low |
 | Add repeatable WebPageTest/Lighthouse runs | Compare real mobile performance | Low |
 
