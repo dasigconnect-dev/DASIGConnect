@@ -25,6 +25,7 @@ import com.dasigconnect.backend.model.dto.analytics.ContributorAnalyticsDto;
 import com.dasigconnect.backend.model.dto.analytics.FacebookEngagementSummaryDto;
 import com.dasigconnect.backend.model.dto.analytics.KpiMetricDto;
 import com.dasigconnect.backend.model.dto.analytics.OperationalHealthDto;
+import com.dasigconnect.backend.model.dto.analytics.PagePerformanceDto;
 import com.dasigconnect.backend.model.dto.analytics.ValidatorAnalyticsDto;
 import com.dasigconnect.backend.repository.AnalyticsRepository;
 import com.dasigconnect.backend.repository.AnalyticsRepository.AiStats;
@@ -46,18 +47,24 @@ public class MetricsAggregatorService {
     private static final double POSTS_PER_MONTH_TARGET = 4.0;
 
     private final AnalyticsRepository analyticsRepository;
+    private final FacebookEngagementAnalyticsClient facebookInsightsClient;
+    private final String facebookPageId;
 
-    public MetricsAggregatorService(AnalyticsRepository analyticsRepository) {
+    public MetricsAggregatorService(AnalyticsRepository analyticsRepository,
+            FacebookEngagementAnalyticsClient facebookInsightsClient,
+            @org.springframework.beans.factory.annotation.Value("${app.facebook.page-id:}") String facebookPageId) {
         this.analyticsRepository = analyticsRepository;
+        this.facebookInsightsClient = facebookInsightsClient;
+        this.facebookPageId = facebookPageId == null || facebookPageId.isBlank() ? null : facebookPageId.trim();
     }
 
     @Cacheable(
             cacheNames = CacheConfig.ANALYTICS_SUMMARY_CACHE,
-            key = "#range + ':' + #institutionId + ':' + #category + ':' + #user.role() + ':' + #user.userId() + ':' + #user.institutionId()")
-    public AnalyticsSummaryDto summary(String range, UUID institutionId, String category, JwtUserDetails user) {
+            key = "#range + ':' + #institutionId + ':' + #user.role() + ':' + #user.userId() + ':' + #user.institutionId()")
+    public AnalyticsSummaryDto summary(String range, UUID institutionId, JwtUserDetails user) {
         ReportingPeriod period = resolvePeriod(range);
         ReportingPeriod previousPeriod = previousPeriod(period);
-        AnalyticsScope scope = scopeFor(user, institutionId, category);
+        AnalyticsScope scope = scopeFor(user, institutionId);
         boolean adminView = isAdmin(scope.role());
         boolean contributorView = "contributor".equals(scope.role());
         // Admins and (network-wide) moderators both see cross-institution data;
@@ -87,6 +94,7 @@ public class MetricsAggregatorService {
         AdminAnalyticsDto adminAnalytics = null;
         OperationalHealthDto operationalHealth = null;
         AiPerformanceDto aiPerformanceDto = null;
+        PagePerformanceDto pagePerformance = null;
         if (contributorView) {
             ContributorStats contributor = analyticsRepository.contributorStats(period.start(), period.end(), scope);
             contributorAnalytics = new ContributorAnalyticsDto(
@@ -129,6 +137,8 @@ public class MetricsAggregatorService {
                     Math.max(0, operational.attemptCount() - operational.successCount()),
                     operational.adminActionCount(),
                     posts.adminDirectCount());
+
+            pagePerformance = pagePerformance(period);
         }
 
         FacebookEngagementStats engagement = analyticsRepository.facebookEngagement(period.start(), period.end(), scope);
@@ -138,7 +148,8 @@ public class MetricsAggregatorService {
                 engagement.totalComments(),
                 engagement.totalShares(),
                 engagement.sampleSize(),
-                engagement.pendingCount());
+                engagement.pendingCount(),
+                facebookPageId);
 
         return new AnalyticsSummaryDto(
                 period.label(),
@@ -189,18 +200,38 @@ public class MetricsAggregatorService {
                 contributorBreakdown,
                 analyticsRepository.statusBreakdown(scope),
                 analyticsRepository.contentIssues(period.start(), period.end(), scope),
-                analyticsRepository.topCategories(period.start(), period.end(), scope),
                 contributorAnalytics,
                 validatorAnalytics,
                 aiPerformanceDto,
                 adminAnalytics,
                 operationalHealth,
-                facebookEngagement);
+                facebookEngagement,
+                pagePerformance);
     }
 
-    public CsvExport export(String metric, String range, UUID institutionId, String category, JwtUserDetails user) {
+    /**
+     * Live Page-level Facebook insights for the range (admin only). Aggregate — not
+     * per-post — so it covers the reach Meta removed from the per-post Graph API.
+     * Any failure/outage returns null so the dashboard still renders.
+     */
+    private PagePerformanceDto pagePerformance(ReportingPeriod period) {
+        Map<String, Long> insights = facebookInsightsClient.fetchPageInsights(period.start(), period.end());
+        if (insights == null || insights.isEmpty()) {
+            return null;
+        }
+        return new PagePerformanceDto(
+                insights.getOrDefault("page_impressions_unique", 0L),
+                insights.getOrDefault("page_post_engagements", 0L),
+                insights.getOrDefault("page_fan_adds", 0L),
+                insights.getOrDefault("page_views_total", 0L),
+                facebookPageId,
+                period.start(),
+                period.end());
+    }
+
+    public CsvExport export(String metric, String range, UUID institutionId, JwtUserDetails user) {
         ReportingPeriod period = resolvePeriod(range);
-        AnalyticsScope scope = scopeFor(user, institutionId, category);
+        AnalyticsScope scope = scopeFor(user, institutionId);
         String normalizedMetric = normalizeMetric(metric);
         assertMetricAllowed(normalizedMetric, scope);
         List<Map<String, Object>> rows = analyticsRepository.exportRows(
@@ -211,9 +242,9 @@ public class MetricsAggregatorService {
         return new CsvExport(csvFilename(normalizedMetric, period, scope), toCsv(rows));
     }
 
-    public AnalyticsReportDto report(String metric, String range, UUID institutionId, String category, JwtUserDetails user) {
+    public AnalyticsReportDto report(String metric, String range, UUID institutionId, JwtUserDetails user) {
         ReportingPeriod period = resolvePeriod(range);
-        AnalyticsScope scope = scopeFor(user, institutionId, category);
+        AnalyticsScope scope = scopeFor(user, institutionId);
         String normalizedMetric = normalizeMetric(metric);
         assertMetricAllowed(normalizedMetric, scope);
         return new AnalyticsReportDto(
@@ -245,11 +276,10 @@ public class MetricsAggregatorService {
         return "admin".equals(role);
     }
 
-    private AnalyticsScope scopeFor(JwtUserDetails user, UUID institutionId, String category) {
+    private AnalyticsScope scopeFor(JwtUserDetails user, UUID institutionId) {
         String role = user.role() == null ? "" : user.role().toLowerCase(Locale.ROOT);
-        String normalizedCategory = category == null || category.isBlank() ? null : category.trim();
         return switch (role) {
-            case "admin" -> new AnalyticsScope(role, institutionId, null, normalizedCategory);
+            case "admin" -> new AnalyticsScope(role, institutionId, null);
             case "moderator" -> {
                 // Moderators are network-wide: they get the network engagement +
                 // workflow view (no institution filter). The admin-only blocks in
@@ -259,14 +289,14 @@ public class MetricsAggregatorService {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                             "Institution analytics filters are available to admins only.");
                 }
-                yield new AnalyticsScope("moderator", null, null, normalizedCategory);
+                yield new AnalyticsScope("moderator", null, null);
             }
             case "contributor" -> {
                 if (institutionId != null) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                             "Institution analytics filters are available to admins only.");
                 }
-                yield new AnalyticsScope("contributor", user.institutionId(), user.userId(), normalizedCategory);
+                yield new AnalyticsScope("contributor", user.institutionId(), user.userId());
             }
             default -> throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Unsupported analytics role.");
         };
