@@ -54,9 +54,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
   // Invitation composer
   const [emailChips, setEmailChips] = useState<string[]>([])
   const [emailDraft, setEmailDraft] = useState('')
-  const [inviteRole, setInviteRole] = useState<InviteRole>(
-    user.role === 'validator' ? 'contributor' : null,
-  )
+  const [inviteRole, setInviteRole] = useState<InviteRole>(null)
   const [inviteResults, setInviteResults] = useState<InviteResults | null>(null)
   const [sending, setSending] = useState(false)
 
@@ -76,21 +74,8 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
     () => institutions.find((inst) => inst.id === selectedInstitutionId) ?? null,
     [institutions, selectedInstitutionId],
   )
-  const isValidatorWorkspace = user.role === 'validator'
-  const visibleManagedUsers = useMemo(
-    () =>
-      isValidatorWorkspace
-        ? managedUsers.filter((managedUser) => managedUser.role.toLowerCase() === 'contributor')
-        : managedUsers,
-    [isValidatorWorkspace, managedUsers],
-  )
-  const visiblePendingInvitations = useMemo(
-    () =>
-      isValidatorWorkspace
-        ? pendingInvitations.filter((invite) => invite.assignedRole.toLowerCase() === 'contributor')
-        : pendingInvitations,
-    [isValidatorWorkspace, pendingInvitations],
-  )
+  const visibleManagedUsers = managedUsers
+  const visiblePendingInvitations = pendingInvitations
 
   const initializing =
     institutionsLoading ||
@@ -99,21 +84,6 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
   // Load institutions on mount
   useEffect(() => {
     if (user.role === 'contributor') return
-
-    if (user.role === 'validator' && user.institutionId) {
-      setInstitutions([
-        {
-          id: user.institutionId,
-          name: user.inst?.trim() || 'Institution',
-          code: '',
-          emailDomain: '',
-          status: 'active',
-        },
-      ])
-      setSelectedInstitutionId(user.institutionId)
-      setInviteRole('contributor')
-      return
-    }
 
     setInstitutionsLoading(true)
     setInstitutionError('')
@@ -195,17 +165,8 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
 
     // Button is disabled when role is null, but guard here for type safety
     if (!inviteRole) return
-    if (user.role === 'validator' && inviteRole !== 'contributor') {
-      setInviteResults({
-        total: inviteEmails.length,
-        success: [],
-        failed: [{ email: 'Batch', reason: 'Validators can only invite contributors.' }],
-      })
-      return
-    }
-
-    if (inviteRole === 'validator') {
-      const proceed = await confirmValidatorInvite()
+    if (inviteRole === 'moderator') {
+      const proceed = await confirmModeratorInvite()
       if (!proceed) return
     }
 
@@ -252,7 +213,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
       }
       setEmailChips([])
       setEmailDraft('')
-      setInviteRole(user.role === 'validator' ? 'contributor' : null)
+      setInviteRole(null)
       if (selectedInstitutionId) {
         await loadManagementLists(selectedInstitutionId)
       }
@@ -261,19 +222,19 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
     }
   }
 
-  function confirmValidatorInvite(): Promise<boolean> {
-    const activeValidators = managedUsers.filter(
+  function confirmModeratorInvite(): Promise<boolean> {
+    const activeModerators = managedUsers.filter(
       (u) =>
-        u.role.toLowerCase() === 'validator' && u.accountState.toLowerCase() === 'active',
+        u.role.toLowerCase() === 'moderator' && u.accountState.toLowerCase() === 'active',
     )
-    if (activeValidators.length === 0) return Promise.resolve(true)
+    if (activeModerators.length === 0) return Promise.resolve(true)
 
     const name = selectedInstitution?.name || 'this institution'
     return new Promise((resolve) => {
       setConfirmDialog({
-        title: 'Invite Additional Validator?',
-        message: `${name} already has ${activeValidators.length} active validator${activeValidators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
-        confirmLabel: 'Yes, invite validator',
+        title: 'Invite Additional Moderator?',
+        message: `${name} already has ${activeModerators.length} active moderator${activeModerators.length === 1 ? '' : 's'}. Do you still want to send this invitation?`,
+        confirmLabel: 'Yes, invite moderator',
         dangerous: false,
         onConfirm: () => {
           setConfirmDialog(null)
@@ -358,10 +319,14 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
             item.id === managedUser.id ? { ...item, accountState: 'inactive' } : item,
           ),
         )
-        toast.info('Account deactivated. Their content and media have been preserved.')
+        toast.info(
+          managedUser.purgedAt
+            ? 'This record has activity history and is kept as an anonymised tombstone for the audit trail — it cannot be removed.'
+            : 'Account deactivated. Their content and media have been preserved.',
+        )
       } else {
         setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
-        toast.success('User permanently removed.')
+        toast.success(managedUser.purgedAt ? 'Record removed.' : 'User permanently removed.')
       }
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to remove user.'))
@@ -392,14 +357,45 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
       )
       if (match) {
         await cancelInvitation(match.id)
+      } else {
+        await updateUserStatus(managedUser.id, 'cancelled')
       }
-      setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
+      setManagedUsers((current) =>
+        current.map((item) =>
+          item.id === managedUser.id ? { ...item, accountState: 'cancelled' } : item,
+        ),
+      )
       if (selectedInstitutionId) {
         await loadManagementLists(selectedInstitutionId)
       }
       toast.success('Invitation cancelled.')
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to cancel invitation.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  async function handleResendInvitationFromUsers(managedUser: UserProfileResponse) {
+    if (!selectedInstitutionId) return
+    setUpdatingUserId(managedUser.id)
+    try {
+      const match = pendingInvitations.find(
+        (inv) => inv.recipientEmail.toLowerCase() === managedUser.email.toLowerCase(),
+      )
+      if (match) {
+        await resendInvitation(match.id)
+      } else {
+        await inviteUser({
+          recipientEmail: managedUser.email,
+          institutionId: selectedInstitutionId,
+          assignedRole: (managedUser.role.toLowerCase() as 'contributor' | 'moderator'),
+        })
+      }
+      await loadManagementLists(selectedInstitutionId)
+      toast.success(`Invitation resent to ${managedUser.email}.`)
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to resend invitation.'))
     } finally {
       setUpdatingUserId(null)
     }
@@ -446,10 +442,6 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
 
           {institutionsLoading ? (
             <SkeletonBlock className="um-skeleton-line is-wide" />
-          ) : user.role === 'validator' ? (
-            <span className="um-inst-name-pill">
-              {selectedInstitution?.name || 'Institution'}
-            </span>
           ) : (
             <BrandedSelect
               className="um-inst-select"
@@ -528,7 +520,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
               emailDraft={emailDraft}
               role={inviteRole}
               selectedInstitution={selectedInstitution}
-              canChooseRole={user.role === 'admin'}
+              canChooseRole
               sending={sending}
               onDraftChange={setEmailDraft}
               onAddChip={(email) => {
@@ -558,7 +550,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
               cancellingInvitationId={cancellingInvitationId}
               onResend={(id) => void handleResendInvitation(id)}
               onCancelInvitation={(id) => void handleCancelInvitation(id)}
-              showRoleControls={!isValidatorWorkspace}
+              showRoleControls
             />
           </div>
         )}
@@ -575,7 +567,7 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
               <div className="um-metrics-row">
                 <MetricCard
                   icon="ti ti-users"
-                  label={isValidatorWorkspace ? 'Total Contributors' : 'Total Users'}
+                  label="Total Users"
                   value={visibleManagedUsers.length}
                   loading={managementLoading && managedUsers.length === 0}
                 />
@@ -586,15 +578,13 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
                   loading={managementLoading && managedUsers.length === 0}
                   accent="green"
                 />
-                {!isValidatorWorkspace && (
-                  <MetricCard
+                <MetricCard
                     icon="ti ti-shield-check"
-                    label="Validators"
-                    value={managedUsers.filter((u) => u.role.toLowerCase() === 'validator').length}
+                    label="Moderators"
+                    value={managedUsers.filter((u) => u.role.toLowerCase() === 'moderator').length}
                     loading={managementLoading && managedUsers.length === 0}
                     accent="purple"
                   />
-                )}
                 <MetricCard
                   icon="ti ti-pencil"
                   label="Contributors"
@@ -620,7 +610,8 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
               onToggleUserStatus={handleToggleUserStatus}
               onDeleteUser={handleDeleteUser}
               onCancelInvitation={handleCancelInvitationFromUsers}
-              showRoleControls={!isValidatorWorkspace}
+              onResendInvitation={handleResendInvitationFromUsers}
+              showRoleControls={user.role === 'admin'}
             />
           </div>
         )}

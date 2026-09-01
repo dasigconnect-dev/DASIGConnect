@@ -9,8 +9,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.service.FacebookPublisherService;
 import com.dasigconnect.backend.service.PublishingQueryService;
 
@@ -31,23 +31,41 @@ public class PublishingSchedulerJob {
 
     private final PublishingQueryService publishingQueryService;
     private final FacebookPublisherService facebookPublisherService;
+    private final com.dasigconnect.backend.service.ScheduledJobHealthService scheduledJobHealthService;
 
     public PublishingSchedulerJob(
             PublishingQueryService publishingQueryService,
-            FacebookPublisherService facebookPublisherService) {
+            FacebookPublisherService facebookPublisherService,
+            com.dasigconnect.backend.service.ScheduledJobHealthService scheduledJobHealthService) {
         this.publishingQueryService = publishingQueryService;
         this.facebookPublisherService = facebookPublisherService;
+        this.scheduledJobHealthService = scheduledJobHealthService;
     }
 
     @Scheduled(cron = "0 * * * * *", zone = "UTC")
     public void run() {
-        if (!facebookPublisherService.isConfigured()) return;
+        Instant startedAt = Instant.now();
+        try {
+            publishDueSubmissions();
+            scheduledJobHealthService.recordSuccess("PublishingSchedulerJob", startedAt);
+        } catch (Exception ex) {
+            log.error("PublishingSchedulerJob failed: {}", ex.getMessage(), ex);
+            scheduledJobHealthService.recordFailure("PublishingSchedulerJob", startedAt, ex);
+        }
+    }
+
+    private void publishDueSubmissions() {
+        if (!facebookPublisherService.isConfigured()) {
+            return;
+        }
 
         Instant now = Instant.now();
         Instant windowStart = now.minus(5, ChronoUnit.MINUTES);
 
         List<Submission> due = publishingQueryService.loadDueSubmissions(windowStart, now);
-        if (due.isEmpty()) return;
+        if (due.isEmpty()) {
+            return;
+        }
 
         log.info("PublishingSchedulerJob: {} submission(s) due for publishing.", due.size());
 
@@ -61,9 +79,9 @@ public class PublishingSchedulerJob {
                     continue;
                 }
 
-                List<MediaAsset> assets = publishingQueryService.loadAssetsForSubmission(claimed.getId());
+                List<SubmissionMediaAsset> assets = publishingQueryService.loadMediaLinksForSubmission(claimed.getId());
                 // Called outside any transaction — Facebook API must not hold a DB connection
-                facebookPublisherService.publish(claimed, assets);
+                facebookPublisherService.publishMediaLinks(claimed, assets);
             } catch (Exception ex) {
                 log.error("Unexpected error publishing submission {}: {}",
                         submission.getId(), ex.getMessage(), ex);

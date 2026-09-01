@@ -1,0 +1,128 @@
+import type { SavedMediaAsset, SubmissionStatus } from "../../api/submissionApi";
+import { registerAppCacheReset } from "../../lib/appCache";
+import type { FormState } from "./types";
+
+export const initialForm: FormState = {
+  id: null,
+  status: "draft",
+  institutionId: "",
+  selectedTemplateId: null,
+  fastTrack: false,
+  liveEventName: "",
+  eventTitle: "",
+  eventDate: "",
+  caption: "",
+  description: "",
+  category: "",
+  scheduledDate: "",
+  scheduledTime: "",
+  tags: [],
+  albumName: "",
+  mediaTags: [],
+  files: [],
+  savedAssets: [],
+  mediaOrder: [],
+  mediaCaptions: {},
+  mediaSkipWatermark: {},
+  pendingAssetIds: [],
+  removedAssetIds: [],
+};
+
+export const statusLabels: Record<SubmissionStatus, string> = {
+  draft: "Draft",
+  pending: "Pending Approval",
+  in_review: "Under Review",
+  needs_revision: "Needs Revision",
+  scheduled: "Scheduled",
+  publishing: "Publishing",
+  publish_failed: "Publish Failed",
+  published: "Published",
+  published_manual: "Published",
+  admin_direct_post: "Direct Post",
+  direct_post_scheduled: "Direct Post Scheduled",
+  direct_post_publishing: "Direct Post Publishing",
+  direct_post_failed: "Direct Post Failed",
+  rejected: "Rejected",
+};
+
+export const postTemplates = [
+  {
+    id: "event-announcement",
+    name: "Event Announcement",
+    target: "Upcoming seminars, workshops, summits",
+    category: "Seminar / Webinar",
+    tags: ["DASIG", "DOST", "Innovation"],
+    caption: [
+      "[EVENT TITLE]",
+      "",
+      "Date:",
+      "Venue or Platform:",
+      "Registration Link:",
+      "",
+      "[Brief description / Call to action]",
+      "",
+      "#DASIGCentralVisayas #DOST7 #InnovationEvent",
+    ].join("\n"),
+  },
+  {
+    id: "event-recap",
+    name: "Event Recap / Milestone",
+    target: "Post-activity highlights, achievements",
+    category: "Awards and Recognition",
+    tags: ["DASIG", "DOST"],
+    caption: [
+      "HISTORY HAS BEEN MADE",
+      "EVENT RECAP",
+      "",
+      "[Summary of accomplishments / key takeaways]",
+      "",
+      "[Acknowledged partners and attendees]",
+      "",
+      "#DASIGCentralVisayas #HistoryMadeHere #DOST7",
+    ].join("\n"),
+  },
+  {
+    id: "competition-call",
+    name: "Competition / Pitching Call",
+    target: "Hackathons, reverse pitching challenges",
+    category: "Innovation",
+    tags: ["DASIG", "Innovation"],
+    caption: [
+      "CALL FOR INNOVATORS / PARTICIPANTS",
+      "",
+      "[Challenge Theme / Problem Statement]",
+      "Prizes or Opportunities:",
+      "Deadline for Submission:",
+      "Apply here:",
+      "",
+      "#FlipTheScript #ReversePitching #DASIG",
+    ].join("\n"),
+  },
+  {
+    id: "partner-spotlight",
+    name: "Partner Feature / Spotlight",
+    target: "Member university/HEI spotlights",
+    category: "Partnership / Collaboration",
+    tags: ["DASIG", "Innovation", "Partnership"],
+    caption: [
+      "INSTITUTIONAL SPOTLIGHT: [University Name]",
+      "",
+      "[Feature on student research, lab innovation, or award]",
+      "",
+      "#ConnectedInnovation #CentralVisayas #[UniversityTag]",
+    ].join("\n"),
+  },
+];
+
+export const submissionDetailsMemoryCache: Record<
+  string,
+  { caption: string; mediaAssets: SavedMediaAsset[] }
+> = {};
+registerAppCacheReset(() => {
+  for (const key of Object.keys(submissionDetailsMemoryCache)) {
+    delete submissionDetailsMemoryCache[key];
+  }
+});
+
+export const DEFAULT_INSTITUTION_NAME = "dasig central visayas";
+export const DEFAULT_INSTITUTION_CODE = "dasig-cv";

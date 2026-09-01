@@ -22,6 +22,8 @@ export default function AddToDraftModal({
   onSelectDraft,
   onNewPostInstead,
 }: AddToDraftModalProps) {
+  if (!open) return null;
+
   const busy = busyDraftId !== null;
 
   const modal = (

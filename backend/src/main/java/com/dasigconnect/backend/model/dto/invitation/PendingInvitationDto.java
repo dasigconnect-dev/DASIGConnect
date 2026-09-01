@@ -11,15 +11,24 @@ public record PendingInvitationDto(
         UserRole assignedRole,
         UUID institutionId,
         Instant expiresAt,
-        Instant createdAt) {
+        Instant createdAt,
+        UUID createdByUserId,
+        /** Whether the requesting user may resend/cancel this invitation. */
+        boolean canManage) {
 
     public static PendingInvitationDto from(InvitationToken token) {
+        return from(token, true);
+    }
+
+    public static PendingInvitationDto from(InvitationToken token, boolean canManage) {
         return new PendingInvitationDto(
                 token.getId(),
                 token.getRecipientEmail(),
                 token.getAssignedRole(),
-                token.getInstitution().getId(),
+                token.getInstitution() != null ? token.getInstitution().getId() : null,
                 token.getExpiresAt(),
-                token.getCreatedAt());
+                token.getCreatedAt(),
+                token.getCreatedByUserId(),
+                canManage);
     }
 }

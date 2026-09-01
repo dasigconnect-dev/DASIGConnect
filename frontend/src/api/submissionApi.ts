@@ -22,6 +22,10 @@ export interface SavedMediaAsset {
   fileName: string;
   fileType: string;
   fileSizeBytes: number;
+  caption?: string | null;
+  skipWatermark?: boolean;
+  /** MediaAssetStatus name. "STAGED" = uploaded to this draft, not yet bound to an institution. */
+  status?: string;
 }
 
 export interface SubmissionSummary {
@@ -35,23 +39,40 @@ export interface SubmissionSummary {
   description?: string;
   status: SubmissionStatus;
   scheduledAt?: string;
+  publishedAt?: string;
   submittedAt?: string;
   createdAt?: string;
   updatedAt?: string;
   mediaCount?: number;
   category?: string;
+  templateId?: string | null;
+  fastTrack?: boolean;
+  liveEventName?: string | null;
   tags?: string[];
+  albumName?: string | null;
+  mediaTags?: string[];
   mediaAssets?: SavedMediaAsset[];
+  requiresManualPublishing?: boolean;
+  /** Reviewer's reason, present when status is "rejected". */
+  rejectionReason?: string | null;
+  /** Reviewer's notes, present when status is "needs_revision". */
+  validatorRemarks?: string | null;
 }
 
 export interface SubmissionPayload {
+  institutionId?: string | null;
   eventTitle: string;
   eventDate: string;
   caption: string;
   description: string;
   scheduledAt?: string;
   category?: string;
+  templateId?: string | null;
+  fastTrack?: boolean;
+  liveEventName?: string | null;
   tags?: string[];
+  albumName?: string | null;
+  mediaTags?: string[];
 }
 
 export interface SubmissionLookups {
@@ -80,6 +101,22 @@ export interface GuardRailResult {
   clean: boolean;
 }
 
+export interface EngagementRecommendedSlot {
+  scheduledAt: string;
+  windowLabel: string;
+  score: number;
+  warnings: string[];
+}
+
+export interface EngagementRecommendations {
+  available: boolean;
+  source: "HISTORICAL" | "DEFAULT" | "UNAVAILABLE";
+  notice: string | null;
+  timezone: string;
+  sampleSize: number;
+  slots: EngagementRecommendedSlot[];
+}
+
 export function listSubmissions(signal?: AbortSignal) {
   return api.get<SubmissionSummary[]>("/submissions", { signal });
 }
@@ -100,13 +137,24 @@ export function submitForReview(id: string) {
   return api.post<SubmissionSummary>(`/submissions/${id}/submit`);
 }
 
+export function withdrawSubmission(id: string) {
+  return api.post<SubmissionSummary>(`/submissions/${id}/withdraw`);
+}
+
 export function deleteDraft(id: string) {
   return api.delete<void>(`/submissions/${id}`);
 }
 
-export function reorderSubmissionMedia(id: string, mediaAssetIds: string[]) {
+export function reorderSubmissionMedia(
+  id: string,
+  mediaAssetIds: string[],
+  mediaCaptions?: Record<string, string>,
+  skipWatermarks?: Record<string, boolean>,
+) {
   return api.patch<SubmissionSummary>(`/submissions/${id}/media/order`, {
     mediaAssetIds,
+    mediaCaptions,
+    skipWatermarks,
   });
 }
 
@@ -127,7 +175,11 @@ export async function uploadSubmissionMedia(id: string, files: File[]) {
       data: { signedUrl, publicUrl },
     } = await api.post<{ signedUrl: string; publicUrl: string; path: string }>(
       `/submissions/${id}/media/upload-url`,
-      { fileName: safeFileName(file.name), fileType: fileTypeFromFile(file) },
+      {
+        fileName: safeFileName(file.name),
+        fileType: fileTypeFromFile(file),
+        fileSizeBytes: file.size,
+      },
     );
     const upload = await fetch(signedUrl, {
       method: "PUT",
@@ -136,7 +188,7 @@ export async function uploadSubmissionMedia(id: string, files: File[]) {
     });
     if (!upload.ok) {
       const msg = await upload.text().catch(() => "");
-      throw new Error(msg || "Supabase media upload failed.");
+      throw new Error(msg || "Media upload to storage failed.");
     }
     responses.push(
       await api.post(`/submissions/${id}/media`, {
@@ -154,8 +206,23 @@ export function getSubmissionLookups(signal?: AbortSignal) {
   return api.get<SubmissionLookups>("/submissions/lookups", { signal });
 }
 
-export function validateGuardRails(scheduledAt: string) {
-  return api.post<GuardRailResult>("/guardrails/validate", { scheduledAt });
+export function validateGuardRails(
+  scheduledAt: string,
+  institutionId?: string | null,
+  submissionId?: string | null,
+) {
+  return api.post<GuardRailResult>("/guardrails/validate", {
+    scheduledAt,
+    institutionId,
+    submissionId: submissionId || undefined,
+  });
+}
+
+export function getEngagementRecommendations(institutionId?: string | null, signal?: AbortSignal) {
+  return api.get<EngagementRecommendations>("/engagement-recommendations", {
+    signal,
+    params: institutionId ? { institutionId } : undefined,
+  });
 }
 
 function fileTypeFromFile(file: File) {

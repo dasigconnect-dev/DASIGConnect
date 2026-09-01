@@ -2,6 +2,7 @@ package com.dasigconnect.backend.service;
 
 import com.dasigconnect.backend.model.dto.password.ForgotPasswordRequestDto;
 import com.dasigconnect.backend.model.dto.password.ResetPasswordRequestDto;
+import com.dasigconnect.backend.model.dto.password.ChangePasswordRequestDto;
 import com.dasigconnect.backend.model.entity.PasswordResetToken;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
@@ -28,6 +29,8 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class PasswordServiceTest {
+
+    private static final String STRONG_PASSWORD = "Riv3r!Moonlight";
 
     @Mock UserRepository userRepository;
     @Mock PasswordResetTokenRepository passwordResetTokenRepository;
@@ -79,6 +82,19 @@ class PasswordServiceTest {
     }
 
     @Test
+    void requestReset_emailFailure_keepsTokenAndDoesNotThrow() {
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        when(passwordResetTokenRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        doThrow(new IllegalStateException("SMTP down"))
+                .when(emailService).sendPasswordResetEmail(any(), any());
+
+        // No exception propagates — response stays 204, token stays persisted.
+        passwordService.requestReset(new ForgotPasswordRequestDto(user.getEmail()));
+
+        verify(passwordResetTokenRepository).save(any(PasswordResetToken.class));
+    }
+
+    @Test
     void requestReset_tokenExpiresInOneHour() {
         when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
         when(passwordResetTokenRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -98,7 +114,7 @@ class PasswordServiceTest {
     void resetPassword_unknownToken_throws400() {
         when(passwordResetTokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
         assertThatThrownBy(() -> passwordService.resetPassword(
-                new ResetPasswordRequestDto("badtoken", "newpassword")))
+                new ResetPasswordRequestDto("badtoken", STRONG_PASSWORD)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
                 .isEqualTo(400);
@@ -109,7 +125,7 @@ class PasswordServiceTest {
         when(passwordResetTokenRepository.findByTokenHash(any()))
                 .thenReturn(Optional.of(buildResetToken(true, false)));
         assertThatThrownBy(() -> passwordService.resetPassword(
-                new ResetPasswordRequestDto("usedtoken", "newpassword")))
+                new ResetPasswordRequestDto("usedtoken", STRONG_PASSWORD)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
                 .isEqualTo(400);
@@ -120,7 +136,7 @@ class PasswordServiceTest {
         when(passwordResetTokenRepository.findByTokenHash(any()))
                 .thenReturn(Optional.of(buildResetToken(false, true)));
         assertThatThrownBy(() -> passwordService.resetPassword(
-                new ResetPasswordRequestDto("expiredtoken", "newpassword")))
+                new ResetPasswordRequestDto("expiredtoken", STRONG_PASSWORD)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
                 .isEqualTo(400);
@@ -130,14 +146,43 @@ class PasswordServiceTest {
     void resetPassword_validToken_updatesPasswordAndMarksUsed() {
         PasswordResetToken token = buildResetToken(false, false);
         when(passwordResetTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
-        when(passwordEncoder.encode("newpassword")).thenReturn("$new_hash");
+        when(passwordEncoder.encode(STRONG_PASSWORD)).thenReturn("$new_hash");
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(passwordResetTokenRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        passwordService.resetPassword(new ResetPasswordRequestDto("validtoken", "newpassword"));
+        passwordService.resetPassword(new ResetPasswordRequestDto("validtoken", STRONG_PASSWORD));
 
         assertThat(user.getPasswordHash()).isEqualTo("$new_hash");
+        assertThat(user.getSessionVersion()).isEqualTo(1);
         assertThat(token.getUsedAt()).isNotNull();
         verify(auditLogService).record(eq(user), eq("PASSWORD_RESET"), any(), any(), any(), any());
+    }
+
+    @Test
+    void changePassword_validCurrentPassword_keepsExistingSessionsValid() {
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("current-password", "$old_hash")).thenReturn(true);
+        when(passwordEncoder.matches(STRONG_PASSWORD, "$old_hash")).thenReturn(false);
+        when(passwordEncoder.encode(STRONG_PASSWORD)).thenReturn("$new_hash");
+
+        passwordService.changePassword(user.getId(), new ChangePasswordRequestDto("current-password", STRONG_PASSWORD));
+
+        assertThat(user.getPasswordHash()).isEqualTo("$new_hash");
+        assertThat(user.getSessionVersion()).isZero();
+        verify(auditLogService).record(eq(user), eq("PASSWORD_CHANGED"), any(), any(), any(), any());
+    }
+
+    @Test
+    void resetPassword_weakPassword_throws400() {
+        when(passwordResetTokenRepository.findByTokenHash(any()))
+                .thenReturn(Optional.of(buildResetToken(false, false)));
+
+        assertThatThrownBy(() -> passwordService.resetPassword(
+                new ResetPasswordRequestDto("validtoken", "User123!Weak")))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(400);
+
+        verify(userRepository, never()).save(any());
     }
 }

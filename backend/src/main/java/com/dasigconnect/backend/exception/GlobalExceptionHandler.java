@@ -6,20 +6,32 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
-import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingPathVariableException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.bind.ServletRequestBindingException;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -29,98 +41,167 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    // Optional: absent from the slice context of @WebMvcTest, present in the full app.
+    private final ObjectProvider<AccessDeniedAuditRecorder> accessDeniedAuditRecorder;
+
+    public GlobalExceptionHandler(ObjectProvider<AccessDeniedAuditRecorder> accessDeniedAuditRecorder) {
+        this.accessDeniedAuditRecorder = accessDeniedAuditRecorder;
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<Map<String, Object>> handleResponseStatus(ResponseStatusException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleResponseStatus(ResponseStatusException ex,
+            HttpServletRequest request) {
+        if (ex.getStatusCode().value() == 403) {
+            accessDeniedAuditRecorder.ifAvailable(r -> r.record(request, ex.getReason()));
+        }
         String message = ex.getReason() != null ? ex.getReason() : ex.getMessage();
         return ResponseEntity.status(ex.getStatusCode())
-                .body(Map.of("error", message, "status", ex.getStatusCode().value()));
+                .body(ApiResponse.error(codeForStatus(ex.getStatusCode().value()), message, null));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> fieldErrors = new LinkedHashMap<>();
         for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
             fieldErrors.put(fe.getField(), fe.getDefaultMessage());
         }
         return ResponseEntity.badRequest()
-                .body(Map.of("error", "Validation failed", "status", 400, "fields", fieldErrors));
+                .body(ApiResponse.error("VALIDATION_ERROR", "Validation failed", Map.of("fields", fieldErrors)));
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
-    public ResponseEntity<Map<String, Object>> handleMissingRequestParameter(
+    public ResponseEntity<ApiResponse<Void>> handleMissingRequestParameter(
             MissingServletRequestParameterException ex) {
         return ResponseEntity.badRequest()
-                .body(Map.of(
-                        "error", "Missing required request parameter: " + ex.getParameterName(),
-                        "status", 400));
+                .body(ApiResponse.error("VALIDATION_ERROR",
+                        "Missing required request parameter: " + ex.getParameterName(), null));
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingRequestPart(MissingServletRequestPartException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error("VALIDATION_ERROR",
+                        "Missing required request part: " + ex.getRequestPartName(), null));
+    }
+
+    @ExceptionHandler(ServletRequestBindingException.class)
+    public ResponseEntity<ApiResponse<Void>> handleServletRequestBinding(ServletRequestBindingException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error("VALIDATION_ERROR", "Invalid or missing request binding", null));
+    }
+
+    @ExceptionHandler(MissingPathVariableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingPathVariable(MissingPathVariableException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error("VALIDATION_ERROR",
+                        "Missing required path variable: " + ex.getVariableName(), null));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentTypeMismatch(
+            MethodArgumentTypeMismatchException ex) {
+        String value = ex.getValue() != null ? ex.getValue().toString() : "null";
+        String requiredType = ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "required type";
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(
+                        "VALIDATION_ERROR",
+                        "Invalid value for " + ex.getName() + ": expected " + requiredType,
+                        Map.of("parameter", ex.getName(), "rejectedValue", value)));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error("VALIDATION_ERROR", "Malformed request body", null));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException ex) {
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .body(ApiResponse.error("UNSUPPORTED_MEDIA_TYPE", "Unsupported content type", null));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMediaTypeNotAcceptable(HttpMediaTypeNotAcceptableException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE)
+                .body(ApiResponse.error("NOT_ACCEPTABLE", "Requested response type is not available", null));
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMultipartException(MultipartException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error("VALIDATION_ERROR", "Invalid multipart request", null));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
         return ResponseEntity.badRequest()
-                .body(Map.of("error", ex.getMessage(), "status", 400));
+                .body(ApiResponse.error("VALIDATION_ERROR", ex.getMessage(), null));
+    }
+
+    @ExceptionHandler(InstitutionNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInstitutionNotFound(InstitutionNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error("NOT_FOUND", ex.getMessage(), null));
     }
 
     @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<Map<String, Object>> handleIllegalState(IllegalStateException ex) {
-        log.error("Upstream/storage failure", ex);
-        String message = ex.getMessage() != null ? ex.getMessage() : "Upstream service error";
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(Map.of("error", message, "status", 502));
+    public ResponseEntity<ApiResponse<Void>> handleIllegalState(IllegalStateException ex) {
+        String message = ex.getMessage() != null ? ex.getMessage() : "Invalid state transition";
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("CONFLICT", message, null));
     }
 
     @ExceptionHandler(CannotCreateTransactionException.class)
-    public ResponseEntity<Map<String, Object>> handleConnectionPoolExhaustion(CannotCreateTransactionException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleConnectionPoolExhaustion(CannotCreateTransactionException ex) {
         log.error("Database connection pool exhausted or unavailable", ex);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(Map.of("error", "Database is temporarily busy. Please try again.", "status", 503));
+                .body(ApiResponse.error("SERVICE_UNAVAILABLE", "Database is temporarily busy. Please try again.", null));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<Map<String, Object>> handleDataIntegrity(DataIntegrityViolationException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrity(DataIntegrityViolationException ex) {
         return ResponseEntity.status(409)
-                .body(Map.of("error", "Duplicate or invalid data", "status", 409));
+                .body(ApiResponse.error("CONFLICT", "Duplicate or invalid data", null));
     }
 
     @ExceptionHandler(SlotAlreadyTakenException.class)
-    public ResponseEntity<Map<String, Object>> handleSlotAlreadyTaken(SlotAlreadyTakenException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleSlotAlreadyTaken(SlotAlreadyTakenException ex) {
         return ResponseEntity.status(409)
-                .body(Map.of("error", ex.getMessage(), "status", 409));
+                .body(ApiResponse.error("CONFLICT", ex.getMessage(), null));
     }
 
     @ExceptionHandler(GuardRailViolationException.class)
-    public ResponseEntity<Map<String, Object>> handleGuardRailViolation(GuardRailViolationException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleGuardRailViolation(GuardRailViolationException ex) {
         String message = ex.getViolations().isEmpty()
                 ? ex.getMessage()
                 : ex.getViolations().get(0).getMessage();
         return ResponseEntity.status(422)
-                .body(Map.of(
-                        "error", message,
-                        "summary", ex.getMessage(),
-                        "status", 422,
-                        "violations", ex.getViolations()));
+                .body(ApiResponse.error("UNPROCESSABLE_ENTITY", message,
+                        Map.of("summary", ex.getMessage(), "violations", ex.getViolations())));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
-    public ResponseEntity<Map<String, Object>> handleNoResourceFound(NoResourceFoundException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(NoResourceFoundException ex) {
         return ResponseEntity.status(404)
-                .body(Map.of("error", "Not found", "status", 404));
+                .body(ApiResponse.error("NOT_FOUND", "Not found", null));
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    public ResponseEntity<Map<String, Object>> handleMethodNotSupported(
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(
             HttpRequestMethodNotSupportedException ex,
             HttpServletRequest request) {
         String[] supported = ex.getSupportedMethods();
         log.warn("Method not allowed: {} {} (supported: {})",
                 request.getMethod(), request.getRequestURI(),
                 supported != null ? Arrays.toString(supported) : "none");
-        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(Map.of(
-                "error", "Method not allowed",
-                "method", request.getMethod(),
-                "path", request.getRequestURI(),
-                "supportedMethods", supported != null ? supported : new String[0],
-                "status", 405));
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(ApiResponse.error(
+                "METHOD_NOT_ALLOWED",
+                "Method not allowed",
+                Map.of(
+                        "method", request.getMethod(),
+                        "path", request.getRequestURI(),
+                        "supportedMethods", supported != null ? supported : new String[0])));
     }
 
     @ExceptionHandler(AsyncRequestTimeoutException.class)
@@ -133,15 +214,41 @@ public class GlobalExceptionHandler {
         log.debug("Async request timed out (SSE stream expired)");
     }
 
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleClientDisconnect(AsyncRequestNotUsableException ex) {
+        // The client (browser/axios) closed the connection before the response
+        // finished writing — e.g. React unmounts the view and aborts the fetch,
+        // or the user navigates away mid-request. Not a server fault: the
+        // response is already committed so nothing can be sent. Absorb quietly.
+        log.debug("Client disconnected before the response was fully written: {}", ex.getMessage());
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
-    public void handleAccessDenied(AccessDeniedException ex) throws AccessDeniedException {
+    public void handleAccessDenied(AccessDeniedException ex, HttpServletRequest request)
+            throws AccessDeniedException {
+        // Covers @PreAuthorize denials (AuthorizationDeniedException extends this).
+        accessDeniedAuditRecorder.ifAvailable(r -> r.record(request, "method-security"));
+        // Rethrow so Spring Security's ExceptionTranslationFilter renders the 403.
         throw ex;
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
+    public ResponseEntity<ApiResponse<Void>> handleGeneric(Exception ex) {
         log.error("Unhandled exception", ex);
         return ResponseEntity.internalServerError()
-                .body(Map.of("error", "Internal server error", "status", 500));
+                .body(ApiResponse.error("INTERNAL_ERROR", "Internal server error", null));
+    }
+
+    private static String codeForStatus(int status) {
+        return switch (status) {
+            case 400 -> "VALIDATION_ERROR";
+            case 401 -> "UNAUTHORIZED";
+            case 403 -> "ACCESS_DENIED";
+            case 404 -> "NOT_FOUND";
+            case 409 -> "CONFLICT";
+            case 422 -> "UNPROCESSABLE_ENTITY";
+            case 503 -> "SERVICE_UNAVAILABLE";
+            default -> status >= 500 ? "INTERNAL_ERROR" : "REQUEST_ERROR";
+        };
     }
 }

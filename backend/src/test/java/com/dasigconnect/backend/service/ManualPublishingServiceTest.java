@@ -18,8 +18,12 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.event.PostPublishedManualEvent;
+import com.dasigconnect.backend.event.SubmissionRescheduledEvent;
+import com.dasigconnect.backend.exception.GuardRailViolationException;
 import com.dasigconnect.backend.exception.SubmissionNotFoundException;
+import com.dasigconnect.backend.model.dto.guardrail.GuardRailResult;
 import com.dasigconnect.backend.model.dto.resolution.ManualPublishCompleteDto;
+import com.dasigconnect.backend.model.dto.submission.RescheduleRequestDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
@@ -45,6 +49,8 @@ class ManualPublishingServiceTest {
     @Mock private SubmissionRepository submissionRepository;
     @Mock private AuditLogService auditLogService;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private GuardRailService guardRailService;
+    @Mock private SlotReservationService slotReservationService;
     @Mock private EntityManager entityManager;
 
     @InjectMocks
@@ -58,7 +64,7 @@ class ManualPublishingServiceTest {
     void setUp() {
         submissionId = UUID.randomUUID();
         adminId = UUID.randomUUID();
-        admin = new JwtUserDetails(adminId, "admin@dasig.gov.ph", "administrator", null);
+        admin = new JwtUserDetails(adminId, "admin@dasig.gov.ph", "admin", null);
 
         // @PersistenceContext is not injected by @InjectMocks — inject manually
         ReflectionTestUtils.setField(service, "entityManager", entityManager);
@@ -232,6 +238,97 @@ class ManualPublishingServiceTest {
                         .isEqualTo(HttpStatus.CONFLICT));
     }
 
+    // ── retryWithNewSchedule() ─────────────────────────────────────────────────────
+
+    @Test
+    void retryWithNewSchedule_cleanGuardRails_reschedulesAndConfirms() {
+        Submission s = submission(submissionId, SubmissionStatus.publish_failed);
+        s.setRetryCount(2);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult());
+
+        RescheduleRequestDto dto = new RescheduleRequestDto();
+        Instant newSlot = Instant.now().plusSeconds(7200);
+        dto.setScheduledAt(newSlot);
+
+        service.retryWithNewSchedule(submissionId, dto, admin);
+
+        assertThat(s.getStatus()).isEqualTo(SubmissionStatus.scheduled);
+        assertThat(s.getScheduledAt()).isEqualTo(newSlot);
+        assertThat(s.getRetryCount()).isZero();
+        verify(slotReservationService).reserveLockedSlot(submissionId, s.getInstitution().getId(), newSlot);
+        verify(eventPublisher).publishEvent(any(SubmissionRescheduledEvent.class));
+    }
+
+    @Test
+    void retryWithNewSchedule_nonPublishFailed_throwsConflict() {
+        Submission s = submission(submissionId, SubmissionStatus.scheduled);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+
+        RescheduleRequestDto dto = new RescheduleRequestDto();
+        dto.setScheduledAt(Instant.now().plusSeconds(7200));
+
+        assertThatThrownBy(() -> service.retryWithNewSchedule(submissionId, dto, admin))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                        .isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    @Test
+    void retryWithNewSchedule_blockedWithoutOverride_throwsGuardRailViolation() {
+        Submission s = submission(submissionId, SubmissionStatus.publish_failed);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult(
+                java.util.List.of(new com.dasigconnect.backend.model.dto.guardrail.GuardRailViolation("GR-H2", "Too soon")),
+                java.util.List.of()));
+
+        RescheduleRequestDto dto = new RescheduleRequestDto();
+        dto.setScheduledAt(Instant.now().plusSeconds(60));
+
+        assertThatThrownBy(() -> service.retryWithNewSchedule(submissionId, dto, admin))
+                .isInstanceOf(GuardRailViolationException.class);
+
+        verify(submissionRepository, never()).save(any());
+    }
+
+    @Test
+    void retryWithNewSchedule_missedReview_returnsToPendingApproval() {
+        Submission s = submission(submissionId, SubmissionStatus.missed_review);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult());
+
+        RescheduleRequestDto dto = new RescheduleRequestDto();
+        Instant newSlot = Instant.now().plusSeconds(7200);
+        dto.setScheduledAt(newSlot);
+
+        service.retryWithNewSchedule(submissionId, dto, admin);
+
+        assertThat(s.getStatus()).isEqualTo(SubmissionStatus.pending);
+        assertThat(s.getScheduledAt()).isEqualTo(newSlot);
+        assertThat(s.getSubmittedAt()).isNotNull();
+        verify(slotReservationService).reserve(submissionId, s.getInstitution().getId(), newSlot);
+        verify(auditLogService).record(any(), eq("MISSED_REVIEW_RETRY_NEW_SCHEDULE"), any(), any(), eq(submissionId), any());
+    }
+
+    @Test
+    void retryWithNewSchedule_missedReview_blockedWithoutOverride_throwsGuardRailViolation() {
+        Submission s = submission(submissionId, SubmissionStatus.missed_review);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult(
+                java.util.List.of(new com.dasigconnect.backend.model.dto.guardrail.GuardRailViolation("GR-H2", "Too soon")),
+                java.util.List.of()));
+
+        RescheduleRequestDto dto = new RescheduleRequestDto();
+        dto.setScheduledAt(Instant.now().plusSeconds(60));
+
+        assertThatThrownBy(() -> service.retryWithNewSchedule(submissionId, dto, admin))
+                .isInstanceOf(GuardRailViolationException.class);
+
+        verify(submissionRepository, never()).save(any());
+    }
+
     // ── clearAbandoned() ─────────────────────────────────────────────────────────
 
     @Test
@@ -268,7 +365,7 @@ class ManualPublishingServiceTest {
         User u = new User();
         u.setId(id);
         u.setEmail("admin@dasig.gov.ph");
-        u.setRole(UserRole.administrator);
+        u.setRole(UserRole.admin);
         return u;
     }
 }

@@ -13,9 +13,23 @@ public interface InstitutionRepository extends JpaRepository<Institution, UUID> 
 
     Optional<Institution> findByCode(String code);
 
+    Optional<Institution> findByNameIgnoreCase(String name);
+
     boolean existsByCode(String code);
 
     boolean existsByEmailDomain(String emailDomain);
 
+    /** A5: duplicate name guard on create */
+    boolean existsByNameIgnoreCase(String name);
+
+    /** A5: duplicate name guard on edit (exclude self) */
+    boolean existsByNameIgnoreCaseAndIdNot(String name, UUID id);
+
+    /** A1: duplicate email domain guard on edit (exclude self) */
+    boolean existsByEmailDomainAndIdNot(String emailDomain, UUID id);
+
     List<Institution> findAllByStatus(InstitutionStatus status);
+
+    /** The shared default institution ("DASIG Central Visayas") — visible to every institution. */
+    Optional<Institution> findFirstByIsProtectedTrueOrderByCreatedAtAsc();
 }

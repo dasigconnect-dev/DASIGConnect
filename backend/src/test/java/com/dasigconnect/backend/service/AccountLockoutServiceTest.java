@@ -81,7 +81,8 @@ class AccountLockoutServiceTest {
         when(lockoutRepository.findById(userId)).thenReturn(Optional.of(existing));
         when(lockoutRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        accountLockoutService.recordFailedAttempt(user);
+        AccountLockoutService.FailedAttemptResult result = accountLockoutService.recordFailedAttempt(user);
+        assertThat(result.justLocked()).isTrue();
 
         ArgumentCaptor<AccountLockout> captor = ArgumentCaptor.forClass(AccountLockout.class);
         verify(lockoutRepository).save(captor.capture());

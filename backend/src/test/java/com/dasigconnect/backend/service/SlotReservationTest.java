@@ -72,7 +72,7 @@ class SlotReservationServiceTest {
         mockInstitution = new Institution();
         mockInstitution.setId(institutionId);
 
-        lenient().when(guardRailService.validate(any(), any())).thenReturn(new GuardRailResult());
+        lenient().when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult());
         ReflectionTestUtils.setField(slotReservationService, "guardRailsEnforced", true);
     }
 
@@ -135,7 +135,7 @@ class SlotReservationServiceTest {
         void shouldThrow_whenHardBlockPresent() {
             GuardRailViolation block = new GuardRailViolation("GR-H2", "Too soon");
             GuardRailResult blocked = new GuardRailResult(List.of(block), List.of());
-            when(guardRailService.validate(any(), any())).thenReturn(blocked);
+            when(guardRailService.validate(any(), any(), any())).thenReturn(blocked);
 
             assertThatThrownBy(() -> slotReservationService.reserve(submissionId, institutionId, validSlot))
                     .isInstanceOf(GuardRailViolationException.class);
@@ -180,7 +180,7 @@ class SlotReservationServiceTest {
         void shouldSave_whenOnlySoftWarningsPresent() {
             GuardRailViolation warning = new GuardRailViolation("GR-S1", "3 unpublished posts");
             GuardRailResult withWarning = new GuardRailResult(List.of(), List.of(warning));
-            when(guardRailService.validate(any(), any())).thenReturn(withWarning);
+            when(guardRailService.validate(any(), any(), any())).thenReturn(withWarning);
             when(slotReservationRepository.save(any())).thenReturn(new SlotReservation());
 
             slotReservationService.reserve(submissionId, institutionId, validSlot);

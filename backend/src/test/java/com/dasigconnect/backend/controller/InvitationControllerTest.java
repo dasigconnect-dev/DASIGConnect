@@ -15,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -46,18 +47,18 @@ class InvitationControllerTest {
     private static final UUID INSTITUTION_ID = UUID.randomUUID();
 
     @Test
-    void createInvitation_withoutAuth_returns403() throws Exception {
+    void createInvitation_withoutAuth_returns401() throws Exception {
         mockMvc.perform(post("/api/v1/invitations")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                                 {"recipientEmail":"user@example.com","institutionId":"%s","assignedRole":"contributor"}
                                 """.formatted(INSTITUTION_ID)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
-    void createInvitation_asAdministrator_returns201() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void createInvitation_asAdmin_returns201() throws Exception {
         InvitationResponseDto response = new InvitationResponseDto(
                 UUID.randomUUID(), "user@example.com", UserRole.contributor,
                 INSTITUTION_ID, Instant.now().plusSeconds(3600), Instant.now(),
@@ -70,13 +71,13 @@ class InvitationControllerTest {
                                 {"recipientEmail":"user@example.com","institutionId":"%s","assignedRole":"contributor"}
                                 """.formatted(INSTITUTION_ID)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.recipientEmail").value("user@example.com"))
-                .andExpect(jsonPath("$.assignedRole").value("contributor"))
-                .andExpect(jsonPath("$.emailDelivered").value(true));
+                .andExpect(jsonPath("$.data.recipientEmail").value("user@example.com"))
+                .andExpect(jsonPath("$.data.assignedRole").value("contributor"))
+                .andExpect(jsonPath("$.data.emailDelivered").value(true));
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "ADMIN")
     void createInvitation_missingRecipientEmail_returns400() throws Exception {
         mockMvc.perform(post("/api/v1/invitations")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -84,7 +85,7 @@ class InvitationControllerTest {
                                 {"institutionId":"%s","assignedRole":"contributor"}
                                 """.formatted(INSTITUTION_ID)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fields.recipientEmail").exists());
+                .andExpect(jsonPath("$.error.details.fields.recipientEmail").exists());
     }
 
     @Test
@@ -99,7 +100,7 @@ class InvitationControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "VALIDATOR")
+    @WithMockUser(roles = "MODERATOR")
     void createInvitation_asValidator_reachesService() throws Exception {
         InvitationResponseDto response = new InvitationResponseDto(
                 UUID.randomUUID(), "user@example.com", UserRole.contributor,
@@ -123,8 +124,8 @@ class InvitationControllerTest {
 
         mockMvc.perform(get("/api/v1/invitations/validate").param("token", "sometoken"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.recipientEmail").value("user@example.com"))
-                .andExpect(jsonPath("$.institutionName").value("CIT-U"));
+                .andExpect(jsonPath("$.data.recipientEmail").value("user@example.com"))
+                .andExpect(jsonPath("$.data.institutionName").value("CIT-U"));
     }
 
     @Test
@@ -135,10 +136,10 @@ class InvitationControllerTest {
         mockMvc.perform(post("/api/v1/invitations/accept")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                                {"token":"sometoken","firstName":"Mark","lastName":"Camoro","password":"password123"}
+                                {"token":"sometoken","firstName":"Mark","lastName":"Camoro","password":"Riv3r!Moonlight"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").value("new.jwt.token"));
+                .andExpect(jsonPath("$.data.accessToken").value("new.jwt.token"));
     }
 
     @Test
@@ -149,7 +150,7 @@ class InvitationControllerTest {
                                 {"token":"sometoken","firstName":"Mark","lastName":"Camoro","password":"short"}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fields.password").exists());
+                .andExpect(jsonPath("$.error.details.fields.password").exists());
     }
 
     @Test
@@ -157,15 +158,15 @@ class InvitationControllerTest {
         mockMvc.perform(post("/api/v1/invitations/accept")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                                {"token":"sometoken","lastName":"Camoro","password":"password123"}
+                                {"token":"sometoken","lastName":"Camoro","password":"Riv3r!Moonlight"}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fields.firstName").exists());
+                .andExpect(jsonPath("$.error.details.fields.firstName").exists());
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
-    void resend_asAdministrator_returnsInvitation() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void resend_asAdmin_returnsInvitation() throws Exception {
         UUID invitationId = UUID.randomUUID();
         InvitationResponseDto response = new InvitationResponseDto(
                 UUID.randomUUID(), "user@example.com", UserRole.contributor,
@@ -175,12 +176,12 @@ class InvitationControllerTest {
 
         mockMvc.perform(post("/api/v1/invitations/{id}/resend", invitationId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.recipientEmail").value("user@example.com"))
-                .andExpect(jsonPath("$.emailDelivered").value(true));
+                .andExpect(jsonPath("$.data.recipientEmail").value("user@example.com"))
+                .andExpect(jsonPath("$.data.emailDelivered").value(true));
     }
 
     @Test
-    @WithMockUser(roles = "VALIDATOR")
+    @WithMockUser(roles = "MODERATOR")
     void pending_asValidator_returnsPendingInvitations() throws Exception {
         UUID invitationId = UUID.randomUUID();
         when(invitationService.listPending(any(), any())).thenReturn(List.of(new PendingInvitationDto(
@@ -189,21 +190,58 @@ class InvitationControllerTest {
                 UserRole.contributor,
                 INSTITUTION_ID,
                 Instant.now().plusSeconds(3600),
-                Instant.now())));
+                Instant.now(),
+                null,
+                true)));
 
         mockMvc.perform(get("/api/v1/invitations/pending").param("institutionId", INSTITUTION_ID.toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(invitationId.toString()))
-                .andExpect(jsonPath("$[0].recipientEmail").value("user@example.com"));
+                .andExpect(jsonPath("$.data[0].id").value(invitationId.toString()))
+                .andExpect(jsonPath("$.data[0].recipientEmail").value("user@example.com"));
     }
 
     @Test
-    @WithMockUser(roles = "VALIDATOR")
+    @WithMockUser(roles = "ADMIN")
+    void pendingAdmins_asAdmin_returnsPendingAdminInvitations() throws Exception {
+        UUID invitationId = UUID.randomUUID();
+        when(invitationService.listPendingAdmins(any())).thenReturn(List.of(new PendingInvitationDto(
+                invitationId,
+                "admin@example.com",
+                UserRole.admin,
+                null,
+                Instant.now().plusSeconds(3600),
+                Instant.now(),
+                null,
+                true)));
+
+        mockMvc.perform(get("/api/v1/invitations/pending/admins"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(invitationId.toString()))
+                .andExpect(jsonPath("$.data[0].recipientEmail").value("admin@example.com"))
+                .andExpect(jsonPath("$.data[0].institutionId").doesNotExist());
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
     void pendingCount_asValidator_returnsCount() throws Exception {
         when(invitationService.countPending(any(), any())).thenReturn(Map.of("pendingInvitations", 3L));
 
         mockMvc.perform(get("/api/v1/invitations/pending/count").param("institutionId", INSTITUTION_ID.toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.pendingInvitations").value(3));
+                .andExpect(jsonPath("$.data.pendingInvitations").value(3));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void cancelByUser_asAdmin_returns204() throws Exception {
+        mockMvc.perform(delete("/api/v1/invitations/by-user/{userId}", UUID.randomUUID()))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void cancelByUser_asModerator_isForbidden() throws Exception {
+        mockMvc.perform(delete("/api/v1/invitations/by-user/{userId}", UUID.randomUUID()))
+                .andExpect(status().isForbidden());
     }
 }

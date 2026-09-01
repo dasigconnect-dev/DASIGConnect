@@ -39,69 +39,101 @@
   width: 190px;
 }
 
+.dc-select {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+
 .dc-select.is-open {
   z-index: 360;
 }
 
 .dc-select-trigger {
   width: 100%;
-  min-height: 42px;
-  border: 1px solid var(--sub-border, #d5e0f1);
-  border-radius: var(--sub-r-sm, 8px);
-  background: var(--sub-surface-2, #f8fbff);
-  color: var(--sub-text, #071833);
+  height: 34px;
+  min-height: 34px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  font: inherit;
-  font-size: 13.5px;
-  line-height: 1.25;
-  padding: 10px 13px;
+  gap: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1;
+  padding: 0 14px;
   text-align: left;
-  transition:
-    background 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease;
+  box-sizing: border-box;
+  white-space: nowrap;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.dc-select-trigger:hover:not(:disabled),
-.dc-select-trigger.open {
-  background: var(--sub-surface, #fff);
+.dc-select-trigger:hover:not(:disabled) {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: var(--sub-blue, #1877f2);
+  transform: translateY(-0.5px);
+}
+
+.dc-select-trigger.open,
+.dc-select.is-open .dc-select-trigger {
+  background: #eff6ff;
   border-color: var(--sub-blue, #1877f2);
-  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.1);
+  color: var(--sub-blue, #1877f2);
+  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.14);
 }
 
 .dc-select-trigger:disabled {
-  cursor: default;
-  opacity: 0.75;
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: #f8fafc;
+}
+
+.dc-select-trigger span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 550;
+  color: inherit;
 }
 
 .dc-select-trigger .placeholder {
-  color: var(--sub-muted, #64799a);
+  color: #475569;
+  font-weight: 550;
 }
 
 .dc-select-trigger i {
-  color: var(--sub-blue, #1877f2);
+  color: #64748b;
   flex: 0 0 auto;
-  font-size: 17px;
+  font-size: 13px;
+  transition: transform 0.2s ease, color 0.18s ease;
+}
+
+.dc-select.is-open .dc-select-trigger i.ti-chevron-down {
+  transform: rotate(180deg);
+  color: var(--sub-blue, #1877f2);
 }
 
 .dc-select-popover {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
   left: 0;
-  z-index: 370;
+  z-index: 10000;
   width: 100%;
   min-width: 100%;
-  border: 1px solid var(--sub-blue-bdr, #a9ccff);
-  border-radius: var(--sub-r, 12px);
-  background: var(--sub-surface, #fff);
-  box-shadow: 0 18px 44px rgba(12, 29, 61, 0.18);
+  border: 1px solid #d5e0f1;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 14px 36px rgba(12, 29, 61, 0.16), 0 2px 8px rgba(12, 29, 61, 0.06);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 6px;
+  padding: 5px;
   animation: dc-select-pop 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .dc-select.mlt-select .dc-select-popover {
@@ -111,16 +143,37 @@
   min-width: 100%;
   max-width: min(280px, calc(100vw - 32px));
 }
-.dc-select.med-sort-select.is-open {
-  z-index: 3000;
+.dc-select.med-sort-select.is-open,
+.dc-select.med-inst-select.is-open,
+.dc-select.mlt-select.is-open {
+  z-index: 10000;
 }
-.dc-select.med-sort-select .dc-select-trigger {
-  min-height: 44px;
-  border-radius: 10px;
+.dc-select.med-sort-select .dc-select-trigger,
+.dc-select.med-inst-select .dc-select-trigger,
+.dc-select.mlt-select .dc-select-trigger {
+  min-height: 42px;
+  height: 42px;
+  border-radius: 999px;
   background: var(--sub-surface, #fff);
+  padding: 0 18px;
+  font-size: 13.5px;
+  font-weight: 550;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(10, 22, 40, 0.04);
 }
-.dc-select.med-sort-select .dc-select-popover {
-  z-index: 3001;
+.dc-select.med-sort-select .dc-select-trigger:hover,
+.dc-select.med-inst-select .dc-select-trigger:hover,
+.dc-select.mlt-select .dc-select-trigger:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: var(--d-blue, #1877f2);
+  transform: translateY(-0.5px);
+}
+.dc-select.med-sort-select .dc-select-popover,
+.dc-select.med-inst-select .dc-select-popover,
+.dc-select.mlt-select .dc-select-popover {
+  z-index: 10001;
   width: 100%;
   min-width: 100%;
   max-height: 228px;
@@ -129,9 +182,10 @@
   box-shadow: 0 16px 36px rgba(12, 29, 61, 0.16);
 }
 .dc-select.med-sort-select .dc-select-option {
-  min-height: 38px;
-  padding: 8px 10px;
-  font-size: 13px;
+  min-height: 34px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  border-radius: 8px;
 }
 
 .dc-select.drop-up .dc-select-popover {
@@ -154,60 +208,51 @@
 
 .dc-select-option {
   width: 100%;
-  min-height: 38px;
-  border: 1px solid transparent;
-  border-radius: 9px;
+  min-height: 32px;
+  border: none;
+  border-radius: 8px;
   background: transparent;
-  color: var(--sub-text, #071833);
+  color: #334155;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 760;
-  line-height: 1.35;
-  padding: 9px 10px;
+  gap: 10px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1.3;
+  padding: 7px 10px;
   text-align: left;
-  transition:
-    background 0.16s ease,
-    border-color 0.16s ease,
-    color 0.16s ease,
-    transform 0.16s ease;
+  transition: all 0.14s ease;
 }
 
 .dc-select-option:hover:not(:disabled) {
-  background: var(--sub-blue-dim, #eaf3ff);
-  border-color: var(--sub-blue-bdr, #a9ccff);
+  background: #eff6ff;
   color: var(--sub-blue, #1877f2);
-  transform: translateX(1px);
 }
 
 .dc-select-option.default-option {
-  background: var(--sub-surface-2, #f8fbff);
-  color: var(--sub-muted, #64799a);
-  font-weight: 800;
+  background: #f8fafc;
+  color: #64748b;
+  font-weight: 550;
 }
 
 .dc-select-option.default-option:hover:not(:disabled) {
-  background: var(--sub-blue-dim, #eaf3ff);
-  border-color: var(--sub-blue-bdr, #a9ccff);
+  background: #eff6ff;
   color: var(--sub-blue, #1877f2);
 }
 
 .dc-select-option.selected {
-  background: var(--sub-blue, #1877f2);
-  border-color: var(--sub-blue, #1877f2);
-  color: #fff;
-  box-shadow: 0 8px 18px rgba(24, 119, 242, 0.18);
+  background: #eff6ff;
+  color: var(--sub-blue, #1877f2);
+  font-weight: 650;
+  box-shadow: none;
 }
 
 .dc-select-option.selected:hover {
-  background: var(--sub-blue, #1877f2);
-  border-color: var(--sub-blue, #1877f2);
-  color: #fff;
-  transform: translateX(0);
+  background: #eff6ff;
+  color: var(--sub-blue, #1877f2);
 }
 
 .dc-select-option:disabled {
@@ -255,3 +300,88 @@
     animation: none;
   }
 }
+
+/* ---- Multi-select variant (dc-multi) ---- */
+.dc-multi .dc-select-trigger {
+  cursor: pointer;
+  padding: 0 10px 0 14px;
+}
+
+.dc-multi-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 550;
+  color: #334155;
+  text-align: left;
+  line-height: 1;
+}
+
+.dc-multi-text.placeholder {
+  color: #334155;
+  font-weight: 550;
+}
+
+.dc-multi-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.dc-select-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #64748b;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.dc-select-clear:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.dc-multi-chevron {
+  color: #64748b;
+  font-size: 13px;
+  transition: transform 0.2s ease, color 0.18s ease;
+}
+
+.dc-multi.is-open .dc-multi-chevron {
+  transform: rotate(180deg);
+  color: var(--sub-blue, #1877f2);
+}
+
+/* Optional institution-code (etc.) pill on a select option */
+.dc-select-option-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+.dc-select-badge {
+  flex: none;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  background: #EBF2FF;
+  color: #2563EB;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.6;
+}
+.dc-select-trigger .dc-select-badge { vertical-align: middle; }

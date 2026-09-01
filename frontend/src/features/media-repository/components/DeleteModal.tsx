@@ -47,6 +47,8 @@ export default function DeleteModal({
   onClose,
   onConfirmDelete,
 }: DeleteModalProps) {
+  if (!open) return null;
+
   const modal = (
     <div
       className={`med-modal-overlay${open ? " open" : ""}`}
@@ -232,7 +234,7 @@ function WarningBody({ usages }: { usages: MediaUsage[] }) {
         </div>
       ))}
       <p style={{ fontSize: 12, color: "var(--med-muted)", marginTop: 16, lineHeight: 1.5 }}>
-        The asset's Used In block will be retained for audit purposes. Administrator deletions are logged in the immutable access audit log.
+        The asset's Used In block will be retained for audit purposes. Moderator deletions are logged in the immutable access audit log.
       </p>
     </>
   );

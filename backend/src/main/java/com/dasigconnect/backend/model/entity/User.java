@@ -1,5 +1,8 @@
 package com.dasigconnect.backend.model.entity;
 
+import java.time.Instant;
+import java.util.UUID;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,8 +14,6 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-import java.time.Instant;
-import java.util.UUID;
 
 @Entity
 @Table(name = "users")
@@ -37,6 +38,18 @@ public class User {
     @Column(name = "last_name", length = 100)
     private String lastName;
 
+    @Column(name = "display_name", length = 150)
+    private String displayName;
+
+    @Column(name = "notify_in_app", nullable = false)
+    private boolean notifyInApp = true;
+
+    @Column(name = "notify_email", nullable = false)
+    private boolean notifyEmail = true;
+
+    @Column(name = "session_version", nullable = false)
+    private long sessionVersion = 0;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserRole role;
@@ -45,11 +58,39 @@ public class User {
     @Column(name = "account_state", nullable = false, length = 30)
     private UserStatus accountState = UserStatus.pending;
 
+    @Column(name = "is_admin", nullable = false)
+    private boolean adminOwner;
+
+    @Column(name = "super_admin_transfer_requested_by")
+    private UUID superAdminTransferRequestedBy;
+
+    @Column(name = "super_admin_transfer_expires_at")
+    private Instant superAdminTransferExpiresAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Column(name = "avatar_data")
+    private byte[] avatarData;
+
+    @Column(name = "avatar_content_type", length = 40)
+    private String avatarContentType;
+
+    @Column(name = "avatar_updated_at")
+    private Instant avatarUpdatedAt;
+
+    @Column(name = "purged_at")
+    private Instant purgedAt;
+
+    @Column(name = "purged_by_user_id")
+    private UUID purgedByUserId;
+
+    /** User id of the admin/moderator who invited this account. Null for legacy / self-registered rows. */
+    @Column(name = "invited_by_user_id")
+    private UUID invitedByUserId;
 
     @PrePersist
     void onCreate() {
@@ -114,6 +155,15 @@ public class User {
         this.lastName = lastName;
     }
 
+    public String getDisplayName() { return displayName; }
+    public void setDisplayName(String displayName) { this.displayName = displayName; }
+    public boolean isNotifyInApp() { return notifyInApp; }
+    public void setNotifyInApp(boolean notifyInApp) { this.notifyInApp = notifyInApp; }
+    public boolean isNotifyEmail() { return notifyEmail; }
+    public void setNotifyEmail(boolean notifyEmail) { this.notifyEmail = notifyEmail; }
+    public long getSessionVersion() { return sessionVersion; }
+    public void setSessionVersion(long sessionVersion) { this.sessionVersion = sessionVersion; }
+
     public UserRole getRole() {
         return role;
     }
@@ -130,11 +180,83 @@ public class User {
         this.accountState = accountState;
     }
 
+    public boolean isAdminOwner() {
+        return adminOwner;
+    }
+
+    public void setAdminOwner(boolean adminOwner) {
+        this.adminOwner = adminOwner;
+    }
+
+    public UUID getSuperAdminTransferRequestedBy() {
+        return superAdminTransferRequestedBy;
+    }
+
+    public void setSuperAdminTransferRequestedBy(UUID superAdminTransferRequestedBy) {
+        this.superAdminTransferRequestedBy = superAdminTransferRequestedBy;
+    }
+
+    public Instant getSuperAdminTransferExpiresAt() {
+        return superAdminTransferExpiresAt;
+    }
+
+    public void setSuperAdminTransferExpiresAt(Instant superAdminTransferExpiresAt) {
+        this.superAdminTransferExpiresAt = superAdminTransferExpiresAt;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public byte[] getAvatarData() {
+        return avatarData;
+    }
+
+    public void setAvatarData(byte[] avatarData) {
+        this.avatarData = avatarData;
+    }
+
+    public String getAvatarContentType() {
+        return avatarContentType;
+    }
+
+    public void setAvatarContentType(String avatarContentType) {
+        this.avatarContentType = avatarContentType;
+    }
+
+    public Instant getAvatarUpdatedAt() {
+        return avatarUpdatedAt;
+    }
+
+    public void setAvatarUpdatedAt(Instant avatarUpdatedAt) {
+        this.avatarUpdatedAt = avatarUpdatedAt;
+    }
+
+    public Instant getPurgedAt() {
+        return purgedAt;
+    }
+
+    public void setPurgedAt(Instant purgedAt) {
+        this.purgedAt = purgedAt;
+    }
+
+    public UUID getInvitedByUserId() {
+        return invitedByUserId;
+    }
+
+    public void setInvitedByUserId(UUID invitedByUserId) {
+        this.invitedByUserId = invitedByUserId;
+    }
+
+    public UUID getPurgedByUserId() {
+        return purgedByUserId;
+    }
+
+    public void setPurgedByUserId(UUID purgedByUserId) {
+        this.purgedByUserId = purgedByUserId;
     }
 }

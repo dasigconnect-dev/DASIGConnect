@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.model.dto.institution;
 
 import java.util.UUID;
+import java.time.Instant;
 
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
@@ -38,17 +39,29 @@ public class InstitutionDto {
      * InstitutionStatus enum values defined by M1.
      */
     private InstitutionStatus status;
+    private boolean hasLogo;
+    private Instant logoUpdatedAt;
+    private boolean isProtected;
 
     // ── Constructors ──────────────────────────────────────────────────────────
     public InstitutionDto() {
     }
 
-    public InstitutionDto(UUID id, String name, String institutionCode, String emailDomain, InstitutionStatus status) {
+    public InstitutionDto(UUID id, String name, String institutionCode, String emailDomain,
+            InstitutionStatus status, boolean hasLogo, Instant logoUpdatedAt) {
+        this(id, name, institutionCode, emailDomain, status, hasLogo, logoUpdatedAt, false);
+    }
+
+    public InstitutionDto(UUID id, String name, String institutionCode, String emailDomain,
+            InstitutionStatus status, boolean hasLogo, Instant logoUpdatedAt, boolean isProtected) {
         this.id = id;
         this.name = name;
         this.institutionCode = institutionCode;
         this.emailDomain = emailDomain;
         this.status = status;
+        this.hasLogo = hasLogo;
+        this.logoUpdatedAt = logoUpdatedAt;
+        this.isProtected = isProtected;
     }
 
     // ── Static Factory ────────────────────────────────────────────────────────
@@ -70,7 +83,10 @@ public class InstitutionDto {
                 institution.getName(),
                 institution.getCode(), // M1 field is getCode(), not getInstitutionCode()
                 institution.getEmailDomain(),
-                institution.getStatus()
+                institution.getStatus(),
+                institution.getLogoData() != null && institution.getLogoData().length > 0,
+                institution.getLogoUpdatedAt(),
+                institution.isProtected()
         );
     }
 
@@ -115,6 +131,30 @@ public class InstitutionDto {
         this.status = status;
     }
 
+    public boolean isHasLogo() {
+        return hasLogo;
+    }
+
+    public void setHasLogo(boolean hasLogo) {
+        this.hasLogo = hasLogo;
+    }
+
+    public Instant getLogoUpdatedAt() {
+        return logoUpdatedAt;
+    }
+
+    public void setLogoUpdatedAt(Instant logoUpdatedAt) {
+        this.logoUpdatedAt = logoUpdatedAt;
+    }
+
+    public boolean isProtected() {
+        return isProtected;
+    }
+
+    public void setProtected(boolean isProtected) {
+        this.isProtected = isProtected;
+    }
+
     @Override
     public String toString() {
         return "InstitutionDto{"
@@ -123,6 +163,7 @@ public class InstitutionDto {
                 + ", institutionCode='" + institutionCode + '\''
             + ", emailDomain='" + emailDomain + '\''
                 + ", status=" + status
+                + ", hasLogo=" + hasLogo
                 + '}';
     }
 }

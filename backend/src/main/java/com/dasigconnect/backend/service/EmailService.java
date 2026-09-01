@@ -1,20 +1,16 @@
 package com.dasigconnect.backend.service;
 
-import java.io.UnsupportedEncodingException;
 import java.time.Year;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.MailException;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.internet.MimeMessage;
+import com.dasigconnect.backend.external.MailTransport;
+import com.dasigconnect.backend.external.MailTransportException;
 
 @Service
 public class EmailService {
@@ -22,35 +18,14 @@ public class EmailService {
     private static final Logger log = LoggerFactory.getLogger(EmailService.class);
     private static final int MAX_ATTEMPTS = 3;
 
-    private final JavaMailSender mailSender;
-    private final String fromAddress;
-    private final String fromName;
-    private final String replyToAddress;
+    private final MailTransport mailTransport;
     private final String appBaseUrl;
 
     public EmailService(
-            JavaMailSender mailSender,
-            @Value("${app.mail.from:no-reply@dasigconnect.local}") String fromAddress,
-            @Value("${app.mail.from.name:DASIGConnect}") String fromName,
-            @Value("${app.mail.reply-to:${app.mail.from:no-reply@dasigconnect.local}}") String replyToAddress,
-            @Value("${app.frontend.base-url:http://localhost:5173}") String appBaseUrl,
-            @Value("${spring.mail.host:localhost}") String mailHost,
-            @Value("${spring.mail.port:2525}") int mailPort,
-            @Value("${spring.mail.username:}") String mailUsername,
-            @Value("${spring.mail.properties.mail.smtp.auth:false}") boolean smtpAuth,
-            @Value("${spring.mail.properties.mail.smtp.starttls.enable:false}") boolean startTlsEnabled) {
-        this.mailSender = mailSender;
-        this.fromAddress = fromAddress;
-        this.fromName = fromName;
-        this.replyToAddress = replyToAddress;
+            MailTransport mailTransport,
+            @Value("${app.frontend.base-url:http://localhost:5173}") String appBaseUrl) {
+        this.mailTransport = mailTransport;
         this.appBaseUrl = appBaseUrl;
-        log.info("Email service configured with SMTP {}:{}, username={}, from={}, auth={}, starttls={}",
-                mailHost,
-                mailPort,
-                blankToPlaceholder(mailUsername),
-                fromAddress,
-                smtpAuth,
-                startTlsEnabled);
         if (isLocalhostUrl(appBaseUrl)) {
             log.warn("Email links are configured with a localhost frontend URL ({}). Use a public HTTPS APP_FRONTEND_BASE_URL before testing institutional delivery.", appBaseUrl);
         }
@@ -82,7 +57,7 @@ public class EmailService {
                                   </tr>
                                   <tr>
                                     <td style="padding:0 32px 18px 32px;font-size:15px;line-height:1.6;color:#33415c;">
-                                      An administrator invited you to join DASIGConnect. Use the button below to set up your account.
+                                      An moderator invited you to join DASIGConnect. Use the button below to set up your account.
                                     </td>
                                   </tr>
                                   <tr>
@@ -175,44 +150,28 @@ public class EmailService {
     }
 
     public void sendPlainText(String to, String subject, String body) {
-        retry(() -> {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(fromAddress);
-            message.setReplyTo(replyToAddress);
-            message.setTo(to);
-            message.setSubject(subject);
-            message.setText(body);
-            mailSender.send(message);
-        });
+        retry(() -> mailTransport.send(to, subject, null, body, standardHeaders()));
     }
 
     public void sendHtml(String to, String subject, String htmlBody, String fallbackText) {
-        retry(() -> {
-            try {
-                MimeMessage message = mailSender.createMimeMessage();
-                MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-                helper.setFrom(new InternetAddress(fromAddress, fromName, "UTF-8"));
-                helper.setReplyTo(new InternetAddress(replyToAddress, fromName, "UTF-8"));
-                helper.setTo(to);
-                helper.setSubject(subject);
-                helper.setText(fallbackText, htmlBody);
-                message.setHeader("Auto-Submitted", "auto-generated");
-                message.setHeader("X-Auto-Response-Suppress", "All");
-                message.setHeader("X-Entity-Ref-ID", "dasigconnect-" + Year.now().getValue());
-                mailSender.send(message);
-            } catch (MessagingException | UnsupportedEncodingException ex) {
-                throw new IllegalStateException("Unable to create email message", ex);
-            }
-        });
+        retry(() -> mailTransport.send(to, subject, htmlBody, fallbackText, standardHeaders()));
+    }
+
+    private static Map<String, String> standardHeaders() {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Auto-Submitted", "auto-generated");
+        headers.put("X-Auto-Response-Suppress", "All");
+        headers.put("X-Entity-Ref-ID", "dasigconnect-" + Year.now().getValue());
+        return headers;
     }
 
     private void retry(Runnable sendOperation) {
-        RuntimeException lastFailure = null;
+        MailTransportException lastFailure = null;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
                 sendOperation.run();
                 return;
-            } catch (MailException | IllegalStateException ex) {
+            } catch (MailTransportException ex) {
                 lastFailure = ex;
             }
         }
@@ -221,10 +180,6 @@ public class EmailService {
         throw new IllegalStateException(
                 "Email delivery failed after " + MAX_ATTEMPTS + " attempts: " + failureMessage,
                 lastFailure);
-    }
-
-    private static String blankToPlaceholder(String value) {
-        return value == null || value.isBlank() ? "<empty>" : value;
     }
 
     private static String rootCauseMessage(Throwable throwable) {

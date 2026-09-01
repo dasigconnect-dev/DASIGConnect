@@ -13,32 +13,50 @@ public class SubmissionSummaryDto {
     private UUID id;
     private String eventTitle;
     private LocalDate eventDate;
+    private String caption;
     private String status;
     private Instant scheduledAt;
+    private Instant publishedAt;
     private Instant submittedAt;
     private Instant createdAt;
     private UUID institutionId;
+    private String institutionName;
     private String contributorEmail;
     private long mediaCount;
     private String category;
+    private String templateId;
+    private boolean fastTrack;
+    private String liveEventName;
     private List<String> tags;
+    private String albumName;
+    private List<String> mediaTags;
 
     public static SubmissionSummaryDto from(Submission s, long mediaCount) {
         SubmissionSummaryDto dto = new SubmissionSummaryDto();
         dto.id = s.getId();
         dto.eventTitle = s.getEventTitle();
         dto.eventDate = s.getEventDate();
+        dto.caption = s.getCaption();
         dto.status = s.getStatus().name();
         dto.scheduledAt = s.getScheduledAt();
+        dto.publishedAt = s.getPublishedAt();
         dto.submittedAt = s.getSubmittedAt();
         dto.createdAt = s.getCreatedAt();
         dto.institutionId = s.getInstitution().getId();
+        dto.institutionName = s.getInstitution().getName();
         dto.contributorEmail = s.getContributor().getEmail();
         dto.mediaCount = mediaCount;
         dto.category = s.getCategory();
+        dto.templateId = s.getTemplateId();
+        dto.fastTrack = s.isFastTrack();
+        dto.liveEventName = s.getLiveEventName();
         dto.tags = (s.getTags() == null || s.getTags().isBlank())
                 ? List.of()
                 : Arrays.stream(s.getTags().split(",")).map(String::trim).filter(t -> !t.isEmpty()).toList();
+        dto.albumName = s.getAlbumName();
+        dto.mediaTags = (s.getMediaTags() == null || s.getMediaTags().isBlank())
+                ? List.of()
+                : Arrays.stream(s.getMediaTags().split(",")).map(String::trim).filter(t -> !t.isEmpty()).toList();
         return dto;
     }
 
@@ -54,12 +72,20 @@ public class SubmissionSummaryDto {
         return eventDate;
     }
 
+    public String getCaption() {
+        return caption;
+    }
+
     public String getStatus() {
         return status;
     }
 
     public Instant getScheduledAt() {
         return scheduledAt;
+    }
+
+    public Instant getPublishedAt() {
+        return publishedAt;
     }
 
     public Instant getSubmittedAt() {
@@ -74,6 +100,10 @@ public class SubmissionSummaryDto {
         return institutionId;
     }
 
+    public String getInstitutionName() {
+        return institutionName;
+    }
+
     public String getContributorEmail() {
         return contributorEmail;
     }
@@ -86,7 +116,27 @@ public class SubmissionSummaryDto {
         return category;
     }
 
+    public String getTemplateId() {
+        return templateId;
+    }
+
+    public boolean isFastTrack() {
+        return fastTrack;
+    }
+
+    public String getLiveEventName() {
+        return liveEventName;
+    }
+
     public List<String> getTags() {
         return tags;
+    }
+
+    public String getAlbumName() {
+        return albumName;
+    }
+
+    public List<String> getMediaTags() {
+        return mediaTags;
     }
 }

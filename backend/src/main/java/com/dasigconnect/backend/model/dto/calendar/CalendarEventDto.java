@@ -16,31 +16,53 @@ public class CalendarEventDto {
     private String status;
     private Instant scheduledAt;
     private Instant publishedAt;
+    private String caption;
+    private String description;
+    private String contributorName;
+    /** True once the submission's slot reservation is permanently locked (post-approval). */
+    private boolean locked;
+    /** True when this event is the viewer's own authored submission (own-workflow bucket). */
+    private boolean mine;
 
     public static CalendarEventDto full(Submission s) {
         CalendarEventDto dto = new CalendarEventDto();
         dto.id = s.getId();
         dto.title = s.getEventTitle();
-        dto.institutionId = s.getInstitution().getId();
-        dto.institutionName = s.getInstitution().getName();
-        dto.institutionCode = s.getInstitution().getCode();
-        dto.status = s.getStatus().name();
-        dto.scheduledAt = s.getScheduledAt();
+        dto.institutionId = s.getInstitution() != null ? s.getInstitution().getId() : null;
+        dto.institutionName = s.getInstitution() != null ? s.getInstitution().getName() : null;
+        dto.institutionCode = s.getInstitution() != null ? s.getInstitution().getCode() : null;
+        dto.status = s.getStatus() != null ? s.getStatus().name() : null;
+        // Fall back to the publish time so Live Event / Fast-Track posts (which
+        // never reserve a slot) still have a calendar position.
+        dto.scheduledAt = s.getScheduledAt() != null ? s.getScheduledAt() : s.getPublishedAt();
         dto.publishedAt = s.getPublishedAt();
+        dto.caption = s.getCaption();
+        dto.description = s.getDescription();
+        if (s.getContributor() != null) {
+            String firstName = s.getContributor().getFirstName() != null ? s.getContributor().getFirstName() : "";
+            String lastName = s.getContributor().getLastName() != null ? s.getContributor().getLastName() : "";
+            String fullName = (firstName + " " + lastName).trim();
+            dto.contributorName = fullName.isEmpty() ? s.getContributor().getEmail() : fullName;
+        }
         return dto;
     }
 
-    /** For cross-institution slots visible to contributors/validators: timing only, content masked. */
+    /** For cross-institution slots visible to contributors/moderators: timing and title visible, sensitive content (caption, media, description, contributor) masked. */
     public static CalendarEventDto masked(Submission s) {
         CalendarEventDto dto = new CalendarEventDto();
         dto.id = s.getId();
-        dto.title = null;
-        dto.institutionId = s.getInstitution().getId();
-        dto.institutionName = s.getInstitution().getName();
-        dto.institutionCode = s.getInstitution().getCode();
-        dto.status = s.getStatus().name();
-        dto.scheduledAt = s.getScheduledAt();
+        dto.title = s.getEventTitle();
+        dto.institutionId = s.getInstitution() != null ? s.getInstitution().getId() : null;
+        dto.institutionName = s.getInstitution() != null ? s.getInstitution().getName() : null;
+        dto.institutionCode = s.getInstitution() != null ? s.getInstitution().getCode() : null;
+        dto.status = s.getStatus() != null ? s.getStatus().name() : null;
+        // Fall back to the publish time so Live Event / Fast-Track posts (which
+        // never reserve a slot) still have a calendar position.
+        dto.scheduledAt = s.getScheduledAt() != null ? s.getScheduledAt() : s.getPublishedAt();
         dto.publishedAt = s.getPublishedAt();
+        dto.caption = null;
+        dto.description = null;
+        dto.contributorName = null;
         return dto;
     }
 
@@ -52,4 +74,13 @@ public class CalendarEventDto {
     public String getStatus() { return status; }
     public Instant getScheduledAt() { return scheduledAt; }
     public Instant getPublishedAt() { return publishedAt; }
+    public String getCaption() { return caption; }
+    public String getDescription() { return description; }
+    public String getContributorName() { return contributorName; }
+
+    public boolean isLocked() { return locked; }
+    public void setLocked(boolean locked) { this.locked = locked; }
+
+    public boolean isMine() { return mine; }
+    public void setMine(boolean mine) { this.mine = mine; }
 }

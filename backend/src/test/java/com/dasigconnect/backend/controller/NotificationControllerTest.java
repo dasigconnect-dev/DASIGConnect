@@ -47,9 +47,9 @@ class NotificationControllerTest {
     private TenantScopeService tenantScopeService;
 
     @Test
-    void list_withoutAuth_returns403() throws Exception {
+    void list_withoutAuth_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/notifications"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -67,10 +67,10 @@ class NotificationControllerTest {
 
         mockMvc.perform(get("/api/v1/notifications"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(notificationId.toString()))
-                .andExpect(jsonPath("$[0].eventType").value("submission_pending"))
-                .andExpect(jsonPath("$[0].message").value("New submission pending review."))
-                .andExpect(jsonPath("$[0].deepLink").value("/dashboard"));
+                .andExpect(jsonPath("$.data[0].id").value(notificationId.toString()))
+                .andExpect(jsonPath("$.data[0].eventType").value("submission_pending"))
+                .andExpect(jsonPath("$.data[0].message").value("New submission pending review."))
+                .andExpect(jsonPath("$.data[0].deepLink").value("/dashboard"));
     }
 
     @Test
@@ -80,7 +80,7 @@ class NotificationControllerTest {
 
         mockMvc.perform(get("/api/v1/notifications/unread-count"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.unreadCount").value(4));
+                .andExpect(jsonPath("$.data.unreadCount").value(4));
     }
 
     @Test

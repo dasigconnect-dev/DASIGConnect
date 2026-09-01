@@ -1,6 +1,13 @@
 import { createPortal } from "react-dom";
-import type { MediaAsset } from "../../../api/mediaApi";
+import { useEffect, useState } from "react";
+import {
+  getMediaAssetHistory,
+  type MediaAlbum,
+  type MediaAsset,
+  type MediaAssetHistoryEntry,
+} from "../../../api/mediaApi";
 import { formatFileSize, formatUploadDate, formatResolution, formatFileTypeName, isVideoType } from "../utils";
+import { buildAlbumOptions } from "../albumTree";
 
 interface AssetDetailPanelProps {
   asset: MediaAsset | null;
@@ -20,6 +27,11 @@ interface AssetDetailPanelProps {
   onRequestDelete: () => void;
   canBulkDelete?: boolean;
   onRequestBulkDelete?: () => void;
+  albums?: MediaAlbum[];
+  onUpdateAlbum?: (assetId: string, albumId: string | null) => void;
+  onRenameAlbum?: (album: MediaAlbum) => void;
+  onAddTag?: (assetId: string, label: string) => void | Promise<void>;
+  onRemoveTag?: (assetId: string, tagId: string) => void | Promise<void>;
 }
 
 const submissionStatusLabel: Record<string, string> = {
@@ -60,8 +72,53 @@ export default function AssetDetailPanel({
   onRequestDelete,
   canBulkDelete = false,
   onRequestBulkDelete,
+  albums = [],
+  onUpdateAlbum,
+  onAddTag,
+  onRemoveTag,
 }: AssetDetailPanelProps) {
   const newPostCount = selectionMode ? selectedAssets.length : asset ? 1 : 0;
+  const [albumSelection, setAlbumSelection] = useState("");
+  const [tab, setTab] = useState<"details" | "activity">("details");
+  const [newTag, setNewTag] = useState("");
+  const [history, setHistory] = useState<MediaAssetHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
+  // Valid move targets: folders in the asset's own institution, plus the shared library.
+  const albumOptions = buildAlbumOptions(
+    asset ? albums.filter((a) => a.institutionId === asset.institutionId || a.shared) : albums,
+  );
+
+  useEffect(() => {
+    setAlbumSelection(asset?.albumId ?? "");
+    setTab("details");
+    setNewTag("");
+    setHistory([]);
+    setHistoryError(false);
+  }, [asset?.albumId, asset?.id]);
+
+  useEffect(() => {
+    const id = asset?.id;
+    if (!id || tab !== "activity" || selectionMode) return;
+    const controller = new AbortController();
+    setHistoryLoading(true);
+    setHistoryError(false);
+    getMediaAssetHistory(id, controller.signal)
+      .then((res) => setHistory(res.data ?? []))
+      .catch((err) => {
+        if ((err as { code?: string })?.code !== "ERR_CANCELED") setHistoryError(true);
+      })
+      .finally(() => setHistoryLoading(false));
+    return () => controller.abort();
+  }, [asset?.id, tab, selectionMode]);
+
+  function submitNewTag() {
+    const label = newTag.trim();
+    if (!asset || !label || !onAddTag) return;
+    void Promise.resolve(onAddTag(asset.id, label));
+    setNewTag("");
+  }
+
   const panel = (
     <div className={`med-panel${open ? " open" : ""}`} role="dialog" aria-modal="true" aria-label="Asset Detail">
       <div className="med-panel-header">
@@ -79,7 +136,7 @@ export default function AssetDetailPanel({
           <div className="med-sel-block">
             <div className="med-sel-head">
               <div className="med-panel-section-label" style={{ marginBottom: 0 }}>
-                Selected for New Post · {selectedAssets.length}
+                Selected · {selectedAssets.length}
               </div>
               {onClearSelection && (
                 <button className="med-sel-clear" onClick={onClearSelection} type="button">
@@ -138,6 +195,30 @@ export default function AssetDetailPanel({
         )}
         {asset && (
           <>
+            {/* Tabs */}
+            <div className="med-panel-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "details"}
+                className={`med-panel-tab${tab === "details" ? " active" : ""}`}
+                onClick={() => setTab("details")}
+              >
+                Details
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "activity"}
+                className={`med-panel-tab${tab === "activity" ? " active" : ""}`}
+                onClick={() => setTab("activity")}
+              >
+                Activity
+              </button>
+            </div>
+
+            {tab === "details" && (
+            <>
             {/* Preview */}
             <div className="med-panel-preview">
               <div className="med-panel-preview-inner" style={{ background: previewBackground(asset) }}>
@@ -195,6 +276,10 @@ export default function AssetDetailPanel({
                   <div className="med-meta-val">{formatUploadDate(asset.uploadedAt)}</div>
                 </div>
                 <div>
+                  <div className="med-meta-key">Album</div>
+                  <div className="med-meta-val">{asset.albumName || "No album assigned"}</div>
+                </div>
+                <div>
                   <div className="med-meta-key">File Size</div>
                   <div className="med-meta-val">{formatFileSize(asset.fileSizeBytes)}</div>
                 </div>
@@ -205,35 +290,119 @@ export default function AssetDetailPanel({
               </div>
             </div>
 
-            {/* AI Classification */}
-            {(asset.aiTags && asset.aiTags.length > 0) || asset.status === "processing" ? (
-              <div>
-                <div className="med-panel-section-label">AI Classification</div>
-                {asset.status === "processing" ? (
-                  <span className="med-badge med-badge-processing">Classification in progress…</span>
-                ) : (
-                  <>
-                    <div className="med-ai-tags">
-                      {asset.aiTags!.map((tag) => (
-                        <div key={tag.label} className="med-ai-tag">
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                            <line x1="7" y1="7" x2="7.01" y2="7" />
-                          </svg>
-                          {tag.label}
-                          <span className="med-ai-tag-conf">{tag.confidence}%</span>
-                        </div>
-                      ))}
-                    </div>
-                    <input
-                      type="text"
-                      className="med-custom-tag-input"
-                      placeholder="+ Add custom tag (e.g., dost-region7)"
-                    />
-                  </>
+            {/* Album Organization */}
+            <div>
+              <div className="med-panel-section-label">Album Organization</div>
+              <div className="med-album-manage">
+                <select
+                  className="med-album-select"
+                  value={albumSelection}
+                  onChange={(event) => setAlbumSelection(event.target.value)}
+                >
+                  {albumOptions.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+                {onUpdateAlbum && albumSelection && albumSelection !== (asset.albumId ?? "") && (
+                  <button
+                    className="med-btn med-btn-ghost med-btn-sm med-album-move-btn"
+                    type="button"
+                    onClick={() => onUpdateAlbum(asset.id, albumSelection || null)}
+                  >
+                    Move here
+                  </button>
                 )}
               </div>
-            ) : null}
+            </div>
+
+            {/* Tags */}
+            <div>
+              <div className="med-panel-section-label">Tags</div>
+              {asset.status === "processing" && (
+                <span className="med-badge med-badge-processing">AI classification in progress…</span>
+              )}
+              {asset.aiTags && asset.aiTags.length > 0 && (
+                <>
+                  <div className="med-tag-group-label">AI tags</div>
+                  <div className="med-ai-tags">
+                    {asset.aiTags.map((tag) => (
+                      <div key={tag.label} className="med-ai-tag">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                          <line x1="7" y1="7" x2="7.01" y2="7" />
+                        </svg>
+                        {tag.label}
+                        <span className="med-ai-tag-conf">{tag.confidence}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              <div className="med-tag-group-label">Your tags</div>
+              <div className="med-user-tags">
+                {(asset.userTags ?? []).map((tag) => (
+                  <span key={tag.id} className="med-user-tag">
+                    {tag.label}
+                    {onRemoveTag && (
+                      <button
+                        type="button"
+                        className="med-user-tag-x"
+                        aria-label={`Remove tag ${tag.label}`}
+                        onClick={() => void Promise.resolve(onRemoveTag(asset.id, tag.id))}
+                      >
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    )}
+                  </span>
+                ))}
+                {(asset.userTags ?? []).length === 0 && (
+                  <span className="med-tag-empty">No tags yet</span>
+                )}
+              </div>
+              {onAddTag && (
+                <input
+                  type="text"
+                  className="med-custom-tag-input"
+                  placeholder="+ Add tag (e.g., dost-region7)"
+                  value={newTag}
+                  onChange={(e) => setNewTag(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submitNewTag(); } }}
+                  onBlur={submitNewTag}
+                />
+              )}
+            </div>
+            </>
+            )}
+
+            {tab === "activity" && (
+            <>
+            {/* History */}
+            <div>
+              <div className="med-panel-section-label">History</div>
+              {historyLoading && <div className="med-history-loading">Loading…</div>}
+              {!historyLoading && historyError && (
+                <div className="med-tag-empty">Couldn’t load activity — reopen the asset to retry.</div>
+              )}
+              {!historyLoading && !historyError && history.length === 0 && (
+                <div className="med-tag-empty">No recorded activity.</div>
+              )}
+              <div className="med-history-list">
+                {history.map((entry, i) => (
+                  <div key={`${entry.action}-${entry.occurredAt}-${i}`} className="med-history-item">
+                    <span className="med-history-dot" aria-hidden="true" />
+                    <div>
+                      <div className="med-history-summary">{entry.summary}</div>
+                      <div className="med-history-meta">
+                        {entry.actorName} · {formatUploadDate(entry.occurredAt)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {/* Used In */}
             {asset.usedIn && asset.usedIn.length > 0 && (
@@ -267,6 +436,8 @@ export default function AssetDetailPanel({
                   ))}
                 </div>
               </div>
+            )}
+            </>
             )}
           </>
         )}

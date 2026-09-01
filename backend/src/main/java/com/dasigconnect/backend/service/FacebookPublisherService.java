@@ -10,6 +10,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,11 +24,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.dasigconnect.backend.event.PostPublishedEvent;
 import com.dasigconnect.backend.event.PublishFailedEvent;
+import com.dasigconnect.backend.event.TokenPublishingSuspendedEvent;
+import com.dasigconnect.backend.event.TokenValidationFailedEvent;
 import com.dasigconnect.backend.model.entity.FacebookPageToken;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
 import com.dasigconnect.backend.model.entity.PublicationAttempt;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.repository.FacebookPageTokenRepository;
 import com.dasigconnect.backend.repository.PublicationAttemptRepository;
@@ -51,6 +58,10 @@ public class FacebookPublisherService {
 
     private static final Logger log = LoggerFactory.getLogger(FacebookPublisherService.class);
 
+    public static final String TOKEN_EXPIRED_BLOCKED_PREFIX = "TOKEN_EXPIRED_BLOCKED";
+    public static final String TOKEN_EXPIRED_24H_PREFIX = "TOKEN_EXPIRED_24H_ESCALATION";
+    public static final String TOKEN_EXPIRED_48H_PREFIX = "TOKEN_EXPIRED_48H_FAILED";
+
     private static final int MAX_RETRIES = 3;
     private static final long[] BACKOFF_MS = {5_000L, 25_000L, 125_000L};
 
@@ -65,6 +76,8 @@ public class FacebookPublisherService {
     private final PublicationAttemptRepository publicationAttemptRepository;
     private final SubmissionRepository submissionRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final WatermarkApplicationService watermarkApplicationService;
+    private final AuditLogService auditLogService;
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -79,7 +92,9 @@ public class FacebookPublisherService {
             FacebookPageTokenRepository pageTokenRepository,
             PublicationAttemptRepository publicationAttemptRepository,
             SubmissionRepository submissionRepository,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            WatermarkApplicationService watermarkApplicationService,
+            AuditLogService auditLogService) {
         this.pageAccessToken = pageAccessToken;
         this.pageId = pageId;
         this.appId = appId;
@@ -90,6 +105,8 @@ public class FacebookPublisherService {
         this.publicationAttemptRepository = publicationAttemptRepository;
         this.submissionRepository = submissionRepository;
         this.eventPublisher = eventPublisher;
+        this.watermarkApplicationService = watermarkApplicationService;
+        this.auditLogService = auditLogService;
     }
 
     public boolean isConfigured() {
@@ -142,11 +159,51 @@ public class FacebookPublisherService {
             return;
         }
 
-        String token = resolveActiveToken();
-        if (token == null) {
+        publishInternal(submission, mediaAssets, Map.of(), Map.of());
+    }
+
+    public void publishMediaLinks(Submission submission, List<SubmissionMediaAsset> mediaLinks) {
+        List<MediaAsset> mediaAssets = mediaLinks.stream()
+                .map(SubmissionMediaAsset::getMediaAsset)
+                .toList();
+        Map<UUID, String> mediaCaptions = mediaLinks.stream()
+                .collect(Collectors.toMap(
+                        link -> link.getMediaAsset().getId(),
+                        link -> normalizeCaption(link.getCaption()),
+                        (left, right) -> left));
+        Map<UUID, String> photoPublishUrls = mediaLinks.stream()
+                .filter(link -> isImage(link.getMediaAsset().getFileType()))
+                .collect(Collectors.toMap(
+                        link -> link.getMediaAsset().getId(),
+                        link -> watermarkApplicationService.resolvePublishUrl(submission, link),
+                        (left, right) -> left));
+        publishInternal(submission, mediaAssets, mediaCaptions, photoPublishUrls);
+    }
+
+    public boolean hasUsableActiveToken() {
+        return isConfigured() && resolveActiveToken().status() == TokenStatus.READY;
+    }
+
+    private void publishInternal(
+            Submission submission,
+            List<MediaAsset> mediaAssets,
+            Map<UUID, String> mediaCaptions,
+            Map<UUID, String> photoPublishUrls) {
+        if (!isConfigured()) {
+            log.warn("Facebook publishing not configured - skipping submission {}.", submission.getId());
+            return;
+        }
+
+        TokenResolution tokenResolution = resolveActiveToken();
+        if (tokenResolution.status() == TokenStatus.MISSING) {
             markFailed(submission, "No active Facebook page token found.");
             return;
         }
+        if (tokenResolution.status() == TokenStatus.EXPIRED) {
+            suspendForTokenExpiry(submission, tokenResolution.message());
+            return;
+        }
+        String token = tokenResolution.token().orElseThrow();
 
         boolean hasImages = mediaAssets.stream().anyMatch(a -> isImage(a.getFileType()));
         boolean hasVideos = mediaAssets.stream().anyMatch(a -> isVideo(a.getFileType()));
@@ -160,7 +217,12 @@ public class FacebookPublisherService {
         if (hasVideos) {
             publishVideoPost(submission, mediaAssets.stream().filter(a -> isVideo(a.getFileType())).findFirst().orElseThrow(), token);
         } else if (hasImages) {
-            publishPhotoPost(submission, mediaAssets.stream().filter(a -> isImage(a.getFileType())).toList(), token);
+            publishPhotoPost(
+                    submission,
+                    mediaAssets.stream().filter(a -> isImage(a.getFileType())).toList(),
+                    mediaCaptions,
+                    photoPublishUrls,
+                    token);
         } else {
             markFailed(submission, "Submission has no media assets to publish.");
         }
@@ -168,7 +230,12 @@ public class FacebookPublisherService {
 
     // ── Photo publish (2-step) ────────────────────────────────────────────────
 
-    private void publishPhotoPost(Submission submission, List<MediaAsset> images, String token) {
+    private void publishPhotoPost(
+            Submission submission,
+            List<MediaAsset> images,
+            Map<UUID, String> mediaCaptions,
+            Map<UUID, String> photoPublishUrls,
+            String token) {
         String caption = buildPostMessage(submission);
         List<String> stagedPhotoIds = new ArrayList<>();
         String lastError = null;
@@ -179,7 +246,8 @@ public class FacebookPublisherService {
 
                 // Step 1: Stage each photo unpublished
                 for (MediaAsset image : images) {
-                    String photoId = stagePhoto(image.getStorageUrl(), token);
+                    String photoUrl = photoPublishUrls.getOrDefault(image.getId(), image.getStorageUrl());
+                    String photoId = stagePhoto(photoUrl, mediaCaptions.get(image.getId()), token);
                     stagedPhotoIds.add(photoId);
                 }
 
@@ -260,9 +328,10 @@ public class FacebookPublisherService {
 
     // ── Graph API helpers ─────────────────────────────────────────────────────
 
-    private String stagePhoto(String storageUrl, String token) throws IOException, InterruptedException {
+    private String stagePhoto(String storageUrl, String mediaCaption, String token) throws IOException, InterruptedException {
         String body = "url=" + encode(storageUrl)
                 + "&published=false"
+                + (mediaCaption == null || mediaCaption.isBlank() ? "" : "&caption=" + encode(mediaCaption))
                 + "&access_token=" + encode(token);
         String url = "https://graph.facebook.com/" + apiVersion + "/" + pageId + "/photos";
         JsonNode response = postForm(url, body);
@@ -326,14 +395,13 @@ public class FacebookPublisherService {
         s.setStatus(isDirectPost ? SubmissionStatus.admin_direct_post : SubmissionStatus.published);
         s.setPlatformPostId(postId);
         s.setPublishedAt(Instant.now());
+        clearTokenSuspension(s);
         submissionRepository.save(s);
         String postUrl = "https://www.facebook.com/" + postId.replace("_", "/posts/");
-        if (isDirectPost) {
-            eventPublisher.publishEvent(new com.dasigconnect.backend.event.AdminDirectPostEvent(
-                    s.getInstitution(), s.getCaption(), postUrl));
-        } else {
-            eventPublisher.publishEvent(new PostPublishedEvent(s, postUrl));
-        }
+        // `direct_post_*` is a legacy lifecycle (the admin Direct Post UI was
+        // removed); any remaining such rows still publish and are marked
+        // `admin_direct_post`, and fire the normal "published" event.
+        eventPublisher.publishEvent(new PostPublishedEvent(s, postUrl));
         log.info("Submission {} published successfully as post {} (status={}).",
                 s.getId(), postId, s.getStatus());
     }
@@ -344,9 +412,53 @@ public class FacebookPublisherService {
         boolean isDirectPost = s.getStatus() == SubmissionStatus.direct_post_scheduled
                 || s.getStatus() == SubmissionStatus.direct_post_publishing;
         s.setStatus(isDirectPost ? SubmissionStatus.direct_post_failed : SubmissionStatus.publish_failed);
+        if (!isTokenFinalFailure(error)) {
+            clearTokenSuspension(s);
+        }
         submissionRepository.save(s);
         eventPublisher.publishEvent(new PublishFailedEvent(s, error));
+        auditLogService.recordSystemAction("PUBLISH_FAILED", s.getId(), Map.of(
+                "status", s.getStatus().name(),
+                "error", error != null ? error : "unknown error"));
         log.error("Submission {} publishing failed (status={}): {}", s.getId(), s.getStatus(), error);
+    }
+
+    @Transactional
+    public void suspendForTokenExpiry(Submission submission, String error) {
+        Submission s = submissionRepository.findById(submission.getId()).orElse(submission);
+        if (s.getStatus() == SubmissionStatus.publishing) {
+            s.setStatus(SubmissionStatus.scheduled);
+        } else if (s.getStatus() == SubmissionStatus.direct_post_publishing) {
+            s.setStatus(SubmissionStatus.direct_post_scheduled);
+        }
+        if (s.getTokenBlockedAt() == null) {
+            s.setTokenBlockedAt(Instant.now());
+        }
+        submissionRepository.save(s);
+        boolean firstTokenBlock = s.getTokenEscalated24hAt() == null
+                && s.getTokenFinalFailedAt() == null
+                && !publicationAttemptRepository.existsBySubmissionIdAndErrorDetailStartingWith(
+                        s.getId(),
+                        TOKEN_EXPIRED_BLOCKED_PREFIX);
+        if (firstTokenBlock) {
+            recordAttempt(s, 1, "failed", TOKEN_EXPIRED_BLOCKED_PREFIX + ": " + error, null);
+            eventPublisher.publishEvent(new TokenValidationFailedEvent());
+            eventPublisher.publishEvent(new TokenPublishingSuspendedEvent(
+                    s,
+                    TokenPublishingSuspendedEvent.Stage.FIRST_ALERT,
+                    error));
+        }
+        log.error("Submission {} publishing suspended because Facebook token is unavailable: {}", s.getId(), error);
+    }
+
+    private void clearTokenSuspension(Submission submission) {
+        submission.setTokenBlockedAt(null);
+        submission.setTokenEscalated24hAt(null);
+        submission.setTokenFinalFailedAt(null);
+    }
+
+    private static boolean isTokenFinalFailure(String error) {
+        return error != null && error.contains("not reauthorized within 48 hours");
     }
 
     @Transactional
@@ -362,29 +474,68 @@ public class FacebookPublisherService {
 
     // ── Token resolution ──────────────────────────────────────────────────────
 
-    private String resolveActiveToken() {
+    private TokenResolution resolveActiveToken() {
         return pageTokenRepository.findByPageIdAndIsActiveTrue(pageId)
                 .map(t -> {
+                    if (t.getExpiresAt() != null && !t.getExpiresAt().isAfter(Instant.now())) {
+                        return TokenResolution.expired("Facebook Page Access Token expired at " + t.getExpiresAt() + ".");
+                    }
                     try {
-                        return tokenEncryptionService.decryptToken(t.getEncryptedToken());
+                        return TokenResolution.ready(tokenEncryptionService.decryptToken(t.getEncryptedToken()));
                     } catch (Exception ex) {
                         log.error("Failed to decrypt Facebook page token: {}", ex.getMessage());
-                        return null;
+                        return TokenResolution.missing("Facebook Page Access Token could not be decrypted.");
                     }
                 })
-                .orElse(null);
+                .orElseGet(() -> TokenResolution.missing("No active Facebook page token found."));
+    }
+
+    private String resolveActiveTokenValue() {
+        TokenResolution resolved = resolveActiveToken();
+        return resolved.status() == TokenStatus.READY ? resolved.token().orElse(null) : null;
     }
 
     // ── Token health check (called by TokenHealthCheckJob) ────────────────────
 
+    /** What the {@code debug_token} probe concluded about the active page token. */
+    public enum TokenValidationOutcome {
+        /** {@code is_valid: true} and Graph returned a real {@code expires_at}. */
+        VALID,
+        /** {@code is_valid: true} with {@code expires_at: 0} — a long-lived / non-expiring token. Healthy. */
+        VALID_NON_EXPIRING,
+        /** Graph says the page token is invalid or expired — needs re-authorization. */
+        REJECTED,
+        /** Nothing to validate (no active token, or app id/secret not set so {@code debug_token} can't be called). */
+        NOT_CONFIGURED,
+        /** Graph could not be reached / parsed — transient, retry next run. */
+        UNREACHABLE
+    }
+
+    /** Result of {@link #validateToken()}. {@code expiresAt} is only set for {@link TokenValidationOutcome#VALID}. */
+    public record TokenValidation(TokenValidationOutcome outcome, Instant expiresAt, String detail) {
+        public boolean healthy() {
+            return outcome == TokenValidationOutcome.VALID
+                    || outcome == TokenValidationOutcome.VALID_NON_EXPIRING
+                    || outcome == TokenValidationOutcome.NOT_CONFIGURED;
+        }
+    }
+
     /**
-     * Validates the active token via the Graph API debug_token endpoint.
-     * Returns the token expiry time, or null if invalid/missing.
-     * Used by TokenHealthCheckJob (GR-T4).
+     * Validates the active token via the Graph API {@code debug_token} endpoint.
+     * Never throws — every failure mode maps to a {@link TokenValidation} outcome
+     * so the caller (TokenHealthCheckJob, GR-T4) can tell a dead token apart from
+     * an unconfigured app or a transient network error.
      */
-    public Instant validateToken() {
-        String token = resolveActiveToken();
-        if (token == null) return null;
+    public TokenValidation validateToken() {
+        if (appId == null || appId.isBlank() || appSecret == null || appSecret.isBlank()) {
+            return new TokenValidation(TokenValidationOutcome.NOT_CONFIGURED, null,
+                    "Facebook app id/secret are not set; debug_token cannot be called.");
+        }
+        String token = resolveActiveTokenValue();
+        if (token == null) {
+            return new TokenValidation(TokenValidationOutcome.NOT_CONFIGURED, null,
+                    "No active Facebook page token is available to validate.");
+        }
 
         try {
             String url = "https://graph.facebook.com/" + apiVersion + "/debug_token"
@@ -399,28 +550,43 @@ public class FacebookPublisherService {
             JsonNode node = objectMapper.readTree(response.body());
             JsonNode data = node.path("data");
 
-            boolean isValid = data.path("is_valid").asBoolean(false);
-            if (!isValid) {
-                log.warn("Facebook page token failed validation.");
-                return null;
+            // A top-level error with no data node means the request itself was
+            // rejected (usually a bad app id/secret) — not a verdict on the token.
+            if (node.has("error") && !data.isObject()) {
+                String msg = node.path("error").path("message").asText("debug_token request was rejected.");
+                log.warn("Facebook debug_token request rejected (verify app id/secret): {}", msg);
+                return new TokenValidation(TokenValidationOutcome.NOT_CONFIGURED, null,
+                        "debug_token request rejected — verify app id/secret: " + msg);
             }
 
-            // Update last_validated_at in DB
+            boolean isValid = data.path("is_valid").asBoolean(false);
+            if (!isValid) {
+                String reason = data.path("error").path("message")
+                        .asText("Graph API reports the page token as invalid or expired.");
+                log.warn("Facebook page token failed validation: {}", reason);
+                return new TokenValidation(TokenValidationOutcome.REJECTED, null, reason);
+            }
+
+            long expiresAtEpoch = data.path("expires_at").asLong(0L);
+            Instant expiresAt = expiresAtEpoch > 0 ? Instant.ofEpochSecond(expiresAtEpoch) : null;
+
+            // Refresh last_validated_at (and expiry, when the token actually has one).
             pageTokenRepository.findByPageIdAndIsActiveTrue(pageId).ifPresent(t -> {
                 t.setLastValidatedAt(Instant.now());
-                long expiresAt = data.path("expires_at").asLong(0L);
-                if (expiresAt > 0) {
-                    t.setExpiresAt(Instant.ofEpochSecond(expiresAt));
+                if (expiresAt != null) {
+                    t.setExpiresAt(expiresAt);
                 }
                 pageTokenRepository.save(t);
             });
 
-            long expiresAt = data.path("expires_at").asLong(0L);
-            return expiresAt > 0 ? Instant.ofEpochSecond(expiresAt) : null;
-
+            return expiresAt != null
+                    ? new TokenValidation(TokenValidationOutcome.VALID, expiresAt, "Token is valid.")
+                    : new TokenValidation(TokenValidationOutcome.VALID_NON_EXPIRING, null,
+                            "Token is valid and does not expire.");
         } catch (Exception ex) {
             log.error("Token validation request failed: {}", ex.getMessage());
-            return null;
+            return new TokenValidation(TokenValidationOutcome.UNREACHABLE, null,
+                    "Could not reach the Facebook Graph API to validate the token: " + ex.getMessage());
         }
     }
 
@@ -465,11 +631,35 @@ public class FacebookPublisherService {
         return "[\"" + String.join("\",\"", ids) + "\"]";
     }
 
+    private static String normalizeCaption(String caption) {
+        return caption == null || caption.isBlank() ? "" : caption.trim();
+    }
+
     private static void sleep(long ms) {
         try {
             Thread.sleep(ms);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private enum TokenStatus {
+        READY,
+        MISSING,
+        EXPIRED
+    }
+
+    private record TokenResolution(TokenStatus status, Optional<String> token, String message) {
+        static TokenResolution ready(String token) {
+            return new TokenResolution(TokenStatus.READY, Optional.of(token), "");
+        }
+
+        static TokenResolution missing(String message) {
+            return new TokenResolution(TokenStatus.MISSING, Optional.empty(), message);
+        }
+
+        static TokenResolution expired(String message) {
+            return new TokenResolution(TokenStatus.EXPIRED, Optional.empty(), message);
         }
     }
 }

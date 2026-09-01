@@ -55,14 +55,23 @@ public class GuardRailService {
         this.submissionRepository = submissionRepository;
     }
 
+    /** @see #validate(UUID, Instant, UUID) — with no submission to exclude from the slot-conflict checks. */
+    public GuardRailResult validate(UUID institutionId, Instant requestedSlot) {
+        return validate(institutionId, requestedSlot, null);
+    }
+
     /**
      * Validates a requested slot against all guard rail rules.
      *
-     * @param institutionId the institution making the request (for GR-S1)
-     * @param requestedSlot the proposed scheduled_at time
+     * @param institutionId       the institution making the request (for GR-S1)
+     * @param requestedSlot       the proposed scheduled_at time
+     * @param excludeSubmissionId when re-evaluating a slot for a submission that
+     *                            already holds one, its own reservation must not
+     *                            count as a conflict (GR-H1 / GR-S2). Null = evaluate
+     *                            against every active reservation.
      * @return GuardRailResult containing any hard blocks and/or soft warnings
      */
-    public GuardRailResult validate(UUID institutionId, Instant requestedSlot) {
+    public GuardRailResult validate(UUID institutionId, Instant requestedSlot, UUID excludeSubmissionId) {
         Instant now = Instant.now();
         List<GuardRailViolation> hardBlocks = new ArrayList<>();
         List<GuardRailViolation> softWarnings = new ArrayList<>();
@@ -71,7 +80,8 @@ public class GuardRailService {
         // GR-H1: No two posts within ±30 minutes (network-wide)
         Instant windowStart = requestedSlot.minus(GR_H1_WINDOW);
         Instant windowEnd = requestedSlot.plus(GR_H1_WINDOW);
-        boolean hasConflict = slotReservationRepository.existsActiveWithin30Minutes(windowStart, windowEnd);
+        boolean hasConflict = slotReservationRepository.existsActiveWithin30Minutes(
+                windowStart, windowEnd, excludeSubmissionId);
         if (hasConflict) {
             hardBlocks.add(new GuardRailViolation(
                     "GR-H1",
@@ -112,7 +122,7 @@ public class GuardRailService {
         // GR-S2: ≤6 posts per calendar day network-wide
         Instant dayStart = requestedSlot.truncatedTo(java.time.temporal.ChronoUnit.DAYS);
         Instant dayEnd = dayStart.plus(Duration.ofDays(1));
-        long dailyCount = slotReservationRepository.countActiveOnDay(dayStart, dayEnd);
+        long dailyCount = slotReservationRepository.countActiveOnDay(dayStart, dayEnd, excludeSubmissionId);
         if (dailyCount >= GR_S2_MAX_PER_DAY) {
             softWarnings.add(new GuardRailViolation(
                     "GR-S2",

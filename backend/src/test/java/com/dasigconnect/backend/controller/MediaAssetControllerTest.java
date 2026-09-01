@@ -57,9 +57,9 @@ class MediaAssetControllerTest {
     private TenantScopeService tenantScopeService;
 
     @Test
-    void list_withoutAuth_returns403() throws Exception {
+    void list_withoutAuth_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/media-assets"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -71,15 +71,15 @@ class MediaAssetControllerTest {
                 1,
                 1,
                 25);
-        when(mediaAssetService.list(any(), any(), any(), any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
+        when(mediaAssetService.list(any(), any(), any(), any(), any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
                 .thenReturn(response);
 
         mockMvc.perform(get("/api/v1/media-assets").param("page", "1").param("pageSize", "25"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items[0].id").value(asset.getId().toString()))
-                .andExpect(jsonPath("$.totalCount").value(1))
-                .andExpect(jsonPath("$.page").value(1))
-                .andExpect(jsonPath("$.pageSize").value(25));
+                .andExpect(jsonPath("$.data.items[0].id").value(asset.getId().toString()))
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.pageSize").value(25));
     }
 
     @Test
@@ -87,7 +87,7 @@ class MediaAssetControllerTest {
     void list_withParams_delegatesToService() throws Exception {
         UUID uploaderId = UUID.randomUUID();
         MediaAssetListResponseDto response = new MediaAssetListResponseDto(List.of(), 0, 2, 10);
-        when(mediaAssetService.list(any(), any(), any(), any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
+        when(mediaAssetService.list(any(), any(), any(), any(), any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
                 .thenReturn(response);
 
         mockMvc.perform(get("/api/v1/media-assets")
@@ -104,6 +104,7 @@ class MediaAssetControllerTest {
                 eq("Awarding"),
                 any(),
                 eq(uploaderId),
+                any(),
                 any(),
                 eq("name"),
                 eq(2),
@@ -125,7 +126,7 @@ class MediaAssetControllerTest {
                         {"eventTitle":"Research Expo","eventDate":"2026-06-01"}
                         """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(response.getId().toString()));
+                .andExpect(jsonPath("$.data.id").value(response.getId().toString()));
     }
 
     @Test
@@ -141,7 +142,7 @@ class MediaAssetControllerTest {
                         {"submissionId":"%s"}
                         """.formatted(UUID.randomUUID())))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(response.getId().toString()));
+                .andExpect(jsonPath("$.data.id").value(response.getId().toString()));
     }
 
     @Test
@@ -159,7 +160,22 @@ class MediaAssetControllerTest {
                         {"storageUrl":"https://storage.example/photo.jpg","fileName":"photo.jpg","fileType":"jpeg","fileSizeBytes":2048}
                         """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(assetId.toString()));
+                .andExpect(jsonPath("$.data.id").value(assetId.toString()));
+    }
+
+    @Test
+    @WithMockUser
+    void history_authenticated_returns200WithEntries() throws Exception {
+        UUID assetId = UUID.randomUUID();
+        when(mediaAssetService.history(eq(assetId), any())).thenReturn(List.of(
+                new com.dasigconnect.backend.model.dto.media.MediaAssetHistoryEntryDto(
+                        "MEDIA_ASSET_MOVED", "Jane Cruz", "jane@example.edu",
+                        Instant.now(), "Moved to Campaigns")));
+
+        mockMvc.perform(get("/api/v1/media-assets/{id}/history", assetId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].summary").value("Moved to Campaigns"))
+                .andExpect(jsonPath("$.data[0].actorName").value("Jane Cruz"));
     }
 
     @Test
@@ -176,8 +192,8 @@ class MediaAssetControllerTest {
                         {"label":"award"}
                         """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(tagId.toString()))
-                .andExpect(jsonPath("$.label").value("award"));
+                .andExpect(jsonPath("$.data.id").value(tagId.toString()))
+                .andExpect(jsonPath("$.data.label").value("award"));
     }
 
     @Test
@@ -216,8 +232,8 @@ class MediaAssetControllerTest {
                         {"assetIds":["%s"],"force":true}
                         """.formatted(assetId)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.deletedCount").value(1))
-                .andExpect(jsonPath("$.deletedIds[0]").value(assetId.toString()));
+                .andExpect(jsonPath("$.data.deletedCount").value(1))
+                .andExpect(jsonPath("$.data.deletedIds[0]").value(assetId.toString()));
     }
 
     private static MediaAsset mediaAsset(UUID id) {

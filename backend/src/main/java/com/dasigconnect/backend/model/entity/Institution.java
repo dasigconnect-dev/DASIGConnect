@@ -28,9 +28,21 @@ public class Institution {
     @Column(name = "email_domain", nullable = false, unique = true, length = 255)
     private String emailDomain;
 
+    @Column(name = "logo_data")
+    private byte[] logoData;
+
+    @Column(name = "logo_content_type", length = 40)
+    private String logoContentType;
+
+    @Column(name = "logo_updated_at")
+    private Instant logoUpdatedAt;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private InstitutionStatus status = InstitutionStatus.inactive;
+
+    @Column(name = "is_protected", nullable = false)
+    private boolean isProtected = false;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -85,12 +97,44 @@ public class Institution {
         this.emailDomain = emailDomain;
     }
 
+    public byte[] getLogoData() {
+        return logoData;
+    }
+
+    public void setLogoData(byte[] logoData) {
+        this.logoData = logoData;
+    }
+
+    public String getLogoContentType() {
+        return logoContentType;
+    }
+
+    public void setLogoContentType(String logoContentType) {
+        this.logoContentType = logoContentType;
+    }
+
+    public Instant getLogoUpdatedAt() {
+        return logoUpdatedAt;
+    }
+
+    public void setLogoUpdatedAt(Instant logoUpdatedAt) {
+        this.logoUpdatedAt = logoUpdatedAt;
+    }
+
     public InstitutionStatus getStatus() {
         return status;
     }
 
     public void setStatus(InstitutionStatus status) {
         this.status = status;
+    }
+
+    public boolean isProtected() {
+        return isProtected;
+    }
+
+    public void setProtected(boolean isProtected) {
+        this.isProtected = isProtected;
     }
 
     public Instant getCreatedAt() {

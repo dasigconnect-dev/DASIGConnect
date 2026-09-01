@@ -19,11 +19,15 @@ interface DashboardLayoutProps {
 
 function getActiveNav(pathname: string): DashboardNavId {
   if (pathname.startsWith('/admin/institution-management')) return 'institution-management'
+  if (pathname.startsWith('/admin/admin-management')) return 'admin-management'
+  if (pathname.startsWith('/admin/moderator-management')) return 'admin-management'
+  if (pathname.startsWith('/admin/administrator-management')) return 'admin-management'
   if (pathname.startsWith('/admin/user-management')) return 'user-management'
-  if (pathname.startsWith('/admin/resolution')) return 'resolution'
+  if (pathname.startsWith('/admin/system-health')) return 'system-health'
+  if (pathname.startsWith('/admin/audit-log')) return 'audit-log'
   if (pathname.startsWith('/media-repository')) return 'media-repository'
   if (pathname.startsWith('/notifications')) return 'notifications'
-  if (pathname.startsWith('/validation')) return 'submit'
+  if (pathname.startsWith('/validation')) return 'review-queue'
   if (pathname.startsWith('/submissions')) return 'submit'
   if (pathname.startsWith('/scheduler')) return 'scheduler'
   if (pathname.startsWith('/analytics')) return 'analytics'
@@ -47,12 +51,15 @@ export default function DashboardLayout({
   useEffect(() => {
     let active = true
     const fetchCount = () => {
+      if (document.visibilityState !== 'visible') return
       getUnreadCount()
         .then((res) => { if (active) setNotificationBadge(res.data.unreadCount) })
         .catch(() => {})
     }
     fetchCount()
-    const intervalId = window.setInterval(fetchCount, 30000)
+    // Background poll; the SSE stream delivers new notifications in real time,
+    // so this only needs to catch reads made on another device.
+    const intervalId = window.setInterval(fetchCount, 3 * 60_000)
     const onFocus = () => fetchCount()
     window.addEventListener('focus', onFocus)
     return () => {

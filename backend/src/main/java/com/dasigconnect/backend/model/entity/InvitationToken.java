@@ -30,8 +30,8 @@ public class InvitationToken {
     @Column(name = "assigned_role", nullable = false, length = 20)
     private UserRole assignedRole;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "institution_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "institution_id")
     private Institution institution;
 
     @Column(name = "expires_at", nullable = false)
@@ -42,6 +42,10 @@ public class InvitationToken {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    /** User id of the admin/moderator who issued this invitation. Null for legacy rows. */
+    @Column(name = "created_by_user_id")
+    private UUID createdByUserId;
 
     @PrePersist
     void onCreate() {
@@ -65,6 +69,14 @@ public class InvitationToken {
 
     public void setRecipientEmail(String recipientEmail) {
         this.recipientEmail = recipientEmail;
+    }
+
+    public UUID getCreatedByUserId() {
+        return createdByUserId;
+    }
+
+    public void setCreatedByUserId(UUID createdByUserId) {
+        this.createdByUserId = createdByUserId;
     }
 
     public String getTokenHash() {

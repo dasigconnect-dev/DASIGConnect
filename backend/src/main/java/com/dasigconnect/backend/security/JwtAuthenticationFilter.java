@@ -1,7 +1,13 @@
 package com.dasigconnect.backend.security;
 
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.TenantScopeService;
+import com.dasigconnect.backend.repository.UserRepository;
+import com.dasigconnect.backend.model.entity.UserStatus;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import org.springframework.beans.factory.ObjectProvider;
 import io.jsonwebtoken.Claims;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -10,6 +16,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -28,10 +35,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JWTService jwtService;
     private final TenantScopeService tenantScopeService;
+    private final ObjectProvider<UserRepository> userRepositoryProvider;
+    private final ObjectMapper objectMapper;
 
-    public JwtAuthenticationFilter(JWTService jwtService, TenantScopeService tenantScopeService) {
+    public JwtAuthenticationFilter(JWTService jwtService, TenantScopeService tenantScopeService,
+            ObjectProvider<UserRepository> userRepositoryProvider,
+            ObjectProvider<ObjectMapper> objectMapperProvider) {
         this.jwtService = jwtService;
         this.tenantScopeService = tenantScopeService;
+        this.userRepositoryProvider = userRepositoryProvider;
+        this.objectMapper = objectMapperProvider.getIfAvailable(() -> JsonMapper.builder().findAndAddModules().build());
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        return uri.endsWith("/auth/login")
+                || uri.endsWith("/auth/forgot-password")
+                || uri.endsWith("/auth/reset-password")
+                || uri.contains("/invitations/validate")
+                || uri.contains("/invitations/accept");
     }
 
     @Override
@@ -41,11 +64,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (auth != null && auth.startsWith("Bearer ")) {
             String token = auth.substring(7);
             try {
-                if (jwtService.validateToken(token)) {
+                if (!jwtService.validateToken(token)) {
+                    if (request.getRequestURI().endsWith("/auth/logout") || request.getRequestURI().endsWith("/auth/login")) {
+                        filterChain.doFilter(request, response);
+                        return;
+                    }
+                    writeUnauthorized(response, "Session is invalid or expired");
+                    return;
+                }
+                {
                     Claims claims = jwtService.extractClaims(token);
                     String role = claims.getOrDefault("role", "").toString();
                     String userIdStr = claims.getOrDefault("user_id", "").toString();
                     String email = claims.getOrDefault("email", "").toString();
+                    boolean adminOwner = Boolean.parseBoolean(
+                            claims.getOrDefault(
+                                    "admin_owner",
+                                    claims.getOrDefault("admin", "false"))
+                                    .toString());
                     Object instClaim = claims.get("institution_id");
                     String instStr = instClaim != null ? instClaim.toString() : null;
 
@@ -62,22 +98,50 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         log.debug("Invalid institution_id in token: {}", instStr);
                     }
 
+                    long tokenSessionVersion = claims.get("session_version", Number.class) == null
+                            ? -1 : claims.get("session_version", Number.class).longValue();
+                    UserRepository userRepository = userRepositoryProvider.getIfAvailable();
+                    if (userRepository != null) {
+                        var currentUser = userId == null ? null : userRepository.findById(userId).orElse(null);
+                        if (currentUser == null || currentUser.getAccountState() != UserStatus.active
+                                || currentUser.getSessionVersion() != tokenSessionVersion) {
+                            writeUnauthorized(response, "Session has been revoked");
+                            return;
+                        }
+                    }
+
                     List<SimpleGrantedAuthority> authorities = new ArrayList<>();
                     if (!role.isBlank()) {
                         authorities.add(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
                     }
 
-                    JwtUserDetails principal = new JwtUserDetails(userId, email, role, institutionId);
+                    JwtUserDetails principal = new JwtUserDetails(
+                            userId,
+                            email,
+                            role,
+                            institutionId,
+                            adminOwner);
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(principal, null, authorities);
                     SecurityContextHolder.getContext().setAuthentication(authentication);
 
-                    tenantScopeService.bindTenantScope(institutionId, role);
+                    tenantScopeService.bindTenantScope(userId, institutionId, role);
                 }
             } catch (Exception ex) {
                 log.debug("JWT validation failed: {}", ex.getMessage());
+                writeUnauthorized(response, "Session is invalid or expired");
+                return;
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {
+        if (response.isCommitted()) {
+            return;
+        }
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        objectMapper.writeValue(response.getWriter(), ApiResponse.error("UNAUTHORIZED", message, null));
     }
 }

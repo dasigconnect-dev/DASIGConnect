@@ -12,6 +12,7 @@ import {
   login,
   logout as logoutRequest,
   requestPasswordReset,
+  resendExpiredInvitation,
   resetPassword as resetPasswordRequest,
   setAuthToken,
   validateInvitation,
@@ -24,13 +25,17 @@ import ForgotSentScreen from "../features/auth/ForgotSentScreen";
 import ResetPasswordScreen from "../features/auth/ResetPasswordScreen";
 import InviteScreen from "../features/auth/InviteScreen";
 import NoAccountScreen from "../features/auth/NoAccountScreen";
+import AccountSettingsScreen from "../features/auth/AccountSettingsScreen";
 import DashboardScreen from "../features/dashboard/DashboardScreen";
+import RecentActivityScreen from "../features/dashboard/RecentActivityScreen";
 import SubmissionScreen from "../features/submission/SubmissionScreen";
 import ValidationQueueScreen from "../features/validation/ValidationQueueScreen";
-import UserInvitationsScreen from "../features/user-management/UserInvitationsScreen";
 import InstitutionManagementScreen from "../features/institution-management/InstitutionManagementScreen";
+import AdminManagementScreen from "../features/administrator-management/AdministratorManagementScreen";
+import UserManagementScreen from "../features/user-management/UserManagementScreen";
+import SystemHealthScreen from "../features/system-health/SystemHealthScreen";
+import AuditLogScreen from "../features/audit-log/AuditLogScreen";
 import CalendarScreen from "../features/calendar/CalendarScreen";
-import ResolutionCenterScreen from "../features/resolution/ResolutionCenterScreen";
 import MediaRepositoryScreen from "../features/media-repository/MediaRepositoryScreen";
 import NotificationsScreen from "../features/notifications/NotificationsScreen";
 import AnalyticsDashboardPage from "../features/analytics/AnalyticsDashboardPage";
@@ -47,6 +52,8 @@ import {
   getUserInitials,
   initialsFromEmail,
 } from "../lib/userIdentity";
+import { firstPasswordError, getPasswordRules } from "../lib/passwordPolicy";
+import { clearAppCaches } from "../lib/appCache";
 
 const LOCKOUT_LIMIT = 5;
 const LOCKOUT_SECONDS = 15 * 60;
@@ -75,9 +82,15 @@ function App() {
 
   const [modalEmail, setModalEmail] = useState("");
   const [modalPassword, setModalPassword] = useState("");
-  const [modalError, setModalError] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
   const [modalLoginLoading, setModalLoginLoading] = useState(false);
   const [showModalPassword, setShowModalPassword] = useState(false);
+
+  async function refreshCurrentUserProfile() {
+    if (!currentUser) return;
+    const user = await loadCurrentUser(currentUser);
+    setCurrentUser(user);
+  }
 
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSentEmail, setForgotSentEmail] = useState("");
@@ -106,6 +119,8 @@ function App() {
   const [showInviteConfirmPassword, setShowInviteConfirmPassword] =
     useState(false);
   const [inviteCountdown, setInviteCountdown] = useState("");
+  const [inviteResending, setInviteResending] = useState(false);
+  const [inviteResendSuccess, setInviteResendSuccess] = useState(false);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -121,15 +136,22 @@ function App() {
   const inviteRules = useMemo(() => {
     const firstName = isValidProfileName(inviteFirstName);
     const lastName = isValidProfileName(inviteLastName);
-    const length = invitePassword.length >= 8;
-    const upper = /[A-Z]/.test(invitePassword);
-    const number = /[0-9]/.test(invitePassword);
-    const symbol = /[^A-Za-z0-9]/.test(invitePassword);
+    const passwordRules = getPasswordRules(invitePassword, [
+      inviteEmail,
+      inviteFirstName,
+      inviteLastName,
+    ]);
     const match =
       inviteConfirmPassword.length > 0 &&
       invitePassword === inviteConfirmPassword;
-    return { firstName, lastName, length, upper, number, symbol, match };
-  }, [inviteFirstName, inviteLastName, invitePassword, inviteConfirmPassword]);
+    return { firstName, lastName, ...passwordRules, match };
+  }, [
+    inviteEmail,
+    inviteFirstName,
+    inviteLastName,
+    invitePassword,
+    inviteConfirmPassword,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -268,6 +290,9 @@ function App() {
     setAuthToken(null);
     localStorage.removeItem("dasigconnect_token");
     localStorage.removeItem("dasigconnect_user");
+    // Drop any in-memory caches from a prior session on this tab so a new
+    // account never sees the previous user's role-scoped data.
+    clearAppCaches();
     const email = loginEmail.trim().toLowerCase();
     try {
       const response = await login(email, loginPassword);
@@ -305,8 +330,9 @@ function App() {
       setResetError("Reset token is missing or invalid.");
       return;
     }
-    if (resetPassword.length < 8) {
-      setResetError("Password must be at least 8 characters.");
+    const passwordError = firstPasswordError(resetPassword);
+    if (passwordError) {
+      setResetError(passwordError);
       return;
     }
     if (resetPassword !== resetConfirmPassword) {
@@ -329,7 +355,11 @@ function App() {
   }
 
   async function handleForgotSubmit() {
-    const email = forgotEmail.trim() || "yourname@institution.edu.ph";
+    const email = forgotEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Enter a valid email address.");
+      return;
+    }
     setForgotLoading(true);
     try {
       await requestPasswordReset(email);
@@ -348,6 +378,15 @@ function App() {
     const lastName = normalizeProfileName(inviteLastName);
     if (!isValidProfileName(firstName) || !isValidProfileName(lastName)) {
       toast.error("Please enter a valid first and last name.");
+      return;
+    }
+    const passwordError = firstPasswordError(invitePassword, [
+      inviteEmail,
+      firstName,
+      lastName,
+    ]);
+    if (passwordError) {
+      toast.error(passwordError);
       return;
     }
     setInviteLoading(true);
@@ -373,11 +412,41 @@ function App() {
       toast.success("Account activated. Welcome to DASIGConnect.");
       setInviteState("success");
       navigate("/dashboard");
-    } catch {
-      toast.error("We could not activate this invitation. Please request a new link.");
-      setInviteState("expired");
+    } catch (err: unknown) {
+      const message = getApiErrorMessage(
+        err,
+        "We could not activate this invitation. Please try again.",
+      );
+      toast.error(message);
+      if (isAlreadyUsedInviteError(message)) {
+        setInviteState("already");
+      } else if (isExpiredInviteError(message)) {
+        setInviteState("expired");
+      }
     } finally {
       setInviteLoading(false);
+    }
+  }
+
+  async function handleResendExpired() {
+    if (inviteResending) return;
+    setInviteResending(true);
+    try {
+      await resendExpiredInvitation({
+        token: inviteToken,
+        email: inviteEmail || undefined,
+      });
+      setInviteResendSuccess(true);
+      toast.success("A fresh invitation link has been dispatched to your email.");
+    } catch (err: unknown) {
+      toast.error(
+        getApiErrorMessage(
+          err,
+          "Could not resend invitation. Please contact your DASIG Moderator.",
+        ),
+      );
+    } finally {
+      setInviteResending(false);
     }
   }
 
@@ -392,6 +461,7 @@ function App() {
     localStorage.removeItem("dasigconnect_token");
     localStorage.removeItem("dasigconnect_user");
     setAuthToken(null);
+    clearAppCaches();
     setCurrentUser(null);
     setShowDropdown(false);
     setShowSessionModal(false);
@@ -405,22 +475,23 @@ function App() {
   async function handleModalLogin() {
     if (modalLoginLoading || logoutLoading) return;
     setModalLoginLoading(true);
-    setModalError(false);
+    setModalError(null);
     const email = modalEmail.trim().toLowerCase();
     try {
       const response = await login(email, modalPassword);
-      setAuthToken(response.data.accessToken);
-      const fallbackUser = buildUserFromLogin(email, response.data);
+      const apiUser = response.data;
+      setAuthToken(apiUser.accessToken);
+      const fallbackUser = buildUserFromLogin(email, apiUser);
       const user = await loadCurrentUser(fallbackUser);
-      localStorage.setItem("dasigconnect_token", response.data.accessToken);
+      localStorage.setItem("dasigconnect_token", apiUser.accessToken);
       localStorage.setItem("dasigconnect_user", JSON.stringify(user));
       setCurrentUser(user);
-      startSessionCountdown(response.data.accessToken);
+      startSessionCountdown(apiUser.accessToken);
       setShowSessionModal(false);
-      setModalError(false);
+      setModalError(null);
       setModalPassword("");
-    } catch {
-      setModalError(true);
+    } catch (err: unknown) {
+      setModalError(getApiErrorMessage(err, "Invalid credentials. Please try again."));
     } finally {
       setModalLoginLoading(false);
     }
@@ -484,7 +555,7 @@ function App() {
 
   async function validateInviteToken(token: string) {
     try {
-      const response = await validateInvitation(token);
+      const response = await validateInvitation(token.trim());
       const data = response.data;
       setInviteEmail(data.recipientEmail);
       setInviteRole(formatRoleLabel(data.assignedRole));
@@ -495,8 +566,13 @@ function App() {
       setInvitePassword("");
       setInviteConfirmPassword("");
       setInviteState("form");
-    } catch {
-      setInviteState("expired");
+    } catch (err: unknown) {
+      const message = getApiErrorMessage(err, "Invalid invitation token.");
+      if (isAlreadyUsedInviteError(message)) {
+        setInviteState("already");
+      } else {
+        setInviteState("expired");
+      }
     }
   }
 
@@ -643,6 +719,9 @@ function App() {
               }
               onActivate={() => void handleInviteActivate()}
               onBackToLogin={() => navigate("/login")}
+              onResendExpired={() => void handleResendExpired()}
+              resending={inviteResending}
+              resendSuccess={inviteResendSuccess}
               showPassword={showInvitePassword}
               showConfirmPassword={showInviteConfirmPassword}
               loading={inviteLoading}
@@ -681,25 +760,64 @@ function App() {
             element={<DashboardScreen user={currentUser!} />}
           />
           <Route
+            path="/dashboard/recent-activity"
+            element={<RecentActivityScreen user={currentUser!} />}
+          />
+          <Route
             path="/admin/institution-management"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin"]}>
                 <InstitutionManagementScreen user={currentUser!} />
               </ProtectedRoute>
             }
           />
           <Route
-            path="/admin/user-management/invitations"
+            path="/admin/admin-management"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator"]}>
-                <UserInvitationsScreen user={currentUser!} />
+              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
+                <AdminManagementScreen
+                  user={currentUser!}
+                  onProfileUpdated={refreshCurrentUserProfile}
+                />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/user-management"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
+                <UserManagementScreen user={currentUser!} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/administrator-management"
+            element={<Navigate to="/admin/admin-management" replace />}
+          />
+          <Route
+            path="/admin/moderator-management"
+            element={<Navigate to="/admin/admin-management" replace />}
+          />
+          <Route
+            path="/admin/system-health"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
+                <SystemHealthScreen user={currentUser!} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/audit-log"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
+                <AuditLogScreen user={currentUser!} />
               </ProtectedRoute>
             }
           />
           <Route
             path="/validation/queue"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin"]}>
                 <ValidationQueueScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -707,23 +825,15 @@ function App() {
           <Route
             path="/scheduler/calendar"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
                 <CalendarScreen user={currentUser!} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/resolution"
-            element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin"]}>
-                <ResolutionCenterScreen user={currentUser!} />
               </ProtectedRoute>
             }
           />
           <Route
             path="/media-repository"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
                 <MediaRepositoryScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -731,7 +841,7 @@ function App() {
           <Route
             path="/notifications"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
                 <NotificationsScreen user={currentUser!} />
               </ProtectedRoute>
             }
@@ -739,17 +849,34 @@ function App() {
           <Route
             path="/analytics"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["admin", "moderator", "contributor"]}>
                 <AnalyticsDashboardPage user={currentUser!} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/submissions"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
+                <SubmissionScreen user={currentUser!} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
+                <AccountSettingsScreen user={currentUser!} onProfileUpdated={refreshCurrentUserProfile} />
               </ProtectedRoute>
             }
           />
         </Route>
 
+        {/* Standalone Full-Screen Submission Editor */}
         <Route
           path="/submissions/new"
           element={
-            <ProtectedRoute user={currentUser} allowedRoles={["contributor"]}>
+            <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
               <SubmissionScreen user={currentUser!} />
             </ProtectedRoute>
           }
@@ -757,7 +884,7 @@ function App() {
         <Route
           path="/submissions/:submissionId"
           element={
-            <ProtectedRoute user={currentUser} allowedRoles={["admin", "validator", "contributor"]}>
+            <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
               <SubmissionScreen user={currentUser!} />
             </ProtectedRoute>
           }
@@ -799,8 +926,8 @@ function isPasswordResetPath(pathname: string) {
 
 function mapApiRole(role: string): User["role"] {
   const normalized = role.toLowerCase();
-  if (normalized.includes("admin")) return "admin";
-  if (normalized.includes("validator")) return "validator";
+  if (normalized === "admin" || normalized.includes("super")) return "admin";
+  if (normalized === "moderator" || normalized.includes("admin")) return "moderator";
   return "contributor";
 }
 
@@ -906,10 +1033,26 @@ function getApiErrorMessage(error: unknown, fallback: string) {
     const data = response.data;
     if (isRecord(data)) {
       if (typeof data.error === "string") return data.error;
+      // ApiResponse envelope: { success, data, error: { code, message } }
+      if (isRecord(data.error) && typeof data.error.message === "string") {
+        return data.error.message;
+      }
       if (typeof data.message === "string") return data.message;
     }
   }
   return typeof error.message === "string" ? error.message : fallback;
+}
+
+// Matches the backend reason strings from InvitationService#assertTokenUnused
+// and #acceptInvitation ("Invitation has expired", "Invitation has already
+// been used", "Account is already active").
+function isExpiredInviteError(message: string) {
+  return message.toLowerCase().includes("expired");
+}
+
+function isAlreadyUsedInviteError(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes("already been used") || normalized.includes("already active");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

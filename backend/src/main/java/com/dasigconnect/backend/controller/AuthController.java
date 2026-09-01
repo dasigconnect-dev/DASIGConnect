@@ -2,7 +2,9 @@ package com.dasigconnect.backend.controller;
 
 import com.dasigconnect.backend.model.dto.auth.LoginRequestDto;
 import com.dasigconnect.backend.model.dto.auth.LoginResponseDto;
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.service.AuthService;
+import com.dasigconnect.backend.security.JwtUserDetails;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -11,6 +13,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -23,10 +27,10 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponseDto> login(
+    public ResponseEntity<ApiResponse<LoginResponseDto>> login(
             @RequestBody @Valid LoginRequestDto dto,
             HttpServletRequest request) {
-        return ResponseEntity.ok(authService.login(dto, request));
+        return ResponseEntity.ok(ApiResponse.success(authService.login(dto, request)));
     }
 
     @PostMapping("/logout")
@@ -36,5 +40,11 @@ public class AuthController {
             authService.logout(auth.substring(7));
         }
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/refresh")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<LoginResponseDto>> refresh(@AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(authService.refresh(user.userId())));
     }
 }

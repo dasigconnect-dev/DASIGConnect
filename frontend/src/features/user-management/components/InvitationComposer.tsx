@@ -11,6 +11,16 @@ interface InvitationComposerProps {
   selectedInstitution: InstitutionOption | null
   canChooseRole: boolean
   sending: boolean
+  /** Network-wide invites (e.g. moderators) that are not bound to an institution workspace. */
+  networkWide?: boolean
+  /**
+   * Rendered inside a modal that already has its own title/subtitle. Drops the
+   * component's internal header, the destination-workspace recap card, and the
+   * long helper text so the form isn't a card-within-a-card.
+   */
+  embedded?: boolean
+  /** Max recipients per batch. Defaults to 15; callers with a tighter cap (e.g. the 3-admin limit) pass their remaining slots. */
+  maxRecipients?: number
   onDraftChange: (value: string) => void
   onAddChip: (email: string) => void
   onRemoveChip: (index: number) => void
@@ -18,12 +28,15 @@ interface InvitationComposerProps {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }
 
-function composerSubtitle(canChooseRole: boolean, institution: InstitutionOption | null) {
-  if (canChooseRole) return 'Invite contributors or validators securely into this institution workspace.'
-  const status = institution?.status
-  if (status === 'inactive' || status === 'pending') {
-    return 'Invite a validator to activate this institution workspace.'
-  }
+function composerSubtitle(
+  canChooseRole: boolean,
+  _institution: InstitutionOption | null,
+  role: InviteRole,
+  networkWide: boolean,
+) {
+  if (networkWide) return 'Invite moderators with network-wide access. Activation links expire after 72 hours.'
+  if (canChooseRole) return 'Invite contributors or moderators securely into this institution workspace.'
+  if (role === 'contributor') return 'Invite contributors securely into this institution workspace.'
   return 'Invite contributors securely into this institution workspace.'
 }
 
@@ -34,6 +47,9 @@ export default function InvitationComposer({
   selectedInstitution,
   canChooseRole,
   sending,
+  networkWide = false,
+  embedded = false,
+  maxRecipients = 15,
   onDraftChange,
   onAddChip,
   onRemoveChip,
@@ -41,31 +57,36 @@ export default function InvitationComposer({
   onSubmit,
 }: InvitationComposerProps) {
   const recipientCount = chips.length
-  const atLimit = recipientCount >= 15
+  const atLimit = recipientCount >= maxRecipients
   const invalidRecipientCount = chips.filter((chip) => !isValidEmail(chip)).length
 
   return (
-    <section className={`um-composer${sending ? ' is-busy' : ''}`} aria-busy={sending}>
-      <div className="um-composer-header">
-        <div className="um-composer-header-left">
-          <div className="um-composer-icon">
-            <i className="ti ti-send" aria-hidden="true"></i>
-          </div>
-          <div>
-            <div className="um-composer-title">Send Invitations</div>
-            <div className="um-composer-subtitle">
-              {composerSubtitle(canChooseRole, selectedInstitution)}
+    <section
+      className={`um-composer${sending ? ' is-busy' : ''}${embedded ? ' is-embedded' : ''}`}
+      aria-busy={sending}
+    >
+      {!embedded && (
+        <div className="um-composer-header">
+          <div className="um-composer-header-left">
+            <div className="um-composer-icon">
+              <i className="ti ti-send" aria-hidden="true"></i>
+            </div>
+            <div>
+              <div className="um-composer-title">Send Invitations</div>
+              <div className="um-composer-subtitle">
+                {composerSubtitle(canChooseRole, selectedInstitution, role, networkWide)}
+              </div>
             </div>
           </div>
+          <div className="um-composer-header-meta">
+            {recipientCount > 0 && (
+              <span className={`um-composer-count${atLimit ? ' is-limit' : ''}`}>
+                {recipientCount} / {maxRecipients} recipients
+              </span>
+            )}
+          </div>
         </div>
-        <div className="um-composer-header-meta">
-          {recipientCount > 0 && (
-            <span className={`um-composer-count${atLimit ? ' is-limit' : ''}`}>
-              {recipientCount} / 15 recipients
-            </span>
-          )}
-        </div>
-      </div>
+      )}
 
       <form className="um-composer-form" onSubmit={onSubmit}>
         <div className="um-composer-section um-recipient-section">
@@ -75,23 +96,38 @@ export default function InvitationComposer({
                 Recipients
               </label>
               <div className="um-composer-label-hint">
-                Add one or more institutional email addresses. Press Enter or comma after each address.
+                {embedded
+                  ? 'Separate addresses with Enter or a comma.'
+                  : 'Add one or more institutional email addresses. Press Enter or comma after each address.'}
               </div>
             </div>
             <span className={`um-recipient-meter${atLimit ? ' is-limit' : ''}`}>
-              {recipientCount}/15
+              {recipientCount}/{maxRecipients}
             </span>
           </div>
           <EmailChipsInput
             chips={chips}
             draft={emailDraft}
             onDraftChange={onDraftChange}
-            onAdd={onAddChip}
+            onAdd={(email) => {
+              if (chips.length < maxRecipients) onAddChip(email)
+            }}
             onRemove={onRemoveChip}
-            disabled={sending}
-            placeholder="name@institution.edu.ph, office@institution.edu.ph"
+            disabled={sending || atLimit}
+            placeholder={
+              networkWide
+                ? 'moderator@example.edu.ph, office@example.edu.ph'
+                : 'name@institution.edu.ph, office@institution.edu.ph'
+            }
             inputId="invitation-recipient-input"
           />
+          {atLimit && (
+            <div className="um-composer-label-hint">
+              {maxRecipients === 1
+                ? 'Only 1 invitation can be sent in this batch.'
+                : `Up to ${maxRecipients} invitations can be sent in this batch.`}
+            </div>
+          )}
           {invalidRecipientCount > 0 && (
             <div className="um-field-warning" role="alert">
               <i className="ti ti-alert-circle" aria-hidden="true"></i>
@@ -110,9 +146,11 @@ export default function InvitationComposer({
                     <span className="um-composer-required">Required</span>
                   )}
                 </div>
-                <div className="um-composer-label-hint">
-                  Choose the access level these recipients will receive.
-                </div>
+                {!embedded && (
+                  <div className="um-composer-label-hint">
+                    Choose the access level these recipients will receive.
+                  </div>
+                )}
               </div>
             </div>
             <div className="um-role-pills" role="radiogroup" aria-label="Assign role">
@@ -134,17 +172,17 @@ export default function InvitationComposer({
               </button>
               <button
                 type="button"
-                className={`um-role-pill${role === 'validator' ? ' is-active' : ''}`}
-                onClick={() => onRoleChange('validator')}
+                className={`um-role-pill${role === 'moderator' ? ' is-active' : ''}`}
+                onClick={() => onRoleChange('moderator')}
                 disabled={sending}
                 role="radio"
-                aria-checked={role === 'validator'}
+                aria-checked={role === 'moderator'}
               >
                 <span className="um-role-pill-icon">
                   <i className="ti ti-shield-check" aria-hidden="true"></i>
                 </span>
                 <span>
-                  <strong>Validator</strong>
+                  <strong>Moderator</strong>
                   <small>Reviews and approves submissions</small>
                 </span>
               </button>
@@ -152,7 +190,7 @@ export default function InvitationComposer({
           </div>
         )}
 
-        {selectedInstitution && (
+        {selectedInstitution && !embedded && (
           <div className="um-workspace-card" aria-label="Destination workspace">
             <div className="um-workspace-icon">
               <i className="ti ti-building-community" aria-hidden="true"></i>
@@ -172,7 +210,12 @@ export default function InvitationComposer({
           <button
             type="submit"
             className="um-send-btn"
-            disabled={sending || recipientCount === 0 || !selectedInstitution || (canChooseRole && role === null)}
+            disabled={
+              sending ||
+              recipientCount === 0 ||
+              (!networkWide && !selectedInstitution) ||
+              (canChooseRole && role === null)
+            }
           >
             {sending ? (
               <>

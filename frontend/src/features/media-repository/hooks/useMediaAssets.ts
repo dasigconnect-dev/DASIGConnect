@@ -30,16 +30,27 @@ function isCanceledError(error: unknown) {
   return isApiError(error) && error.name === "CanceledError";
 }
 
-export function useMediaAssets(networkView = false, institutionId?: string | null) {
+export function useMediaAssets(
+  networkView = false,
+  institutionId?: string | null,
+  albumId?: string | null,
+  enabled = true,
+) {
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const refresh = useCallback(
     (signal?: AbortSignal) => {
+      if (!enabled) {
+        setAssets([]);
+        setLoading(false);
+        setError("");
+        return Promise.resolve();
+      }
       setLoading(true);
       setError("");
-      return listMediaAssets({ networkView, institutionId }, signal)
+      return listMediaAssets({ networkView, institutionId, albumId }, signal)
         .then((response) => setAssets(Array.isArray(response.data) ? response.data : []))
         .catch((err: unknown) => {
           if (isCanceledError(err)) return;
@@ -47,8 +58,13 @@ export function useMediaAssets(networkView = false, institutionId?: string | nul
         })
         .finally(() => setLoading(false));
     },
-    [networkView, institutionId],
+    [networkView, institutionId, albumId, enabled],
   );
+
+  // Clear stale assets immediately when scope changes so old folder counts never flash
+  useEffect(() => {
+    setAssets([]);
+  }, [networkView, institutionId, albumId]);
 
   useEffect(() => {
     const controller = new AbortController();

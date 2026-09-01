@@ -3,6 +3,7 @@ package com.dasigconnect.backend.service;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -29,7 +30,7 @@ import com.dasigconnect.backend.security.JwtUserDetails;
 public class ReviewLockService {
 
     private static final Logger log = LoggerFactory.getLogger(ReviewLockService.class);
-    private static final long LOCK_DURATION_MINUTES = 30;
+    private static final long LOCK_DURATION_MINUTES = 15;
 
     private final ReviewLockRepository reviewLockRepository;
     private final SubmissionRepository submissionRepository;
@@ -50,19 +51,16 @@ public class ReviewLockService {
     /**
      * Acquires a review lock for a submission.
      *
-     * GR-H5: blocks self-review (validator == contributor).
-     * If the caller already holds the lock, returns the existing lock (idempotent).
-     * If another validator holds a valid lock, returns 409.
+     * A5: self-review (validator == contributor) is allowed, not blocked — the
+     * resulting ValidationLog entries are flagged via ValidationService/isSelfReview.
+     * If the caller already holds the lock, its TTL is renewed and the lock is
+     * returned (idempotent keep-alive — the review panel pings this while open so a
+     * long edit session does not lose the lock to ReviewLockCleanupJob).
+     * If another reviewer holds a valid lock, returns 409.
      * Transitions submission: pending → in_review.
      */
     public ReviewLock acquire(UUID submissionId, JwtUserDetails caller) {
         Submission submission = loadSubmissionInScope(submissionId, caller);
-
-        // GR-H5: self-validation blocked
-        if (submission.getContributor().getId().equals(caller.userId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "You cannot review your own submission.");
-        }
 
         // Only PENDING submissions can be locked (IN_REVIEW may already be locked by this user)
         if (submission.getStatus() != SubmissionStatus.pending
@@ -77,12 +75,13 @@ public class ReviewLockService {
             if (existing.getExpiresAt().isAfter(Instant.now())) {
                 // Lock is still valid
                 if (existing.getLockedBy().getId().equals(caller.userId())) {
-                    // Caller already holds it — idempotent
-                    return existing;
+                    // Caller already holds it — renew the TTL (idempotent keep-alive)
+                    existing.setExpiresAt(Instant.now().plus(LOCK_DURATION_MINUTES, ChronoUnit.MINUTES));
+                    return reviewLockRepository.save(existing);
                 }
-                // Another validator holds it
+                // Another reviewer holds it
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "This submission is currently being reviewed by another validator.");
+                        "This submission is currently being reviewed by someone else.");
             }
             // Expired lock — clean it up before acquiring
             expireLock(existing, submission);
@@ -117,7 +116,7 @@ public class ReviewLockService {
 
         // Only the lock holder (or an admin) can release
         if (!lock.getLockedBy().getId().equals(caller.userId())
-                && !"administrator".equals(caller.role())) {
+                && !"admin".equals(caller.role())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "You do not hold the review lock for this submission.");
         }
@@ -139,6 +138,17 @@ public class ReviewLockService {
     }
 
     /**
+     * Read-only lookup of the current active lock for a submission, if any.
+     * Does not acquire, extend, or otherwise mutate anything — used by the
+     * frontend to restore lock UI state after a page refresh.
+     */
+    @Transactional(readOnly = true)
+    public Optional<ReviewLock> getActiveLock(UUID submissionId) {
+        return reviewLockRepository.findBySubmissionIdWithLockedBy(submissionId)
+                .filter(lock -> lock.getExpiresAt().isAfter(Instant.now()));
+    }
+
+    /**
      * Called by ReviewLockCleanupJob every minute.
      * Finds all expired locks, reverts in_review → pending, and cleans up.
      */
@@ -156,11 +166,11 @@ public class ReviewLockService {
 
     /**
      * Asserts that the caller holds an active review lock for the submission.
-     * Administrators bypass this check.
-     * Throws 403 if no active lock exists or if another validator holds it.
+     * Admins bypass this check (they act as the override role); moderators must
+     * hold the lock. Throws 403 if no active lock exists or another reviewer holds it.
      */
     public void assertCallerHoldsLock(UUID submissionId, JwtUserDetails caller) {
-        if ("administrator".equals(caller.role())) return;
+        if ("admin".equals(caller.role())) return;
 
         ReviewLock lock = reviewLockRepository.findBySubmissionId(submissionId).orElse(null);
         if (lock == null || lock.getExpiresAt().isBefore(Instant.now())) {
@@ -196,22 +206,16 @@ public class ReviewLockService {
         entry.setAction(action);
         entry.setRemarks(remarks);
         entry.setRejectionReason(rejectionReason);
+        entry.setSelfReview(submission.getContributor().getId().equals(validator.getId()));
         validationLogRepository.save(entry);
     }
 
     private Submission loadSubmissionInScope(UUID submissionId, JwtUserDetails caller) {
-        Submission submission = submissionRepository.findById(submissionId)
+        // Moderator and Admin are both network-wide roles, so any
+        // submission is in scope for review — no institution comparison is needed.
+        return submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Submission not found."));
-
-        // Administrators can access any submission; validators are institution-scoped
-        if (!"administrator".equals(caller.role())
-                && !submission.getInstitution().getId().equals(caller.institutionId())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Submission not found.");
-        }
-
-        return submission;
     }
 
     private User loadUser(UUID userId) {

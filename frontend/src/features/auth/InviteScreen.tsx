@@ -1,3 +1,4 @@
+import type { FormEvent } from 'react'
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
@@ -9,8 +10,12 @@ interface InviteRules {
   lastName: boolean
   length: boolean
   upper: boolean
+  lower: boolean
   number: boolean
   symbol: boolean
+  noSpaces: boolean
+  notCommon: boolean
+  noIdentity: boolean
   match: boolean
 }
 
@@ -35,6 +40,9 @@ interface InviteScreenProps {
   onToggleConfirmPassword: () => void
   onActivate: () => void
   onBackToLogin: () => void
+  onResendExpired?: () => void
+  resending?: boolean
+  resendSuccess?: boolean
   showPassword: boolean
   showConfirmPassword: boolean
 }
@@ -60,6 +68,9 @@ export default function InviteScreen({
   onToggleConfirmPassword,
   onActivate,
   onBackToLogin,
+  onResendExpired,
+  resending = false,
+  resendSuccess = false,
   showPassword,
   showConfirmPassword,
 }: InviteScreenProps) {
@@ -114,7 +125,7 @@ export default function InviteScreen({
         </LeftPanel>
         <RightPanel>
           <div id="inv-expired" className={state === 'expired' ? '' : 'hidden'}>
-            <div className="alert alert-err" style={{ marginBottom: 0 }}>
+            <div className="alert alert-err" style={{ marginBottom: 14 }}>
               <i className="ti ti-clock-x"></i>
               <div>
                 <strong
@@ -123,15 +134,37 @@ export default function InviteScreen({
                   Invitation link has expired.
                 </strong>
                 This invitation token is no longer valid. Your account remains
-                in PENDING status. Please contact your institution's Validator
-                or the DASIG Administrator to request a new invitation.
+                in PENDING status. You can request a fresh invitation link below,
+                or contact your DASIG Moderator.
               </div>
             </div>
+            {resendSuccess && (
+              <div className="alert alert-ok" style={{ marginBottom: 14 }}>
+                <i className="ti ti-mail-check"></i>
+                <div>
+                  <strong style={{ display: 'block', marginBottom: 3, color: '#86EFAC' }}>
+                    New invitation link sent!
+                  </strong>
+                  A fresh invitation link has been dispatched to your email address. Please check your inbox.
+                </div>
+              </div>
+            )}
+            {onResendExpired && !resendSuccess && (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={onResendExpired}
+                disabled={resending}
+                style={{ width: '100%', marginBottom: 10 }}
+              >
+                <i className="ti ti-send"></i> {resending ? 'Sending new link…' : 'Resend Invitation Link'}
+              </button>
+            )}
             <button
               type="button"
               className="btn-ghost"
               onClick={onBackToLogin}
-              style={{ marginTop: 14 }}
+              style={{ width: '100%' }}
             >
               Return to Sign In
             </button>
@@ -160,7 +193,14 @@ export default function InviteScreen({
             </button>
           </div>
 
-          <div id="inv-form" className={state === 'form' ? '' : 'hidden'}>
+          <form
+            id="inv-form"
+            className={state === 'form' ? '' : 'hidden'}
+            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+              event.preventDefault()
+              onActivate()
+            }}
+          >
             <div className="steps">
               <div className="step done">
                 <div className="step-connector"></div>
@@ -183,14 +223,22 @@ export default function InviteScreen({
 
             <div className="token-box">
               <div className="token-lbl">Activating account for</div>
-              <div className="token-email" id="inv-email-display">
-                {email}
-              </div>
-              <div className="token-meta">
-                <span id="inv-role-display">{roleLabel}</span>
-                <span className="token-dot"></span>
-                <span id="inv-inst-display">{institution}</span>
-              </div>
+              {email ? (
+                <>
+                  <div className="token-email" id="inv-email-display">
+                    {email}
+                  </div>
+                  <div className="token-meta">
+                    {roleLabel && <span id="inv-role-display">{roleLabel}</span>}
+                    {roleLabel && institution && <span className="token-dot"></span>}
+                    {institution && <span id="inv-inst-display">{institution}</span>}
+                  </div>
+                </>
+              ) : (
+                <div className="token-meta" style={{ marginTop: '4px' }}>
+                  <span>Loading invitation details...</span>
+                </div>
+              )}
             </div>
 
             <div className="form-head compact">
@@ -205,6 +253,7 @@ export default function InviteScreen({
                 <label className="flabel" htmlFor="inv-first-name">First Name</label>
                 <input
                   id="inv-first-name"
+                  name="given-name"
                   className={`finput${
                     firstName.length === 0 ? '' : rules.firstName ? ' good' : ' err'
                   }`}
@@ -224,6 +273,7 @@ export default function InviteScreen({
                 <label className="flabel" htmlFor="inv-last-name">Last Name</label>
                 <input
                   id="inv-last-name"
+                  name="family-name"
                   className={`finput${
                     lastName.length === 0 ? '' : rules.lastName ? ' good' : ' err'
                   }`}
@@ -241,10 +291,11 @@ export default function InviteScreen({
             </div>
 
             <div className="fgroup">
-              <label className="flabel">Create Password</label>
+              <label className="flabel" htmlFor="inv-pw">Create Password</label>
               <div className="pw-wrap">
                 <input
                   id="inv-pw"
+                  name="new-password"
                   className="finput"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="new-password"
@@ -266,13 +317,19 @@ export default function InviteScreen({
                   <i
                     className={rules.length ? 'ti ti-circle-check' : 'ti ti-circle'}
                   ></i>{' '}
-                  8+ characters
+                  12+ characters
                 </div>
                 <div className={`pw-rule${rules.upper ? ' pass' : ''}`} id="r-up">
                   <i
                     className={rules.upper ? 'ti ti-circle-check' : 'ti ti-circle'}
                   ></i>{' '}
                   Uppercase letter
+                </div>
+                <div className={`pw-rule${rules.lower ? ' pass' : ''}`}>
+                  <i
+                    className={rules.lower ? 'ti ti-circle-check' : 'ti ti-circle'}
+                  ></i>{' '}
+                  Lowercase letter
                 </div>
                 <div className={`pw-rule${rules.number ? ' pass' : ''}`} id="r-num">
                   <i
@@ -286,13 +343,32 @@ export default function InviteScreen({
                   ></i>{' '}
                   Special character
                 </div>
+                <div className={`pw-rule${rules.noSpaces ? ' pass' : ''}`}>
+                  <i
+                    className={rules.noSpaces ? 'ti ti-circle-check' : 'ti ti-circle'}
+                  ></i>{' '}
+                  No spaces
+                </div>
+                <div className={`pw-rule${rules.notCommon ? ' pass' : ''}`}>
+                  <i
+                    className={rules.notCommon ? 'ti ti-circle-check' : 'ti ti-circle'}
+                  ></i>{' '}
+                  Not common or sequential
+                </div>
+                <div className={`pw-rule${rules.noIdentity ? ' pass' : ''}`}>
+                  <i
+                    className={rules.noIdentity ? 'ti ti-circle-check' : 'ti ti-circle'}
+                  ></i>{' '}
+                  Does not include your name or email
+                </div>
               </div>
             </div>
             <div className="fgroup">
-              <label className="flabel">Confirm Password</label>
+              <label className="flabel" htmlFor="inv-pw2">Confirm Password</label>
               <div className="pw-wrap">
                 <input
                   id="inv-pw2"
+                  name="confirm-new-password"
                   className={`finput${
                     confirmPassword.length === 0
                       ? ''
@@ -330,9 +406,8 @@ export default function InviteScreen({
 
             <button
               id="inv-btn"
-              type="button"
+              type="submit"
               className="btn-primary"
-              onClick={onActivate}
               disabled={
                 loading ||
                 !(
@@ -340,8 +415,12 @@ export default function InviteScreen({
                   rules.lastName &&
                   rules.length &&
                   rules.upper &&
+                  rules.lower &&
                   rules.number &&
                   rules.symbol &&
+                  rules.noSpaces &&
+                  rules.notCommon &&
+                  rules.noIdentity &&
                   rules.match
                 )
               }
@@ -349,11 +428,13 @@ export default function InviteScreen({
               <i className="ti ti-circle-check"></i>{' '}
               {loading ? 'Activating...' : 'Activate My Account'}
             </button>
-            <div className="countdown">
-              <i className="ti ti-clock"></i>{' '}
-              <span id="inv-countdown">{inviteCountdown}</span>
-            </div>
-          </div>
+            {inviteCountdown && (
+              <div className="countdown">
+                <i className="ti ti-clock"></i>{' '}
+                <span id="inv-countdown">{inviteCountdown}</span>
+              </div>
+            )}
+          </form>
 
           <div id="inv-success" className={state === 'success' ? '' : 'hidden'}>
             <div className="steps">

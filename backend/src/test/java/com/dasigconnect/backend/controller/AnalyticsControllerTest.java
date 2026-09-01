@@ -42,34 +42,37 @@ class AnalyticsControllerTest {
     private MetricsAggregatorService metricsAggregatorService;
 
     @MockitoBean
+    private com.dasigconnect.backend.service.AuditLogService auditLogService;
+
+    @MockitoBean
     private JWTService jwtService;
 
     @MockitoBean
     private TenantScopeService tenantScopeService;
 
     @Test
-    void summary_withoutAuth_returns403() throws Exception {
+    void summary_withoutAuth_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/analytics/summary"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
     @WithMockUser
     void summary_authenticated_returnsAnalyticsPayload() throws Exception {
-        when(metricsAggregatorService.summary(eq("30d"), any(), any())).thenReturn(summaryDto());
+        when(metricsAggregatorService.summary(eq("30d"), any(), any(), any())).thenReturn(summaryDto());
 
         mockMvc.perform(get("/api/v1/analytics/summary"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.range").value("30d"))
-                .andExpect(jsonPath("$.averagePostingDelay.value").value(2.5))
-                .andExpect(jsonPath("$.contentCompleteness.targetMet").value(true))
-                .andExpect(jsonPath("$.operationalHealth.publishingSuccessRate").value(95.0));
+                .andExpect(jsonPath("$.data.range").value("30d"))
+                .andExpect(jsonPath("$.data.averagePostingDelay.value").value(2.5))
+                .andExpect(jsonPath("$.data.contentCompleteness.targetMet").value(true))
+                .andExpect(jsonPath("$.data.operationalHealth.publishingSuccessRate").value(95.0));
     }
 
     @Test
     @WithMockUser
     void export_authenticated_returnsCsvAttachment() throws Exception {
-        when(metricsAggregatorService.export(eq("posting-delay"), eq("30d"), any(), any()))
+        when(metricsAggregatorService.export(eq("posting-delay"), eq("30d"), any(), any(), any()))
                 .thenReturn(new CsvExport("posting-delay.csv", "\"submission_id\"\r\n\"abc\"\r\n"));
 
         mockMvc.perform(get("/api/v1/analytics/export/posting-delay"))
@@ -84,7 +87,7 @@ class AnalyticsControllerTest {
                 Instant.parse("2026-05-01T00:00:00Z"),
                 Instant.parse("2026-05-31T00:00:00Z"),
                 Instant.parse("2026-05-31T00:00:00Z"),
-                "administrator",
+                "admin",
                 true,
                 null,
                 List.of(),
@@ -100,6 +103,7 @@ class AnalyticsControllerTest {
                 null,
                 new AiPerformanceDto(0, 0, 0, 0, 0, 0, 0, 0, 0, true),
                 new AdminAnalyticsDto(1, 4, 1),
-                new OperationalHealthDto(12, 0, 0, 0, 0, 20, 19, 95.0, 19, 100.0, 4));
+                new OperationalHealthDto(12, 0, 0, 0, 0, 20, 19, 95.0, 19, 100.0, 4),
+                new com.dasigconnect.backend.model.dto.analytics.FacebookEngagementSummaryDto(0, 0, 0, 0, 0, 0));
     }
 }

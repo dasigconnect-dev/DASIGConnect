@@ -1,14 +1,17 @@
+import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import "../../styles/notifications.css";
+import "../../styles/dasig-loader.css";
 import { useNotifications } from "./hooks/useNotifications";
-import FilterTabs from "./components/FilterTabs";
-import NotificationList from "./components/NotificationList";
-import AuditLog from "./components/AuditLog";
 import type { User } from "../../types/auth.types";
-import type { Notification, NotificationFilter, SseStatus } from "./types";
+import type { Notification, NotificationFilter } from "./types";
+import { FILTER_LABELS } from "./types";
 
 interface NotificationsScreenProps {
   user: User;
 }
+
+const PAGE_SIZE = 7;
 
 const CONTRIBUTOR_FILTERS: NotificationFilter[] = [
   "all",
@@ -18,7 +21,7 @@ const CONTRIBUTOR_FILTERS: NotificationFilter[] = [
   "deadline",
 ];
 
-const VALIDATOR_FILTERS: NotificationFilter[] = [
+const MODERATOR_FILTERS: NotificationFilter[] = [
   "all",
   "unread",
   "submissions",
@@ -40,372 +43,585 @@ function isContributorWorkflowNotification(notification: Notification) {
   return ["submissions", "publishing", "deadline", "overrides"].includes(notification.category);
 }
 
-function isValidatorWorkflowNotification(notification: Notification) {
+function isModeratorWorkflowNotification(notification: Notification) {
   return ["submissions", "deadline", "system"].includes(notification.category);
 }
 
-function ContributorActivitySummary({ notifications }: { notifications: Notification[] }) {
-  const awaitingReview = notifications.filter((n) =>
-    ["submission_pending", "submission_approved", "submission_scheduled"].includes(n.eventType),
-  ).length;
-  const needsAction = notifications.filter((n) =>
-    ["submission_needs_revision", "submission_rejected", "submission_publish_failed", "override_denied"].includes(n.eventType),
-  ).length;
-  const publishedPosts = notifications.filter((n) =>
-    ["submission_published", "submission_published_manual"].includes(n.eventType),
-  ).length;
-  const upcomingScheduled = notifications.filter((n) =>
-    ["submission_approved", "submission_scheduled", "submission_rescheduled", "override_slot_suggested"].includes(n.eventType),
-  ).length;
-
-  const items = [
-    { label: "Awaiting Review", value: awaitingReview, icon: "ti ti-clock", tone: "info" },
-    { label: "Needs Action", value: needsAction, icon: "ti ti-alert-triangle", tone: "warning" },
-    { label: "Published Posts", value: publishedPosts, icon: "ti ti-circle-check", tone: "success" },
-    { label: "Upcoming Scheduled Posts", value: upcomingScheduled, icon: "ti ti-calendar-event", tone: "blue" },
-  ];
-
-  return (
-    <aside className="notif-card contributor-summary-card" aria-label="Contributor activity summary">
-      <div className="notif-card-header">
-        <div>
-          <div className="notif-card-title">Activity Summary</div>
-          <div className="notif-card-sub">Your content workflow at a glance</div>
-        </div>
-      </div>
-      <div className="contributor-summary-list">
-        {items.map((item) => (
-          <div className="contributor-summary-row" key={item.label}>
-            <div className={`contributor-summary-icon ${item.tone}`}>
-              <i className={item.icon} aria-hidden="true" />
-            </div>
-            <div>
-              <div className="contributor-summary-value">{item.value}</div>
-              <div className="contributor-summary-label">{item.label}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="contributor-summary-note">
-        Important updates will link you back to the related submission or feedback.
-      </div>
-    </aside>
-  );
+function formatNotificationDate(isoString?: string): string {
+  if (!isoString) return "—";
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
-function ValidatorWorkloadSummary({ notifications }: { notifications: Notification[] }) {
-  const pendingReview = notifications.filter(
-    (n) => n.eventType === "submission_pending" && n.unread,
-  ).length;
-  const deadlineAlerts = notifications.filter((n) => n.category === "deadline").length;
-  const totalSubmissions = notifications.filter((n) => n.eventType === "submission_pending").length;
-  const systemAlerts = notifications.filter((n) => n.category === "system" && n.unread).length;
-
-  const items = [
-    { label: "Awaiting My Review", value: pendingReview, icon: "ti ti-file-search", tone: "info" },
-    { label: "Deadline Alerts", value: deadlineAlerts, icon: "ti ti-clock", tone: deadlineAlerts > 0 ? "warning" : "info" },
-    { label: "Total Submissions", value: totalSubmissions, icon: "ti ti-files", tone: "blue" },
-    { label: "System Alerts", value: systemAlerts, icon: "ti ti-alert-triangle", tone: systemAlerts > 0 ? "error" : "info" },
-  ];
-
-  return (
-    <aside className="notif-card validator-summary-card" aria-label="Validator workload summary">
-      <div className="notif-card-header">
-        <div>
-          <div className="notif-card-title">Workload Summary</div>
-          <div className="notif-card-sub">Your validation queue at a glance</div>
-        </div>
-      </div>
-      <div className="contributor-summary-list">
-        {items.map((item) => (
-          <div className="contributor-summary-row" key={item.label}>
-            <div className={`contributor-summary-icon ${item.tone}`}>
-              <i className={item.icon} aria-hidden="true" />
-            </div>
-            <div>
-              <div className="contributor-summary-value">{item.value}</div>
-              <div className="contributor-summary-label">{item.label}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="validator-summary-note">
-        New submissions appear instantly. Resolve deadline alerts from the validation queue.
-      </div>
-    </aside>
-  );
+function getEventStatusBadge(eventType: string) {
+  switch (eventType) {
+    case "submission_approved":
+      return { label: "Approved", icon: "ti ti-circle-check", className: "sp-approved" };
+    case "submission_published":
+    case "submission_published_manual":
+      return { label: "Published", icon: "ti ti-circle-check", className: "pill-published" };
+    case "submission_scheduled":
+      return { label: "Scheduled", icon: "ti ti-calendar", className: "sp-scheduled" };
+    case "submission_pending":
+      return { label: "Under Review", icon: "ti ti-clock", className: "sp-review" };
+    case "submission_needs_revision":
+      return { label: "Needs Revision", icon: "ti ti-pencil", className: "pill-revision" };
+    case "submission_rejected":
+      return { label: "Rejected", icon: "ti ti-circle-x", className: "pill-rejected" };
+    case "submission_publish_failed":
+      return { label: "Publish Failed", icon: "ti ti-alert-triangle", className: "pill-failed" };
+    case "token_expiring":
+      return { label: "Token Expiring", icon: "ti ti-key", className: "sp-pending" };
+    case "token_invalid":
+      return { label: "Token Invalid", icon: "ti ti-shield-x", className: "pill-failed" };
+    case "empty_schedule_warning":
+      return { label: "Empty Schedule", icon: "ti ti-calendar-off", className: "sp-pending" };
+    case "deadline_warning":
+    case "validation_timeout":
+      return { label: "Deadline", icon: "ti ti-alert-circle", className: "pill-failed" };
+    case "fast_track_submission":
+      return { label: "Fast-Track", icon: "ti ti-bolt", className: "pill-failed" };
+    case "submission_missed_review":
+      return { label: "Missed Review", icon: "ti ti-clock-x", className: "pill-failed" };
+    case "override_approved":
+      return { label: "Override Approved", icon: "ti ti-check", className: "sp-approved" };
+    case "override_denied":
+      return { label: "Override Denied", icon: "ti ti-ban", className: "pill-rejected" };
+    case "override_slot_suggested":
+      return { label: "Slot Suggested", icon: "ti ti-calendar-plus", className: "sp-scheduled" };
+    case "admin_direct_post":
+      return { label: "Direct Post", icon: "ti ti-speakerphone", className: "pill-published" };
+    case "embedding_failure_digest":
+      return { label: "AI Digest", icon: "ti ti-photo-off", className: "sp-pending" };
+    case "institution_onboarded":
+      return { label: "Onboarded", icon: "ti ti-sparkles", className: "sp-approved" };
+    case "institution_no_moderator":
+      return { label: "No Moderator", icon: "ti ti-building", className: "pill-failed" };
+    case "user_role_changed":
+      return { label: "Role Changed", icon: "ti ti-user-cog", className: "sp-scheduled" };
+    default:
+      return { label: "Update", icon: "ti ti-bell", className: "sp-pending" };
+  }
 }
 
-function AdminNotificationSummary({
-  notifications,
-  unreadCount,
-  criticalCount,
-  sseStatus,
-}: {
-  notifications: Notification[];
-  unreadCount: number;
-  criticalCount: number;
-  sseStatus: SseStatus;
-}) {
-  const publishingFailures = notifications.filter(
-    (n) => n.eventType === "submission_publish_failed",
-  ).length;
-  const systemAlerts = notifications.filter(
-    (n) => n.category === "system" && n.unread,
-  ).length;
+// Notifications about the recipient's own submission — always open it in My
+// Submissions, even for a moderator/admin (they may have authored it as a
+// contributor). A rejected/needs-revision post is not in the review queue.
+const OWNER_FACING_EVENTS = new Set([
+  "submission_rejected",
+  "submission_needs_revision",
+  "submission_approved",
+  "submission_rescheduled",
+  "submission_published",
+  "submission_published_manual",
+  "override_denied",
+  "override_slot_suggested",
+]);
+// Notifications that call for a reviewer's action.
+const REVIEW_FACING_EVENTS = new Set([
+  "submission_pending",
+  "fast_track_submission",
+  "validation_timeout",
+]);
 
-  const items = [
-    {
-      label: "Unread Notifications",
-      value: unreadCount,
-      icon: "ti ti-bell",
-      tone: unreadCount > 0 ? "warning" : "info",
-    },
-    {
-      label: "Critical Alerts",
-      value: criticalCount,
-      icon: "ti ti-alert-octagon",
-      tone: criticalCount > 0 ? "error" : "info",
-    },
-    {
-      label: "Publishing Failures",
-      value: publishingFailures,
-      icon: "ti ti-circle-x",
-      tone: publishingFailures > 0 ? "error" : "info",
-    },
-    {
-      label: "System Events",
-      value: systemAlerts,
-      icon: "ti ti-server",
-      tone: systemAlerts > 0 ? "warning" : "info",
-    },
-  ];
+function getNotificationTargetRoute(n: Notification, userRole: User["role"]): string {
+  const canReview = userRole === "moderator" || userRole === "admin";
+  const isAdmin = userRole === "admin";
+  const eventType = n.eventType;
 
-  return (
-    <aside className="notif-card admin-summary-card" aria-label="Admin notification overview">
-      <div className="notif-card-header">
-        <div>
-          <div className="notif-card-title">Notification Overview</div>
-          <div className="notif-card-sub">Platform health at a glance</div>
-        </div>
-      </div>
-      <div className="contributor-summary-list">
-        {items.map((item) => (
-          <div className="contributor-summary-row" key={item.label}>
-            <div className={`contributor-summary-icon ${item.tone}`}>
-              <i className={item.icon} aria-hidden="true" />
-            </div>
-            <div>
-              <div className="contributor-summary-value">{item.value}</div>
-              <div className="contributor-summary-label">{item.label}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="admin-summary-sse">
-        <div className={`sse-dot ${sseStatus === "connected" ? "" : sseStatus}`} />
-        <span className="admin-summary-sse-label">
-          SSE Stream &mdash;{" "}
-          {sseStatus === "connected"
-            ? "Live updates active"
-            : sseStatus === "connecting"
-            ? "Connecting..."
-            : "Disconnected — API fallback active"}
-        </span>
-      </div>
-    </aside>
-  );
+  if (n.link) {
+    if (n.link.startsWith("http://") || n.link.startsWith("https://")) {
+      return n.link;
+    }
+    if (n.link !== "/dashboard" && n.link !== "/notifications" && n.link !== "/") {
+      if (n.link.startsWith("/submissions/")) {
+        const subId = n.link.replace("/submissions/", "");
+        const ownerView = `/submissions?submissionId=${subId}`;
+        if (OWNER_FACING_EVENTS.has(eventType)) return ownerView;
+        if (REVIEW_FACING_EVENTS.has(eventType)) {
+          return canReview ? `/validation/queue?submissionId=${subId}` : ownerView;
+        }
+        // dual-audience (e.g. publish failed) — reviewers get the ops view
+        return canReview ? `/validation/queue?submissionId=${subId}` : ownerView;
+      }
+      return n.link;
+    }
+  }
+
+  if (
+    eventType === "submission_pending" ||
+    eventType === "fast_track_submission" ||
+    eventType === "validation_timeout" ||
+    eventType === "submission_missed_review"
+  ) {
+    return canReview ? "/validation/queue" : "/submissions";
+  }
+
+  if (eventType === "submission_publish_failed") {
+    return canReview ? "/validation/queue?tab=failed" : "/submissions?tab=failed";
+  }
+
+  if (
+    eventType === "submission_approved" ||
+    eventType === "submission_scheduled" ||
+    eventType === "submission_rescheduled" ||
+    eventType === "empty_schedule_warning" ||
+    eventType === "admin_direct_post"
+  ) {
+    return "/scheduler/calendar";
+  }
+
+  if (eventType === "submission_published" || eventType === "submission_published_manual") {
+    return canReview ? "/scheduler/calendar" : "/submissions?tab=published";
+  }
+
+  if (eventType === "submission_needs_revision" || eventType === "submission_rejected") {
+    // Both live under the "Action Needed" tab in My Submissions.
+    return "/submissions?tab=action-needed";
+  }
+
+  if (eventType === "token_expiring" || eventType === "token_invalid") {
+    // Facebook Page token health + "Re-Authenticate" live on System Health.
+    return isAdmin ? "/admin/system-health#integrations" : "/dashboard";
+  }
+
+  if (eventType === "institution_onboarded" || eventType === "institution_no_moderator") {
+    return "/admin/institution-management";
+  }
+
+  if (eventType === "embedding_failure_digest") {
+    return "/media-repository";
+  }
+
+  if (n.category === "submissions" || n.category === "overrides") {
+    return canReview ? "/validation/queue" : "/submissions";
+  }
+
+  if (n.category === "publishing" || n.category === "deadline") {
+    return "/scheduler/calendar";
+  }
+
+  if (n.category === "system") {
+    return isAdmin ? "/admin/system-health" : "/dashboard";
+  }
+
+  return canReview ? "/validation/queue" : "/submissions";
 }
 
 export default function NotificationsScreen({ user }: NotificationsScreenProps) {
+  const navigate = useNavigate();
   const {
     allNotifications,
-    auditLog,
     loading,
     fetchError,
-    sseStatus,
     activeFilter,
     setActiveFilter,
-    unreadCount,
-    criticalCount,
     counts,
     markAllRead,
     markRead,
     refreshNotifications,
   } = useNotifications();
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showAll, setShowAll] = useState(false);
+
   const isContributor = user.role === "contributor";
-  const isValidator = user.role === "validator";
-  const isAdmin = !isContributor && !isValidator;
+  const isModerator = user.role === "moderator";
 
-  const workflowNotifications = isContributor
-    ? allNotifications.filter(isContributorWorkflowNotification)
-    : isValidator
-    ? allNotifications.filter(isValidatorWorkflowNotification)
-    : allNotifications;
-
-  const visibleNotifications = (() => {
+  const workflowNotifications = useMemo(() => {
     if (isContributor) {
-      return workflowNotifications.filter((n) => {
-        if (activeFilter === "all") return true;
-        if (activeFilter === "unread") return n.unread;
-        if (activeFilter === "submissions") return n.category === "submissions" || n.category === "overrides";
-        return n.category === activeFilter;
-      });
+      return allNotifications.filter(isContributorWorkflowNotification);
     }
-    if (isValidator) {
-      return workflowNotifications.filter((n) => {
-        if (activeFilter === "all") return true;
-        if (activeFilter === "unread") return n.unread;
-        return n.category === activeFilter;
-      });
+    if (isModerator) {
+      return allNotifications.filter(isModeratorWorkflowNotification);
     }
-    return workflowNotifications.filter((n) => {
-      if (activeFilter === "all") return true;
-      if (activeFilter === "unread") return n.unread;
-      return n.category === activeFilter;
-    });
-  })();
+    return allNotifications;
+  }, [allNotifications, isContributor, isModerator]);
 
-  const contributorCounts = isContributor
-    ? {
-        ...counts,
-        all: workflowNotifications.length,
-        unread: workflowNotifications.filter((n) => n.unread).length,
-        submissions: workflowNotifications.filter((n) => n.category === "submissions" || n.category === "overrides").length,
-        publishing: workflowNotifications.filter((n) => n.category === "publishing").length,
-        deadline: workflowNotifications.filter((n) => n.category === "deadline").length,
-      }
-    : counts;
+  const contributorCounts = useMemo(() => {
+    return isContributor
+      ? {
+          ...counts,
+          all: workflowNotifications.length,
+          unread: workflowNotifications.filter((n) => n.unread).length,
+          submissions: workflowNotifications.filter(
+            (n) => n.category === "submissions" || n.category === "overrides",
+          ).length,
+          publishing: workflowNotifications.filter((n) => n.category === "publishing").length,
+          deadline: workflowNotifications.filter((n) => n.category === "deadline").length,
+        }
+      : counts;
+  }, [counts, isContributor, workflowNotifications]);
 
-  const validatorCounts = isValidator
-    ? {
-        ...counts,
-        all: workflowNotifications.length,
-        unread: workflowNotifications.filter((n) => n.unread).length,
-        submissions: workflowNotifications.filter((n) => n.category === "submissions").length,
-        deadline: workflowNotifications.filter((n) => n.category === "deadline").length,
-        system: workflowNotifications.filter((n) => n.category === "system").length,
-      }
-    : counts;
+  const moderatorCounts = useMemo(() => {
+    return isModerator
+      ? {
+          ...counts,
+          all: workflowNotifications.length,
+          unread: workflowNotifications.filter((n) => n.unread).length,
+          submissions: workflowNotifications.filter((n) => n.category === "submissions").length,
+          deadline: workflowNotifications.filter((n) => n.category === "deadline").length,
+          system: workflowNotifications.filter((n) => n.category === "system").length,
+        }
+      : counts;
+  }, [counts, isModerator, workflowNotifications]);
 
-  const displayCounts = isContributor ? contributorCounts : isValidator ? validatorCounts : counts;
+  const displayCounts = isContributor ? contributorCounts : isModerator ? moderatorCounts : counts;
   const displayFilters = isContributor
     ? CONTRIBUTOR_FILTERS
-    : isValidator
-    ? VALIDATOR_FILTERS
+    : isModerator
+    ? MODERATOR_FILTERS
     : ADMIN_FILTERS;
 
-  const pageClass = [
-    "notif-page",
-    isContributor ? "notif-page-contributor" : "",
-    isValidator ? "notif-page-validator" : "",
-    isAdmin ? "notif-page-admin" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const filteredNotifications = useMemo(() => {
+    return workflowNotifications.filter((n) => {
+      let matchesFilter = true;
+      if (activeFilter === "unread") {
+        matchesFilter = n.unread;
+      } else if (activeFilter === "submissions") {
+        matchesFilter = n.category === "submissions" || n.category === "overrides";
+      } else if (activeFilter !== "all") {
+        matchesFilter = n.category === activeFilter;
+      }
+
+      if (!matchesFilter) return false;
+
+      const term = searchQuery.trim().toLowerCase();
+      if (!term) return true;
+
+      return (
+        n.text.toLowerCase().includes(term) ||
+        n.sender.toLowerCase().includes(term) ||
+        n.category.toLowerCase().includes(term)
+      );
+    });
+  }, [workflowNotifications, activeFilter, searchQuery]);
+
+  const displayedNotifications = useMemo(() => {
+    if (showAll) return filteredNotifications;
+    return filteredNotifications.slice(0, PAGE_SIZE);
+  }, [filteredNotifications, showAll]);
+
+  function handleFilterChange(filter: NotificationFilter) {
+    setActiveFilter(filter);
+  }
+
+  function handleSearchChange(val: string) {
+    setSearchQuery(val);
+  }
+
+  function handleRowClick(n: Notification) {
+    if (n.unread) {
+      markRead(n.id);
+    }
+    const target = getNotificationTargetRoute(n, user.role);
+    if (target.startsWith("http://") || target.startsWith("https://")) {
+      window.open(target, "_blank", "noopener,noreferrer");
+    } else {
+      navigate(target);
+    }
+  }
 
   const pageTitle = isContributor
     ? "Workflow Inbox"
-    : isValidator
+    : isModerator
     ? "Validation Inbox"
-    : "Notification Center";
+    : "Notifications";
 
   const pageSubtitle = isContributor
-    ? "Track submission feedback, publishing updates, and schedule changes in one place."
-    : isValidator
-    ? "Monitor incoming submissions, track validation deadlines, and stay on top of your review queue."
-    : "Monitor platform-wide alerts, publishing events, system health, and workflow activity.";
+    ? "Complete overview of submission feedback and publishing updates across your workspace."
+    : isModerator
+    ? "Complete overview of incoming submissions and validation deadlines across your workspace."
+    : "Complete overview of notifications, alerts, and publishing activities across your workspace.";
 
-  const panelTitle = isContributor
-    ? "Latest Workflow Updates"
-    : isValidator
-    ? "Latest Validation Alerts"
-    : "All Notifications";
-
-  return (
-    <div className={pageClass}>
-      <div className="notif-page-header">
-        <div>
-          <h1>{pageTitle}</h1>
-          <p>{pageSubtitle}</p>
-        </div>
-        <div className="notif-page-actions">
-          <button type="button" className="notif-btn notif-btn-ghost" onClick={markAllRead}>
-            <i className="ti ti-checks" style={{ fontSize: 14 }} />
-            <span>Mark all read</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="notif-layout">
-        <div className="notif-panel">
-          <div className="notif-panel-header">
-            <div>
-              <div className="notif-panel-title">{panelTitle}</div>
-              <div className="notif-panel-meta">
-                {workflowNotifications.length} updates &mdash;{" "}
-                {workflowNotifications.filter((n) => n.unread).length} unread
-              </div>
-            </div>
-            <div className="notif-panel-actions">
-              <button
-                type="button"
-                className="notif-icon-btn"
-                title="Refresh"
-                onClick={refreshNotifications}
-              >
-                <i className="ti ti-refresh" style={{ fontSize: 14 }} />
-              </button>
-            </div>
+  // Initial Full Screen Loading State
+  if (loading) {
+    return (
+      <div id="screen-notifications" style={{ background: "var(--d-bg)" }}>
+        <div className="dash-body">
+          <div className="dash-view-header">
+            <h1 className="dash-view-title">{pageTitle}</h1>
+            <p className="dash-view-desc">{pageSubtitle}</p>
           </div>
 
-          <FilterTabs
-            activeFilter={activeFilter}
-            counts={displayCounts}
-            onChange={setActiveFilter}
-            filters={displayFilters}
-          />
+          <div
+            style={{
+              minHeight: "380px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "60px 20px",
+              background: "transparent",
+            }}
+          >
+            <div className="dc-dot-triangle-container">
+              <div className="dc-dot-triangle-label">
+                Loading Notifications
+                <span className="dc-dot-triangle-label-dots">
+                  <span className="dc-dot-triangle-dot-char">.</span>
+                  <span className="dc-dot-triangle-dot-char">.</span>
+                  <span className="dc-dot-triangle-dot-char">.</span>
+                </span>
+              </div>
+              <div className="loader-dots" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-          <NotificationList
-            notifications={visibleNotifications}
-            onNotificationClick={markRead}
-            loading={loading}
-            error={fetchError}
-            emptyTitle={
-              isContributor
-                ? "No workflow updates yet"
-                : isValidator
-                ? "No validation alerts yet"
-                : "No notifications yet"
-            }
-            emptyMessage={
-              isContributor
-                ? "When your submissions are reviewed, scheduled, revised, or published, they will appear here."
-                : isValidator
-                ? "When contributors from your institution submit content, it will appear here for review."
-                : "Platform-wide events, publishing alerts, and system notifications will appear here."
-            }
-          />
+  return (
+    <div id="screen-notifications" style={{ background: "var(--d-bg)" }}>
+      <div className="dash-body">
+        {/* Page Header */}
+        <div className="dash-view-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
+          <div>
+            <h1 className="dash-view-title">{pageTitle}</h1>
+            <p className="dash-view-desc">{pageSubtitle}</p>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <button
+              type="button"
+              className="notif-btn notif-btn-ghost"
+              onClick={markAllRead}
+              title="Mark all notifications as read"
+            >
+              <i className="ti ti-checks" style={{ fontSize: 14 }} />
+              <span>Mark all read</span>
+            </button>
+
+            <button
+              type="button"
+              className="notif-btn notif-btn-ghost notif-btn-icon"
+              onClick={refreshNotifications}
+              title="Refresh"
+              aria-label="Refresh"
+            >
+              <i className="ti ti-refresh" style={{ fontSize: 14 }} />
+            </button>
+          </div>
         </div>
 
-        <div className="notif-right-sidebar">
-          {isContributor ? (
-            <ContributorActivitySummary notifications={workflowNotifications} />
-          ) : isValidator ? (
-            <ValidatorWorkloadSummary notifications={workflowNotifications} />
-          ) : (
-            <>
-              <AdminNotificationSummary
-                notifications={workflowNotifications}
-                unreadCount={unreadCount}
-                criticalCount={criticalCount}
-                sseStatus={sseStatus}
-              />
-              <AuditLog entries={auditLog} />
-            </>
-          )}
-        </div>
+        {/* Card 1: Filter Tabs & Search Toolbar */}
+        <div className="card-wrap" style={{ marginBottom: "16px" }}>
+          <div className="dash-card-toolbar">
+            <div className="im-status-tabs" role="group" aria-label="Filter notifications by category">
+              {displayFilters.map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      className={`im-status-tab${activeFilter === f ? " is-active" : ""}`}
+                      onClick={() => handleFilterChange(f)}
+                      aria-pressed={activeFilter === f}
+                    >
+                      {FILTER_LABELS[f]}
+                      <span className="im-status-tab-count">{displayCounts[f]}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="im-search-wrap">
+                  <i className="ti ti-search im-search-icon" aria-hidden="true" />
+                  <input
+                    className="im-search-input"
+                    type="search"
+                    placeholder="Search notifications..."
+                    value={searchQuery}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    aria-label="Search notifications"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Independent Action Row between Card 1 and Card 2 */}
+            {filteredNotifications.length > PAGE_SIZE && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "14px",
+                  padding: "0 2px",
+                }}
+              >
+                <span style={{ fontSize: "13px", color: "var(--d-muted, #5a6f8a)", fontWeight: 500 }}>
+                  Showing {displayedNotifications.length} of {filteredNotifications.length} notifications
+                </span>
+
+                <button
+                  type="button"
+                  className="notif-view-all-pill"
+                  onClick={() => setShowAll((prev) => !prev)}
+                  title={showAll ? "Show top 7 notifications" : "Show all notifications"}
+                >
+                  <i className={showAll ? "ti ti-chevron-up" : "ti ti-list-details"} />
+                  <span>{showAll ? `Show Top ${PAGE_SIZE}` : `View All Notifications (${filteredNotifications.length})`}</span>
+                </button>
+              </div>
+            )}
+
+            {/* Card 2: Data Table */}
+            <div className="card-wrap">
+              <table className="data-table" id="activity-full-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: "42%" }}>NOTIFICATION / EVENT</th>
+                    <th style={{ width: "24%" }}>SOURCE</th>
+                    <th style={{ width: "16%" }}>RECEIVED</th>
+                    <th style={{ width: "18%" }}>STATUS</th>
+                  </tr>
+                </thead>
+                <tbody
+                  id="activity-full-body"
+                  key={`${activeFilter}-${searchQuery}-${showAll}`}
+                  className="act-table-animate"
+                >
+                  {fetchError ? (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        style={{
+                          textAlign: "center",
+                          padding: "44px 20px",
+                          color: "var(--d-muted)",
+                          fontSize: 13,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 46,
+                            height: 46,
+                            borderRadius: "50%",
+                            background: "#fef2f2",
+                            border: "1px solid #fee2e2",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            margin: "0 auto 12px",
+                            color: "#ef4444",
+                            fontSize: 24,
+                          }}
+                        >
+                          <i className="ti ti-wifi-off" />
+                        </div>
+                        <div style={{ fontWeight: 600, color: "#1e293b", marginBottom: 4 }}>
+                          Connection error
+                        </div>
+                        <div style={{ color: "#64748b", fontSize: 12.5, marginBottom: 12 }}>
+                          {fetchError}
+                        </div>
+                        <button
+                          type="button"
+                          className="notif-btn notif-btn-ghost"
+                          onClick={refreshNotifications}
+                        >
+                          <i className="ti ti-refresh" /> Retry
+                        </button>
+                      </td>
+                    </tr>
+                  ) : filteredNotifications.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        style={{
+                          textAlign: "center",
+                          padding: "44px 20px",
+                          color: "var(--d-muted)",
+                          fontSize: 13,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 46,
+                            height: 46,
+                            borderRadius: "50%",
+                            background: "#eff6ff",
+                            border: "1px solid #dbeafe",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            margin: "0 auto 12px",
+                          }}
+                        >
+                          <i
+                            className="ti ti-bell-off"
+                            style={{
+                              fontSize: 24,
+                              color: "#3b82f6",
+                            }}
+                          />
+                        </div>
+                        <div
+                          style={{
+                            fontWeight: 600,
+                            color: "#1e293b",
+                            marginBottom: 4,
+                          }}
+                        >
+                          {searchQuery.trim() || activeFilter !== "all"
+                            ? "No matching notifications"
+                            : "No notifications yet"}
+                        </div>
+                        <div style={{ color: "#64748b", fontSize: 12.5 }}>
+                          {searchQuery.trim() || activeFilter !== "all"
+                            ? "Try clearing your search or switching to all categories."
+                            : "Platform-wide events, publishing alerts, and system notifications will appear here."}
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    displayedNotifications.map((n) => {
+                      const statusBadge = getEventStatusBadge(n.eventType);
+                      return (
+                        <tr
+                          key={n.id}
+                          onClick={() => handleRowClick(n)}
+                          style={{ cursor: "pointer" }}
+                          title={n.link ? `Click to view: ${n.linkLabel}` : undefined}
+                        >
+                          <td>
+                            <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                              {n.unread && (
+                                <span
+                                  style={{
+                                    width: 7,
+                                    height: 7,
+                                    borderRadius: "50%",
+                                    background: "#2563eb",
+                                    marginTop: 6,
+                                    flexShrink: 0,
+                                  }}
+                                  title="Unread"
+                                />
+                              )}
+                              <div style={{ minWidth: 0 }}>
+                                <div className="act-title">{n.text}</div>
+                                <span className="act-category">{n.time}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="act-institution">{n.sender}</td>
+                          <td className="act-date">{formatNotificationDate(n.createdAt)}</td>
+                          <td>
+                            <span className={`status-pill ${statusBadge.className}`}>
+                              <i className={statusBadge.icon} /> {statusBadge.label}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
       </div>
     </div>
   );

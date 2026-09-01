@@ -3,10 +3,18 @@ package com.dasigconnect.backend.model.dto.submission;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 import jakarta.validation.constraints.Size;
 
 public class SubmissionUpdateDto {
+
+    /**
+     * Target institution scope. Only honoured for admin composers and only while
+     * the submission is still an editable draft; a change re-homes the draft and
+     * detaches any media attached from the previous institution.
+     */
+    private UUID institutionId;
 
     @Size(max = 255, message = "Event title must not exceed 255 characters")
     private String eventTitle;
@@ -22,7 +30,35 @@ public class SubmissionUpdateDto {
     @Size(max = 100)
     private String category;
 
+    @Size(max = 100)
+    private String templateId;
+
+    @Size(max = 255)
+    private String albumName;
+
+    private List<String> mediaTags;
+
+    private Boolean fastTrack;
+
+    @Size(max = 255)
+    private String liveEventName;
+
     private List<String> tags;
+
+    /**
+     * Only honoured for an ADMIN editing the schedule onto a hard-blocked slot:
+     * the admin's reason for bypassing the guard rail (audited). Moderators
+     * cannot bypass and must raise an override request instead.
+     */
+    private String overrideReason;
+
+    public UUID getInstitutionId() {
+        return institutionId;
+    }
+
+    public void setInstitutionId(UUID institutionId) {
+        this.institutionId = institutionId;
+    }
 
     public String getEventTitle() {
         return eventTitle;
@@ -78,5 +114,53 @@ public class SubmissionUpdateDto {
 
     public void setTags(List<String> tags) {
         this.tags = tags;
+    }
+
+    public String getTemplateId() {
+        return templateId;
+    }
+
+    public void setTemplateId(String templateId) {
+        this.templateId = templateId;
+    }
+
+    public String getAlbumName() {
+        return albumName;
+    }
+
+    public void setAlbumName(String albumName) {
+        this.albumName = albumName;
+    }
+
+    public List<String> getMediaTags() {
+        return mediaTags;
+    }
+
+    public void setMediaTags(List<String> mediaTags) {
+        this.mediaTags = mediaTags;
+    }
+
+    public Boolean getFastTrack() {
+        return fastTrack;
+    }
+
+    public void setFastTrack(Boolean fastTrack) {
+        this.fastTrack = fastTrack;
+    }
+
+    public String getLiveEventName() {
+        return liveEventName;
+    }
+
+    public void setLiveEventName(String liveEventName) {
+        this.liveEventName = liveEventName;
+    }
+
+    public String getOverrideReason() {
+        return overrideReason;
+    }
+
+    public void setOverrideReason(String overrideReason) {
+        this.overrideReason = overrideReason;
     }
 }

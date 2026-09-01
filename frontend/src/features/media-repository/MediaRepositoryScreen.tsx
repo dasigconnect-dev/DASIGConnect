@@ -1,15 +1,27 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { MediaAsset, MediaUsage } from "../../api/mediaApi";
 import {
+  addMediaAssetTag,
   bulkDeleteMediaAssets,
+  createMediaAlbum,
+  deleteMediaAlbum,
   deleteMediaAsset,
+  ensureMediaAlbumPath,
   getMediaAsset,
+  removeMediaAssetTag,
   getMediaAssetUploadUrl,
+  listMediaAlbums,
+  moveMediaAlbum,
   registerMediaAsset,
+  renameMediaAlbum,
+  semanticSearchMediaAssets,
+  updateMediaAssetAlbum,
+  type MediaAlbum,
 } from "../../api/mediaApi";
-import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
+import { listInstitutions, getInstitutionLogoUrl, type InstitutionResponse } from "../../api/authApi";
+import BrandedSelect from "../../components/ui/BrandedSelect";
 import {
   attachAsset,
   listSubmissions,
@@ -20,9 +32,12 @@ import { usePersistentSelection } from "../../hooks/usePersistentSelection";
 import { useMediaAssets } from "./hooks/useMediaAssets";
 import type { SortOption, ViewMode, DeleteTier } from "./types";
 import AssetCard from "./components/AssetCard";
-import FilterBar from "./components/FilterBar";
+import AssetLightbox from "./components/AssetLightbox";
+import AlbumCard from "./components/AlbumCard";
+import { buildAlbumOptions, albumSubtreeIds } from "./albumTree";
+import MediaToolbar from "./components/MediaToolbar";
 import AssetDetailPanel from "./components/AssetDetailPanel";
-import UploadModal from "./components/UploadModal";
+import UploadModal, { type UploadMetadata } from "./components/UploadModal";
 import DeleteModal from "./components/DeleteModal";
 import AddToDraftModal from "./components/AddToDraftModal";
 import "../../styles/media-repository.css";
@@ -47,14 +62,23 @@ function safeFileName(fileName: string) {
   return fileName.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
 
+function getErrorText(error: unknown, fallback: string) {
+  const response = (error as { response?: { data?: { error?: unknown; message?: unknown } } })?.response;
+  const detail = response?.data?.error ?? response?.data?.message;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
 function fileTypeFromFile(file: File) {
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   return ext === "jpg" ? "jpeg" : ext;
 }
 
-// PUT the file straight to Supabase using XHR so we can report real upload
-// progress (fetch() cannot) and surface the actual Supabase status on failure.
-function putToSupabase(
+// PUT the file straight to object storage (Cloudflare R2) using XHR so we can
+// report real upload progress (fetch() cannot) and surface the actual HTTP
+// status from storage on failure.
+function putToStorage(
   signedUrl: string,
   file: File,
   onProgress?: (pct: number) => void,
@@ -85,20 +109,51 @@ function putToSupabase(
 export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenProps) {
   const toast = useToast();
   const navigate = useNavigate();
+  // Strict admin — only gates individual-asset deletion (backend does the same).
   const isAdmin = user.role === "admin";
+  // Admins and moderators are both network-wide (no home institution), so both
+  // browse every institution's media and use the per-institution filter. The
+  // backend already grants moderators this scope (isNetworkRole).
+  const isNetworkBrowser = user.role === "admin" || user.role === "moderator";
 
-  const [networkView, setNetworkView] = useState(isAdmin);
+  // Network browsers see everything by default; the per-institution filter narrows it.
+  const networkView = isNetworkBrowser;
   const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
   const [selectedInstitutionId, setSelectedInstitutionId] = useState<string | null>(null);
-  const { assets, setAssets, loading, error, refresh } = useMediaAssets(networkView, selectedInstitutionId);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentAlbumId = searchParams.get("album");
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("newest");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
 
+  // Meaning-based (Voyage embedding) search — explicit: toggle on, then press Enter.
+  const [semantic, setSemantic] = useState(false);
+  const [semanticResults, setSemanticResults] = useState<MediaAsset[] | null>(null);
+  const [semanticQuery, setSemanticQuery] = useState("");
+  const [semanticBusy, setSemanticBusy] = useState(false);
+
+  // Admin with no institution filter: the repository shows every institution's
+  // top-level albums together, each card badged with its institution.
+  const networkAlbumMode = isNetworkBrowser && !selectedInstitutionId;
+  // At that network root (no folder open, no search/tag filter) only folder cards
+  // are shown, so the network-wide asset fetch is skipped.
+  const skipAssetFetch = networkAlbumMode && !currentAlbumId && !search.trim() && activeTags.size === 0;
+
+  // Folder scoping is dropped while searching so matches are never hidden by the current folder.
+  const listAlbumId = search.trim() ? null : currentAlbumId;
+  const { assets, setAssets, loading, error, refresh } = useMediaAssets(
+    networkView,
+    selectedInstitutionId,
+    listAlbumId,
+    !skipAssetFetch,
+  );
+
   const [selectedAsset, setSelectedAsset] = useState<MediaAsset | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [lightboxAssetId, setLightboxAssetId] = useState<string | null>(null);
 
   const {
     selected: checkedIds,
@@ -114,12 +169,51 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Deep link: ?asset=<id> opens that asset's detail panel (e.g. from a
+  // read-only submission's "View in library" link). Consume the param after.
+  useEffect(() => {
+    const assetId = searchParams.get("asset");
+    if (!assetId) return;
+    let active = true;
+    getMediaAsset(assetId)
+      .then((res) => {
+        if (!active) return;
+        setSelectedAsset(res.data);
+        setPanelOpen(true);
+      })
+      .catch(() => {
+        if (active) toast.error("That media asset could not be opened.");
+      })
+      .finally(() => {
+        const next = new URLSearchParams(searchParams);
+        next.delete("asset");
+        setSearchParams(next, { replace: true });
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [addToDraftOpen, setAddToDraftOpen] = useState(false);
   const [drafts, setDrafts] = useState<SubmissionSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [busyDraftId, setBusyDraftId] = useState<string | null>(null);
 
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [albums, setAlbums] = useState<MediaAlbum[]>([]);
+  const [albumModal, setAlbumModal] = useState<
+    | { mode: "create"; album: null }
+    | { mode: "rename"; album: MediaAlbum }
+    | null
+  >(null);
+  const [albumName, setAlbumName] = useState("");
+  const [albumModalInstitutionId, setAlbumModalInstitutionId] = useState<string>("");
+  const [savingAlbum, setSavingAlbum] = useState(false);
+  const [moveAlbumTarget, setMoveAlbumTarget] = useState<MediaAlbum | null>(null);
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const [folderUploadBusy, setFolderUploadBusy] = useState(false);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTier, setDeleteTier] = useState<DeleteTier | null>(null);
@@ -128,6 +222,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [blockingUsages, setBlockingUsages] = useState<MediaUsage[]>([]);
   const [warningUsages, setWarningUsages] = useState<MediaUsage[]>([]);
   const [deleting, setDeleting] = useState(false);
+  const [contentTypeFilter, setContentTypeFilter] = useState<"all" | "folders" | "files">("all");
 
   const tagChips = useMemo(() => {
     const counts = new Map<string, number>();
@@ -142,7 +237,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   }, [assets]);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isNetworkBrowser) return;
     const controller = new AbortController();
     let active = true;
 
@@ -159,7 +254,150 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       active = false;
       controller.abort();
     };
-  }, [isAdmin, toast]);
+  }, [isNetworkBrowser, toast]);
+
+  // Which institution's albums to load. null + network browser ⇒ every institution's albums.
+  const albumScopeInstitutionId = isNetworkBrowser ? selectedInstitutionId : (user.institutionId ?? null);
+
+  const reloadAlbums = useCallback(() => {
+    if (!isNetworkBrowser && !albumScopeInstitutionId) {
+      setAlbums([]);
+      return Promise.resolve();
+    }
+    return listMediaAlbums(albumScopeInstitutionId ?? undefined)
+      .then((res) => setAlbums(res.data ?? []))
+      .catch(() => toast.error("Could not load media albums."));
+  }, [isNetworkBrowser, albumScopeInstitutionId, toast]);
+
+  useEffect(() => {
+    let active = true;
+    // microtask defer so the fetch/clear never runs synchronously in the effect body
+    queueMicrotask(() => {
+      if (active) void reloadAlbums();
+    });
+    return () => {
+      active = false;
+    };
+  }, [reloadAlbums]);
+
+  const currentAlbum = useMemo(
+    () => albums.find((a) => a.id === currentAlbumId) ?? null,
+    [albums, currentAlbumId],
+  );
+
+  // For create/upload/move: the institution comes from the folder currently open
+  // (each album carries its own institutionId — could be the shared default),
+  // otherwise the admin's selected institution or the user's own.
+  const targetInstitutionId =
+    currentAlbum?.institutionId ??
+    (isNetworkBrowser ? selectedInstitutionId : user.institutionId) ??
+    null;
+
+  // Sub-folders directly under the folder being viewed (root = parentAlbumId null).
+  const childAlbums = useMemo(
+    () =>
+      albums
+        .filter((a) => (a.parentAlbumId ?? null) === (currentAlbumId ?? null))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [albums, currentAlbumId],
+  );
+
+  // Root → current folder, for the breadcrumb.
+  const breadcrumbTrail = useMemo(() => {
+    const trail: MediaAlbum[] = [];
+    let node = currentAlbum;
+    const guard = new Set<string>();
+    while (node && !guard.has(node.id)) {
+      guard.add(node.id);
+      trail.unshift(node);
+      node = albums.find((a) => a.id === node?.parentAlbumId) ?? null;
+    }
+    return trail;
+  }, [albums, currentAlbum]);
+
+  function navigateToAlbum(albumId: string | null) {
+    const next = new URLSearchParams(searchParams);
+    if (albumId) next.set("album", albumId);
+    else next.delete("album");
+    next.delete("asset");
+    setSearchParams(next);
+    closePanel();
+    clearSelection();
+    setSemanticResults(null);
+    setContentTypeFilter("all");
+  }
+
+  async function runSemanticSearch() {
+    const q = search.trim();
+    if (q.length < 2) {
+      setSemanticResults(null);
+      return;
+    }
+    setSemanticBusy(true);
+    try {
+      const results = await semanticSearchMediaAssets(q, selectedInstitutionId);
+      setSemanticResults(results);
+      setSemanticQuery(q);
+    } catch (err: unknown) {
+      toast.error(getErrorText(err, "Semantic search failed. Try again."));
+    } finally {
+      setSemanticBusy(false);
+    }
+  }
+
+  function openInstitution(institutionId: string) {
+    setSelectedInstitutionId(institutionId);
+    navigateToAlbum(null);
+  }
+
+  function goToAllInstitutions() {
+    setSelectedInstitutionId(null);
+    navigateToAlbum(null);
+  }
+
+  // Opening a folder card from the "All institutions" view scopes the
+  // institution filter to that folder's institution, so the dropdown and
+  // breadcrumb stay in sync.
+  function openFolder(album: MediaAlbum) {
+    if (isNetworkBrowser && selectedInstitutionId !== album.institutionId) {
+      setSelectedInstitutionId(album.institutionId);
+    }
+    navigateToAlbum(album.id);
+  }
+
+  const selectedInstitution = institutions.find((i) => i.id === selectedInstitutionId) ?? null;
+
+  const institutionById = useMemo(() => {
+    const map = new Map<string, InstitutionResponse>();
+    for (const inst of institutions) map.set(inst.id, inst);
+    return map;
+  }, [institutions]);
+
+  // Show institution badges once the grid mixes albums from more than one institution
+  // (admin "All institutions", or a contributor who also sees the shared default library).
+  const multiInstitution = useMemo(
+    () => new Set(albums.map((a) => a.institutionId)).size > 1,
+    [albums],
+  );
+
+  function albumInstitutionProps(album: MediaAlbum) {
+    if (!multiInstitution) return {};
+    const inst = institutionById.get(album.institutionId); // admin-only, for the faded logo
+    return {
+      institutionCode: album.institutionCode,
+      institutionLogoUrl: inst?.hasLogo ? getInstitutionLogoUrl(inst.id, inst.logoUpdatedAt) : null,
+    };
+  }
+
+  // Rename/move/delete: admins and moderators anywhere (backend: isNetworkRole);
+  // everyone else only their own institution's folders.
+  function canManageAlbum(album: MediaAlbum) {
+    return isNetworkBrowser || album.institutionId === user.institutionId;
+  }
+
+  const currentAlbumInstitution = currentAlbum ? institutionById.get(currentAlbum.institutionId) ?? null : null;
+  // Institution shown as the 2nd breadcrumb crumb for admins.
+  const crumbInstitution = selectedInstitution ?? (networkAlbumMode ? currentAlbumInstitution : null);
 
   const filteredAssets = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -185,6 +423,28 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
     return result;
   }, [assets, search, sort, activeTags]);
+
+  // At the library root (no folder, no search) every asset lives in some folder,
+  // so the root shows folders only — loose asset tiles would just be noise.
+  const atRootNoSearch = !currentAlbumId && !search.trim() && activeTags.size === 0;
+  const visibleAssets = atRootNoSearch ? [] : filteredAssets;
+
+  // Folder-name and tag matches for the current search term (both search modes).
+  const searchTerm = search.trim().toLowerCase();
+  const searchActive = searchTerm.length >= 2;
+  const matchingAlbums = useMemo(
+    () =>
+      searchActive
+        ? albums
+            .filter((a) => a.name.toLowerCase().includes(searchTerm))
+            .sort((a, b) => a.name.localeCompare(b.name))
+        : [],
+    [albums, searchTerm, searchActive],
+  );
+  const matchingTagChips = useMemo(
+    () => (searchActive ? tagChips.filter((c) => c.label.toLowerCase().includes(searchTerm)) : []),
+    [tagChips, searchTerm, searchActive],
+  );
 
   const selectedAssets = useMemo(
     () => assets.filter((a) => checkedIds.has(a.id)),
@@ -249,9 +509,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   function canDeleteAsset(asset: MediaAsset) {
     if (isAdmin) return true;
-    if (user.role === "validator") {
-      return Boolean(user.institutionId && asset.institutionId === user.institutionId);
-    }
     if (user.role === "contributor") {
       return Boolean(asset.uploaderName && asset.uploaderName.toLowerCase() === user.email.toLowerCase());
     }
@@ -322,7 +579,152 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     });
   }
 
-  async function handleUpload(file: File, onProgress?: (pct: number) => void) {
+  async function handleCreateAlbum(
+    name: string,
+    parentAlbumId: string | null = currentAlbumId,
+    institutionId: string | null = targetInstitutionId,
+  ) {
+    if (!institutionId) {
+      const message = "Select an institution before creating a folder.";
+      toast.error(message);
+      throw new Error(message);
+    }
+    const { data } = await createMediaAlbum(name, institutionId, parentAlbumId);
+    setAlbums((prev) => [...prev.filter((album) => album.id !== data.id), data]
+      .sort((a, b) => a.name.localeCompare(b.name)));
+    return data;
+  }
+
+  function openCreateAlbumModal() {
+    setAlbumName("");
+    setAlbumModalInstitutionId(targetInstitutionId ?? "");
+    setAlbumModal({ mode: "create", album: null });
+  }
+
+  function openRenameAlbumModal(album: MediaAlbum) {
+    setAlbumName(album.name);
+    setAlbumModal({ mode: "rename", album });
+  }
+
+  function closeAlbumModal() {
+    if (savingAlbum) return;
+    setAlbumModal(null);
+    setAlbumName("");
+  }
+
+  async function handleSaveAlbum() {
+    const name = albumName.trim();
+    if (!albumModal || !name) return;
+    if (albumModal.mode === "rename" && name === albumModal.album.name) {
+      closeAlbumModal();
+      return;
+    }
+
+    setSavingAlbum(true);
+    try {
+      if (albumModal.mode === "create") {
+        await handleCreateAlbum(name, currentAlbumId, albumModalInstitutionId || targetInstitutionId);
+        toast.success("Folder created.");
+      } else {
+        const { data } = await renameMediaAlbum(albumModal.album.id, name, targetInstitutionId);
+        setAlbums((prev) => prev.map((item) => item.id === data.id ? { ...item, ...data } : item)
+          .sort((a, b) => a.name.localeCompare(b.name)));
+        setAssets((prev) => prev.map((asset) =>
+          asset.albumId === data.id ? { ...asset, albumName: data.name } : asset
+        ));
+        setSelectedAsset((prev) =>
+          prev?.albumId === data.id ? { ...prev, albumName: data.name } : prev
+        );
+        toast.success("Folder renamed.");
+      }
+      closeAlbumModal();
+    } catch (err: unknown) {
+      const message = err instanceof Error
+        ? err.message
+        : albumModal.mode === "create"
+          ? "Could not create album."
+          : "Could not rename album.";
+      toast.error(message);
+    } finally {
+      setSavingAlbum(false);
+    }
+  }
+
+  async function handleRenameAlbum(album: MediaAlbum) {
+    openRenameAlbumModal(album);
+  }
+
+  async function handleMoveAlbum(
+    albumId: string,
+    newParentId: string | null,
+    institutionId: string | null = null,
+  ) {
+    try {
+      const { data } = await moveMediaAlbum(albumId, newParentId, institutionId);
+      setAlbums((prev) => prev.map((item) => item.id === data.id ? { ...item, ...data } : item)
+        .sort((a, b) => a.name.localeCompare(b.name)));
+      setMoveAlbumTarget(null);
+      toast.success("Folder moved.");
+      void reloadAlbums();
+      void refresh();
+    } catch (err: unknown) {
+      toast.error(getErrorText(err, "Could not move that folder."));
+    }
+  }
+
+  async function handleDeleteAlbum(album: MediaAlbum) {
+    try {
+      await deleteMediaAlbum(album.id);
+      setAlbums((prev) => prev.filter((item) => item.id !== album.id));
+      toast.success("Folder deleted.");
+    } catch (err: unknown) {
+      toast.error(getErrorText(err, "Could not delete that folder."));
+    }
+  }
+
+  async function handleUpdateAssetAlbum(assetId: string, albumId: string | null) {
+    if (!albumId) return;
+    try {
+      const { data } = await updateMediaAssetAlbum(assetId, albumId);
+      // The asset leaves the folder currently being viewed, so drop it from the grid.
+      setAssets((prev) =>
+        currentAlbumId && data.albumId !== currentAlbumId
+          ? prev.filter((asset) => asset.id !== data.id)
+          : prev.map((asset) => (asset.id === data.id ? { ...asset, ...data } : asset)),
+      );
+      setSelectedAsset(data);
+      toast.success("Moved to folder.");
+      void reloadAlbums();
+    } catch {
+      toast.error("Could not update the folder assignment.");
+    }
+  }
+
+  async function handleAssetTag(assetId: string, action: () => Promise<unknown>) {
+    try {
+      await action();
+      const { data } = await getMediaAsset(assetId);
+      setSelectedAsset(data);
+      setAssets((prev) => prev.map((a) => (a.id === data.id ? { ...a, ...data } : a)));
+    } catch {
+      toast.error("Could not update tags.");
+    }
+  }
+
+  async function handleUpload(
+    file: File,
+    metadata: UploadMetadata,
+    onProgress?: (pct: number) => void,
+    opts?: { silent?: boolean },
+  ) {
+    // The upload modal resolves the institution from its own picker / the chosen
+    // folder; fall back to the screen-level target for other callers.
+    const institutionId = metadata.institutionId ?? targetInstitutionId;
+    if (!institutionId) {
+      const message = "Select an institution before uploading to the media library.";
+      toast.error(message);
+      throw new Error(message);
+    }
     if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
       const message = `${file.name} is ${(file.size / (1024 * 1024)).toFixed(1)} MB — over the ${MAX_UPLOAD_MB} MB limit.`;
       toast.error(message);
@@ -334,10 +736,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       const { data: urlData } = await getMediaAssetUploadUrl({
         fileName: safeFileName(file.name),
         fileType: fileTypeFromFile(file),
+        institutionId,
       });
 
       // Reserve the last 10% for the metadata-register call below.
-      await putToSupabase(urlData.signedUrl, file, (pct) =>
+      await putToStorage(urlData.signedUrl, file, (pct) =>
         onProgress?.(Math.round(pct * 0.9)),
       );
 
@@ -346,24 +749,104 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         fileName: file.name,
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
+        institutionId,
+        albumId: metadata.albumId,
+        albumName: metadata.albumName,
+        autoMatchAlbum: metadata.autoMatchAlbum,
+        tags: metadata.tags,
       });
       onProgress?.(100);
 
-      toast.success("Asset uploaded! AI classification in progress…");
-      void refresh();
+      if (!opts?.silent) {
+        toast.success("Asset uploaded! AI classification in progress…");
+        void refresh();
+        void reloadAlbums();
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Upload failed.";
-      toast.error(message);
+      if (!opts?.silent) toast.error(message);
       throw err;
     }
   }
 
-  async function handleDownload() {
-    if (!selectedAsset?.storageUrl) {
+  // "Upload folder": mirror the picked directory tree into nested albums under
+  // the current folder, then upload each file into its matching album. Tags are
+  // auto-derived from the folder names (editable per asset afterwards).
+  async function handleUploadFolder(fileList: FileList | null) {
+    const files = Array.from(fileList ?? []).filter((file) => {
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+      return ["jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm"].includes(ext);
+    });
+    if (files.length === 0) {
+      toast.error("That folder has no supported image or video files.");
+      return;
+    }
+    if (!targetInstitutionId) {
+      toast.error("Select an institution before uploading.");
+      return;
+    }
+
+    setFolderUploadBusy(true);
+    const basePath = breadcrumbTrail.map((a) => a.name);
+    const leafCache = new Map<string, { id: string; name: string }>();
+    let done = 0;
+    let failed = 0;
+
+    try {
+      for (const file of files) {
+        const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+        const dirSegments = rel.split("/").slice(0, -1).filter(Boolean);
+        const key = dirSegments.join("/") || "__root__";
+
+        let leaf = leafCache.get(key);
+        if (!leaf) {
+          const segments = [...basePath, ...dirSegments];
+          if (segments.length === 0) {
+            failed += 1;
+            continue;
+          }
+          const { data } = await ensureMediaAlbumPath(targetInstitutionId, segments);
+          leaf = { id: data.id, name: data.name };
+          leafCache.set(key, leaf);
+        }
+
+        const folderTag = dirSegments[dirSegments.length - 1] || leaf.name;
+        try {
+          await handleUpload(
+            file,
+            {
+              albumId: leaf.id,
+              albumName: leaf.name,
+              autoMatchAlbum: false,
+              tags: [folderTag],
+              institutionId: targetInstitutionId,
+            },
+            undefined,
+            { silent: true },
+          );
+          done += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      toast.success(
+        `Uploaded ${done} file${done === 1 ? "" : "s"} into folders${failed > 0 ? ` · ${failed} failed` : ""}.`,
+      );
+      await reloadAlbums();
+      void refresh();
+    } catch (err: unknown) {
+      toast.error(getErrorText(err, "Folder upload could not be completed."));
+    } finally {
+      setFolderUploadBusy(false);
+    }
+  }
+
+  async function downloadAsset(asset: MediaAsset | null) {
+    if (!asset?.storageUrl) {
       toast.error("No file URL available.");
       return;
     }
-    const { storageUrl, fileName } = selectedAsset;
+    const { storageUrl, fileName } = asset;
     try {
       const response = await fetch(storageUrl);
       if (!response.ok) throw new Error(`Status ${response.status}`);
@@ -380,6 +863,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       // CORS or network blocked the blob fetch — fall back to opening the file.
       window.open(storageUrl, "_blank");
     }
+  }
+
+  function handleDownload() {
+    void downloadAsset(selectedAsset);
   }
 
   function openDeleteModal(tier: DeleteTier) {
@@ -478,30 +965,97 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           <p className="med-subtitle">Institution assets · AI-classified</p>
         </div>
         <div className="med-header-actions">
-          <button
-            className="med-btn med-btn-ghost med-btn-sm"
-            onClick={() => setUploadOpen(true)}
-            type="button"
+          <div
+            className="med-new-menu-wrap"
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) setNewMenuOpen(false);
+            }}
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="16,16 12,12 8,16" />
-              <line x1="12" y1="12" x2="12" y2="21" />
-              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
-            </svg>
-            Upload Asset
-          </button>
-          <button
-            className="med-btn med-btn-primary med-btn-sm"
-            onClick={() => navigate("/submissions/new")}
-            type="button"
-          >
-            New Submission
-          </button>
+            <button
+              className="med-btn med-btn-primary med-btn-sm"
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={newMenuOpen}
+              disabled={folderUploadBusy}
+              onClick={() => setNewMenuOpen((v) => !v)}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              {folderUploadBusy ? "Uploading folder…" : "New"}
+            </button>
+            {newMenuOpen && (
+              <div className="med-new-menu" role="menu">
+                <button
+                  type="button"
+                  className="med-new-menu-item"
+                  role="menuitem"
+                  onClick={() => { setNewMenuOpen(false); openCreateAlbumModal(); }}
+                >
+                  <div className="med-new-menu-icon-badge folder">
+                    <i className="ti ti-folder-plus" />
+                  </div>
+                  <div className="med-new-menu-text">
+                    <span className="med-new-menu-title">New folder</span>
+                    <span className="med-new-menu-sub">Create a sub-collection</span>
+                  </div>
+                </button>
+
+                <div className="med-new-menu-divider" />
+
+                <button
+                  type="button"
+                  className="med-new-menu-item"
+                  role="menuitem"
+                  onClick={() => { setNewMenuOpen(false); setUploadOpen(true); }}
+                >
+                  <div className="med-new-menu-icon-badge upload">
+                    <i className="ti ti-cloud-upload" />
+                  </div>
+                  <div className="med-new-menu-text">
+                    <span className="med-new-menu-title">Upload files</span>
+                    <span className="med-new-menu-sub">Images, videos & docs</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  className="med-new-menu-item"
+                  role="menuitem"
+                  disabled={!targetInstitutionId}
+                  title={targetInstitutionId ? undefined : "Open an institution or folder first"}
+                  onClick={() => { setNewMenuOpen(false); folderInputRef.current?.click(); }}
+                >
+                  <div className="med-new-menu-icon-badge folder-upload">
+                    <i className="ti ti-folder-up" />
+                  </div>
+                  <div className="med-new-menu-text">
+                    <span className="med-new-menu-title">Upload folder</span>
+                    <span className="med-new-menu-sub">Import entire directory</span>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+          <input
+            ref={folderInputRef}
+            type="file"
+            multiple
+            // @ts-expect-error non-standard directory-picker attributes
+            webkitdirectory=""
+            directory=""
+            style={{ display: "none" }}
+            onChange={(e) => {
+              void handleUploadFolder(e.target.files);
+              e.target.value = "";
+            }}
+          />
         </div>
       </div>
 
       {/* Network View bar */}
-      {isAdmin && (
+      {/* {isAdmin && (
         <div className={`med-network-bar${networkView ? " visible" : ""}`}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" />
@@ -512,91 +1066,286 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
             <strong>Network View active</strong> — Showing assets across all DASIG member institutions. This session is being logged in the access audit log (BR-MED-01).
           </span>
         </div>
+      )} */}
+
+      {/* Toolbar: institution · search (+ semantic) · sort · view · tags */}
+      <MediaToolbar
+        isAdmin={isNetworkBrowser}
+        institutions={institutions}
+        selectedInstitutionId={selectedInstitutionId}
+        onInstitutionChange={(id) => (id ? openInstitution(id) : goToAllInstitutions())}
+        search={search}
+        onSearchChange={(v) => {
+          setSearch(v);
+          if (!v.trim()) setSemanticResults(null);
+        }}
+        semantic={semantic}
+        onSemanticToggle={() => {
+          setSemantic((on) => {
+            if (on) setSemanticResults(null);
+            return !on;
+          });
+        }}
+        onSemanticSearch={() => void runSemanticSearch()}
+        semanticBusy={semanticBusy}
+        sort={sort}
+        onSortChange={setSort}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        activeTags={activeTags}
+        tagChips={tagChips}
+        onTagToggle={toggleTag}
+      />
+
+      {/* Breadcrumb */}
+      <nav className="med-breadcrumb" aria-label="Folder path">
+        <button
+          type="button"
+          className={`med-crumb${(isNetworkBrowser ? !selectedInstitutionId : !currentAlbumId) ? " current" : ""}`}
+          onClick={isNetworkBrowser ? goToAllInstitutions : () => navigateToAlbum(null)}
+        >
+          <i className="ti ti-folders" style={{ fontSize: 14, marginRight: 5, opacity: 0.85 }} />
+          {isNetworkBrowser ? "All institutions" : "Library"}
+        </button>
+        {isNetworkBrowser && crumbInstitution && (
+          <span className="med-crumb-part">
+            <svg className="med-crumb-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+            <button
+              type="button"
+              className={`med-crumb${!currentAlbumId ? " current" : ""}`}
+              onClick={() =>
+                selectedInstitution ? navigateToAlbum(null) : openInstitution(crumbInstitution.id)
+              }
+            >
+              {!currentAlbumId && <i className="ti ti-building" style={{ fontSize: 13, marginRight: 4 }} />}
+              {crumbInstitution.name}
+            </button>
+          </span>
+        )}
+        {breadcrumbTrail.map((album, idx) => {
+          const isLeaf = idx === breadcrumbTrail.length - 1;
+          return (
+            <span key={album.id} className="med-crumb-part">
+              <svg className="med-crumb-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+              <button
+                type="button"
+                className={`med-crumb${isLeaf ? " current" : ""}`}
+                onClick={() => navigateToAlbum(album.id)}
+              >
+                {isLeaf && <i className="ti ti-folder" style={{ fontSize: 13, marginRight: 4, color: "var(--med-blue, #1877f2)" }} />}
+                {album.name}
+              </button>
+            </span>
+          );
+        })}
+      </nav>
+
+      {/* Semantic search banner */}
+      {semanticResults !== null && (
+        <div className="med-semantic-banner">
+          <span>
+            <strong>{semanticResults.length}</strong> meaning-based {semanticResults.length === 1 ? "match" : "matches"} for
+            {" "}<em>“{semanticQuery}”</em>
+          </span>
+          <button type="button" onClick={() => setSemanticResults(null)}>Clear</button>
+        </div>
       )}
 
-      {isAdmin && (
-        <div className="med-institution-filter" role="tablist" aria-label="Institution media categories">
-          <button
-            className={`med-inst-filter-btn${selectedInstitutionId === null ? " active" : ""}`}
-            type="button"
-            onClick={() => setSelectedInstitutionId(null)}
-          >
-            All institutions
-          </button>
-          {institutions.map((institution) => (
+      {/* Matching tags */}
+      {matchingTagChips.length > 0 && (
+        <div className="med-filter-row2 med-match-tags">
+          <span className="med-filter-label">Matching tags</span>
+          {matchingTagChips.map((chip) => (
             <button
-              key={institution.id}
-              className={`med-inst-filter-btn${selectedInstitutionId === institution.id ? " active" : ""}`}
+              key={chip.label}
+              className={`med-chip${activeTags.has(chip.label) ? " active" : ""}`}
+              onClick={() => toggleTag(chip.label)}
               type="button"
-              onClick={() => setSelectedInstitutionId(institution.id)}
             >
-              {institution.name}
+              {chip.label}
+              <span className="med-chip-count">{chip.count}</span>
             </button>
           ))}
         </div>
       )}
 
-      {/* Filter Bar */}
-      <FilterBar
-        search={search}
-        sort={sort}
-        viewMode={viewMode}
-        networkView={networkView}
-        isAdmin={isAdmin}
-        activeTags={activeTags}
-        tagChips={tagChips}
-        onSearchChange={setSearch}
-        onSortChange={setSort}
-        onViewModeChange={setViewMode}
-        onNetworkViewToggle={() => setNetworkView((v) => !v)}
-        onTagToggle={toggleTag}
-      />
+      {/* Dynamic Content Type Nav & Result Strip */}
+      {(() => {
+        const folderCards = searchActive
+          ? matchingAlbums
+          : activeTags.size === 0
+            ? childAlbums
+            : [];
+        const gridAssets = semanticResults ?? visibleAssets;
+        const hasMixedContent = folderCards.length > 0 && gridAssets.length > 0;
 
-      {/* Result strip */}
-      <div className="med-result-strip">
-        <p className="med-result-count">
-          <strong>{filteredAssets.length}</strong> of {assets.length} assets
-        </p>
-        {activeTags.size > 0 && (
-          <div className="med-active-filters">
-            {[...activeTags].map((tag) => (
-              <div key={tag} className="med-filter-tag">
-                {tag}
-                <button onClick={() => clearTag(tag)} type="button" aria-label={`Remove ${tag} filter`}>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
+        return (
+          <>
+            <div className="med-result-strip">
+              <div className="med-result-strip-left">
+                {loading || (semanticBusy && semanticResults === null) ? (
+                  <p className="med-result-count" style={{ opacity: 0.7 }}>
+                    Loading items…
+                  </p>
+                ) : (
+                  <p className="med-result-count">
+                    {(() => {
+                      const folderN = folderCards.length;
+                      const assetN = gridAssets.length;
+                      const isSearching = semanticResults !== null || searchActive;
+                      const parts: string[] = [];
+                      if (folderN > 0) parts.push(`${folderN} ${folderN === 1 ? "folder" : "folders"}`);
+                      if (isSearching) {
+                        parts.push(`${assetN} ${assetN === 1 ? "result" : "results"}`);
+                      } else {
+                        parts.push(`${assetN} ${assetN === 1 ? "item" : "items"}`);
+                      }
+                      return parts.join(" · ");
+                    })()}
+                  </p>
+                )}
+
+                {/* Smart Auto-Activated Content Type Switcher */}
+                {!loading && hasMixedContent && (
+                  <div className="med-content-type-nav" role="tablist" aria-label="Filter content type">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={contentTypeFilter === "all"}
+                      className={`med-type-tab${contentTypeFilter === "all" ? " active" : ""}`}
+                      onClick={() => setContentTypeFilter("all")}
+                    >
+                      All
+                      <span className="med-type-tab-count">{folderCards.length + gridAssets.length}</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={contentTypeFilter === "folders"}
+                      className={`med-type-tab${contentTypeFilter === "folders" ? " active" : ""}`}
+                      onClick={() => setContentTypeFilter("folders")}
+                    >
+                      <i className="ti ti-folder" style={{ fontSize: 13, marginRight: 2 }} />
+                      Folders
+                      <span className="med-type-tab-count">{folderCards.length}</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={contentTypeFilter === "files"}
+                      className={`med-type-tab${contentTypeFilter === "files" ? " active" : ""}`}
+                      onClick={() => setContentTypeFilter("files")}
+                    >
+                      <i className="ti ti-photo" style={{ fontSize: 13, marginRight: 2 }} />
+                      Media Files
+                      <span className="med-type-tab-count">{gridAssets.length}</span>
+                    </button>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
 
-      {/* Media Grid / States */}
-      {loading ? (
-        <SkeletonGrid viewMode={viewMode} />
-      ) : error ? (
-        <ErrorState message={error} onRetry={() => void refresh()} />
-      ) : filteredAssets.length === 0 ? (
-        <EmptyState hasSearch={search.length > 0 || activeTags.size > 0} onUpload={() => setUploadOpen(true)} />
-      ) : (
-        <div className={`med-grid${viewMode === "list" ? " list-view" : ""}${checkedIds.size > 0 ? " selecting" : ""}`}>
-          {filteredAssets.map((asset, idx) => (
-            <AssetCard
-              key={asset.id}
-              asset={asset}
-              selected={selectedAsset?.id === asset.id}
-              checked={checkedIds.has(asset.id)}
-              listView={viewMode === "list"}
-              animationDelay={Math.min(idx * 40, 480)}
-              showInstitutionChip={networkView && isAdmin}
-              onClick={() => handleToggleCheck(asset)}
-            />
-          ))}
-        </div>
-      )}
+              {activeTags.size > 0 && (
+                <div className="med-active-filters">
+                  {[...activeTags].map((tag) => (
+                    <div key={tag} className="med-filter-tag">
+                      {tag}
+                      <button onClick={() => clearTag(tag)} type="button" aria-label={`Remove ${tag} filter`}>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Folders + Media Grid / States */}
+            {(() => {
+              if (loading || (semanticBusy && semanticResults === null)) return <SkeletonGrid viewMode={viewMode} />;
+              if (error) return <ErrorState message={error} onRetry={() => void refresh()} />;
+              if (gridAssets.length === 0 && folderCards.length === 0) {
+                return (
+                  <EmptyState
+                    hasSearch={searchActive || activeTags.size > 0 || semanticResults !== null}
+                    inFolder={Boolean(currentAlbumId)}
+                    onUpload={() => setUploadOpen(true)}
+                  />
+                );
+              }
+              const showFolders = folderCards.length > 0 && (contentTypeFilter === "all" || contentTypeFilter === "folders");
+              const showAssets = gridAssets.length > 0 && (contentTypeFilter === "all" || contentTypeFilter === "files");
+              const listView = viewMode === "list";
+              const gridClass = `med-grid${listView ? " list-view" : ""}${checkedIds.size > 0 ? " selecting" : ""}`;
+
+              return (
+                <div className="med-sections">
+                  {showFolders && (
+                    <section className="med-section">
+                      <div className={gridClass}>
+                        {folderCards.map((album, idx) => (
+                          <AlbumCard
+                            key={album.id}
+                            album={album}
+                            animationDelay={Math.min(idx * 30, 240)}
+                            canManage={canManageAlbum(album)}
+                            {...albumInstitutionProps(album)}
+                            onOpen={() => openFolder(album)}
+                            onRename={() => void handleRenameAlbum(album)}
+                            onMove={() => setMoveAlbumTarget(album)}
+                            onDelete={() => void handleDeleteAlbum(album)}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                  {showAssets && (
+                    <section className="med-section">
+                      <div className={gridClass}>
+                        {gridAssets.map((asset, idx) => (
+                          <AssetCard
+                            key={asset.id}
+                            asset={asset}
+                            selected={selectedAsset?.id === asset.id}
+                            checked={checkedIds.has(asset.id)}
+                            listView={listView}
+                            animationDelay={Math.min(idx * 40, 480)}
+                            showInstitutionChip={networkView}
+                            onClick={() => handleToggleCheck(asset)}
+                            onOpen={() => setLightboxAssetId(asset.id)}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                </div>
+              );
+            })()}
+          </>
+        );
+      })()}
+
+      {(() => {
+        const lightboxAssets = semanticResults ?? visibleAssets;
+        const lightboxIndex = lightboxAssetId
+          ? lightboxAssets.findIndex((a) => a.id === lightboxAssetId)
+          : -1;
+        if (lightboxIndex < 0) return null;
+        return (
+          <AssetLightbox
+            assets={lightboxAssets}
+            index={lightboxIndex}
+            onIndexChange={(i) => setLightboxAssetId(lightboxAssets[i]?.id ?? null)}
+            onClose={() => setLightboxAssetId(null)}
+            onDownload={(a) => void downloadAsset(a)}
+          />
+        );
+      })()}
 
       {/* Detail Panel (portal) */}
       <AssetDetailPanel
@@ -621,13 +1370,25 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onRequestDelete={openSingleDeleteModal}
         canBulkDelete={canBulkDelete}
         onRequestBulkDelete={openBulkDeleteModal}
+        albums={albums}
+        onUpdateAlbum={(assetId, albumId) => void handleUpdateAssetAlbum(assetId, albumId)}
+        onRenameAlbum={(album) => void handleRenameAlbum(album)}
+        onAddTag={(assetId, label) => void handleAssetTag(assetId, () => addMediaAssetTag(assetId, label))}
+        onRemoveTag={(assetId, tagId) => void handleAssetTag(assetId, () => removeMediaAssetTag(assetId, tagId))}
       />
 
       {/* Upload Modal (portal) */}
       <UploadModal
         open={uploadOpen}
         institutionName={user.inst}
+        albums={albums}
+        currentAlbum={currentAlbum}
+        institutions={isNetworkBrowser ? institutions : []}
+        defaultInstitutionId={targetInstitutionId}
         onClose={() => setUploadOpen(false)}
+        onCreateAlbum={(name, institutionId, parentAlbumId) =>
+          handleCreateAlbum(name, parentAlbumId, institutionId)
+        }
         onUpload={handleUpload}
       />
 
@@ -656,6 +1417,146 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onNewPostInstead={() => { setAddToDraftOpen(false); handleNewPost(); }}
       />
 
+      <AlbumNameModal
+        open={albumModal !== null}
+        mode={albumModal?.mode ?? "create"}
+        parentName={albumModal?.mode === "create" ? currentAlbum?.name ?? null : null}
+        value={albumName}
+        saving={savingAlbum}
+        institutions={albumModal?.mode === "create" && !targetInstitutionId && isNetworkBrowser ? institutions : []}
+        institutionId={albumModalInstitutionId}
+        onInstitutionChange={setAlbumModalInstitutionId}
+        onChange={setAlbumName}
+        onClose={closeAlbumModal}
+        onSubmit={() => void handleSaveAlbum()}
+      />
+
+      {moveAlbumTarget && (
+        <MoveAlbumModal
+          key={moveAlbumTarget.id}
+          album={moveAlbumTarget}
+          albums={albums}
+          onClose={() => setMoveAlbumTarget(null)}
+          onMove={(parentId, institutionId) =>
+            void handleMoveAlbum(moveAlbumTarget.id, parentId, institutionId)
+          }
+        />
+      )}
+
+    </div>
+  );
+}
+
+function AlbumNameModal({
+  open,
+  mode,
+  parentName,
+  value,
+  saving,
+  institutions = [],
+  institutionId = "",
+  onInstitutionChange,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  mode: "create" | "rename";
+  parentName?: string | null;
+  value: string;
+  saving: boolean;
+  institutions?: InstitutionResponse[];
+  institutionId?: string;
+  onInstitutionChange?: (id: string) => void;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  const showInstitutionPicker = mode === "create" && institutions.length > 0;
+  const title = mode === "create" ? "New folder" : "Rename folder";
+  const description = mode === "create"
+    ? parentName
+      ? `New folder inside "${parentName}".`
+      : "New folder at the library root."
+    : "Update this folder name across the media library.";
+  const actionLabel = mode === "create" ? "Create folder" : "Save changes";
+  const disabled = saving || value.trim().length === 0 || (showInstitutionPicker && !institutionId);
+
+  return (
+    <div className="med-modal-overlay" role="presentation">
+      <form
+        className="med-modal-card med-album-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!disabled) onSubmit();
+        }}
+      >
+        <div className="med-modal-header">
+          <div>
+            <span className="med-modal-title">{title}</span>
+            <p className="med-album-modal-sub">{description}</p>
+          </div>
+          <button
+            className="med-modal-close"
+            type="button"
+            onClick={onClose}
+            aria-label="Close album modal"
+            disabled={saving}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="med-modal-body">
+          {showInstitutionPicker && (
+            <>
+              <label className="med-form-label" htmlFor="media-album-institution">Institution</label>
+              <select
+                id="media-album-institution"
+                className="med-form-input"
+                value={institutionId}
+                onChange={(event) => onInstitutionChange?.(event.target.value)}
+                disabled={saving}
+                style={{ marginBottom: 12 }}
+              >
+                <option value="">Select institution</option>
+                {institutions.map((inst) => (
+                  <option key={inst.id} value={inst.id}>{inst.name}</option>
+                ))}
+              </select>
+            </>
+          )}
+          <label className="med-form-label" htmlFor="media-album-name">Folder name</label>
+          <input
+            id="media-album-name"
+            className="med-form-input"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="e.g. Startup Summit 2026"
+            autoFocus
+            maxLength={80}
+            disabled={saving}
+          />
+          <p className="med-album-modal-hint">Use a clear event or campaign name so assets are easier to find later.</p>
+        </div>
+
+        <div className="med-modal-footer">
+          <button className="med-btn med-btn-ghost" type="button" onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+          <button className="med-btn med-btn-primary" type="submit" disabled={disabled}>
+            {saving ? "Saving..." : actionLabel}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -679,7 +1580,7 @@ function SkeletonGrid({ viewMode }: { viewMode: ViewMode }) {
 }
 
 /* ===== Empty State ===== */
-function EmptyState({ hasSearch, onUpload }: { hasSearch: boolean; onUpload: () => void }) {
+function EmptyState({ hasSearch, inFolder = false, onUpload }: { hasSearch: boolean; inFolder?: boolean; onUpload: () => void }) {
   return (
     <div className="med-empty">
       <div className="med-empty-icon">
@@ -694,15 +1595,112 @@ function EmptyState({ hasSearch, onUpload }: { hasSearch: boolean; onUpload: () 
           <div className="med-empty-title">No assets match your filters</div>
           <p className="med-empty-sub">Try adjusting your search term or removing an active tag filter.</p>
         </>
+      ) : inFolder ? (
+        <>
+          <div className="med-empty-title">This folder is empty</div>
+          <p className="med-empty-sub">Use <strong>New</strong> to add a sub-folder or upload files here.</p>
+          <button className="med-btn med-btn-primary" onClick={onUpload} type="button" style={{ marginTop: 20 }}>
+            Upload files
+          </button>
+        </>
       ) : (
         <>
           <div className="med-empty-title">No media assets yet</div>
-          <p className="med-empty-sub">Upload your first asset to start building the institutional media library.</p>
+          <p className="med-empty-sub">Use <strong>New</strong> to create a folder or upload your first files.</p>
           <button className="med-btn med-btn-primary" onClick={onUpload} type="button" style={{ marginTop: 20 }}>
-            Upload Asset
+            Upload files
           </button>
         </>
       )}
+    </div>
+  );
+}
+
+/* ===== Move-folder modal (mount fresh per album via key) ===== */
+const SHARED_ROOT = "__shared_root__";
+
+function MoveAlbumModal({
+  album,
+  albums,
+  onClose,
+  onMove,
+}: {
+  album: MediaAlbum;
+  albums: MediaAlbum[];
+  onClose: () => void;
+  onMove: (parentAlbumId: string | null, institutionId: string | null) => void;
+}) {
+  const [target, setTarget] = useState<string>(album.parentAlbumId ?? "");
+
+  const albumById = useMemo(() => new Map(albums.map((a) => [a.id, a])), [albums]);
+  const sharedAlbum = useMemo(() => albums.find((a) => a.shared) ?? null, [albums]);
+
+  // Exclude the folder itself and its descendants — you can't move a folder into itself.
+  const blocked = albumSubtreeIds(album.id, albums);
+  const folderOptions = buildAlbumOptions(albums)
+    .filter((o) => !blocked.has(o.id))
+    .map((o) => ({
+      value: o.id,
+      label: o.label,
+      badge: albumById.get(o.id)?.institutionCode,
+    }));
+
+  const selectOptions = [
+    { value: "", label: "Library root", badge: album.institutionCode },
+    ...(sharedAlbum && !album.shared
+      ? [{ value: SHARED_ROOT, label: `${sharedAlbum.institutionName} root`, badge: sharedAlbum.institutionCode }]
+      : []),
+    ...folderOptions,
+  ];
+
+  function resolve(value: string): { parentAlbumId: string | null; institutionId: string | null } {
+    if (value === "") return { parentAlbumId: null, institutionId: album.institutionId };
+    if (value === SHARED_ROOT) return { parentAlbumId: null, institutionId: sharedAlbum?.institutionId ?? null };
+    return { parentAlbumId: value, institutionId: albumById.get(value)?.institutionId ?? null };
+  }
+
+  const resolved = resolve(target);
+  const unchanged =
+    resolved.parentAlbumId === (album.parentAlbumId ?? null) &&
+    resolved.institutionId === album.institutionId;
+
+  return (
+    <div className="med-modal-overlay" role="presentation">
+      <div className="med-modal-card med-album-modal" role="dialog" aria-modal="true" aria-label="Move folder">
+        <div className="med-modal-header">
+          <div>
+            <span className="med-modal-title">Move "{album.name}"</span>
+            <p className="med-album-modal-sub">Choose the folder this should live inside.</p>
+          </div>
+          <button className="med-modal-close" type="button" onClick={onClose} aria-label="Close move modal">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <div className="med-modal-body">
+          <label className="med-form-label" htmlFor="move-folder-target">Destination</label>
+          <BrandedSelect
+            className="med-move-select"
+            value={target}
+            onChange={setTarget}
+            ariaLabel="Move destination folder"
+            options={selectOptions}
+          />
+        </div>
+        <div className="med-modal-footer">
+          <button className="med-btn med-btn-ghost" type="button" onClick={onClose}>Cancel</button>
+          <button
+            className="med-btn med-btn-primary"
+            type="button"
+            disabled={unchanged}
+            onClick={() => onMove(resolved.parentAlbumId, resolved.institutionId)}
+          >
+            Move here
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

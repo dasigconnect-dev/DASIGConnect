@@ -15,9 +15,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.resolution.FailedPublicationDto;
 import com.dasigconnect.backend.model.dto.resolution.ManualPublishCompleteDto;
 import com.dasigconnect.backend.model.dto.resolution.ManualPublishDetailDto;
+import com.dasigconnect.backend.model.dto.submission.RescheduleRequestDto;
 import com.dasigconnect.backend.model.entity.PublicationAttempt;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
@@ -28,14 +30,17 @@ import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.ManualPublishingService;
 
+import jakarta.validation.Valid;
+
 /**
- * UC-3.4 Resolution Center — administrator-only endpoints for handling
- * PUBLISH_FAILED and (during token failure) SCHEDULED submissions.
+ * Failed-publication recovery (retry + manual-publish fallback) for
+ * PUBLISH_FAILED and (during token failure) SCHEDULED submissions. Surfaced in
+ * the Review Queue "Failed" tab, so any reviewer — moderator or admin — may use it.
  * Base path: /api/v1/resolution
  */
 @RestController
 @RequestMapping("/api/v1/resolution")
-@PreAuthorize("hasRole('ADMINISTRATOR')")
+@PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
 public class ResolutionController {
 
     private final SubmissionRepository submissionRepository;
@@ -55,7 +60,7 @@ public class ResolutionController {
     }
 
     @GetMapping("/failures")
-    public ResponseEntity<List<FailedPublicationDto>> listFailures() {
+    public ResponseEntity<ApiResponse<List<FailedPublicationDto>>> listFailures() {
         List<Submission> failures = submissionRepository.findPublishFailures();
         List<FailedPublicationDto> dtos = failures.stream()
                 .map(s -> {
@@ -65,24 +70,25 @@ public class ResolutionController {
                     return FailedPublicationDto.from(s, last);
                 })
                 .toList();
-        return ResponseEntity.ok(dtos);
+        return ResponseEntity.ok(ApiResponse.success(dtos));
     }
 
     /** Returns the full post-content detail needed for the manual publishing panel. */
     @GetMapping("/{id}")
-    public ResponseEntity<ManualPublishDetailDto> getDetail(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<ManualPublishDetailDto>> getDetail(@PathVariable UUID id) {
         Submission s = submissionRepository.findByIdWithInstitution(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found."));
 
         if (s.getStatus() != SubmissionStatus.publish_failed
-                && s.getStatus() != SubmissionStatus.scheduled) {
+                && s.getStatus() != SubmissionStatus.scheduled
+                && s.getStatus() != SubmissionStatus.missed_review) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Submission is not eligible for manual publishing.");
+                    "Submission is not eligible for the resolution workflow.");
         }
 
         List<SubmissionMediaAsset> media =
                 submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(id);
-        return ResponseEntity.ok(ManualPublishDetailDto.from(s, media));
+        return ResponseEntity.ok(ApiResponse.success(ManualPublishDetailDto.from(s, media)));
     }
 
     @PostMapping("/{id}/retry")
@@ -90,6 +96,15 @@ public class ResolutionController {
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails admin) {
         manualPublishingService.retry(id, admin);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/retry-with-new-schedule")
+    public ResponseEntity<Void> retryWithNewSchedule(
+            @PathVariable UUID id,
+            @Valid @RequestBody RescheduleRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails admin) {
+        manualPublishingService.retryWithNewSchedule(id, dto, admin);
         return ResponseEntity.noContent().build();
     }
 

@@ -52,23 +52,37 @@ class JWTServiceTest {
     @Test
     void token_containsRequiredClaims() {
         UUID institutionId = UUID.randomUUID();
-        User user = buildUser(UserRole.validator, institutionId);
+        User user = buildUser(UserRole.moderator, institutionId);
 
         String token = jwtService.generateAccessToken(user);
         Claims claims = jwtService.extractClaims(token);
 
-        assertThat(claims.get("role", String.class)).isEqualTo("validator");
+        assertThat(claims.get("role", String.class)).isEqualTo("moderator");
         assertThat(claims.get("user_id", String.class)).isEqualTo(user.getId().toString());
         assertThat(claims.get("email", String.class)).isEqualTo("user@example.com");
         assertThat(claims.get("institution_id", String.class)).isEqualTo(institutionId.toString());
+        assertThat(claims.get("session_version", Number.class).longValue()).isZero();
+        assertThat(claims.get("admin", Boolean.class)).isFalse();
     }
 
     @Test
-    void administrator_token_hasNoInstitutionId() {
-        User admin = buildUser(UserRole.administrator, null);
+    void admin_token_hasNoInstitutionId() {
+        User admin = buildUser(UserRole.admin, null);
         String token = jwtService.generateAccessToken(admin);
         Claims claims = jwtService.extractClaims(token);
         assertThat(claims.get("institution_id")).isNull();
+    }
+
+    @Test
+    void admin_token_containsAdminAndAdminOwnerClaims() {
+        User admin = buildUser(UserRole.admin, null);
+        admin.setAdminOwner(true);
+
+        String token = jwtService.generateAccessToken(admin);
+        Claims claims = jwtService.extractClaims(token);
+
+        assertThat(claims.get("admin", Boolean.class)).isTrue();
+        assertThat(claims.get("admin_owner", Boolean.class)).isTrue();
     }
 
     @Test
@@ -114,6 +128,17 @@ class JWTServiceTest {
         User user = buildUser(UserRole.contributor, null);
         String token = jwtService.generateAccessToken(user);
         jwtService.invalidateToken(token);
+        assertThatThrownBy(() -> jwtService.extractClaims(token)).isInstanceOf(JwtException.class);
+    }
+
+    @Test
+    void invalidateUserTokens_revokesExistingUserToken() {
+        User user = buildUser(UserRole.moderator, null);
+        String token = jwtService.generateAccessToken(user);
+
+        jwtService.invalidateUserTokens(user.getId());
+
+        assertThat(jwtService.validateToken(token)).isFalse();
         assertThatThrownBy(() -> jwtService.extractClaims(token)).isInstanceOf(JwtException.class);
     }
 }

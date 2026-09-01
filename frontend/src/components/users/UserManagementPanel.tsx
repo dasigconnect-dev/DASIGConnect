@@ -158,5 +158,5 @@ function canToggleUserStatus(currentUser: User | null, managedUser: UserProfileR
   const state = managedUser.accountState.toLowerCase()
   if (state !== 'active' && state !== 'inactive') return false
   if (currentUser.role === 'admin') return true
-  return currentUser.role === 'validator' && managedUser.role.toLowerCase() === 'contributor'
+  return currentUser.role === 'moderator' && managedUser.role.toLowerCase() === 'contributor'
 }

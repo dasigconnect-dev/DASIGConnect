@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { MediaAsset } from "../../../api/mediaApi";
 import { formatFileSize, formatUploadDate, isVideoType } from "../utils";
 
@@ -8,7 +9,10 @@ interface AssetCardProps {
   listView: boolean;
   animationDelay?: number;
   showInstitutionChip?: boolean;
+  /** Single click / Enter — select the asset and show its detail panel. */
   onClick: () => void;
+  /** Double click — open the full-screen viewer. */
+  onOpen?: () => void;
 }
 
 export default function AssetCard({
@@ -19,18 +23,46 @@ export default function AssetCard({
   animationDelay = 0,
   showInstitutionChip = false,
   onClick,
+  onOpen,
 }: AssetCardProps) {
   const isVideo = isVideoType(asset.fileType);
   const primaryTag = asset.aiTags?.[0];
+
+  // A double click also fires two single clicks first; defer the select briefly
+  // so a double click opens the viewer without leaving the panel flickering.
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleClick() {
+    if (!onOpen) {
+      onClick();
+      return;
+    }
+    if (clickTimer.current) return;
+    clickTimer.current = setTimeout(() => {
+      clickTimer.current = null;
+      onClick();
+    }, 200);
+  }
+
+  function handleDoubleClick() {
+    if (clickTimer.current) {
+      clearTimeout(clickTimer.current);
+      clickTimer.current = null;
+    }
+    onOpen?.();
+  }
 
   return (
     <div
       className={`med-card${selected ? " selected" : ""}${checked ? " checked" : ""}`}
       style={{ animationDelay: `${animationDelay}ms` }}
-      onClick={onClick}
+      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onClick(); }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") onClick();
+      }}
       aria-pressed={selected}
     >
       <div className="med-card-thumb">
@@ -98,6 +130,7 @@ export default function AssetCard({
       <div className="med-card-body">
         <div className="med-card-code">{asset.code}</div>
         <div className="med-card-title">{asset.title}</div>
+        {asset.albumName && <div className="med-card-album">{asset.albumName}</div>}
         <div className="med-card-meta">
           {!listView && (
             <div className="med-card-meta-left">

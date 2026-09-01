@@ -160,6 +160,7 @@ public class AIRecommendationService {
                         dto,
                         tagMap.getOrDefault(id, List.of())
                 ))
+                .filter(result -> result.score() >= 0.40)
                 .sorted(Comparator.comparingDouble(RankedAsset::score).reversed())
                 .limit(8)
                 .map(result -> MediaSuggestResultDto.from(result.asset(), result.score(), result.reasons()))
@@ -177,9 +178,19 @@ public class AIRecommendationService {
     @Transactional
     public void logInteraction(UUID submissionId, UUID institutionId, String type, String actionTaken) {
         try {
+            // Admin composers have no institution of their own — fall back to the
+            // submission's institution (ai_interaction_log.institution_id is NOT NULL).
+            UUID resolvedInstitutionId = institutionId != null ? institutionId
+                    : submissionRepository.findById(submissionId)
+                            .map(s -> s.getInstitution() != null ? s.getInstitution().getId() : null)
+                            .orElse(null);
+            if (resolvedInstitutionId == null) {
+                log.warn("Skipping AI interaction log for submission {}: no institution context", submissionId);
+                return;
+            }
             AiInteractionLog entry = new AiInteractionLog();
             entry.setSubmissionId(submissionId);
-            entry.setInstitutionId(institutionId);
+            entry.setInstitutionId(resolvedInstitutionId);
             entry.setInteractionType(type);
             entry.setActionTaken(actionTaken);
             aiInteractionLogRepository.save(entry);
@@ -314,8 +325,11 @@ public class AIRecommendationService {
     private Submission loadAndAuthorise(UUID submissionId, JwtUserDetails user) {
         Submission submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found."));
-        boolean isAdmin = user.role() != null && user.role().toLowerCase(Locale.ROOT).contains("admin");
-        if (!isAdmin && !submission.getInstitution().getId().equals(user.institutionId())) {
+        boolean isAdmin = "admin".equalsIgnoreCase(user.role());
+        boolean sameInstitution = submission.getInstitution().getId().equals(user.institutionId());
+        boolean ownsSubmission = submission.getContributor().getId().equals(user.userId());
+        if (!isAdmin && (!sameInstitution
+                || ("contributor".equalsIgnoreCase(user.role()) && !ownsSubmission))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Submission does not belong to your institution.");
         }
@@ -364,6 +378,7 @@ public class AIRecommendationService {
                         dto,
                         tagMap.getOrDefault(asset.getId(), List.of())
                 ))
+                .filter(result -> result.score() >= 0.40)
                 .sorted(Comparator.comparingDouble(RankedAsset::score).reversed())
                 .limit(8)
                 .map(result -> MediaSuggestResultDto.from(result.asset(), result.score(), result.reasons()))

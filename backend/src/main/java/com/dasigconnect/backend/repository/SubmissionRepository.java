@@ -38,10 +38,8 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
 
     List<Submission> findAllByInstitutionId(UUID institutionId);
 
-    // UC-1.3 list queries — role-filtered
-    List<Submission> findByContributorIdAndInstitutionIdOrderByCreatedAtDesc(UUID contributorId, UUID institutionId);
-    List<Submission> findByInstitutionIdOrderByCreatedAtDesc(UUID institutionId);
-    List<Submission> findAllByOrderByCreatedAtDesc();
+    // UC-1.3 "My Submissions" — authored-by-caller, regardless of role
+    List<Submission> findByContributorIdOrderByCreatedAtDesc(UUID contributorId);
 
     boolean existsByInstitutionId(UUID institutionId);
     boolean existsByIdAndInstitutionId(UUID id, UUID institutionId);
@@ -62,18 +60,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("windowStart") java.time.Instant windowStart,
             @Param("windowEnd") java.time.Instant windowEnd);
 
-    // UC-2.1 validation queue — PENDING + IN_REVIEW sorted by scheduledAt ASC
-    @Query("""
-        SELECT s FROM Submission s
-        WHERE s.institution.id = :institutionId
-        AND s.status IN (
-            com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review
-        )
-        ORDER BY s.scheduledAt ASC NULLS LAST
-        """)
-    List<Submission> findValidationQueueByInstitution(@Param("institutionId") UUID institutionId);
-
+    // UC-2.4 approval queue — network-wide PENDING + IN_REVIEW sorted by scheduledAt ASC
     @Query("""
         SELECT s FROM Submission s
         WHERE s.status IN (
@@ -84,31 +71,12 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         """)
     List<Submission> findValidationQueue();
 
-    // UC-2.1 validation history — all post-review statuses, most recently updated first
-    @Query("""
-        SELECT s FROM Submission s
-        WHERE s.institution.id = :institutionId
-        AND s.status IN (
-            com.dasigconnect.backend.model.entity.SubmissionStatus.needs_revision,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.publishing,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.publish_failed,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.published,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.published_manual,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.admin_direct_post,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_publishing,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_failed,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.rejected
-        )
-        ORDER BY s.updatedAt DESC
-        """)
-    List<Submission> findValidationHistoryByInstitution(@Param("institutionId") UUID institutionId);
-
+    // UC-2.4 approval history — network-wide, all post-review statuses, most recently updated first
     @Query("""
         SELECT s FROM Submission s
         WHERE s.status IN (
             com.dasigconnect.backend.model.entity.SubmissionStatus.needs_revision,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.missed_review,
             com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
             com.dasigconnect.backend.model.entity.SubmissionStatus.publishing,
             com.dasigconnect.backend.model.entity.SubmissionStatus.publish_failed,
@@ -166,6 +134,23 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         """)
     List<Submission> findMissedScheduledSubmissions(@Param("cutoff") Instant cutoff);
 
+    /**
+     * StaleSubmissionDetectorJob (GR-T9 / UC-2.4 A6): PENDING / IN_REVIEW submissions
+     * whose scheduled publication time has already passed — they missed their review
+     * window and must be transitioned to MISSED_REVIEW.
+     */
+    @Query("""
+        SELECT s FROM Submission s
+        WHERE s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review
+        )
+        AND s.scheduledAt IS NOT NULL
+        AND s.scheduledAt < :cutoff
+        ORDER BY s.scheduledAt ASC
+        """)
+    List<Submission> findMissedReviewSubmissions(@Param("cutoff") Instant cutoff);
+
     /** Resolution Center: PUBLISH_FAILED and DIRECT_POST_FAILED submissions sorted newest-scheduled first. */
     @Query("SELECT s FROM Submission s JOIN FETCH s.institution JOIN FETCH s.contributor WHERE s.id = :id")
     java.util.Optional<Submission> findByIdWithInstitution(@Param("id") UUID id);
@@ -175,11 +160,25 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         JOIN FETCH s.institution
         WHERE s.status IN (
             com.dasigconnect.backend.model.entity.SubmissionStatus.publish_failed,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_failed
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_failed,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.missed_review
         )
         ORDER BY s.scheduledAt DESC
         """)
     List<Submission> findPublishFailures();
+
+    @Query("""
+        SELECT s FROM Submission s
+        JOIN FETCH s.institution
+        JOIN FETCH s.contributor
+        WHERE s.tokenBlockedAt IS NOT NULL
+        AND s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled
+        )
+        ORDER BY s.tokenBlockedAt ASC
+        """)
+    List<Submission> findTokenBlockedScheduledSubmissions();
 
     /** UC-3.5 Category B: escalated PENDING/IN_REVIEW submissions due within the given window. */
     @Query("""
@@ -196,13 +195,40 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("from") Instant from,
             @Param("to") Instant to);
 
-    /** Calendar API (admin): all submissions with a scheduled slot, any status. */
+    /**
+     * Calendar API (admin): all submissions that have a calendar position, any
+     * status. A scheduled slot OR a publish timestamp counts — the latter covers
+     * Live Event / Fast-Track posts that publish without ever reserving a slot.
+     */
     @Query("""
         SELECT s FROM Submission s
-        WHERE s.scheduledAt IS NOT NULL
-        ORDER BY s.scheduledAt ASC
+        WHERE (s.scheduledAt IS NOT NULL OR s.publishedAt IS NOT NULL)
+        AND s.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.missed_review
+        AND s.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+        ORDER BY COALESCE(s.scheduledAt, s.publishedAt) ASC
         """)
     List<Submission> findAllWithScheduledSlot();
+
+    /**
+     * Calendar API (contributor/validator): the caller's OWN authored submissions
+     * that are in a workflow state — publish/direct-post failures, still pending or
+     * in review, or missed review. These are shown in full only to the author so
+     * they can track their own pipeline; other viewers never see them.
+     */
+    @Query("""
+        SELECT s FROM Submission s
+        WHERE s.contributor.id = :contributorId
+        AND s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.publish_failed,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_failed,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.missed_review
+        )
+        AND (s.scheduledAt IS NOT NULL OR s.publishedAt IS NOT NULL)
+        ORDER BY COALESCE(s.scheduledAt, s.publishedAt) ASC
+        """)
+    List<Submission> findOwnCalendarWorkflowSlots(@Param("contributorId") UUID contributorId);
 
     /**
      * Calendar API (contributor/validator): all institutions' submissions that are in a
@@ -212,7 +238,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
      */
     @Query("""
         SELECT s FROM Submission s
-        WHERE s.scheduledAt IS NOT NULL
+        WHERE (s.scheduledAt IS NOT NULL OR s.publishedAt IS NOT NULL)
         AND s.status IN (
             com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
             com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled,
@@ -222,7 +248,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             com.dasigconnect.backend.model.entity.SubmissionStatus.published_manual,
             com.dasigconnect.backend.model.entity.SubmissionStatus.admin_direct_post
         )
-        ORDER BY s.scheduledAt ASC
+        ORDER BY COALESCE(s.scheduledAt, s.publishedAt) ASC
         """)
     List<Submission> findAllCalendarVisibleSlots();
 
@@ -242,4 +268,49 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         AND s.manualPublishStartedAt < :cutoff
         """)
     List<Submission> findAbandonedManualPublishes(@Param("cutoff") Instant cutoff);
+
+    /** T-07: Count upcoming scheduled posts for an institution in a time window. */
+    @Query("""
+        SELECT COUNT(s) FROM Submission s
+        WHERE s.institution.id = :institutionId
+          AND s.status IN (
+              com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
+              com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_scheduled
+          )
+          AND s.scheduledAt BETWEEN :from AND :to
+        """)
+    long countUpcomingScheduledByInstitution(
+            @Param("institutionId") UUID institutionId,
+            @Param("from") Instant from,
+            @Param("to") Instant to);
+
+    /** T-07 / A6: Find historical published post titles for an institution. */
+    @Query("""
+        SELECT s.eventTitle FROM Submission s
+        WHERE s.institution.id = :institutionId
+          AND s.status IN (
+              com.dasigconnect.backend.model.entity.SubmissionStatus.published,
+              com.dasigconnect.backend.model.entity.SubmissionStatus.published_manual
+          )
+        ORDER BY s.createdAt DESC
+        LIMIT 10
+        """)
+    List<String> findRecentAndHistoricalPostTitles(@Param("institutionId") UUID institutionId);
+
+    /** T-07 / A6: Find distinct categories used recently across other partner institutions. */
+    @Query("""
+        SELECT DISTINCT s.category FROM Submission s
+        WHERE s.institution.id != :institutionId
+          AND s.category IS NOT NULL
+          AND s.category != ''
+          AND s.status IN (
+              com.dasigconnect.backend.model.entity.SubmissionStatus.published,
+              com.dasigconnect.backend.model.entity.SubmissionStatus.published_manual,
+              com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled
+          )
+          AND s.createdAt >= :since
+        """)
+    List<String> findRecentCategoriesFromOtherInstitutions(
+            @Param("institutionId") UUID institutionId,
+            @Param("since") Instant since);
 }

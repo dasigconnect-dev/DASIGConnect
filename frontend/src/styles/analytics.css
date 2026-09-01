@@ -1,1177 +1,1004 @@
-/* ==================== Base Layout ==================== */
+/* ==========================================================================
+   EXECUTIVE ANALYTICS DASHBOARD — POWERBI / PINTEREST STYLE
+   ========================================================================== */
 
 .analytics-page {
-  min-height: calc(100vh - 72px);
-  padding: 36px 40px 56px;
-  background: #f5f7fa;
-  color: #101828;
+  padding-bottom: 60px;
 }
 
-.analytics-header {
-  align-items: flex-start;
-  gap: 20px;
-}
-
-/* ==================== Metadata & Toolbar ==================== */
-
-.analytics-period {
-  display: inline-flex;
-  color: #667085;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.analytics-meta-row {
+/* ── Executive Header Banner ────────────────────────────────────────────── */
+.analytics-header-banner {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.analytics-header-titles {
+  min-width: 0;
+}
+
+.analytics-header-meta {
+  display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.analytics-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 9999px;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  color: var(--d-muted, #5a6f8a);
+  font-size: 11.5px;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(12, 29, 61, 0.02);
 }
 
 .analytics-scope-badge {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: #eef4ff;
-  color: #2563eb;
-  font-size: 11px;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 9999px;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  color: var(--d-blue, #1877f2);
+  font-size: 11.5px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
 
-.analytics-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+/* ── Filter & Time Range Toolbar Card ───────────────────────────────────── */
+.analytics-toolbar-card {
+  position: relative;
+  z-index: 120;
+  overflow: visible !important;
+  margin-bottom: 18px;
+  padding: 10px 16px;
+  background: var(--d-surface, #ffffff);
+  border: 1px solid var(--cal-line, #e2e8f0);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(10, 22, 40, 0.035);
+  box-sizing: border-box;
 }
 
-.analytics-filter {
+.analytics-toolbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  overflow: visible;
+}
+
+.analytics-filters-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  overflow: visible;
+  position: relative;
+  z-index: 130;
+}
+
+.analytics-filter-field {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #475467;
-  font-size: 13px;
+  position: relative;
+}
+
+.analytics-field-label {
+  font-size: 12px;
   font-weight: 600;
+  color: #64748b;
+  line-height: 1;
 }
 
-.analytics-filter select,
-.analytics-filter .dc-select {
-  min-width: 180px;
-  height: 40px;
+.analytics-filter-field .dc-select,
+.analytics-filter-field select {
+  min-width: 170px;
+  height: 34px;
+  position: relative;
 }
 
-.analytics-filter select {
-  border: 1px solid #d7deea;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #101828;
-  padding: 0 12px;
-  font: inherit;
+.analytics-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .analytics-segmented {
   display: inline-flex;
+  align-items: center;
   gap: 2px;
-  padding: 3px;
-  border: 1px solid #d7deea;
-  background: #ffffff;
-  border-radius: 8px;
+  padding: 2px;
+  background: #f1f5f9;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  height: 34px;
+  box-sizing: border-box;
 }
 
 .analytics-segmented button {
-  min-width: 44px;
-  height: 32px;
+  min-width: 42px;
+  height: 28px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 999px;
   background: transparent;
-  color: #475467;
-  font-size: 13px;
-  font-weight: 700;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 650;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: all 0.15s ease;
+  padding: 0 12px;
+  font-family: inherit;
+}
+
+.analytics-segmented button:hover {
+  color: var(--d-blue, #1877f2);
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .analytics-segmented button.active {
-  background: #111827;
+  background: var(--d-blue, #1877f2);
   color: #ffffff;
+  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
 }
 
-/* ==================== Section Divider ==================== */
-
-.analytics-section-label {
-  display: flex;
+.analytics-actions-group .notif-btn-ghost {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  margin: 28px 0 0;
-}
-
-.analytics-section-label h2 {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 700;
-  color: #9ca3af;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  white-space: nowrap;
-}
-
-.analytics-section-label::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: #e4e9f2;
-}
-
-/* ==================== KPI Grid ==================== */
-
-.analytics-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin: 20px 0 0;
-}
-
-.analytics-kpi-tile,
-.analytics-panel {
-  background: #ffffff;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05), 0 4px 12px rgba(16, 24, 40, 0.04);
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 550;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
 }
 
-.analytics-kpi-tile {
-  padding: 20px;
+.analytics-actions-group .notif-btn-ghost:hover:not(:disabled) {
+  border-color: #bfdbfe;
+  color: var(--d-blue, #1877f2);
+  background: #eff6ff;
+  transform: translateY(-0.5px);
+}
+
+/* ── Top Executive KPI Cards Strip ──────────────────────────────────────── */
+.analytics-kpi-strip-wrap {
   display: grid;
+  grid-template-columns: repeat(6, 1fr);
   gap: 12px;
-  min-width: 0;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  margin-bottom: 18px;
 }
 
-.analytics-kpi-tile:hover {
-  box-shadow: 0 4px 20px rgba(16, 24, 40, 0.1), 0 1px 4px rgba(16, 24, 40, 0.06);
+.analytics-kpi-strip-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 1px 3px rgba(12, 29, 61, 0.03);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.analytics-kpi-strip-card:hover {
+  border-color: #BFDBFE;
+  box-shadow: 0 4px 16px rgba(24, 119, 242, 0.07);
   transform: translateY(-2px);
 }
 
-.analytics-kpi-top,
-.analytics-panel-header,
-.analytics-modal-header {
+.analytics-kpi-strip-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.analytics-kpi-strip-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #EFF6FF;
+  color: var(--d-blue, #1877f2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.analytics-kpi-strip-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.analytics-kpi-strip-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--d-muted, #5a6f8a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analytics-kpi-strip-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0C1D3D;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+  margin-top: 2px;
+}
+
+.analytics-kpi-strip-sub {
+  font-size: 11px;
+  color: #64748B;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+/* ── Executive Dashboard Dense Grid ─────────────────────────────────────── */
+.analytics-dashboard-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.analytics-dashboard-grid-equal {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+/* ── Generic Chart Card Structure ───────────────────────────────────────── */
+.analytics-chart-card {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.analytics-chart-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  margin-bottom: 16px;
 }
 
-.analytics-kpi-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  background: #eef4ff;
-  color: #2563eb;
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.analytics-target,
-.analytics-soft-badge {
-  border-radius: 999px;
-  padding: 3px 9px;
-  font-size: 11px;
+.analytics-chart-title {
+  font-size: 14.5px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
+  color: #0C1D3D;
+  margin: 0;
 }
 
-.analytics-target.met {
-  color: #047857;
-  background: #d1fae5;
-}
-
-.analytics-target.miss,
-.analytics-soft-badge {
-  color: #92400e;
-  background: #fef3c7;
-}
-
-.analytics-kpi-label {
-  margin: 0 0 4px;
-  color: #6b7280;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.analytics-kpi-value {
-  font-size: 30px;
-  line-height: 1;
-  font-weight: 800;
-  color: #0f172a;
-  letter-spacing: -0.02em;
-}
-
-.analytics-kpi-meta {
-  margin: 6px 0 0;
-  color: #9ca3af;
-  font-size: 11px;
-}
-
-.analytics-kpi-delta,
-.analytics-kpi-secondary {
-  margin: 4px 0 0;
-  color: #4b5563;
+.analytics-chart-subtitle {
   font-size: 12px;
+  color: var(--d-muted, #5a6f8a);
+  margin: 3px 0 0;
+}
+
+.analytics-chart-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Trend Line Chart (SVG) ─────────────────────────────────────────────── */
+.analytics-trend-svg {
+  width: 100%;
+  height: 180px;
+  overflow: visible;
+}
+
+.analytics-trend-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid #F1F5F9;
+  font-size: 11.5px;
+  color: var(--d-muted, #5a6f8a);
+}
+
+.analytics-trend-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #059669;
   font-weight: 600;
 }
 
-.analytics-kpi-secondary {
-  color: #92400e;
-}
-
-.analytics-sparkline {
+/* ── Ranked Horizontal Bar Charts ───────────────────────────────────────── */
+.analytics-ranked-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
   width: 100%;
-  height: 36px;
 }
 
-.analytics-sparkline path {
-  fill: none;
-  stroke: #3b82f6;
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: 0.75;
-}
-
-.analytics-link-btn {
-  width: max-content;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 0;
-  background: transparent;
-  color: #2563eb;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  padding: 0;
-  transition: opacity 0.15s ease;
-}
-
-.analytics-link-btn:hover {
-  opacity: 0.7;
-}
-
-/* ==================== Main Grid ==================== */
-
-.analytics-main-grid {
+.analytics-ranked-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
-  gap: 14px;
-  align-items: start;
-  margin-top: 14px;
-}
-
-.analytics-main-grid-scoped {
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.7fr);
-}
-
-.analytics-stack {
-  display: grid;
-  gap: 14px;
-}
-
-/* ==================== Panel ==================== */
-
-.analytics-panel {
-  padding: 20px;
-  min-width: 0;
-}
-
-.analytics-panel-tall {
-  min-height: 380px;
-}
-
-.analytics-panel-header h2,
-.analytics-modal-header h2 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: #111827;
-}
-
-.analytics-panel-header p,
-.analytics-modal-header p {
-  margin: 4px 0 0;
-  color: #9ca3af;
-  font-size: 12px;
-}
-
-/* ==================== Bar Chart ==================== */
-
-.analytics-bars {
-  display: grid;
-  gap: 14px;
-  margin-top: 18px;
-}
-
-.analytics-bar-row {
-  display: grid;
-  grid-template-columns: minmax(140px, 240px) minmax(100px, 1fr) 40px;
+  grid-template-columns: 160px 1fr 48px;
   align-items: center;
   gap: 12px;
 }
 
-.analytics-bar-label {
+.analytics-ranked-label {
   min-width: 0;
 }
 
-.analytics-bar-label strong {
+.analytics-ranked-label strong {
   display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #0C1D3D;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  color: #111827;
 }
 
-.analytics-bar-label span {
+.analytics-ranked-label span {
   display: block;
-  margin-top: 2px;
-  color: #9ca3af;
   font-size: 11px;
+  color: var(--d-muted, #5a6f8a);
+  margin-top: 1px;
 }
 
-.analytics-bar-track,
-.analytics-progress-meter {
-  height: 7px;
-  border-radius: 999px;
+.analytics-ranked-track {
+  height: 9px;
+  background: #F1F5F9;
+  border-radius: 9999px;
   overflow: hidden;
-  background: #f1f5f9;
 }
 
-.analytics-bar-track span {
-  display: block;
+.analytics-ranked-fill {
   height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #3b82f6, #10b981);
-  transition: width 0.4s ease;
+  border-radius: 9999px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.analytics-progress-meter span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #3b82f6, #10b981);
-  transition: width 0.4s ease;
-}
-
-.analytics-bar-value {
+.analytics-ranked-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0C1D3D;
   text-align: right;
-  font-weight: 700;
-  font-size: 13px;
-  color: #111827;
 }
 
-/* ==================== Progress List (AI Panel) ==================== */
-
-.analytics-progress-list {
-  display: grid;
-  gap: 14px;
-  margin-top: 16px;
-}
-
-.analytics-progress-row {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(80px, 120px) 48px;
-  gap: 10px;
-  align-items: center;
-}
-
-.analytics-progress-row strong,
-.analytics-progress-row span {
-  display: block;
-}
-
-.analytics-progress-row strong {
-  font-size: 13px;
-  color: #111827;
-}
-
-.analytics-progress-row span {
-  margin-top: 2px;
-  color: #9ca3af;
-  font-size: 11px;
-}
-
-.analytics-progress-row em {
-  text-align: right;
-  color: #111827;
-  font-style: normal;
-  font-weight: 700;
-  font-size: 13px;
-}
-
-/* ==================== Health Grid ==================== */
-
-.analytics-health-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.analytics-role-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.analytics-role-card {
-  min-height: 78px;
-  border: 1px solid #e4e9f2;
-  border-radius: 10px;
-  background: #f8fafc;
-  padding: 12px;
-  transition: border-color 0.15s ease;
-}
-
-.analytics-role-card:hover {
-  border-color: #bfdbfe;
-}
-
-.analytics-role-card span,
-.analytics-muted {
-  color: #9ca3af;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.analytics-role-card strong {
-  display: block;
-  margin-top: 8px;
-  color: #0f172a;
-  font-size: 22px;
-  line-height: 1.1;
-  font-weight: 800;
-}
-
-/* ==================== Status Chips ==================== */
-
-.analytics-chip-list {
+/* ── Donut Chart (SVG) ──────────────────────────────────────────────────── */
+.analytics-donut-container {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-/* Wrapper that groups a chip + its hover-reveal View button */
-.analytics-chip-item {
-  display: inline-flex;
   align-items: center;
-  gap: 4px;
-}
-
-.analytics-status-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  border: 1px solid #e2e8f0;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #4b5563;
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.analytics-status-chip strong {
-  color: #111827;
-  font-size: 13px;
-}
-
-/* Navigable chip — becomes a button */
-.analytics-status-chip-btn {
-  cursor: pointer;
-  border: none;
-  font-family: inherit;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-}
-
-.analytics-status-chip-btn:hover {
-  border-color: #93c5fd;
-  background: #eff6ff;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
-}
-
-/* View ↗ button — hidden by default, revealed on chip-item hover */
-.analytics-chip-view-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 3px 7px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  background: #f8fafc;
-  color: #6b7280;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: inherit;
-  white-space: nowrap;
-  opacity: 0;
-  transform: translateX(-4px);
-  pointer-events: none;
-  transition: opacity 0.18s ease, transform 0.18s ease, background 0.15s ease,
-    border-color 0.15s ease, color 0.15s ease;
-}
-
-.analytics-chip-view-btn i {
-  font-size: 11px;
-}
-
-.analytics-chip-item:hover .analytics-chip-view-btn,
-.analytics-chip-item:focus-within .analytics-chip-view-btn {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
-}
-
-.analytics-chip-view-btn:hover {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
-  color: #2563eb;
-}
-
-/* ==================== View ↗ Button (panel-level) ==================== */
-
-.analytics-view-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  background: #f8fafc;
-  color: #475467;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: inherit;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.analytics-view-btn i {
-  font-size: 12px;
-  transition: transform 0.15s ease;
-}
-
-.analytics-view-btn:hover {
-  background: #f1f5f9;
-  border-color: #93c5fd;
-  color: #2563eb;
-}
-
-.analytics-view-btn:hover i {
-  transform: translate(1px, -1px);
-}
-
-/* ==================== Expandable List (ContentIssuesPanel) ==================== */
-
-.analytics-expandable-wrap {
-  position: relative;
-  overflow: hidden;
-  transition: max-height 0.32s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.analytics-expandable-wrap.collapsed {
-  /* height is set inline via JS */
-}
-
-.analytics-expandable-wrap.expanded {
-  max-height: 2000px !important;
-}
-
-/* Fade-out gradient when collapsed and has overflow */
-.analytics-expandable-fade {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 32px;
-  background: linear-gradient(to bottom, transparent, #ffffff);
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-
-.analytics-expandable-fade.hidden {
-  opacity: 0;
-}
-
-.analytics-expand-footer {
-  display: flex;
-  justify-content: center;
-  padding-top: 10px;
-}
-
-.analytics-expand-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: 0;
-  background: transparent;
-  color: #6b7280;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: inherit;
-  padding: 0;
-  transition: color 0.15s ease;
-}
-
-.analytics-expand-link:hover {
-  color: #2563eb;
-}
-
-/* ==================== Simple List ==================== */
-
-.analytics-simple-list {
-  display: grid;
-  gap: 6px;
-  margin-top: 14px;
-}
-
-.analytics-simple-list div {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  border-bottom: 1px solid #f1f5f9;
-  padding: 0 0 6px;
-  color: #4b5563;
-  font-size: 13px;
-}
-
-.analytics-simple-list strong {
-  color: #111827;
-  white-space: nowrap;
-  font-weight: 700;
-}
-
-/* ==================== Health Card ==================== */
-
-.analytics-health-card {
-  border: 1px solid #e4e9f2;
-  background: #f8fafc;
-  border-radius: 10px;
-  padding: 12px;
-}
-
-.analytics-health-card span {
-  display: block;
-  color: #9ca3af;
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.analytics-health-card strong {
-  display: block;
-  margin: 6px 0 3px;
-  font-size: 20px;
-  line-height: 1;
-  font-weight: 800;
-  color: #0f172a;
-}
-
-.analytics-health-card em {
-  display: block;
-  color: #9ca3af;
-  font-style: normal;
-  font-size: 11px;
-  margin-top: 2px;
-}
-
-/* ==================== Admin Actions ==================== */
-
-.analytics-admin-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin: 14px 0;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: #eff6ff;
-  color: #1d4ed8;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-/* ==================== Table ==================== */
-
-.analytics-table-wrap {
-  overflow-x: auto;
-  margin-top: 14px;
-  border-radius: 8px;
-  border: 1px solid #e4e9f2;
-}
-
-.analytics-table {
+  justify-content: space-around;
+  gap: 20px;
+  padding: 10px 0;
   width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
 }
 
-.analytics-table th,
-.analytics-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid #f1f5f9;
-  text-align: left;
-  white-space: nowrap;
+.analytics-donut-svg-wrap {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  flex-shrink: 0;
 }
 
-.analytics-table th {
-  color: #9ca3af;
-  font-size: 11px;
+.analytics-donut-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.analytics-donut-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.analytics-donut-total {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0C1D3D;
+  line-height: 1;
+  display: block;
+}
+
+.analytics-donut-sub {
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  color: var(--d-muted, #5a6f8a);
+  display: block;
+  margin-top: 2px;
+}
+
+.analytics-donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.analytics-donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.analytics-donut-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.analytics-donut-name {
+  color: #0C1D3D;
+  font-weight: 500;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-donut-val {
   font-weight: 700;
-  background: #f8fafc;
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  color: var(--d-blue, #1877f2);
 }
 
-.analytics-table tr:last-child td {
-  border-bottom: none;
-}
-
-.analytics-table tbody tr:hover td {
-  background: #f8fafc;
-}
-
-/* ==================== States ==================== */
-
-.analytics-empty,
-.analytics-state {
-  min-height: 180px;
+/* ── Operations & Engagement Matrix Grid ─────────────────────────────────── */
+.analytics-metrics-matrix {
   display: grid;
-  place-items: center;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  width: 100%;
+}
+
+.analytics-matrix-group {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.analytics-matrix-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.analytics-matrix-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0C1D3D;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.analytics-matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.analytics-matrix-cell {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.analytics-matrix-cell-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--d-muted, #5a6f8a);
+}
+
+.analytics-matrix-cell-val {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0C1D3D;
+  line-height: 1.2;
+  margin-top: 3px;
+}
+
+.analytics-matrix-cell-sub {
+  font-size: 10.5px;
+  color: #64748B;
+  margin-top: 2px;
+}
+
+/* ── Text Buttons ───────────────────────────────────────────────────────── */
+.analytics-text-btn {
+  background: transparent;
+  border: none;
+  color: var(--d-blue, #1877f2);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.analytics-text-btn:hover {
+  color: #1565D8;
+  gap: 6px;
+}
+
+/* ── Section Title ──────────────────────────────────────────────────────── */
+.analytics-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--d-muted, #5a6f8a);
+  margin: 20px 0 12px;
+}
+
+/* ── Empty State ────────────────────────────────────────────────────────── */
+.analytics-empty-state {
   text-align: center;
-  color: #9ca3af;
+  padding: 32px 16px;
+  color: var(--d-muted, #5a6f8a);
+  font-size: 12.5px;
 }
 
-.analytics-state {
-  gap: 12px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  margin-top: 20px;
+/* ── Responsive Queries ─────────────────────────────────────────────────── */
+@media (max-width: 1200px) {
+  .analytics-kpi-strip-wrap {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .analytics-dashboard-grid,
+  .analytics-dashboard-grid-equal {
+    grid-template-columns: 1fr;
+  }
 }
 
-.analytics-state i {
-  font-size: 30px;
+@media (max-width: 768px) {
+  .analytics-header-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .analytics-kpi-strip-wrap {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .analytics-metrics-matrix {
+    grid-template-columns: 1fr;
+  }
 }
 
-/* ==================== Loading Skeleton ==================== */
+/* ============================================================
+   ANALYTICS FULL REPORT MODAL & INTERACTIVE CARD ACTIONS
+   ============================================================ */
 
-.analytics-loading {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 20px;
+/* Interactive KPI Card Triggers */
+.analytics-kpi-strip-card.is-interactive {
+  cursor: pointer;
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
 }
 
-.analytics-skeleton {
-  min-height: 150px;
-  border-radius: 12px;
-  background: linear-gradient(90deg, #f0f4f8 0%, #f8fafc 50%, #f0f4f8 100%);
-  background-size: 240% 100%;
-  animation: analytics-shimmer 1.4s infinite linear;
+.analytics-kpi-strip-card.is-interactive:hover {
+  transform: translateY(-2px);
+  border-color: #bfdbfe;
+  box-shadow: 0 8px 20px -4px rgba(24, 119, 242, 0.12);
 }
 
-@keyframes analytics-shimmer {
-  from { background-position: 100% 0; }
-  to   { background-position: -100% 0; }
+.analytics-kpi-strip-footer {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed #edf2f7;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
-/* ==================== Modal — Backdrop ==================== */
-
-@keyframes analytics-backdrop-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+.analytics-kpi-strip-action {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--d-blue, #1877f2);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 140ms ease;
 }
 
-@keyframes analytics-modal-slide-in {
-  from { opacity: 0; transform: translateY(16px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+.analytics-kpi-strip-card.is-interactive:hover .analytics-kpi-strip-action {
+  color: #1565d8;
+  gap: 6px;
 }
 
+/* Modal Backdrop */
 .analytics-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 80;
-  overflow-y: auto;
-  background: rgba(15, 23, 42, 0.54);
-  backdrop-filter: blur(3px);
-  animation: analytics-backdrop-in 0.18s ease;
+  background: rgba(8, 20, 42, 0.48);
+  backdrop-filter: blur(4px);
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: 40px 20px;
+  justify-content: center;
+  padding: 24px 16px;
+  z-index: 10000;
+  animation: cal-backdrop-fade 180ms ease forwards;
+  box-sizing: border-box;
 }
 
-/* ==================== Modal — Shell ==================== */
-
-.analytics-modal {
-  width: min(520px, 100%);
-  margin: auto;
-  background: #ffffff;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22), 0 4px 16px rgba(15, 23, 42, 0.08);
-  animation: analytics-modal-slide-in 0.22s ease;
-  overflow: hidden;
-}
-
+/* Modal Window Container */
 .analytics-modal-wide {
-  width: min(840px, 100%);
-  max-height: calc(100vh - 80px);
-  margin: auto;
-  display: flex;
-  flex-direction: column;
+  width: min(920px, calc(100vw - 32px));
+  max-width: 920px;
+  height: min(88vh, 840px);
   background: #ffffff;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22), 0 4px 16px rgba(15, 23, 42, 0.08);
-  animation: analytics-modal-slide-in 0.22s ease;
+  border-radius: 18px;
+  box-shadow: 0 24px 60px -12px rgba(15, 23, 42, 0.28), 0 0 0 1px rgba(15, 23, 42, 0.08);
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
   overflow: hidden;
+  font-family: var(--ff-body, system-ui, -apple-system, sans-serif);
+  animation: modal-scale-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  box-sizing: border-box;
 }
 
-/* ==================== Modal — Header ==================== */
-
+/* Header */
 .analytics-modal-header {
-  padding: 20px 24px 0;
-  flex-shrink: 0;
-}
-
-.analytics-modal-header h2 {
-  font-size: 15px;
-  font-weight: 700;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--d-border, #e2e8f0);
+  background: #ffffff;
+  box-sizing: border-box;
 }
 
 .analytics-modal-title-row {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  width: 100%;
+  gap: 16px;
 }
 
 .analytics-modal-title-inner {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  flex: 1;
+  align-items: center;
+  gap: 14px;
   min-width: 0;
 }
 
 .analytics-modal-metric-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  background: #eef4ff;
-  color: #2563eb;
-  display: grid;
-  place-items: center;
-  font-size: 19px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  color: var(--d-blue, #1877f2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
   flex-shrink: 0;
 }
 
-/* ==================== Modal — Icon Button ==================== */
+.analytics-modal-title-inner h2 {
+  margin: 0 0 4px;
+  font-family: var(--ff-display, "Outfit", sans-serif);
+  font-size: 20px;
+  font-weight: 750;
+  color: var(--d-text, #0c1d3d);
+}
+
+.analytics-modal-title-inner p {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--d-muted, #5a6f8a);
+}
 
 .analytics-icon-btn {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border: 1px solid #e2e8f0;
+  width: 34px;
+  height: 34px;
   border-radius: 8px;
-  background: #ffffff;
-  cursor: pointer;
-  color: #6b7280;
+  border: 1px solid transparent;
+  background: #f8fafc;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 16px;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  cursor: pointer;
+  transition: all 140ms ease;
   flex-shrink: 0;
 }
 
 .analytics-icon-btn:hover {
-  background: #f1f5f9;
-  color: #111827;
-  border-color: #cbd5e1;
+  background: #fee2e2;
+  color: #ef4444;
 }
 
-/* ==================== Modal — Tab Navigation ==================== */
-
+/* Tabs */
 .analytics-modal-tabs {
   display: flex;
-  gap: 0;
-  padding: 14px 24px 0;
-  border-bottom: 1px solid #e4e9f2;
-  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--d-border, #e2e8f0);
 }
 
 .analytics-tab-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
   background: transparent;
-  color: #6b7280;
-  font-size: 13px;
+  color: #475569;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
-  white-space: nowrap;
+  transition: all 140ms ease;
+}
+
+.analytics-tab-btn i {
+  font-size: 15px;
+}
+
+.analytics-tab-btn:hover {
+  background: #ffffff;
+  color: var(--d-text, #0c1d3d);
+  border-color: #e2e8f0;
 }
 
 .analytics-tab-btn.active {
-  color: #2563eb;
-  border-bottom-color: #2563eb;
-}
-
-.analytics-tab-btn:hover:not(.active) {
-  color: #374151;
+  background: #ffffff;
+  color: var(--d-blue, #1877f2);
+  border-color: #cbd5e1;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
 }
 
 .analytics-tab-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: #f1f5f9;
-  color: #6b7280;
+  background: #eff6ff;
+  color: var(--d-blue, #1877f2);
   font-size: 11px;
   font-weight: 700;
-  transition: background 0.15s ease, color 0.15s ease;
+  padding: 1px 7px;
+  border-radius: 999px;
 }
 
 .analytics-tab-btn.active .analytics-tab-count {
-  background: #dbeafe;
-  color: #2563eb;
+  background: var(--d-blue, #1877f2);
+  color: #ffffff;
 }
 
-/* ==================== Modal — Scrollable Body ==================== */
-
+/* Report Body with Blue Scrollbar */
 .analytics-report-body {
-  overflow-y: auto;
-  flex: 1;
-  padding: 20px 24px;
   min-height: 0;
+  max-height: 100%;
+  height: 100%;
+  overflow-y: scroll !important;
+  overflow-x: hidden !important;
+  scrollbar-gutter: stable;
+  padding: 22px 24px;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--d-blue, #1877f2) #eff6ff;
 }
 
-/* ==================== Modal — Report Sections ==================== */
+.analytics-report-body::-webkit-scrollbar {
+  width: 8px !important;
+  display: block !important;
+}
 
-.analytics-report-section h3 {
-  margin: 0 0 3px;
-  color: #111827;
-  font-size: 14px;
+.analytics-report-body::-webkit-scrollbar-track {
+  background: #eff6ff !important;
+  border-radius: 999px !important;
+}
+
+.analytics-report-body::-webkit-scrollbar-thumb {
+  background: var(--d-blue, #1877f2) !important;
+  border-radius: 999px !important;
+  border: 2px solid #eff6ff !important;
+}
+
+.analytics-report-body::-webkit-scrollbar-thumb:hover {
+  background: #166fe5 !important;
+}
+
+/* Sections */
+.analytics-report-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.analytics-report-section-header h3 {
+  margin: 0 0 2px;
+  font-size: 15px;
   font-weight: 700;
+  color: var(--d-text, #0c1d3d);
 }
 
-.analytics-report-section p {
-  margin: 0 0 0;
-  color: #9ca3af;
-  font-size: 12px;
+.analytics-report-section-header p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--d-muted, #5a6f8a);
 }
 
-/* ==================== Modal — Loading & Error State ==================== */
-
-.analytics-report-state {
-  min-height: 200px;
-  display: grid;
-  place-items: center;
-  gap: 12px;
-  color: #9ca3af;
-  text-align: center;
-}
-
-.analytics-report-state .analytics-skeleton {
-  width: min(340px, 100%);
-  min-height: 100px;
-}
-
-.analytics-report-state i {
-  font-size: 28px;
-}
-
-/* ==================== Modal — Daily Breakdown ==================== */
-
+/* Daily Breakdown List */
 .analytics-daily-list {
-  display: grid;
-  gap: 4px;
-  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
 }
 
 .analytics-daily-row {
   display: grid;
-  grid-template-columns: 68px minmax(80px, 1fr) 60px 40px;
-  gap: 10px;
+  grid-template-columns: 110px 1fr 90px 80px;
   align-items: center;
-  color: #4b5563;
-  font-size: 12px;
-  padding: 5px 6px;
-  border-radius: 6px;
-  transition: background 0.1s ease;
+  gap: 14px;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  transition: all 120ms ease;
 }
 
 .analytics-daily-row:hover {
-  background: #f8fafc;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
 }
 
-.analytics-daily-row strong {
-  color: #111827;
-  font-style: normal;
-  font-weight: 700;
-  text-align: right;
-}
-
-.analytics-daily-row em {
-  color: #6b7280;
-  font-style: normal;
-  font-weight: 600;
-  text-align: right;
-}
-
-/* ==================== Modal — Actions Footer ==================== */
-
-.analytics-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 14px 24px;
-  border-top: 1px solid #e4e9f2;
-  flex-shrink: 0;
-  background: #f8fafc;
-}
-
-/* ==================== Report Preview Card ==================== */
-
-.analytics-report-preview {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 14px;
-  margin: 14px 0;
-  border-radius: 10px;
-  background: #f8fafc;
-  border: 1px solid #e4e9f2;
-}
-
-.analytics-report-preview i {
-  font-size: 26px;
-  color: #3b82f6;
-}
-
-.analytics-report-preview strong,
-.analytics-report-preview span {
-  display: block;
-}
-
-.analytics-report-preview span {
-  margin-top: 3px;
-  color: #9ca3af;
+.analytics-daily-date {
   font-size: 12px;
+  font-weight: 600;
+  color: var(--d-muted, #5a6f8a);
 }
 
-/* ==================== Responsive ==================== */
-
-@media (max-width: 1080px) {
-  .analytics-kpi-grid,
-  .analytics-main-grid,
-  .analytics-loading {
-    grid-template-columns: 1fr;
-  }
-
-  .analytics-page {
-    padding: 24px 20px 44px;
-  }
+.analytics-bar-track {
+  height: 10px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
 }
 
-@media (max-width: 680px) {
-  .analytics-toolbar,
-  .analytics-segmented {
-    width: 100%;
-  }
+.analytics-bar-track span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #1877f2, #3b82f6);
+  border-radius: 999px;
+  transition: width 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
 
-  .analytics-filter,
-  .analytics-filter select,
-  .analytics-filter .dc-select {
-    width: 100%;
-  }
+.analytics-daily-val {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--d-text, #0c1d3d);
+  text-align: right;
+}
 
-  .analytics-segmented button {
-    flex: 1;
-  }
+.analytics-daily-sub {
+  font-size: 11.5px;
+  color: var(--d-muted, #5a6f8a);
+  font-style: normal;
+  text-align: right;
+}
 
-  .analytics-bar-row,
-  .analytics-progress-row,
-  .analytics-health-grid,
-  .analytics-role-grid {
-    grid-template-columns: 1fr;
-  }
+/* Submission Detail Table */
+.analytics-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+}
 
-  .analytics-daily-row {
-    grid-template-columns: 60px minmax(60px, 1fr) 54px 36px;
-    gap: 8px;
-  }
+.analytics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  text-align: left;
+}
 
-  .analytics-bar-value,
-  .analytics-progress-row em,
-  .analytics-daily-row strong,
-  .analytics-daily-row em {
-    text-align: left;
-  }
+.analytics-table th {
+  background: #f8fafc;
+  color: var(--d-muted, #5a6f8a);
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
 
-  .analytics-modal-backdrop {
-    padding: 16px 12px;
-  }
+.analytics-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  white-space: nowrap;
+}
 
-  .analytics-modal-header {
-    padding: 16px 16px 0;
-  }
+.analytics-table tbody tr:hover {
+  background: #f8fafc;
+}
 
-  .analytics-modal-tabs {
-    padding: 10px 16px 0;
-    overflow-x: auto;
-  }
+.analytics-table tbody tr:last-child td {
+  border-bottom: none;
+}
 
-  .analytics-report-body {
-    padding: 16px;
-  }
+/* Loading & Empty States */
+.analytics-report-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 16px;
+  text-align: center;
+}
 
-  .analytics-modal-actions {
-    padding: 12px 16px;
-  }
+.analytics-empty {
+  text-align: center;
+  padding: 36px 16px;
+  color: var(--d-muted, #5a6f8a);
+  font-size: 13px;
+}
+
+/* Modal Actions Footer */
+.analytics-modal-actions {
+  padding: 16px 24px;
+  border-top: 1px solid var(--d-border, #e2e8f0);
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  box-sizing: border-box;
 }

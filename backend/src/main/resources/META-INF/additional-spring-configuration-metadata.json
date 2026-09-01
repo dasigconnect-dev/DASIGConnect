@@ -12,6 +12,17 @@
       "defaultValue": 480
     },
     {
+      "name": "app.mail.api-key",
+      "type": "java.lang.String",
+      "description": "API key for the HTTP mail provider (Resend-compatible). Blank disables outbound email."
+    },
+    {
+      "name": "app.mail.api-base-url",
+      "type": "java.lang.String",
+      "description": "Base URL of the HTTP mail provider; POST {base}/emails is used to send.",
+      "defaultValue": "https://api.resend.com"
+    },
+    {
       "name": "app.mail.from",
       "type": "java.lang.String",
       "description": "From address for outbound system emails.",
@@ -40,20 +51,40 @@
       "defaultValue": "http://localhost:5173"
     },
     {
-      "name": "app.supabase.url",
-      "type": "java.lang.String",
-      "description": "Supabase project URL (e.g. https://<ref>.supabase.co)."
-    },
-    {
       "name": "app.supabase.service-role-key",
       "type": "java.lang.String",
-      "description": "Supabase service-role key used for server-side storage operations."
+      "description": "Legacy Supabase service-role key; only used by ClaudeVisionClient to fetch images still hosted on the old private Supabase bucket."
     },
     {
-      "name": "app.supabase.storage-bucket",
+      "name": "app.r2.account-id",
       "type": "java.lang.String",
-      "description": "Supabase Storage bucket name for media assets.",
+      "description": "Cloudflare account ID; used to derive the R2 S3 endpoint when app.r2.endpoint is blank."
+    },
+    {
+      "name": "app.r2.endpoint",
+      "type": "java.lang.String",
+      "description": "Explicit R2 S3 API endpoint (e.g. https://<account-id>.r2.cloudflarestorage.com, or a jurisdiction variant)."
+    },
+    {
+      "name": "app.r2.access-key-id",
+      "type": "java.lang.String",
+      "description": "R2 API token Access Key ID."
+    },
+    {
+      "name": "app.r2.secret-access-key",
+      "type": "java.lang.String",
+      "description": "R2 API token Secret Access Key."
+    },
+    {
+      "name": "app.r2.bucket",
+      "type": "java.lang.String",
+      "description": "R2 bucket name for media assets.",
       "defaultValue": "dasigconnect-media"
+    },
+    {
+      "name": "app.r2.public-base-url",
+      "type": "java.lang.String",
+      "description": "Public read base URL for the R2 bucket (r2.dev development URL or a connected custom domain), no trailing slash."
     },
     {
       "name": "app.media-assets.deleted-retention-days",
@@ -114,8 +145,8 @@
     {
       "name": "app.facebook.oauth-redirect-uri",
       "type": "java.lang.String",
-      "description": "OAuth callback URI registered in the Meta app for token refresh flow (UC-3.5).",
-      "defaultValue": "http://localhost:8080/api/admin/resolution/tokens/oauth-callback"
+      "description": "OAuth callback URI registered in the Meta app for the Page token re-auth flow (System Health → Integrations).",
+      "defaultValue": "http://localhost:8080/api/v1/facebook/oauth-callback"
     },
     {
       "name": "anthropic.api.key",

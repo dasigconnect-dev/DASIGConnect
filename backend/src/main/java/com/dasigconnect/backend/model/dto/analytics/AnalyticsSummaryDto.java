@@ -25,5 +25,6 @@ public record AnalyticsSummaryDto(
         ValidatorAnalyticsDto validatorAnalytics,
         AiPerformanceDto aiPerformance,
         AdminAnalyticsDto adminAnalytics,
-        OperationalHealthDto operationalHealth) {
+        OperationalHealthDto operationalHealth,
+        FacebookEngagementSummaryDto facebookEngagement) {
 }

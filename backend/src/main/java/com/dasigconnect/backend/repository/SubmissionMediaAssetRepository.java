@@ -1,7 +1,9 @@
 package com.dasigconnect.backend.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -28,6 +30,8 @@ public interface SubmissionMediaAssetRepository extends JpaRepository<Submission
     Optional<SubmissionMediaAsset> findBySubmissionIdAndMediaAssetId(UUID submissionId, UUID mediaAssetId);
 
     boolean existsBySubmissionIdAndMediaAssetId(UUID submissionId, UUID mediaAssetId);
+
+    boolean existsByMediaAssetId(UUID mediaAssetId);
 
     long countBySubmissionId(UUID submissionId);
 
@@ -63,4 +67,25 @@ public interface SubmissionMediaAssetRepository extends JpaRepository<Submission
         ORDER BY sma.displayOrder ASC
         """)
     List<MediaAsset> findMediaAssetsBySubmissionId(@Param("submissionId") UUID submissionId);
+
+    /**
+     * Media Repository visibility: an asset only "publishes" to the Media
+     * Repository once it has been used in a submission that has left draft
+     * status. Used together with {@link #findAssetIdsWithAnySubmissionLink}
+     * to identify assets that are still exclusively attached to an
+     * unsubmitted draft — those stay out of the repository entirely.
+     */
+    @Query("""
+        SELECT DISTINCT sma.mediaAsset.id FROM SubmissionMediaAsset sma
+        WHERE sma.mediaAsset.id IN :assetIds
+          AND sma.submission.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+        """)
+    Set<UUID> findAssetIdsUsedBeyondDraft(@Param("assetIds") Collection<UUID> assetIds);
+
+    /** Asset IDs that are attached to at least one submission, regardless of status. */
+    @Query("""
+        SELECT DISTINCT sma.mediaAsset.id FROM SubmissionMediaAsset sma
+        WHERE sma.mediaAsset.id IN :assetIds
+        """)
+    Set<UUID> findAssetIdsWithAnySubmissionLink(@Param("assetIds") Collection<UUID> assetIds);
 }

@@ -14,7 +14,7 @@ export default function FacebookPreviewDetails({
       <div className="fb-preview-details-head">
         <div>
           <h3 id="fb-preview-details-title">Submission Details</h3>
-          <p>Confirm readiness before sending this content to your validator.</p>
+          <p>Confirm readiness before sending this content to your moderator.</p>
         </div>
         <span className="fb-preview-status">{details.statusLabel}</span>
       </div>
@@ -84,8 +84,8 @@ export default function FacebookPreviewDetails({
         </div>
 
         <div className="fb-preview-detail-block">
-          <span>Validator notes</span>
-          <p>{details.validatorNotes || "No validator notes added."}</p>
+          <span>Moderator notes</span>
+          <p>{details.moderatorNotes || "No moderator notes added."}</p>
         </div>
       </div>
     </section>

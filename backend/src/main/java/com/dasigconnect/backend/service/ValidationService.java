@@ -1,6 +1,9 @@
 package com.dasigconnect.backend.service;
 
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -16,7 +19,13 @@ import org.springframework.web.server.ResponseStatusException;
 import com.dasigconnect.backend.event.RevisionRequestedEvent;
 import com.dasigconnect.backend.event.SubmissionApprovedEvent;
 import com.dasigconnect.backend.event.SubmissionRejectedEvent;
+import com.dasigconnect.backend.model.dto.submission.AttachMediaDto;
+import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlRequest;
+import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlResponse;
+import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
@@ -27,6 +36,7 @@ import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.repository.ValidationLogRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 @Transactional
@@ -44,8 +54,11 @@ public class ValidationService {
     private final ValidationLogRepository validationLogRepository;
     private final ReviewLockService reviewLockService;
     private final SlotReservationService slotReservationService;
+    private final SubmissionService submissionService;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final ObjectMapper objectMapper;
+    private final AuditLogService auditLogService;
 
     public ValidationService(
             SubmissionRepository submissionRepository,
@@ -53,42 +66,43 @@ public class ValidationService {
             ValidationLogRepository validationLogRepository,
             ReviewLockService reviewLockService,
             SlotReservationService slotReservationService,
+            SubmissionService submissionService,
             UserRepository userRepository,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            ObjectMapper objectMapper,
+            AuditLogService auditLogService) {
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.validationLogRepository = validationLogRepository;
         this.reviewLockService = reviewLockService;
         this.slotReservationService = slotReservationService;
+        this.submissionService = submissionService;
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
+        this.objectMapper = objectMapper;
+        this.auditLogService = auditLogService;
     }
 
     /**
-     * Returns the validation queue for the caller's institution.
-     * PENDING + IN_REVIEW submissions sorted by scheduledAt ASC (SRS Main Flow step 2).
+     * Returns the network-wide approval queue: PENDING + IN_REVIEW submissions
+     * sorted by scheduledAt ASC (UC-2.4 Main Flow step 2). Moderator and
+     * Admin accounts are both network-wide roles.
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> getQueue(JwtUserDetails caller) {
-        List<Submission> submissions = "administrator".equals(caller.role())
-                ? submissionRepository.findValidationQueue()
-                : submissionRepository.findValidationQueueByInstitution(caller.institutionId());
-        return submissions.stream()
+        return submissionRepository.findValidationQueue().stream()
                 .map(s -> SubmissionSummaryDto.from(s,
                         submissionMediaAssetRepository.countBySubmissionId(s.getId())))
                 .toList();
     }
 
     /**
-     * Returns the validation history: all non-draft submissions that are no longer in the
-     * active queue (i.e. not PENDING or IN_REVIEW), sorted newest scheduled first.
+     * Returns the network-wide approval history: all non-draft submissions that are no
+     * longer in the active queue (i.e. not PENDING or IN_REVIEW), sorted newest scheduled first.
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> getHistory(JwtUserDetails caller) {
-        List<Submission> submissions = "administrator".equals(caller.role())
-                ? submissionRepository.findValidationHistory()
-                : submissionRepository.findValidationHistoryByInstitution(caller.institutionId());
-        return submissions.stream()
+        return submissionRepository.findValidationHistory().stream()
                 .map(s -> SubmissionSummaryDto.from(s,
                         submissionMediaAssetRepository.countBySubmissionId(s.getId())))
                 .toList();
@@ -96,38 +110,135 @@ public class ValidationService {
 
     /**
      * Approves a submission: transitions to SCHEDULED, confirms slot, releases lock.
-     * GR-H5: self-review blocked.
+     * Live Event Fast-Track submissions never have a slot reservation (see
+     * SubmissionService.create()), so slot confirmation is skipped for them —
+     * publishing immediately is handled downstream by FastTrackPublishingListener
+     * reacting to SubmissionApprovedEvent.
+     * A5: self-review is allowed but distinctly flagged in the audit log.
      */
     public void approve(UUID submissionId, JwtUserDetails caller) {
         Submission submission = loadSubmissionInScope(submissionId, caller);
-        assertNotSelfReview(submission, caller);
+        boolean selfReview = isSelfReview(submission, caller);
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
+
+        String sessionEditDiff = combinedSessionEditDiff(submissionId);
+        boolean edited = sessionEditDiff != null;
 
         submission.setStatus(SubmissionStatus.scheduled);
         submissionRepository.save(submission);
 
-        slotReservationService.confirm(submissionId);
+        if (!submission.isFastTrack()) {
+            slotReservationService.confirm(submissionId);
+        }
         reviewLockService.release(submissionId, caller);
 
+        // The terminal action is always `approved`; when the submission was edited
+        // during this review session the combined before/after diff is attached to
+        // the same log entry (A10 — "Edited by Admin"), which is what marks it as an
+        // edited approval for governance and the edit-&-approve-rate KPI.
         User validator = loadUser(caller.userId());
-        logAction(submission, validator, ValidationAction.approved, null, null);
+        logAction(submission, validator, ValidationAction.approved,
+                null, null, selfReview, submission.isFastTrack(), sessionEditDiff);
 
-        eventPublisher.publishEvent(new SubmissionApprovedEvent(submission));
-        log.info("Submission approved: submission={} validator={}", submissionId, caller.userId());
+        eventPublisher.publishEvent(new SubmissionApprovedEvent(submission, edited));
+        log.info("Submission approved (fastTrack={}, edited={}): submission={} validator={}",
+                submission.isFastTrack(), edited, submissionId, caller.userId());
+    }
+
+    /**
+     * A9: applies a direct inline edit to any editable field of a submission that is
+     * currently IN_REVIEW. The submission stays IN_REVIEW — the Moderator must
+     * still select a terminal action afterwards. Each edit records its own
+     * before/after diff in the audit log (A10), so repeated edits within a review
+     * session are all traceable.
+     * A5: self-review is allowed but distinctly flagged in the audit log.
+     */
+    public void edit(UUID submissionId, SubmissionUpdateDto dto, JwtUserDetails caller) {
+        Submission submission = loadSubmissionInScope(submissionId, caller);
+        boolean selfReview = isSelfReview(submission, caller);
+        assertReviewableStatus(submission);
+        reviewLockService.assertCallerHoldsLock(submissionId, caller);
+
+        Map<String, Object> before = snapshotEditableFields(submission);
+        submission = submissionService.applySubmissionEdits(submission, dto, caller);
+        submissionService.assertContentComplete(submission);
+        String editDiff = buildEditDiff(before, snapshotEditableFields(submission));
+
+        // Keep the submission IN_REVIEW — no terminal transition here.
+        User validator = loadUser(caller.userId());
+        logAction(submission, validator, ValidationAction.edited, null, null,
+                selfReview, submission.isFastTrack(), editDiff);
+
+        log.info("Submission edited in review (changed={}): submission={} validator={}",
+                editDiff != null, submissionId, caller.userId());
+    }
+
+    // ── A9: media edits during review ────────────────────────────────────────
+    // The reviewing admin may add/remove/reorder media (and set per-item caption
+    // + skip-watermark) on an IN_REVIEW submission. Each mutation records a
+    // `ValidationAction.edited` log row so it counts as an edited approval (A10).
+    // Content completeness is NOT enforced here — the reviewer may be mid-swap;
+    // approve() still enforces it.
+
+    private Submission loadForMediaEdit(UUID submissionId, JwtUserDetails caller) {
+        Submission submission = loadSubmissionInScope(submissionId, caller);
+        assertReviewableStatus(submission);
+        reviewLockService.assertCallerHoldsLock(submissionId, caller);
+        return submission;
+    }
+
+    private void logMediaEdit(Submission submission, JwtUserDetails caller) {
+        logAction(submission, loadUser(caller.userId()), ValidationAction.edited, null, null,
+                isSelfReview(submission, caller), submission.isFastTrack(), "{\"media\":\"updated\"}");
+    }
+
+    @Transactional(readOnly = true)
+    public SignedUploadUrlResponse reviewMediaUploadUrl(UUID submissionId, SignedUploadUrlRequest dto, JwtUserDetails caller) {
+        Submission submission = loadForMediaEdit(submissionId, caller);
+        return submissionService.signedUploadUrlFor(submission, dto);
+    }
+
+    public SubmissionResponseDto attachReviewMedia(UUID submissionId, AttachMediaDto dto, JwtUserDetails caller) {
+        Submission submission = loadForMediaEdit(submissionId, caller);
+        SubmissionResponseDto response = submissionService.attachUploadedMediaTo(submission, dto, caller);
+        logMediaEdit(submission, caller);
+        return response;
+    }
+
+    public SubmissionResponseDto attachReviewLibraryAsset(UUID submissionId, UUID mediaAssetId, JwtUserDetails caller) {
+        Submission submission = loadForMediaEdit(submissionId, caller);
+        SubmissionResponseDto response = submissionService.attachLibraryAssetTo(submission, mediaAssetId);
+        logMediaEdit(submission, caller);
+        return response;
+    }
+
+    public void detachReviewMedia(UUID submissionId, UUID mediaAssetId, JwtUserDetails caller) {
+        Submission submission = loadForMediaEdit(submissionId, caller);
+        submissionService.detachAssetFrom(submission, mediaAssetId);
+        logMediaEdit(submission, caller);
+    }
+
+    public SubmissionResponseDto reorderReviewMedia(UUID submissionId, SubmissionMediaOrderDto dto, JwtUserDetails caller) {
+        Submission submission = loadForMediaEdit(submissionId, caller);
+        SubmissionResponseDto response = submissionService.reorderMediaOf(submission, dto);
+        logMediaEdit(submission, caller);
+        return response;
     }
 
     /**
      * Requests revision: transitions to NEEDS_REVISION, releases slot and lock.
      * BR-VAL-02: remarks must be 10–1000 characters.
-     * GR-H5: self-review blocked.
+     * A5: self-review is allowed but distinctly flagged in the audit log.
      */
     public void requestRevision(UUID submissionId, String remarks, JwtUserDetails caller) {
         validateRemarks(remarks);
         Submission submission = loadSubmissionInScope(submissionId, caller);
-        assertNotSelfReview(submission, caller);
+        boolean selfReview = isSelfReview(submission, caller);
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
+
+        String sessionEditDiff = combinedSessionEditDiff(submissionId);
 
         submission.setStatus(SubmissionStatus.needs_revision);
         submission.setValidatorRemarks(remarks);
@@ -137,7 +248,8 @@ public class ValidationService {
         reviewLockService.release(submissionId, caller);
 
         User validator = loadUser(caller.userId());
-        logAction(submission, validator, ValidationAction.needs_revision, remarks, null);
+        logAction(submission, validator, ValidationAction.needs_revision, remarks, null,
+                selfReview, submission.isFastTrack(), sessionEditDiff);
 
         eventPublisher.publishEvent(new RevisionRequestedEvent(submission, remarks));
         log.info("Revision requested: submission={} validator={}", submissionId, caller.userId());
@@ -146,15 +258,16 @@ public class ValidationService {
     /**
      * Rejects a submission: transitions to REJECTED, releases slot and lock.
      * BR-VAL-03: valid reason code required; OTHER requires written notes.
-     * GR-H5: self-review blocked.
+     * A5: self-review is allowed but distinctly flagged in the audit log.
      */
     public void reject(UUID submissionId, String reasonCode, String notes, JwtUserDetails caller) {
         validateRejectionCode(reasonCode, notes);
         Submission submission = loadSubmissionInScope(submissionId, caller);
-        assertNotSelfReview(submission, caller);
+        boolean selfReview = isSelfReview(submission, caller);
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
 
+        String sessionEditDiff = combinedSessionEditDiff(submissionId);
         String fullReason = buildRejectionReason(reasonCode, notes);
         submission.setStatus(SubmissionStatus.rejected);
         submission.setRejectionReason(fullReason);
@@ -164,7 +277,8 @@ public class ValidationService {
         reviewLockService.release(submissionId, caller);
 
         User validator = loadUser(caller.userId());
-        logAction(submission, validator, ValidationAction.rejected, null, fullReason);
+        logAction(submission, validator, ValidationAction.rejected, null, fullReason,
+                selfReview, submission.isFastTrack(), sessionEditDiff);
 
         eventPublisher.publishEvent(new SubmissionRejectedEvent(submission, fullReason));
         log.info("Submission rejected: submission={} reason={} validator={}", submissionId, reasonCode, caller.userId());
@@ -199,22 +313,15 @@ public class ValidationService {
     }
 
     private Submission loadSubmissionInScope(UUID submissionId, JwtUserDetails caller) {
-        Submission submission = submissionRepository.findById(submissionId)
+        // Moderator and Admin are both network-wide roles, so any
+        // submission is in scope for review — no institution comparison is needed.
+        return submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Submission not found."));
-
-        if (!"administrator".equals(caller.role())
-                && !submission.getInstitution().getId().equals(caller.institutionId())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found.");
-        }
-        return submission;
     }
 
-    private void assertNotSelfReview(Submission submission, JwtUserDetails caller) {
-        if (submission.getContributor().getId().equals(caller.userId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "You cannot review your own submission.");
-        }
+    private boolean isSelfReview(Submission submission, JwtUserDetails caller) {
+        return submission.getContributor().getId().equals(caller.userId());
     }
 
     private void assertReviewableStatus(Submission submission) {
@@ -231,14 +338,120 @@ public class ValidationService {
                         "Authenticated user not found."));
     }
 
+    private Map<String, Object> snapshotEditableFields(Submission submission) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("eventTitle", submission.getEventTitle());
+        snapshot.put("eventDate", submission.getEventDate());
+        snapshot.put("caption", submission.getCaption());
+        snapshot.put("description", submission.getDescription());
+        snapshot.put("category", submission.getCategory());
+        snapshot.put("tags", submission.getTags());
+        snapshot.put("scheduledAt", submission.getScheduledAt());
+        return snapshot;
+    }
+
+    /** Returns a JSON diff of changed fields, or null if nothing actually changed. */
+    private String buildEditDiff(Map<String, Object> before, Map<String, Object> after) {
+        Map<String, Object> diff = new LinkedHashMap<>();
+        for (String field : before.keySet()) {
+            Object oldValue = before.get(field);
+            Object newValue = after.get(field);
+            if (!java.util.Objects.equals(oldValue, newValue)) {
+                diff.put(field, Map.of(
+                        "from", oldValue == null ? "" : oldValue,
+                        "to", newValue == null ? "" : newValue));
+            }
+        }
+        if (diff.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(diff);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            log.warn("Failed to serialize edit diff, storing null: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * A10: aggregates the before/after diffs of every standalone {@code edited}
+     * action taken since the current review lock was acquired into one combined
+     * diff, so a terminal action (approve/revise/reject) records the full picture
+     * of what the Moderator changed. Returns null when no edit happened this
+     * session.
+     */
+    private String combinedSessionEditDiff(UUID submissionId) {
+        List<ValidationLog> logs = validationLogRepository
+                .findBySubmissionIdOrderByCreatedAtAsc(submissionId);
+
+        int lastLockIndex = -1;
+        for (int i = 0; i < logs.size(); i++) {
+            if (logs.get(i).getAction() == ValidationAction.lock_acquired) {
+                lastLockIndex = i;
+            }
+        }
+
+        Map<String, Map<String, Object>> combined = new LinkedHashMap<>();
+        for (int i = lastLockIndex + 1; i < logs.size(); i++) {
+            ValidationLog entry = logs.get(i);
+            if (entry.getAction() != ValidationAction.edited || entry.getEditDiff() == null) {
+                continue;
+            }
+            try {
+                Map<String, Map<String, Object>> diff = objectMapper.readValue(
+                        entry.getEditDiff(),
+                        new com.fasterxml.jackson.core.type.TypeReference<>() {});
+                for (Map.Entry<String, Map<String, Object>> field : diff.entrySet()) {
+                    Map<String, Object> existing = combined.get(field.getKey());
+                    if (existing == null) {
+                        combined.put(field.getKey(), new LinkedHashMap<>(field.getValue()));
+                    } else {
+                        // Keep the earliest "from", advance to the latest "to".
+                        existing.put("to", field.getValue().get("to"));
+                    }
+                }
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                log.warn("Skipping unparseable edit diff for submission {}: {}", submissionId, e.getMessage());
+            }
+        }
+
+        combined.entrySet().removeIf(e ->
+                java.util.Objects.equals(e.getValue().get("from"), e.getValue().get("to")));
+        if (combined.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(combined);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            log.warn("Failed to serialize combined session edit diff for submission {}: {}", submissionId, e.getMessage());
+            return null;
+        }
+    }
+
     private void logAction(Submission submission, User validator,
-            ValidationAction action, String remarks, String rejectionReason) {
+            ValidationAction action, String remarks, String rejectionReason,
+            boolean selfReview, boolean fastTrack, String editDiff) {
         ValidationLog entry = new ValidationLog();
         entry.setSubmission(submission);
         entry.setValidator(validator);
         entry.setAction(action);
         entry.setRemarks(remarks);
         entry.setRejectionReason(rejectionReason);
+        entry.setSelfReview(selfReview);
+        entry.setFastTrack(fastTrack);
+        entry.setEditDiff(editDiff);
         validationLogRepository.save(entry);
+
+        try {
+            Map<String, Object> meta = new HashMap<>();
+            if (remarks != null && !remarks.isBlank()) meta.put("remarks", remarks);
+            if (rejectionReason != null && !rejectionReason.isBlank()) meta.put("rejectionReason", rejectionReason);
+            if (selfReview) meta.put("selfReview", true);
+            if (fastTrack) meta.put("fastTrack", true);
+            if (editDiff != null && !editDiff.isBlank()) meta.put("editDiff", editDiff);
+            auditLogService.record(validator, action.name(), null, null, submission.getId(), meta);
+        } catch (Exception ex) {
+            log.warn("Failed to write audit log for validation action {} on submission {}: {}", action, submission.getId(), ex.getMessage());
+        }
     }
 }

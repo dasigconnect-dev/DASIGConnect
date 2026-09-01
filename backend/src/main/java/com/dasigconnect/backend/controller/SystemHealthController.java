@@ -1,0 +1,126 @@
+package com.dasigconnect.backend.controller;
+
+import com.dasigconnect.backend.model.dto.common.ApiResponse;
+import com.dasigconnect.backend.model.dto.exception.OAuthInitResponseDto;
+import com.dasigconnect.backend.model.dto.exception.TokenStatusDto;
+import com.dasigconnect.backend.model.dto.systemhealth.BackgroundJobHealthDto;
+import com.dasigconnect.backend.model.dto.systemhealth.ExternalServiceHealthDto;
+import com.dasigconnect.backend.model.dto.systemhealth.OperationalMetricDto;
+import com.dasigconnect.backend.model.dto.systemhealth.StorageMetricDto;
+import com.dasigconnect.backend.model.dto.systemhealth.SystemHealthSummaryDto;
+import com.dasigconnect.backend.service.AuditLogService;
+import com.dasigconnect.backend.service.ManualJobRunner;
+import com.dasigconnect.backend.service.SystemHealthService;
+import com.dasigconnect.backend.service.TokenManagementService;
+import com.dasigconnect.backend.security.JwtUserDetails;
+import java.util.Map;
+import java.time.LocalDate;
+import java.util.List;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/v1/system-health")
+@PreAuthorize("hasRole('ADMIN')")
+public class SystemHealthController {
+
+    private final SystemHealthService systemHealthService;
+    private final TokenManagementService tokenManagementService;
+    private final ManualJobRunner manualJobRunner;
+    private final AuditLogService auditLogService;
+
+    public SystemHealthController(
+            SystemHealthService systemHealthService,
+            TokenManagementService tokenManagementService,
+            ManualJobRunner manualJobRunner,
+            AuditLogService auditLogService) {
+        this.systemHealthService = systemHealthService;
+        this.tokenManagementService = tokenManagementService;
+        this.manualJobRunner = manualJobRunner;
+        this.auditLogService = auditLogService;
+    }
+
+    @GetMapping("/summary")
+    public ResponseEntity<ApiResponse<SystemHealthSummaryDto>> summary() {
+        return ResponseEntity.ok(ApiResponse.success(systemHealthService.summary()));
+    }
+
+    @GetMapping("/storage")
+    public ResponseEntity<ApiResponse<List<StorageMetricDto>>> storage() {
+        return ResponseEntity.ok(ApiResponse.success(systemHealthService.storage()));
+    }
+
+    @GetMapping("/external-services")
+    public ResponseEntity<ApiResponse<List<ExternalServiceHealthDto>>> externalServices() {
+        return ResponseEntity.ok(ApiResponse.success(systemHealthService.externalServices()));
+    }
+
+    @GetMapping("/jobs")
+    public ResponseEntity<ApiResponse<List<BackgroundJobHealthDto>>> jobs() {
+        return ResponseEntity.ok(ApiResponse.success(systemHealthService.backgroundJobs()));
+    }
+
+    @GetMapping("/operational-metrics")
+    public ResponseEntity<ApiResponse<List<OperationalMetricDto>>> operationalMetrics() {
+        return ResponseEntity.ok(ApiResponse.success(systemHealthService.operationalMetrics()));
+    }
+
+    @GetMapping("/tokens")
+    public ResponseEntity<ApiResponse<List<TokenStatusDto>>> tokens() {
+        return ResponseEntity.ok(ApiResponse.success(tokenManagementService.getAllTokenStatuses()));
+    }
+
+    @GetMapping("/tokens/{tokenId}/oauth-init")
+    public ResponseEntity<ApiResponse<OAuthInitResponseDto>> oauthInit(
+            @PathVariable java.util.UUID tokenId,
+            @AuthenticationPrincipal JwtUserDetails admin) {
+        return ResponseEntity.ok(ApiResponse.success(tokenManagementService.initOAuth(tokenId, admin)));
+    }
+
+    /**
+     * Runs a scheduled background job on demand (jobs otherwise only fire on their
+     * own cron / fixed-delay schedule) and returns the refreshed job list so the
+     * caller sees the new status immediately. {@code jobKey} is the job's simple
+     * class name, as shown in {@code BackgroundJobHealthDto.key}. 404 if unknown.
+     */
+    @PostMapping("/jobs/{jobKey}/run")
+    public ResponseEntity<ApiResponse<List<BackgroundJobHealthDto>>> runJob(
+            @PathVariable String jobKey,
+            @AuthenticationPrincipal JwtUserDetails admin) {
+        manualJobRunner.run(jobKey);
+        auditLogService.recordByActorId(admin != null ? admin.userId() : null,
+                "BACKGROUND_JOB_RUN", null, null, null, Map.of("jobKey", jobKey));
+        return ResponseEntity.ok(ApiResponse.success(systemHealthService.backgroundJobs()));
+    }
+
+    /** Back-compat shortcut for the most common manual run. */
+    @PostMapping("/tokens/recheck")
+    public ResponseEntity<ApiResponse<List<BackgroundJobHealthDto>>> recheckTokenHealth(
+            @AuthenticationPrincipal JwtUserDetails admin) {
+        manualJobRunner.run("TokenHealthCheckJob");
+        auditLogService.recordByActorId(admin != null ? admin.userId() : null,
+                "BACKGROUND_JOB_RUN", null, null, null, Map.of("jobKey", "TokenHealthCheckJob"));
+        return ResponseEntity.ok(ApiResponse.success(systemHealthService.backgroundJobs()));
+    }
+
+    @GetMapping(value = "/export", produces = "text/csv")
+    public ResponseEntity<String> exportSnapshot(@AuthenticationPrincipal JwtUserDetails admin) {
+        String filename = "DASIGConnect_System_Health_" + LocalDate.now() + ".csv";
+        auditLogService.recordByActorId(admin != null ? admin.userId() : null,
+                "SYSTEM_HEALTH_EXPORTED", null, null, null, Map.of());
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(filename).build().toString())
+                .body(systemHealthService.exportSnapshotCsv());
+    }
+}

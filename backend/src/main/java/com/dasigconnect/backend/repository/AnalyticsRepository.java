@@ -41,7 +41,7 @@ public class AnalyticsRepository {
               AND s.published_at < :end
               AND %1$s IS NOT NULL
               %3$s
-            """.formatted(firstPendingExpression("s"), PUBLISHED_STATES, scope.submissionFilter("s"));
+            """.formatted(firstPendingExpression("s"), PUBLISHED_STATES, scope.scopedFilter("s"));
         return jdbc.queryForObject(sql, params(start, end, scope), (rs, rowNum) ->
                 new PostingDelayStats(rs.getDouble("avg_days"), rs.getLong("sample_size")));
     }
@@ -64,7 +64,7 @@ public class AnalyticsRepository {
               AND s.published_at >= :start
               AND s.published_at < :end
               %s
-            """.formatted(PUBLISHED_STATES, scope.submissionFilter("s"));
+            """.formatted(PUBLISHED_STATES, scope.scopedFilter("s"));
         return jdbc.queryForObject(sql, params(start, end, scope), (rs, rowNum) ->
                 new CompletenessStats(rs.getLong("complete_count"), rs.getLong("total_count")));
     }
@@ -80,7 +80,7 @@ public class AnalyticsRepository {
               AND s.published_at >= :start
               AND s.published_at < :end
               %s
-            """.formatted(PUBLISHED_STATES, REPORTING_STATES, scope.submissionFilter("s"));
+            """.formatted(PUBLISHED_STATES, REPORTING_STATES, scope.scopedFilter("s"));
         return jdbc.queryForObject(sql, params(start, end, scope), (rs, rowNum) ->
                 new PublishedPostStats(
                         rs.getLong("workflow_count"),
@@ -105,7 +105,7 @@ public class AnalyticsRepository {
               %s
             GROUP BY i.id, i.name
             ORDER BY workflow_count DESC, i.name ASC
-            """.formatted(PUBLISHED_STATES, REPORTING_STATES, scope.submissionFilter("s"));
+            """.formatted(PUBLISHED_STATES, REPORTING_STATES, scope.scopedFilter("s"));
         return jdbc.query(sql, params(start, end, scope), (rs, rowNum) ->
                 new InstitutionPostsDto(
                         rs.getObject("institution_id", UUID.class),
@@ -178,7 +178,7 @@ public class AnalyticsRepository {
             WHERE COALESCE(s.submitted_at, s.created_at) >= :start
               AND COALESCE(s.submitted_at, s.created_at) < :end
               %3$s
-            """.formatted(PUBLISHED_STATES, scope.validationSubmissionFilter("vs"), scope.submissionFilter("s"));
+            """.formatted(PUBLISHED_STATES, scope.validationSubmissionFilter("vs"), scope.scopedFilter("s"));
         return jdbc.queryForObject(sql, params(start, end, scope), (rs, rowNum) ->
                 new ContributorStats(
                         rs.getLong("submitted_count"),
@@ -213,7 +213,7 @@ public class AnalyticsRepository {
                  WHERE s.status IN ('pending', 'in_review')
                    AND COALESCE(s.submitted_at, s.created_at) <= :agingCutoff
                    %1$s) AS queue_aging_count
-            """.formatted(scope.submissionFilter("s"), firstPendingExpression("s"));
+            """.formatted(scope.scopedFilter("s"), firstPendingExpression("s"));
         return jdbc.queryForObject(sql, params, (rs, rowNum) ->
                 new ValidatorStats(
                         rs.getLong("submission_volume"),
@@ -230,7 +230,7 @@ public class AnalyticsRepository {
             WHERE 1 = 1 %s
             GROUP BY s.status
             ORDER BY s.status ASC
-            """.formatted(scope.submissionFilter("s"));
+            """.formatted(scope.scopedFilter("s"));
         return jdbc.query(sql, params(Instant.EPOCH, Instant.now(), scope), (rs, rowNum) ->
                 new StatusBreakdownDto(rs.getString("status"), rs.getLong("status_count")));
     }
@@ -258,7 +258,7 @@ public class AnalyticsRepository {
             GROUP BY issue
             HAVING SUM(issue_count) > 0
             ORDER BY issue_count DESC, issue ASC
-            """.formatted(scope.submissionFilter("s"));
+            """.formatted(scope.scopedFilter("s"));
         return jdbc.query(sql, params(start, end, scope), (rs, rowNum) ->
                 new ContentIssueDto(rs.getString("issue"), rs.getLong("issue_count")));
     }
@@ -282,7 +282,7 @@ public class AnalyticsRepository {
             GROUP BY category
             ORDER BY post_count DESC, completeness_rate DESC
             LIMIT 5
-            """.formatted(PUBLISHED_STATES, scope.submissionFilter("s"));
+            """.formatted(PUBLISHED_STATES, scope.scopedFilter("s"));
         return jdbc.query(sql, params(start, end, scope), (rs, rowNum) ->
                 new CategoryPerformanceDto(
                         rs.getString("category"),
@@ -402,6 +402,31 @@ public class AnalyticsRepository {
                         rs.getLong("media_relevant")));
     }
 
+    public FacebookEngagementStats facebookEngagement(Instant start, Instant end, AnalyticsScope scope) {
+        String sql = """
+            SELECT COALESCE(AVG(sem.reach), 0) AS avg_reach,
+                   COALESCE(SUM(sem.reactions), 0) AS total_reactions,
+                   COALESCE(SUM(sem.comments_count), 0) AS total_comments,
+                   COALESCE(SUM(sem.shares), 0) AS total_shares,
+                   COUNT(*) AS sample_size,
+                   COALESCE(SUM(CASE WHEN sem.fetched_at IS NULL THEN 1 ELSE 0 END), 0) AS pending_count
+            FROM submissions s
+            LEFT JOIN submission_engagement_metrics sem ON sem.submission_id = s.id
+            WHERE s.status IN (%s)
+              AND s.published_at >= :start
+              AND s.published_at < :end
+              %s
+            """.formatted(REPORTING_STATES, scope.scopedFilter("s"));
+        return jdbc.queryForObject(sql, params(start, end, scope), (rs, rowNum) ->
+                new FacebookEngagementStats(
+                        rs.getDouble("avg_reach"),
+                        rs.getLong("total_reactions"),
+                        rs.getLong("total_comments"),
+                        rs.getLong("total_shares"),
+                        rs.getLong("sample_size"),
+                        rs.getLong("pending_count")));
+    }
+
     public OperationalStats operationalHealth(Instant start, Instant end, Instant now, AnalyticsScope scope) {
         MapSqlParameterSource params = params(start, end, scope).addValue("deadlineCutoff", Timestamp.from(now.plusSeconds(1800)));
         String sql = """
@@ -435,9 +460,9 @@ public class AnalyticsRepository {
                 (SELECT COUNT(*) FROM audit_log al
                  LEFT JOIN users actor ON actor.id = al.actor_id
                  WHERE al.created_at >= :start AND al.created_at < :end
-                   AND actor.role = 'administrator'
+                   AND actor.role = 'admin'
                    %2$s) AS admin_action_count
-            """.formatted(scope.submissionFilter("s"), scope.auditFilter("actor"));
+            """.formatted(scope.scopedFilter("s"), scope.auditFilter("actor"));
         return jdbc.queryForObject(sql, params, (rs, rowNum) ->
                 new OperationalStats(
                         rs.getLong("workflow_count"),
@@ -456,6 +481,7 @@ public class AnalyticsRepository {
             case "posts-by-institution" -> exportPostsByInstitution(start, end, scope);
             case "ai-performance" -> exportAiPerformance(start, end, scope);
             case "operational-health" -> exportOperationalHealth(start, end, scope);
+            case "facebook-engagement" -> exportFacebookEngagement(start, end, scope);
             default -> throw new IllegalArgumentException("Unsupported analytics export metric: " + metric);
         };
     }
@@ -467,13 +493,14 @@ public class AnalyticsRepository {
             case "posts-by-institution" -> dailyPosts(start, end, scope);
             case "ai-performance" -> dailyAiPerformance(start, end, scope);
             case "operational-health" -> dailyOperationalHealth(start, end, scope);
+            case "facebook-engagement" -> dailyFacebookEngagement(start, end, scope);
             default -> throw new IllegalArgumentException("Unsupported analytics report metric: " + metric);
         };
     }
 
     public List<SubmissionAnalyticsRowDto> submissionReportRows(Instant start, Instant end, AnalyticsScope scope) {
         boolean showContributor = !"contributor".equals(scope.role());
-        boolean showInstitution = "administrator".equals(scope.role());
+        boolean showInstitution = "admin".equals(scope.role());
         boolean showRevisionCycles = !"contributor".equals(scope.role());
         String sql = """
             SELECT s.id AS submission_id,
@@ -506,7 +533,7 @@ public class AnalyticsRepository {
               AND %1$s IS NOT NULL
               %3$s
             ORDER BY s.published_at DESC
-            """.formatted(firstPendingExpression("s"), PUBLISHED_STATES, scope.submissionFilter("s"));
+            """.formatted(firstPendingExpression("s"), PUBLISHED_STATES, scope.scopedFilter("s"));
         return jdbc.query(sql, params(start, end, scope), (rs, rowNum) ->
                 new SubmissionAnalyticsRowDto(
                         rs.getObject("submission_id", UUID.class),
@@ -602,6 +629,24 @@ public class AnalyticsRepository {
         return queryDaily(sql, start, end, scope);
     }
 
+    private List<DailyAnalyticsPointDto> dailyFacebookEngagement(Instant start, Instant end, AnalyticsScope scope) {
+        String sql = """
+            SELECT CAST(day_start AS date) AS day,
+                   COALESCE(AVG(sem.reach), 0) AS value,
+                   COALESCE(SUM(sem.reactions + sem.comments_count + sem.shares), 0) AS secondary_value
+            FROM generate_series(CAST(:start AS timestamptz), CAST(:end AS timestamptz), interval '1 day') AS day_start
+            LEFT JOIN submissions s ON CAST(s.published_at AS date) = CAST(day_start AS date)
+                AND s.status IN (%s)
+                AND s.published_at >= :start
+                AND s.published_at < :end
+                %s
+            LEFT JOIN submission_engagement_metrics sem ON sem.submission_id = s.id
+            GROUP BY day_start
+            ORDER BY day_start ASC
+            """.formatted(REPORTING_STATES, scope.joinSubmissionFilter("s"));
+        return queryDaily(sql, start, end, scope);
+    }
+
     private List<DailyAnalyticsPointDto> dailyOperationalHealth(Instant start, Instant end, AnalyticsScope scope) {
         String sql = """
             SELECT CAST(day_start AS date) AS day,
@@ -617,7 +662,7 @@ public class AnalyticsRepository {
             WHERE pa.id IS NULL OR 1 = 1 %s
             GROUP BY day_start
             ORDER BY day_start ASC
-            """.formatted(scope.submissionFilter("s"));
+            """.formatted(scope.scopedFilter("s"));
         return queryDaily(sql, start, end, scope);
     }
 
@@ -641,7 +686,7 @@ public class AnalyticsRepository {
               AND %1$s IS NOT NULL
               %3$s
             ORDER BY s.published_at DESC
-            """.formatted(firstPendingExpression("s"), PUBLISHED_STATES, scope.submissionFilter("s"));
+            """.formatted(firstPendingExpression("s"), PUBLISHED_STATES, scope.scopedFilter("s"));
         return jdbc.queryForList(sql, params(start, end, scope));
     }
 
@@ -659,7 +704,7 @@ public class AnalyticsRepository {
               AND s.published_at >= :start AND s.published_at < :end
               %s
             ORDER BY s.published_at DESC
-            """.formatted(PUBLISHED_STATES, scope.submissionFilter("s"));
+            """.formatted(PUBLISHED_STATES, scope.scopedFilter("s"));
         return jdbc.queryForList(sql, params(start, end, scope));
     }
 
@@ -673,7 +718,7 @@ public class AnalyticsRepository {
               %s
             GROUP BY i.name, s.status
             ORDER BY i.name ASC, s.status ASC
-            """.formatted(REPORTING_STATES, scope.submissionFilter("s"));
+            """.formatted(REPORTING_STATES, scope.scopedFilter("s"));
         return jdbc.queryForList(sql, params(start, end, scope));
     }
 
@@ -690,6 +735,22 @@ public class AnalyticsRepository {
         return jdbc.queryForList(sql, params(start, end, scope));
     }
 
+    private List<Map<String, Object>> exportFacebookEngagement(Instant start, Instant end, AnalyticsScope scope) {
+        String sql = """
+            SELECT s.id AS submission_id, s.event_title, i.name AS institution_name, s.published_at,
+                   sem.reach, sem.reactions, sem.comments_count, sem.shares,
+                   CASE WHEN sem.fetched_at IS NULL THEN true ELSE false END AS pending
+            FROM submissions s
+            JOIN institutions i ON i.id = s.institution_id
+            LEFT JOIN submission_engagement_metrics sem ON sem.submission_id = s.id
+            WHERE s.status IN (%s)
+              AND s.published_at >= :start AND s.published_at < :end
+              %s
+            ORDER BY s.published_at DESC
+            """.formatted(REPORTING_STATES, scope.scopedFilter("s"));
+        return jdbc.queryForList(sql, params(start, end, scope));
+    }
+
     private List<Map<String, Object>> exportOperationalHealth(Instant start, Instant end, AnalyticsScope scope) {
         OperationalStats stats = operationalHealth(start, end, Instant.now(), scope);
         return List.of(
@@ -699,7 +760,7 @@ public class AnalyticsRepository {
                 Map.of("metric", "publication_attempts", "value", stats.attemptCount()),
                 Map.of("metric", "successful_publication_attempts", "value", stats.successCount()),
                 Map.of("metric", "on_time_publications", "value", stats.onTimeCount()),
-                Map.of("metric", "administrator_actions", "value", stats.adminActionCount()));
+                Map.of("metric", "moderator_actions", "value", stats.adminActionCount()));
     }
 
     private MapSqlParameterSource params(Instant start, Instant end, AnalyticsScope scope) {
@@ -711,6 +772,9 @@ public class AnalyticsRepository {
         }
         if (scope.userId() != null) {
             params.addValue("userId", scope.userId());
+        }
+        if (scope.category() != null && !scope.category().isBlank()) {
+            params.addValue("category", scope.category());
         }
         return params;
     }
@@ -729,51 +793,55 @@ public class AnalyticsRepository {
         return timestamp == null ? null : timestamp.toInstant();
     }
 
-    public record AnalyticsScope(String role, UUID institutionId, UUID userId) {
+    public record AnalyticsScope(String role, UUID institutionId, UUID userId, String category) {
+        /**
+         * Institution scoping only. Contributor's institutionId is always their
+         * own (never null) so they are always scoped; moderator/
+         * admin are network-wide unless an institutionId filter
+         * was supplied. Both admin tiers are treated identically — there is no
+         * distinct "validator" scope in the current role model.
+         */
         public String submissionFilter(String alias) {
-            if ("administrator".equals(role) && institutionId == null) {
+            if (institutionId == null) {
                 return "";
-            }
-            if ("validator".equals(role) || "contributor".equals(role)) {
-                if ("contributor".equals(role)) {
-                    return " AND " + alias + ".contributor_id = :userId ";
-                }
-                return " AND " + alias + ".institution_id = :institutionId ";
             }
             return " AND " + alias + ".institution_id = :institutionId ";
         }
 
-        public String auditFilter(String actorAlias) {
-            if ("administrator".equals(role)) {
+        public String categoryFilter(String alias) {
+            if (category == null || category.isBlank()) {
                 return "";
             }
-            if ("validator".equals(role)) {
-                return " AND " + actorAlias + ".institution_id = :institutionId ";
+            return " AND " + alias + ".category = :category ";
+        }
+
+        /** Institution scope plus the optional category filter, combined into one WHERE fragment. */
+        public String scopedFilter(String alias) {
+            return submissionFilter(alias) + categoryFilter(alias);
+        }
+
+        public String auditFilter(String actorAlias) {
+            if (institutionId == null) {
+                return "";
             }
-            return " AND " + actorAlias + ".id = :userId ";
+            return " AND " + actorAlias + ".institution_id = :institutionId ";
         }
 
         public String joinSubmissionFilter(String alias) {
-            String filter = submissionFilter(alias);
+            String filter = scopedFilter(alias);
             return filter.isBlank() ? "" : filter.replaceFirst("^ AND ", " AND ");
         }
 
         public String contributorBreakdownFilter(String alias) {
-            if ("administrator".equals(role) || "validator".equals(role)) {
-                return submissionFilter(alias);
-            }
-            return " AND " + alias + ".contributor_id = :userId ";
+            return scopedFilter(alias);
         }
 
         public String aiFilter(String alias) {
-            if ("contributor".equals(role)) {
-                return " AND " + alias + ".contributor_id = :userId ";
-            }
-            return submissionFilter(alias);
+            return scopedFilter(alias);
         }
 
         public String validationSubmissionFilter(String submissionAlias) {
-            return submissionFilter(submissionAlias);
+            return scopedFilter(submissionAlias);
         }
     }
 
@@ -789,4 +857,6 @@ public class AnalyticsRepository {
                                    long rejectedOrRevisionCount) {}
     public record ValidatorStats(long submissionVolume, long pendingCount, long inReviewCount,
                                  double averageTurnaroundDays, long queueAgingCount) {}
+    public record FacebookEngagementStats(double averageReach, long totalReactions, long totalComments,
+                                          long totalShares, long sampleSize, long pendingCount) {}
 }

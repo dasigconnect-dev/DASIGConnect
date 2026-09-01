@@ -8,6 +8,7 @@ export interface FacebookPreviewMediaItem {
   type: FacebookPreviewMediaType;
   alt: string;
   fileName?: string;
+  skipWatermark?: boolean;
 }
 
 export interface FacebookPreviewPage {
@@ -29,12 +30,13 @@ export interface FacebookPreviewDetailsData {
   completionLabel: string;
   category: string;
   institution: string;
+  liveEventName?: string;
   tags: string[];
   schedule: string;
   fileCount: number;
   fileValidation: FacebookPreviewDetailItem;
   slotConfirmation: FacebookPreviewDetailItem;
   aiCaptionAssist: FacebookPreviewDetailItem;
-  validatorNotes: string;
+  moderatorNotes: string;
   missingItems: string[];
 }

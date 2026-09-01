@@ -5,6 +5,7 @@ public enum SubmissionStatus {
     pending,
     in_review,
     needs_revision,
+    missed_review,
     scheduled,
     publishing,
     publish_failed,

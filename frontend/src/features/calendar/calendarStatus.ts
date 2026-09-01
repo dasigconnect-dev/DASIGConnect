@@ -9,6 +9,7 @@ export const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   pending: { bg: "#fff7ed", text: "#c2410c" },
   in_review: { bg: "#fff7ed", text: "#c2410c" },
   needs_revision: { bg: "#fff7ed", text: "#c2410c" },
+  missed_review: { bg: "#fef3c7", text: "#b45309" },
   rejected: { bg: "#fef2f2", text: "#b91c1c" },
 };
 
@@ -23,6 +24,7 @@ export const STATUS_LABELS: Record<string, string> = {
   pending: "Needs Attention",
   in_review: "Needs Attention",
   needs_revision: "Needs Attention",
+  missed_review: "Missed Review",
   rejected: "Rejected",
 };
 
@@ -36,25 +38,40 @@ export function statusLabel(status: string) {
   return STATUS_LABELS[status.toLowerCase()] ?? status;
 }
 
-export function canSeePrivateCalendarStatus(role: string, isOwnInstitution: boolean) {
-  return role === "admin" || (role === "validator" && isOwnInstitution);
+/**
+ * Admin and moderator are both network-wide staff roles — they get the full,
+ * unmasked calendar (backend {@code getAdminCalendar()}). Contributors never do.
+ * (Moderator accounts carry no institution, so this is not institution-scoped.)
+ */
+export function canSeePrivateCalendarStatus(role: string) {
+  const value = role.toLowerCase();
+  return value === "admin" || value === "moderator";
 }
 
-export function visibleCalendarStatus(status: string, role: string, isOwnInstitution: boolean) {
+export function visibleCalendarStatus(
+  status: string,
+  role: string,
+  isMine = false,
+) {
   const value = status.toLowerCase();
-  if (PRIVATE_WORKFLOW_STATUSES.has(value) && !canSeePrivateCalendarStatus(role, isOwnInstitution)) {
-    return "scheduled";
+  // The viewer's own authored submissions always show their real status.
+  if (isMine) {
+    return value;
   }
-  if (role !== "admin" && value === "direct_post_scheduled") {
-    return "scheduled";
+  // Contributors see cross-workflow rows only as a neutral "scheduled" slot;
+  // network staff (admin / moderator) see the real status.
+  if (!canSeePrivateCalendarStatus(role)) {
+    if (PRIVATE_WORKFLOW_STATUSES.has(value) || value === "direct_post_scheduled") {
+      return "scheduled";
+    }
   }
   return value;
 }
 
-export function visibleStatusColor(status: string, role: string, isOwnInstitution: boolean) {
-  return statusColor(visibleCalendarStatus(status, role, isOwnInstitution));
+export function visibleStatusColor(status: string, role: string, isMine = false) {
+  return statusColor(visibleCalendarStatus(status, role, isMine));
 }
 
-export function visibleStatusLabel(status: string, role: string, isOwnInstitution: boolean) {
-  return statusLabel(visibleCalendarStatus(status, role, isOwnInstitution));
+export function visibleStatusLabel(status: string, role: string, isMine = false) {
+  return statusLabel(visibleCalendarStatus(status, role, isMine));
 }

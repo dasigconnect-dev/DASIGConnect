@@ -1,6 +1,6 @@
 import type { InstitutionResponse } from '../../api/authApi'
 
-export type InviteRole = 'contributor' | 'validator' | null
+export type InviteRole = 'contributor' | 'moderator' | 'admin' | null
 
 export interface InstitutionOption {
   id: string

@@ -58,9 +58,9 @@ class ResolutionControllerTest {
     // ── GET /failures ─────────────────────────────────────────────────────────
 
     @Test
-    void listFailures_unauthenticated_returns403() throws Exception {
+    void listFailures_unauthenticated_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/resolution/failures"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -71,19 +71,19 @@ class ResolutionControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
-    void listFailures_asAdministrator_returnsEmptyList() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void listFailures_asModerator_returnsEmptyList() throws Exception {
         when(submissionRepository.findPublishFailures()).thenReturn(List.of());
 
         mockMvc.perform(get("/api/v1/resolution/failures"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$.length()").value(0));
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
-    void listFailures_asAdministrator_returnsFailureList() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void listFailures_asModerator_returnsFailureList() throws Exception {
         Submission s = publishFailedSubmission(UUID.randomUUID());
         when(submissionRepository.findPublishFailures()).thenReturn(List.of(s));
         when(publicationAttemptRepository.findTopBySubmissionIdOrderByAttemptedAtDesc(any()))
@@ -91,15 +91,15 @@ class ResolutionControllerTest {
 
         mockMvc.perform(get("/api/v1/resolution/failures"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].submissionId").value(s.getId().toString()))
-                .andExpect(jsonPath("$[0].eventTitle").value("Tech Summit 2026"));
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].submissionId").value(s.getId().toString()))
+                .andExpect(jsonPath("$.data[0].eventTitle").value("Tech Summit 2026"));
     }
 
     // ── GET /{id} ─────────────────────────────────────────────────────────────
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "ADMIN")
     void getDetail_publishFailed_returnsDetail() throws Exception {
         UUID id = UUID.randomUUID();
         Submission s = publishFailedSubmission(id);
@@ -110,15 +110,15 @@ class ResolutionControllerTest {
 
         mockMvc.perform(get("/api/v1/resolution/{id}", id))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.submissionId").value(id.toString()))
-                .andExpect(jsonPath("$.eventTitle").value("Tech Summit 2026"))
-                .andExpect(jsonPath("$.status").value("publish_failed"))
-                .andExpect(jsonPath("$.mediaAssets").isArray())
-                .andExpect(jsonPath("$.mediaAssets.length()").value(1));
+                .andExpect(jsonPath("$.data.submissionId").value(id.toString()))
+                .andExpect(jsonPath("$.data.eventTitle").value("Tech Summit 2026"))
+                .andExpect(jsonPath("$.data.status").value("publish_failed"))
+                .andExpect(jsonPath("$.data.mediaAssets").isArray())
+                .andExpect(jsonPath("$.data.mediaAssets.length()").value(1));
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "ADMIN")
     void getDetail_notFound_returns404() throws Exception {
         UUID id = UUID.randomUUID();
         when(submissionRepository.findByIdWithInstitution(id)).thenReturn(Optional.empty());
@@ -128,7 +128,7 @@ class ResolutionControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "ADMIN")
     void getDetail_ineligibleStatus_returns409() throws Exception {
         UUID id = UUID.randomUUID();
         Submission s = publishFailedSubmission(id);
@@ -142,8 +142,8 @@ class ResolutionControllerTest {
     // ── POST /{id}/retry ──────────────────────────────────────────────────────
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
-    void retry_asAdministrator_returns204() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void retry_asModerator_returns204() throws Exception {
         UUID id = UUID.randomUUID();
         doNothing().when(manualPublishingService).retry(eq(id), any());
 
@@ -156,8 +156,8 @@ class ResolutionControllerTest {
     // ── POST /{id}/manual-publish/start ───────────────────────────────────────
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
-    void startManualPublish_asAdministrator_returns204() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void startManualPublish_asModerator_returns204() throws Exception {
         UUID id = UUID.randomUUID();
         doNothing().when(manualPublishingService).start(eq(id), any());
 
@@ -170,7 +170,7 @@ class ResolutionControllerTest {
     // ── POST /{id}/manual-publish/complete ────────────────────────────────────
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "ADMIN")
     void completeManualPublish_withUrl_returns204() throws Exception {
         UUID id = UUID.randomUUID();
         doNothing().when(manualPublishingService).complete(eq(id), any(), any());
@@ -186,7 +186,7 @@ class ResolutionControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
+    @WithMockUser(roles = "ADMIN")
     void completeManualPublish_withoutBody_returns204() throws Exception {
         UUID id = UUID.randomUUID();
         doNothing().when(manualPublishingService).complete(eq(id), any(), any());
@@ -200,8 +200,8 @@ class ResolutionControllerTest {
     // ── POST /{id}/manual-publish/cancel ──────────────────────────────────────
 
     @Test
-    @WithMockUser(roles = "ADMINISTRATOR")
-    void cancelManualPublish_asAdministrator_returns204() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void cancelManualPublish_asModerator_returns204() throws Exception {
         UUID id = UUID.randomUUID();
         doNothing().when(manualPublishingService).cancel(eq(id), any());
 

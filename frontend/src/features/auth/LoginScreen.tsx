@@ -1,7 +1,9 @@
+import { useEffect, useState, type FormEvent } from 'react'
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
 import Spinner from '../../components/common/Spinner'
+import { listPublicInstitutions, type InstitutionResponse } from '../../api/authApi'
 
 interface LoginScreenProps {
   active: boolean
@@ -40,6 +42,29 @@ export default function LoginScreen({
 }: LoginScreenProps) {
   const showLockout = lockRemaining > 0
   const showAttempts = attempts > 0 && !showLockout
+  const [institutions, setInstitutions] = useState<InstitutionResponse[]>([])
+
+  useEffect(() => {
+    let mounted = true
+    const controller = new AbortController()
+
+    listPublicInstitutions(controller.signal)
+      .then((res) => {
+        if (mounted && Array.isArray(res.data)) {
+          setInstitutions(res.data)
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setInstitutions([])
+        }
+      })
+
+    return () => {
+      mounted = false
+      controller.abort()
+    }
+  }, [])
 
   return (
     <Screen id="login" active={active}>
@@ -98,7 +123,7 @@ export default function LoginScreen({
                 <div className="l-feat-text">
                   <div className="l-feat-title">Validation Workflow</div>
                   <div className="l-feat-sub">
-                    Validators review and approve content before it reaches the
+                    Moderators review and approve content before it reaches the
                     scheduler.
                   </div>
                 </div>
@@ -131,12 +156,14 @@ export default function LoginScreen({
               Member Institutions
             </div>
             <div className="l-members">
-              <div className="member-pill">CIT-U</div>
-              <div className="member-pill">Silliman University</div>
-              <div className="member-pill">VSU</div>
-              <div className="member-pill">USC</div>
-              <div className="member-pill">UC</div>
-              <div className="member-pill">+ others</div>
+              {institutions.slice(0, 5).map((inst) => (
+                <div key={inst.id} className="member-pill" title={inst.name}>
+                  {inst.institutionCode || inst.name}
+                </div>
+              ))}
+              {institutions.length > 5 && (
+                <div className="member-pill">+ others</div>
+              )}
             </div>
           </div>
         </LeftPanel>
@@ -170,11 +197,19 @@ export default function LoginScreen({
             </div>
           </div>
 
-          <div id="login-fields" className={showLockout ? 'hidden' : ''}>
+          <form
+            id="login-fields"
+            className={showLockout ? 'hidden' : ''}
+            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+              event.preventDefault()
+              onLogin()
+            }}
+          >
             <div className="fgroup">
-              <label className="flabel">Institutional Email</label>
+              <label className="flabel" htmlFor="l-email">Institutional Email</label>
               <input
                 id="l-email"
+                name="email"
                 className={`finput${loginError ? ' err' : ''}`}
                 type="email"
                 placeholder="yourname@institution.edu.ph"
@@ -184,7 +219,7 @@ export default function LoginScreen({
               />
             </div>
             <div className="fgroup">
-              <label className="flabel">
+              <label className="flabel" htmlFor="l-pw">
                 Password
                 <button type="button" className="flabel-action" onClick={onForgot}>
                   Forgot password?
@@ -193,6 +228,7 @@ export default function LoginScreen({
               <div className="pw-wrap">
                 <input
                   id="l-pw"
+                  name="password"
                   className={`finput${loginError ? ' err' : ''}`}
                   type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••••"
@@ -224,16 +260,15 @@ export default function LoginScreen({
             </div>
 
             <button
-              type="button"
+              type="submit"
               className="btn-primary"
-              onClick={onLogin}
               disabled={loading}
             >
               <i className="ti ti-login"></i>
               <span>{loading ? 'Signing In' : 'Sign In'}</span>
               {loading && <Spinner size="xs" color="white" aria-label="Signing in" />}
             </button>
-          </div>
+          </form>
 
           <div id="lockout-actions" className={showLockout ? '' : 'hidden'}>
             <button type="button" className="btn-ghost" onClick={onRequestReset}>

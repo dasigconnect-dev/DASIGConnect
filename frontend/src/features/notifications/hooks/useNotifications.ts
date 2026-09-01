@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import {
   listNotifications,
   markAllNotificationsRead as apiMarkAllRead,
@@ -6,8 +7,8 @@ import {
   openNotificationStream,
 } from "../../../api/notificationApi";
 import type { NotificationDto } from "../../../api/notificationApi";
+import { registerAppCacheReset } from "../../../lib/appCache";
 import type {
-  AuditEntry,
   Notification,
   NotificationCategory,
   NotificationFilter,
@@ -38,171 +39,219 @@ interface EventDisplayMeta {
 
 const EVENT_META: Record<string, EventDisplayMeta> = {
   submission_pending: {
-    trigger: "T1",
+    trigger: "T-01",
     category: "submissions",
     icon: "ti ti-file-plus",
     iconClass: "icon-navy",
-    sender: "Submission System",
-    linkLabel: "Go to Validation Queue",
+    sender: "New submission",
+    linkLabel: "Review Submission",
     badgeClass: "badge-pending",
   },
   submission_approved: {
-    trigger: "T2",
+    trigger: "T-02",
     category: "submissions",
     icon: "ti ti-circle-check",
     iconClass: "icon-success",
-    sender: "Validation",
+    sender: "Review",
     linkLabel: "Open Submission",
     badgeClass: "badge-approved",
   },
   submission_needs_revision: {
-    trigger: "T3",
+    trigger: "REV",
     category: "submissions",
     icon: "ti ti-pencil",
     iconClass: "icon-warning",
-    sender: "Validation",
+    sender: "Review",
     linkLabel: "View Feedback",
     badgeClass: "badge-revision",
   },
   submission_rejected: {
-    trigger: "T4",
+    trigger: "T-03",
     category: "submissions",
     icon: "ti ti-circle-x",
     iconClass: "icon-error",
-    sender: "Validation",
+    sender: "Review",
     linkLabel: "View Feedback",
     badgeClass: "badge-rejected",
   },
   submission_scheduled: {
-    trigger: "T2",
+    trigger: "T-02",
     category: "submissions",
     icon: "ti ti-calendar",
     iconClass: "icon-info",
-    sender: "Scheduler",
+    sender: "Schedule",
     linkLabel: "View Schedule",
     badgeClass: "badge-approved",
   },
-  submission_publish_failed: {
-    trigger: "T7",
-    category: "publishing",
-    icon: "ti ti-circle-x",
-    iconClass: "icon-error",
-    sender: "Publishing Engine",
-    linkLabel: "Open Submission",
-    badgeClass: "badge-failed",
-    critical: true,
-  },
   submission_published: {
-    trigger: "T5",
+    trigger: "T-04",
     category: "publishing",
     icon: "ti ti-circle-check",
     iconClass: "icon-success",
-    sender: "Publishing Engine",
+    sender: "Publishing",
     linkLabel: "View Published Post",
     badgeClass: "badge-published",
   },
   submission_published_manual: {
-    trigger: "T6",
+    trigger: "T-05",
     category: "publishing",
     icon: "ti ti-send",
     iconClass: "icon-success",
-    sender: "Admin - Manual Publish",
+    sender: "Publishing",
     linkLabel: "View Published Post",
     badgeClass: "badge-published",
   },
+  submission_publish_failed: {
+    trigger: "T-06",
+    category: "publishing",
+    icon: "ti ti-circle-x",
+    iconClass: "icon-error",
+    sender: "Publishing",
+    linkLabel: "Review Failed Publication",
+    badgeClass: "badge-failed",
+    critical: true,
+  },
+  empty_schedule_warning: {
+    trigger: "T-07",
+    category: "system",
+    icon: "ti ti-calendar-off",
+    iconClass: "icon-warning",
+    sender: "Schedule",
+    linkLabel: "View Calendar",
+    badgeClass: "badge-pending",
+    warning: true,
+  },
+  token_expiring: {
+    trigger: "T-08",
+    category: "system",
+    icon: "ti ti-key",
+    iconClass: "icon-warning",
+    sender: "Facebook integration",
+    linkLabel: "Manage Tokens",
+    badgeClass: "badge-pending",
+    warning: true,
+  },
+  token_invalid: {
+    trigger: "T-09",
+    category: "system",
+    icon: "ti ti-shield-exclamation",
+    iconClass: "icon-error",
+    sender: "Facebook integration",
+    linkLabel: "Manage Tokens",
+    badgeClass: "badge-critical",
+    critical: true,
+  },
+  submission_rescheduled: {
+    trigger: "T-10",
+    category: "submissions",
+    icon: "ti ti-calendar",
+    iconClass: "icon-info",
+    sender: "Schedule change",
+    linkLabel: "View Schedule",
+    badgeClass: "badge-revision",
+  },
+  fast_track_submission: {
+    trigger: "T-11",
+    category: "submissions",
+    icon: "ti ti-bolt",
+    iconClass: "icon-purple",
+    sender: "Fast-track",
+    linkLabel: "Immediate Review",
+    badgeClass: "badge-critical",
+    critical: true,
+  },
+  embedding_failure_digest: {
+    trigger: "T-12",
+    category: "system",
+    icon: "ti ti-photo-off",
+    iconClass: "icon-warning",
+    sender: "AI media",
+    linkLabel: "View Media Library",
+    badgeClass: "badge-revision",
+  },
   validation_timeout: {
-    trigger: "T8",
+    trigger: "TIMEOUT",
     category: "deadline",
     icon: "ti ti-clock",
     iconClass: "icon-warning",
-    sender: "Deadline Watch",
+    sender: "Deadline",
     linkLabel: "Open Submission",
     badgeClass: "badge-pending",
     warning: true,
   },
   override_approved: {
-    trigger: "T9",
+    trigger: "OVERRIDE",
     category: "overrides",
     icon: "ti ti-shield",
     iconClass: "icon-purple",
-    sender: "Override Decision - Admin",
+    sender: "Guard rail override",
     linkLabel: "Open Submission",
     badgeClass: "badge-approved",
   },
   override_denied: {
-    trigger: "T10",
+    trigger: "OVERRIDE",
     category: "overrides",
     icon: "ti ti-shield-off",
     iconClass: "icon-error",
-    sender: "Override Decision - Admin",
+    sender: "Guard rail override",
     linkLabel: "View Feedback",
     badgeClass: "badge-rejected",
   },
   override_slot_suggested: {
-    trigger: "T17",
+    trigger: "OVERRIDE",
     category: "overrides",
     icon: "ti ti-calendar-check",
     iconClass: "icon-purple",
-    sender: "Override Suggestion - Admin",
+    sender: "Guard rail override",
     linkLabel: "Review Schedule",
     badgeClass: "badge-revision",
   },
   admin_direct_post: {
-    trigger: "T11",
+    trigger: "DIRECT",
     category: "publishing",
     icon: "ti ti-speakerphone",
     iconClass: "icon-navy",
-    sender: "Admin Direct Post",
+    sender: "Direct post",
     linkLabel: "View Post Record",
     badgeClass: "badge-published",
   },
-  institution_no_validator: {
-    trigger: "T14",
+  institution_no_moderator: {
+    trigger: "SYSTEM",
     category: "system",
     icon: "ti ti-building",
     iconClass: "icon-error",
-    sender: "System - Institution Monitor",
+    sender: "Institution",
     linkLabel: "Manage Institution",
     badgeClass: "badge-critical",
     critical: true,
   },
   institution_onboarded: {
-    trigger: "T15",
+    trigger: "ONBOARD",
     category: "system",
     icon: "ti ti-sparkles",
     iconClass: "icon-success",
-    sender: "Onboarding System",
+    sender: "Institution",
     linkLabel: "View Institution",
     badgeClass: "badge-approved",
   },
-  submission_rescheduled: {
-    trigger: "T16",
-    category: "submissions",
-    icon: "ti ti-calendar",
-    iconClass: "icon-info",
-    sender: "Admin - Rescheduled Post",
-    linkLabel: "View Schedule",
-    badgeClass: "badge-revision",
-  },
-  token_expiring: {
-    trigger: "T12",
-    category: "system",
-    icon: "ti ti-key",
-    iconClass: "icon-warning",
-    sender: "System - Token Guard",
-    linkLabel: "Renew Token",
-    badgeClass: "badge-pending",
-    warning: true,
-  },
-  token_invalid: {
-    trigger: "T13",
-    category: "system",
-    icon: "ti ti-shield-exclamation",
+  submission_missed_review: {
+    trigger: "MISSED",
+    category: "deadline",
+    icon: "ti ti-clock-x",
     iconClass: "icon-error",
-    sender: "System - Token Health Check",
-    linkLabel: "Go to Token Settings",
-    badgeClass: "badge-critical",
+    sender: "Deadline",
+    linkLabel: "Open Submission",
+    badgeClass: "badge-failed",
     critical: true,
+  },
+  user_role_changed: {
+    trigger: "ACCOUNT",
+    category: "system",
+    icon: "ti ti-user-cog",
+    iconClass: "icon-info",
+    sender: "Account",
+    linkLabel: "Go to Dashboard",
+    badgeClass: "badge-revision",
   },
   generic: {
     trigger: "SYS",
@@ -254,61 +303,134 @@ function mapDto(dto: NotificationDto): Notification {
     link: dto.deepLink ?? "/notifications",
     linkLabel: meta.linkLabel,
     group: computeGroup(dto.createdAt),
+    createdAt: dto.createdAt,
   };
 }
 
+// Module-scoped cache so navigating in and out of /notifications doesn't refetch
+// the top-50 list every time. The list effect skips the network call while the
+// cache is younger than the TTL (an explicit Refresh always bypasses it).
+let cachedNotifications: Notification[] | null = null;
+let cachedAt = 0;
+const NOTIF_CACHE_TTL_MS = 60_000;
+registerAppCacheReset(() => {
+  cachedNotifications = null;
+  cachedAt = 0;
+});
+
 export function useNotifications() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState<Notification[]>(
+    () => cachedNotifications ?? [],
+  );
+  const [loading, setLoading] = useState(() => cachedNotifications === null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [sseStatus, setSseStatus] = useState<SseStatus>("connecting");
-  const [eventCount, setEventCount] = useState(0);
-  const [lastEventTime, setLastEventTime] = useState<string | null>(null);
-  const [latestIncomingId, setLatestIncomingId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<NotificationFilter>("all");
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    let isCurrent = true;
     const controller = new AbortController();
+
+    if (cachedNotifications !== null) {
+      // Paint the cached list immediately — no loader flash on re-entry.
+      setNotifications(cachedNotifications);
+      setLoading(false);
+      // Fresh enough and not an explicit Refresh → skip the round-trip.
+      if (refreshKey === 0 && Date.now() - cachedAt < NOTIF_CACHE_TTL_MS) {
+        setFetchError(null);
+        return () => {
+          isCurrent = false;
+          controller.abort();
+        };
+      }
+    } else {
+      setLoading(true);
+    }
+
     listNotifications(controller.signal)
       .then((res) => {
-        setNotifications(res.data.map(mapDto));
+        if (!isCurrent) return;
+        const mapped = res.data.map(mapDto);
+        cachedNotifications = mapped;
+        cachedAt = Date.now();
+        setNotifications(mapped);
         setFetchError(null);
+        setLoading(false);
       })
-      .catch((err: { code?: string }) => {
-        if (err?.code !== "ERR_CANCELED") {
-          setFetchError("Could not load notifications. The backend may not be available.");
+      .catch((err: unknown) => {
+        if (!isCurrent) return;
+        if (axios.isCancel(err) || (err as { code?: string })?.code === "ERR_CANCELED") {
+          return;
         }
-      })
-      .finally(() => setLoading(false));
-    return () => controller.abort();
+        setFetchError("Could not load notifications. The backend may not be available.");
+        setLoading(false);
+      });
+
+    return () => {
+      isCurrent = false;
+      controller.abort();
+    };
   }, [refreshKey]);
 
+  // Keep the module cache in sync with live SSE arrivals and optimistic read
+  // state so the next mount within the TTL window shows the latest.
   useEffect(() => {
-    const controller = new AbortController();
-    openNotificationStream(
-      (dto) => {
-        const mapped = mapDto(dto);
-        setNotifications((prev) => [mapped, ...prev]);
-        setLatestIncomingId(mapped.id);
-        setEventCount((prev) => prev + 1);
-        setLastEventTime("just now");
-        setAuditLog((prev) => [
-          {
-            type: "DISPATCHED",
-            typeClass: "badge-approved",
-            detail: `${dto.eventType} -> in-app SSE`,
-            time: "just now",
-          },
-          ...prev.slice(0, 9),
-        ]);
-      },
-      () => setSseStatus("connected"),
-      () => setSseStatus("disconnected"),
-      controller.signal,
-    );
-    return () => controller.abort();
+    if (!loading && cachedNotifications !== null) {
+      cachedNotifications = notifications;
+    }
+  }, [notifications, loading]);
+
+  useEffect(() => {
+    // The server closes the SSE stream every 30 minutes (and connections drop
+    // on flaky networks), so reconnect with capped exponential backoff instead
+    // of going silent until the next page load.
+    let stopped = false;
+    let controller = new AbortController();
+    let retryTimer: number | undefined;
+    let attempts = 0;
+    let connectedAt = 0;
+
+    const connect = () => {
+      if (stopped) return;
+      controller = new AbortController();
+      setSseStatus("connecting");
+      openNotificationStream(
+        (dto) => {
+          attempts = 0;
+          const mapped = mapDto(dto);
+          // A fetch that raced the same event can already hold this id.
+          setNotifications((prev) =>
+            prev.some((n) => n.id === mapped.id) ? prev : [mapped, ...prev],
+          );
+        },
+        () => {
+          connectedAt = Date.now();
+          setSseStatus("connected");
+        },
+        () => {
+          setSseStatus("disconnected");
+          if (stopped) return;
+          // A stream that stayed open a while (e.g. the 30-min server timeout)
+          // is healthy — reconnect fast. Only back off when it keeps failing
+          // quickly.
+          if (connectedAt && Date.now() - connectedAt > 10_000) attempts = 0;
+          connectedAt = 0;
+          const delay = Math.min(2000 * 2 ** attempts, 30_000);
+          attempts += 1;
+          retryTimer = window.setTimeout(connect, delay);
+        },
+        controller.signal,
+      );
+    };
+
+    connect();
+
+    return () => {
+      stopped = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+      controller.abort();
+    };
   }, []);
 
   const counts = useMemo<NotificationCounts>(() => {
@@ -323,16 +445,6 @@ export function useNotifications() {
       deadline: notifications.filter((n) => n.category === "deadline").length,
     };
   }, [notifications]);
-
-  const filteredNotifications = useMemo(
-    () =>
-      notifications.filter((n) => {
-        if (activeFilter === "all") return true;
-        if (activeFilter === "unread") return n.unread;
-        return n.category === activeFilter;
-      }),
-    [activeFilter, notifications],
-  );
 
   const markAllRead = useCallback(() => {
     setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
@@ -351,26 +463,20 @@ export function useNotifications() {
   }, []);
 
   const refreshNotifications = useCallback(() => {
-    setLoading(true);
+    // The list effect decides whether to show a loader: full loader when there's
+    // no cache, silent in-place refresh when there is.
+    if (cachedNotifications === null) setLoading(true);
     setFetchError(null);
     setRefreshKey((value) => value + 1);
   }, []);
 
   return {
-    notifications: filteredNotifications,
     allNotifications: notifications,
-    auditLog,
     loading,
     fetchError,
     sseStatus,
-    eventCount,
-    lastEventTime,
-    latestIncomingId,
     activeFilter,
     setActiveFilter,
-    unreadCount: counts.unread,
-    criticalCount: notifications.filter((n) => n.critical).length,
-    totalCount: notifications.length,
     counts,
     markAllRead,
     markRead,

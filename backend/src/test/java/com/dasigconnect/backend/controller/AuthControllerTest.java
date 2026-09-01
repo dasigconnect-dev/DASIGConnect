@@ -42,8 +42,8 @@ class AuthControllerTest {
                                 {"email":"user@example.com","password":"password123"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").value("mocked.jwt.token"))
-                .andExpect(jsonPath("$.role").value("contributor"));
+                .andExpect(jsonPath("$.data.accessToken").value("mocked.jwt.token"))
+                .andExpect(jsonPath("$.data.role").value("contributor"));
     }
 
     @Test
@@ -54,8 +54,8 @@ class AuthControllerTest {
                                 {"password":"password123"}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("Validation failed"))
-                .andExpect(jsonPath("$.fields.email").exists());
+                .andExpect(jsonPath("$.error.message").value("Validation failed"))
+                .andExpect(jsonPath("$.error.details.fields.email").exists());
     }
 
     @Test
@@ -66,7 +66,38 @@ class AuthControllerTest {
                                 {"email":"user@example.com","password":""}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fields.password").exists());
+                .andExpect(jsonPath("$.error.details.fields.password").exists());
+    }
+
+    @Test
+    void login_emptyBody_returns400ValidationError() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.message").value("Malformed request body"));
+    }
+
+    @Test
+    void login_malformedJson_returns400ValidationError() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.message").value("Malformed request body"));
+    }
+
+    @Test
+    void login_unsupportedContentType_returns415() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("email=user@example.com&password=password123"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("UNSUPPORTED_MEDIA_TYPE"));
     }
 
     @Test
@@ -80,7 +111,15 @@ class AuthControllerTest {
                                 {"email":"user@example.com","password":"wrong"}
                                 """))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error").value("Invalid credentials"));
+                .andExpect(jsonPath("$.error.message").value("Invalid credentials"));
+    }
+
+    @Test
+    void refresh_withoutAuthentication_returns401() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/refresh"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
     }
 
     @Test

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { suggestMedia, logAiInteraction, type MediaSuggestResult } from "../api/aiApi";
 
 export type AiMediaSuggestState = "idle" | "loading" | "ready" | "empty" | "error";
@@ -7,6 +7,10 @@ export interface UseAiMediaSuggestionsReturn {
   state: AiMediaSuggestState;
   results: MediaSuggestResult[];
   fetch: () => void;
+}
+
+export function hasSufficientMediaContext(eventTitle: string, caption: string, category: string, tags: string[]) {
+  return [eventTitle, caption, category, ...tags].join(" ").trim().length >= 10;
 }
 
 export function useAiMediaSuggestions(
@@ -19,14 +23,12 @@ export function useAiMediaSuggestions(
   const [state, setState] = useState<AiMediaSuggestState>("idle");
   const [results, setResults] = useState<MediaSuggestResult[]>([]);
 
-  const hasContext =
-    eventTitle.trim().length > 0 ||
-    caption.trim().length > 0 ||
-    category.length > 0 ||
-    tags.length > 0;
+  const hasContext = hasSufficientMediaContext(eventTitle, caption, category, tags);
+  const requestKey = JSON.stringify([submissionId, eventTitle.trim(), caption.trim(), category.trim(), tags]);
+  const lastAutomaticRequest = useRef("");
 
-  async function fetch() {
-    if (!submissionId || !hasContext || state === "loading") return;
+  const fetch = useCallback(async () => {
+    if (!submissionId || !hasContext) return;
     setState("loading");
     setResults([]);
     try {
@@ -44,7 +46,24 @@ export function useAiMediaSuggestions(
     } catch {
       setState("error");
     }
-  }
+  }, [caption, category, eventTitle, hasContext, submissionId, tags]);
 
-  return { state, results, fetch };
+  useEffect(() => {
+    if (!submissionId || !hasContext) {
+      lastAutomaticRequest.current = "";
+      return;
+    }
+    if (lastAutomaticRequest.current === requestKey) return;
+    const timer = window.setTimeout(() => {
+      lastAutomaticRequest.current = requestKey;
+      void fetch();
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [fetch, requestKey, submissionId, hasContext]);
+
+  return {
+    state: submissionId && hasContext ? state : "idle",
+    results: submissionId && hasContext ? results : [],
+    fetch,
+  };
 }
