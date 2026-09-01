@@ -1,7 +1,7 @@
 import path from "path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, type Plugin, type UserConfig } from "vite";
 
 const baseSecurityHeaders = {
   "X-Frame-Options": "DENY",
@@ -12,12 +12,14 @@ const baseSecurityHeaders = {
   "Cross-Origin-Resource-Policy": "same-origin",
 };
 
-// Loosened for the dev server only: HMR needs inline scripts + ws:, and the
-// local backend is served over plain http on :8080.
+// Loosened for the dev server only: HMR needs inline scripts + ws:, the local
+// backend is served over plain http on :8080, and dev tooling may create blob
+// workers. Keep this narrower than script-src; do not add unsafe-eval.
 const devSecurityHeaders = {
   "Content-Security-Policy": [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline'",
+    "worker-src 'self' blob:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net",
@@ -36,6 +38,7 @@ const prodSecurityHeaders = {
   "Content-Security-Policy": [
     "default-src 'self'",
     "script-src 'self'",
+    "worker-src 'self'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net",
@@ -125,23 +128,56 @@ function blockSensitiveDevFiles(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [blockSensitiveDevFiles(), react(), tailwindcss()],
-  server: {
-    headers: devSecurityHeaders,
-    proxy: {
-      "/api": {
-        target: "http://localhost:8080",
-        changeOrigin: true,
+function stripProductionDebugOutput(): Plugin {
+  const consoleReferencePattern =
+    /\bconsole\.(?:debug|log|info|warn|error|trace|table|group|groupCollapsed|groupEnd)\b/g;
+
+  return {
+    name: "strip-production-debug-output",
+    apply: "build",
+    enforce: "post",
+    transform(code, id) {
+      if (!/\.[cm]?[jt]sx?$/.test(id) || id.includes("node_modules")) {
+        return null;
+      }
+      const stripped = code
+        .split(/\r?\n/)
+        .filter((line) => {
+          const trimmed = line.trim();
+          return !trimmed.startsWith("debugger") && !trimmed.startsWith("console.");
+        })
+        .join("\n");
+      return stripped === code ? null : { code: stripped, map: null };
+    },
+    renderChunk(code) {
+      const stripped = code
+        .replace(/\bdebugger;?/g, "")
+        .replace(consoleReferencePattern, "(() => {})");
+      return stripped === code ? null : { code: stripped, map: null };
+    },
+  };
+}
+
+export default defineConfig(() => {
+  const config: UserConfig = {
+    plugins: [blockSensitiveDevFiles(), stripProductionDebugOutput(), react(), tailwindcss()],
+    server: {
+      headers: devSecurityHeaders,
+      proxy: {
+        "/api": {
+          target: "http://localhost:8080",
+          changeOrigin: true,
+        },
       },
     },
-  },
-  preview: {
-    headers: prodSecurityHeaders,
-  },
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+    preview: {
+      headers: prodSecurityHeaders,
     },
-  },
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
+      },
+    },
+  };
+  return config;
 });

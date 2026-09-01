@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -67,7 +68,9 @@ class UserControllerTest {
     @Test
     void listUsers_withoutRole_returns403() throws Exception {
         mockMvc.perform(get("/api/v1/users").param("institutionId", UUID.randomUUID().toString()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
     }
 
     @Test
@@ -81,6 +84,16 @@ class UserControllerTest {
         mockMvc.perform(get("/api/v1/users").param("institutionId", institutionId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].email").value("contributor@cit.edu.ph"));
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void listUsers_invalidInstitutionId_returns400() throws Exception {
+        mockMvc.perform(get("/api/v1/users").param("institutionId", "not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.message").value(containsString("Invalid value for institutionId")));
     }
 
     @Test
@@ -99,7 +112,9 @@ class UserControllerTest {
     @WithMockUser(roles = "CONTRIBUTOR")
     void listUsers_asContributor_returns403() throws Exception {
         mockMvc.perform(get("/api/v1/users").param("institutionId", UUID.randomUUID().toString()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("ACCESS_DENIED"));
     }
 
     @Test
@@ -133,6 +148,16 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(userId.toString()))
                 .andExpect(jsonPath("$.data.email").value("contributor@cit.edu.ph"));
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void getUser_invalidId_returns400() throws Exception {
+        mockMvc.perform(get("/api/v1/users/not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.message").value(containsString("Invalid value for id")));
     }
 
     @Test
@@ -189,6 +214,18 @@ class UserControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
+    void changeRole_malformedJson_returns400() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/{id}/role", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.message").value("Malformed request body"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
     void erasePersonalData_asAdmin_returnsSummary() throws Exception {
         UUID userId = UUID.randomUUID();
         when(userService.erasePersonalData(any(), any()))
@@ -211,7 +248,9 @@ class UserControllerTest {
     @Test
     void removeUser_withoutRole_returns403() throws Exception {
         mockMvc.perform(delete("/api/v1/users/{id}", UUID.randomUUID()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
     }
 
     @Test
@@ -232,6 +271,18 @@ class UserControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void updateStatus_invalidId_returns400() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/{id}/status", "<userId>")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"accountState\":\"inactive\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.message").value(containsString("Invalid value for id")));
     }
 
     @Test

@@ -1,3 +1,4 @@
+import type { FormEvent } from 'react'
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
@@ -192,7 +193,14 @@ export default function InviteScreen({
             </button>
           </div>
 
-          <div id="inv-form" className={state === 'form' ? '' : 'hidden'}>
+          <form
+            id="inv-form"
+            className={state === 'form' ? '' : 'hidden'}
+            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+              event.preventDefault()
+              onActivate()
+            }}
+          >
             <div className="steps">
               <div className="step done">
                 <div className="step-connector"></div>
@@ -245,6 +253,7 @@ export default function InviteScreen({
                 <label className="flabel" htmlFor="inv-first-name">First Name</label>
                 <input
                   id="inv-first-name"
+                  name="given-name"
                   className={`finput${
                     firstName.length === 0 ? '' : rules.firstName ? ' good' : ' err'
                   }`}
@@ -264,6 +273,7 @@ export default function InviteScreen({
                 <label className="flabel" htmlFor="inv-last-name">Last Name</label>
                 <input
                   id="inv-last-name"
+                  name="family-name"
                   className={`finput${
                     lastName.length === 0 ? '' : rules.lastName ? ' good' : ' err'
                   }`}
@@ -281,10 +291,11 @@ export default function InviteScreen({
             </div>
 
             <div className="fgroup">
-              <label className="flabel">Create Password</label>
+              <label className="flabel" htmlFor="inv-pw">Create Password</label>
               <div className="pw-wrap">
                 <input
                   id="inv-pw"
+                  name="new-password"
                   className="finput"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="new-password"
@@ -353,10 +364,11 @@ export default function InviteScreen({
               </div>
             </div>
             <div className="fgroup">
-              <label className="flabel">Confirm Password</label>
+              <label className="flabel" htmlFor="inv-pw2">Confirm Password</label>
               <div className="pw-wrap">
                 <input
                   id="inv-pw2"
+                  name="confirm-new-password"
                   className={`finput${
                     confirmPassword.length === 0
                       ? ''
@@ -394,9 +406,8 @@ export default function InviteScreen({
 
             <button
               id="inv-btn"
-              type="button"
+              type="submit"
               className="btn-primary"
-              onClick={onActivate}
               disabled={
                 loading ||
                 !(
@@ -423,7 +434,7 @@ export default function InviteScreen({
                 <span id="inv-countdown">{inviteCountdown}</span>
               </div>
             )}
-          </div>
+          </form>
 
           <div id="inv-success" className={state === 'success' ? '' : 'hidden'}>
             <div className="steps">

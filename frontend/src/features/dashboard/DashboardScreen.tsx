@@ -51,7 +51,7 @@ interface ActivityItem {
 interface DashboardStats {
   /** Contributor only: the caller's own submissions (GET /submissions). */
   submissions: SubmissionSummary[];
-  /** Active contributor accounts, network-wide. */
+  /** Admin: active contributor accounts. Moderator: contributors in visible review activity. */
   contributors: number;
   /** Active moderator accounts, network-wide. */
   moderators: number;
@@ -137,8 +137,8 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
       });
   }, [user?.role]);
 
-  // Moderator home: live review-queue + this-month review history + the
-  // network-wide contributor count. (Admins have their own roll-up effect below.)
+  // Moderator home: live review-queue + this-month review history. The
+  // admin-only /users/network directory is intentionally not called here.
   useEffect(() => {
     if (user?.role !== "moderator") return;
     let active = true;
@@ -153,15 +153,8 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
     Promise.all([
       getValidationQueue(),
       getValidationQueue({ history: true }),
-      listNetworkUsers().then((r) =>
-        r.data.filter(
-          (u) =>
-            u.role.toLowerCase() === "contributor" &&
-            u.accountState.toLowerCase() === "active",
-        ).length,
-      ),
     ])
-      .then(([queueRes, historyRes, activeContributors]) => {
+      .then(([queueRes, historyRes]) => {
         if (!active) return;
         const history = historyRes.data;
         const recent = [...queueRes.data, ...history]
@@ -171,6 +164,11 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
             ),
           )
           .slice(0, 5);
+        const visibleContributorCount = new Set(
+          [...queueRes.data, ...history]
+            .map((s) => s.contributorEmail?.trim().toLowerCase())
+            .filter((email): email is string => Boolean(email)),
+        ).size;
         setDashboardStats((current) => ({
           ...current,
           reviewRecent: recent,
@@ -186,7 +184,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
           reviewedRejectedThisMonth: history.filter(
             (s) => inThisMonth(s) && s.status === "rejected",
           ).length,
-          contributors: activeContributors,
+          contributors: visibleContributorCount,
         }));
       })
       .catch(() => {
@@ -196,6 +194,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
             reviewQueuePending: 0,
             reviewedApprovedThisMonth: 0,
             reviewedRejectedThisMonth: 0,
+            contributors: 0,
           }));
         }
       })
@@ -689,7 +688,7 @@ function statsForRole(
       {
         icon: "ti ti-users",
         color: "#1877F2",
-        label: "Active Contributors",
+        label: "Recent Contributors",
         value: String(stats.contributors),
       },
     ];

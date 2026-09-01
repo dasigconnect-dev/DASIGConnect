@@ -47,13 +47,13 @@ class InvitationControllerTest {
     private static final UUID INSTITUTION_ID = UUID.randomUUID();
 
     @Test
-    void createInvitation_withoutAuth_returns403() throws Exception {
+    void createInvitation_withoutAuth_returns401() throws Exception {
         mockMvc.perform(post("/api/v1/invitations")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                                 {"recipientEmail":"user@example.com","institutionId":"%s","assignedRole":"contributor"}
                                 """.formatted(INSTITUTION_ID)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

@@ -1,5 +1,5 @@
 import "../../styles/dasig-loader.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { WatermarkElement } from "../../types/watermark.types";
@@ -761,16 +761,22 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                 title="Password & Security"
                 description="Use a strong password to protect your account."
               />
+              <form
+                onSubmit={(event: FormEvent<HTMLFormElement>) => {
+                  event.preventDefault();
+                  void savePassword();
+                }}
+              >
               <div className="settings-card-body settings-password-grid">
                 <div className="settings-field">
                   <label htmlFor="settings-current-password">Current password</label>
                   <div className="settings-input-wrapper">
                     <input
                       id="settings-current-password"
-                      name="dc-current-password"
+                      name="current-password"
                       className="settings-input"
                       type={showCurrentPassword ? "text" : "password"}
-                      autoComplete="off"
+                      autoComplete="current-password"
                       // Read-only until focused so the browser doesn't autofill
                       // the saved password on load — the user must type it.
                       readOnly={!currentPwEditable}
@@ -809,6 +815,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                   <div className="settings-input-wrapper">
                     <input
                       id="settings-new-password"
+                      name="new-password"
                       className="settings-input"
                       type={showNewPassword ? "text" : "password"}
                       autoComplete="new-password"
@@ -861,6 +868,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                 disabled={!currentPassword || !newPasswordOk}
                 onClick={() => void savePassword()}
               />
+              </form>
             </section>
           )}
 
