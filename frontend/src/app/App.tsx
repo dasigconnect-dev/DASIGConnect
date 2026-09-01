@@ -52,6 +52,8 @@ import {
   getUserInitials,
   initialsFromEmail,
 } from "../lib/userIdentity";
+import { firstPasswordError, getPasswordRules } from "../lib/passwordPolicy";
+import { clearAppCaches } from "../lib/appCache";
 
 const LOCKOUT_LIMIT = 5;
 const LOCKOUT_SECONDS = 15 * 60;
@@ -134,15 +136,22 @@ function App() {
   const inviteRules = useMemo(() => {
     const firstName = isValidProfileName(inviteFirstName);
     const lastName = isValidProfileName(inviteLastName);
-    const length = invitePassword.length >= 8;
-    const upper = /[A-Z]/.test(invitePassword);
-    const number = /[0-9]/.test(invitePassword);
-    const symbol = /[^A-Za-z0-9]/.test(invitePassword);
+    const passwordRules = getPasswordRules(invitePassword, [
+      inviteEmail,
+      inviteFirstName,
+      inviteLastName,
+    ]);
     const match =
       inviteConfirmPassword.length > 0 &&
       invitePassword === inviteConfirmPassword;
-    return { firstName, lastName, length, upper, number, symbol, match };
-  }, [inviteFirstName, inviteLastName, invitePassword, inviteConfirmPassword]);
+    return { firstName, lastName, ...passwordRules, match };
+  }, [
+    inviteEmail,
+    inviteFirstName,
+    inviteLastName,
+    invitePassword,
+    inviteConfirmPassword,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -281,6 +290,9 @@ function App() {
     setAuthToken(null);
     localStorage.removeItem("dasigconnect_token");
     localStorage.removeItem("dasigconnect_user");
+    // Drop any in-memory caches from a prior session on this tab so a new
+    // account never sees the previous user's role-scoped data.
+    clearAppCaches();
     const email = loginEmail.trim().toLowerCase();
     try {
       const response = await login(email, loginPassword);
@@ -318,8 +330,9 @@ function App() {
       setResetError("Reset token is missing or invalid.");
       return;
     }
-    if (resetPassword.length < 8) {
-      setResetError("Password must be at least 8 characters.");
+    const passwordError = firstPasswordError(resetPassword);
+    if (passwordError) {
+      setResetError(passwordError);
       return;
     }
     if (resetPassword !== resetConfirmPassword) {
@@ -342,7 +355,11 @@ function App() {
   }
 
   async function handleForgotSubmit() {
-    const email = forgotEmail.trim() || "yourname@institution.edu.ph";
+    const email = forgotEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Enter a valid email address.");
+      return;
+    }
     setForgotLoading(true);
     try {
       await requestPasswordReset(email);
@@ -361,6 +378,15 @@ function App() {
     const lastName = normalizeProfileName(inviteLastName);
     if (!isValidProfileName(firstName) || !isValidProfileName(lastName)) {
       toast.error("Please enter a valid first and last name.");
+      return;
+    }
+    const passwordError = firstPasswordError(invitePassword, [
+      inviteEmail,
+      firstName,
+      lastName,
+    ]);
+    if (passwordError) {
+      toast.error(passwordError);
       return;
     }
     setInviteLoading(true);
@@ -435,6 +461,7 @@ function App() {
     localStorage.removeItem("dasigconnect_token");
     localStorage.removeItem("dasigconnect_user");
     setAuthToken(null);
+    clearAppCaches();
     setCurrentUser(null);
     setShowDropdown(false);
     setShowSessionModal(false);
@@ -804,10 +831,6 @@ function App() {
             }
           />
           <Route
-            path="/admin/resolution"
-            element={<Navigate to="/dashboard" replace />}
-          />
-          <Route
             path="/media-repository"
             element={
               <ProtectedRoute user={currentUser} allowedRoles={["moderator", "admin", "contributor"]}>
@@ -826,7 +849,7 @@ function App() {
           <Route
             path="/analytics"
             element={
-              <ProtectedRoute user={currentUser} allowedRoles={["admin", "contributor"]}>
+              <ProtectedRoute user={currentUser} allowedRoles={["admin", "moderator", "contributor"]}>
                 <AnalyticsDashboardPage user={currentUser!} />
               </ProtectedRoute>
             }

@@ -57,9 +57,9 @@ class MediaAssetControllerTest {
     private TenantScopeService tenantScopeService;
 
     @Test
-    void list_withoutAuth_returns403() throws Exception {
+    void list_withoutAuth_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/media-assets"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

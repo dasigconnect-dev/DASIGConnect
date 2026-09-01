@@ -117,6 +117,16 @@ public class AuditLogService {
         return record(null, action, null, null, resourceId, metadata);
     }
 
+    /**
+     * Convenience for controllers that only hold the authenticated principal's
+     * id (from the JWT) rather than the {@link User} entity.
+     */
+    public AuditLog recordByActorId(UUID actorId, String action, String ipAddress,
+                                    String userAgent, UUID resourceId, Map<String, ?> metadata) {
+        User actor = actorId != null ? userRepository.findById(actorId).orElse(null) : null;
+        return record(actor, action, ipAddress, userAgent, resourceId, metadata);
+    }
+
     @Transactional(readOnly = true)
     public Page<AuditLogDto> searchAuditLogs(AuditLogFilterCriteria criteria, Pageable pageable) {
         Specification<AuditLog> spec = buildSpecification(criteria);
@@ -335,19 +345,23 @@ public class AuditLogService {
                 actions.addAll(List.of("MANUAL_PUBLISH_STARTED", "MANUAL_PUBLISH_COMPLETE", "MANUAL_PUBLISH_CANCELLED", "MANUAL_PUBLISH_ABANDONED", "MANUAL_PUBLISH_RETRY_OVERRIDE", "MANUAL_PUBLISH_RETRY_NEW_SCHEDULE", "MISSED_REVIEW_RETRY_NEW_SCHEDULE", "SUBMISSION_PUBLISHED", "PUBLISH_FAILED", "TOKEN_REAUTHORIZED"));
             }
             case ACCOUNT_MANAGEMENT -> {
-                actions.addAll(List.of("USER_STATUS_UPDATED", "USER_AVATAR_UPDATED", "USER_REMOVED", "USER_DELETED", "SUPER_ADMIN_TRANSFERRED", "INVITATION_SENT", "INVITATION_ACCEPTED", "INVITATION_REVOKED", "PASSWORD_RESET", "PASSWORD_CHANGED", "LOGIN_SUCCESS", "LOGIN_FAILED", "LOGOUT"));
+                actions.addAll(List.of("USER_STATUS_UPDATED", "USER_AVATAR_UPDATED", "USER_ROLE_CHANGED", "USER_REMOVED", "USER_DELETED", "USER_ANONYMIZED",
+                        "SUPER_ADMIN_TRANSFERRED", "ADMIN_OWNER_TRANSFERRED", "ADMIN_TRANSFER_REQUESTED", "ADMIN_OWNER_TRANSFER_REQUESTED", "ADMIN_TRANSFER_CONFIRMED",
+                        "CONTRIBUTOR_REASSIGNED", "INVITATION_SENT", "INVITATION_ACCEPTED", "INVITATION_REVOKED",
+                        "PASSWORD_RESET", "PASSWORD_CHANGED", "LOGIN_SUCCESS", "LOGIN_FAILED", "LOGOUT"));
             }
             case INSTITUTION_MANAGEMENT -> {
                 actions.addAll(List.of("INSTITUTION_CREATED", "INSTITUTION_UPDATED", "INSTITUTION_LOGO_UPDATED", "INSTITUTION_DEACTIVATED", "INSTITUTION_REACTIVATED", "INSTITUTION_PENDING", "INSTITUTION_ACTIVATED", "INSTITUTION_INACTIVE", "INSTITUTION_DELETED"));
             }
             case MEDIA_LIFECYCLE -> {
-                actions.addAll(List.of("MEDIA_ASSET_UPLOADED", "MEDIA_ASSET_MOVED", "MEDIA_ASSET_DELETED", "MEDIA_ASSET_TAG_ADDED", "MEDIA_ASSET_TAG_REMOVED", "MEDIA_ALBUM_CREATED", "MEDIA_ALBUM_UPDATED", "MEDIA_ALBUM_DELETED"));
+                actions.addAll(List.of("MEDIA_ASSET_UPLOADED", "MEDIA_ASSET_MOVED", "MEDIA_ASSET_DELETED", "MEDIA_ASSET_PURGED", "MEDIA_ASSET_TAG_ADDED", "MEDIA_ASSET_TAG_REMOVED", "MEDIA_ALBUM_CREATED", "MEDIA_ALBUM_UPDATED", "MEDIA_ALBUM_DELETED"));
             }
             case CONFIGURATION -> {
-                actions.addAll(List.of("WATERMARK_CONFIG_UPDATED", "WATERMARK_OVERRIDE_REMOVED", "GUARD_RAIL_CONFIG_UPDATED", "PAGE_SETTINGS_UPDATED"));
+                actions.addAll(List.of("WATERMARK_CONFIG_UPDATED", "WATERMARK_OVERRIDE_REMOVED", "GUARD_RAIL_CONFIG_UPDATED", "PAGE_SETTINGS_UPDATED", "BACKGROUND_JOB_RUN"));
             }
             case SECURITY -> {
-                actions.addAll(List.of("TOKEN_REAUTHORIZED", "TOKEN_EXPIRED", "TOKEN_REVOKED"));
+                actions.addAll(List.of("TOKEN_REAUTHORIZED", "TOKEN_EXPIRED", "TOKEN_EXPIRED_BLOCKED", "TOKEN_REVOKED", "ACCOUNT_LOCKED",
+                        "AUDIT_LOG_EXPORTED", "ANALYTICS_EXPORTED", "SYSTEM_HEALTH_EXPORTED"));
             }
             case OTHER -> {}
         }
@@ -366,12 +380,9 @@ public class AuditLogService {
         User u = actorId != null ? lookups.users().get(actorId) : null;
         if (u != null) {
             String name = resolveUserName(u);
-            String role = u.getRole() != null ? u.getRole().name() : "USER";
-            if (u.isAdminOwner()) {
-                role = "ADMIN";
-            }
+            String role = u.getRole() != null ? u.getRole().name() : "user";
             String instName = u.getInstitution() != null ? u.getInstitution().getName() : null;
-            actorDto = new AuditLogDto.ActorDto(u.getId(), name, u.getEmail(), role, null, instName);
+            actorDto = new AuditLogDto.ActorDto(u.getId(), name, u.getEmail(), role, u.isAdminOwner(), null, instName);
         }
 
         // Entity resolution
@@ -460,21 +471,101 @@ public class AuditLogService {
             case WATERMARK_CONFIG -> {
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "Watermark Configuration", true, "/settings");
             }
+            case MEDIA_ALBUM -> {
+                return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "Media folder", true, "/media-repository");
+            }
             default -> {
                 return new AuditLogDto.EntityRefDto(resourceId, type, type.getLabel(), "Entity #" + resourceId.toString().substring(0, 8), true, null);
             }
         }
     }
 
+    /** Plain-English name for an action code, shown as the row title in the audit log. */
     private String formatActionLabel(String action) {
-        if (action == null) return "Unknown Action";
-        return action.replace('_', ' ')
-                .toLowerCase(Locale.ENGLISH)
-                .replace("submission ", "")
-                .replace("media asset ", "")
-                .replace("institution ", "")
-                .replace("user ", "")
-                .trim();
+        if (action == null) return "Unknown action";
+        return switch (action) {
+            // ── Submissions & review ──
+            case "SUBMISSION_CREATED" -> "Draft created";
+            case "SUBMISSION_UPDATED" -> "Draft edited";
+            case "SUBMISSION_SUBMITTED" -> "Submitted for review";
+            case "SUBMISSION_WITHDRAWN" -> "Submission withdrawn to draft";
+            case "SUBMISSION_APPROVED", "APPROVED", "approved" -> "Approved & scheduled";
+            case "SUBMISSION_EDITED_AND_APPROVED", "EDITED_AND_APPROVED", "edited_and_approved" -> "Edited during review, then approved";
+            case "edited" -> "Edited during review";
+            case "SUBMISSION_REJECTED", "REJECTED", "rejected" -> "Rejected";
+            case "SUBMISSION_REVISION_REQUESTED", "REVISION_REQUESTED", "needs_revision" -> "Revision requested";
+            case "SUBMISSION_RESCHEDULED", "RESCHEDULE" -> "Rescheduled";
+            case "SUBMISSION_PUBLISHED" -> "Published to Facebook";
+            case "PUBLISH_FAILED" -> "Publishing failed";
+            // ── Guard-rail overrides ──
+            case "SCHEDULE_GUARDRAIL_OVERRIDE" -> "Guard rail overridden (schedule edit)";
+            case "ADMIN_RESCHEDULE_OVERRIDE" -> "Guard rail overridden (calendar reschedule)";
+            case "MANUAL_PUBLISH_RETRY_OVERRIDE" -> "Guard rail overridden (failed-post retry)";
+            case "GUARD_RAIL_CONFIG_UPDATED" -> "Guard rail settings changed";
+            // ── Manual publishing ──
+            case "MANUAL_PUBLISH_STARTED" -> "Manual publish started";
+            case "MANUAL_PUBLISH_COMPLETE" -> "Manual publish completed";
+            case "MANUAL_PUBLISH_CANCELLED" -> "Manual publish cancelled";
+            case "MANUAL_PUBLISH_ABANDONED" -> "Manual publish abandoned (timed out)";
+            case "MANUAL_PUBLISH_RETRY_NEW_SCHEDULE" -> "Failed post re-queued on a new slot";
+            case "MISSED_REVIEW_RETRY_NEW_SCHEDULE" -> "Missed-review post sent back for approval";
+            // ── Accounts & access ──
+            case "LOGIN_SUCCESS" -> "Signed in";
+            case "LOGIN_FAILED" -> "Failed sign-in attempt";
+            case "ACCOUNT_LOCKED" -> "Account locked after repeated failed sign-ins";
+            case "ACCESS_DENIED" -> "Access denied";
+            case "LOGOUT" -> "Signed out";
+            case "PASSWORD_CHANGED" -> "Password changed";
+            case "PASSWORD_RESET" -> "Password reset via email link";
+            case "USER_ROLE_CHANGED" -> "Account role changed";
+            case "USER_STATUS_UPDATED" -> "Account status changed";
+            case "USER_AVATAR_UPDATED" -> "Profile photo updated";
+            case "USER_SETTINGS_UPDATED" -> "Notification preferences updated";
+            case "USER_REMOVED" -> "Account deactivated";
+            case "USER_DELETED" -> "Account permanently deleted";
+            case "USER_ANONYMIZED" -> "Personal data erased";
+            case "INVITATION_SENT" -> "Invitation sent";
+            case "INVITATION_ACCEPTED" -> "Invitation accepted";
+            case "INVITATION_REVOKED" -> "Invitation cancelled";
+            case "ADMIN_TRANSFER_REQUESTED", "ADMIN_OWNER_TRANSFER_REQUESTED" -> "Admin ownership transfer requested";
+            case "ADMIN_TRANSFER_CONFIRMED", "ADMIN_OWNER_TRANSFERRED", "SUPER_ADMIN_TRANSFERRED" -> "Admin ownership transferred";
+            // ── Institutions ──
+            case "INSTITUTION_CREATED" -> "Institution added";
+            case "INSTITUTION_UPDATED" -> "Institution details changed";
+            case "INSTITUTION_LOGO_UPDATED" -> "Institution logo changed";
+            case "INSTITUTION_DEACTIVATED", "INSTITUTION_INACTIVE" -> "Institution deactivated";
+            case "INSTITUTION_REACTIVATED", "INSTITUTION_ACTIVATED" -> "Institution reactivated";
+            case "INSTITUTION_PENDING" -> "Institution set to pending";
+            case "INSTITUTION_DELETED" -> "Institution deleted";
+            case "CONTRIBUTOR_REASSIGNED" -> "Contributor moved to another institution";
+            // ── Media ──
+            case "MEDIA_ASSET_UPLOADED" -> "Media uploaded";
+            case "MEDIA_ASSET_DELETED" -> "Media deleted";
+            case "MEDIA_BULK_DELETED" -> "Media deleted in bulk";
+            case "MEDIA_ASSET_MOVED" -> "Media moved to another folder";
+            case "MEDIA_ASSET_TAG_ADDED" -> "Media tag added";
+            case "MEDIA_ASSET_TAG_REMOVED" -> "Media tag removed";
+            case "MEDIA_ASSET_PURGED" -> "Deleted media permanently purged (retention)";
+            case "MEDIA_ALBUM_CREATED" -> "Folder created";
+            case "MEDIA_ALBUM_UPDATED" -> "Folder renamed / moved";
+            case "MEDIA_ALBUM_DELETED" -> "Folder deleted";
+            // ── Config, tokens, system ──
+            case "PAGE_SETTINGS_UPDATED" -> "Facebook Page settings changed";
+            case "WATERMARK_CONFIG_UPDATED" -> "Watermark settings changed";
+            case "WATERMARK_OVERRIDE_REMOVED" -> "Per-institution watermark removed";
+            case "TOKEN_REAUTHORIZED" -> "Facebook token re-authenticated";
+            case "TOKEN_REVOKED" -> "Facebook token revoked";
+            case "TOKEN_EXPIRED", "TOKEN_EXPIRED_BLOCKED" -> "Facebook token expired";
+            case "AUDIT_LOG_EXPORTED" -> "Audit log exported";
+            case "ANALYTICS_EXPORTED" -> "Analytics report exported";
+            case "SYSTEM_HEALTH_EXPORTED" -> "System health snapshot exported";
+            case "BACKGROUND_JOB_RUN" -> "Background job run on demand";
+            default -> {
+                // Fallback: "SOME_ACTION_CODE" -> "Some action code"
+                String s = action.replace('_', ' ').toLowerCase(Locale.ENGLISH).trim();
+                yield s.isEmpty() ? "System action" : Character.toUpperCase(s.charAt(0)) + s.substring(1);
+            }
+        };
     }
 
     private Map<String, Object> parseMetadata(String json) {
@@ -539,32 +630,121 @@ public class AuditLogService {
         return diffs;
     }
 
+    /**
+     * A one-line, plain-English account of what happened — meant to be readable
+     * on its own in the audit log row (the actor and timestamp are shown
+     * separately, so the sentence stays action-focused).
+     */
     private String generateSummary(String action, Map<String, Object> meta, AuditLogDto.EntityRefDto entity) {
-        if (meta == null || meta.isEmpty()) {
-            return formatActionLabel(action) + " on " + (entity != null ? entity.label() : "entity");
-        }
+        String what = entity != null && entity.label() != null ? "'" + entity.label() + "'" : "this item";
+        Map<String, Object> m = meta == null ? Collections.emptyMap() : meta;
+        String reason = firstNonBlank(m.get("overrideReason"), m.get("reason"), m.get("decisionReason"));
 
-        if (meta.containsKey("overrideReason") && meta.get("overrideReason") != null) {
-            return "Override Justification: " + meta.get("overrideReason");
+        return switch (action) {
+            case "SUBMISSION_APPROVED", "APPROVED", "approved",
+                 "SUBMISSION_EDITED_AND_APPROVED", "EDITED_AND_APPROVED", "edited_and_approved" -> {
+                String slot = fmtSlot(m.get("scheduledAt"));
+                yield "Approved " + what + (slot != null ? ", scheduled for " + slot : "")
+                        + (action.toUpperCase().contains("EDIT") ? " (edited during review)" : "");
+            }
+            case "edited" -> "Edited " + what + " during review";
+            case "SUBMISSION_REJECTED", "REJECTED", "rejected" -> {
+                String r = firstNonBlank(m.get("rejectionReason"), m.get("reasonCode"), m.get("remarks"));
+                yield "Rejected " + what + (r != null ? " — " + r : "");
+            }
+            case "SUBMISSION_REVISION_REQUESTED", "REVISION_REQUESTED", "needs_revision" -> {
+                String r = firstNonBlank(m.get("remarks"), m.get("reason"));
+                yield "Sent " + what + " back for changes" + (r != null ? " — " + r : "");
+            }
+            case "SUBMISSION_RESCHEDULED", "RESCHEDULE", "MANUAL_PUBLISH_RETRY_NEW_SCHEDULE", "MISSED_REVIEW_RETRY_NEW_SCHEDULE" -> {
+                String from = fmtSlot(m.get("originalSlot"));
+                String to = fmtSlot(firstNonBlank(m.get("newSlot"), m.get("scheduledAt")));
+                yield "Moved " + what + (from != null && to != null ? " from " + from + " to " + to
+                        : to != null ? " to " + to : "");
+            }
+            case "SCHEDULE_GUARDRAIL_OVERRIDE", "ADMIN_RESCHEDULE_OVERRIDE", "MANUAL_PUBLISH_RETRY_OVERRIDE" -> {
+                String to = fmtSlot(firstNonBlank(m.get("newSlot"), m.get("scheduledAt")));
+                String rule = str(m.get("violations"));
+                yield "Bypassed a guard rail to schedule " + what + (to != null ? " for " + to : "")
+                        + (rule != null && !rule.isBlank() ? " (" + rule + ")" : "")
+                        + (reason != null ? " — reason: " + reason : "");
+            }
+            case "SUBMISSION_PUBLISHED" -> "Published " + what + " to the DASIG Facebook Page"
+                    + (m.get("platformPostUrl") != null ? " (" + m.get("platformPostUrl") + ")" : "");
+            case "PUBLISH_FAILED" -> {
+                String err = firstNonBlank(m.get("error"), m.get("errorDetail"));
+                yield "Automated publishing of " + what + " failed" + (err != null ? " — " + err : "");
+            }
+            case "USER_ROLE_CHANGED" -> "Changed " + userLabel(m, what) + "'s role"
+                    + (m.get("fromRole") != null && m.get("toRole") != null
+                        ? " from " + m.get("fromRole") + " to " + m.get("toRole") : "");
+            case "USER_STATUS_UPDATED" -> "Set " + userLabel(m, what) + "'s account to " + firstNonBlank(m.get("accountState"), m.get("status"), "a new status");
+            case "USER_REMOVED", "USER_DELETED", "USER_ANONYMIZED" ->
+                    formatActionLabel(action) + " — " + userLabel(m, what);
+            case "INVITATION_SENT" -> "Invited " + firstNonBlank(m.get("recipientEmail"), m.get("email"), what)
+                    + (m.get("assignedRole") != null ? " as " + m.get("assignedRole") : "");
+            case "ADMIN_TRANSFER_REQUESTED", "ADMIN_OWNER_TRANSFER_REQUESTED",
+                 "ADMIN_TRANSFER_CONFIRMED", "ADMIN_OWNER_TRANSFERRED", "SUPER_ADMIN_TRANSFERRED" ->
+                    formatActionLabel(action) + (m.get("toEmail") != null ? " to " + m.get("toEmail") : "");
+            case "CONTRIBUTOR_REASSIGNED" -> "Moved " + userLabel(m, what) + " from "
+                    + firstNonBlank(m.get("fromInstitutionName"), "their institution") + " to "
+                    + firstNonBlank(m.get("toInstitutionName"), "another institution");
+            case "MANUAL_PUBLISH_COMPLETE" -> "Manually published " + what
+                    + (m.get("postUrl") != null ? " (" + m.get("postUrl") + ")" : "");
+            case "MEDIA_ASSET_PURGED" -> "Permanently removed a soft-deleted media asset and its stored file after the retention window";
+            case "MEDIA_ASSET_TAG_ADDED", "MEDIA_ASSET_TAG_REMOVED" ->
+                    formatActionLabel(action) + (m.get("label") != null ? ": " + m.get("label") : "") + " on " + what;
+            case "ACCOUNT_LOCKED" -> "Locked " + firstNonBlank(m.get("email"), what)
+                    + " for 15 minutes after " + firstNonBlank(m.get("failedAttempts"), "5") + " failed sign-in attempts";
+            case "LOGIN_FAILED" -> "Failed sign-in for " + firstNonBlank(m.get("email"), "an account")
+                    + (m.get("reason") != null ? " — " + m.get("reason") : "");
+            case "ACCESS_DENIED" -> "Blocked " + firstNonBlank(m.get("method"), "a request") + " "
+                    + firstNonBlank(m.get("path"), "a protected endpoint")
+                    + (m.get("reason") != null ? " — " + m.get("reason") : "");
+            case "MEDIA_BULK_DELETED" -> "Deleted " + firstNonBlank(m.get("count"), "several")
+                    + " media asset(s) in one bulk action";
+            case "AUDIT_LOG_EXPORTED", "ANALYTICS_EXPORTED", "SYSTEM_HEALTH_EXPORTED" ->
+                    formatActionLabel(action) + (m.get("rowCount") != null ? " (" + m.get("rowCount") + " rows)" : "")
+                    + (m.get("filters") != null ? " with filters " + m.get("filters") : "");
+            case "BACKGROUND_JOB_RUN" -> "Ran the '" + firstNonBlank(m.get("jobKey"), "background") + "' job on demand";
+            case "GUARD_RAIL_CONFIG_UPDATED", "PAGE_SETTINGS_UPDATED", "WATERMARK_CONFIG_UPDATED" ->
+                    formatActionLabel(action) + (entity != null && entity.label() != null ? " for '" + entity.label() + "'" : "");
+            default -> {
+                if (reason != null) yield formatActionLabel(action) + " — reason: " + reason;
+                if (m.get("remarks") != null) yield formatActionLabel(action) + " — " + m.get("remarks");
+                yield formatActionLabel(action) + (entity != null && entity.label() != null ? " — " + entity.label() : "");
+            }
+        };
+    }
+
+    private static String str(Object o) {
+        return o == null ? null : String.valueOf(o);
+    }
+
+    private static String firstNonBlank(Object... vals) {
+        for (Object v : vals) {
+            if (v != null) {
+                String s = String.valueOf(v).trim();
+                if (!s.isEmpty()) return s;
+            }
         }
-        if (meta.containsKey("rejectionReason") && meta.get("rejectionReason") != null) {
-            String reason = String.valueOf(meta.get("rejectionReason"));
-            String remarks = meta.get("remarks") != null ? " (" + meta.get("remarks") + ")" : "";
-            return "Rejected: " + reason + remarks;
+        return null;
+    }
+
+    private static String userLabel(Map<String, Object> m, String fallback) {
+        return firstNonBlank(m.get("targetEmail"), m.get("email"), m.get("recipientEmail"), fallback);
+    }
+
+    /** "2026-08-30T20:00:00Z" -> "Aug 30, 2026 8:00 PM UTC"; leaves non-timestamps untouched. */
+    private static String fmtSlot(Object raw) {
+        String s = str(raw);
+        if (s == null || s.isBlank()) return null;
+        try {
+            return java.time.ZonedDateTime.parse(s.contains("T") ? s : s + "T00:00:00Z")
+                    .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a 'UTC'"));
+        } catch (RuntimeException ex) {
+            return s;
         }
-        if (meta.containsKey("remarks") && meta.get("remarks") != null) {
-            return "Remarks: " + meta.get("remarks");
-        }
-        if (meta.containsKey("platformPostUrl") && meta.get("platformPostUrl") != null) {
-            return "Published to Facebook: " + meta.get("platformPostUrl");
-        }
-        if (meta.containsKey("reason") && meta.get("reason") != null) {
-            return "Reason: " + meta.get("reason");
-        }
-        if (meta.containsKey("label") && meta.get("label") != null) {
-            return "Tag: " + meta.get("label");
-        }
-        return formatActionLabel(action);
     }
 
     private String formatFieldLabel(String key) {

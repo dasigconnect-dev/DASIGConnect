@@ -4,6 +4,9 @@ import java.time.Instant;
 import java.util.UUID;
 
 import com.dasigconnect.backend.model.entity.User;
+import com.dasigconnect.backend.model.entity.UserRole;
+import com.dasigconnect.backend.model.entity.UserStatus;
+import com.dasigconnect.backend.security.JwtUserDetails;
 
 public class UserDto {
 
@@ -25,6 +28,9 @@ public class UserDto {
     private boolean hasAvatar;
     private Instant avatarUpdatedAt;
     private Instant purgedAt;
+    private UUID invitedByUserId;
+    /** Whether the requesting user may delete this row (moderators: only a contributor they invited whose invite was cancelled/expired). */
+    private boolean removableByRequester;
 
     public static UserDto from(User user) {
         UserDto dto = new UserDto();
@@ -46,7 +52,29 @@ public class UserDto {
         dto.hasAvatar = user.getAvatarData() != null && user.getAvatarData().length > 0;
         dto.avatarUpdatedAt = user.getAvatarUpdatedAt();
         dto.purgedAt = user.getPurgedAt();
+        dto.invitedByUserId = user.getInvitedByUserId();
         return dto;
+    }
+
+    /** As {@link #from(User)} plus {@code removableByRequester} relative to the caller. */
+    public static UserDto from(User user, JwtUserDetails requester) {
+        UserDto dto = from(user);
+        dto.removableByRequester =
+                user.getRole() == UserRole.contributor
+                && (user.getAccountState() == UserStatus.cancelled
+                        || user.getAccountState() == UserStatus.expired)
+                && user.getInvitedByUserId() != null
+                && requester != null
+                && user.getInvitedByUserId().equals(requester.userId());
+        return dto;
+    }
+
+    public UUID getInvitedByUserId() {
+        return invitedByUserId;
+    }
+
+    public boolean isRemovableByRequester() {
+        return removableByRequester;
     }
 
     public UUID getId() {

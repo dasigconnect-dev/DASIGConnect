@@ -1,63 +1,83 @@
+# Render Blueprint for the DASIGConnect backend (dev environment).
+#
+# Custom domain (api-dev.dasigconnect.com) is configured in the Render dashboard.
+#
+# plan: free — the service spins down after ~15 min idle. While asleep the
+# scheduled jobs do not run, so a scheduled Facebook post publishes late (the
+# StaleSubmissionDetectorJob recovers it once the service is awake again). An
+# external uptime monitor hitting /health every ~10 min keeps it warm; a backup
+# pinger lives in .github/workflows/keepalive.yml.
+#
+# `sync: false` = secret / environment-specific; set it in the Render dashboard.
+# Inline values are non-secret. Facebook and AI keys are intentionally omitted
+# here — leave them unset until you are ready to use (and pay for) those
+# features; the code paths self-disable when the keys are blank.
+
 services:
   - type: web
     name: dasigconnect-backend
     runtime: docker
+    plan: free
+    rootDir: backend
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health
     envVars:
-      # Database
+      - key: JAVA_TOOL_OPTIONS
+        value: -XX:MaxRAMPercentage=70 -XX:+UseSerialGC
+      # ── Database (Supabase Session Pooler) ──────────────────────────────
       - key: DASIG_DATABASE_URL
         sync: false
       - key: DASIG_DATABASE_USER
         sync: false
       - key: DASIG_DATABASE_PASSWORD
         sync: false
-      # Supabase
-      - key: DASIG_SUPABASE_URL
-        sync: false
+      # Optional — only for Claude Vision fetching Supabase-hosted images.
       - key: DASIG_SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: DASIG_SUPABASE_STORAGE_BUCKET
-        sync: false
-      # JWT
+
+      # ── Auth ───────────────────────────────────────────────────────────
       - key: JWT_SECRET
         sync: false
-      # Mail
-      - key: MAIL_HOST
-        sync: false
-      - key: MAIL_PORT
-        sync: false
-      - key: MAIL_USERNAME
-        sync: false
-      - key: MAIL_PASSWORD
+
+      # ── URLs ───────────────────────────────────────────────────────────
+      - key: APP_FRONTEND_BASE_URL
+        value: https://dev.dasigconnect.com
+      - key: APP_GUARDRAILS_ENFORCED
+        value: "true"
+
+      # ── Email (Resend HTTP API) ────────────────────────────────────────
+      - key: RESEND_API_KEY
         sync: false
       - key: MAIL_FROM
         sync: false
       - key: MAIL_FROM_NAME
-        sync: false
+        value: DASIGConnect
       - key: MAIL_REPLY_TO
         sync: false
-      - key: MAIL_SMTP_AUTH
+
+      # ── Facebook Graph API — add in the dashboard only when demoing publish.
+      #    Point FACEBOOK_PAGE_ACCESS_TOKEN at a TEST page, not the live DASIG
+      #    page. Whitelist FACEBOOK_OAUTH_REDIRECT_URI in the Meta app first.
+      #    FACEBOOK_PAGE_ACCESS_TOKEN / FACEBOOK_PAGE_ID / FACEBOOK_APP_ID /
+      #    FACEBOOK_APP_SECRET / FACEBOOK_API_VERSION=v25.0 /
+      #    FACEBOOK_OAUTH_REDIRECT_URI=https://api-dev.dasigconnect.com/api/v1/facebook/oauth-callback
+
+      # ── External AI APIs — billed per call. Add in the dashboard only when
+      #    demoing AI features, after setting a spend limit in the provider
+      #    console. Blank => AI caption/classification/suggestion self-disable.
+      #    ANTHROPIC_API_KEY / VOYAGE_API_KEY
+
+      # ── Cloudflare R2 object storage ───────────────────────────────────
+      - key: R2_ACCOUNT_ID
         sync: false
-      - key: MAIL_SMTP_STARTTLS_ENABLE
+      - key: R2_ENDPOINT
         sync: false
-      - key: MAIL_SMTP_STARTTLS_REQUIRED
+      - key: R2_ACCESS_KEY_ID
         sync: false
-      - key: MAIL_SMTP_SSL_TRUST
+      - key: R2_SECRET_ACCESS_KEY
         sync: false
-      - key: MAIL_SMTP_CONNECTION_TIMEOUT
+      - key: R2_BUCKET
+        value: dasigconnect-media
+      - key: R2_PUBLIC_BASE_URL
         sync: false
-      - key: MAIL_SMTP_TIMEOUT
-        sync: false
-      - key: MAIL_SMTP_WRITE_TIMEOUT
-        sync: false
-      - key: MAIL_SMTP_DEBUG
-        sync: false
-      - key: MAIL_SMTP_DEBUG_AUTH
-        sync: false
-      # App
-      - key: APP_FRONTEND_BASE_URL
-        value: https://dasigconnect.vercel.app
-      - key: APP_GUARDRAILS_ENFORCED
-        value: "true"

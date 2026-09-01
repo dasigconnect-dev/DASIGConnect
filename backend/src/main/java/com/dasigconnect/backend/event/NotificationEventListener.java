@@ -63,18 +63,15 @@ public class NotificationEventListener {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onSubmissionPending(SubmissionPendingEvent event) {
         Submission s = event.submission();
-        String contributorEmail = s.getContributor() != null ? s.getContributor().getEmail() : "A contributor";
-        String scheduledPart = s.getScheduledAt() != null ? " — scheduled for " + fmt(s.getScheduledAt()) : "";
-        String msg = contributorEmail + " submitted '" + s.getEventTitle() + "' for approval" + scheduledPart + ".";
+        String scheduledPart = s.getScheduledAt() != null ? " (scheduled for " + fmt(s.getScheduledAt()) + ")" : "";
+        String msg = who(s.getContributor()) + " submitted '" + s.getEventTitle() + "' for review" + scheduledPart + ".";
         String link = "/submissions/" + s.getId();
 
-        List<User> admins = allModerators();
-        for (User admin : admins) {
-            notificationService.createNotification(admin, NotificationEventType.submission_pending, msg, link);
-            // Messenger delivery (A4 / A5)
-            String messengerMsg = "New submission awaiting validation: \"" + s.getEventTitle()
+        for (User moderator : allModerators()) {
+            notificationService.createNotification(moderator, NotificationEventType.submission_pending, msg, link);
+            String messengerMsg = "New submission to review: \"" + s.getEventTitle()
                     + "\". Open DASIGConnect: " + frontendBaseUrl + link;
-            messengerDeliveryService.sendToUser(admin.getId(), messengerMsg);
+            messengerDeliveryService.sendToUser(moderator.getId(), messengerMsg);
         }
     }
 
@@ -86,10 +83,9 @@ public class NotificationEventListener {
         User contributor = s.getContributor();
         String slot = s.getScheduledAt() != null ? fmt(s.getScheduledAt()) : "TBD";
         String link = "/submissions/" + s.getId();
-        String msg = "Your submission '" + s.getEventTitle()
-                + "' was approved and is scheduled for " + slot + ".";
+        String msg = "'" + s.getEventTitle() + "' was approved and is scheduled for " + slot + ".";
         if (event.edited()) {
-            msg += " The Moderator made changes before publishing — view the diff at " + link + ".";
+            msg += " A moderator edited it before scheduling — open it to see what changed.";
         }
 
         notificationService.createNotification(contributor, NotificationEventType.submission_approved, msg, link);
@@ -105,11 +101,11 @@ public class NotificationEventListener {
     public void onSubmissionRejected(SubmissionRejectedEvent event) {
         Submission s = event.submission();
         User contributor = s.getContributor();
-        String msg = "'" + s.getEventTitle() + "' was rejected. See reason for details.";
+        String msg = "'" + s.getEventTitle() + "' was not approved. Open it to see the moderator's reason.";
         String link = "/submissions/" + s.getId();
 
         notificationService.createNotification(contributor, NotificationEventType.submission_rejected, msg, link);
-        String emailBody = msg + "\n\nRejection reason:\n" + event.reason()
+        String emailBody = msg + "\n\nReason:\n" + event.reason()
                 + "\n\nView submission: " + frontendBaseUrl + link;
         emailDeliveryService.send(contributor,
                 NotificationEventType.submission_rejected.name(),
@@ -123,12 +119,12 @@ public class NotificationEventListener {
     public void onRevisionRequested(RevisionRequestedEvent event) {
         Submission s = event.submission();
         User contributor = s.getContributor();
-        String msg = "Revision requested for '" + s.getEventTitle()
-                + ".' Review the Moderator's remarks.";
+        String msg = "'" + s.getEventTitle()
+                + "' needs changes before it can be approved. Open it to see the moderator's notes.";
         String link = "/submissions/" + s.getId();
 
         notificationService.createNotification(contributor, NotificationEventType.submission_needs_revision, msg, link);
-        String emailBody = msg + "\n\nModerator remarks:\n" + event.remarks()
+        String emailBody = msg + "\n\nModerator notes:\n" + event.remarks()
                 + "\n\nView submission: " + frontendBaseUrl + link;
         emailDeliveryService.send(contributor,
                 NotificationEventType.submission_needs_revision.name(),
@@ -141,8 +137,7 @@ public class NotificationEventListener {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onPostPublished(PostPublishedEvent event) {
         Submission s = event.submission();
-        String msg = "Your post '" + s.getEventTitle()
-                + "' was successfully published to the DASIG Facebook Page. View live post →";
+        String msg = "'" + s.getEventTitle() + "' is now live on the DASIG Facebook Page.";
         String link = event.platformPostUrl() != null ? event.platformPostUrl() : "/submissions/" + s.getId();
         notificationService.createNotification(s.getContributor(), NotificationEventType.submission_published, msg, link);
     }
@@ -154,15 +149,15 @@ public class NotificationEventListener {
         Submission s = event.submission();
         String postLink = event.platformPostUrl() != null ? event.platformPostUrl() : "/submissions/" + s.getId();
 
-        String contributorMsg = "Your post '" + s.getEventTitle()
-                + "' was manually published to the DASIG Facebook Page by the Moderator. View live post →";
+        String contributorMsg = "'" + s.getEventTitle()
+                + "' was published to the DASIG Facebook Page manually by a moderator.";
         notificationService.createNotification(
                 s.getContributor(), NotificationEventType.submission_published_manual, contributorMsg, postLink);
 
-        String adminMsg = "'" + s.getEventTitle() + "' from "
-                + s.getInstitution().getName() + " was manually published by the Moderator.";
-        for (User admin : allModerators()) {
-            notificationService.createNotification(admin, NotificationEventType.submission_published_manual, adminMsg, postLink);
+        String moderatorMsg = "'" + s.getEventTitle() + "' from "
+                + s.getInstitution().getName() + " was published manually.";
+        for (User moderator : allModerators()) {
+            notificationService.createNotification(moderator, NotificationEventType.submission_published_manual, moderatorMsg, postLink);
         }
     }
 
@@ -175,11 +170,11 @@ public class NotificationEventListener {
         String link = "/submissions/" + s.getId();
 
         String adminMsg = "Automated publishing failed for '" + s.getEventTitle()
-                + "' (scheduled " + slot + "). Error: " + event.errorDetail()
-                + ". Manual action required.";
+                + "' (scheduled " + slot + "): " + event.errorDetail()
+                + ". Recover it from the Review Queue's Failed tab.";
 
-        // Notify super admins and moderators (both network-wide roles)
-        List<User> targetAdmins = new java.util.ArrayList<>(superAdmins());
+        // Notify every network admin and moderator (both are network-wide roles)
+        List<User> targetAdmins = new java.util.ArrayList<>(admins());
         for (User ia : allModerators()) {
             if (!targetAdmins.contains(ia)) {
                 targetAdmins.add(ia);
@@ -191,15 +186,15 @@ public class NotificationEventListener {
             emailDeliveryService.send(admin,
                     NotificationEventType.submission_publish_failed.name(),
                     "DASIGConnect — Publishing failed",
-                    adminMsg + "\n\nResolution Center: " + frontendBaseUrl + "/admin/resolution");
+                    adminMsg + "\n\nRecover it here: " + frontendBaseUrl + "/validation/queue?tab=failed");
             // Messenger alert (A4 / A5)
-            String messengerAlert = "URGENT: Automated publishing failed for \"" + s.getEventTitle()
+            String messengerAlert = "Urgent: automated publishing failed for \"" + s.getEventTitle()
                     + "\". Manual action required: " + frontendBaseUrl + link;
             messengerDeliveryService.sendToUser(admin.getId(), messengerAlert);
         }
 
-        String contributorMsg = "Your post '" + s.getEventTitle()
-                + "' could not be published automatically. The Moderator has been notified.";
+        String contributorMsg = "'" + s.getEventTitle()
+                + "' could not be published automatically. A moderator has been notified and will follow up.";
         notificationService.createNotification(
                 s.getContributor(), NotificationEventType.submission_publish_failed, contributorMsg, link);
     }
@@ -215,7 +210,7 @@ public class NotificationEventListener {
         String adminMsg = "'" + s.getEventTitle() + "' missed its scheduled publication time ("
                 + slot + ") without review. Its slot has been released — assign a new schedule to"
                 + " send it back to the approval queue.";
-        for (User admin : superAdmins()) {
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.submission_missed_review, adminMsg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.submission_missed_review.name(),
@@ -223,8 +218,8 @@ public class NotificationEventListener {
                     adminMsg);
         }
 
-        String contributorMsg = "Your submission '" + s.getEventTitle()
-                + "' missed its scheduled slot before it could be reviewed. An Moderator will"
+        String contributorMsg = "'" + s.getEventTitle()
+                + "' missed its scheduled slot before it was reviewed. A moderator will"
                 + " reschedule it for a fresh review.";
         notificationService.createNotification(
                 s.getContributor(), NotificationEventType.submission_missed_review, contributorMsg, link);
@@ -236,9 +231,9 @@ public class NotificationEventListener {
     public void onEmptySchedule(EmptyScheduleEvent event) {
         String instName = event.institution().getName();
         StringBuilder sb = new StringBuilder();
-        sb.append("Upcoming schedule for ").append(instName).append(" is currently empty (0 posts scheduled).");
+        sb.append(instName).append(" has no posts scheduled for the week ahead.");
         if (event.suggestions() != null && !event.suggestions().isEmpty()) {
-            sb.append("\n\nContent suggestions:");
+            sb.append("\n\nIdeas:");
             for (String suggestion : event.suggestions()) {
                 sb.append("\n• ").append(suggestion);
             }
@@ -246,11 +241,16 @@ public class NotificationEventListener {
         String msg = sb.toString();
         String link = "/scheduler/calendar";
 
-        // In-app to institution admins
-        for (User admin : allModerators()) {
+        // A week-long content gap for a member HEI is a review + network
+        // planning concern — notify every moderator, every admin, and that
+        // institution's own contributors. Roles are mutually exclusive, so the
+        // three lists never overlap.
+        for (User moderator : allModerators()) {
+            notificationService.createNotification(moderator, NotificationEventType.empty_schedule_warning, msg, link);
+        }
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.empty_schedule_warning, msg, link);
         }
-        // In-app to institution contributors
         for (User contributor : institutionContributors(event.institution().getId())) {
             notificationService.createNotification(contributor, NotificationEventType.empty_schedule_warning, msg, link);
         }
@@ -260,10 +260,10 @@ public class NotificationEventListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onTokenExpiryWarning(TokenExpiryWarningEvent event) {
-        String msg = "The Facebook Page Access Token will expire in " + event.daysUntilExpiry()
-                + " days. Re-authenticate the Facebook integration before it expires to avoid publishing interruptions.";
-        String link = "/admin/resolution";
-        for (User admin : superAdmins()) {
+        String msg = "The Facebook page access token expires in " + days(event.daysUntilExpiry())
+                + ". Re-authenticate it under System Health -> Integrations to avoid a publishing outage.";
+        String link = "/admin/system-health#integrations";
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.token_expiring, msg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.token_expiring.name(),
@@ -276,16 +276,15 @@ public class NotificationEventListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onTokenValidationFailed(TokenValidationFailedEvent event) {
-        String msg = "CRITICAL: The Facebook Page Access Token failed validation. "
-                + "Automated publishing is suspended until the token is reauthorized. "
-                + "Re-authenticate immediately in the Resolution Center.";
-        String link = "/admin/resolution";
-        for (User admin : superAdmins()) {
+        String msg = "The Facebook page access token failed validation. "
+                + "Automated publishing is paused until you re-authenticate it under System Health -> Integrations.";
+        String link = "/admin/system-health#integrations";
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.token_invalid, msg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.token_invalid.name(),
                     "DASIGConnect — CRITICAL: Token validation failed",
-                    msg + "\n\nResolution Center: " + frontendBaseUrl + link);
+                    msg + "\n\nManage the token: " + frontendBaseUrl + link);
         }
     }
 
@@ -297,27 +296,27 @@ public class NotificationEventListener {
         String link = "/submissions/" + s.getId();
         String msg = switch (event.stage()) {
             case FIRST_ALERT ->
-                "Automated publishing for '" + s.getEventTitle()
-                + "' is suspended because the Facebook Page Access Token expired. "
-                + "The post remains scheduled while the token is reauthorized.";
+                "Publishing for '" + s.getEventTitle()
+                + "' is on hold — the Facebook page access token has expired. "
+                + "The post stays scheduled until the token is re-authenticated.";
             case ESCALATION_24H ->
-                "Escalation: '" + s.getEventTitle()
-                + "' has been blocked by an expired Facebook Page Access Token for 24 hours. "
-                + "Reauthorize the token to resume automated publishing.";
+                "'" + s.getEventTitle()
+                + "' has been blocked by an expired Facebook page access token for 24 hours. "
+                + "Re-authenticate the token to resume automated publishing.";
             case FINAL_FAILURE ->
-                "Final alert: '" + s.getEventTitle()
-                + "' has been blocked by an expired Facebook Page Access Token for 48 hours. "
-                + "The submission was moved to Publish Failed for manual recovery.";
+                "'" + s.getEventTitle()
+                + "' has been blocked by an expired Facebook page access token for 48 hours "
+                + "and was moved to Publish Failed for manual recovery.";
         };
         if (event.detail() != null && !event.detail().isBlank()) {
             msg = msg + " Detail: " + event.detail();
         }
-        for (User admin : superAdmins()) {
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.token_invalid, msg, link);
             emailDeliveryService.send(admin,
                     NotificationEventType.token_invalid.name(),
                     "DASIGConnect - Facebook token publishing alert",
-                    msg + "\n\nResolution Center: " + frontendBaseUrl + link);
+                    msg + "\n\nView submission: " + frontendBaseUrl + link);
         }
     }
 
@@ -326,7 +325,7 @@ public class NotificationEventListener {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onSubmissionRescheduled(SubmissionRescheduledEvent event) {
         Submission s = event.submission();
-        String msg = "The Moderator rescheduled your post '" + s.getEventTitle()
+        String msg = "A moderator moved '" + s.getEventTitle()
                 + "' from " + fmt(event.originalSlot()) + " to " + fmt(event.newSlot()) + ".";
         String link = "/submissions/" + s.getId();
         notificationService.createNotification(s.getContributor(), NotificationEventType.submission_rescheduled, msg, link);
@@ -337,22 +336,19 @@ public class NotificationEventListener {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onFastTrackSubmission(FastTrackSubmissionEvent event) {
         Submission s = event.submission();
-        String contributorEmail = s.getContributor() != null ? s.getContributor().getEmail() : "A contributor";
-        String msg = "URGENT Fast-Track live event submission: " + contributorEmail + " submitted '"
-                + s.getEventTitle() + "' for immediate approval.";
+        String msg = "Fast-track: " + who(s.getContributor()) + " submitted '"
+                + s.getEventTitle() + "' for a live event and it needs immediate review.";
         String link = "/submissions/" + s.getId();
 
-        List<User> admins = allModerators();
-        for (User admin : admins) {
-            notificationService.createNotification(admin, NotificationEventType.fast_track_submission, msg, link);
-            emailDeliveryService.send(admin,
+        for (User moderator : allModerators()) {
+            notificationService.createNotification(moderator, NotificationEventType.fast_track_submission, msg, link);
+            emailDeliveryService.send(moderator,
                     NotificationEventType.fast_track_submission.name(),
-                    "URGENT: Fast-Track submission needs approval",
+                    "Urgent: fast-track submission needs review",
                     msg + "\n\nOpen DASIGConnect: " + frontendBaseUrl + link);
-            // Messenger alert (A4 / A5)
-            String messengerMsg = "URGENT Fast-Track submission: \"" + s.getEventTitle()
+            String messengerMsg = "Urgent fast-track submission: \"" + s.getEventTitle()
                     + "\". Open DASIGConnect: " + frontendBaseUrl + link;
-            messengerDeliveryService.sendToUser(admin.getId(), messengerMsg);
+            messengerDeliveryService.sendToUser(moderator.getId(), messengerMsg);
         }
     }
 
@@ -361,94 +357,31 @@ public class NotificationEventListener {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onEmbeddingFailureDigest(EmbeddingFailureDigestEvent event) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Weekly AI Embedding Digest: ").append(event.failedCount())
-                .append(" media asset(s) failed embedding generation.");
+        sb.append("Weekly AI digest: ").append(event.failedCount())
+                .append(" media asset(s) failed to generate a search embedding.");
         if (event.sampleFilenames() != null && !event.sampleFilenames().isEmpty()) {
             sb.append(" Affected files: ").append(String.join(", ", event.sampleFilenames()));
         }
         String msg = sb.toString();
         String link = "/media-repository";
 
-        for (User admin : superAdmins()) {
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.embedding_failure_digest, msg, link);
         }
     }
 
-    // ── Additional Operational Events ─────────────────────────────────────────
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onOverrideApproved(OverrideApprovedEvent event) {
-        Submission s = event.submission();
-        String link = "/submissions/" + s.getId();
-
-        String contributorMsg = "Your guard rail override request for '" + s.getEventTitle()
-                + "' was approved. You may proceed with your selected slot.";
-        notificationService.createNotification(event.contributor(), NotificationEventType.override_approved, contributorMsg, link);
-
-        String adminMsg = "Moderator approved a guard rail override for '"
-                + event.contributor().getEmail() + "' — '" + s.getEventTitle() + "'.";
-        for (User admin : allModerators()) {
-            notificationService.createNotification(admin, NotificationEventType.override_approved, adminMsg, link);
-        }
-    }
-
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onOverrideDenied(OverrideDeniedEvent event) {
-        Submission s = event.submission();
-        String link = "/submissions/" + s.getId();
-        String msg = "Your guard rail override request for '" + s.getEventTitle() + "' was not approved.";
-
-        notificationService.createNotification(event.contributor(), NotificationEventType.override_denied, msg, link);
-        String emailBody = msg + (event.reason() != null ? "\n\nModerator reason: " + event.reason() : "")
-                + "\n\nView submission: " + frontendBaseUrl + link;
-        emailDeliveryService.send(event.contributor(),
-                NotificationEventType.override_denied.name(),
-                "DASIGConnect — Override request denied",
-                emailBody);
-    }
-
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onOverrideSlotSuggested(OverrideSlotSuggestedEvent event) {
-        Submission s = event.submission();
-        String link = "/submissions/" + s.getId();
-        String msg = "The Moderator reviewed your override request for '" + s.getEventTitle()
-                + "' and suggests " + fmt(event.suggestedSlot())
-                + " as an alternative slot. You may accept this slot, choose a different compliant slot,"
-                + " or submit a new override request.";
-
-        notificationService.createNotification(event.contributor(), NotificationEventType.override_slot_suggested, msg, link);
-        emailDeliveryService.send(event.contributor(),
-                NotificationEventType.override_slot_suggested.name(),
-                "DASIGConnect — Alternative slot suggested",
-                msg + "\n\nView submission: " + frontendBaseUrl + link);
-    }
-
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onAdminDirectPost(AdminDirectPostEvent event) {
-        String msg = "The Moderator posted directly to the DASIG Facebook Page on behalf of "
-                + event.institution().getName() + ": '"
-                + truncate(event.postTitle(), 80) + ".' View post →";
-        String link = event.postUrl() != null ? event.postUrl() : "/";
-        for (User admin : allModerators()) {
-            notificationService.createNotification(admin, NotificationEventType.admin_direct_post, msg, link);
-        }
-    }
-
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onInstitutionNoValidator(InstitutionNoValidatorEvent event) {
+    public void onInstitutionNoModerator(InstitutionNoModeratorEvent event) {
         String name = event.institution().getName();
-        String msg = name + " has no active Moderators. All pending submissions from this institution "
-                + "are being escalated until an Moderator is provisioned.";
+        String msg = name + " has no active moderator. Its pending submissions are being escalated "
+                + "until one is assigned.";
         String link = "/admin/institution-management";
-        for (User admin : superAdmins()) {
-            notificationService.createNotification(admin, NotificationEventType.institution_no_validator, msg, link);
+        for (User admin : admins()) {
+            notificationService.createNotification(admin, NotificationEventType.institution_no_moderator, msg, link);
             emailDeliveryService.send(admin,
-                    NotificationEventType.institution_no_validator.name(),
-                    "DASIGConnect — No active Moderator at " + name,
+                    NotificationEventType.institution_no_moderator.name(),
+                    "DASIGConnect — No active moderator at " + name,
                     msg + "\n\nManage institutions: " + frontendBaseUrl + link);
         }
     }
@@ -457,10 +390,9 @@ public class NotificationEventListener {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onInstitutionOnboarded(InstitutionOnboardedEvent event) {
         String name = event.institution().getName();
-        String msg = name + " has completed onboarding. "
-                + "The Moderator account is now active and the workspace is ready.";
+        String msg = name + " finished onboarding — its moderator account is active and the workspace is ready.";
         String link = "/admin/institution-management";
-        for (User admin : superAdmins()) {
+        for (User admin : admins()) {
             notificationService.createNotification(admin, NotificationEventType.institution_onboarded, msg, link);
         }
     }
@@ -474,7 +406,7 @@ public class NotificationEventListener {
             return;
         }
         String msg = "Your account role changed from " + roleLabel(event.fromRole())
-                + " to " + roleLabel(event.toRole()) + ". Sign in again to continue.";
+                + " to " + roleLabel(event.toRole()) + ". Please sign in again.";
         notificationService.createNotification(user, NotificationEventType.user_role_changed, msg, "/dashboard");
     }
 
@@ -502,7 +434,8 @@ public class NotificationEventListener {
         return userRepository.findByInstitutionIdAndRoleOrderByCreatedAtDesc(institutionId, UserRole.contributor);
     }
 
-    private List<User> superAdmins() {
+    /** Every network administrator account (the "Owner" flag doesn't affect notification fan-out). */
+    private List<User> admins() {
         return userRepository.findByRole(UserRole.admin);
     }
 
@@ -513,10 +446,20 @@ public class NotificationEventListener {
         return ZonedDateTime.ofInstant(instant, ZoneOffset.UTC).format(SLOT_FMT);
     }
 
-    private static String truncate(String text, int maxLen) {
-        if (text == null) {
-            return "";
+    /** A human label for a contributor — full name if set, otherwise the email. */
+    private static String who(User contributor) {
+        if (contributor == null) {
+            return "A contributor";
         }
-        return text.length() <= maxLen ? text : text.substring(0, maxLen);
+        String first = contributor.getFirstName();
+        String last = contributor.getLastName();
+        if (first != null && !first.isBlank()) {
+            return last != null && !last.isBlank() ? (first + " " + last).trim() : first.trim();
+        }
+        return contributor.getEmail() != null ? contributor.getEmail() : "A contributor";
+    }
+
+    private static String days(int n) {
+        return n == 1 ? "1 day" : n + " days";
     }
 }

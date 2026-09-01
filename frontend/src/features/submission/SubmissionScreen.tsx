@@ -36,6 +36,7 @@ import type { User } from "../../types/auth.types";
 import type { SubmissionMediaItem } from "../../types/media";
 import type { CaptionTone } from "../../api/aiApi";
 import { useToast } from "../../context/ToastContext";
+import { registerAppCacheReset } from "../../lib/appCache";
 import MediaAssetsPicker from "../../components/media/MediaAssetsPicker";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
@@ -70,9 +71,6 @@ import {
   isConflictError,
   isDefaultInstitution,
   isDirtyDraft,
-  isDraftStatus,
-  isPublishedStatus,
-  isPublishFailedStatus,
   matchesQueueSearch,
   mediaCaptionsFromSavedAssets,
   mediaSkipWatermarkFromSavedAssets,
@@ -81,6 +79,8 @@ import {
   pickerMediaKey,
   pruneMediaCaptions,
   pruneMediaFlags,
+  queueBucket,
+  type QueueBucket,
   removeHashtag,
   resolveSavedMediaCaptions,
   resolveSavedMediaOrder,
@@ -146,6 +146,17 @@ function apiTemplateToComposerTemplate(template: ApiPostTemplate): ComposerTempl
   };
 }
 
+// Composer reference data that rarely changes within a session. The effects
+// below serve these from the module cache while it's younger than the TTL, so
+// re-entering the composer doesn't re-hit the DB every time. Cleared on logout.
+const COMPOSER_REF_TTL_MS = 2 * 60_000;
+let cachedTemplates: { data: ComposerTemplate[]; at: number } | null = null;
+const cachedAlbumsByInstitution = new Map<string, { data: string[]; at: number }>();
+registerAppCacheReset(() => {
+  cachedTemplates = null;
+  cachedAlbumsByInstitution.clear();
+});
+
 export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -175,7 +186,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const browserBackGuardRef = useRef(false);
   const [filter, setFilter] = useState<QueueFilter>(() => {
     const tab = new URLSearchParams(window.location.search).get("tab");
-    const valid: QueueFilter[] = ["drafts", "submitted", "published", "failed", "all"];
+    const valid: QueueFilter[] = ["drafts", "action-needed", "submitted", "published", "failed", "all"];
     if (tab && (valid as string[]).includes(tab)) return tab as QueueFilter;
     return "all";
   });
@@ -206,6 +217,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [withdrawing, setWithdrawing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [hydratingId, setHydratingId] = useState<string | null>(null);
+  // Reviewer feedback for the currently-loaded submission (rejected / needs_revision).
+  const [loadedDetail, setLoadedDetail] = useState<
+    { id: string; rejectionReason?: string | null; validatorRemarks?: string | null } | null
+  >(null);
   const [refreshingQueue, setRefreshingQueue] = useState(false);
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
@@ -237,36 +252,25 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   );
 
   const queued = useMemo(() => {
-    const byFilter = (() => {
-      if (filter === "drafts") return submissions.filter((item) => isDraftStatus(item.status));
-      if (filter === "submitted")
-        return submissions.filter((item) => !isDraftStatus(item.status) && !isPublishedStatus(item.status) && !isPublishFailedStatus(item.status));
-      if (filter === "published") return submissions.filter((item) => isPublishedStatus(item.status));
-      if (filter === "failed") return submissions.filter((item) => isPublishFailedStatus(item.status));
-      return submissions;
-    })();
-    return byFilter.filter((item) => matchesQueueSearch(item, queueSearch));
+    const base =
+      filter === "all"
+        ? submissions
+        : submissions.filter((item) => queueBucket(item.status) === filter);
+    return base.filter((item) => matchesQueueSearch(item, queueSearch));
   }, [filter, queueSearch, submissions]);
 
-  const draftCount = useMemo(
-    () => submissions.filter((item) => isDraftStatus(item.status)).length,
-    [submissions],
-  );
-
-  const submittedCount = useMemo(
-    () => submissions.filter((item) => !isDraftStatus(item.status) && !isPublishedStatus(item.status) && !isPublishFailedStatus(item.status)).length,
-    [submissions],
-  );
-
-  const publishedCount = useMemo(
-    () => submissions.filter((item) => isPublishedStatus(item.status)).length,
-    [submissions],
-  );
-
-  const failedCount = useMemo(
-    () => submissions.filter((item) => isPublishFailedStatus(item.status)).length,
-    [submissions],
-  );
+  // One pass over the list for every tab count.
+  const counts = useMemo(() => {
+    const acc: Record<QueueBucket, number> = {
+      drafts: 0,
+      "action-needed": 0,
+      submitted: 0,
+      published: 0,
+      failed: 0,
+    };
+    for (const item of submissions) acc[queueBucket(item.status)] += 1;
+    return acc;
+  }, [submissions]);
 
   const scheduledAt = useMemo(() => {
     if (form.fastTrack) return undefined;
@@ -355,11 +359,18 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }, [isAdminComposer]);
 
   useEffect(() => {
+    if (cachedTemplates && Date.now() - cachedTemplates.at < COMPOSER_REF_TTL_MS) {
+      setCustomTemplates(cachedTemplates.data);
+      setTemplatesLoading(false);
+      return;
+    }
     const controller = new AbortController();
     setTemplatesLoading(true);
     listPostTemplates(controller.signal)
       .then((response) => {
-        setCustomTemplates((response.data ?? []).map(apiTemplateToComposerTemplate));
+        const mapped = (response.data ?? []).map(apiTemplateToComposerTemplate);
+        cachedTemplates = { data: mapped, at: Date.now() };
+        setCustomTemplates(mapped);
       })
       .catch((err: unknown) => {
         if ((err as { name?: string })?.name === "CanceledError") return;
@@ -375,10 +386,18 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       return;
     }
 
+    const cached = cachedAlbumsByInstitution.get(selectedInstitutionId);
+    if (cached && Date.now() - cached.at < COMPOSER_REF_TTL_MS) {
+      setExistingAlbums(cached.data);
+      return;
+    }
+
     const controller = new AbortController();
     listMediaAlbums(selectedInstitutionId, controller.signal)
       .then((response) => {
-        setExistingAlbums((response.data ?? []).map((album) => album.name));
+        const names = (response.data ?? []).map((album) => album.name);
+        cachedAlbumsByInstitution.set(selectedInstitutionId, { data: names, at: Date.now() });
+        setExistingAlbums(names);
       })
       .catch((err: unknown) => {
         if ((err as { name?: string })?.name === "CanceledError") return;
@@ -556,7 +575,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       }
 
       setGuardRailsLoading(true);
-      validateGuardRails(scheduledAt, selectedInstitutionId || undefined)
+      validateGuardRails(scheduledAt, selectedInstitutionId || undefined, form.id || undefined)
         .then((response) => {
           setGuardRails(response.data);
           setGuardRailError("");
@@ -569,7 +588,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }, scheduledAt ? 350 : 0);
 
     return () => window.clearTimeout(timer);
-  }, [isAdminComposer, scheduledAt, selectedInstitutionId]);
+    // form.id is included so validation re-runs once the first save assigns an
+    // id — otherwise the check would flag the user's own new reservation.
+  }, [isAdminComposer, scheduledAt, selectedInstitutionId, form.id]);
 
   useEffect(() => {
     if (activeStep !== "schedule" || form.fastTrack || isReadOnlySubmission
@@ -702,8 +723,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     routedSubmissionRef.current = submissionId;
     const existing = submissions.find((s) => s.id === submissionId);
     const initialStatus = existing?.status ?? "pending";
-    const editableDraft = initialStatus === "draft" || initialStatus === "needs_revision";
-    setFilter(editableDraft ? "drafts" : "submitted");
+    setFilter(queueBucket(initialStatus));
     setCenterMode("edit");
     if (existing) {
       setForm((current) => ({
@@ -960,7 +980,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         institutionId: selectedInstitutionId || null,
       });
       const template = apiTemplateToComposerTemplate(response.data);
-      setCustomTemplates((current) => [template, ...current]);
+      setCustomTemplates((current) => {
+        const next = [template, ...current];
+        cachedTemplates = { data: next, at: Date.now() };
+        return next;
+      });
       setForm((current) => ({ ...current, selectedTemplateId: template.id }));
       setTemplateSaveOpen(false);
       toast.success("Template saved.");
@@ -981,7 +1005,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setDeletingTemplate(true);
     try {
       await deletePostTemplate(templateDeleteId);
-      setCustomTemplates((current) => current.filter((template) => template.id !== templateDeleteId));
+      setCustomTemplates((current) => {
+        const next = current.filter((template) => template.id !== templateDeleteId);
+        cachedTemplates = { data: next, at: Date.now() };
+        return next;
+      });
       setForm((current) =>
         current.selectedTemplateId === templateDeleteId
           ? { ...current, selectedTemplateId: null }
@@ -1172,13 +1200,18 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         removedAssetIds: [],
       };
       setForm(nextForm);
+      setLoadedDetail({
+        id: submission.id,
+        rejectionReason: submission.rejectionReason,
+        validatorRemarks: submission.validatorRemarks,
+      });
       setPickerItems((submission.mediaAssets ?? []).map(savedAssetToPickerItem));
       setCaptionMediaKey(null);
       setHashtagInput("");
       setMediaTagInput("");
       setActiveMediaIndex(0);
       const editableDraft = submission.status === "draft" || submission.status === "needs_revision";
-      setFilter(editableDraft ? "drafts" : "submitted");
+      setFilter(queueBucket(submission.status));
       setActiveStep(editableDraft ? "media" : "details");
       setCenterMode("edit");
       setSaveState("saved");
@@ -1377,6 +1410,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             "Media upload failed. Your draft was preserved; use Save Draft or Submit to retry. " +
               getErrorMessage(uploadErr, "Check your connection and try again."),
           );
+          // The draft (and any files that uploaded before the failure — real
+          // STAGED rows) exist server-side. Re-read rather than guess from
+          // draftResponse, which predates those uploads.
+          void refresh();
           setMediaUploadFailed(true);
           setActiveStep("media");
           return;
@@ -1723,7 +1760,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   aria-pressed={filter === "drafts"}
                 >
                   Drafts
-                  <span className="sub-status-tab-count">{loading ? "-" : draftCount}</span>
+                  <span className="sub-status-tab-count">{loading ? "-" : counts.drafts}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`sub-status-tab${filter === "action-needed" ? " is-active" : ""}${!loading && counts["action-needed"] > 0 ? " has-alert" : ""}`}
+                  onClick={() => setFilter("action-needed")}
+                  aria-pressed={filter === "action-needed"}
+                >
+                  Action Needed
+                  <span className="sub-status-tab-count">{loading ? "-" : counts["action-needed"]}</span>
                 </button>
                 <button
                   type="button"
@@ -1732,7 +1778,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   aria-pressed={filter === "submitted"}
                 >
                   Submitted
-                  <span className="sub-status-tab-count">{loading ? "-" : submittedCount}</span>
+                  <span className="sub-status-tab-count">{loading ? "-" : counts.submitted}</span>
                 </button>
                 <button
                   type="button"
@@ -1741,7 +1787,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   aria-pressed={filter === "published"}
                 >
                   Published
-                  <span className="sub-status-tab-count">{loading ? "-" : publishedCount}</span>
+                  <span className="sub-status-tab-count">{loading ? "-" : counts.published}</span>
                 </button>
                 <button
                   type="button"
@@ -1750,7 +1796,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   aria-pressed={filter === "failed"}
                 >
                   Publish Failed
-                  <span className="sub-status-tab-count">{loading ? "-" : failedCount}</span>
+                  <span className="sub-status-tab-count">{loading ? "-" : counts.failed}</span>
                 </button>
               </div>
 
@@ -2191,6 +2237,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               facebookPreview={facebookPreview}
               activeMediaIndex={activeMediaIndex}
               onMediaIndexChange={setActiveMediaIndex}
+              rejectionReason={loadedDetail?.id === form.id ? loadedDetail.rejectionReason : null}
+              revisionNotes={loadedDetail?.id === form.id ? loadedDetail.validatorRemarks : null}
             />
           ) : (
             <>

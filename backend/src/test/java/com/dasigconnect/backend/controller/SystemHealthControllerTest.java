@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.model.dto.systemhealth.HealthStatus;
 import com.dasigconnect.backend.model.dto.systemhealth.SystemHealthSummaryDto;
+import com.dasigconnect.backend.service.AuditLogService;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.ManualJobRunner;
 import com.dasigconnect.backend.service.SystemHealthService;
@@ -44,15 +45,18 @@ class SystemHealthControllerTest {
     private ManualJobRunner manualJobRunner;
 
     @MockitoBean
+    private AuditLogService auditLogService;
+
+    @MockitoBean
     private JWTService jwtService;
 
     @MockitoBean
     private TenantScopeService tenantScopeService;
 
     @Test
-    void summary_withoutAdminRole_returns403() throws Exception {
+    void summary_withoutAuth_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/system-health/summary"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -76,9 +80,9 @@ class SystemHealthControllerTest {
     }
 
     @Test
-    void runJob_withoutAdminRole_returns403() throws Exception {
+    void runJob_withoutAuth_returns401() throws Exception {
         mockMvc.perform(post("/api/v1/system-health/jobs/TokenHealthCheckJob/run"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

@@ -46,9 +46,9 @@ class AuditLogControllerTest {
     private TenantScopeService tenantScopeService;
 
     @Test
-    void getAuditLogs_withoutAdminRole_returns403() throws Exception {
+    void getAuditLogs_withoutAuth_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/audit-log"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -62,7 +62,7 @@ class AuditLogControllerTest {
                 "approved",
                 AuditLogCategory.APPROVAL,
                 "Approvals & Direct Posts",
-                new AuditLogDto.ActorDto(UUID.randomUUID(), "Admin John", "admin@dasig.gov.ph", "MODERATOR", null, "DOST Region 7"),
+                new AuditLogDto.ActorDto(UUID.randomUUID(), "Admin John", "admin@dasig.gov.ph", "moderator", false, null, "DOST Region 7"),
                 new AuditLogDto.EntityRefDto(UUID.randomUUID(), AuditEntityType.SUBMISSION, "Submission", "Tech Expo 2026", true, "/submissions"),
                 new AuditLogDto.ClientInfoDto("192.168.1.1", "Mozilla/5.0"),
                 "Approved submission Tech Expo 2026",

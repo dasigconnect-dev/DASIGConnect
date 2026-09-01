@@ -28,6 +28,7 @@ class MediaAssetRetentionServiceTest {
         MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository = mock(MediaAssetEmbeddingRepository.class);
         AssetTagRepository assetTagRepository = mock(AssetTagRepository.class);
         MediaStorageService storageService = mock(MediaStorageService.class);
+        AuditLogService auditLogService = mock(AuditLogService.class);
         PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
         TransactionStatus txStatus = mock(TransactionStatus.class);
         when(txManager.getTransaction(any())).thenReturn(txStatus);
@@ -43,6 +44,7 @@ class MediaAssetRetentionServiceTest {
                 mediaAssetEmbeddingRepository,
                 assetTagRepository,
                 storageService,
+                auditLogService,
                 txManager,
                 30,
                 25);

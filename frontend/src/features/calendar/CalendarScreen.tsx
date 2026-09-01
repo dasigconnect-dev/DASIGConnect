@@ -116,6 +116,9 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
 
   async function handleRescheduleConfirm(reason: string) {
     if (!pendingReschedule) return;
+    // The reason is sent as an override reason: an admin bypasses a hard guard
+    // rail with it; for a moderator the backend rejects a blocked slot (403) and
+    // the modal surfaces that message.
     await rescheduleSubmission(
       pendingReschedule.event.id,
       pendingReschedule.newStart.toISOString(),
@@ -125,6 +128,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
     setTimeout(() => {
       document.querySelectorAll(".fc-event-mirror").forEach((el) => el.remove());
     }, 0);
+    toast.success("Post rescheduled.");
     refresh();
   }
 
@@ -583,12 +587,7 @@ const METRIC_LABELS: Record<MetricKey, string> = {
 };
 
 function visibleEventStatus(event: CalendarEvent, user: User) {
-  return visibleCalendarStatus(
-    event.status,
-    user.role,
-    event.institutionId === user.institutionId,
-    event.mine,
-  );
+  return visibleCalendarStatus(event.status, user.role, event.mine);
 }
 
 function matchesMetric(event: CalendarEvent, metric: MetricKey, user: User) {

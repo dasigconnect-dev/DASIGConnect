@@ -33,13 +33,14 @@ import com.dasigconnect.backend.service.ManualPublishingService;
 import jakarta.validation.Valid;
 
 /**
- * UC-3.4 Resolution Center — moderator-only endpoints for handling
- * PUBLISH_FAILED and (during token failure) SCHEDULED submissions.
+ * Failed-publication recovery (retry + manual-publish fallback) for
+ * PUBLISH_FAILED and (during token failure) SCHEDULED submissions. Surfaced in
+ * the Review Queue "Failed" tab, so any reviewer — moderator or admin — may use it.
  * Base path: /api/v1/resolution
  */
 @RestController
 @RequestMapping("/api/v1/resolution")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
 public class ResolutionController {
 
     private final SubmissionRepository submissionRepository;

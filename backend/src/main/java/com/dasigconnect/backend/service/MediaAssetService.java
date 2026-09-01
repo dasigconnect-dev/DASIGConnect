@@ -493,9 +493,16 @@ public class MediaAssetService {
             mediaAssetEmbeddingRepository.deleteByAssetId(asset.getId());
         }
         mediaAssetRepository.saveAll(assets);
-        for (UUID assetId : assetIds) {
-            recordAssetAudit(user, "MEDIA_ASSET_DELETED", assetId, Map.of("bulk", true));
-        }
+
+        // One summary row instead of N per-asset rows: the operation's intent (a
+        // bulk delete of `count` assets) is legible at a glance in the audit view,
+        // and the id list is retained for traceability (capped so metadata stays small).
+        List<String> auditedIds = assetIds.stream().limit(50).map(UUID::toString).toList();
+        recordAssetAudit(user, "MEDIA_BULK_DELETED", null, Map.of(
+                "count", assetIds.size(),
+                "assetIds", auditedIds,
+                "truncated", assetIds.size() > auditedIds.size(),
+                "force", dto.isForce()));
         return new MediaAssetBulkDeleteResponseDto(assetIds);
     }
 

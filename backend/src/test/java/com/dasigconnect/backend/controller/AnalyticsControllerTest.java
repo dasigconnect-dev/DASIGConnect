@@ -42,15 +42,18 @@ class AnalyticsControllerTest {
     private MetricsAggregatorService metricsAggregatorService;
 
     @MockitoBean
+    private com.dasigconnect.backend.service.AuditLogService auditLogService;
+
+    @MockitoBean
     private JWTService jwtService;
 
     @MockitoBean
     private TenantScopeService tenantScopeService;
 
     @Test
-    void summary_withoutAuth_returns403() throws Exception {
+    void summary_withoutAuth_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/analytics/summary"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

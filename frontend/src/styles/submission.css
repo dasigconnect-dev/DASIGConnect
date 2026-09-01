@@ -353,6 +353,20 @@
   background: rgba(255, 255, 255, 0.24);
   color: #fff;
 }
+.sub-status-tab.has-alert:not(.is-active) {
+  color: #b45309;
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+.sub-status-tab.has-alert:not(.is-active):hover {
+  color: #92400e;
+  border-color: #fbbf24;
+  background: #fef3c7;
+}
+.sub-status-tab.has-alert:not(.is-active) .sub-status-tab-count {
+  color: #b45309;
+  background: #fde68a;
+}
 .sub-search-wrap {
   position: relative;
   display: flex;
@@ -6014,6 +6028,31 @@ textarea.sub-finput {
   border: 1px solid var(--sub-border);
   border-radius: 14px;
   padding: 20px 22px;
+}
+
+.sub-ro-feedback.is-rejected {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+.sub-ro-feedback.is-rejected .sub-ro-card-title {
+  color: #b91c1c;
+}
+.sub-ro-feedback.is-revision {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+.sub-ro-feedback.is-revision .sub-ro-card-title {
+  color: #b45309;
+}
+:root[data-theme="dark"] .sub-ro-feedback.is-rejected,
+:root:not([data-theme="light"]) .sub-ro-feedback.is-rejected {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+:root[data-theme="dark"] .sub-ro-feedback.is-revision,
+:root:not([data-theme="light"]) .sub-ro-feedback.is-revision {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.4);
 }
 
 .sub-ro-card-title {

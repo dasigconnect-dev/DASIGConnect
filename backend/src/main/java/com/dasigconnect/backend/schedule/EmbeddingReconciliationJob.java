@@ -29,19 +29,28 @@ public class EmbeddingReconciliationJob {
     private final AssetTagRepository assetTagRepository;
     private final AIClassificationService aiClassificationService;
     private final com.dasigconnect.backend.service.ScheduledJobHealthService scheduledJobHealthService;
+    private final boolean aiConfigured;
 
     public EmbeddingReconciliationJob(MediaAssetRepository mediaAssetRepository,
                                       AssetTagRepository assetTagRepository,
                                       AIClassificationService aiClassificationService,
-                                      com.dasigconnect.backend.service.ScheduledJobHealthService scheduledJobHealthService) {
+                                      com.dasigconnect.backend.service.ScheduledJobHealthService scheduledJobHealthService,
+                                      @org.springframework.beans.factory.annotation.Value("${anthropic.api.key:}") String anthropicApiKey,
+                                      @org.springframework.beans.factory.annotation.Value("${voyage.api.key:}") String voyageApiKey) {
         this.mediaAssetRepository = mediaAssetRepository;
         this.assetTagRepository = assetTagRepository;
         this.aiClassificationService = aiClassificationService;
         this.scheduledJobHealthService = scheduledJobHealthService;
+        // No AI keys → the classify/embed calls would just fail per-asset every
+        // run. Skip the job entirely so the log stays clean and nothing is spent.
+        this.aiConfigured = !anthropicApiKey.isBlank() || !voyageApiKey.isBlank();
     }
 
     @Scheduled(fixedDelay = 300_000)
     public void reconcile() {
+        if (!aiConfigured) {
+            return;
+        }
         Instant startedAt = Instant.now();
         try {
             reconcilePendingEmbeddings();

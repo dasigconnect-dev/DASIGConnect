@@ -4,7 +4,6 @@ import com.dasigconnect.backend.schedule.AbandonmentDetectorJob;
 import com.dasigconnect.backend.schedule.EmbeddingFailureDigestJob;
 import com.dasigconnect.backend.schedule.EmbeddingReconciliationJob;
 import com.dasigconnect.backend.schedule.EmptyScheduleWarningJob;
-import com.dasigconnect.backend.schedule.ExpiredOverrideCleanupJob;
 import com.dasigconnect.backend.schedule.MediaAssetRetentionPurgeJob;
 import com.dasigconnect.backend.schedule.PublishingSchedulerJob;
 import com.dasigconnect.backend.schedule.ReviewLockCleanupJob;
@@ -42,7 +41,6 @@ public class ManualJobRunner {
             ReviewLockCleanupJob reviewLockCleanup,
             StaleSubmissionDetectorJob staleSubmissionDetector,
             AbandonmentDetectorJob abandonmentDetector,
-            ExpiredOverrideCleanupJob expiredOverrideCleanup,
             TokenPublishingEscalationJob tokenPublishingEscalation,
             ValidationDeadlineNotificationJob validationDeadlineNotification,
             EmbeddingReconciliationJob embeddingReconciliation,
@@ -57,7 +55,6 @@ public class ManualJobRunner {
         jobs.put("ReviewLockCleanupJob", reviewLockCleanup::releaseExpiredLocks);
         jobs.put("StaleSubmissionDetectorJob", staleSubmissionDetector::run);
         jobs.put("AbandonmentDetectorJob", abandonmentDetector::run);
-        jobs.put("ExpiredOverrideCleanupJob", expiredOverrideCleanup::run);
         jobs.put("TokenPublishingEscalationJob", tokenPublishingEscalation::run);
         jobs.put("ValidationDeadlineNotificationJob", validationDeadlineNotification::checkValidationDeadlines);
         jobs.put("EmbeddingReconciliationJob", embeddingReconciliation::reconcile);

@@ -25,6 +25,7 @@ public class MediaAssetRetentionService {
     private final MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     private final AssetTagRepository assetTagRepository;
     private final MediaStorageService mediaStorage;
+    private final AuditLogService auditLogService;
     private final TransactionTemplate txTemplate;
     private final int retentionDays;
     private final int batchSize;
@@ -34,6 +35,7 @@ public class MediaAssetRetentionService {
             MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
             AssetTagRepository assetTagRepository,
             MediaStorageService mediaStorage,
+            AuditLogService auditLogService,
             PlatformTransactionManager transactionManager,
             @Value("${app.media-assets.deleted-retention-days:30}") int retentionDays,
             @Value("${app.media-assets.purge-batch-size:25}") int batchSize) {
@@ -41,6 +43,7 @@ public class MediaAssetRetentionService {
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
         this.assetTagRepository = assetTagRepository;
         this.mediaStorage = mediaStorage;
+        this.auditLogService = auditLogService;
         this.txTemplate = new TransactionTemplate(transactionManager);
         this.retentionDays = Math.max(retentionDays, 1);
         this.batchSize = Math.min(Math.max(batchSize, 1), 100);
@@ -70,6 +73,9 @@ public class MediaAssetRetentionService {
                 return null;
             });
 
+            auditLogService.recordSystemAction("MEDIA_ASSET_PURGED", assetId, java.util.Map.of(
+                    "storageDeleted", storageDeleted,
+                    "retentionDays", retentionDays));
             log.info("Purged deleted media asset {} after retention. storageDeleted={}", assetId, storageDeleted);
             purged++;
         }

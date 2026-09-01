@@ -13,6 +13,8 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @Transactional
 public class PasswordService {
+
+    private static final Logger log = LoggerFactory.getLogger(PasswordService.class);
 
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
@@ -59,11 +63,22 @@ public class PasswordService {
         resetToken.setExpiresAt(Instant.now().plus(Duration.ofHours(1)));
         passwordResetTokenRepository.save(resetToken);
 
-        emailService.sendPasswordResetEmail(user.getEmail(), rawToken);
+        // A mail-server failure must not roll back the saved token or turn the
+        // response into a 5xx — that would both lose a usable link and leak
+        // (via the status code) which addresses exist. The user can retry.
+        try {
+            emailService.sendPasswordResetEmail(user.getEmail(), rawToken);
+        } catch (RuntimeException ex) {
+            log.warn("Password reset email delivery failed for user {}: {}", user.getId(), ex.getMessage());
+        }
     }
 
     public void resetPassword(ResetPasswordRequestDto dto) {
-        String tokenHash = TokenHashUtils.sha256Hex(dto.token());
+        String rawToken = dto.token() == null ? "" : dto.token().trim();
+        if (rawToken.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Reset token is required");
+        }
+        String tokenHash = TokenHashUtils.sha256Hex(rawToken);
         PasswordResetToken resetToken = passwordResetTokenRepository.findByTokenHash(tokenHash)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired token"));
 
@@ -75,6 +90,7 @@ public class PasswordService {
         }
 
         User user = resetToken.getUser();
+        PasswordPolicy.validate(dto.newPassword(), user.getEmail(), user.getFirstName(), user.getLastName());
         user.setPasswordHash(passwordEncoder.encode(dto.newPassword()));
         user.setSessionVersion(user.getSessionVersion() + 1);
         userRepository.save(user);
@@ -94,6 +110,7 @@ public class PasswordService {
         if (passwordEncoder.matches(dto.newPassword(), user.getPasswordHash())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password must be different");
         }
+        PasswordPolicy.validate(dto.newPassword(), user.getEmail(), user.getFirstName(), user.getLastName());
         user.setPasswordHash(passwordEncoder.encode(dto.newPassword()));
         userRepository.save(user);
         auditLogService.record(user, "PASSWORD_CHANGED", null, null, user.getId(), Map.of());

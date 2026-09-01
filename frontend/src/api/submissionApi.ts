@@ -53,6 +53,10 @@ export interface SubmissionSummary {
   mediaTags?: string[];
   mediaAssets?: SavedMediaAsset[];
   requiresManualPublishing?: boolean;
+  /** Reviewer's reason, present when status is "rejected". */
+  rejectionReason?: string | null;
+  /** Reviewer's notes, present when status is "needs_revision". */
+  validatorRemarks?: string | null;
 }
 
 export interface SubmissionPayload {
@@ -202,8 +206,16 @@ export function getSubmissionLookups(signal?: AbortSignal) {
   return api.get<SubmissionLookups>("/submissions/lookups", { signal });
 }
 
-export function validateGuardRails(scheduledAt: string, institutionId?: string | null) {
-  return api.post<GuardRailResult>("/guardrails/validate", { scheduledAt, institutionId });
+export function validateGuardRails(
+  scheduledAt: string,
+  institutionId?: string | null,
+  submissionId?: string | null,
+) {
+  return api.post<GuardRailResult>("/guardrails/validate", {
+    scheduledAt,
+    institutionId,
+    submissionId: submissionId || undefined,
+  });
 }
 
 export function getEngagementRecommendations(institutionId?: string | null, signal?: AbortSignal) {

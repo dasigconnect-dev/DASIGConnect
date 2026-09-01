@@ -62,6 +62,9 @@ export interface UserProfileResponse {
   avatarUpdatedAt: string | null;
   avatarUrl?: string | null;
   purgedAt?: string | null;
+  invitedByUserId?: string | null;
+  /** True when the current user may delete this row (e.g. a moderator's own cancelled invitee). */
+  removableByRequester?: boolean;
 }
 
 export function login(email: string, password: string) {
@@ -133,8 +136,6 @@ export function changePassword(currentPassword: string, newPassword: string) {
 
 export interface PageSettingsResponse {
   institutionId: string | null;
-  watermarkEnabled: boolean;
-  watermarkText: string | null;
   facebookPageId: string | null;
   updatedAt: string | null;
 }
@@ -143,7 +144,12 @@ export function getPageSettings(institutionId?: string | null) {
   return api.get<PageSettingsResponse>("/settings/page", { params: institutionId ? { institutionId } : {} });
 }
 
-export function updatePageSettings(data: Omit<PageSettingsResponse, "institutionId" | "updatedAt">, institutionId?: string | null) {
+// Page Settings is the Facebook Page ID only. Watermark on/off + layout are
+// saved via saveWatermarkConfiguration (/settings/watermark).
+export function updatePageSettings(
+  data: { facebookPageId: string | null },
+  institutionId?: string | null,
+) {
   return api.put<PageSettingsResponse>("/settings/page", data, { params: institutionId ? { institutionId } : {} });
 }
 
@@ -293,6 +299,9 @@ export interface PendingInvitationResponse {
   institutionId: string | null;
   expiresAt: string;
   createdAt: string;
+  createdByUserId: string | null;
+  /** Whether the current user may resend/cancel this invitation (admins: always; moderators: only their own). */
+  canManage: boolean;
 }
 
 export function listPendingInvitations(institutionId: string) {

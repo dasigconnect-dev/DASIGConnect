@@ -12,6 +12,9 @@ public class PageSettings {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "institution_id")
     private Institution institution;
+    // Legacy — the app no longer reads or writes these. Watermark on/off + layout
+    // live in WatermarkConfiguration (WatermarkApplicationService). Columns kept
+    // (default false / null) to avoid a migration; drop in a future cleanup.
     @Column(name = "watermark_enabled", nullable = false)
     private boolean watermarkEnabled;
     @Column(name = "watermark_text", length = 150)

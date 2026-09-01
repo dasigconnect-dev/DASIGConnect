@@ -39,10 +39,12 @@ public interface SlotReservationRepository extends JpaRepository<SlotReservation
         SELECT COUNT(*) > 0 FROM slot_reservations
         WHERE status != 'released'
         AND scheduled_at BETWEEN :windowStart AND :windowEnd
+        AND (:excludeSubmissionId IS NULL OR submission_id <> :excludeSubmissionId)
     """, nativeQuery = true)
     boolean existsActiveWithin30Minutes(
             @Param("windowStart") Instant windowStart,
-            @Param("windowEnd") Instant windowEnd
+            @Param("windowEnd") Instant windowEnd,
+            @Param("excludeSubmissionId") UUID excludeSubmissionId
     );
 
     /**
@@ -67,8 +69,12 @@ public interface SlotReservationRepository extends JpaRepository<SlotReservation
         WHERE status != 'released'
         AND scheduled_at >= :dayStart
         AND scheduled_at < :dayEnd
+        AND (:excludeSubmissionId IS NULL OR submission_id <> :excludeSubmissionId)
     """, nativeQuery = true)
-    long countActiveOnDay(@Param("dayStart") Instant dayStart, @Param("dayEnd") Instant dayEnd);
+    long countActiveOnDay(
+            @Param("dayStart") Instant dayStart,
+            @Param("dayEnd") Instant dayEnd,
+            @Param("excludeSubmissionId") UUID excludeSubmissionId);
 
     /**
      * Find the active reservation for a specific submission. Used by

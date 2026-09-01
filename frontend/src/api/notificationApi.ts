@@ -9,13 +9,6 @@ export interface NotificationDto {
   createdAt: string;
 }
 
-export interface NotificationPageDto {
-  items: NotificationDto[];
-  totalCount: number;
-  page: number;
-  pageSize: number;
-}
-
 export function listNotifications(signal?: AbortSignal) {
   return api.get<NotificationDto[]>("/notifications", { signal });
 }
@@ -30,13 +23,6 @@ export function markNotificationRead(id: string) {
 
 export function markAllNotificationsRead() {
   return api.patch<void>("/notifications/read-all");
-}
-
-export function getNotificationHistory(page = 0, pageSize = 20, signal?: AbortSignal) {
-  return api.get<NotificationPageDto>("/notifications/history", {
-    params: { page, pageSize },
-    signal,
-  });
 }
 
 export function openNotificationStream(

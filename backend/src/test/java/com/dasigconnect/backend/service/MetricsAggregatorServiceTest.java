@@ -151,6 +151,47 @@ class MetricsAggregatorServiceTest {
     }
 
     @Test
+    void summary_moderatorIsNetworkWideEngagementAndWorkflowOnly() {
+        JwtUserDetails moderator = new JwtUserDetails(UUID.randomUUID(), "mod@test.local", "moderator", null);
+        stubCoreQueries();
+
+        var summary = service.summary("30d", null, null, moderator);
+
+        assertThat(summary.adminView()).isFalse();
+        assertThat(summary.aiPerformance()).isNull();
+        assertThat(summary.operationalHealth()).isNull();
+        assertThat(summary.validatorAnalytics()).isNull();
+        assertThat(summary.contributorAnalytics()).isNull();
+        assertThat(summary.facebookEngagement()).isNotNull();
+
+        ArgumentCaptor<AnalyticsScope> scopeCaptor = ArgumentCaptor.forClass(AnalyticsScope.class);
+        org.mockito.Mockito.verify(analyticsRepository, org.mockito.Mockito.atLeastOnce())
+                .averagePostingDelay(any(Instant.class), any(Instant.class), scopeCaptor.capture());
+        assertThat(scopeCaptor.getValue().role()).isEqualTo("moderator");
+        assertThat(scopeCaptor.getValue().institutionId()).isNull();
+    }
+
+    @Test
+    void summary_moderatorCannotPassInstitutionFilter() {
+        JwtUserDetails moderator = new JwtUserDetails(UUID.randomUUID(), "mod@test.local", "moderator", null);
+
+        assertThatThrownBy(() -> service.summary("30d", UUID.randomUUID(), null, moderator))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void export_operationalHealth_rejectedForModerator() {
+        JwtUserDetails moderator = new JwtUserDetails(UUID.randomUUID(), "mod@test.local", "moderator", null);
+
+        assertThatThrownBy(() -> service.export("operational-health", "7d", null, null, moderator))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
     void export_aiPerformance_rejectedForContributor() {
         JwtUserDetails contributor = new JwtUserDetails(UUID.randomUUID(), "contributor@test.local", "contributor", UUID.randomUUID());
 

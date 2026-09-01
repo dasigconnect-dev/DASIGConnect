@@ -77,6 +77,7 @@ public class FacebookPublisherService {
     private final SubmissionRepository submissionRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final WatermarkApplicationService watermarkApplicationService;
+    private final AuditLogService auditLogService;
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -92,7 +93,8 @@ public class FacebookPublisherService {
             PublicationAttemptRepository publicationAttemptRepository,
             SubmissionRepository submissionRepository,
             ApplicationEventPublisher eventPublisher,
-            WatermarkApplicationService watermarkApplicationService) {
+            WatermarkApplicationService watermarkApplicationService,
+            AuditLogService auditLogService) {
         this.pageAccessToken = pageAccessToken;
         this.pageId = pageId;
         this.appId = appId;
@@ -104,6 +106,7 @@ public class FacebookPublisherService {
         this.submissionRepository = submissionRepository;
         this.eventPublisher = eventPublisher;
         this.watermarkApplicationService = watermarkApplicationService;
+        this.auditLogService = auditLogService;
     }
 
     public boolean isConfigured() {
@@ -395,12 +398,10 @@ public class FacebookPublisherService {
         clearTokenSuspension(s);
         submissionRepository.save(s);
         String postUrl = "https://www.facebook.com/" + postId.replace("_", "/posts/");
-        if (isDirectPost) {
-            eventPublisher.publishEvent(new com.dasigconnect.backend.event.AdminDirectPostEvent(
-                    s.getInstitution(), s.getCaption(), postUrl));
-        } else {
-            eventPublisher.publishEvent(new PostPublishedEvent(s, postUrl));
-        }
+        // `direct_post_*` is a legacy lifecycle (the admin Direct Post UI was
+        // removed); any remaining such rows still publish and are marked
+        // `admin_direct_post`, and fire the normal "published" event.
+        eventPublisher.publishEvent(new PostPublishedEvent(s, postUrl));
         log.info("Submission {} published successfully as post {} (status={}).",
                 s.getId(), postId, s.getStatus());
     }
@@ -416,6 +417,9 @@ public class FacebookPublisherService {
         }
         submissionRepository.save(s);
         eventPublisher.publishEvent(new PublishFailedEvent(s, error));
+        auditLogService.recordSystemAction("PUBLISH_FAILED", s.getId(), Map.of(
+                "status", s.getStatus().name(),
+                "error", error != null ? error : "unknown error"));
         log.error("Submission {} publishing failed (status={}): {}", s.getId(), s.getStatus(), error);
     }
 

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
 
-export type DashboardNavId = 'home' | 'submit' | 'review-queue' | 'institution-management' | 'user-management' | 'admin-management' | 'system-health' | 'audit-log' | 'scheduler' | 'resolution' | 'analytics' | 'media-repository' | 'notifications'
+export type DashboardNavId = 'home' | 'submit' | 'review-queue' | 'institution-management' | 'user-management' | 'admin-management' | 'system-health' | 'audit-log' | 'scheduler' | 'analytics' | 'media-repository' | 'notifications'
 
 interface DashboardShellProps {
   user: User
@@ -275,7 +275,7 @@ function dashboardNavItems(user: User): DashboardNavItem[] {
       icon: 'ti ti-chart-bar',
       label: 'Analytics',
       path: '/analytics',
-      visible: user.role !== 'moderator',
+      visible: true,
     },
   ]
 }
@@ -284,11 +284,11 @@ function groupDashboardNavItems(items: DashboardNavItem[]) {
   return [
     {
       label: 'Workspace',
-      items: items.filter((item) => ['home', 'submit', 'review-queue', 'media-repository', 'scheduler', 'notifications'].includes(item.id)),
+      items: items.filter((item) => ['home', 'submit', 'review-queue', 'media-repository', 'scheduler', 'notifications', 'analytics'].includes(item.id)),
     },
     {
       label: 'Operations',
-      items: items.filter((item) => ['institution-management', 'user-management', 'admin-management', 'system-health', 'audit-log', 'analytics'].includes(item.id)),
+      items: items.filter((item) => ['institution-management', 'user-management', 'admin-management', 'system-health', 'audit-log'].includes(item.id)),
     },
   ].filter((group) => group.items.length > 0)
 }
@@ -300,6 +300,8 @@ function roleChip(user: User) {
 }
 
 function getInstitutionName(user: User) {
+  // Admins and moderators are network-wide — no owning HEI workspace.
+  if (user.role === 'admin' || user.role === 'moderator') return 'DASIG Network'
   return user.inst?.trim() || 'Institution'
 }
 

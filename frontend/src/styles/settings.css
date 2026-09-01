@@ -268,6 +268,11 @@
   margin-bottom: 0;
 }
 
+.settings-forgot-pw-btn {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
 .settings-field label,
 .settings-label,
 .settings-scope-copy label {
@@ -901,123 +906,193 @@
   padding-left: 38px;
 }
 
-/* Messenger Integration Card */
-.settings-messenger-connected {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: var(--r);
-  gap: 12px;
+/* Messenger as a notification channel (row in the preferences list) */
+.settings-channel-row {
+  cursor: default;
 }
 
-.settings-messenger-badge {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.settings-channel-row:hover {
+  background: #fff;
 }
 
-.settings-messenger-status-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #16a34a;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.2);
-}
-
-.settings-messenger-badge-text strong {
-  display: block;
-  font-size: 13px;
-  color: #166534;
-}
-
-.settings-messenger-badge-text span {
-  font-size: 11px;
-  color: #15803d;
-}
-
-.settings-messenger-disconnect-btn {
-  height: 32px;
-  padding: 0 16px;
+.settings-channel-btn {
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 15px;
   font-size: 12px;
   font-weight: 600;
-  color: #dc2626;
+  color: var(--d-blue, #1877f2);
   background: #fff;
-  border: 1px solid #fca5a5;
+  border: 1px solid #bfdbfe;
   border-radius: 999px;
   cursor: pointer;
-  transition: all 0.18s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  transition: background 0.16s ease, border-color 0.16s ease;
 }
 
-.settings-messenger-disconnect-btn:hover {
+.settings-channel-btn:hover:not(:disabled) {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.settings-channel-btn.is-danger {
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+.settings-channel-btn.is-danger:hover:not(:disabled) {
   background: #fef2f2;
   border-color: #ef4444;
-  transform: translateY(-0.5px);
 }
 
-.settings-messenger-box {
+.settings-channel-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.settings-channel-panel {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding: 14px;
+  background: #f8fafc;
+  border-top: 1px solid var(--d-border);
+}
+
+.settings-messenger-linkcode {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-messenger-code-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--d-muted);
 }
 
 .settings-messenger-code-container {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
   background: #0f172a;
-  color: #38bdf8;
-  padding: 14px 18px;
-  border-radius: var(--r);
-  font-family: 'JetBrains Mono', monospace, sans-serif;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 1px;
+  border: 1px solid #1e293b;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+.settings-messenger-code-value {
+  flex: 1;
+  min-width: 0;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: #7dd3fc;
+  word-break: break-all;
+}
+
+.settings-messenger-code-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 11.5px;
+  color: var(--d-muted);
+}
+
+.settings-messenger-code-meta .is-expiring {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.settings-messenger-meta-actions {
+  display: flex;
+  gap: 14px;
+}
+
+.settings-messenger-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--d-blue, #1877f2);
+  cursor: pointer;
+}
+
+.settings-messenger-link-btn:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.settings-messenger-link-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.settings-messenger-generate-btn {
+  align-self: flex-start;
+  width: auto;
 }
 
 .settings-messenger-copy-btn {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
+  height: 30px;
   padding: 0 14px;
   font-size: 12px;
   font-weight: 600;
   background: #1e293b;
-  color: #f1f5f9;
-  border: 1px solid #334155;
+  color: #e2e8f0;
+  border: 1px solid #475569;
   border-radius: 999px;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: background 0.18s ease, color 0.18s ease;
 }
 
 .settings-messenger-copy-btn:hover {
   background: #334155;
   color: #fff;
-  transform: translateY(-0.5px);
 }
 
 .settings-messenger-steps {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   font-size: 12px;
   color: var(--d-muted);
-  line-height: 1.5;
+  line-height: 1.55;
+}
+
+.settings-messenger-steps p {
+  margin: 0;
 }
 
 .settings-messenger-steps ol {
   margin: 0;
-  padding-left: 18px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .settings-messenger-steps li {
-  margin-bottom: 4px;
+  padding-left: 2px;
+}
+
+.settings-messenger-steps code {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  background: #eef2f7;
+  color: #334155;
+  padding: 1px 6px;
+  border-radius: 5px;
 }
 
 @keyframes settings-spin {

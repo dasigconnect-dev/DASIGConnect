@@ -1,3 +1,4 @@
+import type { FormEvent } from 'react'
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
@@ -86,27 +87,35 @@ export default function ForgotScreen({
               registered in DASIGConnect.
             </div>
           </div>
-          <div className="fgroup">
-            <label className="flabel">Institutional Email</label>
-            <input
-              id="forgot-email"
-              className="finput"
-              type="email"
-              placeholder="yourname@institution.edu.ph"
-              value={email}
-              onChange={(event) => onEmailChange(event.target.value)}
-            />
-          </div>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={onSubmit}
-            disabled={loading}
-            aria-busy={loading}
+          <form
+            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+              event.preventDefault()
+              onSubmit()
+            }}
           >
-            <i className={`ti ${loading ? 'ti-loader-2 auth-btn-spinner' : 'ti-send'}`}></i>
-            {loading ? 'Sending...' : 'Send Reset Link'}
-          </button>
+            <div className="fgroup">
+              <label className="flabel" htmlFor="forgot-email">Institutional Email</label>
+              <input
+                id="forgot-email"
+                name="email"
+                className="finput"
+                type="email"
+                autoComplete="email"
+                placeholder="yourname@institution.edu.ph"
+                value={email}
+                onChange={(event) => onEmailChange(event.target.value)}
+              />
+            </div>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={loading}
+              aria-busy={loading}
+            >
+              <i className={`ti ${loading ? 'ti-loader-2 auth-btn-spinner' : 'ti-send'}`}></i>
+              {loading ? 'Sending...' : 'Send Reset Link'}
+            </button>
+          </form>
           <button type="button" className="btn-ghost" onClick={onBack}>
             Cancel
           </button>
