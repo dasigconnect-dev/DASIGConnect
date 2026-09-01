@@ -24,6 +24,7 @@ These changes are already developed on the current frontend performance branch.
 | React keys | Duplicate `Uncategorized` category keys replaced with stable composite keys | Low | Fixes React warning without changing data. |
 | Layout churn | `BrandedSelect` avoids repeated state updates when measured placement/height did not change | Low | Reduces avoidable forced layout work. |
 | Image rendering | Added `decoding="async"` and lazy loading where safe | Low | Keeps important selected preview eager while making secondary images cheaper. |
+| Duplicate route font imports | Removed repeated Google Font imports from media repository and notifications CSS | Low | Prevents duplicate route-level font CSS requests because the same families are already loaded globally with `display=swap`. |
 
 ## Priority 1 - Safe Frontend-Only Fixes
 
@@ -145,6 +146,8 @@ These are still frontend-only, but they touch larger user workflows and need car
 **Problem:** Global CSS is smaller after route splitting but still broad.
 
 **Fix:** Continue moving feature-specific selectors into route-loaded CSS, remove duplicate selectors, and keep global CSS limited to tokens, resets, layout primitives, and shared UI.
+
+**Status:** In progress. Duplicate route-level imports for globally loaded fonts have been removed from media repository and notifications styles. Remaining cleanup should focus on selector ownership, not broad rewrites.
 
 **Likely files:**
 

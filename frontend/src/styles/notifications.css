@@ -1,10 +1,8 @@
 /* ── NOTIFICATIONS PAGE — notifications.css ─────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
-
 :root {
   --notif-navy-deep:      #0A1628;
   --notif-navy-mid:       #1A3A6B;
-  --notif-blue-brand:     #2563EB;
+  --notif-blue-brand:     #0b5fcc;
   --notif-gold:           #F59E0B;
   --notif-gold-light:     #FEF3C7;
   --notif-surface-0:      #FFFFFF;
