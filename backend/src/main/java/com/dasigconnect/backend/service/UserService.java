@@ -334,14 +334,21 @@ public class UserService {
                 || auditLogRepository.existsByActorId(id);
 
         if (hasData) {
-            // Already inactive; invalidate tokens and record removal audit
-            jwtService.invalidateUserTokens(user.getId());
-            auditLogService.record(
-                    findRequesterForAudit(requester),
-                    "USER_REMOVED",
-                    null, null,
-                    user.getId(),
-                    java.util.Map.of("email", user.getEmail(), "role", user.getRole().name()));
+            // The account can't be row-deleted (RESTRICT FKs) and is already at
+            // rest, so "remove" here is a no-op that just confirms it stays as an
+            // inactive/anonymised row. Record it once — an already-erased account,
+            // or one already marked USER_REMOVED, needs no further audit noise.
+            boolean alreadyTerminal = user.getPurgedAt() != null
+                    || auditLogRepository.existsByActionAndResourceId("USER_REMOVED", id);
+            if (!alreadyTerminal) {
+                jwtService.invalidateUserTokens(user.getId());
+                auditLogService.record(
+                        findRequesterForAudit(requester),
+                        "USER_REMOVED",
+                        null, null,
+                        user.getId(),
+                        java.util.Map.of("email", user.getEmail(), "role", user.getRole().name()));
+            }
             return "deactivated";
         }
 

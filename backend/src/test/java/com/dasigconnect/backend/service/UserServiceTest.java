@@ -872,6 +872,24 @@ class UserServiceTest {
     }
 
     @Test
+    void removeUser_alreadyErasedAccount_isIdempotentAndWritesNoAudit() {
+        // "Remove Record" on an account that's already erased + inactive does
+        // nothing — no re-audit, no token churn — so repeat clicks don't spam
+        // the audit log.
+        contributor.setAccountState(UserStatus.inactive);
+        contributor.setPurgedAt(java.time.Instant.now());
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        when(submissionRepository.existsByContributorId(userId)).thenReturn(true);
+
+        String result = userService.removeUser(userId, adminPrincipal);
+
+        assertThat(result).isEqualTo("deactivated");
+        verify(auditLogService, org.mockito.Mockito.never())
+                .record(any(), org.mockito.ArgumentMatchers.eq("USER_REMOVED"), any(), any(), any(), any());
+        verify(jwtService, org.mockito.Mockito.never()).invalidateUserTokens(any());
+    }
+
+    @Test
     void updateStatus_deactivateNonActiveUser_throws400() {
         contributor.setAccountState(UserStatus.inactive);
         when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
