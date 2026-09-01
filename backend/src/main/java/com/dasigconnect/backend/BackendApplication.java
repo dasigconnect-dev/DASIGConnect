@@ -98,8 +98,9 @@ public class BackendApplication {
                 System.out.println("JDBC URL: " + metaData.getURL());
                 System.out.println("Database Product Version: " + metaData.getDatabaseProductVersion());
 
-                // Seed Default Admin
-                String adminEmail = "admin@dasigconnect.com";
+                // Seed bootstrap admin — credentials must be supplied via env, no defaults.
+                String adminEmail = System.getenv("BOOTSTRAP_ADMIN_EMAIL");
+                String adminPassword = System.getenv("BOOTSTRAP_ADMIN_PASSWORD");
 
                 System.out.println("Configuring database user and tables for clean RLS bypassing...");
                 try (java.sql.Statement stmt = conn.createStatement()) {
@@ -195,20 +196,21 @@ public class BackendApplication {
                     }
                 }
 
-                if (userRepository.findByEmail(adminEmail).isEmpty()) {
-                    System.out.println("No admin found. Seeding default admin...");
+                if (adminEmail == null || adminEmail.isBlank()
+                        || adminPassword == null || adminPassword.length() < 12) {
+                    System.out.println("Bootstrap admin skipped: set BOOTSTRAP_ADMIN_EMAIL and a 12+ char BOOTSTRAP_ADMIN_PASSWORD to seed one.");
+                } else if (userRepository.findByEmail(adminEmail).isEmpty()) {
+                    System.out.println("No admin found. Seeding bootstrap admin...");
                     com.dasigconnect.backend.model.entity.User admin = new com.dasigconnect.backend.model.entity.User();
                     admin.setEmail(adminEmail);
                     admin.setFirstName("DASIG");
                     admin.setLastName("Admin");
                     admin.setRole(com.dasigconnect.backend.model.entity.UserRole.admin);
                     admin.setAdminOwner(true);
-                    admin.setPasswordHash(passwordEncoder.encode("admin123"));
+                    admin.setPasswordHash(passwordEncoder.encode(adminPassword));
                     admin.setAccountState(com.dasigconnect.backend.model.entity.UserStatus.active);
                     userRepository.save(admin);
-                    System.out.println("Default admin created successfully!");
-                    System.out.println(" -> Email: " + adminEmail);
-                    System.out.println(" -> Password: admin123");
+                    System.out.println("Bootstrap admin created: " + adminEmail);
                 } else {
                     System.out.println("Admin already exists: " + adminEmail);
                 }
