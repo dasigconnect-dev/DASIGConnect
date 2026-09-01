@@ -2,13 +2,12 @@ import { useState } from "react";
 import type { User } from "../../types/auth.types";
 import type { AnalyticsExportMetric, AnalyticsRange } from "../../api/analyticsApi";
 import { useAnalyticsSummary } from "./hooks/useAnalyticsSummary";
-import { useSubmissionLookups } from "../../hooks/useSubmissions";
 import ExecutiveSummaryStrip from "./components/ExecutiveSummaryStrip";
 import PublishingTrendChart from "./components/PublishingTrendChart";
 import PostsByInstitutionChart from "./components/PostsByInstitutionChart";
 import StatusDonutChart from "./components/StatusDonutChart";
-import CategoryPerformanceChart from "./components/CategoryPerformanceChart";
-import FacebookEngagementPanel from "./components/FacebookEngagementPanel";
+import SocialEngagementCard from "./components/SocialEngagementCard";
+import PagePerformanceCard from "./components/PagePerformanceCard";
 import OperationsAndEngagementCard from "./components/OperationsAndEngagementCard";
 import ContributorAnalyticsView from "./components/ContributorAnalyticsView";
 import ContributorBreakdownTable from "./components/ContributorBreakdownTable";
@@ -36,14 +35,11 @@ export default function AnalyticsDashboardPage({ user }: Props) {
     setRange,
     institutionId,
     setInstitutionId,
-    category,
-    setCategory,
     summary,
     loading,
     error,
     refresh,
   } = useAnalyticsSummary("30d");
-  const { lookups } = useSubmissionLookups();
   const [reportMetric, setReportMetric] = useState<AnalyticsExportMetric | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
 
@@ -114,21 +110,6 @@ export default function AnalyticsDashboardPage({ user }: Props) {
                         value: i.institutionId,
                         label: i.institutionName,
                       })),
-                    ]}
-                  />
-                </div>
-              )}
-
-              {lookups.categories.length > 0 && (
-                <div className="analytics-filter-field">
-                  <span className="analytics-field-label">Category:</span>
-                  <BrandedSelect
-                    value={category ?? ""}
-                    onChange={(v) => setCategory(v || null)}
-                    ariaLabel="Filter by category"
-                    options={[
-                      { value: "", label: "All categories" },
-                      ...lookups.categories.map((c) => ({ value: c, label: c })),
                     ]}
                   />
                 </div>
@@ -234,13 +215,24 @@ export default function AnalyticsDashboardPage({ user }: Props) {
                   />
                 </div>
 
-                {/* Status Donut Chart + Top Categories Performance */}
+                {/* Status Breakdown + Social Engagement side by side */}
                 <div className="analytics-dashboard-grid-equal">
                   <StatusDonutChart rows={summary.statusBreakdown} />
-                  <CategoryPerformanceChart rows={summary.topCategories} />
+                  <SocialEngagementCard
+                    data={summary.facebookEngagement}
+                    onOpenReport={() => setReportMetric("facebook-engagement")}
+                    isAdmin
+                  />
                 </div>
 
-                {/* System Operations & Engagement Matrix */}
+                <div style={{ marginBottom: 20 }}>
+                  <PagePerformanceCard
+                    data={summary.pagePerformance}
+                    pageId={summary.facebookEngagement.pageId}
+                  />
+                </div>
+
+                {/* System Operations Matrix */}
                 <div style={{ marginBottom: 20 }}>
                   <OperationsAndEngagementCard
                     summary={summary}
@@ -263,17 +255,7 @@ export default function AnalyticsDashboardPage({ user }: Props) {
 
                 <div className="analytics-dashboard-grid-equal">
                   <StatusDonutChart rows={summary.statusBreakdown} />
-                  <CategoryPerformanceChart rows={summary.topCategories} />
-                </div>
-
-                <div className="card-wrap analytics-chart-card" style={{ marginBottom: 20 }}>
-                  <div className="analytics-chart-header">
-                    <div>
-                      <h3 className="analytics-chart-title">Facebook Engagement</h3>
-                      <p className="analytics-chart-subtitle">Network reach and reactions on published posts</p>
-                    </div>
-                  </div>
-                  <FacebookEngagementPanel
+                  <SocialEngagementCard
                     data={summary.facebookEngagement}
                     onOpenReport={() => setReportMetric("facebook-engagement")}
                   />
@@ -306,7 +288,6 @@ export default function AnalyticsDashboardPage({ user }: Props) {
           metric={reportMetric}
           range={range}
           institutionId={institutionId}
-          category={category}
           busy={exportBusy}
           onBusyChange={setExportBusy}
           onClose={() => setReportMetric(null)}

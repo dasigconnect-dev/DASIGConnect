@@ -856,7 +856,7 @@ function getMetricExplanation(item: OperationalMetric): string {
 
 function getMetricBenchmark(item: OperationalMetric): string {
   if (item.key === "approval_turnaround_time") return item.value <= 24 ? "Target SLA: ≤ 24h (Met)" : "Target SLA: ≤ 24h (Over)";
-  if (item.key === "publish_success_rate") return item.value >= 98 ? "Target: ≥ 98% (Met)" : "Target: ≥ 98% (Below)";
+  if (item.key === "publish_success_rate") return item.value >= 95 ? "Target: ≥ 95% (Met)" : "Target: ≥ 95% (Below)";
   if (item.key === "edit_approve_rate") return "Benchmark: ≤ 15%";
   if (item.key === "manual_fallback_resolution_rate") return "Target: 100% Resolved";
   if (item.key === "live_event_fast_track_volume") return "Expedited Window";

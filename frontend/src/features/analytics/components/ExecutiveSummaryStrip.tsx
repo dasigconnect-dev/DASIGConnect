@@ -6,8 +6,32 @@ interface Props {
   onOpenReport?: (metric: AnalyticsExportMetric) => void;
 }
 
+type Pill = { tag: string; tagClass: string };
+
+// "No data" until there is at least one record behind the number, so a pill
+// never claims "Healthy" / "Live Sync" on an all-zero dataset.
+function ratePill(
+  value: number,
+  sampleSize: number,
+  target: number,
+  labels: { good: string; bad: string },
+): Pill {
+  if (sampleSize <= 0) return { tag: "No data", tagClass: "pill-draft" };
+  return value >= target
+    ? { tag: labels.good, tagClass: "sp-approved" }
+    : { tag: labels.bad, tagClass: "pill-revision" };
+}
+
+function volumePill(sampleSize: number, activeLabel: string): Pill {
+  return sampleSize > 0
+    ? { tag: activeLabel, tagClass: "sp-scheduled" }
+    : { tag: "No data", tagClass: "pill-draft" };
+}
+
 export default function ExecutiveSummaryStrip({ summary, onOpenReport }: Props) {
   const isContributor = summary.scopeRole === "contributor" || Boolean(summary.contributorAnalytics);
+  const fb = summary.facebookEngagement;
+  const op = summary.operationalHealth;
 
   const topInstitution =
     summary.postsByInstitution.length > 0
@@ -21,6 +45,16 @@ export default function ExecutiveSummaryStrip({ summary, onOpenReport }: Props) 
     0,
     100 - (summary.contributorAnalytics?.rejectedOrNeedsRevisionRate ? summary.contributorAnalytics.rejectedOrNeedsRevisionRate * 100 : 0)
   );
+
+  const publishSuccessPill: Pill = op
+    ? ratePill(op.publishingSuccessRate, op.publicationAttempts, 95, { good: "Healthy", bad: "Below" })
+    : { tag: "No data", tagClass: "pill-draft" };
+  const firstPassPill = ratePill(firstPassRate, summary.contributorAnalytics?.submittedPosts ?? 0, 85, {
+    good: "Healthy",
+    bad: "Watch",
+  });
+  const engagementPill = volumePill(fb.sampleSize, "Live Sync");
+  const postingDelayPill = volumePill(summary.averagePostingDelay.sampleSize, "Tracking");
 
   const adminCards: Array<{
     id: string;
@@ -68,32 +102,30 @@ export default function ExecutiveSummaryStrip({ summary, onOpenReport }: Props) 
       label: "AVG POSTING DELAY",
       value: `${summary.averagePostingDelay.value.toFixed(1)}d`,
       sub: `${summary.averagePostingDelay.sampleSize} posts measured`,
-      tag: "Tracking",
-      tagClass: "sp-pending",
+      tag: postingDelayPill.tag,
+      tagClass: postingDelayPill.tagClass,
       reportMetric: "posting-delay",
     },
     {
       id: "success",
       icon: "ti ti-circle-check",
       label: "PUBLISH SUCCESS",
-      value: summary.operationalHealth
-        ? formatPercent(summary.operationalHealth.publishingSuccessRate)
-        : "100%",
-      sub: summary.operationalHealth
-        ? `${summary.operationalHealth.successfulPublicationAttempts}/${summary.operationalHealth.publicationAttempts} attempts`
-        : "Direct & Auto",
-      tag: "Healthy",
-      tagClass: "sp-approved",
+      value: op ? formatPercent(op.publishingSuccessRate) : "—",
+      sub: op
+        ? `${op.successfulPublicationAttempts}/${op.publicationAttempts} attempts`
+        : "Admin scope only",
+      tag: publishSuccessPill.tag,
+      tagClass: publishSuccessPill.tagClass,
       reportMetric: "operational-health",
     },
     {
       id: "reactions",
       icon: "ti ti-thumb-up",
       label: "FB REACTIONS",
-      value: formatNumber(summary.facebookEngagement.totalReactions),
-      sub: `${formatNumber(Math.round(summary.facebookEngagement.averageReach))} avg reach`,
-      tag: "Live Sync",
-      tagClass: "sp-scheduled",
+      value: formatNumber(fb.totalReactions),
+      sub: `${formatNumber(fb.totalComments)} comments · ${formatNumber(fb.totalShares)} shares`,
+      tag: engagementPill.tag,
+      tagClass: engagementPill.tagClass,
       reportMetric: "facebook-engagement",
     },
   ];
@@ -144,28 +176,29 @@ export default function ExecutiveSummaryStrip({ summary, onOpenReport }: Props) 
       label: "AVG POSTING DELAY",
       value: `${summary.averagePostingDelay.value.toFixed(1)}d`,
       sub: `${summary.averagePostingDelay.sampleSize} posts measured`,
-      tag: "Tracking",
-      tagClass: "sp-pending",
+      tag: postingDelayPill.tag,
+      tagClass: postingDelayPill.tagClass,
       reportMetric: "posting-delay",
     },
     {
+      // No dedicated "first-pass" report exists; this is derived from the
+      // revision rate, so the card is a read-only KPI (no drill-down).
       id: "first-pass-health",
       icon: "ti ti-circle-check",
       label: "FIRST-PASS HEALTH",
       value: `${firstPassRate.toFixed(1)}%`,
       sub: "approved first try",
-      tag: "Healthy",
-      tagClass: "sp-approved",
-      reportMetric: "content-completeness",
+      tag: firstPassPill.tag,
+      tagClass: firstPassPill.tagClass,
     },
     {
       id: "social-reach",
       icon: "ti ti-thumb-up",
-      label: "SOCIAL REACH",
-      value: formatNumber(Math.round(summary.facebookEngagement.averageReach)),
-      sub: `${formatNumber(summary.facebookEngagement.totalReactions)} total reactions`,
-      tag: "Live Sync",
-      tagClass: "sp-scheduled",
+      label: "FB REACTIONS",
+      value: formatNumber(fb.totalReactions),
+      sub: `${formatNumber(fb.totalComments)} comments · ${formatNumber(fb.totalShares)} shares`,
+      tag: engagementPill.tag,
+      tagClass: engagementPill.tagClass,
       reportMetric: "facebook-engagement",
     },
   ];

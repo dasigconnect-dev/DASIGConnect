@@ -1,8 +1,8 @@
 import type { AnalyticsExportMetric, AnalyticsSummaryDto } from "../../../api/analyticsApi";
 import { formatNumber, formatPercent } from "../analyticsUtils";
-import CategoryPerformanceChart from "./CategoryPerformanceChart";
 import OperationsAndEngagementCard from "./OperationsAndEngagementCard";
 import PublishingTrendChart from "./PublishingTrendChart";
+import SocialEngagementCard from "./SocialEngagementCard";
 import StatusDonutChart from "./StatusDonutChart";
 
 interface Props {
@@ -116,10 +116,13 @@ export default function ContributorAnalyticsView({ summary, onOpenReport }: Read
         </div>
       </div>
 
-      {/* 2. Status Donut Chart + Top Categories Performance */}
+      {/* 2. Status Breakdown + Social Engagement side by side */}
       <div className="analytics-dashboard-grid-equal">
         <StatusDonutChart rows={summary.statusBreakdown} />
-        <CategoryPerformanceChart rows={summary.topCategories} />
+        <SocialEngagementCard
+          data={summary.facebookEngagement}
+          onOpenReport={() => onOpenReport("facebook-engagement")}
+        />
       </div>
 
       {/* 3. System Operations & Facebook Engagement Matrix */}
