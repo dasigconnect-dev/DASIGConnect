@@ -14,6 +14,7 @@ import {
   type TokenStatus,
 } from "../../api/systemHealthApi";
 import { useToast } from "../../context/ToastContext";
+import { registerAppCacheReset } from "../../lib/appCache";
 import type { User } from "../../types/auth.types";
 import "../../styles/system-health.css";
 import "../../styles/dasig-loader.css";
@@ -34,6 +35,11 @@ const CACHE_TTL_MS = 60_000;
 let cachedSummary: SystemHealthSummary | null = null;
 let cachedTokens: TokenStatus[] = [];
 let cachedAt = 0;
+registerAppCacheReset(() => {
+  cachedSummary = null;
+  cachedTokens = [];
+  cachedAt = 0;
+});
 
 export default function SystemHealthScreen({ user }: Props) {
   const toast = useToast();
@@ -850,7 +856,7 @@ function getMetricExplanation(item: OperationalMetric): string {
 
 function getMetricBenchmark(item: OperationalMetric): string {
   if (item.key === "approval_turnaround_time") return item.value <= 24 ? "Target SLA: ≤ 24h (Met)" : "Target SLA: ≤ 24h (Over)";
-  if (item.key === "publish_success_rate") return item.value >= 98 ? "Target: ≥ 98% (Met)" : "Target: ≥ 98% (Below)";
+  if (item.key === "publish_success_rate") return item.value >= 95 ? "Target: ≥ 95% (Met)" : "Target: ≥ 95% (Below)";
   if (item.key === "edit_approve_rate") return "Benchmark: ≤ 15%";
   if (item.key === "manual_fallback_resolution_rate") return "Target: 100% Resolved";
   if (item.key === "live_event_fast_track_volume") return "Expedited Window";

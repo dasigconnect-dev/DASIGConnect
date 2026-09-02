@@ -98,7 +98,19 @@ public class AuthService {
 
     public void logout(String token) {
         if (jwtService.validateToken(token)) {
+            UUID actorId = null;
+            try {
+                String uid = jwtService.extractClaims(token).get("user_id", String.class);
+                if (uid != null && !uid.isBlank()) {
+                    actorId = UUID.fromString(uid);
+                }
+            } catch (RuntimeException ignored) {
+                // token unreadable — skip the audit row, still invalidate below
+            }
             jwtService.invalidateToken(token);
+            if (actorId != null) {
+                auditLogService.recordByActorId(actorId, "LOGOUT", null, null, actorId, Map.of());
+            }
         }
     }
 

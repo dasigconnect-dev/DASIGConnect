@@ -1,13 +1,15 @@
 import "../../styles/dasig-loader.css";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { WatermarkElement } from "../../types/watermark.types";
-import { changePassword, getMe, getPageSettings, updateAccountSettings, updatePageSettings } from "../../api/authApi";
+import { changePassword, getMe, getPageSettings, requestPasswordReset, updateAccountSettings, updatePageSettings } from "../../api/authApi";
 import { createMessengerLinkCode, disconnectMessenger, getMessengerConnectionStatus, type MessengerConnection, type MessengerLinkCode } from "../../api/messengerApi";
 import { getWatermarkConfiguration, saveWatermarkConfiguration } from "../../api/watermarkApi";
 import WatermarkCanvasEditor from "../settings/components/WatermarkCanvasEditor";
 import { useToast } from "../../context/ToastContext";
+import { registerAppCacheReset } from "../../lib/appCache";
+import { firstPasswordError, getPasswordRules } from "../../lib/passwordPolicy";
 
 interface Props {
   user: User;
@@ -16,13 +18,32 @@ interface Props {
 
 type SettingsTab = "account" | "password" | "page";
 
+// The profile-settings slice of GET /api/v1/me (display name + notification
+// prefs). Cached module-wide so revisiting /settings within the TTL skips the
+// round-trip. Cleared on logout via the app cache registry.
+type ProfileSettingsCache = {
+  name: string;
+  notifyInApp: boolean;
+  notifyEmail: boolean;
+};
+let cachedProfileSettings: ProfileSettingsCache | null = null;
+let cachedProfileAt = 0;
+const PROFILE_CACHE_TTL_MS = 60_000;
+registerAppCacheReset(() => {
+  cachedProfileSettings = null;
+  cachedProfileAt = 0;
+});
+
 export default function AccountSettingsScreen({ user, onProfileUpdated }: Props) {
   const toast = useToast();
   const location = useLocation();
   const navigate = useNavigate();
 
   const canManagePage = user.role === "admin";
-  const [initialLoading, setInitialLoading] = useState(true);
+  // Messenger alerts are a per-account delivery channel; only moderators and
+  // admins actually receive Messenger deliveries (see NotificationEventListener).
+  const canUseMessenger = user.role === "moderator" || user.role === "admin";
+  const [initialLoading, setInitialLoading] = useState(cachedProfileSettings === null);
 
   // Tab State
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
@@ -32,14 +53,18 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     return "account";
   });
 
-  const [displayName, setDisplayName] = useState(user.displayName || user.name);
-  const [initialDisplayName, setInitialDisplayName] = useState(user.displayName || user.name);
-  const [notifyInApp, setNotifyInApp] = useState(true);
-  const [initialNotifyInApp, setInitialNotifyInApp] = useState(true);
-  const [notifyEmail, setNotifyEmail] = useState(true);
-  const [initialNotifyEmail, setInitialNotifyEmail] = useState(true);
+  const seedName = cachedProfileSettings?.name || user.displayName || user.name;
+  const [displayName, setDisplayName] = useState(seedName);
+  const [initialDisplayName, setInitialDisplayName] = useState(seedName);
+  const [notifyInApp, setNotifyInApp] = useState(cachedProfileSettings?.notifyInApp ?? true);
+  const [initialNotifyInApp, setInitialNotifyInApp] = useState(cachedProfileSettings?.notifyInApp ?? true);
+  const [notifyEmail, setNotifyEmail] = useState(cachedProfileSettings?.notifyEmail ?? true);
+  const [initialNotifyEmail, setInitialNotifyEmail] = useState(cachedProfileSettings?.notifyEmail ?? true);
   const [currentPassword, setCurrentPassword] = useState("");
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [currentPwEditable, setCurrentPwEditable] = useState(false);
+  const [resetLinkSending, setResetLinkSending] = useState(false);
+  const [resetLinkSent, setResetLinkSent] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [facebookPageId, setFacebookPageId] = useState("");
@@ -53,9 +78,16 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [messengerStatus, setMessengerStatus] = useState<MessengerConnection | null>(null);
   const [linkCode, setLinkCode] = useState<MessengerLinkCode | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [messengerExpanded, setMessengerExpanded] = useState(false);
 
   const [saving, setSaving] = useState<"account" | "password" | "page" | "watermark" | "messenger" | null>(null);
   const pageInstitutionId = null;
+  const newPasswordRules = getPasswordRules(newPassword, [
+    user.email,
+    user.name,
+    user.displayName,
+  ]);
+  const newPasswordOk = Object.values(newPasswordRules).every(Boolean);
 
   // Display Name Validation
   function validateDisplayName(name: string) {
@@ -83,7 +115,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   });
 
   const loadMessenger = () => {
-    if (!canManagePage) return;
+    if (!canUseMessenger) return;
     getMessengerConnectionStatus()
       .then((data) => setMessengerStatus(data))
       .catch(() => setMessengerStatus(null));
@@ -124,26 +156,42 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     navigate(`/settings#${canManagePage ? "page" : "account"}`, { replace: true });
   }
 
-  // Initial mount: load profile and messenger status
+  // Hydrate the form from the server. Deliberately NOT keyed on `user.name`:
+  // saveAccount() bumps that prop via onProfileUpdated and must not retrigger a
+  // redundant GET /me (we already applied the change locally).
   useEffect(() => {
     let isCurrent = true;
-    const promises: Promise<unknown>[] = [
-      getMe()
-        .then(({ data }) => {
-          if (!isCurrent) return;
-          const fullName = [data.firstName, data.lastName].filter(Boolean).join(" ");
-          const name = data.displayName || fullName || user.name || "";
-          setDisplayName(name);
-          setInitialDisplayName(name);
-          setNotifyInApp(data.notifyInApp);
-          setInitialNotifyInApp(data.notifyInApp);
-          setNotifyEmail(data.notifyEmail);
-          setInitialNotifyEmail(data.notifyEmail);
-        })
-        .catch(() => {}),
-    ];
+    const promises: Promise<unknown>[] = [];
 
-    if (canManagePage) {
+    const profileFresh =
+      cachedProfileSettings !== null &&
+      Date.now() - cachedProfileAt < PROFILE_CACHE_TTL_MS;
+
+    if (!profileFresh) {
+      promises.push(
+        getMe()
+          .then(({ data }) => {
+            if (!isCurrent) return;
+            const fullName = [data.firstName, data.lastName].filter(Boolean).join(" ");
+            const name = data.displayName || fullName || "";
+            setDisplayName(name);
+            setInitialDisplayName(name);
+            setNotifyInApp(data.notifyInApp);
+            setInitialNotifyInApp(data.notifyInApp);
+            setNotifyEmail(data.notifyEmail);
+            setInitialNotifyEmail(data.notifyEmail);
+            cachedProfileSettings = {
+              name,
+              notifyInApp: data.notifyInApp,
+              notifyEmail: data.notifyEmail,
+            };
+            cachedProfileAt = Date.now();
+          })
+          .catch(() => {}),
+      );
+    }
+
+    if (canUseMessenger) {
       promises.push(
         getMessengerConnectionStatus()
           .then((data) => {
@@ -164,11 +212,14 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     return () => {
       isCurrent = false;
     };
-  }, [user.name, canManagePage]);
+  }, [canUseMessenger]);
 
-  // Page and Watermark settings loader
+  // Page + Watermark data — loaded once, the first time the admin opens the
+  // Page tab (not eagerly on every settings mount).
+  const pageDataLoadedRef = useRef(false);
   useEffect(() => {
-    if (!canManagePage) return;
+    if (!canManagePage || activeTab !== "page" || pageDataLoadedRef.current) return;
+    pageDataLoadedRef.current = true;
 
     let isCurrent = true;
     void getPageSettings(pageInstitutionId)
@@ -193,7 +244,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     return () => {
       isCurrent = false;
     };
-  }, [canManagePage, pageInstitutionId]);
+  }, [canManagePage, activeTab, pageInstitutionId]);
 
   async function saveAccount() {
     const cleanName = displayName.trim().replace(/\s+/g, " ");
@@ -207,6 +258,8 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       setInitialDisplayName(cleanName);
       setInitialNotifyInApp(notifyInApp);
       setInitialNotifyEmail(notifyEmail);
+      cachedProfileSettings = { name: cleanName, notifyInApp, notifyEmail };
+      cachedProfileAt = Date.now();
       await onProfileUpdated();
       toast.success("Account settings updated.");
     } catch {
@@ -226,13 +279,33 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     }
   }
 
+  async function handleSendResetLink() {
+    if (resetLinkSending) return;
+    setResetLinkSending(true);
+    try {
+      await requestPasswordReset(user.email);
+      setResetLinkSent(true);
+      toast.success(`We've emailed a password reset link to ${user.email}.`);
+    } catch {
+      toast.error("Couldn't send the reset link. Please try again.");
+    } finally {
+      setResetLinkSending(false);
+    }
+  }
+
   async function savePassword() {
-    if (newPassword.length < 8) return toast.error("New password must be at least 8 characters.");
+    const passwordError = firstPasswordError(newPassword, [
+      user.email,
+      user.name,
+      user.displayName,
+    ]);
+    if (passwordError) return toast.error(passwordError);
     setSaving("password");
     try {
       await changePassword(currentPassword, newPassword);
       setCurrentPassword("");
       setNewPassword("");
+      setCurrentPwEditable(false);
       toast.success("Password changed. Other signed-in devices remain active.");
     } catch {
       toast.error("Password change failed. Check your current password.");
@@ -244,10 +317,10 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   async function savePage() {
     setSaving("page");
     try {
-      await updatePageSettings({ watermarkEnabled, watermarkText: "", facebookPageId }, pageInstitutionId);
-      toast.success("Facebook settings updated.");
+      await updatePageSettings({ facebookPageId }, pageInstitutionId);
+      toast.success("Facebook Page ID updated.");
     } catch {
-      toast.error("Unable to update Facebook settings.");
+      toast.error("Unable to update Facebook Page ID.");
     } finally {
       setSaving(null);
     }
@@ -261,8 +334,9 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
         enabled: watermarkEnabled,
         elements: watermarkElements,
       });
+      setWatermarkEnabled(data.enabled);
       setWatermarkElements(data.elements || []);
-      toast.success("Global watermark configuration saved.");
+      toast.success("Watermark settings saved.");
     } catch (err: unknown) {
       const errorMsg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       toast.error(errorMsg || "Unable to save watermark configuration.");
@@ -277,7 +351,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       const res = await createMessengerLinkCode();
       setLinkCode(res);
       setCopiedCode(false);
-      toast.success("Messenger link code generated. Send it to the official Page.");
+      toast.success("Link code ready — copy the command and send it in Messenger.");
     } catch {
       toast.error("Unable to generate Messenger link code.");
     } finally {
@@ -292,6 +366,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       await disconnectMessenger();
       setMessengerStatus({ connected: false, enabled: false, linkedAt: null });
       setLinkCode(null);
+      setMessengerExpanded(false);
       toast.success("Facebook Messenger disconnected.");
     } catch {
       toast.error("Unable to disconnect Messenger.");
@@ -302,12 +377,25 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
 
   function handleCopyCode() {
     if (!linkCode) return;
+    // linkCode.code is already the full command ("CONNECT <token>") from the API.
     void navigator.clipboard.writeText(linkCode.code).then(() => {
       setCopiedCode(true);
-      toast.success("Code copied to clipboard!");
+      toast.success("Command copied — paste it into Messenger.");
       setTimeout(() => setCopiedCode(false), 3000);
     });
   }
+
+  // Live countdown for the link code (server issues a 10-minute window). A
+  // ticking clock forces the re-render; the value itself is derived in render.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!linkCode) return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [linkCode]);
+  const codeSecondsLeft = linkCode
+    ? Math.max(0, Math.round((new Date(linkCode.expiresAt).getTime() - nowMs) / 1000))
+    : 0;
 
   if (initialLoading) {
     return (
@@ -377,10 +465,11 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                 type="button"
                 className="settings-save-button"
                 disabled={saving === "watermark" || watermarkLoading}
+                aria-busy={saving === "watermark"}
                 onClick={() => void saveWatermark()}
               >
                 <i className={saving === "watermark" ? "ti ti-loader-2 settings-spinner" : "ti ti-device-floppy"} />
-                {saving === "watermark" ? "Saving..." : "Save Global Watermark"}
+                {saving === "watermark" ? "Saving..." : "Save"}
               </button>
             </div>
           </header>
@@ -542,6 +631,115 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                       checked={notifyEmail}
                       onChange={setNotifyEmail}
                     />
+
+                    {canUseMessenger && (
+                      <>
+                        <div className="settings-toggle-row settings-channel-row">
+                          <span className="settings-toggle-icon"><i className="ti ti-brand-messenger" /></span>
+                          <span className="settings-toggle-copy">
+                            <strong>Facebook Messenger</strong>
+                            <span>
+                              {messengerStatus?.connected
+                                ? `Connected${messengerStatus.linkedAt ? " " + new Date(messengerStatus.linkedAt).toLocaleDateString() : ""} — alerts also push to Messenger.`
+                                : "Also push your alerts to your personal Facebook Messenger."}
+                            </span>
+                          </span>
+                          {messengerStatus?.connected ? (
+                            <button
+                              type="button"
+                              className="settings-channel-btn is-danger"
+                              disabled={saving === "messenger"}
+                              onClick={() => void handleDisconnectMessenger()}
+                            >
+                              Disconnect
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="settings-channel-btn"
+                              aria-expanded={messengerExpanded}
+                              onClick={() => setMessengerExpanded((v) => !v)}
+                            >
+                              {messengerExpanded ? "Cancel" : "Set up"}
+                            </button>
+                          )}
+                        </div>
+
+                        {messengerExpanded && !messengerStatus?.connected && (
+                          <div className="settings-channel-panel">
+                            <div className="settings-messenger-steps">
+                              <ol>
+                                <li>Generate a one-time code below — it&apos;s valid for 10 minutes.</li>
+                                <li>
+                                  In Messenger, open a chat with the official <strong>DASIGConnect</strong>{" "}
+                                  Page and send it the command shown below (use <strong>Copy</strong> so it&apos;s exact).
+                                </li>
+                                <li>
+                                  The Page replies to confirm; then hit{" "}
+                                  <strong>I&apos;ve sent it — check status</strong>.
+                                </li>
+                              </ol>
+                            </div>
+
+                            {linkCode ? (
+                              <div className="settings-messenger-linkcode">
+                                <span className="settings-messenger-code-label">
+                                  Send this exact message to the DASIGConnect Page
+                                </span>
+                                <div className="settings-messenger-code-container">
+                                  <code className="settings-messenger-code-value">{linkCode.code}</code>
+                                  <button
+                                    type="button"
+                                    className="settings-messenger-copy-btn"
+                                    onClick={handleCopyCode}
+                                  >
+                                    <i className={copiedCode ? "ti ti-check" : "ti ti-copy"} />
+                                    {copiedCode ? "Copied" : "Copy"}
+                                  </button>
+                                </div>
+                                <div className="settings-messenger-code-meta">
+                                  <span className={codeSecondsLeft <= 60 ? "is-expiring" : undefined}>
+                                    <i className="ti ti-clock" />{" "}
+                                    {codeSecondsLeft > 0
+                                      ? `Expires in ${Math.floor(codeSecondsLeft / 60)}:${String(codeSecondsLeft % 60).padStart(2, "0")}`
+                                      : "Code expired"}
+                                  </span>
+                                  <span className="settings-messenger-meta-actions">
+                                    {codeSecondsLeft === 0 && (
+                                      <button
+                                        type="button"
+                                        className="settings-messenger-link-btn"
+                                        disabled={saving === "messenger"}
+                                        onClick={() => void generateMessengerCode()}
+                                      >
+                                        Generate new code
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      className="settings-messenger-link-btn"
+                                      onClick={loadMessenger}
+                                    >
+                                      I&apos;ve sent it — check status
+                                    </button>
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className="settings-save-button settings-messenger-generate-btn"
+                                disabled={saving === "messenger"}
+                                onClick={() => void generateMessengerCode()}
+                              >
+                                <i className={saving === "messenger" ? "ti ti-loader-2 settings-spinner" : "ti ti-key"} />
+                                {saving === "messenger" ? "Generating…" : "Generate link code"}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -563,15 +761,26 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                 title="Password & Security"
                 description="Use a strong password to protect your account."
               />
+              <form
+                onSubmit={(event: FormEvent<HTMLFormElement>) => {
+                  event.preventDefault();
+                  void savePassword();
+                }}
+              >
               <div className="settings-card-body settings-password-grid">
                 <div className="settings-field">
                   <label htmlFor="settings-current-password">Current password</label>
                   <div className="settings-input-wrapper">
                     <input
                       id="settings-current-password"
+                      name="current-password"
                       className="settings-input"
                       type={showCurrentPassword ? "text" : "password"}
                       autoComplete="current-password"
+                      // Read-only until focused so the browser doesn't autofill
+                      // the saved password on load — the user must type it.
+                      readOnly={!currentPwEditable}
+                      onFocus={() => setCurrentPwEditable(true)}
                       value={currentPassword}
                       placeholder="Enter current password"
                       onChange={(e) => setCurrentPassword(e.target.value)}
@@ -585,17 +794,33 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                       <i className={showCurrentPassword ? "ti ti-eye-off" : "ti ti-eye"} />
                     </button>
                   </div>
+                  {resetLinkSent ? (
+                    <span className="settings-field-hint is-success settings-forgot-pw-btn">
+                      <i className="ti ti-mail-check" /> Reset link sent to {user.email}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="settings-field-action-btn settings-forgot-pw-btn"
+                      disabled={resetLinkSending}
+                      onClick={() => void handleSendResetLink()}
+                    >
+                      <i className={resetLinkSending ? "ti ti-loader-2 settings-spinner" : "ti ti-mail"} />
+                      {resetLinkSending ? "Sending…" : "Forgot your password?"}
+                    </button>
+                  )}
                 </div>
                 <div className="settings-field">
                   <label htmlFor="settings-new-password">New password</label>
                   <div className="settings-input-wrapper">
                     <input
                       id="settings-new-password"
+                      name="new-password"
                       className="settings-input"
                       type={showNewPassword ? "text" : "password"}
                       autoComplete="new-password"
                       value={newPassword}
-                      placeholder="At least 8 characters"
+                      placeholder="At least 12 characters"
                       onChange={(e) => setNewPassword(e.target.value)}
                     />
                     <button
@@ -607,6 +832,32 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                       <i className={showNewPassword ? "ti ti-eye-off" : "ti ti-eye"} />
                     </button>
                   </div>
+                  <div className="pw-rules">
+                    <div className={`pw-rule${newPasswordRules.length ? " pass" : ""}`}>
+                      <i className={newPasswordRules.length ? "ti ti-circle-check" : "ti ti-circle"} /> 12+ characters
+                    </div>
+                    <div className={`pw-rule${newPasswordRules.upper ? " pass" : ""}`}>
+                      <i className={newPasswordRules.upper ? "ti ti-circle-check" : "ti ti-circle"} /> Uppercase letter
+                    </div>
+                    <div className={`pw-rule${newPasswordRules.lower ? " pass" : ""}`}>
+                      <i className={newPasswordRules.lower ? "ti ti-circle-check" : "ti ti-circle"} /> Lowercase letter
+                    </div>
+                    <div className={`pw-rule${newPasswordRules.number ? " pass" : ""}`}>
+                      <i className={newPasswordRules.number ? "ti ti-circle-check" : "ti ti-circle"} /> Number
+                    </div>
+                    <div className={`pw-rule${newPasswordRules.symbol ? " pass" : ""}`}>
+                      <i className={newPasswordRules.symbol ? "ti ti-circle-check" : "ti ti-circle"} /> Special character
+                    </div>
+                    <div className={`pw-rule${newPasswordRules.noSpaces ? " pass" : ""}`}>
+                      <i className={newPasswordRules.noSpaces ? "ti ti-circle-check" : "ti ti-circle"} /> No spaces
+                    </div>
+                    <div className={`pw-rule${newPasswordRules.notCommon ? " pass" : ""}`}>
+                      <i className={newPasswordRules.notCommon ? "ti ti-circle-check" : "ti ti-circle"} /> Not common or sequential
+                    </div>
+                    <div className={`pw-rule${newPasswordRules.noIdentity ? " pass" : ""}`}>
+                      <i className={newPasswordRules.noIdentity ? "ti ti-circle-check" : "ti ti-circle"} /> Does not include your name or email
+                    </div>
+                  </div>
                   <span className="settings-field-hint">Changing it here keeps your other signed-in sessions active.</span>
                 </div>
               </div>
@@ -614,9 +865,10 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                 label="Change Password"
                 icon="ti ti-key"
                 busy={saving === "password"}
-                disabled={!currentPassword || !newPassword}
+                disabled={!currentPassword || !newPasswordOk}
                 onClick={() => void savePassword()}
               />
+              </form>
             </section>
           )}
 
@@ -655,14 +907,24 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                     </div>
                   </div>
                 </div>
-                <footer className="settings-card-footer">
+                <footer className="settings-card-footer" style={{ gap: 10 }}>
                   <button
                     type="button"
-                    className="settings-save-button"
+                    className="settings-launch-studio-btn"
                     onClick={openStudio}
                   >
                     <i className="ti ti-palette" />
                     Open Watermark Studio
+                  </button>
+                  <button
+                    type="button"
+                    className="settings-save-button"
+                    disabled={saving === "watermark" || watermarkLoading}
+                    aria-busy={saving === "watermark"}
+                    onClick={() => void saveWatermark()}
+                  >
+                    <i className={saving === "watermark" ? "ti ti-loader-2 settings-spinner" : "ti ti-device-floppy"} />
+                    {saving === "watermark" ? "Saving…" : "Save"}
                   </button>
                 </footer>
               </section>
@@ -697,93 +959,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                   busy={saving === "page"}
                   onClick={() => void savePage()}
                 />
-              </section>
-
-              {/* Card 3: Facebook Messenger Alerts */}
-              <section className="settings-card" id="messenger-card">
-                <SettingsHeader
-                  icon="ti ti-brand-messenger"
-                  title="Facebook Messenger Alerts"
-                  description="Receive instant alerts for submissions, schedule warnings, and critical publishing events directly on Messenger."
-                  accent={
-                    messengerStatus?.connected ? (
-                      <span className="settings-admin-chip" style={{ background: "#dcfce7", color: "#166534" }}>
-                        <i className="ti ti-circle-check" /> Connected
-                      </span>
-                    ) : (
-                      <span className="settings-admin-chip">
-                        <i className="ti ti-plug" /> Integration
-                      </span>
-                    )
-                  }
-                />
-                <div className="settings-card-body">
-                  {messengerStatus?.connected ? (
-                    <div className="settings-messenger-connected">
-                      <div className="settings-messenger-badge">
-                        <span className="settings-messenger-status-dot" />
-                        <div className="settings-messenger-badge-text">
-                          <strong>Messenger Account Linked & Active</strong>
-                          <span>Connected {messengerStatus.linkedAt ? new Date(messengerStatus.linkedAt).toLocaleDateString() : ""} — Real-time alerts enabled</span>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="settings-messenger-disconnect-btn"
-                        disabled={saving === "messenger"}
-                        onClick={() => void handleDisconnectMessenger()}
-                      >
-                        <i className="ti ti-plug-connected-x" /> Disconnect
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="settings-messenger-box">
-                      <div className="settings-messenger-steps">
-                        <p>Link your personal Facebook Messenger to receive automated real-time alerts (T-01, T-07, T-11, T-12) directly from DASIGConnect.</p>
-                        <ol>
-                          <li>Click <strong>Generate Link Code</strong> below to receive a secure 10-minute code.</li>
-                          <li>Open Facebook Messenger and send the exact command to the official DASIGConnect Page.</li>
-                          <li>DASIGConnect will verify the code and immediately confirm your connection.</li>
-                        </ol>
-                      </div>
-
-                      {linkCode ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                          <div className="settings-messenger-code-container">
-                            <span>{linkCode.code}</span>
-                            <button type="button" className="settings-messenger-copy-btn" onClick={handleCopyCode}>
-                              <i className={copiedCode ? "ti ti-check" : "ti ti-copy"} />
-                              {copiedCode ? "Copied" : "Copy"}
-                            </button>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "var(--d-muted)" }}>
-                            <span>Expires in 10 minutes</span>
-                            <button
-                              type="button"
-                              style={{ background: "none", border: "none", color: "var(--d-blue)", cursor: "pointer", textDecoration: "underline", fontSize: "11px" }}
-                              onClick={loadMessenger}
-                            >
-                              Check Connection Status
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <button
-                            type="button"
-                            className="settings-save-button"
-                            style={{ display: "inline-flex", alignItems: "center", gap: "8px", width: "auto" }}
-                            disabled={saving === "messenger"}
-                            onClick={() => void generateMessengerCode()}
-                          >
-                            <i className={saving === "messenger" ? "ti ti-loader-2 settings-spinner" : "ti ti-key"} />
-                            Generate Link Code
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
               </section>
             </div>
           )}

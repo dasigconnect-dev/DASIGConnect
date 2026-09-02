@@ -330,14 +330,18 @@ export default function AdminManagementScreen({
       const response = await deleteUser(managedUser.id)
       if (response.data.action === 'deleted') {
         setAdmins((current) => current.filter((item) => item.id !== managedUser.id))
-        toast.success('Admin removed.')
+        toast.success(managedUser.purgedAt ? 'Record removed.' : 'Admin removed.')
       } else {
         setAdmins((current) =>
           current.map((item) =>
             item.id === managedUser.id ? { ...item, accountState: 'inactive' } : item,
           ),
         )
-        toast.info('Admin account remains inactive because it has historical records.')
+        toast.info(
+          managedUser.purgedAt
+            ? 'This record has activity history and is kept as an anonymised tombstone for the audit trail — it cannot be removed.'
+            : 'Admin account remains inactive because it has historical records.',
+        )
       }
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to remove admin.'))

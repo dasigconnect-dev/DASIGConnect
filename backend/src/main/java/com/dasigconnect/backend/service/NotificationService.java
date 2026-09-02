@@ -129,6 +129,12 @@ public class NotificationService {
      */
     @Transactional
     public Notification createNotification(User recipient, NotificationEventType eventType, String message, String deepLink) {
+        // Honour the recipient's "In-app notifications" account preference.
+        if (recipient == null || !recipient.isNotifyInApp()) {
+            log.debug("In-app notification [{}] suppressed — recipient has in-app notifications off", eventType);
+            return null;
+        }
+
         Notification notification = new Notification();
         notification.setRecipient(recipient);
         notification.setEventType(eventType);

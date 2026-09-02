@@ -58,9 +58,9 @@ class ResolutionControllerTest {
     // ── GET /failures ─────────────────────────────────────────────────────────
 
     @Test
-    void listFailures_unauthenticated_returns403() throws Exception {
+    void listFailures_unauthenticated_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/resolution/failures"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

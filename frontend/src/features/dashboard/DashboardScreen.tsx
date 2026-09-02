@@ -51,7 +51,7 @@ interface ActivityItem {
 interface DashboardStats {
   /** Contributor only: the caller's own submissions (GET /submissions). */
   submissions: SubmissionSummary[];
-  /** Active contributor accounts, network-wide. */
+  /** Admin: active contributor accounts. Moderator: contributors in visible review activity. */
   contributors: number;
   /** Active moderator accounts, network-wide. */
   moderators: number;
@@ -78,7 +78,7 @@ interface DashboardStats {
 export default function DashboardScreen({ user }: DashboardScreenProps) {
   const navigate = useNavigate();
   const [institutions, setInstitutions] = useState<
-    { id: string; name: string; code: string; emailDomain: string }[]
+    { id: string; name: string }[]
   >([]);
   const [loadingSubmissions, setLoadingSubmissions] = useState(
     user?.role === "contributor",
@@ -110,8 +110,6 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
         const mapped = response.data.map((item) => ({
           id: item.id,
           name: item.name,
-          code: item.institutionCode,
-          emailDomain: item.emailDomain,
         }));
         setInstitutions(mapped);
       })
@@ -139,8 +137,8 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
       });
   }, [user?.role]);
 
-  // Moderator home: live review-queue + this-month review history + the
-  // network-wide contributor count. (Admins have their own roll-up effect below.)
+  // Moderator home: live review-queue + this-month review history. The
+  // admin-only /users/network directory is intentionally not called here.
   useEffect(() => {
     if (user?.role !== "moderator") return;
     let active = true;
@@ -155,15 +153,8 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
     Promise.all([
       getValidationQueue(),
       getValidationQueue({ history: true }),
-      listNetworkUsers().then((r) =>
-        r.data.filter(
-          (u) =>
-            u.role.toLowerCase() === "contributor" &&
-            u.accountState.toLowerCase() === "active",
-        ).length,
-      ),
     ])
-      .then(([queueRes, historyRes, activeContributors]) => {
+      .then(([queueRes, historyRes]) => {
         if (!active) return;
         const history = historyRes.data;
         const recent = [...queueRes.data, ...history]
@@ -173,6 +164,11 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
             ),
           )
           .slice(0, 5);
+        const visibleContributorCount = new Set(
+          [...queueRes.data, ...history]
+            .map((s) => s.contributorEmail?.trim().toLowerCase())
+            .filter((email): email is string => Boolean(email)),
+        ).size;
         setDashboardStats((current) => ({
           ...current,
           reviewRecent: recent,
@@ -188,7 +184,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
           reviewedRejectedThisMonth: history.filter(
             (s) => inThisMonth(s) && s.status === "rejected",
           ).length,
-          contributors: activeContributors,
+          contributors: visibleContributorCount,
         }));
       })
       .catch(() => {
@@ -198,6 +194,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
             reviewQueuePending: 0,
             reviewedApprovedThisMonth: 0,
             reviewedRejectedThisMonth: 0,
+            contributors: 0,
           }));
         }
       })
@@ -513,29 +510,18 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
   );
 }
 
-const DOMAIN_MAP: Record<string, string> = {
-  citu: "CIT-U",
-  su: "Silliman University",
-  silliman: "Silliman University",
-  usc: "University of San Carlos",
-  vsu: "Visayas State University",
-  uc: "University of Cebu",
-  dasigconnect: "DASIG Connect",
-};
-
 function getInstitutionName(user: User | null): string {
   if (!user) return "Institution";
   // Admins and moderators are network-wide — not bound to one HEI workspace.
   if (user.role === "admin" || user.role === "moderator") return "DASIG Network";
 
+  // Institution name comes from GET /api/v1/me (User.inst). No email-domain
+  // guessing fallback — an unpopulated inst just shows the generic label.
   const explicitInstitution = user.inst?.trim();
   if (explicitInstitution && explicitInstitution !== user.institutionId) {
     return explicitInstitution;
   }
-
-  const emailDomain =
-    user.email.split("@")[1]?.split(".")[0]?.toLowerCase() || "";
-  return DOMAIN_MAP[emailDomain] || emailDomain.toUpperCase() || "Institution";
+  return "Institution";
 }
 
 
@@ -591,6 +577,24 @@ function notice(user: User | null, stats: DashboardStats) {
     };
   }
   const instName = getInstitutionName(user);
+  const needsRevision = stats.submissions.filter(
+    (s) => s.status === "needs_revision",
+  ).length;
+  if (needsRevision > 0) {
+    return {
+      icon: "ti ti-pencil-minus",
+      html: `<strong>${needsRevision} submission${needsRevision === 1 ? "" : "s"}</strong> ${needsRevision === 1 ? "was" : "were"} sent back for revision by your Moderator. Update ${needsRevision === 1 ? "it" : "them"} and resubmit for review.`,
+    };
+  }
+  const underReview = stats.submissions.filter(
+    (s) => s.status === "pending" || s.status === "in_review",
+  ).length;
+  if (underReview > 0) {
+    return {
+      icon: "ti ti-clock",
+      html: `You have <strong>${underReview} submission${underReview === 1 ? "" : "s"}</strong> awaiting review from your Moderator. You'll be notified once ${underReview === 1 ? "it's reviewed" : "they're reviewed"}.`,
+    };
+  }
   return {
     icon: "ti ti-confetti",
     html: `<strong>Welcome to DASIGConnect!</strong> Your account is active and bound to ${instName}'s workspace. Submit photos and videos from your institution's events — your Moderator will review them before they go to the DASIG Facebook page.`,
@@ -615,6 +619,9 @@ function statsForRole(
   ).length;
   const reviewCount = submissions.filter(
     (item) => item.status === "pending" || item.status === "in_review",
+  ).length;
+  const needsRevisionCount = submissions.filter(
+    (item) => item.status === "needs_revision",
   ).length;
   if (user.role === "admin") {
     return [
@@ -681,7 +688,7 @@ function statsForRole(
       {
         icon: "ti ti-users",
         color: "#1877F2",
-        label: "Active Contributors",
+        label: "Recent Contributors",
         value: String(stats.contributors),
       },
     ];
@@ -704,6 +711,13 @@ function statsForRole(
       color: "#1877F2",
       label: "Under Review",
       value: String(reviewCount),
+    },
+    {
+      icon: "ti ti-pencil-minus",
+      color: "#1877F2",
+      label: "Needs Revision",
+      value: String(needsRevisionCount),
+      highlight: needsRevisionCount > 0,
     },
     {
       icon: "ti ti-brand-facebook",

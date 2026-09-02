@@ -47,13 +47,13 @@ class CaptionControllerTest {
     // ── POST /caption ─────────────────────────────────────────────────────────
 
     @Test
-    void generateCaption_unauthenticated_returns403() throws Exception {
+    void generateCaption_unauthenticated_returns401() throws Exception {
         mockMvc.perform(post("/api/v1/ai/caption")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"submissionId":"%s"}
                         """.formatted(UUID.randomUUID())))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

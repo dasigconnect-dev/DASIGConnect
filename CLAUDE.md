@@ -48,12 +48,13 @@ For local frontend-to-backend calls, create `frontend/.env.local`:
 
 ```env
 VITE_API_URL=http://localhost:8080/api/v1
-VITE_SUPABASE_URL=https://<project-ref>.supabase.co
-VITE_SUPABASE_STORAGE_BUCKET=dasigconnect-media
-VITE_SUPABASE_ANON_KEY=<supabase-anon-key>
 ```
 
 `frontend/.env.local` is intentionally ignored and should not be committed.
+
+The frontend no longer talks to any object store directly — media uploads go
+through backend-issued presigned URLs (see Architecture), so no `VITE_SUPABASE_*`
+or storage keys are needed on the client.
 
 ---
 
@@ -63,11 +64,20 @@ DASIGConnect is a three-tier client-server system:
 
 ```text
 React SPA (Vercel) -> Spring Boot REST API (Render) -> Supabase PostgreSQL + pgvector
-                                                     -> Supabase Storage
+                                                     -> Cloudflare R2 (S3-compatible object storage)
                                                      -> Facebook Graph API
                                                      -> Anthropic Claude
                                                      -> Voyage AI
 ```
+
+**Object storage moved from Supabase Storage to Cloudflare R2.** `MediaStorageService`
+wraps the AWS S3 SDK against any S3-compatible endpoint; config lives under
+`app.r2.*` / `R2_*` (`R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY`, `R2_PUBLIC_BASE_URL`). The browser `PUT`s bytes straight
+to an R2 presigned URL; the DB stores the public read URL. Supabase is now
+**database only** (Postgres + pgvector). `DASIG_SUPABASE_SERVICE_ROLE_KEY` is kept
+solely as a legacy read fallback in `ClaudeVisionClient` for old images still on
+the private Supabase bucket.
 
 ### Backend - Spring Boot 4 / Java 21
 
@@ -90,7 +100,7 @@ React SPA (Vercel) -> Spring Boot REST API (Render) -> Supabase PostgreSQL + pgv
 - Routing: React Router v7.
 - HTTP: Axios with Authorization header managed by `setAuthToken`.
 - Session expiry: `App.tsx` parses JWT `exp`, shows countdown banner near expiry, and opens the session modal at timeout.
-- Media upload: browser uploads binary directly to Supabase Storage, then the app sends media metadata to the backend.
+- Media upload: browser requests a presigned URL from the backend, `PUT`s the file bytes directly to Cloudflare R2, then sends media metadata to the backend. No `@supabase/*` client or storage keys in the frontend.
 
 ---
 
@@ -460,7 +470,7 @@ See `TASKS.md` for the detailed task checklist and current gaps.
 - `BackendApplication` custom Flyway/diagnostic beans are gated by `spring.flyway.enabled`; tests depend on this isolation.
 - `MediaAsset.embedding` is not Hibernate-mapped because pgvector `VECTOR(1024)` is handled through native queries.
 - AI Media Library now has a migration path toward `media_asset_embeddings` with separate `embedding_type` values (`image`, `semantic`, `keyframe`). Do not drop the old `media_assets.embedding` column until uploads, backfill, and suggestion search have been verified on the new table.
-- Media upload is direct-to-Supabase from the frontend, followed by backend metadata attach. The backend does not receive multipart file bytes for Module 1.
+- Media upload: the frontend gets a presigned `PUT` URL from the backend, uploads the bytes directly to **Cloudflare R2** (S3-compatible, via `MediaStorageService`), then posts metadata to the backend. The backend never receives multipart file bytes. Object storage config is `app.r2.*` / `R2_*`; Supabase is database-only now.
 - Submission media ordering is controlled by `submission_media_assets.display_order`; publishing queries already load assets ordered by this field. Use `PATCH /api/v1/submissions/{id}/media/order` for saved draft media reorder instead of mutating media asset records.
 - Publishing is now claimed before any Facebook Graph API call. Preserve the atomic `scheduled -> publishing` / `direct_post_scheduled -> direct_post_publishing` transition so overlapping scheduler runs or multiple app instances cannot publish the same submission twice.
 - Fresh Supabase `public` schemas should baseline Flyway at version `0`, not `1`; otherwise V1 is skipped and Module 1 tables are never created.
@@ -472,3 +482,4 @@ See `TASKS.md` for the detailed task checklist and current gaps.
 - When a migration file was never applied to a shared DB but a higher-version migration already was, do not reuse the old version number. Create new files at the next available version number.
 - V4 creates `asset_tags` with columns `(asset_id, tag, source)`. V17 drops and recreates it with `(media_asset_id, label)` to match the `AssetTag` entity. Do not revert V17.
 - Notification inserts in `SubmissionService.submit()` (T1 — notify validators) are wrapped in try-catch. This is intentional: a notification failure must never roll back the PENDING status transition.
+- `SubmissionService.submit()` reconciles attached media with the finalised post: a new upload (STAGED, or any album-less asset — a real library pick always has an album) is bound to the institution, filed into the album resolved from `submission.albumName` (existing root album by name, else a new one) via `resolveSubmissionAlbum`, and set to PROCESSING for the AI pipeline; a library-picked asset keeps its original album. Both get the post's media tags (`applySubmissionMediaTags`, `manual` source, deduped by label). Do not re-home a library pick's album on submit.

@@ -29,7 +29,7 @@ public class PageSettingsService {
     public PageSettingsDto get(UUID institutionId, JwtUserDetails actor) {
         authorize(institutionId, actor);
         return find(institutionId).map(PageSettingsDto::from)
-                .orElse(new PageSettingsDto(institutionId, false, null, null, null));
+                .orElse(new PageSettingsDto(institutionId, null, null));
     }
 
     @Transactional
@@ -40,8 +40,6 @@ public class PageSettingsService {
             settings.setInstitution(institutions.findById(institutionId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Institution not found")));
         }
-        settings.setWatermarkEnabled(request.watermarkEnabled());
-        settings.setWatermarkText(trim(request.watermarkText()));
         settings.setFacebookPageId(trim(request.facebookPageId()));
         settings.setUpdatedBy(users.getReferenceById(actor.userId()));
         return PageSettingsDto.from(repository.save(settings));

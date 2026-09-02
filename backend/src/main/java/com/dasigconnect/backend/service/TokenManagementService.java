@@ -101,7 +101,7 @@ public class TokenManagementService {
         String url = META_OAUTH_URL
                 + "?client_id=" + encode(appId)
                 + "&redirect_uri=" + encode(redirectUri)
-                + "&scope=" + encode("pages_manage_posts,pages_read_engagement,pages_show_list")
+                + "&scope=" + encode("pages_manage_posts,pages_read_engagement,pages_show_list,read_insights")
                 + "&response_type=code"
                 + "&state=" + encode(state);
 

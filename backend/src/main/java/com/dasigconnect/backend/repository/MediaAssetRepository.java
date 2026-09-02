@@ -26,13 +26,15 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Query("SELECT m FROM MediaAsset m WHERE m.institution.id IN :institutionIds AND m.deletedAt IS NULL ORDER BY m.createdAt DESC")
     List<MediaAsset> findActiveByInstitutionIds(@Param("institutionIds") java.util.Collection<UUID> institutionIds);
 
-    @Query(value = """
-        SELECT * FROM media_assets
-        WHERE institution_id = :institutionId
-          AND deleted_at IS NULL
-          AND status = 'READY'
-        ORDER BY created_at DESC
-        """, nativeQuery = true)
+    // JPQL (not SELECT *) so Hibernate emits an explicit column list and never
+    // pulls the unmapped embedding VECTOR(1024) column across the wire.
+    @Query("""
+        SELECT m FROM MediaAsset m
+        WHERE m.institution.id = :institutionId
+          AND m.deletedAt IS NULL
+          AND m.status = com.dasigconnect.backend.model.entity.MediaAssetStatus.READY
+        ORDER BY m.createdAt DESC
+        """)
     List<MediaAsset> findReadyByInstitution(@Param("institutionId") UUID institutionId);
 
     // Excludes STAGED rows (draft uploads not yet bound to an institution) so they

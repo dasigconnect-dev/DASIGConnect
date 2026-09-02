@@ -43,6 +43,8 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class InvitationServiceTest {
 
+    private static final String STRONG_PASSWORD = "Riv3r!Moonlight";
+
     @Mock
     InvitationTokenRepository invitationTokenRepository;
     @Mock
@@ -429,7 +431,7 @@ class InvitationServiceTest {
         when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
 
         assertThatThrownBy(() -> invitationService.acceptInvitation(
-                new AcceptInvitationRequestDto("validrawtoken", "Mark", "Camoro", "password1")))
+                new AcceptInvitationRequestDto("validrawtoken", "Mark", "Camoro", STRONG_PASSWORD)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
                 .isEqualTo(410);
@@ -439,7 +441,7 @@ class InvitationServiceTest {
     void acceptInvitation_contributor_createsUserAndReturnsJwt() {
         InvitationToken token = buildToken(false, false);
         when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
-        when(passwordEncoder.encode("password1")).thenReturn("$hashed");
+        when(passwordEncoder.encode(STRONG_PASSWORD)).thenReturn("$hashed");
         when(userRepository.save(any())).thenAnswer(inv -> {
             User u = inv.getArgument(0);
             u.setId(UUID.randomUUID());
@@ -449,7 +451,7 @@ class InvitationServiceTest {
         when(userRepository.findByEmail("invitee@example.com")).thenReturn(Optional.of(new User()));
 
         LoginResponseDto result = invitationService.acceptInvitation(
-                new AcceptInvitationRequestDto("validrawtoken", " Mark ", " Camoro ", "password1"));
+                new AcceptInvitationRequestDto("validrawtoken", " Mark ", " Camoro ", STRONG_PASSWORD));
 
         assertThat(result.accessToken()).isEqualTo("new.jwt.token");
         assertThat(result.role()).isEqualTo("contributor");
@@ -473,7 +475,7 @@ class InvitationServiceTest {
         InvitationToken token = buildToken(false, false, UserRole.admin);
         token.setInstitution(null);
         when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
-        when(passwordEncoder.encode("password1")).thenReturn("$hashed");
+        when(passwordEncoder.encode(STRONG_PASSWORD)).thenReturn("$hashed");
         when(userRepository.save(any())).thenAnswer(inv -> {
             User u = inv.getArgument(0);
             u.setId(UUID.randomUUID());
@@ -483,7 +485,7 @@ class InvitationServiceTest {
         when(userRepository.findByEmail("invitee@example.com")).thenReturn(Optional.of(new User()));
 
         LoginResponseDto result = invitationService.acceptInvitation(
-                new AcceptInvitationRequestDto("validrawtoken", "Ava", "Admin", "password1"));
+                new AcceptInvitationRequestDto("validrawtoken", "Ava", "Admin", STRONG_PASSWORD));
 
         assertThat(result.accessToken()).isEqualTo("new.jwt.token");
         assertThat(result.role()).isEqualTo("admin");
@@ -519,7 +521,7 @@ class InvitationServiceTest {
                 .thenReturn(3L);
 
         assertThatThrownBy(() -> invitationService.acceptInvitation(
-                new AcceptInvitationRequestDto("validrawtoken", "Ava", "Admin", "password1")))
+                new AcceptInvitationRequestDto("validrawtoken", "Ava", "Admin", STRONG_PASSWORD)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
                 .isEqualTo(409);
@@ -540,7 +542,7 @@ class InvitationServiceTest {
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(new User()));
 
         LoginResponseDto response = invitationService.acceptInvitation(
-                new AcceptInvitationRequestDto("tok", "Jane", "Doe", "pass"));
+                new AcceptInvitationRequestDto("tok", "Jane", "Doe", STRONG_PASSWORD));
 
         assertThat(response.accessToken()).isEqualTo("jwt");
     }
@@ -560,7 +562,7 @@ class InvitationServiceTest {
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(new User()));
 
         invitationService.acceptInvitation(
-                new AcceptInvitationRequestDto("tok", "Jane", "Doe", "pass"));
+                new AcceptInvitationRequestDto("tok", "Jane", "Doe", STRONG_PASSWORD));
 
         verify(institutionService, never()).transitionToActive(any());
     }

@@ -24,9 +24,11 @@ import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
 import com.dasigconnect.backend.repository.AccountLockoutRepository;
+import com.dasigconnect.backend.repository.AuditLogRepository;
 import com.dasigconnect.backend.repository.EmailDeliveryLogRepository;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
+import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.NotificationRepository;
 import com.dasigconnect.backend.repository.ReviewLockRepository;
@@ -49,7 +51,9 @@ public class UserService {
     private final ReviewLockRepository reviewLockRepository;
     private final SubmissionRepository submissionRepository;
     private final MediaAssetRepository mediaAssetRepository;
+    private final MediaAlbumRepository mediaAlbumRepository;
     private final ValidationLogRepository validationLogRepository;
+    private final AuditLogRepository auditLogRepository;
     private final JWTService jwtService;
     private final InstitutionRepository institutionRepository;
     private final InvitationTokenRepository invitationTokenRepository;
@@ -68,7 +72,9 @@ public class UserService {
             ReviewLockRepository reviewLockRepository,
             SubmissionRepository submissionRepository,
             MediaAssetRepository mediaAssetRepository,
+            MediaAlbumRepository mediaAlbumRepository,
             ValidationLogRepository validationLogRepository,
+            AuditLogRepository auditLogRepository,
             JWTService jwtService,
             InstitutionRepository institutionRepository,
             InvitationTokenRepository invitationTokenRepository,
@@ -81,7 +87,9 @@ public class UserService {
         this.reviewLockRepository = reviewLockRepository;
         this.submissionRepository = submissionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
+        this.mediaAlbumRepository = mediaAlbumRepository;
         this.validationLogRepository = validationLogRepository;
+        this.auditLogRepository = auditLogRepository;
         this.jwtService = jwtService;
         this.institutionRepository = institutionRepository;
         this.invitationTokenRepository = invitationTokenRepository;
@@ -107,7 +115,17 @@ public class UserService {
         user.setDisplayName(displayName == null || displayName.isBlank() ? null : displayName);
         user.setNotifyInApp(request.notifyInApp());
         user.setNotifyEmail(request.notifyEmail());
-        return UserDto.from(userRepository.save(user));
+        var saved = userRepository.save(user);
+        auditLogService.record(
+                saved,
+                "USER_SETTINGS_UPDATED",
+                null,
+                null,
+                saved.getId(),
+                Map.of(
+                        "notifyInApp", saved.isNotifyInApp(),
+                        "notifyEmail", saved.isNotifyEmail()));
+        return UserDto.from(saved);
     }
 
     /**
@@ -314,19 +332,33 @@ public class UserService {
                     "Only deactivated or cancelled users can be removed. Please deactivate or cancel the invitation first.");
         }
 
+        // Any FK reference from a RESTRICT table blocks a hard user-row delete.
+        // audit_log.actor_id in particular is set for anyone who has ever acted
+        // (submitted, uploaded, created an album, accepted an invite), and
+        // audit rows are append-only — so an erased account almost always lands
+        // here and is retained as an anonymised inactive row.
         boolean hasData = submissionRepository.existsByContributorId(id)
                 || mediaAssetRepository.existsByUploaderId(id)
-                || validationLogRepository.existsByValidatorId(id);
+                || validationLogRepository.existsByValidatorId(id)
+                || mediaAlbumRepository.existsByCreatedBy(id)
+                || auditLogRepository.existsByActorId(id);
 
         if (hasData) {
-            // Already inactive; invalidate tokens and record removal audit
-            jwtService.invalidateUserTokens(user.getId());
-            auditLogService.record(
-                    findRequesterForAudit(requester),
-                    "USER_REMOVED",
-                    null, null,
-                    user.getId(),
-                    java.util.Map.of("email", user.getEmail(), "role", user.getRole().name()));
+            // The account can't be row-deleted (RESTRICT FKs) and is already at
+            // rest, so "remove" here is a no-op that just confirms it stays as an
+            // inactive/anonymised row. Record it once — an already-erased account,
+            // or one already marked USER_REMOVED, needs no further audit noise.
+            boolean alreadyTerminal = user.getPurgedAt() != null
+                    || auditLogRepository.existsByActionAndResourceId("USER_REMOVED", id);
+            if (!alreadyTerminal) {
+                jwtService.invalidateUserTokens(user.getId());
+                auditLogService.record(
+                        findRequesterForAudit(requester),
+                        "USER_REMOVED",
+                        null, null,
+                        user.getId(),
+                        java.util.Map.of("email", user.getEmail(), "role", user.getRole().name()));
+            }
             return "deactivated";
         }
 
@@ -422,9 +454,13 @@ public class UserService {
                 null, null,
                 target.getId(),
                 Map.of(
-                        "originalEmail", originalEmail != null ? originalEmail : "",
                         "role", target.getRole().name(),
                         "mediaAssetsPurged", String.valueOf(mediaPurged)));
+
+        // Right-to-be-forgotten also covers PII copied into prior audit metadata
+        // (e.g. the "email" key written on LOGIN_FAILED / ACCOUNT_LOCKED rows).
+        // The audit rows themselves are kept; only the personal fields are dropped.
+        auditLogRepository.scrubPersonalMetadataForUser(target.getId());
 
         return new ErasureResult(tombstoneEmail, mediaPurged);
     }

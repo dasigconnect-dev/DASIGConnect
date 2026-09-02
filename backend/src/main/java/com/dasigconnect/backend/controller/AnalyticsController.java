@@ -43,9 +43,8 @@ public class AnalyticsController {
     public ResponseEntity<ApiResponse<AnalyticsSummaryDto>> summary(
             @RequestParam(defaultValue = "30d") String range,
             @RequestParam(required = false) UUID institutionId,
-            @RequestParam(required = false) String category,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(metricsAggregatorService.summary(range, institutionId, category, user)));
+        return ResponseEntity.ok(ApiResponse.success(metricsAggregatorService.summary(range, institutionId, user)));
     }
 
     @GetMapping(value = "/export/{metric}", produces = "text/csv")
@@ -53,9 +52,8 @@ public class AnalyticsController {
             @PathVariable String metric,
             @RequestParam(defaultValue = "30d") String range,
             @RequestParam(required = false) UUID institutionId,
-            @RequestParam(required = false) String category,
             @AuthenticationPrincipal JwtUserDetails user) {
-        CsvExport export = metricsAggregatorService.export(metric, range, institutionId, category, user);
+        CsvExport export = metricsAggregatorService.export(metric, range, institutionId, user);
         auditLogService.recordByActorId(user != null ? user.userId() : null,
                 "ANALYTICS_EXPORTED", null, null, institutionId,
                 java.util.Map.of("metric", metric, "range", range,
@@ -72,8 +70,7 @@ public class AnalyticsController {
             @PathVariable String metric,
             @RequestParam(defaultValue = "30d") String range,
             @RequestParam(required = false) UUID institutionId,
-            @RequestParam(required = false) String category,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(metricsAggregatorService.report(metric, range, institutionId, category, user)));
+        return ResponseEntity.ok(ApiResponse.success(metricsAggregatorService.report(metric, range, institutionId, user)));
     }
 }

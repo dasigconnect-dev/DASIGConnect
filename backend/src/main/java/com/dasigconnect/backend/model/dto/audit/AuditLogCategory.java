@@ -57,7 +57,8 @@ public enum AuditLogCategory {
                 || a.contains("JOB_RUN")) {
             return CONFIGURATION;
         }
-        if (a.contains("TOKEN") || a.contains("AUTH") || a.contains("ACCOUNT_LOCKED") || a.contains("EXPORT")) {
+        if (a.contains("TOKEN") || a.contains("AUTH") || a.contains("ACCOUNT_LOCKED") || a.contains("EXPORT")
+                || a.equals("ACCESS_DENIED")) {
             return SECURITY;
         }
         return OTHER;

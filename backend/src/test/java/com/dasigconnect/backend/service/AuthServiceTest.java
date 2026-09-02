@@ -148,7 +148,32 @@ class AuthServiceTest {
     @Test
     void logout_delegatesToJwtService() {
         when(jwtService.validateToken("some.token")).thenReturn(true);
+        when(jwtService.extractClaims("some.token")).thenReturn(null);
         authService.logout("some.token");
         verify(jwtService).invalidateToken("some.token");
+    }
+
+    @Test
+    void logout_recordsLogoutAudit_withActorFromTokenClaims() {
+        io.jsonwebtoken.Claims claims = mock(io.jsonwebtoken.Claims.class);
+        when(claims.get("user_id", String.class)).thenReturn(userId.toString());
+        when(jwtService.validateToken("some.token")).thenReturn(true);
+        when(jwtService.extractClaims("some.token")).thenReturn(claims);
+
+        authService.logout("some.token");
+
+        verify(jwtService).invalidateToken("some.token");
+        verify(auditLogService).recordByActorId(eq(userId), eq("LOGOUT"), any(), any(), eq(userId), any());
+    }
+
+    @Test
+    void logout_unreadableToken_stillInvalidates_butWritesNoAudit() {
+        when(jwtService.validateToken("bad.token")).thenReturn(true);
+        when(jwtService.extractClaims("bad.token")).thenThrow(new io.jsonwebtoken.JwtException("nope"));
+
+        authService.logout("bad.token");
+
+        verify(jwtService).invalidateToken("bad.token");
+        verify(auditLogService, never()).recordByActorId(any(), any(), any(), any(), any(), any());
     }
 }

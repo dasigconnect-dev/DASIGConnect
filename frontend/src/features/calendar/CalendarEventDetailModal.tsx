@@ -102,8 +102,12 @@ export default function CalendarEventDetailModal({
   if (!event) return null;
 
   const mediaAssets = submissionDetail?.mediaAssets ?? [];
-  const caption = submissionDetail?.caption?.trim();
-  const displayColor = visibleStatusColor(event.status, user.role, isOwnInstitution, event.mine);
+  // GET /submissions/{id} only allows the author (or a same-institution
+  // moderator/admin), so a contributor opening a same-institution peer's post
+  // gets a 403. The calendar DTO already carries the caption in full for
+  // own-institution events — fall back to it so the drawer isn't blank.
+  const caption = (submissionDetail?.caption ?? event.caption ?? "").trim() || undefined;
+  const displayColor = visibleStatusColor(event.status, user.role, event.mine);
   const rawStatus = (event.status || "").toLowerCase();
   const isPendingApproval = rawStatus === "pending" || rawStatus === "in_review" || rawStatus === "needs_revision";
   const isPublished = rawStatus === "published" || rawStatus === "published_manual";
@@ -131,7 +135,7 @@ export default function CalendarEventDetailModal({
                 className="status-badge"
                 style={{ background: displayColor.bg, color: displayColor.text, fontSize: "11.5px", fontWeight: 700 }}
               >
-                {visibleStatusLabel(event.status, user.role, isOwnInstitution, event.mine)}
+                {visibleStatusLabel(event.status, user.role, event.mine)}
               </span>
               {event.locked && (
                 <span className="cal-drawer-lock-pill" title="Slot permanently locked">

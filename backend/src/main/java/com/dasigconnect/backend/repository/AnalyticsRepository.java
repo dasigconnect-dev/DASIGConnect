@@ -2,6 +2,7 @@ package com.dasigconnect.backend.repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -11,7 +12,6 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.dasigconnect.backend.model.dto.analytics.ContributorBreakdownDto;
-import com.dasigconnect.backend.model.dto.analytics.CategoryPerformanceDto;
 import com.dasigconnect.backend.model.dto.analytics.ContentIssueDto;
 import com.dasigconnect.backend.model.dto.analytics.DailyAnalyticsPointDto;
 import com.dasigconnect.backend.model.dto.analytics.InstitutionPostsDto;
@@ -26,9 +26,12 @@ public class AnalyticsRepository {
     private static final String REPORTING_STATES = "'published', 'published_manual', 'admin_direct_post'";
 
     private final NamedParameterJdbcTemplate jdbc;
+    private final PublishSuccessRateRepository publishSuccessRateRepository;
 
-    public AnalyticsRepository(NamedParameterJdbcTemplate jdbc) {
+    public AnalyticsRepository(NamedParameterJdbcTemplate jdbc,
+            PublishSuccessRateRepository publishSuccessRateRepository) {
         this.jdbc = jdbc;
+        this.publishSuccessRateRepository = publishSuccessRateRepository;
     }
 
     public PostingDelayStats averagePostingDelay(Instant start, Instant end, AnalyticsScope scope) {
@@ -224,10 +227,11 @@ public class AnalyticsRepository {
     }
 
     public List<StatusBreakdownDto> statusBreakdown(AnalyticsScope scope) {
+        // Drafts are the contributor's private workspace — never surfaced in analytics.
         String sql = """
             SELECT s.status, COUNT(*) AS status_count
             FROM submissions s
-            WHERE 1 = 1 %s
+            WHERE s.status <> 'draft' %s
             GROUP BY s.status
             ORDER BY s.status ASC
             """.formatted(scope.scopedFilter("s"));
@@ -241,18 +245,22 @@ public class AnalyticsRepository {
             FROM (
                 SELECT 'Missing event title' AS issue, COUNT(*) AS issue_count FROM submissions s
                 WHERE COALESCE(s.submitted_at, s.created_at) >= :start AND COALESCE(s.submitted_at, s.created_at) < :end
+                  AND s.status <> 'draft'
                   AND (s.event_title IS NULL OR LENGTH(TRIM(s.event_title)) = 0) %1$s
                 UNION ALL
                 SELECT 'Missing event date' AS issue, COUNT(*) AS issue_count FROM submissions s
                 WHERE COALESCE(s.submitted_at, s.created_at) >= :start AND COALESCE(s.submitted_at, s.created_at) < :end
+                  AND s.status <> 'draft'
                   AND s.event_date IS NULL %1$s
                 UNION ALL
                 SELECT 'Missing caption' AS issue, COUNT(*) AS issue_count FROM submissions s
                 WHERE COALESCE(s.submitted_at, s.created_at) >= :start AND COALESCE(s.submitted_at, s.created_at) < :end
+                  AND s.status <> 'draft'
                   AND (s.caption IS NULL OR LENGTH(TRIM(s.caption)) = 0) %1$s
                 UNION ALL
                 SELECT 'Missing media' AS issue, COUNT(*) AS issue_count FROM submissions s
                 WHERE COALESCE(s.submitted_at, s.created_at) >= :start AND COALESCE(s.submitted_at, s.created_at) < :end
+                  AND s.status <> 'draft'
                   AND NOT EXISTS (SELECT 1 FROM submission_media_assets sma WHERE sma.submission_id = s.id) %1$s
             ) issues
             GROUP BY issue
@@ -261,33 +269,6 @@ public class AnalyticsRepository {
             """.formatted(scope.scopedFilter("s"));
         return jdbc.query(sql, params(start, end, scope), (rs, rowNum) ->
                 new ContentIssueDto(rs.getString("issue"), rs.getLong("issue_count")));
-    }
-
-    public List<CategoryPerformanceDto> topCategories(Instant start, Instant end, AnalyticsScope scope) {
-        String sql = """
-            SELECT COALESCE(NULLIF(TRIM(s.category), ''), 'Uncategorized') AS category,
-                   COUNT(*) AS post_count,
-                   COALESCE(AVG(CASE WHEN
-                       s.event_title IS NOT NULL
-                       AND s.event_date IS NOT NULL
-                       AND s.caption IS NOT NULL
-                       AND LENGTH(TRIM(s.caption)) > 0
-                       AND EXISTS (SELECT 1 FROM submission_media_assets sma WHERE sma.submission_id = s.id)
-                   THEN 100.0 ELSE 0.0 END), 0) AS completeness_rate
-            FROM submissions s
-            WHERE s.status IN (%s)
-              AND s.published_at >= :start
-              AND s.published_at < :end
-              %s
-            GROUP BY category
-            ORDER BY post_count DESC, completeness_rate DESC
-            LIMIT 5
-            """.formatted(PUBLISHED_STATES, scope.scopedFilter("s"));
-        return jdbc.query(sql, params(start, end, scope), (rs, rowNum) ->
-                new CategoryPerformanceDto(
-                        rs.getString("category"),
-                        rs.getLong("post_count"),
-                        round(rs.getDouble("completeness_rate"))));
     }
 
     public List<InstitutionFilterOptionDto> institutionFilterOptions() {
@@ -443,14 +424,6 @@ public class AnalyticsRepository {
                  WHERE al.created_at >= :start AND al.created_at < :end
                    AND UPPER(al.action) LIKE '%%OVERRIDE%%'
                    %2$s) AS override_count,
-                (SELECT COUNT(*) FROM publication_attempts pa
-                 JOIN submissions s ON s.id = pa.submission_id
-                 WHERE pa.attempted_at >= :start AND pa.attempted_at < :end %1$s) AS attempt_count,
-                (SELECT COUNT(*) FROM publication_attempts pa
-                 JOIN submissions s ON s.id = pa.submission_id
-                 WHERE pa.attempted_at >= :start AND pa.attempted_at < :end
-                   AND pa.result = 'success'
-                   %1$s) AS success_count,
                 (SELECT COUNT(*) FROM submissions s
                  WHERE s.status IN ('published', 'published_manual')
                    AND s.published_at >= :start AND s.published_at < :end
@@ -463,13 +436,17 @@ public class AnalyticsRepository {
                    AND actor.role = 'admin'
                    %2$s) AS admin_action_count
             """.formatted(scope.scopedFilter("s"), scope.auditFilter("actor"));
+        // Publish success rate comes from the shared calculator so System Health
+        // and Analytics can never report a different definition of it.
+        PublishSuccessRateRepository.Stats publish =
+                publishSuccessRateRepository.between(start, end, scope.institutionId());
         return jdbc.queryForObject(sql, params, (rs, rowNum) ->
                 new OperationalStats(
                         rs.getLong("workflow_count"),
                         rs.getLong("deadline_risk_count"),
                         rs.getLong("override_count"),
-                        rs.getLong("attempt_count"),
-                        rs.getLong("success_count"),
+                        publish.attempts(),
+                        publish.successes(),
                         rs.getLong("on_time_count"),
                         rs.getLong("admin_action_count")));
     }
@@ -754,13 +731,21 @@ public class AnalyticsRepository {
     private List<Map<String, Object>> exportOperationalHealth(Instant start, Instant end, AnalyticsScope scope) {
         OperationalStats stats = operationalHealth(start, end, Instant.now(), scope);
         return List.of(
-                Map.of("metric", "submissions_entered_workflow", "value", stats.workflowCount()),
-                Map.of("metric", "validation_deadline_risks", "value", stats.deadlineRiskCount()),
-                Map.of("metric", "override_audit_events", "value", stats.overrideCount()),
-                Map.of("metric", "publication_attempts", "value", stats.attemptCount()),
-                Map.of("metric", "successful_publication_attempts", "value", stats.successCount()),
-                Map.of("metric", "on_time_publications", "value", stats.onTimeCount()),
-                Map.of("metric", "moderator_actions", "value", stats.adminActionCount()));
+                operationalRow("submissions_entered_workflow", stats.workflowCount()),
+                operationalRow("validation_deadline_risks", stats.deadlineRiskCount()),
+                operationalRow("override_audit_events", stats.overrideCount()),
+                operationalRow("publication_attempts", stats.attemptCount()),
+                operationalRow("successful_publication_attempts", stats.successCount()),
+                operationalRow("on_time_publications", stats.onTimeCount()),
+                operationalRow("moderator_actions", stats.adminActionCount()));
+    }
+
+    /** Ordered (metric, value) row so the CSV and the report table keep a stable column order. */
+    private static Map<String, Object> operationalRow(String metric, long value) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("metric", metric);
+        row.put("value", value);
+        return row;
     }
 
     private MapSqlParameterSource params(Instant start, Instant end, AnalyticsScope scope) {
@@ -772,9 +757,6 @@ public class AnalyticsRepository {
         }
         if (scope.userId() != null) {
             params.addValue("userId", scope.userId());
-        }
-        if (scope.category() != null && !scope.category().isBlank()) {
-            params.addValue("category", scope.category());
         }
         return params;
     }
@@ -793,7 +775,7 @@ public class AnalyticsRepository {
         return timestamp == null ? null : timestamp.toInstant();
     }
 
-    public record AnalyticsScope(String role, UUID institutionId, UUID userId, String category) {
+    public record AnalyticsScope(String role, UUID institutionId, UUID userId) {
         /**
          * Institution scoping only. Contributor's institutionId is always their
          * own (never null) so they are always scoped; moderator/
@@ -808,16 +790,9 @@ public class AnalyticsRepository {
             return " AND " + alias + ".institution_id = :institutionId ";
         }
 
-        public String categoryFilter(String alias) {
-            if (category == null || category.isBlank()) {
-                return "";
-            }
-            return " AND " + alias + ".category = :category ";
-        }
-
-        /** Institution scope plus the optional category filter, combined into one WHERE fragment. */
+        /** Institution scope as a WHERE fragment. (Category filtering was removed — submissions carry no category.) */
         public String scopedFilter(String alias) {
-            return submissionFilter(alias) + categoryFilter(alias);
+            return submissionFilter(alias);
         }
 
         public String auditFilter(String actorAlias) {

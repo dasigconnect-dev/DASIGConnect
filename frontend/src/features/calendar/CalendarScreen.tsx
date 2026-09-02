@@ -128,6 +128,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
     setTimeout(() => {
       document.querySelectorAll(".fc-event-mirror").forEach((el) => el.remove());
     }, 0);
+    toast.success("Post rescheduled.");
     refresh();
   }
 
@@ -586,12 +587,7 @@ const METRIC_LABELS: Record<MetricKey, string> = {
 };
 
 function visibleEventStatus(event: CalendarEvent, user: User) {
-  return visibleCalendarStatus(
-    event.status,
-    user.role,
-    event.institutionId === user.institutionId,
-    event.mine,
-  );
+  return visibleCalendarStatus(event.status, user.role, event.mine);
 }
 
 function matchesMetric(event: CalendarEvent, metric: MetricKey, user: User) {

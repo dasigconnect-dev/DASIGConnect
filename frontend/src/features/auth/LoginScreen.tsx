@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
@@ -54,9 +54,9 @@ export default function LoginScreen({
           setInstitutions(res.data)
         }
       })
-      .catch((err) => {
-        if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
-          console.error('Failed to load member institutions', err)
+      .catch(() => {
+        if (mounted) {
+          setInstitutions([])
         }
       })
 
@@ -197,11 +197,19 @@ export default function LoginScreen({
             </div>
           </div>
 
-          <div id="login-fields" className={showLockout ? 'hidden' : ''}>
+          <form
+            id="login-fields"
+            className={showLockout ? 'hidden' : ''}
+            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+              event.preventDefault()
+              onLogin()
+            }}
+          >
             <div className="fgroup">
-              <label className="flabel">Institutional Email</label>
+              <label className="flabel" htmlFor="l-email">Institutional Email</label>
               <input
                 id="l-email"
+                name="email"
                 className={`finput${loginError ? ' err' : ''}`}
                 type="email"
                 placeholder="yourname@institution.edu.ph"
@@ -211,7 +219,7 @@ export default function LoginScreen({
               />
             </div>
             <div className="fgroup">
-              <label className="flabel">
+              <label className="flabel" htmlFor="l-pw">
                 Password
                 <button type="button" className="flabel-action" onClick={onForgot}>
                   Forgot password?
@@ -220,6 +228,7 @@ export default function LoginScreen({
               <div className="pw-wrap">
                 <input
                   id="l-pw"
+                  name="password"
                   className={`finput${loginError ? ' err' : ''}`}
                   type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••••"
@@ -251,16 +260,15 @@ export default function LoginScreen({
             </div>
 
             <button
-              type="button"
+              type="submit"
               className="btn-primary"
-              onClick={onLogin}
               disabled={loading}
             >
               <i className="ti ti-login"></i>
               <span>{loading ? 'Signing In' : 'Sign In'}</span>
               {loading && <Spinner size="xs" color="white" aria-label="Signing in" />}
             </button>
-          </div>
+          </form>
 
           <div id="lockout-actions" className={showLockout ? '' : 'hidden'}>
             <button type="button" className="btn-ghost" onClick={onRequestReset}>

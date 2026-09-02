@@ -8,6 +8,7 @@ import com.dasigconnect.backend.model.dto.systemhealth.OperationalMetricDto;
 import com.dasigconnect.backend.model.dto.systemhealth.StorageMetricDto;
 import com.dasigconnect.backend.model.dto.systemhealth.SystemHealthSummaryDto;
 import com.dasigconnect.backend.model.entity.ScheduledJobRun;
+import com.dasigconnect.backend.repository.PublishSuccessRateRepository;
 import com.dasigconnect.backend.repository.ScheduledJobRunRepository;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -26,8 +27,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,8 +63,8 @@ public class SystemHealthService {
     private final JdbcTemplate jdbcTemplate;
     private final ScheduledJobRunRepository scheduledJobRunRepository;
     private final TokenManagementService tokenManagementService;
-    private final JavaMailSender mailSender;
     private final MediaStorageService mediaStorage;
+    private final PublishSuccessRateRepository publishSuccessRateRepository;
     private final HttpClient httpClient;
     private final long databaseLimitBytes;
     private final long mediaLimitBytes;
@@ -73,13 +72,15 @@ public class SystemHealthService {
     private final double storageCriticalThreshold;
     private final String anthropicApiKey;
     private final String voyageApiKey;
+    private final String mailApiKey;
+    private final String mailApiBaseUrl;
 
     public SystemHealthService(
             JdbcTemplate jdbcTemplate,
             ScheduledJobRunRepository scheduledJobRunRepository,
             TokenManagementService tokenManagementService,
-            JavaMailSender mailSender,
             MediaStorageService mediaStorage,
+            PublishSuccessRateRepository publishSuccessRateRepository,
             // Defaults track the current free tiers: Supabase Postgres 500 MB,
             // Cloudflare R2 10 GB-month (storage billed only past that).
             @Value("${app.system-health.database-limit-bytes:500000000}") long databaseLimitBytes,
@@ -87,18 +88,22 @@ public class SystemHealthService {
             @Value("${app.system-health.storage-warning-threshold-percent:80}") double storageWarningThreshold,
             @Value("${app.system-health.storage-critical-threshold-percent:95}") double storageCriticalThreshold,
             @Value("${anthropic.api.key:}") String anthropicApiKey,
-            @Value("${voyage.api.key:}") String voyageApiKey) {
+            @Value("${voyage.api.key:}") String voyageApiKey,
+            @Value("${app.mail.api-key:}") String mailApiKey,
+            @Value("${app.mail.api-base-url:https://api.resend.com}") String mailApiBaseUrl) {
         this.jdbcTemplate = jdbcTemplate;
         this.scheduledJobRunRepository = scheduledJobRunRepository;
         this.tokenManagementService = tokenManagementService;
-        this.mailSender = mailSender;
         this.mediaStorage = mediaStorage;
+        this.publishSuccessRateRepository = publishSuccessRateRepository;
         this.databaseLimitBytes = databaseLimitBytes;
         this.mediaLimitBytes = mediaLimitBytes;
         this.storageWarningThreshold = storageWarningThreshold;
         this.storageCriticalThreshold = Math.max(storageCriticalThreshold, storageWarningThreshold);
         this.anthropicApiKey = anthropicApiKey;
         this.voyageApiKey = voyageApiKey;
+        this.mailApiKey = mailApiKey;
+        this.mailApiBaseUrl = mailApiBaseUrl;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(3))
                 .build();
@@ -350,18 +355,7 @@ public class SystemHealthService {
     }
 
     private ExternalServiceHealthDto emailHealth() {
-        if (mailSender instanceof JavaMailSenderImpl sender) {
-            try {
-                sender.testConnection();
-                return service("Email Service Provider", HealthStatus.HEALTHY,
-                        "SMTP connection succeeded.", null, null);
-            } catch (Exception ex) {
-                return service("Email Service Provider", HealthStatus.UNAVAILABLE,
-                        "SMTP connection could not be verified.", null, null);
-            }
-        }
-        return service("Email Service Provider", HealthStatus.UNAVAILABLE,
-                "Mail sender does not expose a connection health probe.", null, null);
+        return httpReachability("Email Service Provider", mailApiBaseUrl, mailApiKey);
     }
 
     /** A job that is expected no more than once a day is not "unavailable" just because
@@ -477,21 +471,18 @@ public class SystemHealthService {
 
     private OperationalMetricDto publishSuccessRate(Instant start) {
         try {
-            Map<String, Object> row = jdbcTemplate.queryForMap("""
-                    SELECT COUNT(*) AS attempts,
-                           COUNT(CASE WHEN result = 'success' THEN 1 END) AS successes
-                    FROM publication_attempts
-                    WHERE attempted_at >= ?
-                    """, Timestamp.from(start));
-            long attempts = longNumber(row.get("attempts"));
-            long successes = longNumber(row.get("successes"));
-            if (attempts == 0) {
+            // Same calculator the Analytics operational-health block uses, so the
+            // two dashboards can never disagree on the definition — only on the
+            // window (here: network-wide, last 30 days).
+            PublishSuccessRateRepository.Stats stats =
+                    publishSuccessRateRepository.networkWide(start, Instant.now());
+            if (stats.attempts() == 0) {
                 return noSampleMetric("publish_success_rate", "Publish success rate", "percent",
                         "No publishing attempts were recorded in the last 30 days.");
             }
-            double rate = attempts == 0 ? 100 : round(successes * 100.0 / attempts);
-            return metric("publish_success_rate", "Publish success rate", rate, "percent", attempts,
-                    rate < 95 ? HealthStatus.WARNING : HealthStatus.HEALTHY,
+            double rate = stats.ratePercent();
+            return metric("publish_success_rate", "Publish success rate", rate, "percent", stats.attempts(),
+                    rate < PublishSuccessRateRepository.TARGET_PERCENT ? HealthStatus.WARNING : HealthStatus.HEALTHY,
                     "Successful Facebook publication attempts divided by total attempts in the last 30 days.");
         } catch (Exception ex) {
             return unavailableMetric("publish_success_rate", "Publish success rate", "percent", ex);

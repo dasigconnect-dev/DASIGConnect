@@ -175,6 +175,7 @@ public class InvitationService {
         user.setInstitution(token.getInstitution());
         user.setFirstName(normalizeName(dto.firstName()));
         user.setLastName(normalizeName(dto.lastName()));
+        PasswordPolicy.validate(dto.password(), user.getEmail(), user.getFirstName(), user.getLastName());
         user.setPasswordHash(passwordEncoder.encode(dto.password()));
         user.setAccountState(UserStatus.active);
         userRepository.save(user);

@@ -284,11 +284,11 @@ function groupDashboardNavItems(items: DashboardNavItem[]) {
   return [
     {
       label: 'Workspace',
-      items: items.filter((item) => ['home', 'submit', 'review-queue', 'media-repository', 'scheduler', 'notifications'].includes(item.id)),
+      items: items.filter((item) => ['home', 'submit', 'review-queue', 'media-repository', 'scheduler', 'notifications', 'analytics'].includes(item.id)),
     },
     {
       label: 'Operations',
-      items: items.filter((item) => ['institution-management', 'user-management', 'admin-management', 'system-health', 'audit-log', 'analytics'].includes(item.id)),
+      items: items.filter((item) => ['institution-management', 'user-management', 'admin-management', 'system-health', 'audit-log'].includes(item.id)),
     },
   ].filter((group) => group.items.length > 0)
 }
