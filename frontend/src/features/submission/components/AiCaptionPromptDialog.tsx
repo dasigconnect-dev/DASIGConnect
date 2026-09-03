@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { AI_CAPTION_PROMPT_MAX_LENGTH } from "../../../api/aiApi";
 import type { CaptionTone } from "../../../api/aiApi";
 import type { AiCaptionState } from "../../../hooks/useAiCaptionAssist";
@@ -50,22 +51,29 @@ export default function AiCaptionPromptDialog({
   onClose,
   onSubmit,
 }: Props) {
-  const [prompt, setPrompt] = useState("");
   const [selectedTone, setSelectedTone] = useState<CaptionTone>("professional");
+  const [prompt, setPrompt] = useState("");
   const titleId = useId();
   const promptId = useId();
   const errorId = useId();
+
   const isLoading = state === "loading";
-  const isOverLimit = prompt.length > AI_CAPTION_PROMPT_MAX_LENGTH;
+  const promptLength = prompt.length;
+  const isOverLimit = promptLength > AI_CAPTION_PROMPT_MAX_LENGTH;
   const hasContext =
     hasImageAssets || existingCaption.trim().length > 0 || prompt.trim().length > 0;
+
   const contextLabel = useMemo(() => {
-    if (hasImageAssets && existingCaption.trim()) {
+    if (hasImageAssets && existingCaption.trim().length > 0) {
       return "Using selected media and the current caption draft.";
     }
-    if (hasImageAssets) return "Using selected media for visual context.";
-    if (existingCaption.trim()) return "Using the current caption draft as text context.";
-    return "Add optional instructions, or generate a general DASIG caption.";
+    if (hasImageAssets) {
+      return "Using selected media to shape a new caption draft.";
+    }
+    if (existingCaption.trim().length > 0) {
+      return "Using the current caption draft as reference.";
+    }
+    return "Generating a new caption draft from scratch.";
   }, [existingCaption, hasImageAssets]);
 
   useEffect(() => {
@@ -75,19 +83,27 @@ export default function AiCaptionPromptDialog({
       return;
     }
 
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !isLoading) onClose();
-    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isLoading) {
+        onClose();
+      }
+    };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, [isLoading, onClose, open]);
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
-      className="ai-prompt-overlay"
+      className="submission-screen ai-prompt-overlay"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !isLoading) onClose();
@@ -148,7 +164,7 @@ export default function AiCaptionPromptDialog({
           maxLength={AI_CAPTION_PROMPT_MAX_LENGTH + 40}
           onChange={(event) => setPrompt(event.target.value)}
           placeholder={DEFAULT_PROMPT_PLACEHOLDER}
-          rows={4}
+          rows={5}
           autoFocus
         />
         <div className="ai-prompt-meta">
@@ -198,6 +214,7 @@ export default function AiCaptionPromptDialog({
           </button>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -1525,10 +1525,11 @@
   cursor: not-allowed;
 }
 
-/* Primary Button (Approve / Confirm) */
+/* Primary Button (Approve / Confirm / Send Revision Request) */
 .val-btn-primary,
 .val-btn.success,
-.val-modal-actions .success {
+.val-modal-actions .success,
+.val-modal-actions .warn {
   background: #0B5FCC;
   color: #ffffff;
   border: 1px solid #166fe5;
@@ -1536,14 +1537,15 @@
 }
 
 .val-btn-primary:hover:not(:disabled),
-.val-btn.success:hover:not(:disabled) {
+.val-btn.success:hover:not(:disabled),
+.val-modal-actions .success:hover:not(:disabled),
+.val-modal-actions .warn:hover:not(:disabled) {
   background: #166fe5;
   box-shadow: 0 2px 6px rgba(24, 119, 242, 0.35);
 }
 
-/* Secondary Button (Neutral Action / Request Revision) */
-.val-btn-secondary,
-.val-modal-actions .warn {
+/* Secondary Button (Neutral Action / Request Revision toolbar) */
+.val-btn-secondary {
   background: #ffffff;
   color: #334155;
   border: 1px solid #cbd5e1;
@@ -1733,6 +1735,45 @@
   animation: valModalOut 190ms ease both;
 }
 
+.val-modal-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.val-modal-header .val-modal-icon {
+  margin-bottom: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.val-modal-header-text {
+  flex: 1;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.val-modal-header-text h3 {
+  color: var(--val-text);
+  margin: 0 0 4px;
+  font-family: var(--ff-display);
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.val-modal-header-text p {
+  margin: 0;
+  color: var(--val-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .val-modal-icon {
   display: flex;
   align-items: center;
@@ -1750,8 +1791,8 @@
 }
 
 .val-modal-icon.warn {
-  background: var(--val-amber-dim);
-  color: var(--val-amber);
+  background: #eff6ff;
+  color: #0B5FCC;
 }
 
 .val-modal-icon.danger {
@@ -1820,6 +1861,157 @@
   background: var(--val-red-dim);
   border-color: var(--val-red-bdr);
   color: var(--val-red);
+}
+
+/* Wide Modal for Revision Details */
+.val-modal.val-modal--wide {
+  width: min(560px, 100%);
+}
+
+.val-revision-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: left;
+  margin-top: 14px;
+}
+
+.val-revision-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.val-revision-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--val-text);
+}
+
+.val-revision-hint {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--val-muted);
+}
+
+.val-revision-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+.val-revision-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface-2);
+  color: var(--val-text-2);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.val-revision-chip:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #0B5FCC;
+}
+
+.val-revision-chip.is-active {
+  background: #eff6ff;
+  border-color: #0B5FCC;
+  color: #0B5FCC;
+}
+
+.val-revision-chip.has-comment {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.val-chip-check {
+  font-size: 11px;
+  color: #16a34a;
+  margin-left: 2px;
+}
+
+.val-chip-plus {
+  font-size: 11px;
+  color: var(--val-muted);
+  margin-left: 2px;
+}
+
+.val-revision-field-box {
+  background: #f8fafc;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.val-revision-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.val-revision-field-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #0B5FCC;
+}
+
+.val-revision-field-name strong {
+  font-weight: 700;
+}
+
+.val-revision-field-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.val-revision-field-clear:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.val-revision-field-input {
+  background: #ffffff;
+  min-height: 64px;
+}
+
+.val-revision-attached-summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #0B5FCC;
+  margin-top: 4px;
 }
 
 .val-modal-actions {

@@ -1,3 +1,4 @@
+:root,
 .submission-screen {
   --sub-bg: #f0f4fb;
   --sub-surface: #ffffff;
@@ -2707,7 +2708,10 @@ textarea.sub-finput {
   margin-top: 5px;
 }
 .sub-caption-wrapper .sub-finput {
-  padding-bottom: 22px;
+  min-height: 180px;
+  padding: 12px 14px 28px;
+  font-size: 14px;
+  line-height: 1.65;
 }
 .sub-caption-counter {
   position: absolute;
@@ -3266,6 +3270,24 @@ textarea.sub-finput {
   position: relative;
   overflow: hidden;
   background: #f0f2f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fb-preview-img-container {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+.fb-preview-img-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 .fb-preview-carousel {
   background: #f0f2f5;
@@ -5369,4 +5391,395 @@ textarea.sub-finput {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* ==========================================================================
+   Revision Feedback Modal & In-Editor Banner (Needs Revision Workflow)
+   ========================================================================== */
+
+/* Simple Revision Feedback Modal */
+.sub-revision-modal {
+  width: 100%;
+  max-width: 480px;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid var(--sub-border, #dde3ee);
+  padding: 24px;
+  box-shadow: 0 20px 48px rgba(12, 29, 61, 0.2);
+  text-align: center;
+}
+
+.sub-revision-modal-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--sub-blue-dim, #eff6ff);
+  color: var(--sub-blue, #0B5FCC);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  margin: 0 auto 12px;
+  border: 1px solid var(--sub-blue-bdr, #bfdbfe);
+}
+
+.sub-revision-modal-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--sub-text, #0c1d3d);
+  margin: 0 0 4px;
+}
+
+.sub-revision-modal-subtitle {
+  font-size: 13px;
+  color: var(--sub-muted, #6a7f9a);
+  margin: 0 0 16px;
+  word-break: break-word;
+}
+
+.sub-revision-modal-content {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  text-align: left;
+  margin-bottom: 20px;
+}
+
+.sub-revision-modal-text {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #1e293b;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.sub-revision-modal-empty {
+  font-size: 13px;
+  color: var(--sub-muted, #6a7f9a);
+  margin: 0;
+  font-style: italic;
+}
+
+.sub-revision-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.sub-revision-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--sub-blue, #0B5FCC) !important;
+  color: #ffffff !important;
+  border: 1px solid #166fe5 !important;
+  font-family: inherit;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 8px 18px !important;
+  border-radius: 8px !important;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sub-revision-btn-primary:hover {
+  background: #166fe5 !important;
+}
+
+.sub-revision-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff !important;
+  color: #334155 !important;
+  border: 1px solid #cbd5e1 !important;
+  font-family: inherit;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 8px 18px !important;
+  border-radius: 8px !important;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sub-revision-btn-secondary:hover {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* Simple In-Editor Revision Banner */
+.sub-revision-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--sub-blue-dim, #eff6ff);
+  border: 1px solid var(--sub-blue-bdr, #bfdbfe);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+}
+
+.sub-revision-banner-icon {
+  color: var(--sub-blue, #0B5FCC);
+  font-size: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.sub-revision-banner-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sub-revision-banner-content strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--sub-blue, #0B5FCC);
+}
+
+.sub-revision-banner-content p {
+  margin: 0;
+  font-size: 13px;
+  color: #334155;
+  font-weight: 500;
+}
+
+/* Subtle Live Breathing / Pulsing Outline Animation for Requested Revisions */
+@keyframes subFieldPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(11, 95, 204, 0.45);
+    border-color: #0B5FCC;
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(11, 95, 204, 0.08);
+    border-color: #3b82f6;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(11, 95, 204, 0.45);
+    border-color: #0B5FCC;
+  }
+}
+
+.sub-fgroup.sub-field-pulse > .sub-finput,
+.sub-fgroup.sub-field-pulse .sub-caption-wrapper,
+.sub-fgroup.sub-field-pulse .sub-hashtag-entry,
+.sub-fgroup.sub-field-pulse .sub-date-input,
+section.sub-form-section.sub-field-pulse {
+  animation: subFieldPulse 2.2s infinite ease-in-out;
+  border-color: #0B5FCC !important;
+  border-radius: 9px;
+}
+
+/* Field Comment Popover & Trigger Button */
+.sub-field-comment-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.sub-field-comment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #0B5FCC;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1.2;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.sub-field-comment-btn:hover,
+.sub-field-comment-btn.is-active {
+  background: #0B5FCC;
+  border-color: #0B5FCC;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(11, 95, 204, 0.25);
+}
+
+.sub-field-comment-btn.is-done {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #16a34a;
+}
+
+.sub-field-comment-btn.is-done:hover,
+.sub-field-comment-btn.is-done.is-active {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(22, 163, 74, 0.25);
+}
+
+.sub-field-comment-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 100;
+  width: 280px;
+  max-width: 90vw;
+  background: #ffffff;
+  border: 1px solid #93c5fd;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 10px 25px -5px rgba(11, 95, 204, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  animation: subCommentPopIn 150ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+@keyframes subCommentPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.sub-field-comment-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.sub-field-comment-popover-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0B5FCC;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.sub-field-comment-popover-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+}
+
+.sub-field-comment-popover-close:hover {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.sub-field-comment-popover-text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #1e293b;
+  word-break: break-word;
+  white-space: pre-wrap;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+
+.sub-field-comment-popover-footer {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sub-field-comment-ack-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #0B5FCC;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.sub-field-comment-ack-btn:hover {
+  background: #0B5FCC;
+  border-color: #0B5FCC;
+  color: #ffffff;
+}
+
+.sub-field-comment-ack-btn.is-done {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #16a34a;
+}
+
+.sub-field-comment-ack-btn.is-done:hover {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #ffffff;
+}
+
+.sub-field-comment-ack-btn i {
+  font-size: 14px;
+}
+
+/* Notice when required revision fields are still unedited */
+.sub-unaddressed-revision-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 9px 12px;
+  margin-bottom: 10px;
+  font-size: 11.5px;
+  color: #1e40af;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.sub-unaddressed-revision-notice i {
+  font-size: 15px;
+  color: #0B5FCC;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.sub-unaddressed-revision-notice strong {
+  font-weight: 700;
+  color: #0B5FCC;
+}
+
+
+
 

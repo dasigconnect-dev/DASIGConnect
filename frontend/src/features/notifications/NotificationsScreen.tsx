@@ -141,7 +141,10 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
     if (n.link !== "/dashboard" && n.link !== "/notifications" && n.link !== "/") {
       if (n.link.startsWith("/submissions/")) {
         const subId = n.link.replace("/submissions/", "");
-        const ownerView = `/submissions?submissionId=${subId}`;
+        const ownerView =
+          eventType === "submission_needs_revision"
+            ? `/submissions?submissionId=${subId}&openFeedback=true`
+            : `/submissions?submissionId=${subId}`;
         if (OWNER_FACING_EVENTS.has(eventType)) return ownerView;
         if (REVIEW_FACING_EVENTS.has(eventType)) {
           return canReview ? `/validation/queue?submissionId=${subId}` : ownerView;
@@ -182,7 +185,9 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
 
   if (eventType === "submission_needs_revision" || eventType === "submission_rejected") {
     // Both live under the "Action Needed" tab in My Submissions.
-    return "/submissions?tab=action-needed";
+    return eventType === "submission_needs_revision"
+      ? "/submissions?tab=action-needed&openFeedback=true"
+      : "/submissions?tab=action-needed";
   }
 
   if (eventType === "token_expiring" || eventType === "token_invalid") {

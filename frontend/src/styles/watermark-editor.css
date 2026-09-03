@@ -1204,7 +1204,7 @@
 
 /* Shape Element */
 .wm-shape-content.is-rect {
-  border-radius: 4px;
+  border-radius: 0;
   backdrop-filter: blur(4px);
 }
 

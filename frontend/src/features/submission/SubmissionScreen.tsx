@@ -42,6 +42,9 @@ import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import AiCaptionButton from "./components/AiCaptionButton";
 import type { FancyTextSelection } from "./components/FancyTextTool";
 import AlbumCombobox from "../../components/ui/AlbumCombobox";
+import { RevisionFeedbackModal } from "./components/RevisionFeedbackModal";
+import { RevisionFeedbackBanner } from "./components/RevisionFeedbackBanner";
+import { parseRevisionRemarks, REVISION_SUPPORTED_FIELDS } from "./utils/revisionComments";
 import "../../styles/dasig-loader.css";
 import "../../styles/submission.css";
 
@@ -241,6 +244,58 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [loadedDetail, setLoadedDetail] = useState<
     { id: string; rejectionReason?: string | null; validatorRemarks?: string | null } | null
   >(null);
+  const [revisionModalOpen, setRevisionModalOpen] = useState(false);
+  const shownRevisionModalForIdRef = useRef<string | null>(null);
+  const [addressedRevisionFields, setAddressedRevisionFields] = useState<Set<string>>(new Set());
+
+  const parsedRevision = useMemo(
+    () => parseRevisionRemarks(loadedDetail?.id === form.id ? loadedDetail.validatorRemarks : null),
+    [loadedDetail, form.id],
+  );
+
+  const isNeedsRevision = form.status === "needs_revision";
+  const captionPulsing = isNeedsRevision && Boolean(parsedRevision.fields.caption) && !addressedRevisionFields.has("caption");
+  const eventTitlePulsing = isNeedsRevision && Boolean(parsedRevision.fields.eventTitle) && !addressedRevisionFields.has("eventTitle");
+  const eventDatePulsing = isNeedsRevision && Boolean(parsedRevision.fields.eventDate) && !addressedRevisionFields.has("eventDate");
+  const tagsPulsing = isNeedsRevision && Boolean(parsedRevision.fields.tags) && !addressedRevisionFields.has("tags");
+  const mediaPulsing = isNeedsRevision && Boolean(parsedRevision.fields.media) && !addressedRevisionFields.has("media");
+
+  const requestedRevisionFieldKeys = useMemo(
+    () =>
+      isNeedsRevision
+        ? Object.keys(parsedRevision.fields).filter((k) => Boolean(parsedRevision.fields[k]))
+        : [],
+    [isNeedsRevision, parsedRevision.fields],
+  );
+
+  const unaddressedRevisionFields = useMemo(
+    () => requestedRevisionFieldKeys.filter((k) => !addressedRevisionFields.has(k)),
+    [requestedRevisionFieldKeys, addressedRevisionFields],
+  );
+
+  const unaddressedRevisionLabels = useMemo(
+    () =>
+      unaddressedRevisionFields.map((k) => {
+        const found = REVISION_SUPPORTED_FIELDS.find((f) => f.key === k);
+        return found ? found.label : k;
+      }),
+    [unaddressedRevisionFields],
+  );
+
+  const hasUnaddressedRevisions = isNeedsRevision && unaddressedRevisionFields.length > 0;
+
+  function toggleRevisionFieldDone(fieldKey: string) {
+    setAddressedRevisionFields((prev) => {
+      const next = new Set(prev);
+      if (next.has(fieldKey)) {
+        next.delete(fieldKey);
+      } else {
+        next.add(fieldKey);
+      }
+      return next;
+    });
+  }
+
   const [refreshingQueue, setRefreshingQueue] = useState(false);
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
@@ -739,7 +794,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       routedSubmissionRef.current = null;
       return;
     }
-    if (routedSubmissionRef.current === submissionId) return;
+    if (routedSubmissionRef.current === submissionId) {
+      if (searchParams.get("openFeedback") === "true") {
+        setRevisionModalOpen(true);
+      }
+      return;
+    }
     routedSubmissionRef.current = submissionId;
     const existing = submissions.find((s) => s.id === submissionId);
     const initialStatus = existing?.status ?? "pending";
@@ -789,6 +849,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
+    if (key === "eventTitle" || key === "eventDate" || key === "caption") {
+      setAddressedRevisionFields((prev) => new Set(prev).add(key));
+    }
     setForm((current) => {
       const next = { ...current, [key]: value };
       if (key === "eventTitle" && typeof value === "string") {
@@ -1049,6 +1112,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (isReadOnlySubmission) return;
     const hashtag = normalizeHashtagInput(hashtagInput);
     if (!hashtag) return;
+    setAddressedRevisionFields((prev) => new Set(prev).add("tags"));
     setForm((current) => ({
       ...current,
       caption: appendHashtagToCaption(current.caption, hashtag),
@@ -1060,6 +1124,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
   function removeHashtagFromCaption(hashtag: string) {
     if (isReadOnlySubmission) return;
+    setAddressedRevisionFields((prev) => new Set(prev).add("tags"));
     setForm((current) => ({
       ...current,
       caption: removeHashtag(current.caption, hashtag),
@@ -1116,6 +1181,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setActiveStep("media");
     setMediaUploadFailed(false);
     clearAssetIdParam();
+    shownRevisionModalForIdRef.current = null;
+    setRevisionModalOpen(false);
+    setAddressedRevisionFields(new Set());
   }
 
   function startNewSubmission() {
@@ -1139,6 +1207,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setSaveState("idle");
     cleanSignatureRef.current = getDirtySignature(initialForm);
     browserBackGuardRef.current = false;
+    shownRevisionModalForIdRef.current = null;
+    setRevisionModalOpen(false);
+    setAddressedRevisionFields(new Set());
     navigate(returnTo || "/submissions", { replace: true });
   }
 
@@ -1225,6 +1296,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         rejectionReason: submission.rejectionReason,
         validatorRemarks: submission.validatorRemarks,
       });
+      setAddressedRevisionFields(new Set());
       setPickerItems((submission.mediaAssets ?? []).map(savedAssetToPickerItem));
       setCaptionMediaKey(null);
       setHashtagInput("");
@@ -1237,6 +1309,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setSaveState("saved");
       setMediaUploadFailed(false);
       cleanSignatureRef.current = getDirtySignature(nextForm);
+
+      if (submission.status === "needs_revision") {
+        const forceOpen = searchParams.get("openFeedback") === "true";
+        if (forceOpen || shownRevisionModalForIdRef.current !== submission.id) {
+          shownRevisionModalForIdRef.current = submission.id;
+          setRevisionModalOpen(true);
+        }
+      }
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } }).response?.status;
       if (status === 403) {
@@ -1382,6 +1462,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
   async function handleSubmit() {
     if (isReadOnlySubmission || busy) return;
+    if (hasUnaddressedRevisions) {
+      toast.error(
+        `Please edit all requested revision fields (${unaddressedRevisionLabels.join(", ")}) before submitting.`,
+      );
+      setModal(null);
+      return;
+    }
     const missing: string[] = [];
     if (isAdminComposer && !form.institutionId) missing.push("an institution scope");
     if (!form.eventTitle.trim()) missing.push("an event title");
@@ -1587,6 +1674,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function handlePickerChange(items: SubmissionMediaItem[]) {
+    setAddressedRevisionFields((prev) => new Set(prev).add("media"));
     setPickerItems(items);
     if (captionMediaKey && !items.some((item) => pickerMediaKey(item) === captionMediaKey)) {
       setCaptionMediaKey(null);
@@ -2266,6 +2354,18 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             </Suspense>
           ) : (
             <>
+          {form.status === "needs_revision" && (
+            <RevisionFeedbackBanner
+              remarks={
+                parsedRevision.general ||
+                (parsedRevision.hasFieldComments
+                  ? "Please revise all input fields marked with a comment icon."
+                  : loadedDetail?.id === form.id
+                    ? loadedDetail.validatorRemarks
+                    : undefined)
+              }
+            />
+          )}
           {!isReadOnlySubmission && (
             <StepProgress
               steps={progressSteps}
@@ -2288,36 +2388,31 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               subtitle="Use backend field names for the saved submission draft."
             />
             {isAdminComposer && (
-              <Field label="Posting As">
+              <Field label="Posting As" count="" tone="" action={undefined}>
                 <BrandedSelect
-                  value={form.institutionId}
-                  placeholder={institutionsLoading ? "Loading institutions..." : "Select institution"}
-                  hint={institutionsLoading ? undefined : "Select institution"}
-                  options={institutions.map((institution) => ({
-                    value: institution.id,
-                    label: isDefaultInstitution(institution)
-                      ? `${institution.name} (Default)`
-                      : institution.name,
-                  }))}
-                  disabled={isReadOnlySubmission}
-                  loading={institutionsLoading}
-                  ariaLabel="Posting As"
+                  value={selectedInstitutionId}
+                  onChange={(val) => handlePostingInstitutionChange(val)}
+                  disabled={isReadOnlySubmission || institutionsLoading}
+                  placeholder="Select institution"
                   className={`sub-posting-select${selectedPostingIsDefault ? " is-default" : ""}`}
-                  onChange={handlePostingInstitutionChange}
+                  options={institutions.map((inst) => ({
+                    value: inst.id,
+                    label: isDefaultInstitution(inst) ? `${inst.name} (Default)` : inst.name,
+                  }))}
                 />
-                {/* {selectedPostingIsDefault && (
-                  <div className="sub-inline-default-note">
-                    <i className="ti ti-sparkles" aria-hidden="true"></i>
-                    Default institution for network-wide DASIG announcements.
-                  </div>
-                )} */}
                 {institutionsError && (
                   <div className="sub-inline-note">{institutionsError}</div>
                 )}
               </Field>
             )}
             <div className="sub-field-row">
-              <Field label="Event Title">
+              <Field
+                label="Event Title"
+                revisionComment={parsedRevision.fields.eventTitle}
+                isPulsing={eventTitlePulsing}
+                isDone={addressedRevisionFields.has("eventTitle")}
+                onToggleDone={() => toggleRevisionFieldDone("eventTitle")}
+              >
                 <input
                   ref={eventTitleRef}
                   className="sub-finput"
@@ -2329,7 +2424,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 />
               </Field>
               <div ref={eventDateRef}>
-                <Field label="Event Date">
+                <Field
+                  label="Event Date"
+                  revisionComment={parsedRevision.fields.eventDate}
+                  isPulsing={eventDatePulsing}
+                  isDone={addressedRevisionFields.has("eventDate")}
+                  onToggleDone={() => toggleRevisionFieldDone("eventDate")}
+                >
                   <CalendarDateField
                     value={form.eventDate}
                     readOnly={isReadOnlySubmission}
@@ -2342,6 +2443,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
             <Field
               label="Caption"
+              revisionComment={parsedRevision.fields.caption}
+              isPulsing={captionPulsing}
+              isDone={addressedRevisionFields.has("caption")}
+              onToggleDone={() => toggleRevisionFieldDone("caption")}
               action={
                 !isReadOnlySubmission ? (
                   <div className="sub-caption-actions">
@@ -2373,7 +2478,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 <textarea
                   ref={captionRef}
                   className={`sub-finput ${captionTone(form.caption)}`}
-                  rows={4}
+                  rows={8}
                   readOnly={isReadOnlySubmission}
                   value={form.caption}
                   onChange={(event) => {
@@ -2421,7 +2526,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               )}
             </Field>
 
-            <Field label="Tags">
+            <Field
+              label="Tags"
+              revisionComment={parsedRevision.fields.tags}
+              isPulsing={tagsPulsing}
+              isDone={addressedRevisionFields.has("tags")}
+              onToggleDone={() => toggleRevisionFieldDone("tags")}
+            >
               <div className="sub-hashtag-entry">
                 <input
                   ref={tagsInputRef}
@@ -2468,7 +2579,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           </section>
 
           <section
-            className={`sub-form-section sub-step-panel ${isReadOnlySubmission || activeStep === "media" ? "active" : ""}`}
+            className={`sub-form-section sub-step-panel ${isReadOnlySubmission || activeStep === "media" ? "active" : ""} ${mediaPulsing ? "sub-field-pulse" : ""}`}
             ref={mediaSectionRef}
             hidden={!isReadOnlySubmission && activeStep !== "media"}
           >
@@ -2477,6 +2588,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               tone="blue"
               title="Add Media"
               subtitle="Upload files, pick from your library, or let AI suggest relevant assets."
+              revisionComment={parsedRevision.fields.media}
+              isDone={addressedRevisionFields.has("media")}
+              onToggleDone={() => toggleRevisionFieldDone("media")}
             />
             <Suspense fallback={<DeferredSubmissionPanelFallback />}>
               <MediaAssetsPicker
@@ -2725,14 +2839,31 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           <div className="sub-guard-actions">
             {!isReadOnlySubmission && (
               <>
+            {hasUnaddressedRevisions && (
+              <div className="sub-unaddressed-revision-notice">
+                <i className="ti ti-alert-circle" />
+                <span>
+                  Please edit all requested fields (<strong>{unaddressedRevisionLabels.join(", ")}</strong>) to submit for revision.
+                </span>
+              </div>
+            )}
             <button
               className="sub-guard-submit-btn"
               type="button"
               onClick={() => setModal("submit")}
-              disabled={busy || Boolean(hydratingId) || previewValidation.blockingErrors.length > 0}
-              title={previewValidation.blockingErrors[0]}
+              disabled={busy || Boolean(hydratingId) || previewValidation.blockingErrors.length > 0 || hasUnaddressedRevisions}
+              title={
+                hasUnaddressedRevisions
+                  ? `Please edit all requested revision fields (${unaddressedRevisionLabels.join(", ")}) before submitting.`
+                  : previewValidation.blockingErrors[0]
+              }
             >
-              {submitting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-send"></i>} Submit for Approval
+              {submitting ? (
+                <i className="ti ti-loader-2 sub-spin"></i>
+              ) : (
+                <i className="ti ti-send"></i>
+              )}
+              {isNeedsRevision ? "Submit for Revision" : "Submit for Approval"}
             </button>
             {isDirty && (
               <button
@@ -2909,16 +3040,32 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       {modal === "submit" && (
         <ConfirmModal
           icon={hasRecommendedWarnings ? "ti-alert-triangle" : "ti-send"}
-          title={hasRecommendedWarnings ? "Submit with recommended warnings?" : "Submit for Approval?"}
+          title={
+            isNeedsRevision
+              ? "Submit revision for approval?"
+              : hasRecommendedWarnings
+                ? "Submit with recommended warnings?"
+                : "Submit for Approval?"
+          }
           description={
-            hasRecommendedWarnings
-              ? `Required checks are complete, but ${recommendedWarnings.length} recommended item(s) still need attention: ${recommendedWarnings.map((item) => item.title).join(", ")}. You can still submit for approval.`
-              : `This submission will be sent for moderator approval. Readiness score: ${readiness.score} / 100.`
+            isNeedsRevision
+              ? "Your updated changes will be re-submitted to the reviewer for approval."
+              : hasRecommendedWarnings
+                ? `Required checks are complete, but ${recommendedWarnings.length} recommended item(s) still need attention: ${recommendedWarnings.map((item) => item.title).join(", ")}. You can still submit for approval.`
+                : `This submission will be sent for moderator approval. Readiness score: ${readiness.score} / 100.`
           }
           cancelLabel={hasRecommendedWarnings ? "Review Warnings" : "Go Back"}
-          confirmLabel={submitting ? "Submitting..." : hasRecommendedWarnings ? "Submit Anyway" : "Confirm Submission"}
+          confirmLabel={
+            submitting
+              ? "Submitting..."
+              : isNeedsRevision
+                ? "Submit Revision"
+                : hasRecommendedWarnings
+                  ? "Submit Anyway"
+                  : "Confirm Submission"
+          }
           loading={submitting}
-          disabled={busy}
+          disabled={busy || hasUnaddressedRevisions}
           onCancel={() => setModal(null)}
           onConfirm={() => void handleSubmit()}
         />
@@ -3014,6 +3161,22 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           onContinue={handleContinueEditing}
         />
       )}
+      <RevisionFeedbackModal
+        isOpen={revisionModalOpen}
+        onClose={() => setRevisionModalOpen(false)}
+        eventTitle={form.eventTitle}
+        remarks={
+          parsedRevision.general ||
+          (parsedRevision.hasFieldComments
+            ? "Please revise all input fields marked with a comment icon."
+            : loadedDetail?.id === form.id
+              ? loadedDetail.validatorRemarks
+              : undefined)
+        }
+        onStartEditing={() => {
+          setRevisionModalOpen(false);
+        }}
+      />
     </div>
   );
 }
