@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -647,6 +648,10 @@ public class SubmissionService {
             asset.setStatus(MediaAssetStatus.STAGED);
         } else {
             asset.setInstitution(entityManager.getReference(Institution.class, submission.getInstitution().getId()));
+            // Every non-draft upload must land in an album so it surfaces in the
+            // Media Library. Honour an explicit target (moderator review upload);
+            // otherwise file it into the submission's own album.
+            asset.setMediaAlbum(resolveUploadAlbum(submission, dto.getAlbumName(), user));
         }
         asset.setUploader(entityManager.getReference(User.class, user.userId()));
         asset.setAssetCode(generateAssetCode());
@@ -696,21 +701,43 @@ public class SubmissionService {
      * staged uploads to file.
      */
     private MediaAlbum resolveSubmissionAlbum(Submission submission, JwtUserDetails user) {
-        String name = submission.getAlbumName() == null ? "" : submission.getAlbumName().trim();
-        if (name.isEmpty() || submission.getInstitution() == null) {
+        return resolveAlbumByName(submission.getInstitution(), submission.getAlbumName(), user.userId());
+    }
+
+    /**
+     * Finds the root album of {@code institution} whose name matches {@code name}
+     * (case-insensitive), creating it if absent. Shared by the contributor
+     * submit path and the reviewer upload path. Returns {@code null} when the
+     * name is blank or the institution is unknown.
+     */
+    private MediaAlbum resolveAlbumByName(Institution institution, String rawName, UUID createdBy) {
+        String name = rawName == null ? "" : rawName.trim();
+        if (name.isEmpty() || institution == null) {
             return null;
         }
-        UUID institutionId = submission.getInstitution().getId();
         return mediaAlbumRepository
-                .findByParentAndNameIgnoreCase(institutionId, null, name)
+                .findByParentAndNameIgnoreCase(institution.getId(), null, name)
                 .orElseGet(() -> {
                     MediaAlbum album = new MediaAlbum();
-                    album.setInstitution(submission.getInstitution());
+                    album.setInstitution(institution);
                     album.setName(name);
                     album.setParentAlbum(null);
-                    album.setCreatedBy(user.userId());
+                    album.setCreatedBy(createdBy);
                     return mediaAlbumRepository.save(album);
                 });
+    }
+
+    /**
+     * Chooses the album for a non-draft upload: the reviewer's requested album
+     * name (resolved / created in the submission's institution, same as the
+     * contributor's album combobox), otherwise the submission's own album.
+     */
+    private MediaAlbum resolveUploadAlbum(Submission submission, String requestedAlbumName, JwtUserDetails user) {
+        String requested = requestedAlbumName == null ? "" : requestedAlbumName.trim();
+        if (!requested.isEmpty()) {
+            return resolveAlbumByName(submission.getInstitution(), requested, user.userId());
+        }
+        return resolveSubmissionAlbum(submission, user);
     }
 
     /**
@@ -815,6 +842,40 @@ public class SubmissionService {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
         return reorderMediaOf(submission, dto);
+    }
+
+    /**
+     * True when the reorder request would change nothing — same asset order, same
+     * captions, same skip-watermark flags. Lets the review flow skip an audit-log
+     * entry for a no-op "Save Changes". Malformed requests (wrong size / unknown
+     * ids) return {@code false} and are left for {@link #reorderMediaOf} to reject.
+     */
+    boolean isNoOpMediaOrder(Submission submission, SubmissionMediaOrderDto dto) {
+        List<SubmissionMediaAsset> links =
+                submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submission.getId());
+        List<UUID> requested = dto.getMediaAssetIds();
+        if (requested == null || links.size() != requested.size()) {
+            return false;
+        }
+        for (int index = 0; index < requested.size(); index++) {
+            UUID assetId = requested.get(index);
+            SubmissionMediaAsset link = links.get(index);
+            if (!link.getMediaAsset().getId().equals(assetId)) {
+                return false;
+            }
+            if (dto.getMediaCaptions() != null && dto.getMediaCaptions().containsKey(assetId)
+                    && !Objects.equals(normalizeOptional(dto.getMediaCaptions().get(assetId)), link.getCaption())) {
+                return false;
+            }
+            if (dto.getSkipWatermarks() != null && dto.getSkipWatermarks().containsKey(assetId)) {
+                boolean canSkip = link.getMediaAsset().getFileType().isImage();
+                boolean requestedSkip = canSkip && Boolean.TRUE.equals(dto.getSkipWatermarks().get(assetId));
+                if (requestedSkip != link.isSkipWatermark()) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /** reorder + per-asset caption/skip-watermark core — caller owns the auth/status checks. Reused by ValidationService. */

@@ -716,6 +716,213 @@
   color: var(--val-muted);
 }
 
+/* ── Submission details side panel (collapsible, beside the FB preview) ── */
+.val-review-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.val-review-layout > .val-fb-card {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+  margin-bottom: 0;
+}
+
+.val-details-panel {
+  flex: 0 0 300px;
+  align-self: stretch;
+  position: sticky;
+  top: 0;
+  border-radius: var(--val-radius);
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  overflow: hidden;
+}
+
+.val-details-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 12px 11px 14px;
+  border-bottom: 1px solid var(--val-border);
+  background: var(--val-surface-2);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--val-text-2);
+}
+
+.val-details-head span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.val-details-hide {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  color: var(--val-muted);
+  cursor: pointer;
+  font-size: 15px;
+}
+.val-details-hide:hover {
+  color: var(--val-blue);
+  border-color: var(--val-blue-bdr);
+  background: var(--val-blue-dim);
+}
+
+.val-details-list {
+  margin: 0;
+  padding: 6px 14px 12px;
+}
+
+.val-details-list > div {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--val-border);
+}
+.val-details-list > div:last-child {
+  border-bottom: 0;
+}
+
+.val-details-list dt {
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--val-muted);
+  margin-bottom: 4px;
+}
+
+.val-details-list dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--val-text);
+  word-break: break-word;
+}
+
+.val-details-you {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--val-blue-dim);
+  color: var(--val-blue);
+  border: 1px solid var(--val-blue-bdr);
+}
+
+.val-details-muted {
+  color: var(--val-muted);
+  font-size: 12px;
+}
+
+.val-details-sub {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--val-muted);
+}
+
+.val-details-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  border: 1px solid var(--val-border);
+}
+.val-details-mode.is-scheduled {
+  background: var(--val-blue-dim);
+  color: var(--val-blue);
+  border-color: var(--val-blue-bdr);
+}
+.val-details-mode.is-live {
+  background: var(--val-red-dim);
+  color: var(--val-red);
+  border-color: var(--val-red-bdr);
+}
+.val-details-mode.is-unset {
+  background: var(--val-amber-dim);
+  color: var(--val-amber);
+  border-color: var(--val-amber-bdr);
+}
+
+.val-details-editors {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.val-details-editors li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 12.5px;
+}
+
+.val-details-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid #bfdbfe;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  color: #0b5fcc;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(24, 119, 242, 0.15);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.val-details-btn:hover {
+  background: #eff6ff;
+  border-color: #60a5fa;
+  transform: translateX(-2px);
+  box-shadow: 0 4px 14px rgba(24, 119, 242, 0.22);
+}
+.val-details-btn i {
+  font-size: 14px;
+}
+
+@media (max-width: 1180px) {
+  .val-review-layout {
+    flex-direction: column;
+  }
+  .val-review-layout > .val-fb-card,
+  .val-review-layout > .val-details-panel {
+    flex: none;
+    width: 100%;
+    max-width: 100%;
+    position: static;
+  }
+}
+
 /* ── Realistic Facebook Post Preview Card (Authentic Facebook Light Feed) ── */
 .val-fb-card {
   background: #ffffff;
@@ -1451,6 +1658,7 @@
   border-radius: 20px;
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
   background: #eff6ff;
   color: #1d4ed8;
   border: 1px solid #bfdbfe;
@@ -1623,7 +1831,8 @@
 }
 
 .val-edit-field input,
-.val-edit-field textarea {
+.val-edit-field textarea,
+.val-edit-field select {
   border: 1px solid var(--val-border);
   border-radius: 8px;
   padding: 9px 11px;
@@ -1636,6 +1845,7 @@
 
 .val-edit-field input:focus,
 .val-edit-field textarea:focus,
+.val-edit-field select:focus,
 .val-edit-media-caption:focus {
   outline: none;
   border-color: var(--val-accent, #2563eb);
@@ -1643,6 +1853,34 @@
 }
 
 .val-edit-field textarea { resize: vertical; }
+
+.val-edit-hashtags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.val-edit-hashtag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--val-blue-dim);
+  color: var(--val-blue);
+  border: 1px solid var(--val-blue-bdr);
+}
+.val-edit-hashtags-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--val-muted);
+}
+.val-edit-hashtags-hint code {
+  font-family: var(--ff-mono, ui-monospace, monospace);
+  background: var(--val-surface-2);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
 
 .val-log-flag {
   margin-left: 8px;
@@ -2578,7 +2816,8 @@
 /* ── Edit mode: form beside a scaled-down submission preview ── */
 .val-edit-layout--off { display: contents; }
 
-.val-scroll:has(.val-edit-layout) { align-items: stretch; }
+.val-scroll:has(.val-edit-layout),
+.val-scroll:has(.val-review-layout) { align-items: stretch; }
 
 .val-edit-layout {
   display: flex;
@@ -2935,4 +3174,89 @@
 @media (prefers-reduced-motion: reduce) {
   .val-libpick-backdrop,
   .val-libpick { animation: none; }
+}
+
+/* ── Submit Content authoring tools inside moderator edit mode ──────────── */
+.val-edit-caption-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Reused pickers/panels sit flush in the edit body */
+.val-edit-body .mp-root,
+.val-edit-body .sub-engagement-panel {
+  margin: 0;
+}
+
+/* Shared modal header (media-item settings) */
+.val-preview-modal-head,
+.val-media-settings-modal .val-preview-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--val-border);
+  background: var(--val-surface-2);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--val-text-2);
+}
+.val-preview-modal-head > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.val-media-settings-modal {
+  width: min(460px, 100%);
+  border-radius: 14px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  box-shadow: 0 20px 70px rgba(12, 29, 61, 0.22);
+  overflow: hidden;
+  animation: valModalIn 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.val-media-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 16px;
+}
+.val-media-settings-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--val-text);
+  word-break: break-word;
+}
+.val-media-settings-body .val-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.val-media-settings-body .val-edit-field > span {
+  color: var(--val-muted);
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.val-media-settings-body textarea {
+  border: 1px solid var(--val-border-2);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font: inherit;
+  resize: vertical;
+}
+.val-media-settings-wm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--val-text-2);
 }
