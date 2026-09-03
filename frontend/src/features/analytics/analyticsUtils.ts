@@ -118,7 +118,7 @@ export function generateSmoothLinePath(
 export const BLUE_GRADIENT_PALETTE = [
   "#0C1D3D", // Deep Navy
   "#164E87", // Dark Slate Blue
-  "#1877F2", // Royal Blue
+  "#0B5FCC", // Accessible Royal Blue
   "#2563EB", // Primary Accent
   "#3B82F6", // Bright Blue
   "#60A5FA", // Sky Blue

@@ -31,6 +31,7 @@ import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
 import { getWatermarkConfiguration } from "../../api/watermarkApi";
 import type { WatermarkConfiguration } from "../../types/watermark.types";
+import OptimizedImage, { canTransformImageType } from "../../components/media/OptimizedImage";
 import WatermarkOverlay from "../../components/watermark/WatermarkOverlay";
 import {
   useValidationLog,
@@ -42,6 +43,7 @@ import ResolutionRetryModal from "./ResolutionRetryModal";
 import ManualPublishWorkflowPanel from "./ManualPublishWorkflowPanel";
 import "../../styles/dasig-loader.css";
 import "../../styles/resolution.css";
+import "../../styles/validation.css";
 
 interface ValidationQueueScreenProps {
   user: User;
@@ -1416,7 +1418,15 @@ export default function ValidationQueueScreen({
                               <div key={item.key} className="val-edit-media-row">
                                 <div className="val-edit-media-thumb">
                                   {item.isImage ? (
-                                    <img src={item.previewUrl} alt={item.fileName} />
+                                    <OptimizedImage
+                                      src={item.previewUrl}
+                                      alt={item.fileName}
+                                      width={96}
+                                      height={72}
+                                      sizes="96px"
+                                      candidateWidths={[96, 192]}
+                                      transform={Boolean(item.assetId) && canTransformImageType(item.fileName.split(".").pop())}
+                                    />
                                   ) : (
                                     <video src={item.previewUrl} muted />
                                   )}
@@ -2047,7 +2057,15 @@ function FacebookPostPreviewCard({
               title={asset.fileName}
             >
               {isImage(asset.fileType) ? (
-                <img src={asset.storageUrl} alt="" />
+                <OptimizedImage
+                  src={asset.storageUrl}
+                  alt=""
+                  width={72}
+                  height={72}
+                  sizes="72px"
+                  candidateWidths={[72, 144]}
+                  transform={canTransformImageType(asset.fileType)}
+                />
               ) : (
                 <div className="val-fb-thumb-video"><i className="ti ti-video" /></div>
               )}
@@ -2130,7 +2148,7 @@ function ValidationHistoryModal({
                 height: "36px",
                 borderRadius: "10px",
                 background: "#eff6ff",
-                color: "#1877f2",
+                color: "var(--val-blue, #0B5FCC)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -2179,7 +2197,7 @@ function ValidationHistoryModal({
             )}
             <div className="val-history-meta-item">
               <span>Status</span>
-              <strong style={{ color: "#1877f2", textTransform: "capitalize" }}>
+              <strong style={{ color: "var(--val-blue, #0B5FCC)", textTransform: "capitalize" }}>
                 {statusLabel[normalizeStatus(submission.status)] || normalizeStatus(submission.status).replace(/_/g, " ") || "Unknown"}
               </strong>
             </div>

@@ -35,11 +35,14 @@ class MetricsAggregatorServiceTest {
     @Mock
     private AnalyticsRepository analyticsRepository;
 
+    @Mock
+    private FacebookEngagementAnalyticsClient facebookInsightsClient;
+
     private MetricsAggregatorService service;
 
     @BeforeEach
     void setUp() {
-        service = new MetricsAggregatorService(analyticsRepository);
+        service = new MetricsAggregatorService(analyticsRepository, facebookInsightsClient, "page-123");
     }
 
     private void stubCoreQueries() {
@@ -51,7 +54,6 @@ class MetricsAggregatorServiceTest {
                 .thenReturn(new PublishedPostStats(4, 3, 1, 0));
         when(analyticsRepository.statusBreakdown(any())).thenReturn(List.of());
         when(analyticsRepository.contentIssues(any(), any(), any())).thenReturn(List.of());
-        when(analyticsRepository.topCategories(any(), any(), any())).thenReturn(List.of());
         when(analyticsRepository.postingDelaySparkline(any(), any(), any()))
                 .thenReturn(List.of(2.1, 2.2, 2.35));
         when(analyticsRepository.completenessSparkline(any(), any(), any()))
@@ -73,7 +75,7 @@ class MetricsAggregatorServiceTest {
         when(analyticsRepository.operationalHealth(any(), any(), any(), any()))
                 .thenReturn(new AnalyticsRepository.OperationalStats(4, 1, 0, 4, 3, 2, 0));
 
-        var summary = service.summary("30d", null, null, admin);
+        var summary = service.summary("30d", null, admin);
 
         assertThat(summary.adminView()).isTrue();
         assertThat(summary.aiPerformance()).isNotNull();
@@ -104,7 +106,7 @@ class MetricsAggregatorServiceTest {
         when(analyticsRepository.validatorStats(any(), any(), any(), any()))
                 .thenReturn(new ValidatorStats(5, 2, 1, 1.25, 1));
 
-        var summary = service.summary("30d", institutionId, null, admin);
+        var summary = service.summary("30d", institutionId, admin);
 
         assertThat(summary.contributorBreakdown()).hasSize(1);
         assertThat(summary.validatorAnalytics()).isNotNull();
@@ -125,7 +127,7 @@ class MetricsAggregatorServiceTest {
         when(analyticsRepository.contributorStats(any(), any(), any()))
                 .thenReturn(new AnalyticsRepository.ContributorStats(5, 4, 1, 1));
 
-        var summary = service.summary("30d", null, null, contributor);
+        var summary = service.summary("30d", null, contributor);
 
         assertThat(summary.adminView()).isFalse();
         assertThat(summary.aiPerformance()).isNull();
@@ -144,7 +146,7 @@ class MetricsAggregatorServiceTest {
         UUID institutionId = UUID.randomUUID();
         JwtUserDetails contributor = new JwtUserDetails(UUID.randomUUID(), "contributor@test.local", "contributor", institutionId);
 
-        assertThatThrownBy(() -> service.summary("30d", UUID.randomUUID(), null, contributor))
+        assertThatThrownBy(() -> service.summary("30d", UUID.randomUUID(), contributor))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -155,7 +157,7 @@ class MetricsAggregatorServiceTest {
         JwtUserDetails moderator = new JwtUserDetails(UUID.randomUUID(), "mod@test.local", "moderator", null);
         stubCoreQueries();
 
-        var summary = service.summary("30d", null, null, moderator);
+        var summary = service.summary("30d", null, moderator);
 
         assertThat(summary.adminView()).isFalse();
         assertThat(summary.aiPerformance()).isNull();
@@ -175,7 +177,7 @@ class MetricsAggregatorServiceTest {
     void summary_moderatorCannotPassInstitutionFilter() {
         JwtUserDetails moderator = new JwtUserDetails(UUID.randomUUID(), "mod@test.local", "moderator", null);
 
-        assertThatThrownBy(() -> service.summary("30d", UUID.randomUUID(), null, moderator))
+        assertThatThrownBy(() -> service.summary("30d", UUID.randomUUID(), moderator))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -185,7 +187,7 @@ class MetricsAggregatorServiceTest {
     void export_operationalHealth_rejectedForModerator() {
         JwtUserDetails moderator = new JwtUserDetails(UUID.randomUUID(), "mod@test.local", "moderator", null);
 
-        assertThatThrownBy(() -> service.export("operational-health", "7d", null, null, moderator))
+        assertThatThrownBy(() -> service.export("operational-health", "7d", null, moderator))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -195,7 +197,7 @@ class MetricsAggregatorServiceTest {
     void export_aiPerformance_rejectedForContributor() {
         JwtUserDetails contributor = new JwtUserDetails(UUID.randomUUID(), "contributor@test.local", "contributor", UUID.randomUUID());
 
-        assertThatThrownBy(() -> service.export("ai-performance", "7d", null, null, contributor))
+        assertThatThrownBy(() -> service.export("ai-performance", "7d", null, contributor))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -207,7 +209,7 @@ class MetricsAggregatorServiceTest {
         when(analyticsRepository.exportRows(any(), any(), any(), any()))
                 .thenReturn(List.of(Map.of("metric", "publication_attempts", "value", 5)));
 
-        var export = service.export("operational-health", "7d", null, null, admin);
+        var export = service.export("operational-health", "7d", null, admin);
 
         assertThat(export.filename()).contains("DASIGConnect_Analytics_Admin_Network_operational_health_7D").endsWith(".csv");
         assertThat(export.content()).contains("\"metric\",\"value\"");
@@ -218,7 +220,7 @@ class MetricsAggregatorServiceTest {
     void summary_rejectsUnsupportedRange() {
         JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "admin", null);
 
-        assertThatThrownBy(() -> service.summary("13d", null, null, admin))
+        assertThatThrownBy(() -> service.summary("13d", null, admin))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Unsupported analytics range");
     }

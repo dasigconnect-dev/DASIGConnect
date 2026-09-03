@@ -2,6 +2,7 @@ import type { CalendarEvent } from "../../api/calendarApi";
 import { getSubmission } from "../../api/submissionApi";
 import type { SavedMediaAsset, SubmissionSummary } from "../../api/submissionApi";
 import type { User } from "../../types/auth.types";
+import OptimizedImage, { canTransformImageType } from "../../components/media/OptimizedImage";
 import { visibleStatusColor, visibleStatusLabel } from "./calendarStatus";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -306,9 +307,14 @@ function CalendarMediaPreview({
                 aria-label={`Video attachment ${index + 1}: ${asset.fileName}`}
               />
             ) : (
-              <img
+              <OptimizedImage
                 src={asset.storageUrl}
                 alt={asset.fileName || `Media attachment ${index + 1}`}
+                width={360}
+                height={270}
+                sizes="(max-width: 768px) 100vw, 260px"
+                candidateWidths={[260, 360, 520]}
+                transform={canTransformImageType(asset.fileType)}
                 loading="lazy"
               />
             )}

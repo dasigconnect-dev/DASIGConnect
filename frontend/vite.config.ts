@@ -13,15 +13,15 @@ const baseSecurityHeaders = {
 };
 
 // Loosened for the dev server only: HMR needs inline scripts + ws:, the local
-// backend is served over plain http on :8080, and dev tooling may create blob
-// workers. Keep this narrower than script-src; do not add unsafe-eval.
+// backend/media routes are served over plain http on :8080, and dev tooling may
+// create blob workers. Keep this narrower than script-src; do not add unsafe-eval.
 const devSecurityHeaders = {
   "Content-Security-Policy": [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline'",
     "worker-src 'self' blob:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
-    "img-src 'self' data: blob: https:",
+    "img-src 'self' data: blob: https: http://localhost:8080",
     "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net",
     "connect-src 'self' http://localhost:8080 https: ws: wss:",
     "frame-ancestors 'none'",

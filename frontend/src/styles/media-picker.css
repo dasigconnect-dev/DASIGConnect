@@ -641,7 +641,7 @@
 
 .mlt-action-add:hover:not(:disabled),
 .ast-action-add:hover:not(:disabled) {
-  background: var(--sub-blue-2, #1565d8);
+  background: var(--sub-blue-2, #084a9f);
 }
 
 .mlt-action-add:disabled,
@@ -728,7 +728,7 @@
 }
 
 .ast-generate-btn:hover:not(:disabled) {
-  background: var(--sub-blue-2, #1565d8);
+  background: var(--sub-blue-2, #084a9f);
 }
 
 .ast-generate-btn:disabled {

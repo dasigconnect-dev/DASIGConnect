@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import type { SubmissionMediaItem } from "../../types/media";
+import OptimizedImage, { canTransformImageType } from "./OptimizedImage";
 
 interface SelectedMediaStripProps {
   items: SubmissionMediaItem[];
@@ -124,10 +125,15 @@ export default function SelectedMediaStrip({
                     </span>
                   </div>
                 ) : (
-                  <img
+                  <OptimizedImage
                     src={item.previewUrl}
                     alt={item.fileName}
                     className="sms-img"
+                    width={112}
+                    height={112}
+                    sizes="112px"
+                    candidateWidths={[112, 224]}
+                    transform={item.source !== "upload" && canTransformImageType(item.fileName.split(".").pop())}
                     draggable={false}
                   />
                 )}

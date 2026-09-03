@@ -49,7 +49,7 @@
   border-radius: 9999px;
   background: #EFF6FF;
   border: 1px solid #BFDBFE;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   font-size: 11.5px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -143,12 +143,12 @@
 }
 
 .analytics-segmented button:hover {
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   background: rgba(255, 255, 255, 0.7);
 }
 
 .analytics-segmented button.active {
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: #ffffff;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
 }
@@ -172,7 +172,7 @@
 
 .analytics-actions-group .notif-btn-ghost:hover:not(:disabled) {
   border-color: #bfdbfe;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   background: #eff6ff;
   transform: translateY(-0.5px);
 }
@@ -215,7 +215,7 @@
   height: 32px;
   border-radius: 8px;
   background: #EFF6FF;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -476,7 +476,7 @@
 
 .analytics-donut-val {
   font-weight: 700;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
 }
 
 /* ── Operations & Engagement Matrix Grid ─────────────────────────────────── */
@@ -551,7 +551,7 @@
 .analytics-text-btn {
   background: transparent;
   border: none;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
@@ -564,7 +564,7 @@
 }
 
 .analytics-text-btn:hover {
-  color: #1565D8;
+  color: #084a9f;
   gap: 6px;
 }
 
@@ -584,6 +584,54 @@
   padding: 32px 16px;
   color: var(--d-muted, #5a6f8a);
   font-size: 12.5px;
+}
+
+/* ── Social Engagement (dedicated headline card) ────────────────────────── */
+.analytics-social-card {
+  border-left: 3px solid var(--d-blue, #1877f2);
+}
+
+.analytics-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.analytics-stat-cell {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.analytics-stat-cell-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--d-muted, #5a6f8a);
+}
+
+.analytics-stat-cell-value {
+  font-size: 24px;
+  font-weight: 800;
+  color: #0c1d3d;
+  line-height: 1.1;
+}
+
+.analytics-panel-report-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+@media (max-width: 640px) {
+  .analytics-stat-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── Responsive Queries ─────────────────────────────────────────────────── */
@@ -639,7 +687,7 @@
 .analytics-kpi-strip-action {
   font-size: 11px;
   font-weight: 650;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -647,7 +695,7 @@
 }
 
 .analytics-kpi-strip-card.is-interactive:hover .analytics-kpi-strip-action {
-  color: #1565d8;
+  color: #084a9f;
   gap: 6px;
 }
 
@@ -710,7 +758,7 @@
   border-radius: 12px;
   background: #eff6ff;
   border: 1px solid #dbeafe;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -791,14 +839,14 @@
 
 .analytics-tab-btn.active {
   background: #ffffff;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   border-color: #cbd5e1;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
 }
 
 .analytics-tab-count {
   background: #eff6ff;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   font-size: 11px;
   font-weight: 700;
   padding: 1px 7px;
@@ -806,7 +854,7 @@
 }
 
 .analytics-tab-btn.active .analytics-tab-count {
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: #ffffff;
 }
 
@@ -824,7 +872,7 @@
   flex-direction: column;
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: var(--d-blue, #1877f2) #eff6ff;
+  scrollbar-color: var(--d-blue, #0B5FCC) #eff6ff;
 }
 
 .analytics-report-body::-webkit-scrollbar {
@@ -838,7 +886,7 @@
 }
 
 .analytics-report-body::-webkit-scrollbar-thumb {
-  background: var(--d-blue, #1877f2) !important;
+  background: var(--d-blue, #0B5FCC) !important;
   border-radius: 999px !important;
   border: 2px solid #eff6ff !important;
 }
@@ -911,7 +959,7 @@
 .analytics-bar-track span {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, #1877f2, #3b82f6);
+  background: linear-gradient(90deg, #0B5FCC, #3b82f6);
   border-radius: 999px;
   transition: width 300ms cubic-bezier(0.16, 1, 0.3, 1);
 }

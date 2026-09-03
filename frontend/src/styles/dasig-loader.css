@@ -33,7 +33,7 @@
 
 .dc-dot-triangle-dot-char {
   animation: dc-dot-tri-pulse 1.4s infinite ease-in-out both;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
 }
 
 .dc-dot-triangle-dot-char:nth-child(1) { animation-delay: 0s; }
@@ -46,7 +46,7 @@
   }
   40% {
     opacity: 1;
-    color: #1877f2;
+    color: #0B5FCC;
   }
 }
 
@@ -54,7 +54,7 @@
 .loader-dots {
   width: 2.35rem;
   aspect-ratio: 1.154;
-  --_blue: #1877f2;
+  --_blue: #0B5FCC;
 
   --_a: no-repeat radial-gradient(farthest-side, var(--_blue) 90%, transparent);
   --_b: no-repeat radial-gradient(farthest-side, var(--_blue) 90%, transparent);
