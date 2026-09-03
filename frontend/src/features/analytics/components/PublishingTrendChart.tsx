@@ -44,8 +44,8 @@ export default function PublishingTrendChart({ metric, onOpenReport }: Props) {
         >
           <defs>
             <linearGradient id="trendGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#1877F2" stopOpacity="0.25" />
-              <stop offset="100%" stopColor="#1877F2" stopOpacity="0.0" />
+              <stop offset="0%" stopColor="#0B5FCC" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#0B5FCC" stopOpacity="0.0" />
             </linearGradient>
           </defs>
 
@@ -76,7 +76,7 @@ export default function PublishingTrendChart({ metric, onOpenReport }: Props) {
                 cx={pt.x}
                 cy={pt.y}
                 r="4.5"
-                fill="#1877F2"
+                fill="#0B5FCC"
                 stroke="#FFFFFF"
                 strokeWidth="2"
               />

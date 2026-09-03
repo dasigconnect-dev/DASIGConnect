@@ -1,4 +1,5 @@
 import type { FacebookPreviewMediaItem } from "../../types/facebook";
+import OptimizedImage, { canTransformImageType } from "../media/OptimizedImage";
 
 interface FacebookPreviewMediaReorderProps {
   mediaItems: FacebookPreviewMediaItem[];
@@ -71,7 +72,15 @@ export default function FacebookPreviewMediaReorder({
               onClick={() => onSelect(index)}
             >
               {item.type === "image" ? (
-                <img src={item.url} alt={item.alt} />
+                <OptimizedImage
+                  src={item.url}
+                  alt={item.alt}
+                  width={72}
+                  height={72}
+                  sizes="72px"
+                  candidateWidths={[72, 144]}
+                  transform={canTransformImageType(item.url.split(".").pop()?.split("?")[0])}
+                />
               ) : (
                 <span>
                   <i className="ti ti-video" aria-hidden="true" />

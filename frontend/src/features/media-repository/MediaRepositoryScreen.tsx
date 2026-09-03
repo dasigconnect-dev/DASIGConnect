@@ -1136,7 +1136,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
                 className={`med-crumb${isLeaf ? " current" : ""}`}
                 onClick={() => navigateToAlbum(album.id)}
               >
-                {isLeaf && <i className="ti ti-folder" style={{ fontSize: 13, marginRight: 4, color: "var(--med-blue, #1877f2)" }} />}
+                {isLeaf && <i className="ti ti-folder" style={{ fontSize: 13, marginRight: 4, color: "var(--med-blue, #0B5FCC)" }} />}
                 {album.name}
               </button>
             </span>

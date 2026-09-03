@@ -37,9 +37,19 @@ export default function BrandedSelect({
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const [placement, setPlacement] = useState<"drop-down" | "drop-up">("drop-down");
   const [maxHeight, setMaxHeight] = useState(360);
+  const placementRef = useRef(placement);
+  const maxHeightRef = useRef(maxHeight);
   const selected = options.find((option) => option.value === value);
   const selectedLabel = selected?.label ?? "";
   const isDisabled = Boolean(disabled || loading);
+
+  useEffect(() => {
+    placementRef.current = placement;
+  }, [placement]);
+
+  useEffect(() => {
+    maxHeightRef.current = maxHeight;
+  }, [maxHeight]);
 
   useEffect(() => {
     if (!open) return;
@@ -88,8 +98,18 @@ export default function BrandedSelect({
           spaceAbove > spaceBelow;
         const availableSpace = shouldDropUp ? spaceAbove : spaceBelow;
 
-        setPlacement(shouldDropUp ? "drop-up" : "drop-down");
-        setMaxHeight(Math.max(180, Math.min(naturalHeight, availableSpace)));
+        const nextPlacement = shouldDropUp ? "drop-up" : "drop-down";
+        const nextMaxHeight = Math.round(Math.max(180, Math.min(naturalHeight, availableSpace)));
+
+        if (placementRef.current !== nextPlacement) {
+          placementRef.current = nextPlacement;
+          setPlacement(nextPlacement);
+        }
+
+        if (maxHeightRef.current !== nextMaxHeight) {
+          maxHeightRef.current = nextMaxHeight;
+          setMaxHeight(nextMaxHeight);
+        }
       });
     }
 

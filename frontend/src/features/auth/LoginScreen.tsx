@@ -240,7 +240,7 @@ export default function LoginScreen({
                   type="button"
                   className="eye-btn"
                   onClick={onTogglePassword}
-                  aria-label="Show/hide password"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   <i className={showPassword ? 'ti ti-eye' : 'ti ti-eye-off'}></i>
                 </button>

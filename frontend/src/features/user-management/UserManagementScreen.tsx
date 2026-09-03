@@ -28,6 +28,7 @@ import type { InstitutionOption, InviteResults, InviteRole } from './types'
 import { toInstitutionOption } from './types'
 import { useToast } from '../../context/ToastContext'
 import { getUserDisplayName } from '../../lib/userIdentity'
+import '../../styles/user-management.css'
 
 interface ConfirmDialogState {
   title: string

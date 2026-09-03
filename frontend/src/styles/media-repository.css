@@ -1,11 +1,9 @@
 /* ===== MEDIA REPOSITORY — Feature CSS ===== */
 
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
-
 .med-page {
   --med-navy-deep:    #0A1628;
   --med-navy-mid:     #1A3A6B;
-  --med-blue:         #2563EB;
+  --med-blue:         #0b5fcc;
   --med-blue-dim:     #EBF2FF;
   --med-gold:         #F59E0B;
   --med-gold-light:   #FEF3C7;
@@ -19,7 +17,7 @@
   --med-warning:      #F59E0B;
   --med-error:        #EF4444;
   --med-border:       #D1D9EC;
-  --med-border-focus: #2563EB;
+  --med-border-focus: #0b5fcc;
   --med-ff-display:   'Fraunces', Georgia, serif;
   --med-ff-body:      'Plus Jakarta Sans', system-ui, sans-serif;
   --med-radius-sm:    6px;
@@ -98,7 +96,7 @@
 .med-btn:active { transform: scale(0.97); }
 
 .med-btn-primary {
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: white;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
 }
@@ -116,7 +114,7 @@
 }
 .med-btn-ghost:hover {
   background: #eff6ff;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   border-color: #bfdbfe;
   transform: translateY(-0.5px);
   box-shadow: 0 4px 12px rgba(24, 119, 242, 0.1);
@@ -332,7 +330,7 @@
 .med-view-btn:first-child { border-right: none; }
 
 .med-view-btn.active {
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: #ffffff;
   box-shadow: 0 2px 6px rgba(24, 119, 242, 0.25);
 }
@@ -426,7 +424,7 @@
 }
 
 .med-chip:hover {
-  color: var(--med-blue, #1877f2);
+  color: var(--med-blue, #0B5FCC);
   border-color: #bfdbfe;
   background: #eff6ff;
 }
@@ -434,8 +432,8 @@
 .med-chip.active {
   color: #fff !important;
   font-weight: 650;
-  background: var(--med-blue, #1877f2) !important;
-  border-color: var(--med-blue, #1877f2) !important;
+  background: var(--med-blue, #0B5FCC) !important;
+  border-color: var(--med-blue, #0B5FCC) !important;
   box-shadow: 0 6px 16px rgba(24, 119, 242, 0.22);
 }
 
@@ -451,7 +449,7 @@
   height: 19px;
   padding: 0 5px;
   border-radius: 999px;
-  color: var(--med-blue, #1877f2);
+  color: var(--med-blue, #0B5FCC);
   background: #dbeafe;
   font-size: 10.5px;
   font-weight: 700;
@@ -521,7 +519,7 @@
 }
 
 .med-type-tab:hover {
-  color: var(--med-blue, #1877f2);
+  color: var(--med-blue, #0B5FCC);
   border-color: #bfdbfe;
   background: #eff6ff;
 }
@@ -533,8 +531,8 @@
 .med-type-tab.active {
   color: #ffffff !important;
   font-weight: 650;
-  background: var(--med-blue, #1877f2) !important;
-  border-color: var(--med-blue, #1877f2) !important;
+  background: var(--med-blue, #0B5FCC) !important;
+  border-color: var(--med-blue, #0B5FCC) !important;
   box-shadow: 0 4px 14px rgba(24, 119, 242, 0.22);
 }
 
@@ -546,7 +544,7 @@
   height: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  color: var(--med-blue, #1877f2);
+  color: var(--med-blue, #0B5FCC);
   background: #dbeafe;
   font-size: 10px;
   font-weight: 700;
@@ -772,7 +770,7 @@
 .med-badge-draft      { background: #E8EDF5; color: #4B5563; }
 .med-badge-revision   { background: #FEE2E2; color: #991B1B; }
 .med-badge-scheduled  { background: #EDE9FE; color: #5B21B6; }
-.med-badge-published  { background: #1877F2; color: white; }
+.med-badge-published  { background: #0B5FCC; color: white; }
 .med-badge-tag        { background: var(--med-surface-2); color: var(--med-text-2); }
 
 /* ===== EMPTY / ERROR STATE ===== */
@@ -836,7 +834,7 @@
   font-family: var(--med-ff-body);
   --med-navy-deep: #0A1628;
   --med-navy-mid:  #1A3A6B;
-  --med-blue:      #2563EB;
+  --med-blue:      #0b5fcc;
   --med-blue-dim:  #EBF2FF;
   --med-gold:      #F59E0B;
   --med-surface-0: #FFFFFF;
@@ -1143,7 +1141,7 @@
   font-family: var(--med-ff-body, 'Plus Jakarta Sans', system-ui, sans-serif);
   --med-navy-deep: #0A1628;
   --med-navy-mid:  #1A3A6B;
-  --med-blue:      #2563EB;
+  --med-blue:      #0b5fcc;
   --med-blue-dim:  #EBF2FF;
   --med-gold:      #F59E0B;
   --med-gold-light:#FEF3C7;
@@ -1248,7 +1246,7 @@
 }
 
 .med-modal-footer .med-btn-primary {
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: #ffffff;
   font-weight: 650;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
@@ -1333,7 +1331,7 @@
 
 .med-dropzone:hover,
 .med-dropzone.drag-over {
-  border-color: var(--d-blue, #1877f2);
+  border-color: var(--d-blue, #0B5FCC);
   background: #eff6ff;
 }
 
@@ -1347,7 +1345,7 @@
   align-items: center;
   justify-content: center;
   margin: 0 auto 14px;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   transition: all 0.2s ease;
 }
 
@@ -1369,7 +1367,7 @@
 }
 
 .med-dropzone-link {
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   font-weight: 650;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -1405,7 +1403,7 @@
   border-radius: 8px;
   background: #eff6ff;
   border: 1px solid #dbeafe;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1416,9 +1414,9 @@
 }
 
 .med-spec-item:hover .med-spec-icon {
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: #ffffff;
-  border-color: var(--d-blue, #1877f2);
+  border-color: var(--d-blue, #0B5FCC);
 }
 
 .med-spec-content {
@@ -1982,7 +1980,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: #ffffff;
   border: none;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
@@ -2083,14 +2081,14 @@
   font-size: 20px;
   flex-shrink: 0;
   background: transparent !important;
-  color: var(--med-blue, #1877F2) !important;
+  color: var(--med-blue, #0B5FCC) !important;
 }
 
 .med-new-menu-icon-badge.folder,
 .med-new-menu-icon-badge.upload,
 .med-new-menu-icon-badge.folder-upload {
   background: transparent !important;
-  color: var(--med-blue, #1877F2) !important;
+  color: var(--med-blue, #0B5FCC) !important;
 }
 
 .med-new-menu-text {
@@ -2184,7 +2182,7 @@
   font-family: var(--med-ff-body, inherit);
   font-size: 13px;
   font-weight: 550;
-  color: var(--med-blue, #1877f2);
+  color: var(--med-blue, #0B5FCC);
   cursor: pointer;
   padding: 3px 6px;
   border-radius: 6px;
@@ -2615,7 +2613,7 @@
 }
 
 .med-panel-tab:hover {
-  color: var(--med-blue, #1877f2);
+  color: var(--med-blue, #0B5FCC);
   background: #eff6ff;
 }
 
@@ -2626,8 +2624,8 @@
 .med-panel-tab.active {
   color: #ffffff !important;
   font-weight: 650;
-  background: var(--med-blue, #1877f2) !important;
-  border-color: var(--med-blue, #1877f2) !important;
+  background: var(--med-blue, #0B5FCC) !important;
+  border-color: var(--med-blue, #0B5FCC) !important;
   box-shadow: 0 4px 12px rgba(24, 119, 242, 0.22);
 }
 

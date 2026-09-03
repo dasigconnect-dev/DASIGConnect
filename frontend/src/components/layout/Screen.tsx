@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import '../../styles/auth-layout.css'
 
 interface ScreenProps {
   id: string
@@ -8,8 +9,8 @@ interface ScreenProps {
 
 export default function Screen({ id, active, children }: ScreenProps) {
   return (
-    <div id={`screen-${id}`} className={`screen${active ? ' active' : ''}`}>
+    <main id={`screen-${id}`} className={`screen${active ? ' active' : ''}`}>
       {children}
-    </div>
+    </main>
   )
 }

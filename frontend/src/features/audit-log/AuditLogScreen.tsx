@@ -421,7 +421,7 @@ export default function AuditLogScreen({ user: _user }: Props) {
           <span
             className="audit-entity-badge"
             title="Records are immutable and tamper-evident"
-            style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "#1877F2", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 999, padding: "3px 10px", fontWeight: 600 }}
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--d-blue, #0B5FCC)", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 999, padding: "3px 10px", fontWeight: 600 }}
           >
             <i className="ti ti-clock-shield" style={{ fontSize: 13 }} />
             <span>Immutable Trail</span>
