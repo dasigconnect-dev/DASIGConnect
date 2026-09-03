@@ -184,10 +184,9 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   if (eventType === "submission_needs_revision" || eventType === "submission_rejected") {
-    // Both live under the "Action Needed" tab in My Submissions.
-    return eventType === "submission_needs_revision"
-      ? "/submissions?tab=action-needed&openFeedback=true"
-      : "/submissions?tab=action-needed";
+    // Both live under the "Action Needed" tab in My Submissions. `openFeedback`
+    // is only honored on a single-submission route, so it's not appended here.
+    return "/submissions?tab=action-needed";
   }
 
   if (eventType === "token_expiring" || eventType === "token_invalid") {

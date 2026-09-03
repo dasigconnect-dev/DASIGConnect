@@ -788,7 +788,15 @@ export default function ValidationQueueScreen({
   async function handleRevise() {
     if (!selected) return;
     const finalRemarks = encodeRevisionRemarks(remarks, revisionFieldComments);
-    if (finalRemarks.trim().length < 10) {
+    // Validate the human-written content, not the JSON envelope that
+    // encodeRevisionRemarks wraps around field-specific comments.
+    const writtenLength =
+      remarks.trim().length +
+      Object.values(revisionFieldComments).reduce(
+        (sum, value) => sum + (value || "").trim().length,
+        0,
+      );
+    if (writtenLength < 10) {
       toast.error("Revision remarks must be at least 10 characters.");
       return;
     }
