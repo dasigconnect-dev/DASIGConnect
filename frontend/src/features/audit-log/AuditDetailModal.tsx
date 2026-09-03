@@ -60,7 +60,7 @@ export default function AuditDetailModal({ entry, onClose }: Props) {
         <div className="audit-modal-header">
           <div className="audit-modal-title-wrap">
             <h2>
-              <i className="ti ti-shield-check" style={{ color: "var(--d-blue, #1877f2)" }} />
+              <i className="ti ti-shield-check" style={{ color: "var(--d-blue, #0B5FCC)" }} />
               Audit Event Details
             </h2>
             <span className="audit-modal-subtitle">
@@ -247,7 +247,7 @@ export default function AuditDetailModal({ entry, onClose }: Props) {
               <details className="audit-json-details" open>
                 <summary className="audit-json-summary">
                   <div className="audit-json-summary-left">
-                    <i className="ti ti-code" style={{ color: "var(--d-blue, #1877f2)", fontSize: 13 }} />
+                    <i className="ti ti-code" style={{ color: "var(--d-blue, #0B5FCC)", fontSize: 13 }} />
                     <span>Raw Technical Metadata (JSON)</span>
                   </div>
                   <div className="audit-json-summary-right">

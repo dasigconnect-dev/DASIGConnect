@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { AI_CAPTION_PROMPT_MAX_LENGTH } from "../../../api/aiApi";
 import type { CaptionTone } from "../../../api/aiApi";
 import type { AiCaptionState } from "../../../hooks/useAiCaptionAssist";
+import "./AiCaptionPromptDialog.css";
 
 interface Props {
   open: boolean;

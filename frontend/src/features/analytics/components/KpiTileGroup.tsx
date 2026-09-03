@@ -55,7 +55,7 @@ export default function KpiTileGroup({ summary, onOpenReport }: Props) {
               )}
             </div>
             {metric.secondaryLabel && metric.secondaryValue !== null && (
-              <p className="analytics-kpi-meta" style={{ marginTop: "4px", color: "var(--d-blue, #1877f2)", fontWeight: 600 }}>
+              <p className="analytics-kpi-meta" style={{ marginTop: "4px", color: "var(--d-blue, #0B5FCC)", fontWeight: 600 }}>
                 {metric.secondaryLabel}: {formatNumber(metric.secondaryValue)}
               </p>
             )}

@@ -1,5 +1,6 @@
 import type { EngagementRecommendations } from "../../../api/submissionApi";
 import { formatDateTime } from "../utils";
+import "./EngagementRecommendationsPanel.css";
 
 export function EngagementRecommendationsPanel({
   loading,

@@ -178,7 +178,9 @@ export default function DashboardShell({
             </div>
           </nav>
 
-          {children}
+          <main className="dash-main" id="main-content">
+            {children}
+          </main>
         </div>
       </div>
     </>
