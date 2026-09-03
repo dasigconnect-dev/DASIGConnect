@@ -26,6 +26,11 @@ import {
 } from "../../api/validationApi";
 import type { SubmissionMediaItem } from "../../types/media";
 import FancyTextTool, { type FancyTextSelection } from "../submission/components/FancyTextTool";
+import {
+  encodeRevisionRemarks,
+  formatRevisionRemarksForDisplay,
+  REVISION_SUPPORTED_FIELDS,
+} from "../submission/utils/revisionComments";
 import ReviewLibraryPickerModal from "./ReviewLibraryPickerModal";
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
@@ -172,6 +177,8 @@ export default function ValidationQueueScreen({
   const [modalClosing, setModalClosing] = useState(false);
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [remarks, setRemarks] = useState("");
+  const [revisionFieldComments, setRevisionFieldComments] = useState<Record<string, string>>({});
+  const [activeRevisionField, setActiveRevisionField] = useState<string | null>("caption");
   const [reasonCode, setReasonCode] =
     useState<RejectionReasonCode>("INCOMPLETE_CONTENT");
   const [notes, setNotes] = useState("");
@@ -380,6 +387,11 @@ export default function ValidationQueueScreen({
   function openDecisionModal(nextModal: Exclude<DecisionModal, null>) {
     if (modalExitTimer.current) window.clearTimeout(modalExitTimer.current);
     setModalClosing(false);
+    if (nextModal === "revise") {
+      setRemarks("Please revise all input fields marked with a comment icon.");
+      setRevisionFieldComments({});
+      setActiveRevisionField("caption");
+    }
     setRenderedModal(nextModal);
   }
 
@@ -775,18 +787,28 @@ export default function ValidationQueueScreen({
 
   async function handleRevise() {
     if (!selected) return;
-    if (remarks.trim().length < 10) {
+    const finalRemarks = encodeRevisionRemarks(remarks, revisionFieldComments);
+    // Validate the human-written content, not the JSON envelope that
+    // encodeRevisionRemarks wraps around field-specific comments.
+    const writtenLength =
+      remarks.trim().length +
+      Object.values(revisionFieldComments).reduce(
+        (sum, value) => sum + (value || "").trim().length,
+        0,
+      );
+    if (writtenLength < 10) {
       toast.error("Revision remarks must be at least 10 characters.");
       return;
     }
     setDecisionBusy(true);
 
-
     try {
-      await requestSubmissionRevision(selected.id, { remarks: remarks.trim() });
+      await requestSubmissionRevision(selected.id, { remarks: finalRemarks.trim() });
       toast.warning("Revision request sent to the contributor.");
       closeDecisionModal();
       setRemarks("");
+      setRevisionFieldComments({});
+      setActiveRevisionField(null);
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
@@ -1692,17 +1714,114 @@ export default function ValidationQueueScreen({
           confirmBusy={decisionBusy}
           onCancel={closeDecisionModal}
           onConfirm={() => void handleRevise()}
+          dialogClassName="val-modal--wide"
         >
-          <textarea
-            className="val-modal-input"
-            value={remarks}
-            onChange={(event) => setRemarks(event.target.value)}
-            rows={5}
-            placeholder="Write at least 10 characters..."
-          />
-          <small className={remarks.trim().length >= 10 ? "ok" : "err"}>
-            {remarks.trim().length} / 10 min
-          </small>
+          <div className="val-revision-form">
+            <div className="val-revision-group">
+              <label className="val-revision-label">
+                <span>General Instructions</span>
+                <span className="val-revision-hint">Shown in editor banner</span>
+              </label>
+              <textarea
+                className="val-modal-input"
+                value={remarks}
+                onChange={(event) => setRemarks(event.target.value)}
+                rows={3}
+                placeholder="Write general instructions (e.g. Please revise all input fields marked with a comment icon)..."
+              />
+              <small className={remarks.trim().length >= 10 ? "ok" : "err"}>
+                {remarks.trim().length} / 10 min
+              </small>
+            </div>
+
+            <div className="val-revision-group">
+              <label className="val-revision-label">
+                <span>Field-Specific Comments</span>
+                <span className="val-revision-hint">Click a field to add a note under it</span>
+              </label>
+
+              <div className="val-revision-chips">
+                {REVISION_SUPPORTED_FIELDS.map((field) => {
+                  const hasComment = Boolean(revisionFieldComments[field.key]?.trim());
+                  const isActive = activeRevisionField === field.key;
+                  return (
+                    <button
+                      key={field.key}
+                      type="button"
+                      className={`val-revision-chip ${hasComment ? "has-comment" : ""} ${isActive ? "is-active" : ""}`}
+                      onClick={() => {
+                        setActiveRevisionField(activeRevisionField === field.key ? null : field.key);
+                      }}
+                    >
+                      <i className={`ti ${field.icon}`} />
+                      <span>{field.label}</span>
+                      {hasComment ? (
+                        <i className="ti ti-check val-chip-check" />
+                      ) : (
+                        <i className="ti ti-plus val-chip-plus" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {activeRevisionField && (() => {
+                const currentFieldMeta = REVISION_SUPPORTED_FIELDS.find((f) => f.key === activeRevisionField);
+                if (!currentFieldMeta) return null;
+                const commentVal = revisionFieldComments[activeRevisionField] || "";
+                return (
+                  <div className="val-revision-field-box">
+                    <div className="val-revision-field-head">
+                      <div className="val-revision-field-name">
+                        <i className={`ti ${currentFieldMeta.icon}`} />
+                        <strong>{currentFieldMeta.label} Comment</strong>
+                      </div>
+                      {commentVal && (
+                        <button
+                          type="button"
+                          className="val-revision-field-clear"
+                          onClick={() => {
+                            setRevisionFieldComments((prev) => {
+                              const next = { ...prev };
+                              delete next[activeRevisionField];
+                              return next;
+                            });
+                          }}
+                          title="Remove comment for this field"
+                        >
+                          <i className="ti ti-x" />
+                          <span>Clear</span>
+                        </button>
+                      )}
+                    </div>
+                    <textarea
+                      className="val-modal-input val-revision-field-input"
+                      value={commentVal}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setRevisionFieldComments((prev) => ({
+                          ...prev,
+                          [activeRevisionField]: v,
+                        }));
+                      }}
+                      rows={3}
+                      placeholder={`Explain what needs to be changed in ${currentFieldMeta.label}...`}
+                      autoFocus
+                    />
+                  </div>
+                );
+              })()}
+
+              {Object.keys(revisionFieldComments).filter(k => revisionFieldComments[k]?.trim()).length > 0 && (
+                <div className="val-revision-attached-summary">
+                  <i className="ti ti-info-circle" />
+                  <span>
+                    {Object.keys(revisionFieldComments).filter(k => revisionFieldComments[k]?.trim()).length} field-specific comment(s) attached
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
         </DecisionDialog>
       )}
 
@@ -2252,7 +2371,11 @@ function ValidationHistoryModal({
                       <span className="val-log-meta">
                         {entry.validatorEmail} · {formatDateTime(entry.createdAt)}
                       </span>
-                      {entry.remarks && <p className="val-log-remarks">{entry.remarks}</p>}
+                      {entry.remarks && (
+                        <p className="val-log-remarks">
+                          {formatRevisionRemarksForDisplay(entry.remarks)}
+                        </p>
+                      )}
                       {entry.rejectionReason && <p className="val-log-remarks">{entry.rejectionReason}</p>}
                       {entry.editDiff && <EditDiffView diffJson={entry.editDiff} />}
                     </div>
@@ -2273,7 +2396,7 @@ function ValidationHistoryModal({
             background: "var(--val-surface, #ffffff)",
           }}
         >
-          <button type="button" className="val-btn val-btn-secondary" onClick={onClose}>
+          <button type="button" className="val-btn val-btn-primary" onClick={onClose}>
             Close
           </button>
         </div>
@@ -2335,6 +2458,7 @@ function DecisionDialog({
   confirmBusy,
   onCancel,
   onConfirm,
+  dialogClassName,
   children,
 }: {
   icon: string;
@@ -2346,6 +2470,7 @@ function DecisionDialog({
   confirmBusy: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+  dialogClassName?: string;
   children?: ReactNode;
 }) {
   return createPortal(
@@ -2353,12 +2478,16 @@ function DecisionDialog({
       className={`val-modal-overlay${exiting ? " is-closing" : ""}`}
       onClick={onCancel}
     >
-      <div className="val-modal" onClick={(event) => event.stopPropagation()}>
-        <div className={`val-modal-icon ${tone}`}>
-          <i className={`ti ${icon}`}></i>
+      <div className={`val-modal ${dialogClassName || ""}`} onClick={(event) => event.stopPropagation()}>
+        <div className="val-modal-header">
+          <div className={`val-modal-icon ${tone}`}>
+            <i className={`ti ${icon}`}></i>
+          </div>
+          <div className="val-modal-header-text">
+            <h3>{title}</h3>
+            <p>{body}</p>
+          </div>
         </div>
-        <h3>{title}</h3>
-        <p>{body}</p>
         {children}
         <div className="val-modal-actions">
           <button type="button" className="ghost" onClick={onCancel}>

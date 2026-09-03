@@ -6,6 +6,7 @@ import type { FacebookPreviewMediaItem } from "../../../types/facebook";
 import type { SubmissionMediaItem } from "../../../types/media";
 import type { FormState } from "../types";
 import { formatDateTime, formatLongDate } from "../utils";
+import { formatRevisionRemarksForDisplay } from "../utils/revisionComments";
 import "./SubmissionReadOnlyView.css";
 
 interface FacebookPreviewData {
@@ -52,7 +53,11 @@ export default function SubmissionReadOnlyBody({
 
   const isRejected = form.status === "rejected";
   const needsRevision = form.status === "needs_revision";
-  const feedbackText = isRejected ? rejectionReason : needsRevision ? revisionNotes : null;
+  const feedbackText = isRejected
+    ? rejectionReason
+    : needsRevision
+      ? formatRevisionRemarksForDisplay(revisionNotes)
+      : null;
 
   const schedule = form.fastTrack
     ? "Live event — no scheduled slot"
