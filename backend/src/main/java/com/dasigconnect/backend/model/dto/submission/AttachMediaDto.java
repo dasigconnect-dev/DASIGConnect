@@ -19,8 +19,19 @@ public class AttachMediaDto {
     @Positive(message = "fileSizeBytes must be positive")
     private Long fileSizeBytes;
 
+    /**
+     * Optional target album name for a media asset uploaded during review —
+     * resolved / created the same way as the contributor's album assignment.
+     * Ignored for draft uploads (those are filed at submit time); when blank on
+     * a non-draft upload the asset is filed into the submission's own album.
+     */
+    private String albumName;
+
     public String getStorageUrl() { return storageUrl; }
     public void setStorageUrl(String storageUrl) { this.storageUrl = storageUrl; }
+
+    public String getAlbumName() { return albumName; }
+    public void setAlbumName(String albumName) { this.albumName = albumName; }
 
     public String getFileName() { return fileName; }
     public void setFileName(String fileName) { this.fileName = fileName; }

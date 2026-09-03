@@ -37,7 +37,7 @@ public class CaptionController {
     }
 
     @PostMapping("/caption")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<CaptionResponseDto>> generateCaption(
             @RequestBody @Valid CaptionRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
@@ -72,7 +72,7 @@ public class CaptionController {
     }
 
     @PostMapping("/caption/log")
-    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
     public ResponseEntity<Void> logCaptionInteraction(
             @RequestBody @Valid CaptionLogRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
