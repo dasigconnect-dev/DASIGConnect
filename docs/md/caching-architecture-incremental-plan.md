@@ -1197,3 +1197,93 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2F: improve Calendar caching by moving calendar event reads to centralized query caching keyed by requested date range and authenticated scope.
+
+## Phase 2F Calendar Migration Status
+
+Status: implemented on `feature/caching-architecture-phase2f`.
+
+Changed files:
+
+- `frontend/src/hooks/useCalendarEvents.ts`
+- `frontend/src/features/calendar/CalendarScreen.tsx`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- `useCalendarEvents` used local React state plus a module-level `cachedCalendarEvents` array.
+- The hook registered the module cache with `registerAppCacheReset`.
+- Calendar events were fetched on mount and manual refresh, independent of authenticated query keys.
+- Returning to the calendar reused only the module cache and still had no scoped stale/fresh policy.
+
+New behavior:
+
+- `useCalendarEvents(user, range)` now uses TanStack Query.
+- The legacy module-level calendar event cache was removed.
+- Calendar reads are keyed by authenticated user scope and the visible calendar range.
+- `CalendarScreen` seeds the initial query range to the current month so the calendar can fetch before FullCalendar emits its first `datesSet`.
+- Manual refresh invalidates the `calendar-events` query group.
+- Successful reschedules invalidate:
+  - `calendar-events`
+  - `dashboard`
+  - `analytics`
+  - `submissions`
+- Existing calendar UI behavior, filters, metrics, event detail modal, and drag-reschedule flow are preserved.
+
+Query key:
+
+```ts
+queryKeys.calendarEvents.range({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: user.institutionId ?? null,
+  startDate,
+  endDate,
+})
+```
+
+Concrete shape:
+
+```ts
+["calendar-events", { role, userId, institutionId, startDate, endDate }]
+```
+
+Freshness policy:
+
+- `staleTime: 120_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First visit for a range/scope: `NETWORK`
+- Return to the same range within 2 minutes: `CACHE`
+- Return after 2 minutes while cached data exists: `CACHE immediately + BACKGROUND REFRESH`
+- Manual refresh: invalidates calendar-event queries and refetches active observers.
+- Reschedule success: invalidates calendar, dashboard, analytics, and submission queries.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`
+
+Authentication isolation:
+
+- Query key includes user identity, role, institution ID, and date range.
+- Auth tokens are not included in keys.
+- The legacy module cache was removed, so calendar data no longer has a separate cross-route cache.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for event visibility and masking.
+
+Backend note:
+
+- The current backend `GET /api/v1/calendar` endpoint does not accept range parameters.
+- This phase intentionally keeps the API contract stable and uses range-scoped frontend cache keys.
+- A future backend optimization can add server-side date filtering if calendar payload size becomes a measured problem.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/hooks/useCalendarEvents.ts src/features/calendar/CalendarScreen.tsx --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2G: add Media Repository metadata caching through centralized query hooks, keeping media file/browser caching separate.
