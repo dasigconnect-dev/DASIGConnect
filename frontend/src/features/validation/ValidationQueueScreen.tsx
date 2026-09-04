@@ -463,6 +463,10 @@ export default function ValidationQueueScreen({
   }
 
   function openDecisionModal(nextModal: Exclude<DecisionModal, null>) {
+    if (nextModal === "approve" && isSelfReview) {
+      toast.error("Your own submission must be reviewed by another moderator.");
+      return;
+    }
     if (modalExitTimer.current) window.clearTimeout(modalExitTimer.current);
     setModalClosing(false);
     if (nextModal === "revise") {
@@ -515,7 +519,7 @@ export default function ValidationQueueScreen({
           if (lock.lockedByEmail.toLowerCase() === user.email.toLowerCase()) {
             setLocks((prev) => ({ ...prev, [summary.id]: lock }));
           } else {
-            setLockNotice(`This submission is currently being reviewed by ${lock.lockedByEmail}.`);
+            setLockNotice(`This submission is currently being reviewed by Moderator ${lock.lockedByEmail}.`);
           }
         }
       }
@@ -566,6 +570,10 @@ export default function ValidationQueueScreen({
 
   async function handleAcquireLock() {
     if (!selected) return;
+    if (isSelfReview) {
+      toast.error("You cannot review your own submission. Another Moderator must review it.");
+      return;
+    }
     setLockBusy(true);
     try {
       const lock = await acquireReviewLock(selected.id);
@@ -649,6 +657,10 @@ export default function ValidationQueueScreen({
 
   async function handleApprove() {
     if (!selected) return;
+    if (isSelfReview) {
+      toast.error("Your own submission must be reviewed by another moderator.");
+      return;
+    }
     setDecisionBusy(true);
     try {
       await approveSubmission(selected.id);
@@ -1425,7 +1437,7 @@ export default function ValidationQueueScreen({
                 <NoticeBar
                   tone="warn"
                   icon="ti-alert-triangle"
-                  text="You are reviewing your own submission. This action will be flagged in the audit log."
+                  text="You cannot review your own submission. Another Moderator must review it."
                 />
               )}
               {lockNotice && (
@@ -1822,6 +1834,8 @@ export default function ValidationQueueScreen({
                   <button
                     className="val-btn val-btn-primary"
                     type="button"
+                    disabled={isSelfReview}
+                    title={isSelfReview ? "Your own submission must be reviewed by another moderator." : undefined}
                     onClick={() => openDecisionModal("approve")}
                   >
                     <i className="ti ti-check" />
@@ -1834,14 +1848,17 @@ export default function ValidationQueueScreen({
                 <div className="val-action-status">
                   <span className="val-action-hint">
                     <i className="ti ti-info-circle" />
-                    Acquire review lock to record a decision.
+                    {isSelfReview
+                      ? "You cannot review your own submission."
+                      : "Acquire review lock to record a decision."}
                   </span>
                 </div>
                 <div className="val-action-group">
                   <button
                     className="val-btn val-btn-primary"
                     type="button"
-                    disabled={lockBusy}
+                    disabled={lockBusy || isSelfReview}
+                    title={isSelfReview ? "Another Moderator must review this submission." : undefined}
                     onClick={() => void handleAcquireLock()}
                   >
                     <i className="ti ti-lock" />

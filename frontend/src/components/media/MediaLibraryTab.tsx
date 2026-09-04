@@ -13,6 +13,8 @@ interface MediaLibraryTabProps {
   disabled?: boolean;
   /** Scope the library to a specific institution (network-wide admins). */
   institutionId?: string;
+  /** Show assets across every institution for network-wide roles. */
+  networkView?: boolean;
   /** Show a folder/album filter dropdown above the grid. */
   showAlbumFilter?: boolean;
 }
@@ -38,6 +40,7 @@ export default function MediaLibraryTab({
   onAddItems,
   disabled,
   institutionId,
+  networkView,
   showAlbumFilter,
 }: MediaLibraryTabProps) {
   const {
@@ -59,7 +62,7 @@ export default function MediaLibraryTab({
     selectedIds,
     toggleSelect,
     clearSelection,
-  } = useMediaLibraryAssets({ institutionId });
+  } = useMediaLibraryAssets({ institutionId, networkView });
 
   const searchRef = useRef<HTMLInputElement>(null);
 
