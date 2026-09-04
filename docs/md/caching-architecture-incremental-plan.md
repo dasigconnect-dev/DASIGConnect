@@ -967,3 +967,108 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2D: migrate Administrator Management away from its legacy module cache and into centralized query caching, preserving the Phase 0 logout cache reset until the legacy cache is fully removed.
+
+## Phase 2D Administrator Management Migration Status
+
+Status: implemented on `feature/caching-architecture-phase0`.
+
+Changed files:
+
+- `frontend/src/features/administrator-management/AdministratorManagementScreen.tsx`
+- `frontend/src/features/administrator-management/hooks/useAdministratorManagementData.ts`
+- `frontend/src/features/user-management/hooks/useUserManagementData.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- `AdministratorManagementScreen.tsx` used a module-level `memoryCache` for admin roster and pending admin invitations.
+- Phase 0 registered that cache with logout reset, but the screen still owned manual fetch state and refresh logic.
+- The screen separately loaded institutions for the role-change modal after ownership was known.
+- Successful mutations manually patched local admin arrays or reloaded lists.
+
+New behavior:
+
+- Added `useAdministratorManagementData(user)` backed by TanStack Query.
+- Removed the legacy Administrator Management module-level `memoryCache`.
+- Admin roster, pending admin invitations, and institutions now load through one centralized authenticated query.
+- The screen keeps the same permissions, modal behavior, admin limit logic, transfer flow, role-change flow, and API contracts.
+- Successful mutations invalidate centralized query groups instead of maintaining local server-state copies.
+- Query cancellation now rethrows when the TanStack `AbortSignal` is aborted, preventing empty fallback data from being cached on auth/session reset.
+
+Query key:
+
+```ts
+queryKeys.administrators.all({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  scope: "network",
+})
+```
+
+Concrete shape:
+
+```ts
+["administrators", { role, userId, scope: "network" }]
+```
+
+Freshness policy:
+
+- `staleTime: 60_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First Administrator Management visit: `NETWORK`
+- Return within 60 seconds: `CACHE`
+- Return after 60 seconds while cached data exists: `CACHE immediately + BACKGROUND REFRESH`
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`
+
+Invalidation rules:
+
+- Administrator Management mutations invalidate:
+  - `administrators`
+  - `users`
+  - `dashboard`
+  - `analytics`
+- Covered mutation paths:
+  - invite admin
+  - activate/deactivate admin
+  - delete/deactivate admin
+  - erase admin data
+  - request admin transfer
+  - confirm admin transfer
+  - resend admin invitation
+  - cancel admin invitation
+  - change admin role
+
+Authentication isolation:
+
+- Query key includes user identity, role, and network scope.
+- Auth tokens are not included in keys.
+- The legacy module cache was removed, so there is no separate cross-route cache requiring app-cache reset registration.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for administrator data.
+
+Cancellation:
+
+- TanStack Query passes its `AbortSignal` into the admin roster, pending admin invitations, and institution reads.
+- Aborted reads throw `AbortError` instead of caching empty fallback data.
+- The same cancellation guard was added to `useUserManagementData` because it uses the same `Promise.allSettled` fan-out pattern.
+
+Risks:
+
+- The query still fans out across three existing endpoints. This preserves current contracts but does not reduce backend request count on a cold load.
+- Institution data is loaded for all admins through this screen query; role-change controls remain owner-gated in the UI and authorization remains backend-enforced.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/features/administrator-management/AdministratorManagementScreen.tsx src/features/administrator-management/hooks/useAdministratorManagementData.ts src/features/user-management/hooks/useUserManagementData.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2E: migrate Institution Management reads into centralized query caching with a longer freshness window and targeted invalidation after institution/user invite mutations.
