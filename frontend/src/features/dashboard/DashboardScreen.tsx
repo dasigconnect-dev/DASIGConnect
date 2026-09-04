@@ -1,19 +1,13 @@
-import { useState, useEffect, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
-import {
-  listInstitutions,
-  listNetworkUsers,
-  listPendingAdminInvitations,
-  listPendingNetworkInvitations,
-} from "../../api/authApi";
-import {
-  listSubmissions,
-  type SubmissionSummary,
-} from "../../api/submissionApi";
-import { getValidationQueue } from "../../api/validationApi";
-import { getAnalyticsSummary } from "../../api/analyticsApi";
+import type { SubmissionSummary } from "../../api/submissionApi";
 import { getGreetingName } from "../../lib/userIdentity";
+import {
+  emptyDashboardStats,
+  useDashboardData,
+  type DashboardStats,
+} from "./hooks/useDashboardData";
 
 interface DashboardScreenProps {
   user: User;
@@ -48,241 +42,11 @@ interface ActivityItem {
   };
 }
 
-interface DashboardStats {
-  /** Contributor only: the caller's own submissions (GET /submissions). */
-  submissions: SubmissionSummary[];
-  /** Admin: active contributor accounts. Moderator: contributors in visible review activity. */
-  contributors: number;
-  /** Active moderator accounts, network-wide. */
-  moderators: number;
-  /** Admin only: all active accounts (contributors + moderators + admins). */
-  activeMembers: number;
-  /** Open invitations, network-wide (institution + network-role). */
-  pendingInvitations: number;
-  /** Reviewer + admin: live PENDING + IN_REVIEW count from the network queue. */
-  reviewQueuePending: number;
-  /** Moderator only: this-month approved + rejected from the review history. */
-  reviewedApprovedThisMonth: number;
-  reviewedRejectedThisMonth: number;
-  /** Admin only: SCHEDULED submissions network-wide (upcoming pipeline). */
-  scheduledNetwork: number;
-  /** Admin only: posts published in the last 30 days, network-wide. */
-  publishedLast30d: number;
-  /** Admin only: publishing success rate (%) over the last 30 days, or null. */
-  publishingSuccessRate: number | null;
-  /** Reviewer + admin: recent network submissions (queue + history) for the activity table. */
-  reviewRecent: SubmissionSummary[];
-}
-
-
 export default function DashboardScreen({ user }: DashboardScreenProps) {
   const navigate = useNavigate();
-  const [institutions, setInstitutions] = useState<
-    { id: string; name: string }[]
-  >([]);
-  const [loadingSubmissions, setLoadingSubmissions] = useState(
-    user?.role === "contributor",
-  );
-  const [loadingReview, setLoadingReview] = useState(
-    user?.role === "moderator" || user?.role === "admin",
-  );
-  const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
-    submissions: [],
-    contributors: 0,
-    moderators: 0,
-    activeMembers: 0,
-    pendingInvitations: 0,
-    reviewQueuePending: 0,
-    reviewedApprovedThisMonth: 0,
-    reviewedRejectedThisMonth: 0,
-    scheduledNetwork: 0,
-    publishedLast30d: 0,
-    publishingSuccessRate: null,
-    reviewRecent: [],
-  });
-
-  useEffect(() => {
-    // Moderators are network-wide (no owning institution); only admins load the
-    // institution list for the network-wide roll-ups below.
-    if (user?.role !== "admin") return;
-    listInstitutions()
-      .then((response) => {
-        const mapped = response.data.map((item) => ({
-          id: item.id,
-          name: item.name,
-        }));
-        setInstitutions(mapped);
-      })
-      .catch(() => {
-        setInstitutions([]);
-      });
-  }, [user?.role, user?.institutionId, user?.inst]);
-
-  // GET /submissions returns the caller's OWN submissions only, so it only
-  // feeds the contributor view. Moderators/admins get network data below.
-  useEffect(() => {
-    if (user?.role !== "contributor") return;
-    listSubmissions()
-      .then((response) => {
-        setDashboardStats((current) => ({
-          ...current,
-          submissions: response.data,
-        }));
-      })
-      .catch(() => {
-        setDashboardStats((current) => ({ ...current, submissions: [] }));
-      })
-      .finally(() => {
-        setLoadingSubmissions(false);
-      });
-  }, [user?.role]);
-
-  // Moderator home: live review-queue + this-month review history. The
-  // admin-only /users/network directory is intentionally not called here.
-  useEffect(() => {
-    if (user?.role !== "moderator") return;
-    let active = true;
-
-    const monthKey = new Date().toISOString().slice(0, 7); // YYYY-MM
-    // The summary DTO carries no "decided at" timestamp; approximate with the
-    // most decision-relevant date available (published/scheduled, else submitted).
-    const inThisMonth = (s: SubmissionSummary) =>
-      (s.publishedAt ?? s.scheduledAt ?? s.submittedAt ?? s.createdAt ?? "").slice(0, 7) ===
-      monthKey;
-
-    Promise.all([
-      getValidationQueue(),
-      getValidationQueue({ history: true }),
-    ])
-      .then(([queueRes, historyRes]) => {
-        if (!active) return;
-        const history = historyRes.data;
-        const recent = [...queueRes.data, ...history]
-          .sort((a, b) =>
-            (b.submittedAt ?? b.createdAt ?? "").localeCompare(
-              a.submittedAt ?? a.createdAt ?? "",
-            ),
-          )
-          .slice(0, 5);
-        const visibleContributorCount = new Set(
-          [...queueRes.data, ...history]
-            .map((s) => s.contributorEmail?.trim().toLowerCase())
-            .filter((email): email is string => Boolean(email)),
-        ).size;
-        setDashboardStats((current) => ({
-          ...current,
-          reviewRecent: recent,
-          reviewQueuePending: queueRes.data.length,
-          reviewedApprovedThisMonth: history.filter(
-            (s) =>
-              inThisMonth(s) &&
-              (s.status === "scheduled" ||
-                s.status === "published" ||
-                s.status === "published_manual" ||
-                s.status === "admin_direct_post"),
-          ).length,
-          reviewedRejectedThisMonth: history.filter(
-            (s) => inThisMonth(s) && s.status === "rejected",
-          ).length,
-          contributors: visibleContributorCount,
-        }));
-      })
-      .catch(() => {
-        if (active) {
-          setDashboardStats((current) => ({
-            ...current,
-            reviewQueuePending: 0,
-            reviewedApprovedThisMonth: 0,
-            reviewedRejectedThisMonth: 0,
-            contributors: 0,
-          }));
-        }
-      })
-      .finally(() => {
-        if (active) setLoadingReview(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [user?.role]);
-
-  // Admin home: everything network-wide. GET /submissions is own-only, so the
-  // pipeline figures come from the analytics summary and the (network-wide)
-  // validation queue, and the member counts from one /users/network call
-  // instead of a per-institution fan-out.
-  useEffect(() => {
-    if (user?.role !== "admin") return;
-    let active = true;
-
-    Promise.all([
-      getValidationQueue(),
-      getValidationQueue({ history: true }),
-      listNetworkUsers(),
-      listPendingNetworkInvitations(),
-      listPendingAdminInvitations(),
-      getAnalyticsSummary("30d").then(
-        (r) => r,
-        () => null,
-      ),
-    ])
-      .then(
-        ([queueRes, historyRes, usersRes, netInvites, adminInvites, summary]) => {
-          if (!active) return;
-          const users = usersRes.data;
-          const activeOf = (role: string) =>
-            users.filter(
-              (u) =>
-                u.role.toLowerCase() === role &&
-                u.accountState.toLowerCase() === "active",
-            ).length;
-          const contributors = activeOf("contributor");
-          const moderators = activeOf("moderator");
-          const admins = activeOf("admin");
-
-          const recent = [...queueRes.data, ...historyRes.data]
-            .sort((a, b) =>
-              (b.submittedAt ?? b.createdAt ?? "").localeCompare(
-                a.submittedAt ?? a.createdAt ?? "",
-              ),
-            )
-            .slice(0, 5);
-
-          const breakdown = summary?.data.statusBreakdown ?? [];
-          const scheduledNetwork =
-            breakdown.find((s) => s.status.toLowerCase() === "scheduled")?.count ??
-            historyRes.data.filter((s) => s.status === "scheduled").length;
-
-          const op = summary?.data.operationalHealth ?? null;
-
-          setDashboardStats((current) => ({
-            ...current,
-            contributors,
-            moderators,
-            activeMembers: contributors + moderators + admins,
-            pendingInvitations: netInvites.data.length + adminInvites.data.length,
-            reviewQueuePending: queueRes.data.length,
-            scheduledNetwork,
-            publishedLast30d: summary?.data.totalPostsPublished.value ?? 0,
-            publishingSuccessRate:
-              op && op.publicationAttempts > 0
-                ? Math.round(op.publishingSuccessRate)
-                : null,
-            reviewRecent: recent,
-          }));
-        },
-      )
-      .catch(() => {
-        /* leave stats at their defaults */
-      })
-      .finally(() => {
-        if (active) setLoadingReview(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [user?.role]);
+  const dashboardQuery = useDashboardData(user);
+  const institutions = dashboardQuery.data?.institutions ?? [];
+  const dashboardStats = dashboardQuery.data?.stats ?? emptyDashboardStats;
 
 
   const actionRoutes: Record<string, string> = {
@@ -311,7 +75,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
     ? dashboardStats.reviewRecent
     : dashboardStats.submissions;
   const activityRows = activityForRole(user, activitySource, institutions);
-  const activityLoading = isNetworkView ? loadingReview : loadingSubmissions;
+  const activityLoading = dashboardQuery.isLoading;
 
   return (
     <div id="screen-dashboard" style={{ background: "var(--d-bg)" }}>

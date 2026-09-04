@@ -1,0 +1,969 @@
+# DASIGConnect Incremental Caching Architecture Plan
+
+Branch: `feature/caching-architecture-phase0`
+
+Source base: `dev`
+
+Date: 2026-09-04
+
+## Purpose
+
+This document preserves the reviewed caching prompt and adjusts it to fit the current DASIGConnect codebase. It should be used as the working context for the next caching development tasks.
+
+The plan is intentionally incremental. It does not authorize a broad rewrite, Redis adoption, or blind caching of every route.
+
+## Prompt Review Result
+
+The prompt fits the current system direction and is technically sound for DASIGConnect with a few clarifications:
+
+1. Phase 0 is correctly prioritized. `AdministratorManagementScreen.tsx` has a module-level cache that is not registered with the logout cache reset registry, which creates a real cross-session stale-data risk in the same browser tab.
+2. Phase 1 should not assume TanStack Query is already available. Current frontend dependencies do not include `@tanstack/react-query` or `react-query`.
+3. If TanStack Query is introduced, verify compatibility with the current frontend stack before installation:
+   - React: `19.2.6`
+   - React DOM: `19.2.6`
+   - Vite: `8.0.12`
+   - TypeScript: `~6.0.2`
+4. Administrator Management is network-admin scoped, not ordinary institution scoped. Query keys still need authenticated user, role, and scope boundaries. Institution ID may be `null` for network-level admin data.
+5. Validation Queue, Notifications, Audit Log, and SSE behavior must be treated as correctness-sensitive. The prompt's caution here is appropriate.
+6. Backend caching should remain selective. The current backend has Spring Cache enabled only for analytics summary, plus specific HTTP/static and storage usage caches.
+7. The existing project-specific backend guidance says not to cache submission data broadly because staleness can cause workflow inconsistency. Frontend short-lived query caching is acceptable only when paired with explicit invalidation after mutations.
+
+## Current Confirmed State
+
+### Dashboard
+
+No frontend API cache.
+
+File:
+
+`frontend/src/features/dashboard/DashboardScreen.tsx`
+
+Direct API calls occur on mount around line 104.
+
+### Recent Activity
+
+No frontend API cache.
+
+File:
+
+`frontend/src/features/dashboard/RecentActivityScreen.tsx`
+
+Submissions are fetched again on mount around line 54.
+
+### Submissions
+
+Already has caching.
+
+Files:
+
+`frontend/src/hooks/useSubmissions.ts`
+
+`frontend/src/features/submission/SubmissionScreen.tsx`
+
+Current behavior:
+
+- Submission list TTL is approximately 30 seconds.
+- Submission lookups TTL is approximately 5 minutes.
+- Templates and album references TTL is approximately 2 minutes.
+- Submission detail preview entries are held in `submissionDetailsMemoryCache` and cleared through `registerAppCacheReset`.
+
+Preserve this behavior until a focused migration replaces it with centralized query caching.
+
+### Validation Queue
+
+No normal cache.
+
+File:
+
+`frontend/src/features/validation/hooks/useValidationQueue.ts`
+
+Queue and validation log load whenever the hook mounts.
+
+This is freshness-sensitive operational data. Do not add long-lived cache. If query caching is introduced later, use a very short stale time, immediate invalidation after review actions, and preserve validator concurrency behavior.
+
+### Calendar
+
+Partial display persistence.
+
+File:
+
+`frontend/src/hooks/useCalendarEvents.ts`
+
+Previous events are retained to prevent loading flashes, but the hook still fetches when mounted. There is no TTL-based network skip.
+
+### Media Repository
+
+No frontend metadata cache.
+
+File:
+
+`frontend/src/features/media-repository/hooks/useMediaAssets.ts`
+
+Data reloads on mount and scope changes.
+
+Separate media metadata caching from media file/content caching. Do not replace immutable browser or HTTP caching for media files unless there is a proven issue.
+
+### Notifications
+
+Already has:
+
+- approximately 60-second module cache
+- SSE updates
+- SSE reconnection behavior
+
+File:
+
+`frontend/src/features/notifications/hooks/useNotifications.ts`
+
+Preserve the current SSE behavior. Later integration should use query cache for initial GET data and update or invalidate the notification query from SSE events.
+
+### Analytics
+
+Frontend refetches normally.
+
+File:
+
+`frontend/src/features/analytics/hooks/useAnalyticsSummary.ts`
+
+Backend Analytics Summary is cached for approximately 60 seconds.
+
+Files:
+
+`backend/src/main/java/com/dasigconnect/backend/config/CacheConfig.java`
+
+`backend/src/main/java/com/dasigconnect/backend/service/MetricsAggregatorService.java`
+
+Preserve backend `analyticsSummary` caching.
+
+### Institution Management
+
+Partial frontend module cache.
+
+File:
+
+`frontend/src/features/institution-management/InstitutionManagementScreen.tsx`
+
+The cache is reset on logout but has no TTL and still performs background fetching.
+
+### Administrator Management
+
+Important security and cache isolation issue.
+
+File:
+
+`frontend/src/features/administrator-management/AdministratorManagementScreen.tsx`
+
+There is a module-level `memoryCache`, but it does not register with:
+
+`frontend/src/lib/appCache.ts`
+
+Logout calls `clearAppCaches` from:
+
+`frontend/src/app/App.tsx`
+
+Because Administrator Management does not participate in the reset system, cached administrator information can briefly survive logout and be displayed after another login in the same browser tab.
+
+This is the first issue to fix.
+
+### User Management
+
+No frontend cache.
+
+File:
+
+`frontend/src/features/user-management/UserManagementScreen.tsx`
+
+Direct network and institution-related API calls occur around line 156.
+
+### System Health
+
+Approximately 60-second frontend cache.
+
+File:
+
+`frontend/src/features/system-health/SystemHealthScreen.tsx`
+
+Preserve the current short cache unless a centralized migration clearly improves consistency.
+
+### Audit Log
+
+No cache.
+
+File:
+
+`frontend/src/features/audit-log/AuditLogScreen.tsx`
+
+Categories and logs are reloaded around line 144.
+
+Do not automatically cache all audit data. New/current audit information must remain relatively fresh. Historical immutable pages may later be eligible for longer caching if pagination and filters make this clean.
+
+### Settings
+
+Partial caching.
+
+File:
+
+`frontend/src/features/auth/AccountSettingsScreen.tsx`
+
+Profile settings are cached for approximately 60 seconds. Page and watermark data load once during the screen lifecycle.
+
+### Static Assets
+
+Static avatar/logo endpoints already use long-lived immutable HTTP caching.
+
+Files:
+
+`backend/src/main/java/com/dasigconnect/backend/controller/UserController.java`
+
+`backend/src/main/java/com/dasigconnect/backend/controller/InstitutionController.java`
+
+Preserve this behavior unless inspection finds a correctness bug.
+
+### Storage Usage
+
+File:
+
+`backend/src/main/java/com/dasigconnect/backend/service/MediaStorageService.java`
+
+Storage usage has approximately a 10-minute internal cache. Preserve it unless inspection shows a correctness problem.
+
+## Target Architecture
+
+Progress toward:
+
+```text
+React Components
+-> Centralized Frontend Query Cache
+-> API Client
+-> Spring Boot
+-> Selective Backend Cache
+-> Repository
+-> Database
+```
+
+The frontend query layer should eventually provide:
+
+- query caching
+- request deduplication
+- stale/fresh state
+- stale-while-revalidate behavior
+- background refetching
+- targeted invalidation
+- prefetching where justified
+- cancellation where appropriate
+- consistent loading/error states
+
+Do not create additional unrelated module-level `memoryCache` implementations.
+
+## Phase 0: Fix Admin Cache Isolation
+
+Do this first.
+
+Inspect:
+
+- `frontend/src/features/administrator-management/AdministratorManagementScreen.tsx`
+- `frontend/src/lib/appCache.ts`
+- `frontend/src/app/App.tsx`
+
+Required change:
+
+- Import `registerAppCacheReset` into `AdministratorManagementScreen.tsx`.
+- Register a module-scope reset handler for the existing `memoryCache`.
+- Clear both:
+  - `memoryCache.admins`
+  - `memoryCache.pendingInvitations`
+
+Expected reset state:
+
+```ts
+memoryCache.admins = null;
+memoryCache.pendingInvitations = [];
+```
+
+Security requirement:
+
+User A login -> admin data loaded -> User A logout -> admin cache cleared -> User B login -> User B must never receive cached admin data from User A.
+
+Do not merely hide the information visually. The underlying cache must be invalidated.
+
+Scope note:
+
+Administrator Management data is network-admin scoped. The cache is not institution-specific in the normal tenant sense, but it is still authenticated and role-sensitive. It must not cross user/session boundaries.
+
+## Phase 1: Centralized Frontend Query Cache Foundation
+
+Do this only after Phase 0 is fixed and verified.
+
+Current dependency state:
+
+- `@tanstack/react-query` is not installed.
+- `react-query` is not installed.
+- React is `19.2.6`.
+
+Before introducing TanStack Query:
+
+1. Verify the latest compatible package version for the current React setup.
+2. Add it deliberately in a small dependency change.
+3. Keep the initial integration limited to provider setup and conventions.
+
+Intended structure:
+
+```text
+main.tsx
+-> QueryClientProvider
+-> BrowserRouter
+-> ToastProvider
+-> App
+-> Routes
+-> Feature hooks
+-> API services
+```
+
+The provider could also wrap inside `App`, but `main.tsx` is the clearer application boundary.
+
+Initial query client behavior should be conservative:
+
+- disable broad aggressive refetching until each feature is migrated intentionally
+- use feature-specific `staleTime`
+- use bounded `gcTime`
+- keep retry behavior modest
+- preserve existing API error handling
+
+Authenticated cache clearing:
+
+On logout:
+
+1. cancel active authenticated queries where needed
+2. clear authenticated query cache
+3. clear existing legacy app caches via `clearAppCaches`
+4. preserve existing auth token removal
+5. preserve existing SSE disconnection through component unmount and abort behavior
+
+Do not include auth tokens in query keys.
+
+## Query Key Strategy
+
+Use stable, scoped keys. Authenticated query keys must include data scope.
+
+Suggested root keys:
+
+- `dashboard`
+- `institutions`
+- `users`
+- `administrators`
+- `submissions`
+- `calendar-events`
+- `media-assets`
+- `validation`
+- `notifications`
+- `analytics`
+- `settings`
+- `audit-log`
+- `system-health`
+
+Include relevant scope fields:
+
+- user ID when user-specific
+- institution ID when institution-specific
+- role or permission scope where response shape/data differs by role
+- page
+- page size
+- filters
+- search
+- sort
+- date range
+
+Examples:
+
+```ts
+["administrators", { role: "admin", scope: "network", userId }]
+["users", { role, institutionId, search, sort, page, pageSize }]
+["calendar-events", { institutionId, startDate, endDate }]
+["analytics", { role, userId, institutionId, range }]
+["media-assets", { networkView, institutionId, albumId, search, sort, mediaType, page }]
+```
+
+## Migration Order
+
+Follow this order unless existing code reveals a strong technical reason to change it:
+
+1. Fix Administrator Management logout cache bug.
+2. Establish centralized query-cache infrastructure.
+3. Integrate cache clearing with logout.
+4. Migrate Dashboard.
+5. Migrate Analytics frontend fetching.
+6. Migrate User Management.
+7. Migrate Administrator Management away from legacy module cache.
+8. Migrate Institution Management.
+9. Improve Calendar caching.
+10. Add Media Repository metadata caching.
+11. Improve Recent Activity.
+12. Carefully improve Validation Queue.
+13. Integrate Notifications with centralized caching without breaking SSE.
+14. Review System Health.
+15. Review Settings.
+16. Review Audit Log.
+17. Profile backend candidates.
+18. Expand Spring or Caffeine caching only where justified.
+19. Add prefetching where measurements show benefit.
+20. Re-audit the entire application.
+
+Do not begin Redis implementation.
+
+## Freshness Guidelines
+
+Initial suggested `staleTime` values:
+
+- Dashboard: 30 seconds
+- Recent Activity: 10 to 30 seconds
+- Analytics frontend: 30 to 60 seconds
+- User Management: 30 to 60 seconds
+- Administrator Management: 30 to 60 seconds
+- Institution Management: 2 to 5 minutes
+- Calendar: 1 to 2 minutes by requested date/month range
+- Media metadata: 30 to 60 seconds
+- Validation Queue: 0 to 5 seconds, with immediate invalidation after actions
+- Notifications: preserve current 60-second behavior plus SSE
+- System Health: 10 to 60 seconds
+- Settings profile: 1 to 5 minutes
+- Watermark/static settings: 5 to 15 minutes if invalidation is implemented
+- Audit current page: 10 to 30 seconds
+- Audit historical pages: longer caching may be considered later
+
+TTL is not the main correctness mechanism. Successful mutations must invalidate or update affected queries immediately.
+
+## Invalidation Rules
+
+Use targeted invalidation. Do not globally clear on every mutation.
+
+Examples:
+
+- Create submission:
+  - invalidate submissions
+  - invalidate relevant dashboard data
+  - invalidate recent activity
+- Approve/reject/claim/release validation item:
+  - invalidate validation queue
+  - invalidate affected submission queries
+  - invalidate relevant dashboard and analytics summaries when applicable
+- Create/update/delete user:
+  - invalidate users
+  - invalidate administrators if role affects admin roster
+  - invalidate dashboard summaries if counts change
+- Create administrator:
+  - invalidate administrators
+  - invalidate pending admin invitations
+- Update institution:
+  - invalidate institution list/detail queries
+  - invalidate dependent institution lookups
+- Update profile:
+  - update or invalidate profile/settings query
+- Upload/delete media:
+  - invalidate media metadata
+  - invalidate storage usage if represented in frontend cache
+
+Global clearing should generally be reserved for authentication/session boundary changes such as logout.
+
+## Backend Caching Guidance
+
+Do not cache every controller endpoint.
+
+Good backend-cache candidates generally have:
+
+- expensive calculation
+- high read frequency
+- low write frequency
+- safe bounded staleness
+- deterministic result
+- clear invalidation rules
+
+Possible areas to investigate later:
+
+- dashboard summary calculations
+- analytics
+- stable lookup/reference tables
+- institution metadata
+- storage calculations
+- expensive count/aggregation queries
+
+Do not cache:
+
+- authorization decisions in an unsafe manner
+- highly dynamic validation state for long periods
+- arbitrary user-specific responses without scoped keys
+- mutations
+- sensitive cross-tenant data with ambiguous cache keys
+
+Current deployment appears oriented around a single Spring Boot app deployment. If backend caching expands, inspect deployment first and prefer local in-process caching such as Caffeine where appropriate. Do not introduce Redis in this task.
+
+## Deliverables Per Phase
+
+Each implementation phase must report:
+
+- Files changed
+- Previous behavior
+- New behavior
+- Query keys used
+- Freshness policy
+- Invalidation rules
+- Authentication isolation
+- Network behavior examples
+- Risks
+- Tests or manual validation performed
+
+## Immediate Next Implementation Prompt
+
+Use this for the next coding step:
+
+```text
+Start Phase 0 only.
+
+Fix the Administrator Management logout/cache-isolation issue.
+
+Inspect:
+- frontend/src/features/administrator-management/AdministratorManagementScreen.tsx
+- frontend/src/lib/appCache.ts
+- frontend/src/app/App.tsx
+
+Modify AdministratorManagementScreen.tsx so its module-level memoryCache is registered with registerAppCacheReset and fully cleared on logout/session reset.
+
+Do not migrate Administrator Management to TanStack Query yet.
+Do not add TanStack Query yet.
+Do not change Administrator Management business logic, permissions, API contracts, UI behavior, or mutation behavior.
+
+After implementation, verify with focused tests/build if practical and report:
+1. files changed
+2. exact bug
+3. exact fix
+4. why the fix prevents cross-session stale data
+5. tests or validation performed
+```
+
+## Phase 0 Implementation Status
+
+Status: implemented on `feature/caching-architecture-phase0`.
+
+Changed file:
+
+`frontend/src/features/administrator-management/AdministratorManagementScreen.tsx`
+
+Implemented fix:
+
+- Imported `registerAppCacheReset` from `frontend/src/lib/appCache.ts`.
+- Registered the existing module-level Administrator Management `memoryCache` with the shared legacy cache reset registry.
+- Reset handler clears:
+  - `memoryCache.admins = null`
+  - `memoryCache.pendingInvitations = []`
+
+Why this fixes the confirmed bug:
+
+- `App.tsx` already calls `clearAppCaches()` on normal login startup and logout.
+- Before this fix, Administrator Management was not registered, so `clearAppCaches()` could not clear its module-level data.
+- After this fix, logout and fresh-login boundaries clear the underlying administrator cache, not just the rendered UI.
+
+Validation performed:
+
+- Ran `npm.cmd run build` from `frontend`.
+- Build completed successfully.
+
+Residual item for Phase 1:
+
+- Review modal/session-expired reauthentication as part of centralized authenticated cache boundary design. A full logout/login path is covered by Phase 0; modal reauth may need broader handling because mounted route state can survive if a different user authenticates without route teardown.
+
+## Phase 1 Foundation Implementation Status
+
+Status: implemented on `feature/caching-architecture-phase0`.
+
+Changed files:
+
+- `frontend/package.json`
+- `frontend/package-lock.json`
+- `frontend/src/app/main.tsx`
+- `frontend/src/app/App.tsx`
+- `frontend/src/lib/queryClient.ts`
+- `frontend/src/lib/queryKeys.ts`
+
+Dependency verification:
+
+- `@tanstack/react-query` was not previously installed.
+- Registry check returned latest version `5.102.8`.
+- Peer dependency is `react: ^18 || ^19`, which is compatible with current React `19.2.6`.
+- Installed `@tanstack/react-query@5.102.8`.
+
+Query client foundation:
+
+- Added singleton `appQueryClient`.
+- Default query policy:
+  - `staleTime: 0`
+  - `gcTime: 5 minutes`
+  - `refetchOnWindowFocus: false`
+  - `retry: 1`
+- Default mutation policy:
+  - `retry: 0`
+- Added `authenticatedQueryMeta` for future migrated authenticated queries.
+- Added `clearAuthenticatedQueryCache()`:
+  - cancels authenticated queries
+  - removes authenticated queries
+  - clears mutation cache
+
+Provider integration:
+
+- Wrapped the existing app tree with `QueryClientProvider` in `frontend/src/app/main.tsx`.
+- Existing `BrowserRouter`, `ToastProvider`, and route behavior were preserved.
+
+Auth-boundary integration:
+
+- `App.tsx` now clears the centralized authenticated query cache during:
+  - normal login startup
+  - invitation activation
+  - normal logout
+  - modal reauthentication
+- Existing legacy `clearAppCaches()` behavior remains in place.
+- Existing token removal, `setAuthToken`, navigation, session modal, and logout behavior were preserved.
+
+Query key foundation:
+
+- Added `frontend/src/lib/queryKeys.ts`.
+- Root key groups:
+  - `dashboard`
+  - `institutions`
+  - `users`
+  - `administrators`
+  - `submissions`
+  - `calendar-events`
+  - `media-assets`
+  - `validation`
+  - `notifications`
+  - `analytics`
+  - `settings`
+  - `audit-log`
+  - `system-health`
+- Keys include role/user/institution/scope/filter parameters where applicable.
+- Tokens are not included in query keys.
+
+Validation performed:
+
+- Ran `npm.cmd run build` from `frontend`.
+- Build completed successfully.
+
+Known non-goals in this phase:
+
+- No page data-fetching hooks were migrated yet.
+- No backend caching was changed.
+- No Redis was introduced.
+- No legacy module cache was removed except the Phase 0 reset integration.
+
+Next recommended implementation step:
+
+- Phase 2A: migrate Dashboard reads to centralized query hooks with approximately 30-second `staleTime`, preserving all existing Dashboard role-specific data behavior.
+
+## Phase 2A Dashboard Migration Status
+
+Status: implemented on `feature/caching-architecture-phase0`.
+
+Changed files:
+
+- `frontend/src/features/dashboard/DashboardScreen.tsx`
+- `frontend/src/features/dashboard/hooks/useDashboardData.ts`
+- `frontend/src/api/authApi.ts`
+- `frontend/src/types/auth.types.ts`
+- `frontend/src/app/App.tsx`
+
+Previous behavior:
+
+- `DashboardScreen.tsx` owned multiple mount-time `useEffect` fetches.
+- Contributor dashboard called `listSubmissions()`.
+- Moderator dashboard called:
+  - `getValidationQueue()`
+  - `getValidationQueue({ history: true })`
+- Admin dashboard called:
+  - `listInstitutions()`
+  - `getValidationQueue()`
+  - `getValidationQueue({ history: true })`
+  - `listNetworkUsers()`
+  - `listPendingNetworkInvitations()`
+  - `listPendingAdminInvitations()`
+  - `getAnalyticsSummary("30d")`
+- Returning to Dashboard caused those calls to run again because no centralized query cache was used.
+
+New behavior:
+
+- Added `useDashboardData(user)` in `frontend/src/features/dashboard/hooks/useDashboardData.ts`.
+- Dashboard reads now go through TanStack Query.
+- Dashboard still preserves the same role-specific API fan-out and fallback behavior.
+- The screen now renders from query data:
+  - `institutions`
+  - `stats`
+- No backend endpoint or API contract was changed.
+- No authorization decision is cached client-side; backend endpoints remain the authority.
+
+Query key:
+
+```ts
+queryKeys.dashboard.summary({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: user.institutionId ?? null,
+})
+```
+
+Concrete shape:
+
+```ts
+["dashboard", { role, userId, institutionId }]
+```
+
+Freshness policy:
+
+- `staleTime: 30_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First visit: `NETWORK`
+- Return within 30 seconds: `CACHE`
+- Return after 30 seconds while cached data exists: `CACHE immediately + BACKGROUND REFRESH`
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`
+
+Invalidation rules:
+
+- No Dashboard-specific mutation invalidation was added in this phase.
+- Dashboard cache is cleared on authentication boundaries through `clearAuthenticatedQueryCache()`.
+- Later mutation migrations should invalidate the dashboard query when they affect:
+  - submissions
+  - validation queue counts
+  - user/member counts
+  - pending invitations
+  - analytics-derived dashboard metrics
+
+Authentication isolation:
+
+- Added optional `id` to the frontend `User` type and populated it from `GET /me`.
+- Query key uses `user.id` when available.
+- If a profile ID is unavailable, query key falls back to normalized email.
+- Query key includes role and institution ID.
+- Authenticated query cache is cleared during normal login startup, invitation activation, logout, and modal reauthentication.
+
+Cancellation:
+
+- Dashboard query passes TanStack Query's `AbortSignal` into Dashboard API calls where supported.
+- Added optional `AbortSignal` support to:
+  - `listNetworkUsers`
+  - `listPendingAdminInvitations`
+  - `listPendingNetworkInvitations`
+- Cancelled/aborted Dashboard queries are rethrown so cancellation does not cache empty default dashboard data.
+
+Risks:
+
+- Dashboard still performs a multi-endpoint fan-out. This is intentional for now; no aggregation endpoint was introduced.
+- Dashboard fallback behavior remains broad: real request failures render default/empty stats, matching the old screen behavior.
+- Some related mutation flows are not yet migrated to React Query, so targeted invalidation will be added in later phases.
+
+Validation performed:
+
+- Ran `npm.cmd run build` from `frontend`.
+- Build completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2B: migrate Analytics frontend fetching to the centralized query cache while preserving the backend `analyticsSummary` cache.
+
+## Phase 2B Analytics Migration Status
+
+Status: implemented on `feature/caching-architecture-phase0`.
+
+Changed files:
+
+- `frontend/src/features/analytics/hooks/useAnalyticsSummary.ts`
+- `frontend/src/features/analytics/AnalyticsDashboardPage.tsx`
+
+Previous behavior:
+
+- `useAnalyticsSummary` used local React state for `summary`, `loading`, `error`, and a `refreshKey`.
+- The hook fetched `GET /analytics/summary` whenever the hook mounted, range changed, institution filter changed, or the manual/background refresh key changed.
+- A local `AbortController` cancelled the in-flight request on unmount.
+- A 5-minute interval refetched analytics while the tab was visible.
+- The frontend did not skip the network during a fresh analytics revisit, even though the backend summary is already cached for about 60 seconds.
+
+New behavior:
+
+- `useAnalyticsSummary(user, initialRange)` now reads analytics through TanStack Query.
+- The existing backend `analyticsSummary` cache remains unchanged.
+- The analytics page still owns the same range and admin institution filter behavior.
+- Cached summaries render immediately while stale data revalidates in the background.
+- Manual refresh now calls the active query's `refetch`.
+- Background refresh still runs every 5 minutes while the tab is visible.
+- No analytics API contract, export flow, report modal behavior, authorization rule, or backend cache was changed.
+
+Query key:
+
+```ts
+queryKeys.analytics.summary({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: selectedInstitutionId ?? user.institutionId ?? null,
+  range,
+})
+```
+
+Concrete shape:
+
+```ts
+["analytics", { role, userId, institutionId, range }]
+```
+
+Freshness policy:
+
+- `staleTime: 60_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+- Background interval: manual `refetch()` every 5 minutes only when `document.visibilityState === "visible"`
+
+Network behavior:
+
+- First analytics visit for a scope/range: `NETWORK`
+- Return within 60 seconds: `CACHE`
+- Return after 60 seconds while cached data exists: `CACHE immediately + BACKGROUND REFRESH`
+- Change to an uncached range or institution filter: `NETWORK`
+- Change back to a previously cached range or institution filter within cache lifetime: `CACHE`
+- Manual refresh: `NETWORK REFRESH` for the active analytics query
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`
+
+Invalidation rules:
+
+- No analytics mutations were introduced in this phase.
+- Analytics cache is cleared on authentication boundaries through `clearAuthenticatedQueryCache()`.
+- Later mutation migrations should invalidate analytics summary queries when writes affect published/submission/validation/user or institution metrics.
+
+Authentication isolation:
+
+- Query key includes user identity, role, institution scope, selected admin institution filter, and range.
+- Auth tokens are not included in keys.
+- Authenticated query cache is cancelled and cleared during normal login startup, invitation activation, logout, and modal reauthentication.
+- Backend authorization remains the final authority for all analytics responses.
+
+Cancellation:
+
+- TanStack Query passes its `AbortSignal` into `getAnalyticsSummary`.
+- This preserves request cancellation on unmount or authenticated cache clearing.
+
+Risks:
+
+- The hook keeps the existing 5-minute background refresh in addition to query stale behavior; this is intentional to preserve current analytics behavior.
+- Analytics export/report endpoints are not migrated and still fetch directly when users request reports or CSV exports.
+- Related mutation flows are not yet migrated, so targeted analytics invalidation will be added in later phases.
+
+Validation performed:
+
+- Ran `npm.cmd run build` from `frontend`.
+- Build completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2C: migrate User Management reads into centralized queries with scoped keys and targeted invalidation after user mutations.
+
+## Phase 2C User Management Migration Status
+
+Status: implemented on `feature/caching-architecture-phase0`.
+
+Changed files:
+
+- `frontend/src/api/authApi.ts`
+- `frontend/src/lib/queryKeys.ts`
+- `frontend/src/features/user-management/UserManagementScreen.tsx`
+- `frontend/src/features/user-management/hooks/useUserManagementData.ts`
+
+Previous behavior:
+
+- `UserManagementScreen.tsx` owned separate mount-time `useEffect` fetches for:
+  - institutions
+  - network users
+  - pending network invitations
+  - admin roster data used to compute owner access and open admin slots
+- Returning to User Management always reissued those reads.
+- Successful mutations manually patched local arrays in some paths and fully reloaded the lists in others.
+
+New behavior:
+
+- Added `useUserManagementData(user)` backed by TanStack Query.
+- User Management reads now share one scoped, authenticated query.
+- The screen still preserves the same UI, role guard, invite modal behavior, reassignment modal, role-change modal, and API contracts.
+- Partial-load behavior is preserved with independent institution and management error messages.
+- Successful mutations invalidate centralized query groups instead of maintaining separate local server-state copies.
+
+Query key:
+
+```ts
+queryKeys.users.all({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: null,
+  scope: "network",
+})
+```
+
+Concrete shape:
+
+```ts
+["users", { role, userId, institutionId: null, scope: "network" }]
+```
+
+Freshness policy:
+
+- `staleTime: 60_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First User Management visit: `NETWORK`
+- Return within 60 seconds: `CACHE`
+- Return after 60 seconds while cached data exists: `CACHE immediately + BACKGROUND REFRESH`
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`
+
+Invalidation rules:
+
+- User Management mutations invalidate:
+  - `users`
+  - `administrators`
+  - `dashboard`
+  - `analytics`
+- Covered mutation paths:
+  - invite user
+  - activate/deactivate user
+  - delete/deactivate user
+  - erase user data
+  - cancel invitation
+  - resend invitation
+  - reassign contributor
+  - change user role
+
+Authentication isolation:
+
+- Query key includes user identity, role, and network scope.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for all user-management data.
+
+Cancellation:
+
+- TanStack Query passes its `AbortSignal` into the User Management read fan-out.
+- `listAdmins` now accepts an optional `AbortSignal`, matching the existing signal support on related list APIs.
+
+Risks:
+
+- The query still fans out across four existing endpoints. This preserves current contracts but does not reduce backend request count on a cold load.
+- Mutation paths refetch from the server after success instead of applying optimistic local array updates.
+
+Validation performed:
+
+- Ran `npm.cmd run build` from `frontend`.
+- Build completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2D: migrate Administrator Management away from its legacy module cache and into centralized query caching, preserving the Phase 0 logout cache reset until the legacy cache is fully removed.

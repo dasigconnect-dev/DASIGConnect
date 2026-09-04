@@ -7,15 +7,11 @@ import {
   deleteUser,
   eraseUserData,
   inviteUser,
-  listAdmins,
-  listInstitutions,
-  listNetworkUsers,
-  listPendingNetworkInvitations,
   reassignContributor,
   resendInvitation,
   updateUserStatus,
 } from '../../api/authApi'
-import type { PendingInvitationResponse, UserProfileResponse } from '../../api/authApi'
+import type { UserProfileResponse } from '../../api/authApi'
 import type { User } from '../../types/auth.types'
 import BrandedSelect from '../../components/ui/BrandedSelect'
 import ChangeRoleModal from './components/ChangeRoleModal'
@@ -24,10 +20,14 @@ import DeliveryIssuesAlert from './components/DeliveryIssuesAlert'
 import InstitutionUsersCard from './components/InstitutionUsersCard'
 import InvitationComposer from './components/InvitationComposer'
 import { SkeletonBlock } from './components/LoadingPrimitives'
-import type { InstitutionOption, InviteResults, InviteRole } from './types'
-import { toInstitutionOption } from './types'
+import type { InviteResults, InviteRole } from './types'
 import { useToast } from '../../context/ToastContext'
 import { getUserDisplayName } from '../../lib/userIdentity'
+import {
+  emptyUserManagementData,
+  useInvalidateUserManagementData,
+  useUserManagementData,
+} from './hooks/useUserManagementData'
 import '../../styles/user-management.css'
 
 interface ConfirmDialogState {
@@ -46,10 +46,13 @@ interface UserManagementScreenProps {
 
 export default function UserManagementScreen({ user }: UserManagementScreenProps) {
   const toast = useToast()
+  const userManagementQuery = useUserManagementData(user)
+  const invalidateUserManagementData = useInvalidateUserManagementData()
+  const userManagementData = userManagementQuery.data ?? emptyUserManagementData
 
-  const [institutions, setInstitutions] = useState<InstitutionOption[]>([])
-  const [institutionsLoading, setInstitutionsLoading] = useState(false)
-  const [institutionError, setInstitutionError] = useState('')
+  const institutions = userManagementData.institutions
+  const institutionsLoading = userManagementQuery.isLoading
+  const institutionError = userManagementQuery.data?.errors.institutions ?? ''
 
   // Invitation composer, shown in a modal opened from the header button.
   const [showInviteModal, setShowInviteModal] = useState(false)
@@ -62,10 +65,10 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
   const [sending, setSending] = useState(false)
 
   // Network-wide data
-  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitationResponse[]>([])
-  const [managedUsers, setManagedUsers] = useState<UserProfileResponse[]>([])
-  const [managementLoading, setManagementLoading] = useState(false)
-  const [managementError, setManagementError] = useState('')
+  const pendingInvitations = userManagementData.pendingInvitations
+  const managedUsers = userManagementData.managedUsers
+  const managementLoading = userManagementQuery.isLoading || userManagementQuery.isFetching
+  const managementError = userManagementQuery.data?.errors.management ?? ''
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
 
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
@@ -81,37 +84,16 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
   const [roleBusy, setRoleBusy] = useState(false)
   const [roleError, setRoleError] = useState('')
   // Owner status + open admin slots, from the admins roster (admin-only endpoint).
-  const [isOwner, setIsOwner] = useState(false)
-  const [adminSlotsOpen, setAdminSlotsOpen] = useState(0)
+  const isOwner = userManagementData.isOwner
+  const adminSlotsOpen = userManagementData.adminSlotsOpen
+  const effectiveInviteInstitutionId = inviteInstitutionId || institutions[0]?.id || ''
 
   const selectedInviteInstitution = useMemo(
-    () => institutions.find((inst) => inst.id === inviteInstitutionId) ?? null,
-    [institutions, inviteInstitutionId],
+    () => institutions.find((inst) => inst.id === effectiveInviteInstitutionId) ?? null,
+    [institutions, effectiveInviteInstitutionId],
   )
 
-  const initializing = institutionsLoading || (managementLoading && managedUsers.length === 0 && pendingInvitations.length === 0)
-
-  useEffect(() => {
-    if (user.role !== 'admin') return
-    setInstitutionsLoading(true)
-    setInstitutionError('')
-    listInstitutions()
-      .then((response) => {
-        const nextInstitutions = response.data.map(toInstitutionOption)
-        setInstitutions(nextInstitutions)
-        setInviteInstitutionId((current) => current || nextInstitutions[0]?.id || '')
-      })
-      .catch((error: unknown) => {
-        setInstitutions([])
-        setInstitutionError(getApiErrorMessage(error, 'Unable to load institutions.'))
-      })
-      .finally(() => setInstitutionsLoading(false))
-  }, [user.role])
-
-  useEffect(() => {
-    if (user.role !== 'admin') return
-    void loadManagementLists()
-  }, [user.role])
+  const initializing = userManagementQuery.isLoading && managedUsers.length === 0 && pendingInvitations.length === 0
 
   useEffect(() => {
     if (!showInviteModal || typeof document === 'undefined') return
@@ -148,32 +130,6 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     setInviteResults(null)
   }
 
-  async function loadManagementLists() {
-    setManagementLoading(true)
-    setManagementError('')
-    try {
-      const [usersResponse, pendingResponse, adminsResponse] = await Promise.all([
-        listNetworkUsers(),
-        listPendingNetworkInvitations(),
-        listAdmins(),
-      ])
-      setManagedUsers(usersResponse.data)
-      setPendingInvitations(pendingResponse.data)
-
-      const admins = adminsResponse.data
-      const me = admins.find((a) => a.email.toLowerCase() === user.email.toLowerCase())
-      setIsOwner(me?.adminOwner === true)
-      const activeAdmins = admins.filter((a) => a.accountState.toLowerCase() === 'active').length
-      setAdminSlotsOpen(Math.max(0, 3 - activeAdmins))
-    } catch (error: unknown) {
-      setManagedUsers([])
-      setPendingInvitations([])
-      setManagementError(getApiErrorMessage(error, 'Unable to load users and invitations.'))
-    } finally {
-      setManagementLoading(false)
-    }
-  }
-
   async function handleSendInvitations(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setInviteResults(null)
@@ -186,7 +142,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
       })
       return
     }
-    if (inviteRole !== 'moderator' && !inviteInstitutionId) {
+    if (inviteRole !== 'moderator' && !effectiveInviteInstitutionId) {
       setInviteResults({
         total: emailChips.length,
         success: [],
@@ -217,7 +173,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
           const response = await inviteUser({
             recipientEmail: email,
             // Moderators are network-wide — no destination institution.
-            institutionId: inviteRole === 'moderator' ? null : inviteInstitutionId,
+            institutionId: inviteRole === 'moderator' ? null : effectiveInviteInstitutionId,
             assignedRole: inviteRole,
           })
           if (response.data.emailDelivered) {
@@ -245,7 +201,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
       setEmailChips([])
       setEmailDraft('')
       setInviteRole(null)
-      await loadManagementLists()
+      await invalidateUserManagementData()
       if (failed.length === 0) {
         setShowInviteModal(false)
       }
@@ -272,10 +228,8 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
   async function executeToggleUserStatus(managedUser: UserProfileResponse, nextState: 'active' | 'inactive') {
     setUpdatingUserId(managedUser.id)
     try {
-      const response = await updateUserStatus(managedUser.id, nextState)
-      setManagedUsers((current) =>
-        current.map((item) => (item.id === managedUser.id ? response.data : item)),
-      )
+      await updateUserStatus(managedUser.id, nextState)
+      await invalidateUserManagementData()
       toast.success(nextState === 'inactive' ? 'Account deactivated.' : 'Account reactivated.')
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to update account status.'))
@@ -306,18 +260,15 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     try {
       const response = await deleteUser(managedUser.id)
       if (response.data.action === 'deactivated') {
-        setManagedUsers((current) =>
-          current.map((item) => (item.id === managedUser.id ? { ...item, accountState: 'inactive' } : item)),
-        )
         toast.info(
           managedUser.purgedAt
             ? 'This record has activity history and is kept as an anonymised tombstone for the audit trail — it cannot be removed.'
             : 'Account deactivated. Their content and media have been preserved.',
         )
       } else {
-        setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
         toast.success(managedUser.purgedAt ? 'Record removed.' : 'User permanently removed.')
       }
+      await invalidateUserManagementData()
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to remove user.'))
     } finally {
@@ -347,7 +298,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
       toast.success(
         `Personal data erased.${purged > 0 ? ` ${purged} media file${purged === 1 ? '' : 's'} queued for purge.` : ''}`,
       )
-      await loadManagementLists()
+      await invalidateUserManagementData()
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to erase personal data.'))
     } finally {
@@ -372,10 +323,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     setUpdatingUserId(managedUser.id)
     try {
       await cancelInvitationByUser(managedUser.id)
-      setManagedUsers((current) =>
-        current.map((item) => (item.id === managedUser.id ? { ...item, accountState: 'cancelled' } : item)),
-      )
-      await loadManagementLists()
+      await invalidateUserManagementData()
       toast.success('Invitation cancelled.')
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to cancel invitation.'))
@@ -401,7 +349,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
           assignedRole: role as 'contributor' | 'moderator',
         })
       }
-      await loadManagementLists()
+      await invalidateUserManagementData()
       toast.success(`Invitation resent to ${managedUser.email}.`)
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to resend invitation.'))
@@ -447,7 +395,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
       toast.success(
         `${getUserDisplayName(reassignUser)} has been reassigned to ${targetInst?.name ?? 'the selected institution'}.`,
       )
-      await loadManagementLists()
+      await invalidateUserManagementData()
       handleCloseReassign()
     } catch (err: unknown) {
       setReassignError(getApiErrorMessage(err, 'Unable to reassign contributor.'))
@@ -479,7 +427,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     try {
       await changeUserRole(roleUser.id, role, institutionId)
       toast.success(`${getUserDisplayName(roleUser)} is now a ${role}.`)
-      await loadManagementLists()
+      await invalidateUserManagementData()
       setRoleUser(null)
     } catch (err: unknown) {
       setRoleError(getApiErrorMessage(err, 'Unable to change role.'))
@@ -621,7 +569,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
                   ) : (
                     <BrandedSelect
                       className="um-inst-select"
-                      value={inviteInstitutionId}
+                      value={effectiveInviteInstitutionId}
                       onChange={setInviteInstitutionId}
                       disabled={institutions.length === 0}
                       ariaLabel="Select destination institution"
