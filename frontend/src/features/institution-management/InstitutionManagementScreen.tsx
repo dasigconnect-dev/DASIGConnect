@@ -7,14 +7,7 @@ import {
   deactivateInstitution,
   deleteInstitution,
   deleteUser,
-  getInstitutionLogoUrl,
-  getUserAvatarUrl,
-  getUserCounts,
-  getPendingInvitationCount,
-  listInstitutions,
   inviteUser,
-  listPendingInvitations,
-  listUsers,
   reactivateInstitution,
   reassignContributor,
   resendInvitation,
@@ -23,8 +16,7 @@ import {
   uploadInstitutionLogo,
   uploadUserAvatar,
 } from '../../api/authApi'
-import type { PendingInvitationResponse, UserProfileResponse } from '../../api/authApi'
-import { registerAppCacheReset } from '../../lib/appCache'
+import type { UserProfileResponse } from '../../api/authApi'
 import { getUserDisplayName } from '../../lib/userIdentity'
 import type { User } from '../../types/auth.types'
 import BrandedSelect from '../../components/ui/BrandedSelect'
@@ -35,23 +27,16 @@ import InvitationComposer from '../user-management/components/InvitationComposer
 import { SkeletonBlock } from '../user-management/components/LoadingPrimitives'
 import type { InviteResults, InviteRole } from '../user-management/types'
 import { useToast } from '../../context/ToastContext'
+import {
+  emptyInstitutionDetailData,
+  useInstitutionDetailData,
+  useInstitutionRegistryData,
+  useInvalidateInstitutionManagementData,
+  type InstitutionWithStats,
+} from './hooks/useInstitutionManagementData'
 import '../../styles/institution-management.css'
 import '../../styles/user-management.css'
 
-
-interface InstitutionWithStats {
-  id: string
-  name: string
-  code: string
-  emailDomain: string
-  status: string
-  logoUrl: string | null
-  contributors: number
-  moderators: number
-  pendingInvitations: number
-  statsLoading: boolean
-  isProtected?: boolean
-}
 
 const DEFAULT_INSTITUTION_NAME = 'dasig central visayas'
 const DEFAULT_INSTITUTION_CODE = 'dasig-cv'
@@ -82,17 +67,11 @@ interface InstitutionManagementLocationState {
 
 type InstitutionStatusFilter = 'all' | 'active' | 'pending'
 
-const institutionsMemoryCache: {
-  data: InstitutionWithStats[] | null;
-} = { data: null }
-registerAppCacheReset(() => {
-  institutionsMemoryCache.data = null
-})
-
 export default function InstitutionManagementScreen({ user }: InstitutionManagementScreenProps) {
   const toast = useToast()
   const location = useLocation()
   const navigate = useNavigate()
+  const invalidateInstitutionManagementData = useInvalidateInstitutionManagementData()
   // Admins get full institution lifecycle control; moderators are limited to
   // inviting contributors and managing those pending invitations.
   const isAdmin = user.role === 'admin'
@@ -103,16 +82,13 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const [showInstActionsMenu, setShowInstActionsMenu] = useState(false)
 
   // List view
-  const [institutions, setInstitutions] = useState<InstitutionWithStats[]>(() => institutionsMemoryCache.data ?? [])
-  const [listLoading, setListLoading] = useState(() => institutionsMemoryCache.data === null)
-  const [listError, setListError] = useState('')
+  const [selectedInstitutionId, setSelectedInstitutionId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [institutionStatusFilter, setInstitutionStatusFilter] =
     useState<InstitutionStatusFilter>('all')
   const [logoUploadingId, setLogoUploadingId] = useState<string | null>(null)
 
   // Detail view
-  const [selectedInstitution, setSelectedInstitution] = useState<InstitutionWithStats | null>(null)
   const [showInviteModal, setShowInviteModal] = useState(false)
 
   // Add institution modal
@@ -144,10 +120,6 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const [sending, setSending] = useState(false)
 
   // User management state (detail view)
-  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitationResponse[]>([])
-  const [managedUsers, setManagedUsers] = useState<UserProfileResponse[]>([])
-  const [managementLoading, setManagementLoading] = useState(false)
-  const [managementError, setManagementError] = useState('')
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
   const [avatarUploadingUserId, setAvatarUploadingUserId] = useState<string | null>(null)
 
@@ -159,6 +131,24 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const [reassignTargetId, setReassignTargetId] = useState<string>('')
   const [reassignLoading, setReassignLoading] = useState(false)
   const [reassignError, setReassignError] = useState<string>('')
+
+  const institutionRegistryQuery = useInstitutionRegistryData(user)
+  const institutions = institutionRegistryQuery.data ?? []
+  const listLoading = institutionRegistryQuery.isLoading
+  const listError = institutionRegistryQuery.error
+    ? getApiErrorMessage(institutionRegistryQuery.error, 'Unable to load institutions.')
+    : ''
+  const selectedInstitution = selectedInstitutionId
+    ? institutions.find((institution) => institution.id === selectedInstitutionId) ?? null
+    : null
+  const institutionDetailQuery = useInstitutionDetailData(user, selectedInstitution?.id ?? null)
+  const institutionDetailData = institutionDetailQuery.data ?? emptyInstitutionDetailData
+  const managedUsers = institutionDetailData.managedUsers
+  const pendingInvitations = institutionDetailData.pendingInvitations
+  const managementLoading = institutionDetailQuery.isLoading || institutionDetailQuery.isFetching
+  const managementError = institutionDetailQuery.error
+    ? getApiErrorMessage(institutionDetailQuery.error, 'Unable to load users and invitations.')
+    : ''
 
   // Close institution actions dropdown when clicking outside
   useEffect(() => {
@@ -176,72 +166,12 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     const state = location.state as InstitutionManagementLocationState | null
     if (!state?.openAddInstitution) return
 
-    setSelectedInstitution(null)
-    setShowAddModal(true)
+    queueMicrotask(() => {
+      setSelectedInstitutionId(null)
+      setShowAddModal(true)
+    })
     navigate(location.pathname, { replace: true, state: null })
   }, [location.pathname, location.state, navigate])
-
-  useEffect(() => {
-    if (user.role !== 'moderator' && user.role !== 'admin') return
-    if (!institutionsMemoryCache.data) {
-      setListLoading(true)
-    }
-    setListError('')
-    listInstitutions()
-      .then((response) => {
-        const base: InstitutionWithStats[] = response.data.map((item) => ({
-          id: item.id,
-          name: item.name,
-          code: item.institutionCode,
-          emailDomain: item.emailDomain,
-          status: item.status,
-          logoUrl: item.hasLogo ? getInstitutionLogoUrl(item.id, item.logoUpdatedAt) : null,
-          contributors: 0,
-          moderators: 0,
-          pendingInvitations: 0,
-          statsLoading: true,
-          isProtected: item.isProtected ?? item.protected,
-        }))
-        institutionsMemoryCache.data = base
-        setInstitutions(base)
-        base.forEach((inst) => {
-          Promise.all([getUserCounts(inst.id), getPendingInvitationCount(inst.id)])
-            .then(([countsRes, pendingRes]) => {
-              setInstitutions((current) => {
-                const next = current.map((i) =>
-                  i.id === inst.id
-                    ? {
-                      ...i,
-                      contributors: countsRes.data.contributors,
-                      moderators: countsRes.data.moderators,
-                      pendingInvitations: pendingRes.data.pendingInvitations,
-                      statsLoading: false,
-                    }
-                    : i,
-                )
-                institutionsMemoryCache.data = next
-                return next
-              })
-            })
-            .catch(() => {
-              setInstitutions((current) => {
-                const next = current.map((i) => (i.id === inst.id ? { ...i, statsLoading: false } : i))
-                institutionsMemoryCache.data = next
-                return next
-              })
-            })
-        })
-      })
-      .catch((err: unknown) => {
-        setListError(getApiErrorMessage(err, 'Unable to load institutions.'))
-      })
-      .finally(() => setListLoading(false))
-  }, [user.role])
-
-  useEffect(() => {
-    if (!selectedInstitution) return
-    void loadManagementLists(selectedInstitution.id)
-  }, [selectedInstitution?.id])
 
   const selectedInstitutionOption = useMemo(
     () =>
@@ -343,78 +273,16 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     }
   }, [showInviteModal, sending])
 
-  async function loadManagementLists(institutionId: string) {
-    setManagementLoading(true)
-    setManagementError('')
-    try {
-      const [usersResponse, pendingResponse] = await Promise.all([
-        listUsers(institutionId),
-        listPendingInvitations(institutionId),
-      ])
-      const usersData = usersResponse.data
-      const pendingData = pendingResponse.data
-      setManagedUsers(usersData)
-      setPendingInvitations(pendingData)
-
-      const contributors = usersData.filter(
-        (u) => u.role.toLowerCase() === 'contributor',
-      ).length
-      const moderators = usersData.filter(
-        (u) => u.role.toLowerCase() === 'moderator',
-      ).length
-      const pendingCount = Math.max(
-        pendingData.length,
-        usersData.filter((u) => u.accountState.toLowerCase().startsWith('pending')).length,
-      )
-
-      setSelectedInstitution((curr) =>
-        curr && curr.id === institutionId
-          ? {
-              ...curr,
-              contributors,
-              moderators,
-              pendingInvitations: pendingCount,
-              statsLoading: false,
-            }
-          : curr,
-      )
-
-      setInstitutions((curr) =>
-        curr.map((inst) =>
-          inst.id === institutionId
-            ? {
-                ...inst,
-                contributors,
-                moderators,
-                pendingInvitations: pendingCount,
-                statsLoading: false,
-              }
-            : inst,
-        ),
-      )
-    } catch (error: unknown) {
-      setManagedUsers([])
-      setPendingInvitations([])
-      setManagementError(getApiErrorMessage(error, 'Unable to load users and invitations.'))
-    } finally {
-      setManagementLoading(false)
-    }
-  }
-
   function handleSelectInstitution(inst: InstitutionWithStats) {
-    setSelectedInstitution(inst)
+    setSelectedInstitutionId(inst.id)
     setEmailChips([])
     setEmailDraft('')
     setInviteRole('contributor')
     setInviteResults(null)
-    setPendingInvitations([])
-    setManagedUsers([])
-    setManagementError('')
   }
 
   function handleBackToList() {
-    setSelectedInstitution(null)
-    setManagementError('')
+    setSelectedInstitutionId(null)
   }
 
   function handleDeleteInstitution(inst: InstitutionWithStats) {
@@ -453,11 +321,10 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   async function executeDeleteInstitution(inst: InstitutionWithStats) {
     try {
       await deleteInstitution(inst.id)
-      setInstitutions((current) => current.filter((i) => i.id !== inst.id))
       if (selectedInstitution?.id === inst.id) {
-        setSelectedInstitution(null)
-        setManagementError('')
+        setSelectedInstitutionId(null)
       }
+      await invalidateInstitutionManagementData()
       toast.success(`"${inst.name}" has been deleted.`)
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to delete institution.'))
@@ -476,11 +343,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
 
     setLogoUploadingId(inst.id)
     try {
-      const response = await uploadInstitutionLogo(inst.id, file)
-      const logoUrl = getInstitutionLogoUrl(inst.id, response.data.logoUpdatedAt)
-      setInstitutions((current) =>
-        current.map((item) => (item.id === inst.id ? { ...item, logoUrl } : item)),
-      )
+      await uploadInstitutionLogo(inst.id, file)
+      await invalidateInstitutionManagementData()
       toast.success(`${inst.name} logo updated.`)
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to upload the institution logo.'))
@@ -501,15 +365,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
 
     setAvatarUploadingUserId(managedUser.id)
     try {
-      const response = await uploadUserAvatar(managedUser.id, file)
-      const avatarUrl = getUserAvatarUrl(managedUser.id, response.data.avatarUpdatedAt)
-      setManagedUsers((current) =>
-        current.map((item) =>
-          item.id === managedUser.id
-            ? { ...item, ...response.data, avatarUrl }
-            : item,
-        ),
-      )
+      await uploadUserAvatar(managedUser.id, file)
+      await invalidateInstitutionManagementData()
       toast.success(`${getUserDisplayName(managedUser)} profile image updated.`)
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to upload the profile image.'))
@@ -540,20 +397,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     setAddForm((f) => ({ ...f, loading: true, error: '' }))
     try {
       const response = await createInstitution(name, code, domain)
-      const newInst: InstitutionWithStats = {
-        id: response.data.id,
-        name: response.data.name,
-        code: response.data.institutionCode,
-        emailDomain: response.data.emailDomain,
-        status: response.data.status,
-        logoUrl: null,
-        contributors: 0,
-        moderators: 0,
-        pendingInvitations: 0,
-        statsLoading: false,
-      }
-      setInstitutions((current) => [...current, newInst])
-      toast.success(`${newInst.name} has been provisioned.`)
+      await invalidateInstitutionManagementData()
+      toast.success(`${response.data.name} has been provisioned.`)
       handleCloseAddModal({ force: true })
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'An error occurred while provisioning the workspace.')
@@ -617,17 +462,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     setEditForm((f) => ({ ...f, loading: true, error: '' }))
     try {
       const response = await updateInstitution(selectedInstitution.id, name, domain)
-      const updated = {
-        ...selectedInstitution,
-        name: response.data.name,
-        emailDomain: response.data.emailDomain,
-        code: response.data.institutionCode,
-      }
-      setSelectedInstitution(updated)
-      setInstitutions((current) =>
-        current.map((i) => (i.id === selectedInstitution.id ? updated : i)),
-      )
-      toast.success(`${updated.name} has been updated.`)
+      await invalidateInstitutionManagementData()
+      toast.success(`${response.data.name} has been updated.`)
       handleCloseEditModal({ force: true })
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'Failed to update institution.')
@@ -654,12 +490,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
         setConfirmDialog(null)
         setStatusActionLoading(true)
         try {
-          const response = await deactivateInstitution(institution.id)
-          const updated = { ...institution, status: response.data.status }
-          setSelectedInstitution(updated)
-          setInstitutions((current) =>
-            current.map((i) => (i.id === institution.id ? updated : i)),
-          )
+          await deactivateInstitution(institution.id)
+          await invalidateInstitutionManagementData()
           toast.success(`${institution.name} has been deactivated.`)
         } catch (err: unknown) {
           toast.error(getApiErrorMessage(err, 'Failed to deactivate institution.'))
@@ -682,12 +514,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
         setConfirmDialog(null)
         setStatusActionLoading(true)
         try {
-          const response = await reactivateInstitution(institution.id)
-          const updated = { ...institution, status: response.data.status }
-          setSelectedInstitution(updated)
-          setInstitutions((current) =>
-            current.map((i) => (i.id === institution.id ? updated : i)),
-          )
+          await reactivateInstitution(institution.id)
+          await invalidateInstitutionManagementData()
           toast.success(`${institution.name} has been reactivated.`)
         } catch (err: unknown) {
           toast.error(getApiErrorMessage(err, 'Failed to reactivate institution.'))
@@ -788,7 +616,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
       setEmailDraft('')
       setInviteRole('contributor')
       if (selectedInstitution) {
-        await loadManagementLists(selectedInstitution.id)
+        await invalidateInstitutionManagementData()
       }
       if (failed.length === 0) {
         setShowInviteModal(false)
@@ -844,12 +672,9 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   ) {
     setUpdatingUserId(managedUser.id)
     try {
-      const response = await updateUserStatus(managedUser.id, nextState)
-      setManagedUsers((current) =>
-        current.map((item) => (item.id === managedUser.id ? response.data : item)),
-      )
+      await updateUserStatus(managedUser.id, nextState)
       if (selectedInstitution) {
-        await loadManagementLists(selectedInstitution.id)
+        await invalidateInstitutionManagementData()
       }
       toast.success(nextState === 'inactive' ? 'Account deactivated.' : 'Account reactivated.')
     } catch (error: unknown) {
@@ -876,9 +701,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     setUpdatingUserId(managedUser.id)
     try {
       await deleteUser(managedUser.id)
-      setManagedUsers((current) => current.filter((item) => item.id !== managedUser.id))
       if (selectedInstitution) {
-        await loadManagementLists(selectedInstitution.id)
+        await invalidateInstitutionManagementData()
       }
       toast.success('User removed.')
     } catch (error: unknown) {
@@ -912,13 +736,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
       } else {
         await updateUserStatus(managedUser.id, 'cancelled')
       }
-      setManagedUsers((current) =>
-        current.map((item) =>
-          item.id === managedUser.id ? { ...item, accountState: 'cancelled' } : item,
-        ),
-      )
       if (selectedInstitution) {
-        await loadManagementLists(selectedInstitution.id)
+        await invalidateInstitutionManagementData()
       }
       toast.success('Invitation cancelled.')
     } catch (error: unknown) {
@@ -944,7 +763,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
           assignedRole: (managedUser.role.toLowerCase() as 'contributor' | 'moderator'),
         })
       }
-      await loadManagementLists(selectedInstitution.id)
+      await invalidateInstitutionManagementData()
       toast.success(`Invitation resent to ${managedUser.email}.`)
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Unable to resend invitation.'))
@@ -987,11 +806,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
       toast.success(
         `${displayName} has been reassigned to ${targetInst?.name ?? 'the selected institution'}.`,
       )
-      // Remove contributor from the current institution's managed list
-      setManagedUsers((current) => current.filter((u) => u.id !== reassignUser.id))
-      // Update contributor count on the current institution
       if (selectedInstitution) {
-        await loadManagementLists(selectedInstitution.id)
+        await invalidateInstitutionManagementData()
       }
       handleCloseReassign()
     } catch (err: unknown) {

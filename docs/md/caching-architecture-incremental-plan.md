@@ -1072,3 +1072,128 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2E: migrate Institution Management reads into centralized query caching with a longer freshness window and targeted invalidation after institution/user invite mutations.
+
+## Phase 2E Institution Management Migration Status
+
+Status: implemented on `feature/caching-architecture-phase2e`.
+
+Changed files:
+
+- `frontend/src/api/authApi.ts`
+- `frontend/src/features/institution-management/InstitutionManagementScreen.tsx`
+- `frontend/src/features/institution-management/hooks/useInstitutionManagementData.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- `InstitutionManagementScreen.tsx` used a module-level `institutionsMemoryCache` for the institution registry.
+- The registry loaded institutions on mount, then separately fetched user counts and pending invitation counts per institution.
+- The selected institution detail view loaded users and pending invitations through local effect state.
+- Mutations patched local arrays in some paths and reloaded detail data in others.
+
+New behavior:
+
+- Added `useInstitutionRegistryData(user)` backed by TanStack Query.
+- Added `useInstitutionDetailData(user, institutionId)` backed by TanStack Query.
+- Removed the legacy institution module-level memory cache and app-cache reset registration.
+- Institution registry data, per-institution stats, selected institution users, and selected institution pending invitations now use centralized authenticated query caching.
+- Local state now holds UI concerns such as selected institution id, modal state, form state, upload busy state, and filters.
+- Successful institution/user/invite mutations invalidate centralized query groups instead of maintaining separate local server-state copies.
+- Added `AbortSignal` support to institution-scoped API reads used by the query hooks.
+
+Query keys:
+
+```ts
+queryKeys.institutions.all({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+})
+```
+
+```ts
+queryKeys.users.all({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId,
+  scope: "institution",
+})
+```
+
+Concrete shapes:
+
+```ts
+["institutions", { role, userId }]
+["users", { role, userId, institutionId, scope: "institution" }]
+```
+
+Freshness policy:
+
+- Institution registry: `staleTime: 300_000`
+- Institution detail users/invitations: `staleTime: 60_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First Institution Management visit: `NETWORK`
+- Return to registry within 5 minutes: `CACHE`
+- Open selected institution detail within 60 seconds for the same institution: `CACHE`
+- Return after stale time while cached data exists: `CACHE immediately + BACKGROUND REFRESH`
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`
+
+Invalidation rules:
+
+- Institution Management mutations invalidate:
+  - `institutions`
+  - `users`
+  - `dashboard`
+  - `analytics`
+- Covered mutation paths:
+  - create institution
+  - edit institution
+  - delete institution
+  - activate/deactivate institution
+  - upload institution logo
+  - upload user avatar
+  - invite contributor/moderator
+  - activate/deactivate user
+  - delete user
+  - cancel invitation
+  - resend invitation
+  - reassign contributor
+
+Authentication isolation:
+
+- Query keys include user identity and role.
+- Institution detail keys include institution ID and institution scope.
+- Auth tokens are not included in keys.
+- The legacy module cache was removed, so there is no separate cache requiring app-cache reset registration.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority.
+
+Cancellation:
+
+- TanStack Query passes its `AbortSignal` into:
+  - `listInstitutions`
+  - `getUserCounts`
+  - `getPendingInvitationCount`
+  - `listUsers`
+  - `listPendingInvitations`
+- Cancelled registry stat requests rethrow cancellation instead of caching partial fallback data.
+
+Risks:
+
+- Registry stats now resolve through the query before rendering the completed registry data, rather than progressively filling individual stat cells after the base list appears.
+- The cold-load fan-out still uses existing endpoints and has not been consolidated into a backend summary endpoint.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/api/authApi.ts src/features/institution-management/InstitutionManagementScreen.tsx src/features/institution-management/hooks/useInstitutionManagementData.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2F: improve Calendar caching by moving calendar event reads to centralized query caching keyed by requested date range and authenticated scope.
