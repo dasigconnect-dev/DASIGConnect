@@ -30,7 +30,6 @@ import {
   releaseReviewLock,
   reorderValidationMedia,
   requestSubmissionRevision,
-  uploadValidationMedia,
   type RejectionReasonCode,
   type ReviewLock,
   type ValidationLog,
@@ -40,8 +39,6 @@ import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import type { CaptionTone } from "../../api/aiApi";
 import AiCaptionButton from "../submission/components/AiCaptionButton";
 import { extractHashtags } from "../submission/utils";
-import AlbumCombobox from "../../components/ui/AlbumCombobox";
-import { listMediaAlbums } from "../../api/mediaApi";
 import FancyTextTool, { type FancyTextSelection } from "../submission/components/FancyTextTool";
 
 const AiCaptionSuggestion = lazy(() => import("../submission/components/AiCaptionSuggestion"));
@@ -94,6 +91,10 @@ const VIDEO_EXT = new Set(["mp4", "mov", "webm", "avi", "mkv"]);
 interface EditMediaItem {
   key: string;
   assetId?: string;
+  /**
+   * Legacy field kept for MediaAssetsPicker interop only. Device uploads are not
+   * allowed during review (A10), so this is never populated here.
+   */
   file?: File;
   previewUrl: string;
   fileName: string;
@@ -111,6 +112,8 @@ interface EditFormState {
   scheduledTime: string;
   media: EditMediaItem[];
   removedAssetIds: string[];
+  /** A10: optional moderator note when attaching Library media not originally submitted. */
+  mediaAddNote: string;
 }
 
 function emptyEditForm(): EditFormState {
@@ -123,6 +126,7 @@ function emptyEditForm(): EditFormState {
     scheduledTime: "",
     media: [],
     removedAssetIds: [],
+    mediaAddNote: "",
   };
 }
 
@@ -151,6 +155,7 @@ function toEditForm(summary: SubmissionSummary): EditFormState {
       : "",
     media: (summary.mediaAssets ?? []).map(savedAssetToMediaItem),
     removedAssetIds: [],
+    mediaAddNote: "",
   };
 }
 
@@ -262,13 +267,10 @@ export default function ValidationQueueScreen({
   const [overrideReason, setOverrideReason] = useState("");
   const isAdmin = user.role === "admin";
   const editCaptionRef = useRef<HTMLTextAreaElement | null>(null);
-  const editFileInputRef = useRef<HTMLInputElement | null>(null);
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   // Submit Content authoring features brought into moderator edit mode.
   const [captionPromptOpen, setCaptionPromptOpen] = useState(false);
   const [mediaSettingsKey, setMediaSettingsKey] = useState<string | null>(null);
-  const [newUploadAlbumName, setNewUploadAlbumName] = useState<string>("");
-  const [albumOptions, setAlbumOptions] = useState<string[]>([]);
   const [engagementRecs, setEngagementRecs] = useState<EngagementRecommendations | null>(null);
   const [engagementLoading, setEngagementLoading] = useState(false);
   const { log, loading: logLoading, refresh: refreshLog } = useValidationLog(selectedId);
@@ -688,17 +690,6 @@ export default function ValidationQueueScreen({
     setCaptionSelection({ start: 0, end: 0 });
     setEditTab("details");
     setOverrideReason("");
-    // Prefill the new-upload album with the existing media's album when they all
-    // share one, otherwise the submission's own album — the moderator can still
-    // change it (or Auto-Match) in the combobox.
-    const albums = [
-      ...new Set(
-        (full.mediaAssets ?? [])
-          .map((a) => a.albumName?.trim())
-          .filter((n): n is string => Boolean(n)),
-      ),
-    ];
-    setNewUploadAlbumName(albums.length === 1 ? albums[0] : full.albumName?.trim() || "");
     setIsPanelCollapsed(true);
     setEditMode(true);
   }
@@ -750,36 +741,14 @@ export default function ValidationQueueScreen({
   const hardBlocked = (guardRails?.hardBlocks?.length ?? 0) > 0;
 
   // ── Content completeness (mirrors SubmissionService.assertContentComplete) ─
-  const editHasNewUpload = editForm.media.some((m) => m.file);
-
-  // Album names the existing attached media are filed under — offered first in
-  // the combobox so a new upload defaults to where the rest of the post lives.
-  const existingMediaAlbumNames = useMemo(
-    () => [
-      ...new Set(
-        (selected?.mediaAssets ?? [])
-          .map((a) => a.albumName?.trim())
-          .filter((n): n is string => Boolean(n)),
-      ),
-    ],
-    [selected],
-  );
-  const albumComboOptions = useMemo(
-    () => [...new Set([...existingMediaAlbumNames, ...albumOptions])],
-    [existingMediaAlbumNames, albumOptions],
-  );
-
   const editMissingFields = useMemo(() => {
     const missing: string[] = [];
     if (!editForm.eventTitle.trim()) missing.push("an event title");
     if (!editForm.eventDate) missing.push("an event date");
     if (!editForm.caption.trim()) missing.push("a caption");
     if (editForm.media.length < 1) missing.push("at least one media attachment");
-    if (editHasNewUpload && !newUploadAlbumName.trim()) {
-      missing.push("an album for the new upload");
-    }
     return missing;
-  }, [editForm, editHasNewUpload, newUploadAlbumName]);
+  }, [editForm]);
 
   // Only an admin can bypass a hard block — with a reason. Moderators cannot
   // save a blocked slot at all.
@@ -808,18 +777,6 @@ export default function ValidationQueueScreen({
     const generated = await aiCaption.suggest(prompt, tone, undefined, editForm.caption);
     if (generated) setCaptionPromptOpen(false);
   }
-
-  // ── Institution album list for the new-upload album combobox ─────────────
-  useEffect(() => {
-    if (!editMode || editTab !== "media" || !selected) return;
-    const controller = new AbortController();
-    listMediaAlbums(selected.institutionId, controller.signal)
-      .then((res) => setAlbumOptions((res.data ?? []).map((a) => a.name)))
-      .catch((err: unknown) => {
-        if ((err as { name?: string })?.name !== "CanceledError") setAlbumOptions([]);
-      });
-    return () => controller.abort();
-  }, [editMode, editTab, selected]);
 
   // ── Recommended publish times (Schedule tab) ─────────────────────────────
   useEffect(() => {
@@ -852,23 +809,6 @@ export default function ValidationQueueScreen({
       ...f,
       media: f.media.map((m) => (m.key === key ? { ...m, ...patch } : m)),
     }));
-  }
-
-  function addMediaFiles(files: FileList | null) {
-    if (!files?.length) return;
-    const items: EditMediaItem[] = Array.from(files).map((file) => {
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-      return {
-        key: `new-${crypto.randomUUID()}`,
-        file,
-        previewUrl: URL.createObjectURL(file),
-        fileName: file.name,
-        isImage: !VIDEO_EXT.has(ext),
-        caption: "",
-        skipWatermark: false,
-      };
-    });
-    setEditForm((f) => ({ ...f, media: [...f.media, ...items] }));
   }
 
   function addLibraryAssets(items: SubmissionMediaItem[]) {
@@ -908,17 +848,15 @@ export default function ValidationQueueScreen({
     try {
       const id = selected.id;
 
-      // 1. upload any new device files, filed into the chosen album
-      const newFiles = editForm.media.filter((m) => m.file).map((m) => m.file as File);
-      if (newFiles.length > 0) {
-        await uploadValidationMedia(id, newFiles, newUploadAlbumName.trim() || undefined);
-      }
-
-      // 2. attach staged library picks that aren't on the submission yet
+      // Attach staged library picks that aren't on the submission yet. The
+      // optional note is recorded on the distinct `media_added` audit event.
+      // Device-file uploads are not allowed during review (A10) — moderators
+      // attach vetted Library assets only; new media goes back via Request Revision.
       const attached = new Set((selected.mediaAssets ?? []).map((a) => a.id));
+      const note = editForm.mediaAddNote.trim() || undefined;
       for (const item of editForm.media) {
         if (item.assetId && !attached.has(item.assetId)) {
-          await attachValidationLibraryAsset(id, item.assetId).catch(() => undefined);
+          await attachValidationLibraryAsset(id, item.assetId, note).catch(() => undefined);
         }
       }
 
@@ -1655,48 +1593,17 @@ export default function ValidationQueueScreen({
                               <button
                                 type="button"
                                 className="val-edit-add-media"
-                                onClick={() => editFileInputRef.current?.click()}
-                              >
-                                <i className="ti ti-plus" /> Add files
-                              </button>
-                              <button
-                                type="button"
-                                className="val-edit-add-media"
                                 onClick={() => setLibraryPickerOpen(true)}
                               >
                                 <i className="ti ti-library-photo" /> From Library
                               </button>
                             </div>
-                            <input
-                              ref={editFileInputRef}
-                              type="file"
-                              accept="image/*,video/*"
-                              multiple
-                              hidden
-                              onChange={(e) => {
-                                addMediaFiles(e.target.files);
-                                e.target.value = "";
-                              }}
-                            />
                           </div>
-                          {editHasNewUpload && (
-                            <div className="val-edit-field">
-                              <span>Album for new uploads</span>
-                              <AlbumCombobox
-                                value={newUploadAlbumName}
-                                existingAlbums={albumComboOptions}
-                                placeholder="Search, select, or create an album"
-                                onChange={setNewUploadAlbumName}
-                                onAutoMatch={() =>
-                                  setNewUploadAlbumName(
-                                    editForm.eventTitle.trim() ||
-                                      selected?.albumName?.trim() ||
-                                      "Auto-Matched Album",
-                                  )
-                                }
-                              />
-                            </div>
-                          )}
+                          <p className="val-edit-media-note-hint">
+                            <i className="ti ti-info-circle" /> Only vetted Media Library
+                            assets can be added during review. New media a contributor
+                            needs to supply should go back via Request Revision.
+                          </p>
                           <Suspense fallback={<PanelContentLoader text="Loading media tools" />}>
                             <MediaAssetsPicker
                               sourceTabs={false}
@@ -1720,6 +1627,26 @@ export default function ValidationQueueScreen({
                               }
                             />
                           </Suspense>
+                          {editForm.media.some(
+                            (m) =>
+                              m.assetId &&
+                              !(selected?.mediaAssets ?? []).some((a) => a.id === m.assetId),
+                          ) && (
+                            <label className="val-edit-field val-edit-media-note">
+                              <span>
+                                Why is this media being added? (optional — recorded on the
+                                audit trail)
+                              </span>
+                              <textarea
+                                rows={2}
+                                value={editForm.mediaAddNote}
+                                onChange={(e) =>
+                                  setEditForm({ ...editForm, mediaAddNote: e.target.value })
+                                }
+                                placeholder="e.g. contributor's photos were all title slides — added a crowd shot from the Library"
+                              />
+                            </label>
+                          )}
                         </div>
                       )}
 
@@ -2815,6 +2742,7 @@ function ValidationHistoryModal({
                     <div className="val-log-content">
                       <strong>
                         {formatAction(entry.action)}
+                        {editSeverityBadge(entry.editSeverity)}
                         {entry.selfReview && <span className="val-log-flag">Self-review</span>}
                         {entry.fastTrack && <span className="val-log-flag fast-track">Fast-Track</span>}
                       </strong>
@@ -3001,6 +2929,19 @@ function logIcon(action: string) {
 
 function formatAction(action: string) {
   return action.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+/** A10: small badge showing how prominently a moderator review-edit was logged. */
+function editSeverityBadge(severity?: string | null): ReactNode {
+  if (!severity) return null;
+  const map: Record<string, { label: string; cls: string }> = {
+    quiet: { label: "Minor edit", cls: "sev-quiet" },
+    flagged: { label: "Significant edit", cls: "sev-flagged" },
+    added_media: { label: "Media added", cls: "sev-added-media" },
+  };
+  const meta = map[severity.toLowerCase()];
+  if (!meta) return null;
+  return <span className={`val-log-flag ${meta.cls}`}>{meta.label}</span>;
 }
 
 function formatDate(value?: string) {

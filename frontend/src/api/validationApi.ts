@@ -21,6 +21,8 @@ export interface ValidationLog {
   selfReview?: boolean;
   fastTrack?: boolean;
   editDiff?: string | null;
+  /** A10 governance tier for `edited` / `media_added` rows: quiet | flagged | added_media. */
+  editSeverity?: string | null;
   createdAt: string;
 }
 
@@ -103,48 +105,26 @@ export function getValidationLog(submissionId: string, signal?: AbortSignal) {
   });
 }
 
-// ── A9: media edits during review (admin only) ──────────────────────────────
+// ── A9/A10: media edits during review ───────────────────────────────────────
+// Moderators may only attach existing, already-vetted Media Library assets.
+// Uploading a fresh device file into someone else's submission during review is
+// not allowed — new media goes back to the contributor via Request Revision.
 
-function safeFileName(name: string) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "-");
-}
-
-function fileType(file: File) {
-  const ext = file.name.split(".").pop()?.toLowerCase() || file.type.split("/")[1]?.toLowerCase() || "jpeg";
-  return ext === "jpg" ? "jpeg" : ext;
-}
-
-/** Upload device files straight to Supabase, then attach each to the in-review submission. */
-export async function uploadValidationMedia(
+/**
+ * Attach a Media Library asset to an in-review submission. When the asset was not
+ * part of the original submission, `justification` is an optional short note the
+ * reviewing moderator can leave — it is recorded on the distinct `media_added`
+ * audit event.
+ */
+export function attachValidationLibraryAsset(
   submissionId: string,
-  files: File[],
-  albumName?: string,
+  mediaAssetId: string,
+  justification?: string,
 ) {
-  let last;
-  for (const file of files) {
-    const { data } = await api.post<{ signedUrl: string; publicUrl: string; path: string }>(
-      `/validation/${submissionId}/media/upload-url`,
-      { fileName: safeFileName(file.name), fileType: fileType(file), fileSizeBytes: file.size },
-    );
-    const put = await fetch(data.signedUrl, {
-      method: "PUT",
-      headers: { "Content-Type": file.type || "application/octet-stream" },
-      body: file,
-    });
-    if (!put.ok) throw new Error((await put.text().catch(() => "")) || "Supabase media upload failed.");
-    last = await api.post(`/validation/${submissionId}/media`, {
-      storageUrl: data.publicUrl,
-      fileName: file.name,
-      fileType: fileType(file),
-      fileSizeBytes: file.size,
-      albumName: albumName?.trim() || undefined,
-    });
-  }
-  return last;
-}
-
-export function attachValidationLibraryAsset(submissionId: string, mediaAssetId: string) {
-  return api.post<void>(`/validation/${submissionId}/assets`, { mediaAssetId });
+  return api.post<void>(`/validation/${submissionId}/assets`, {
+    mediaAssetId,
+    ...(justification?.trim() ? { justification: justification.trim() } : {}),
+  });
 }
 
 export function detachValidationAsset(submissionId: string, mediaAssetId: string) {

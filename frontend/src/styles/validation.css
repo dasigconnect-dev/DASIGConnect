@@ -2567,6 +2567,44 @@
   border-color: #bfdbfe;
 }
 
+/* A10 — moderator edit governance tier */
+.val-log-flag.sev-quiet {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #e2e8f0;
+}
+
+.val-log-flag.sev-flagged {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+
+.val-log-flag.sev-added-media {
+  background: #ede9fe;
+  color: #5b21b6;
+  border-color: #ddd6fe;
+}
+
+.val-edit-media-note-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 4px 0 10px;
+  font-size: 12px;
+  color: var(--val-text-2, #64748b);
+  line-height: 1.4;
+}
+
+.val-edit-media-note-hint i {
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.val-edit-field.val-edit-media-note {
+  margin-top: 12px;
+}
+
 .val-log-meta {
   display: block;
   font-size: 12px;

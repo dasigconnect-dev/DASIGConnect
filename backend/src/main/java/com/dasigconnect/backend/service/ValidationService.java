@@ -9,6 +9,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -18,19 +19,19 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.event.RevisionRequestedEvent;
 import com.dasigconnect.backend.event.SubmissionApprovedEvent;
+import com.dasigconnect.backend.event.SubmissionEditedDuringReviewEvent;
 import com.dasigconnect.backend.event.SubmissionRejectedEvent;
-import com.dasigconnect.backend.model.dto.submission.AttachMediaDto;
-import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlRequest;
-import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlResponse;
 import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
+import com.dasigconnect.backend.model.entity.ReviewEditSeverity;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.ValidationAction;
 import com.dasigconnect.backend.model.entity.ValidationLog;
+import com.dasigconnect.backend.util.CaptionDiffAnalyzer;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
@@ -59,6 +60,15 @@ public class ValidationService {
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
     private final AuditLogService auditLogService;
+
+    /**
+     * A10: fraction of caption words a moderator may change across a whole review
+     * session before the edit is classified {@code FLAGGED} rather than
+     * {@code QUIET}. Field-injected {@code @Value} — tests set it via
+     * {@code ReflectionTestUtils} (a primitive is not filled by {@code @InjectMocks}).
+     */
+    @Value("${app.review.caption-major-change-ratio:0.30}")
+    private double captionMajorChangeRatio;
 
     public ValidationService(
             SubmissionRepository submissionRepository,
@@ -123,7 +133,8 @@ public class ValidationService {
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
 
         String sessionEditDiff = combinedSessionEditDiff(submissionId);
-        boolean edited = sessionEditDiff != null;
+        ReviewEditSeverity sessionSeverity = combinedSessionSeverity(submissionId);
+        boolean edited = sessionEditDiff != null || sessionSeverity != null;
 
         submission.setStatus(SubmissionStatus.scheduled);
         submissionRepository.save(submission);
@@ -139,9 +150,13 @@ public class ValidationService {
         // edited approval for governance and the edit-&-approve-rate KPI.
         User validator = loadUser(caller.userId());
         logAction(submission, validator, ValidationAction.approved,
-                null, null, selfReview, submission.isFastTrack(), sessionEditDiff);
+                null, null, selfReview, submission.isFastTrack(), sessionEditDiff, null);
 
         eventPublisher.publishEvent(new SubmissionApprovedEvent(submission, edited));
+        if (edited) {
+            eventPublisher.publishEvent(
+                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+        }
         log.info("Submission approved (fastTrack={}, edited={}): submission={} validator={}",
                 submission.isFastTrack(), edited, submissionId, caller.userId());
     }
@@ -163,7 +178,11 @@ public class ValidationService {
         Map<String, Object> before = snapshotEditableFields(submission);
         submission = submissionService.applySubmissionEdits(submission, dto, caller);
         submissionService.assertContentComplete(submission);
-        String editDiff = buildEditDiff(before, snapshotEditableFields(submission));
+        Map<String, Object> after = snapshotEditableFields(submission);
+        String editDiff = buildEditDiff(before, after);
+        ReviewEditSeverity severity = editDiff == null ? null
+                : classifyFieldEdits(before, after,
+                        sessionOriginalCaption(submissionId, (String) before.get("caption")));
 
         // Keep the submission IN_REVIEW — no terminal transition here. A save that
         // changed nothing (editDiff == null) must not record an `edited` audit row,
@@ -171,11 +190,11 @@ public class ValidationService {
         if (editDiff != null) {
             User validator = loadUser(caller.userId());
             logAction(submission, validator, ValidationAction.edited, null, null,
-                    selfReview, submission.isFastTrack(), editDiff);
+                    selfReview, submission.isFastTrack(), editDiff, severity);
         }
 
-        log.info("Submission edited in review (changed={}): submission={} validator={}",
-                editDiff != null, submissionId, caller.userId());
+        log.info("Submission edited in review (changed={} severity={}): submission={} validator={}",
+                editDiff != null, severity, submissionId, caller.userId());
     }
 
     // ── A9: media edits during review ────────────────────────────────────────
@@ -192,35 +211,33 @@ public class ValidationService {
         return submission;
     }
 
-    private void logMediaEdit(Submission submission, JwtUserDetails caller) {
+    private void logMediaEdit(Submission submission, JwtUserDetails caller, ReviewEditSeverity severity) {
         logAction(submission, loadUser(caller.userId()), ValidationAction.edited, null, null,
-                isSelfReview(submission, caller), submission.isFastTrack(), "{\"media\":\"updated\"}");
+                isSelfReview(submission, caller), submission.isFastTrack(), "{\"media\":\"updated\"}", severity);
     }
 
-    @Transactional(readOnly = true)
-    public SignedUploadUrlResponse reviewMediaUploadUrl(UUID submissionId, SignedUploadUrlRequest dto, JwtUserDetails caller) {
-        Submission submission = loadForMediaEdit(submissionId, caller);
-        return submissionService.signedUploadUrlFor(submission, dto);
-    }
-
-    public SubmissionResponseDto attachReviewMedia(UUID submissionId, AttachMediaDto dto, JwtUserDetails caller) {
-        Submission submission = loadForMediaEdit(submissionId, caller);
-        SubmissionResponseDto response = submissionService.attachUploadedMediaTo(submission, dto, caller);
-        logMediaEdit(submission, caller);
-        return response;
-    }
-
-    public SubmissionResponseDto attachReviewLibraryAsset(UUID submissionId, UUID mediaAssetId, JwtUserDetails caller) {
+    /**
+     * A10: attaching a Library asset the contributor did not originally submit is
+     * its own distinct audit event ({@code media_added} / {@code ADDED_MEDIA}),
+     * with an optional moderator justification note. Device-file uploads into
+     * someone else's submission during review are not permitted — new media must
+     * go back to the contributor via Request Revision.
+     */
+    public SubmissionResponseDto attachReviewLibraryAsset(
+            UUID submissionId, UUID mediaAssetId, String justification, JwtUserDetails caller) {
         Submission submission = loadForMediaEdit(submissionId, caller);
         SubmissionResponseDto response = submissionService.attachLibraryAssetTo(submission, mediaAssetId);
-        logMediaEdit(submission, caller);
+        String note = justification == null || justification.isBlank() ? null : justification.trim();
+        logAction(submission, loadUser(caller.userId()), ValidationAction.media_added, note, null,
+                isSelfReview(submission, caller), submission.isFastTrack(),
+                "{\"media\":\"library_asset_added\"}", ReviewEditSeverity.ADDED_MEDIA);
         return response;
     }
 
     public void detachReviewMedia(UUID submissionId, UUID mediaAssetId, JwtUserDetails caller) {
         Submission submission = loadForMediaEdit(submissionId, caller);
         submissionService.detachAssetFrom(submission, mediaAssetId);
-        logMediaEdit(submission, caller);
+        logMediaEdit(submission, caller, ReviewEditSeverity.FLAGGED);
     }
 
     public SubmissionResponseDto reorderReviewMedia(UUID submissionId, SubmissionMediaOrderDto dto, JwtUserDetails caller) {
@@ -230,7 +247,7 @@ public class ValidationService {
         boolean noOp = submissionService.isNoOpMediaOrder(submission, dto);
         SubmissionResponseDto response = submissionService.reorderMediaOf(submission, dto);
         if (!noOp) {
-            logMediaEdit(submission, caller);
+            logMediaEdit(submission, caller, ReviewEditSeverity.QUIET);
         }
         return response;
     }
@@ -248,6 +265,7 @@ public class ValidationService {
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
 
         String sessionEditDiff = combinedSessionEditDiff(submissionId);
+        ReviewEditSeverity sessionSeverity = combinedSessionSeverity(submissionId);
 
         submission.setStatus(SubmissionStatus.needs_revision);
         submission.setValidatorRemarks(remarks);
@@ -258,9 +276,13 @@ public class ValidationService {
 
         User validator = loadUser(caller.userId());
         logAction(submission, validator, ValidationAction.needs_revision, remarks, null,
-                selfReview, submission.isFastTrack(), sessionEditDiff);
+                selfReview, submission.isFastTrack(), sessionEditDiff, null);
 
         eventPublisher.publishEvent(new RevisionRequestedEvent(submission, remarks));
+        if (sessionEditDiff != null || sessionSeverity != null) {
+            eventPublisher.publishEvent(
+                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+        }
         log.info("Revision requested: submission={} validator={}", submissionId, caller.userId());
     }
 
@@ -277,6 +299,7 @@ public class ValidationService {
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
 
         String sessionEditDiff = combinedSessionEditDiff(submissionId);
+        ReviewEditSeverity sessionSeverity = combinedSessionSeverity(submissionId);
         String fullReason = buildRejectionReason(reasonCode, notes);
         submission.setStatus(SubmissionStatus.rejected);
         submission.setRejectionReason(fullReason);
@@ -287,9 +310,13 @@ public class ValidationService {
 
         User validator = loadUser(caller.userId());
         logAction(submission, validator, ValidationAction.rejected, null, fullReason,
-                selfReview, submission.isFastTrack(), sessionEditDiff);
+                selfReview, submission.isFastTrack(), sessionEditDiff, null);
 
         eventPublisher.publishEvent(new SubmissionRejectedEvent(submission, fullReason));
+        if (sessionEditDiff != null || sessionSeverity != null) {
+            eventPublisher.publishEvent(
+                    new SubmissionEditedDuringReviewEvent(submission, sessionSeverity, sessionEditDiff));
+        }
         log.info("Submission rejected: submission={} reason={} validator={}", submissionId, reasonCode, caller.userId());
     }
 
@@ -366,9 +393,12 @@ public class ValidationService {
             Object oldValue = before.get(field);
             Object newValue = after.get(field);
             if (!java.util.Objects.equals(oldValue, newValue)) {
+                // Store display strings, not raw objects — the diff is human-readable
+                // audit data, and this keeps serialization independent of which
+                // Jackson date/time modules happen to be registered.
                 diff.put(field, Map.of(
-                        "from", oldValue == null ? "" : oldValue,
-                        "to", newValue == null ? "" : newValue));
+                        "from", oldValue == null ? "" : String.valueOf(oldValue),
+                        "to", newValue == null ? "" : String.valueOf(newValue)));
             }
         }
         if (diff.isEmpty()) {
@@ -383,6 +413,101 @@ public class ValidationService {
     }
 
     /**
+     * The validation-log rows recorded since the most recent {@code lock_acquired}
+     * — i.e. everything the current review session has done so far.
+     */
+    private List<ValidationLog> logsSinceLock(UUID submissionId) {
+        List<ValidationLog> logs = validationLogRepository
+                .findBySubmissionIdOrderByCreatedAtAsc(submissionId);
+        int lastLockIndex = -1;
+        for (int i = 0; i < logs.size(); i++) {
+            if (logs.get(i).getAction() == ValidationAction.lock_acquired) {
+                lastLockIndex = i;
+            }
+        }
+        return logs.subList(lastLockIndex + 1, logs.size());
+    }
+
+    /**
+     * The caption as it stood when the current review session began — the earliest
+     * {@code caption.from} across this session's edits, or {@code fallback} (the
+     * pre-edit value of the edit being classified) when the caption has not been
+     * touched yet this session. Used to measure cumulative caption change (A10).
+     */
+    private String sessionOriginalCaption(UUID submissionId, String fallback) {
+        for (ValidationLog entry : logsSinceLock(submissionId)) {
+            if (entry.getAction() != ValidationAction.edited || entry.getEditDiff() == null) {
+                continue;
+            }
+            try {
+                Map<String, Map<String, Object>> diff = objectMapper.readValue(
+                        entry.getEditDiff(),
+                        new com.fasterxml.jackson.core.type.TypeReference<>() {});
+                Map<String, Object> caption = diff.get("caption");
+                if (caption != null) {
+                    Object from = caption.get("from");
+                    return from == null ? "" : String.valueOf(from);
+                }
+            } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
+                // fall through to the next entry / fallback
+            }
+        }
+        return fallback;
+    }
+
+    /**
+     * A10: the highest {@link ReviewEditSeverity} recorded across every
+     * {@code edited} / {@code media_added} row this review session, or null when
+     * nothing was edited. Feeds the terminal-action "edited during review"
+     * notification.
+     */
+    private ReviewEditSeverity combinedSessionSeverity(UUID submissionId) {
+        ReviewEditSeverity severity = null;
+        for (ValidationLog entry : logsSinceLock(submissionId)) {
+            String raw = entry.getEditSeverity();
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            try {
+                severity = ReviewEditSeverity.max(severity,
+                        ReviewEditSeverity.valueOf(raw.trim().toUpperCase()));
+            } catch (IllegalArgumentException ignored) {
+                // unknown legacy value — skip
+            }
+        }
+        return severity;
+    }
+
+    /**
+     * A10: classifies one {@code edit()} call. Severity is the max across every
+     * changed field: {@code scheduledAt} is always {@code FLAGGED}; {@code caption}
+     * is {@code FLAGGED} once the cumulative session word-change ratio reaches
+     * {@link #captionMajorChangeRatio}; everything else is {@code QUIET}.
+     */
+    private ReviewEditSeverity classifyFieldEdits(
+            Map<String, Object> before, Map<String, Object> after, String sessionOriginalCaption) {
+        ReviewEditSeverity severity = null;
+        for (String field : before.keySet()) {
+            if (java.util.Objects.equals(before.get(field), after.get(field))) {
+                continue;
+            }
+            ReviewEditSeverity fieldSeverity = switch (field) {
+                case "scheduledAt" -> ReviewEditSeverity.FLAGGED;
+                case "caption" -> {
+                    Object current = after.get("caption");
+                    double ratio = CaptionDiffAnalyzer.changedWordRatio(
+                            sessionOriginalCaption, current == null ? "" : String.valueOf(current));
+                    yield ratio >= captionMajorChangeRatio
+                            ? ReviewEditSeverity.FLAGGED : ReviewEditSeverity.QUIET;
+                }
+                default -> ReviewEditSeverity.QUIET;
+            };
+            severity = ReviewEditSeverity.max(severity, fieldSeverity);
+        }
+        return severity;
+    }
+
+    /**
      * A10: aggregates the before/after diffs of every standalone {@code edited}
      * action taken since the current review lock was acquired into one combined
      * diff, so a terminal action (approve/revise/reject) records the full picture
@@ -390,19 +515,8 @@ public class ValidationService {
      * session.
      */
     private String combinedSessionEditDiff(UUID submissionId) {
-        List<ValidationLog> logs = validationLogRepository
-                .findBySubmissionIdOrderByCreatedAtAsc(submissionId);
-
-        int lastLockIndex = -1;
-        for (int i = 0; i < logs.size(); i++) {
-            if (logs.get(i).getAction() == ValidationAction.lock_acquired) {
-                lastLockIndex = i;
-            }
-        }
-
         Map<String, Map<String, Object>> combined = new LinkedHashMap<>();
-        for (int i = lastLockIndex + 1; i < logs.size(); i++) {
-            ValidationLog entry = logs.get(i);
+        for (ValidationLog entry : logsSinceLock(submissionId)) {
             if (entry.getAction() != ValidationAction.edited || entry.getEditDiff() == null) {
                 continue;
             }
@@ -439,7 +553,7 @@ public class ValidationService {
 
     private void logAction(Submission submission, User validator,
             ValidationAction action, String remarks, String rejectionReason,
-            boolean selfReview, boolean fastTrack, String editDiff) {
+            boolean selfReview, boolean fastTrack, String editDiff, ReviewEditSeverity severity) {
         ValidationLog entry = new ValidationLog();
         entry.setSubmission(submission);
         entry.setValidator(validator);
@@ -449,6 +563,7 @@ public class ValidationService {
         entry.setSelfReview(selfReview);
         entry.setFastTrack(fastTrack);
         entry.setEditDiff(editDiff);
+        entry.setEditSeverity(severity == null ? null : severity.toDbValue());
         validationLogRepository.save(entry);
 
         try {
@@ -458,6 +573,7 @@ public class ValidationService {
             if (selfReview) meta.put("selfReview", true);
             if (fastTrack) meta.put("fastTrack", true);
             if (editDiff != null && !editDiff.isBlank()) meta.put("editDiff", editDiff);
+            if (severity != null) meta.put("editSeverity", severity.toDbValue());
             auditLogService.record(validator, action.name(), null, null, submission.getId(), meta);
         } catch (Exception ex) {
             log.warn("Failed to write audit log for validation action {} on submission {}: {}", action, submission.getId(), ex.getMessage());

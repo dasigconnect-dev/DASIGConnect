@@ -78,6 +78,130 @@ class ValidationServiceTest {
         adminId = UUID.randomUUID();
         contributorId = UUID.randomUUID();
         ReflectionTestUtils.setField(validationService, "objectMapper", new ObjectMapper());
+        ReflectionTestUtils.setField(validationService, "captionMajorChangeRatio", 0.30);
+    }
+
+    private JwtUserDetails moderator() {
+        return new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
+    }
+
+    private void stubInReview(Submission submission) {
+        User adminUser = new User();
+        adminUser.setId(adminId);
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(adminUser));
+    }
+
+    private ValidationLog savedLog() {
+        ArgumentCaptor<ValidationLog> captor = ArgumentCaptor.forClass(ValidationLog.class);
+        verify(validationLogRepository, org.mockito.Mockito.atLeastOnce()).save(captor.capture());
+        return captor.getValue();
+    }
+
+    @Test
+    void edit_titleOnly_classifiesQuiet() {
+        Submission submission = inReviewSubmission();
+        submission.setEventTitle("Original");
+        stubInReview(submission);
+        when(submissionService.applySubmissionEdits(any(), any(), any())).thenAnswer(i -> {
+            Submission s = i.getArgument(0);
+            s.setEventTitle("Fixed");
+            return s;
+        });
+        SubmissionUpdateDto dto = new SubmissionUpdateDto();
+        dto.setEventTitle("Fixed");
+
+        validationService.edit(submission.getId(), dto, moderator());
+
+        assertThat(savedLog().getEditSeverity()).isEqualTo("quiet");
+    }
+
+    @Test
+    void edit_scheduledAtChange_classifiesFlagged() {
+        Submission submission = inReviewSubmission();
+        stubInReview(submission);
+        when(submissionService.applySubmissionEdits(any(), any(), any())).thenAnswer(i -> {
+            Submission s = i.getArgument(0);
+            s.setScheduledAt(java.time.Instant.parse("2026-10-01T09:00:00Z"));
+            return s;
+        });
+
+        validationService.edit(submission.getId(), new SubmissionUpdateDto(), moderator());
+
+        assertThat(savedLog().getEditSeverity()).isEqualTo("flagged");
+    }
+
+    @Test
+    void edit_majorCaptionReword_classifiesFlagged() {
+        Submission submission = inReviewSubmission();
+        submission.setCaption("the quick brown fox jumps over the lazy dog");
+        stubInReview(submission);
+        when(submissionService.applySubmissionEdits(any(), any(), any())).thenAnswer(i -> {
+            Submission s = i.getArgument(0);
+            s.setCaption("a completely different sentence with new words entirely");
+            return s;
+        });
+        SubmissionUpdateDto dto = new SubmissionUpdateDto();
+        dto.setCaption("a completely different sentence with new words entirely");
+
+        validationService.edit(submission.getId(), dto, moderator());
+
+        assertThat(savedLog().getEditSeverity()).isEqualTo("flagged");
+    }
+
+    @Test
+    void edit_minorCaptionTweak_classifiesQuiet() {
+        Submission submission = inReviewSubmission();
+        submission.setCaption("Join us this Saturday for the community outreach event at the plaza");
+        stubInReview(submission);
+        when(submissionService.applySubmissionEdits(any(), any(), any())).thenAnswer(i -> {
+            Submission s = i.getArgument(0);
+            s.setCaption("Join us this Sunday for the community outreach event at the plaza");
+            return s;
+        });
+        SubmissionUpdateDto dto = new SubmissionUpdateDto();
+        dto.setCaption("Join us this Sunday for the community outreach event at the plaza");
+
+        validationService.edit(submission.getId(), dto, moderator());
+
+        assertThat(savedLog().getEditSeverity()).isEqualTo("quiet");
+    }
+
+    @Test
+    void attachReviewLibraryAsset_logsMediaAddedWithJustification() {
+        Submission submission = inReviewSubmission();
+        UUID assetId = UUID.randomUUID();
+        stubInReview(submission);
+
+        validationService.attachReviewLibraryAsset(submission.getId(), assetId, "  needed a wider crowd shot  ", moderator());
+
+        verify(submissionService).attachLibraryAssetTo(submission, assetId);
+        ValidationLog entry = savedLog();
+        assertThat(entry.getAction()).isEqualTo(ValidationAction.media_added);
+        assertThat(entry.getEditSeverity()).isEqualTo("added_media");
+        assertThat(entry.getRemarks()).isEqualTo("needed a wider crowd shot");
+    }
+
+    @Test
+    void requestRevision_afterSessionEdit_firesEditedDuringReviewEvent() {
+        Submission submission = inReviewSubmission();
+        stubInReview(submission);
+        ValidationLog lockLog = new ValidationLog();
+        lockLog.setAction(ValidationAction.lock_acquired);
+        ValidationLog editLog = new ValidationLog();
+        editLog.setAction(ValidationAction.edited);
+        editLog.setEditSeverity("flagged");
+        when(validationLogRepository.findBySubmissionIdOrderByCreatedAtAsc(submission.getId()))
+                .thenReturn(List.of(lockLog, editLog));
+
+        validationService.requestRevision(submission.getId(), "Please tighten the caption and re-submit.", moderator());
+
+        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, org.mockito.Mockito.atLeastOnce()).publishEvent(events.capture());
+        assertThat(events.getAllValues())
+                .anyMatch(e -> e instanceof com.dasigconnect.backend.event.SubmissionEditedDuringReviewEvent
+                        && ((com.dasigconnect.backend.event.SubmissionEditedDuringReviewEvent) e).severity()
+                        == com.dasigconnect.backend.model.entity.ReviewEditSeverity.FLAGGED);
     }
 
     @Test
@@ -358,10 +482,15 @@ class ValidationServiceTest {
         assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.scheduled);
 
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
-        verify(eventPublisher).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getValue())
-                .isInstanceOf(com.dasigconnect.backend.event.SubmissionApprovedEvent.class);
-        assertThat(((com.dasigconnect.backend.event.SubmissionApprovedEvent) eventCaptor.getValue()).edited())
-                .isTrue();
+        verify(eventPublisher, org.mockito.Mockito.atLeastOnce()).publishEvent(eventCaptor.capture());
+
+        com.dasigconnect.backend.event.SubmissionApprovedEvent approvedEvent = eventCaptor.getAllValues().stream()
+                .filter(e -> e instanceof com.dasigconnect.backend.event.SubmissionApprovedEvent)
+                .map(e -> (com.dasigconnect.backend.event.SubmissionApprovedEvent) e)
+                .findFirst().orElseThrow();
+        assertThat(approvedEvent.edited()).isTrue();
+
+        assertThat(eventCaptor.getAllValues())
+                .anyMatch(e -> e instanceof com.dasigconnect.backend.event.SubmissionEditedDuringReviewEvent);
     }
 }

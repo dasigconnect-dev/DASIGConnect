@@ -16,6 +16,7 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import com.dasigconnect.backend.model.entity.NotificationEventType;
+import com.dasigconnect.backend.model.entity.ReviewEditSeverity;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
@@ -84,9 +85,8 @@ public class NotificationEventListener {
         String slot = s.getScheduledAt() != null ? fmt(s.getScheduledAt()) : "TBD";
         String link = "/submissions/" + s.getId();
         String msg = "'" + s.getEventTitle() + "' was approved and is scheduled for " + slot + ".";
-        if (event.edited()) {
-            msg += " A moderator edited it before scheduling — open it to see what changed.";
-        }
+        // Detail about *what* changed is carried by SubmissionEditedDuringReviewEvent
+        // (onSubmissionEditedDuringReview), which fires alongside this on an edited approval.
 
         notificationService.createNotification(contributor, NotificationEventType.submission_approved, msg, link);
         emailDeliveryService.send(contributor,
@@ -130,6 +130,39 @@ public class NotificationEventListener {
                 NotificationEventType.submission_needs_revision.name(),
                 "DASIGConnect — Revision requested",
                 emailBody);
+    }
+
+    // ── A10 — Moderator edited a submission during review ─────────────────────
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onSubmissionEditedDuringReview(SubmissionEditedDuringReviewEvent event) {
+        Submission s = event.submission();
+        User contributor = s.getContributor();
+        if (contributor == null) {
+            return;
+        }
+        String link = "/submissions/" + s.getId();
+        ReviewEditSeverity severity = event.severity();
+
+        String msg = switch (severity == null ? ReviewEditSeverity.QUIET : severity) {
+            case ADDED_MEDIA -> "A moderator added a Media Library asset to '" + s.getEventTitle()
+                    + "' that you did not originally submit. Open it to review the change.";
+            case FLAGGED -> "A moderator made substantive edits to '" + s.getEventTitle()
+                    + "' during review. Open it to see exactly what changed.";
+            case QUIET -> "A moderator made minor edits to '" + s.getEventTitle()
+                    + "' during review. Open it to see what changed.";
+        };
+
+        notificationService.createNotification(
+                contributor, NotificationEventType.submission_edited_in_review, msg, link);
+
+        // Email only for the changes worth interrupting someone over.
+        if (severity == ReviewEditSeverity.FLAGGED || severity == ReviewEditSeverity.ADDED_MEDIA) {
+            emailDeliveryService.send(contributor,
+                    NotificationEventType.submission_edited_in_review.name(),
+                    "DASIGConnect — Your submission was edited during review",
+                    msg + "\n\nView the before/after: " + frontendBaseUrl + link);
+        }
     }
 
     // ── T-04 — Post Published (Automated via Graph API) ───────────────────────

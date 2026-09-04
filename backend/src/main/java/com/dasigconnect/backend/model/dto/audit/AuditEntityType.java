@@ -29,7 +29,8 @@ public enum AuditEntityType {
                 || a.startsWith("PUBLISH") || a.contains("_OVERRIDE")
                 // bare ValidationAction codes (stored lowercase, e.g. "edited", "approved")
                 || a.equals("EDITED") || a.equals("APPROVED") || a.equals("REJECTED")
-                || a.equals("NEEDS_REVISION") || a.equals("REVISION_REQUESTED") || a.equals("EDITED_AND_APPROVED")) {
+                || a.equals("NEEDS_REVISION") || a.equals("REVISION_REQUESTED") || a.equals("EDITED_AND_APPROVED")
+                || a.equals("MEDIA_ADDED")) {
             return SUBMISSION;
         }
         if (a.startsWith("MEDIA_ALBUM")) {
