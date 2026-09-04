@@ -213,18 +213,20 @@ export function getInstitutionLogoUrl(id: string, logoUpdatedAt: string | null) 
   });
 }
 
-export function getUserCounts(institutionId: string) {
+export function getUserCounts(institutionId: string, signal?: AbortSignal) {
   return api.get<{ contributors: number; moderators: number }>(
     "/users/counts",
     {
       params: { institutionId },
+      signal,
     },
   );
 }
 
-export function listUsers(institutionId: string) {
+export function listUsers(institutionId: string, signal?: AbortSignal) {
   return api.get<UserProfileResponse[]>("/users", {
     params: { institutionId },
+    signal,
   }).then((response) => {
     response.data = response.data.map((user) => ({
       ...user,
@@ -304,9 +306,10 @@ export interface PendingInvitationResponse {
   canManage: boolean;
 }
 
-export function listPendingInvitations(institutionId: string) {
+export function listPendingInvitations(institutionId: string, signal?: AbortSignal) {
   return api.get<PendingInvitationResponse[]>("/invitations/pending", {
     params: { institutionId },
+    signal,
   });
 }
 
@@ -318,9 +321,10 @@ export function listPendingNetworkInvitations(signal?: AbortSignal) {
   return api.get<PendingInvitationResponse[]>("/invitations/pending/network", { signal });
 }
 
-export function getPendingInvitationCount(institutionId: string) {
+export function getPendingInvitationCount(institutionId: string, signal?: AbortSignal) {
   return api.get<{ pendingInvitations: number }>("/invitations/pending/count", {
     params: { institutionId },
+    signal,
   });
 }
 
