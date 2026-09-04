@@ -370,14 +370,14 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
 
       <section className={`cal-overview-grid cal-overview-grid-${isAdmin ? "5" : "3"}`} aria-label="Publishing metrics">
         <MetricCard metric="scheduled" icon="ti ti-calendar-time" label="Scheduled Posts" value={metrics.scheduled} tone="blue" onOpen={setActiveMetric} />
-        <MetricCard metric="published" icon="ti ti-circle-check" label="Published" value={metrics.published} tone="green" onOpen={setActiveMetric} />
+        <MetricCard metric="published" icon="ti ti-circle-check" label="Published" value={metrics.published} tone="blue" onOpen={setActiveMetric} />
         {isAdmin && (
-          <MetricCard metric="failed" icon="ti ti-alert-circle" label="Failed" value={metrics.failed} tone="red" onOpen={setActiveMetric} />
+          <MetricCard metric="failed" icon="ti ti-alert-circle" label="Failed" value={metrics.failed} tone="blue" onOpen={setActiveMetric} />
         )}
         {isAdmin && (
-          <MetricCard metric="attention" icon="ti ti-alert-triangle" label="Needs Attention" value={metrics.attention} tone="orange" onOpen={setActiveMetric} />
+          <MetricCard metric="attention" icon="ti ti-alert-triangle" label="Needs Attention" value={metrics.attention} tone="blue" onOpen={setActiveMetric} />
         )}
-        <MetricCard metric="today" icon="ti ti-sun" label="Upcoming Today" value={metrics.today} tone="purple" onOpen={setActiveMetric} />
+        <MetricCard metric="today" icon="ti ti-sun" label="Upcoming Today" value={metrics.today} tone="blue" onOpen={setActiveMetric} />
       </section>
 
       <CalendarToolbar
