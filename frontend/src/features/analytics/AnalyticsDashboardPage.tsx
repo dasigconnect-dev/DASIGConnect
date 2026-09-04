@@ -37,9 +37,10 @@ export default function AnalyticsDashboardPage({ user }: Props) {
     setInstitutionId,
     summary,
     loading,
+    refreshing,
     error,
     refresh,
-  } = useAnalyticsSummary("30d");
+  } = useAnalyticsSummary(user, "30d");
   const [reportMetric, setReportMetric] = useState<AnalyticsExportMetric | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
 
@@ -134,10 +135,10 @@ export default function AnalyticsDashboardPage({ user }: Props) {
                 type="button"
                 className="notif-btn notif-btn-ghost"
                 onClick={refresh}
-                disabled={loading}
+                disabled={refreshing}
                 title="Refresh analytics data"
               >
-                <i className={`ti ti-refresh${loading ? " spin" : ""}`} style={{ fontSize: 14 }} />
+                <i className={`ti ti-refresh${refreshing ? " spin" : ""}`} style={{ fontSize: 14 }} />
                 <span>Refresh</span>
               </button>
             </div>

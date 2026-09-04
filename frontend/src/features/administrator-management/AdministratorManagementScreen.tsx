@@ -17,6 +17,7 @@ import {
 import type { PendingInvitationResponse, UserProfileResponse } from '../../api/authApi'
 import type { User } from '../../types/auth.types'
 import { useToast } from '../../context/ToastContext'
+import { registerAppCacheReset } from '../../lib/appCache'
 import { getUserDisplayName } from '../../lib/userIdentity'
 import ChangeRoleModal from '../user-management/components/ChangeRoleModal'
 import ConfirmDialog from '../user-management/components/ConfirmDialog'
@@ -47,6 +48,10 @@ const memoryCache: {
   admins: UserProfileResponse[] | null
   pendingInvitations: PendingInvitationResponse[]
 } = { admins: null, pendingInvitations: [] }
+registerAppCacheReset(() => {
+  memoryCache.admins = null
+  memoryCache.pendingInvitations = []
+})
 
 export default function AdminManagementScreen({
   user,

@@ -234,8 +234,8 @@ export function listUsers(institutionId: string) {
   });
 }
 
-export function listAdmins() {
-  return api.get<UserProfileResponse[]>("/users/admins", {}).then((response) => {
+export function listAdmins(signal?: AbortSignal) {
+  return api.get<UserProfileResponse[]>("/users/admins", { signal }).then((response) => {
     response.data = response.data.map((user) => ({
       ...user,
       avatarUrl: user.hasAvatar ? getUserAvatarUrl(user.id, user.avatarUpdatedAt) : null,
@@ -244,8 +244,8 @@ export function listAdmins() {
   });
 }
 
-export function listNetworkUsers() {
-  return api.get<UserProfileResponse[]>("/users/network", {}).then((response) => {
+export function listNetworkUsers(signal?: AbortSignal) {
+  return api.get<UserProfileResponse[]>("/users/network", { signal }).then((response) => {
     response.data = response.data.map((user) => ({
       ...user,
       avatarUrl: user.hasAvatar ? getUserAvatarUrl(user.id, user.avatarUpdatedAt) : null,
@@ -310,12 +310,12 @@ export function listPendingInvitations(institutionId: string) {
   });
 }
 
-export function listPendingAdminInvitations() {
-  return api.get<PendingInvitationResponse[]>("/invitations/pending/admins");
+export function listPendingAdminInvitations(signal?: AbortSignal) {
+  return api.get<PendingInvitationResponse[]>("/invitations/pending/admins", { signal });
 }
 
-export function listPendingNetworkInvitations() {
-  return api.get<PendingInvitationResponse[]>("/invitations/pending/network");
+export function listPendingNetworkInvitations(signal?: AbortSignal) {
+  return api.get<PendingInvitationResponse[]>("/invitations/pending/network", { signal });
 }
 
 export function getPendingInvitationCount(institutionId: string) {
