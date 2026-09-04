@@ -5,6 +5,7 @@ import { listMediaAlbums, type MediaAlbum } from "../../api/mediaApi";
 import { buildAlbumOptions } from "../../features/media-repository/albumTree";
 import MediaAssetGrid, { type GridAsset } from "./MediaAssetGrid";
 import BrandedSelect from "../ui/BrandedSelect";
+import "../../styles/media-picker.css";
 
 interface MediaLibraryTabProps {
   alreadyAddedIds: Set<string>;

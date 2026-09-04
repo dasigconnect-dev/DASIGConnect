@@ -1,10 +1,13 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import OptimizedImage, { canTransformImageType } from "../../../components/media/OptimizedImage";
 import FacebookPreviewCard from "../../../components/facebook/FacebookPreviewCard";
 import type { FacebookPreviewMediaItem } from "../../../types/facebook";
 import type { SubmissionMediaItem } from "../../../types/media";
 import type { FormState } from "../types";
 import { formatDateTime, formatLongDate } from "../utils";
+import { formatRevisionRemarksForDisplay } from "../utils/revisionComments";
+import "./SubmissionReadOnlyView.css";
 
 interface FacebookPreviewData {
   pageName: string;
@@ -50,7 +53,11 @@ export default function SubmissionReadOnlyBody({
 
   const isRejected = form.status === "rejected";
   const needsRevision = form.status === "needs_revision";
-  const feedbackText = isRejected ? rejectionReason : needsRevision ? revisionNotes : null;
+  const feedbackText = isRejected
+    ? rejectionReason
+    : needsRevision
+      ? formatRevisionRemarksForDisplay(revisionNotes)
+      : null;
 
   const schedule = form.fastTrack
     ? "Live event — no scheduled slot"
@@ -155,7 +162,15 @@ export default function SubmissionReadOnlyBody({
                     preload="metadata"
                   />
                 ) : (
-                  <img src={item.previewUrl} alt={item.fileName} loading="lazy" />
+                  <OptimizedImage
+                    src={item.previewUrl}
+                    alt={item.fileName}
+                    width={320}
+                    height={240}
+                    sizes="(max-width: 768px) 50vw, 220px"
+                    candidateWidths={[220, 320, 440]}
+                    transform={item.source !== "upload" && canTransformImageType(item.fileName.split(".").pop())}
+                  />
                 )}
                 <figcaption>
                   <span className="sub-ro-media-name">{item.fileName}</span>

@@ -26,6 +26,9 @@ export interface SavedMediaAsset {
   skipWatermark?: boolean;
   /** MediaAssetStatus name. "STAGED" = uploaded to this draft, not yet bound to an institution. */
   status?: string;
+  /** Media Library album this asset is filed under (null while STAGED). */
+  albumId?: string | null;
+  albumName?: string | null;
 }
 
 export interface SubmissionSummary {

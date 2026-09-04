@@ -165,10 +165,14 @@ public class ValidationService {
         submissionService.assertContentComplete(submission);
         String editDiff = buildEditDiff(before, snapshotEditableFields(submission));
 
-        // Keep the submission IN_REVIEW — no terminal transition here.
-        User validator = loadUser(caller.userId());
-        logAction(submission, validator, ValidationAction.edited, null, null,
-                selfReview, submission.isFastTrack(), editDiff);
+        // Keep the submission IN_REVIEW — no terminal transition here. A save that
+        // changed nothing (editDiff == null) must not record an `edited` audit row,
+        // otherwise a no-op "Save Changes" inflates the edited-approval count (A10).
+        if (editDiff != null) {
+            User validator = loadUser(caller.userId());
+            logAction(submission, validator, ValidationAction.edited, null, null,
+                    selfReview, submission.isFastTrack(), editDiff);
+        }
 
         log.info("Submission edited in review (changed={}): submission={} validator={}",
                 editDiff != null, submissionId, caller.userId());
@@ -221,8 +225,13 @@ public class ValidationService {
 
     public SubmissionResponseDto reorderReviewMedia(UUID submissionId, SubmissionMediaOrderDto dto, JwtUserDetails caller) {
         Submission submission = loadForMediaEdit(submissionId, caller);
+        // The Save Changes flow sends this on every save; only log an `edited` row
+        // when the request actually changes the order, a caption, or a skip flag.
+        boolean noOp = submissionService.isNoOpMediaOrder(submission, dto);
         SubmissionResponseDto response = submissionService.reorderMediaOf(submission, dto);
-        logMediaEdit(submission, caller);
+        if (!noOp) {
+            logMediaEdit(submission, caller);
+        }
         return response;
     }
 

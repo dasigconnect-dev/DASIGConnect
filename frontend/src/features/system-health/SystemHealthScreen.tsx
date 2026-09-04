@@ -661,7 +661,7 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
               cy="38"
               r={radius}
               fill="none"
-              stroke="#1877f2"
+              stroke="#0B5FCC"
               strokeWidth="7"
               strokeDasharray={`${editedDash} ${circumference}`}
               strokeDashoffset="0"
@@ -697,12 +697,12 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
 
   if (item.key === "publish_success_rate") {
     const percent = Math.min(Math.max(item.value, 0), 100);
-    const radius = 30;
-    const circumference = 2 * Math.PI * radius;
-    const strokeDash = (percent / 100) * circumference;
     const succeeded = Math.round((percent / 100) * item.sampleSize);
     const failed = Math.max(item.sampleSize - succeeded, 0);
     const allClean = failed === 0;
+    const radius = 30;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDash = (percent / 100) * circumference;
 
     return (
       <div className="sys-hires-donut-layout">
@@ -837,7 +837,7 @@ function getMetricExplanation(item: OperationalMetric): string {
         ? "Moderator review latency is operating well within the 24-hour SLA benchmark."
         : `Average turnaround time is currently ${item.value.toFixed(1)}h (+${(item.value - 24).toFixed(1)}h above the 24h SLA target). Reviewing pending queues is advised.`;
     case "edit_approve_rate":
-      return `${item.value.toFixed(1)}% of submissions required revisions before approval. Standard direct-approval threshold is ≥85%.`;
+      return `${item.value.toFixed(1)}% of submissions required revisions before approval. Standard direct-approval threshold is ≤15%.`;
     case "manual_fallback_resolution_rate":
       return "Percentage of automated posting failures that were resolved via manual fallback.";
     case "publish_success_rate": {
@@ -1107,13 +1107,11 @@ function overallStatusIcon(status: HealthStatus) {
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  // Decimal (1000) units so the figures line up with how Cloudflare R2 and
-  // Supabase report quota in their dashboards (10 GB, 500 MB, …).
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
   let unit = 0;
-  while (value >= 1000 && unit < units.length - 1) {
-    value /= 1000;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
     unit += 1;
   }
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;

@@ -307,7 +307,7 @@ export default function InviteScreen({
                   type="button"
                   className="eye-btn"
                   onClick={onTogglePassword}
-                  aria-label="Toggle"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   <i className={showPassword ? 'ti ti-eye' : 'ti ti-eye-off'}></i>
                 </button>
@@ -388,7 +388,7 @@ export default function InviteScreen({
                   type="button"
                   className="eye-btn"
                   onClick={onToggleConfirmPassword}
-                  aria-label="Toggle"
+                  aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
                 >
                   <i
                     className={showConfirmPassword ? 'ti ti-eye' : 'ti ti-eye-off'}

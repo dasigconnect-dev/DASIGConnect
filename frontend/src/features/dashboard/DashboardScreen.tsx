@@ -607,6 +607,7 @@ function statsForRole(
   institutionCount: number,
 ): StatItem[] {
   if (!user) return [];
+  const accessibleBlue = "var(--d-blue, #0B5FCC)";
   const submissions = stats.submissions;
   const publishedCount = submissions.filter(
     (item) =>
@@ -627,38 +628,38 @@ function statsForRole(
     return [
       {
         icon: "ti ti-building",
-        color: "#1877F2",
+        color: accessibleBlue,
         label: "Member Institutions",
         value: String(institutionCount),
       },
       {
         icon: "ti ti-users",
-        color: "#1877F2",
+        color: accessibleBlue,
         label: "Active Members",
         value: String(stats.activeMembers),
       },
       {
         icon: "ti ti-clock-pause",
-        color: "#1877F2",
+        color: accessibleBlue,
         label: "Pending Invites",
         value: String(stats.pendingInvitations),
       },
       {
         icon: "ti ti-file-time",
-        color: "#1877F2",
+        color: accessibleBlue,
         label: "Awaiting Review",
         value: String(stats.reviewQueuePending),
         highlight: stats.reviewQueuePending > 0,
       },
       {
         icon: "ti ti-calendar-event",
-        color: "#1877F2",
+        color: accessibleBlue,
         label: "Scheduled Posts",
         value: String(stats.scheduledNetwork),
       },
       {
         icon: "ti ti-photo-check",
-        color: "#1877F2",
+        color: accessibleBlue,
         label: "Published (30 days)",
         value: String(stats.publishedLast30d),
       },
@@ -668,26 +669,26 @@ function statsForRole(
     return [
       {
         icon: "ti ti-file-time",
-        color: "#1877F2",
+        color: accessibleBlue,
         label: "Pending Review",
         value: String(stats.reviewQueuePending),
         highlight: stats.reviewQueuePending > 0,
       },
       {
         icon: "ti ti-circle-check",
-        color: "#1877F2",
+        color: accessibleBlue,
         label: "Approved This Month",
         value: String(stats.reviewedApprovedThisMonth),
       },
       {
         icon: "ti ti-circle-x",
-        color: "#1877F2",
+        color: accessibleBlue,
         label: "Rejected This Month",
         value: String(stats.reviewedRejectedThisMonth),
       },
       {
         icon: "ti ti-users",
-        color: "#1877F2",
+        color: accessibleBlue,
         label: "Recent Contributors",
         value: String(stats.contributors),
       },
@@ -696,32 +697,32 @@ function statsForRole(
   return [
     {
       icon: "ti ti-photo-up",
-      color: "#1877F2",
+      color: accessibleBlue,
       label: "My Submissions",
       value: String(submissions.length),
     },
     {
       icon: "ti ti-circle-check",
-      color: "#1877F2",
+      color: accessibleBlue,
       label: "Approved",
       value: String(scheduledCount + publishedCount),
     },
     {
       icon: "ti ti-clock",
-      color: "#1877F2",
+      color: accessibleBlue,
       label: "Under Review",
       value: String(reviewCount),
     },
     {
       icon: "ti ti-pencil-minus",
-      color: "#1877F2",
+      color: accessibleBlue,
       label: "Needs Revision",
       value: String(needsRevisionCount),
       highlight: needsRevisionCount > 0,
     },
     {
       icon: "ti ti-brand-facebook",
-      color: "#1877F2",
+      color: accessibleBlue,
       label: "Published",
       value: String(publishedCount),
     },

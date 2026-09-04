@@ -136,7 +136,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   font-size: 11.5px;
   font-weight: 700;
   transition: transform 0.15s ease;
@@ -232,7 +232,7 @@
 
 .cal-nav-btn:hover {
   background: #ffffff;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
@@ -244,7 +244,7 @@
   padding: 0 13px;
   border-radius: 999px;
   border: none;
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: #ffffff;
   font-size: 12px;
   font-weight: 650;
@@ -332,7 +332,7 @@
 }
 
 .cal-view-toggle .view-btn:hover:not(.active) {
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   background: rgba(255, 255, 255, 0.7);
 }
 
@@ -341,7 +341,7 @@
 }
 
 .cal-view-toggle .view-btn.active {
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: #ffffff;
   font-weight: 650;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.28);
@@ -382,14 +382,14 @@
 .cal-pill-btn.is-week {
   background: #ffffff;
   border-color: #bfdbfe;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(24, 119, 242, 0.08);
 }
 
 .cal-pill-btn.is-week:hover {
   background: #eff6ff;
-  border-color: var(--d-blue, #1877f2);
+  border-color: var(--d-blue, #0B5FCC);
   transform: translateY(-0.5px);
 }
 
@@ -398,8 +398,8 @@
 }
 
 .cal-pill-btn.is-week.active {
-  background: var(--d-blue, #1877f2);
-  border-color: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
+  border-color: var(--d-blue, #0B5FCC);
   color: #ffffff;
   font-weight: 650;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.28);
@@ -427,7 +427,7 @@
 
 .cal-refresh-btn:hover:not(:disabled) {
   border-color: #bfdbfe;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   background: #eff6ff;
   transform: translateY(-0.5px);
 }
@@ -496,7 +496,7 @@
 .cal-header-filters .cal-filter-select .dc-select-trigger:hover {
   border-color: #bfdbfe;
   background: #eff6ff;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   transform: translateY(-0.5px);
 }
 
@@ -639,7 +639,7 @@
 .cal-header-filters .cal-filter-select .dc-select-trigger:hover {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   transform: translateY(-0.5px);
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.12);
 }
@@ -999,7 +999,7 @@
 
 .cal-drawer-inst-tag {
   background: #eff6ff;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   font-size: 11.5px;
   font-weight: 700;
   padding: 3px 10px;
@@ -1061,7 +1061,7 @@
   gap: 16px;
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: var(--d-blue, #1877f2) #eff6ff;
+  scrollbar-color: var(--d-blue, #0B5FCC) #eff6ff;
 }
 
 .cal-drawer-body::-webkit-scrollbar {
@@ -1075,7 +1075,7 @@
 }
 
 .cal-drawer-body::-webkit-scrollbar-thumb {
-  background: var(--d-blue, #1877f2) !important;
+  background: var(--d-blue, #0B5FCC) !important;
   border-radius: 999px !important;
   border: 2px solid #eff6ff !important;
 }
@@ -1213,7 +1213,7 @@
   height: 28px;
   border-radius: 7px;
   background: #ffffff;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1341,7 +1341,7 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #1877f2;
+  background: #0B5FCC;
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -1509,7 +1509,7 @@
   min-height: 46px;
   padding: 12px 24px;
   border-radius: 999px;
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: #ffffff !important;
   font-size: 14.5px;
   font-weight: 700;
@@ -2545,7 +2545,7 @@
 .cal-results-actions .btn-secondary:hover:not(:disabled) {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: var(--d-blue, #1877f2);
+  color: var(--d-blue, #0B5FCC);
   transform: translateY(-0.5px);
 }
 
@@ -3651,7 +3651,7 @@
   height: 38px;
   padding: 0 20px;
   border: none;
-  background: var(--d-blue, #1877f2);
+  background: var(--d-blue, #0B5FCC);
   color: #ffffff;
   border-radius: 999px;
   font-size: 13px;

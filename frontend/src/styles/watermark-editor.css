@@ -77,7 +77,7 @@
 }
 
 .canva-rail-btn:hover {
-  color: #1877f2;
+  color: #0B5FCC;
   background: #eff6ff;
   border-color: #dbeafe;
 }
@@ -87,14 +87,14 @@
 }
 
 .canva-rail-btn.is-active {
-  color: #1877f2;
+  color: #0B5FCC;
   background: transparent;
   border-color: transparent;
   box-shadow: none;
 }
 
 .canva-rail-btn.is-active i {
-  color: #1877f2;
+  color: #0B5FCC;
   transform: scale(1.12);
 }
 
@@ -136,14 +136,14 @@
 }
 
 .canva-rail-icon-only-btn:hover {
-  color: #1877f2;
+  color: #0B5FCC;
   background: #eff6ff;
   border-color: #bfdbfe;
   transform: scale(1.08);
 }
 
 .canva-rail-icon-only-btn.is-active {
-  color: #1877f2;
+  color: #0B5FCC;
   background: transparent;
   border-color: transparent;
   box-shadow: none;
@@ -238,7 +238,7 @@
 
 .canva-info-list li em {
   font-style: normal;
-  color: #1877f2;
+  color: #0B5FCC;
   font-weight: 600;
 }
 
@@ -306,7 +306,7 @@
 
 .canva-drawer-close:hover {
   background: #eff6ff;
-  color: #1877f2;
+  color: #0B5FCC;
 }
 
 .canva-drawer-content {
@@ -362,7 +362,7 @@
 }
 
 .canva-item-card:hover:not(:disabled) {
-  border-color: #1877f2;
+  border-color: #0B5FCC;
   background: #eff6ff;
   box-shadow: 0 4px 14px rgba(24, 119, 242, 0.12);
   transform: translateY(-1.5px);
@@ -395,21 +395,21 @@
 .shape-ribbon-preview .mini-ribbon {
   width: 32px;
   height: 12px;
-  background: #1877f2;
+  background: #0B5FCC;
   border-radius: 3px;
 }
 
 .shape-line-preview .mini-line {
   width: 32px;
   height: 3px;
-  background: #1877f2;
+  background: #0B5FCC;
   border-radius: 2px;
 }
 
 .text-handle-preview .mini-text-bold {
   font-size: 10px;
   font-weight: 800;
-  color: #1877f2;
+  color: #0B5FCC;
 }
 
 .text-hashtag-preview .mini-text-regular {
@@ -450,7 +450,7 @@
 }
 
 .canva-item-card:hover .canva-add-icon {
-  color: #1877f2;
+  color: #0B5FCC;
   transform: scale(1.15);
 }
 
@@ -471,13 +471,13 @@
 }
 
 .canva-upload-zone:hover {
-  border-color: #1877f2;
+  border-color: #0B5FCC;
   background: #eff6ff;
 }
 
 .canva-upload-zone i {
   font-size: 30px;
-  color: #1877f2;
+  color: #0B5FCC;
 }
 
 .canva-upload-zone span {
@@ -549,9 +549,9 @@
 }
 
 .canva-layer-row.is-selected {
-  border-color: #1877f2;
+  border-color: #0B5FCC;
   background: #eff6ff;
-  box-shadow: 0 0 0 1px #1877f2;
+  box-shadow: 0 0 0 1px #0B5FCC;
 }
 
 .canva-layer-info {
@@ -567,7 +567,7 @@
 }
 
 .canva-layer-row.is-selected .canva-layer-info i {
-  color: #1877f2;
+  color: #0B5FCC;
 }
 
 .canva-layer-title {
@@ -602,7 +602,7 @@
 
 .canva-layer-icon-btn:hover {
   background: #dbeafe;
-  color: #1877f2;
+  color: #0B5FCC;
 }
 
 .canva-layer-icon-btn.is-danger:hover {
@@ -680,7 +680,7 @@
 }
 
 .canva-topbar-hint i {
-  color: #1877f2;
+  color: #0B5FCC;
   font-size: 15px;
 }
 
@@ -711,13 +711,13 @@
 }
 
 .canva-input-pill:focus-within {
-  border-color: #1877f2;
+  border-color: #0B5FCC;
   box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.18);
   background: #ffffff;
 }
 
 .canva-input-pill i {
-  color: #1877f2;
+  color: #0B5FCC;
   font-size: 15px;
 }
 
@@ -767,12 +767,12 @@
 
 .canva-font-item:hover {
   background: #eff6ff;
-  color: #1877f2;
+  color: #0B5FCC;
 }
 
 .canva-font-item.is-selected {
   background: #eff6ff;
-  color: #1877f2;
+  color: #0B5FCC;
   font-weight: 700;
 }
 
@@ -822,14 +822,14 @@
 
 .canva-stepper-btn:hover:not(:disabled) {
   background: #eff6ff;
-  border-color: #1877f2;
-  color: #1877f2;
+  border-color: #0B5FCC;
+  color: #0B5FCC;
 }
 
 .canva-mini-slider {
   width: 75px;
   height: 4px;
-  accent-color: #1877f2;
+  accent-color: #0B5FCC;
   cursor: pointer;
 }
 
@@ -850,15 +850,15 @@
 
 .canva-tool-btn:hover:not(:disabled) {
   background: #eff6ff;
-  color: #1877f2;
+  color: #0B5FCC;
   border-color: #93c5fd;
 }
 
 .canva-tool-btn.is-active {
   background: #eff6ff;
-  color: #1877f2;
-  border-color: #1877f2;
-  box-shadow: 0 0 0 1px #1877f2;
+  color: #0B5FCC;
+  border-color: #0B5FCC;
+  box-shadow: 0 0 0 1px #0B5FCC;
 }
 
 .canva-tool-btn.is-danger {
@@ -941,7 +941,7 @@
 }
 
 .canva-color-dot.is-selected {
-  border-color: #1877f2;
+  border-color: #0B5FCC;
   transform: scale(1.18);
 }
 
@@ -988,7 +988,7 @@
 
 .canva-align-dropdown button:hover {
   background: #eff6ff;
-  color: #1877f2;
+  color: #0B5FCC;
 }
 
 .canva-dropdown-divider {
@@ -1121,7 +1121,7 @@
 }
 
 .wm-canvas-element.is-selected {
-  outline: 2px solid #1877f2;
+  outline: 2px solid #0B5FCC;
   outline-offset: 1px;
   z-index: 35;
   box-shadow: 0 0 0 1px rgba(24, 119, 242, 0.4);
@@ -1157,12 +1157,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #1877f2;
+  color: #0B5FCC;
 }
 
 .wm-image-placeholder i {
   font-size: clamp(18px, 6cqi, 34px);
-  color: #1877f2;
+  color: #0B5FCC;
 }
 
 /* Text Element */
@@ -1204,7 +1204,7 @@
 
 /* Shape Element */
 .wm-shape-content.is-rect {
-  border-radius: 4px;
+  border-radius: 0;
   backdrop-filter: blur(4px);
 }
 
@@ -1225,7 +1225,7 @@
   width: 10px;
   height: 10px;
   background: #ffffff;
-  border: 2px solid #1877f2;
+  border: 2px solid #0B5FCC;
   border-radius: 50%;
   pointer-events: auto;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
@@ -1301,7 +1301,7 @@
 
 .canva-pill-action-btn:hover {
   background: #eff6ff;
-  color: #1877f2;
+  color: #0B5FCC;
 }
 
 .canva-pill-action-btn.is-del:hover {
@@ -1378,8 +1378,8 @@
 }
 
 .wm-empty-btn:hover:not(:disabled) {
-  background: #1877f2;
-  border-color: #1877f2;
+  background: #0B5FCC;
+  border-color: #0B5FCC;
 }
 
 /* ==========================================================================
@@ -1432,15 +1432,15 @@
 }
 
 .canva-segment-item:hover {
-  color: #1877f2;
+  color: #0B5FCC;
   border-color: #93c5fd;
   background: #eff6ff;
 }
 
 .canva-segment-item.is-active {
-  background: #1877f2;
+  background: #0B5FCC;
   color: #ffffff;
-  border-color: #1877f2;
+  border-color: #0B5FCC;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
   font-weight: 700;
 }

@@ -84,7 +84,7 @@ export default function ContributorAnalyticsView({ summary, onOpenReport }: Read
                   style={{
                     height: "100%",
                     width: `${Math.min(100, Math.max(4, firstPassRate))}%`,
-                    background: "linear-gradient(90deg, #1877F2 0%, #16A34A 100%)",
+                    background: "linear-gradient(90deg, var(--d-blue, #0B5FCC) 0%, #16A34A 100%)",
                     borderRadius: "999px",
                     transition: "width 0.3s ease",
                   }}
@@ -98,7 +98,7 @@ export default function ContributorAnalyticsView({ summary, onOpenReport }: Read
             {/* Quick Pipeline Status Strip */}
             <div style={{ marginTop: "12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
               <div style={{ padding: "10px 12px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: "8px" }}>
-                <span style={{ fontSize: "10.5px", color: "#1877F2", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", display: "block" }}>
+                <span style={{ fontSize: "10.5px", color: "var(--d-blue, #0B5FCC)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", display: "block" }}>
                   Success Velocity
                 </span>
                 <strong style={{ fontSize: "14px", color: "#0C1D3D" }}>

@@ -115,7 +115,11 @@ function fileType(file: File) {
 }
 
 /** Upload device files straight to Supabase, then attach each to the in-review submission. */
-export async function uploadValidationMedia(submissionId: string, files: File[]) {
+export async function uploadValidationMedia(
+  submissionId: string,
+  files: File[],
+  albumName?: string,
+) {
   let last;
   for (const file of files) {
     const { data } = await api.post<{ signedUrl: string; publicUrl: string; path: string }>(
@@ -133,6 +137,7 @@ export async function uploadValidationMedia(submissionId: string, files: File[])
       fileName: file.name,
       fileType: fileType(file),
       fileSizeBytes: file.size,
+      albumName: albumName?.trim() || undefined,
     });
   }
   return last;

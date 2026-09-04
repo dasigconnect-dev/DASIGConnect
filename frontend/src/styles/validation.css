@@ -8,7 +8,7 @@
   --val-text-2: #334e6b;
   --val-muted: #6a7f9a;
   --val-muted-2: #a0b0c8;
-  --val-blue: #1877f2;
+  --val-blue: #0b5fcc;
   --val-blue-dim: #eff6ff;
   --val-blue-bdr: #bfdbfe;
   --val-green: #16a34a;
@@ -53,7 +53,7 @@
   justify-content: center;
   border: 0;
   background: transparent;
-  color: #1877f2;
+  color: #0B5FCC;
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
@@ -84,7 +84,7 @@
   border: 1px solid #bfdbfe;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
-  color: #1877f2;
+  color: #0B5FCC;
   font-size: 12px;
   font-weight: 700;
   box-shadow: 0 2px 10px rgba(24, 119, 242, 0.15);
@@ -202,7 +202,7 @@
 
 .val-tabs button.active {
   background: #ffffff;
-  color: #1877f2;
+  color: #0B5FCC;
   font-weight: 700;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
@@ -223,7 +223,7 @@
 
 .val-tabs .active span {
   background: #eff6ff;
-  color: #1877f2;
+  color: #0B5FCC;
 }
 
 .val-search {
@@ -408,7 +408,7 @@
 
 .val-qi-institution i {
   font-size: 12px;
-  color: #1877f2;
+  color: #0B5FCC;
   flex-shrink: 0;
 }
 
@@ -716,6 +716,213 @@
   color: var(--val-muted);
 }
 
+/* ── Submission details side panel (collapsible, beside the FB preview) ── */
+.val-review-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.val-review-layout > .val-fb-card {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+  margin-bottom: 0;
+}
+
+.val-details-panel {
+  flex: 0 0 300px;
+  align-self: stretch;
+  position: sticky;
+  top: 0;
+  border-radius: var(--val-radius);
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  overflow: hidden;
+}
+
+.val-details-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 12px 11px 14px;
+  border-bottom: 1px solid var(--val-border);
+  background: var(--val-surface-2);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--val-text-2);
+}
+
+.val-details-head span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.val-details-hide {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  color: var(--val-muted);
+  cursor: pointer;
+  font-size: 15px;
+}
+.val-details-hide:hover {
+  color: var(--val-blue);
+  border-color: var(--val-blue-bdr);
+  background: var(--val-blue-dim);
+}
+
+.val-details-list {
+  margin: 0;
+  padding: 6px 14px 12px;
+}
+
+.val-details-list > div {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--val-border);
+}
+.val-details-list > div:last-child {
+  border-bottom: 0;
+}
+
+.val-details-list dt {
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--val-muted);
+  margin-bottom: 4px;
+}
+
+.val-details-list dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--val-text);
+  word-break: break-word;
+}
+
+.val-details-you {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--val-blue-dim);
+  color: var(--val-blue);
+  border: 1px solid var(--val-blue-bdr);
+}
+
+.val-details-muted {
+  color: var(--val-muted);
+  font-size: 12px;
+}
+
+.val-details-sub {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--val-muted);
+}
+
+.val-details-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  border: 1px solid var(--val-border);
+}
+.val-details-mode.is-scheduled {
+  background: var(--val-blue-dim);
+  color: var(--val-blue);
+  border-color: var(--val-blue-bdr);
+}
+.val-details-mode.is-live {
+  background: var(--val-red-dim);
+  color: var(--val-red);
+  border-color: var(--val-red-bdr);
+}
+.val-details-mode.is-unset {
+  background: var(--val-amber-dim);
+  color: var(--val-amber);
+  border-color: var(--val-amber-bdr);
+}
+
+.val-details-editors {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.val-details-editors li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 12.5px;
+}
+
+.val-details-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid #bfdbfe;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  color: #0b5fcc;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(24, 119, 242, 0.15);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.val-details-btn:hover {
+  background: #eff6ff;
+  border-color: #60a5fa;
+  transform: translateX(-2px);
+  box-shadow: 0 4px 14px rgba(24, 119, 242, 0.22);
+}
+.val-details-btn i {
+  font-size: 14px;
+}
+
+@media (max-width: 1180px) {
+  .val-review-layout {
+    flex-direction: column;
+  }
+  .val-review-layout > .val-fb-card,
+  .val-review-layout > .val-details-panel {
+    flex: none;
+    width: 100%;
+    max-width: 100%;
+    position: static;
+  }
+}
+
 /* ── Realistic Facebook Post Preview Card (Authentic Facebook Light Feed) ── */
 .val-fb-card {
   background: #ffffff;
@@ -755,7 +962,7 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: #1877f2;
+  background: #0B5FCC;
   color: white;
   display: flex;
   align-items: center;
@@ -830,8 +1037,8 @@
 
 .val-wm-toggle-btn.active {
   background: #e7f3ff;
-  border-color: #1877f2;
-  color: #1877f2;
+  border-color: #0B5FCC;
+  color: #0B5FCC;
 }
 
 .val-fb-more-btn {
@@ -880,7 +1087,7 @@
 }
 
 .val-fb-hashtag {
-  color: #1877f2;
+  color: #0B5FCC;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -1024,7 +1231,7 @@
 }
 
 .val-fb-thumb.active {
-  border-color: #1877f2;
+  border-color: #0B5FCC;
   box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.35);
 }
 
@@ -1058,7 +1265,7 @@
 .val-fb-insights-link {
   font-size: 14px;
   font-weight: 600;
-  color: #1877f2;
+  color: #0B5FCC;
   cursor: pointer;
 }
 
@@ -1067,7 +1274,7 @@
 }
 
 .val-fb-create-ad-btn {
-  background: #1877f2;
+  background: #0B5FCC;
   color: white;
   border: none;
   border-radius: 6px;
@@ -1130,7 +1337,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #1877f2;
+  background: #0B5FCC;
   color: white;
   display: flex;
   align-items: center;
@@ -1451,6 +1658,7 @@
   border-radius: 20px;
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
   background: #eff6ff;
   color: #1d4ed8;
   border: 1px solid #bfdbfe;
@@ -1480,7 +1688,7 @@
 
 .val-action-hint i {
   font-size: 17px;
-  color: #1877f2;
+  color: #0B5FCC;
   flex-shrink: 0;
 }
 
@@ -1525,25 +1733,27 @@
   cursor: not-allowed;
 }
 
-/* Primary Button (Approve / Confirm) */
+/* Primary Button (Approve / Confirm / Send Revision Request) */
 .val-btn-primary,
 .val-btn.success,
-.val-modal-actions .success {
-  background: #1877f2;
+.val-modal-actions .success,
+.val-modal-actions .warn {
+  background: #0B5FCC;
   color: #ffffff;
   border: 1px solid #166fe5;
   box-shadow: 0 1px 3px rgba(24, 119, 242, 0.25);
 }
 
 .val-btn-primary:hover:not(:disabled),
-.val-btn.success:hover:not(:disabled) {
+.val-btn.success:hover:not(:disabled),
+.val-modal-actions .success:hover:not(:disabled),
+.val-modal-actions .warn:hover:not(:disabled) {
   background: #166fe5;
   box-shadow: 0 2px 6px rgba(24, 119, 242, 0.35);
 }
 
-/* Secondary Button (Neutral Action / Request Revision) */
-.val-btn-secondary,
-.val-modal-actions .warn {
+/* Secondary Button (Neutral Action / Request Revision toolbar) */
+.val-btn-secondary {
   background: #ffffff;
   color: #334155;
   border: 1px solid #cbd5e1;
@@ -1621,7 +1831,8 @@
 }
 
 .val-edit-field input,
-.val-edit-field textarea {
+.val-edit-field textarea,
+.val-edit-field select {
   border: 1px solid var(--val-border);
   border-radius: 8px;
   padding: 9px 11px;
@@ -1634,6 +1845,7 @@
 
 .val-edit-field input:focus,
 .val-edit-field textarea:focus,
+.val-edit-field select:focus,
 .val-edit-media-caption:focus {
   outline: none;
   border-color: var(--val-accent, #2563eb);
@@ -1641,6 +1853,34 @@
 }
 
 .val-edit-field textarea { resize: vertical; }
+
+.val-edit-hashtags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.val-edit-hashtag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--val-blue-dim);
+  color: var(--val-blue);
+  border: 1px solid var(--val-blue-bdr);
+}
+.val-edit-hashtags-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--val-muted);
+}
+.val-edit-hashtags-hint code {
+  font-family: var(--ff-mono, ui-monospace, monospace);
+  background: var(--val-surface-2);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
 
 .val-log-flag {
   margin-left: 8px;
@@ -1692,7 +1932,7 @@
   --val-text: #0c1d3d;
   --val-text-2: #334e6b;
   --val-muted: #6a7f9a;
-  --val-blue: #1877f2;
+  --val-blue: #0b5fcc;
   --val-green: #16a34a;
   --val-green-dim: #f0fdf4;
   --val-red: #dc2626;
@@ -1733,6 +1973,45 @@
   animation: valModalOut 190ms ease both;
 }
 
+.val-modal-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.val-modal-header .val-modal-icon {
+  margin-bottom: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.val-modal-header-text {
+  flex: 1;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.val-modal-header-text h3 {
+  color: var(--val-text);
+  margin: 0 0 4px;
+  font-family: var(--ff-display);
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.val-modal-header-text p {
+  margin: 0;
+  color: var(--val-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .val-modal-icon {
   display: flex;
   align-items: center;
@@ -1750,8 +2029,8 @@
 }
 
 .val-modal-icon.warn {
-  background: var(--val-amber-dim);
-  color: var(--val-amber);
+  background: #eff6ff;
+  color: #0B5FCC;
 }
 
 .val-modal-icon.danger {
@@ -1820,6 +2099,157 @@
   background: var(--val-red-dim);
   border-color: var(--val-red-bdr);
   color: var(--val-red);
+}
+
+/* Wide Modal for Revision Details */
+.val-modal.val-modal--wide {
+  width: min(560px, 100%);
+}
+
+.val-revision-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: left;
+  margin-top: 14px;
+}
+
+.val-revision-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.val-revision-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--val-text);
+}
+
+.val-revision-hint {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--val-muted);
+}
+
+.val-revision-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+.val-revision-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface-2);
+  color: var(--val-text-2);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.val-revision-chip:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #0B5FCC;
+}
+
+.val-revision-chip.is-active {
+  background: #eff6ff;
+  border-color: #0B5FCC;
+  color: #0B5FCC;
+}
+
+.val-revision-chip.has-comment {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.val-chip-check {
+  font-size: 11px;
+  color: #16a34a;
+  margin-left: 2px;
+}
+
+.val-chip-plus {
+  font-size: 11px;
+  color: var(--val-muted);
+  margin-left: 2px;
+}
+
+.val-revision-field-box {
+  background: #f8fafc;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.val-revision-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.val-revision-field-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #0B5FCC;
+}
+
+.val-revision-field-name strong {
+  font-weight: 700;
+}
+
+.val-revision-field-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.val-revision-field-clear:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.val-revision-field-input {
+  background: #ffffff;
+  min-height: 64px;
+}
+
+.val-revision-attached-summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #0B5FCC;
+  margin-top: 4px;
 }
 
 .val-modal-actions {
@@ -2087,7 +2517,7 @@
   font-size: 16px;
   flex-shrink: 0;
   background: #eff6ff;
-  color: #1877f2;
+  color: #0B5FCC;
 }
 
 .val-log-dot.action-approved,
@@ -2386,7 +2816,8 @@
 /* ── Edit mode: form beside a scaled-down submission preview ── */
 .val-edit-layout--off { display: contents; }
 
-.val-scroll:has(.val-edit-layout) { align-items: stretch; }
+.val-scroll:has(.val-edit-layout),
+.val-scroll:has(.val-review-layout) { align-items: stretch; }
 
 .val-edit-layout {
   display: flex;
@@ -2445,8 +2876,8 @@
   --val-text: #0c1d3d;
   --val-text-2: #3a506b;
   --val-muted: #6a7f9a;
-  --val-blue: #1877f2;
-  --val-blue-2: #1565d8;
+  --val-blue: #0b5fcc;
+  --val-blue-2: #084a9f;
 
   --sub-surface: #ffffff;
   --sub-surface-2: #f7f9fd;
@@ -2454,8 +2885,8 @@
   --sub-text: #0c1d3d;
   --sub-text-2: #3a506b;
   --sub-muted: #6a7f9a;
-  --sub-blue: #1877f2;
-  --sub-blue-2: #1565d8;
+  --sub-blue: #0b5fcc;
+  --sub-blue-2: #084a9f;
   --sub-blue-dim: #eff6ff;
   --sub-blue-bdr: #bfdbfe;
   --sub-r: 10px;
@@ -2468,7 +2899,7 @@
   --mp-text: #0c1d3d;
   --mp-text-2: #3a506b;
   --mp-muted: #6a7f9a;
-  --mp-blue: #1877f2;
+  --mp-blue: #0b5fcc;
   --mp-blue-dim: #eff6ff;
   --mp-blue-bdr: #bfdbfe;
   --mp-r: 10px;
@@ -2743,4 +3174,89 @@
 @media (prefers-reduced-motion: reduce) {
   .val-libpick-backdrop,
   .val-libpick { animation: none; }
+}
+
+/* ── Submit Content authoring tools inside moderator edit mode ──────────── */
+.val-edit-caption-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Reused pickers/panels sit flush in the edit body */
+.val-edit-body .mp-root,
+.val-edit-body .sub-engagement-panel {
+  margin: 0;
+}
+
+/* Shared modal header (media-item settings) */
+.val-preview-modal-head,
+.val-media-settings-modal .val-preview-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--val-border);
+  background: var(--val-surface-2);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--val-text-2);
+}
+.val-preview-modal-head > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.val-media-settings-modal {
+  width: min(460px, 100%);
+  border-radius: 14px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  box-shadow: 0 20px 70px rgba(12, 29, 61, 0.22);
+  overflow: hidden;
+  animation: valModalIn 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.val-media-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 16px;
+}
+.val-media-settings-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--val-text);
+  word-break: break-word;
+}
+.val-media-settings-body .val-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.val-media-settings-body .val-edit-field > span {
+  color: var(--val-muted);
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.val-media-settings-body textarea {
+  border: 1px solid var(--val-border-2);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font: inherit;
+  resize: vertical;
+}
+.val-media-settings-wm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--val-text-2);
 }

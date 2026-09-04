@@ -1,16 +1,37 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 export function SectionHead({
   icon,
   tone,
   title,
   subtitle,
+  revisionComment,
+  isDone,
+  onToggleDone,
 }: {
   icon: string;
   tone: string;
   title: string;
   subtitle: string;
+  revisionComment?: string | null;
+  isDone?: boolean;
+  onToggleDone?: () => void;
 }) {
+  const [commentOpen, setCommentOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!commentOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setCommentOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [commentOpen]);
+
   return (
     <div className="sub-section-head">
       <div className="sub-section-label">
@@ -18,7 +39,66 @@ export function SectionHead({
           <i className={`ti ${icon}`}></i>
         </div>
         <div>
-          <div className="sub-section-title">{title}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div className="sub-section-title">{title}</div>
+            {revisionComment && (
+              <div className="sub-field-comment-wrap" ref={popoverRef}>
+                <button
+                  type="button"
+                  className={`sub-field-comment-btn ${isDone ? "is-done" : ""} ${commentOpen ? "is-active" : ""}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setCommentOpen(!commentOpen);
+                  }}
+                  title={isDone ? "Revision resolved (Click to view note)" : "Click to view reviewer feedback"}
+                  aria-label="View reviewer feedback"
+                >
+                  <i className={isDone ? "ti ti-check" : "ti ti-message-2"} aria-hidden="true" />
+                  <span>{isDone ? "Done" : "Revision Note"}</span>
+                </button>
+
+                {commentOpen && (
+                  <div
+                    className="sub-field-comment-popover"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="sub-field-comment-popover-head">
+                      <div className="sub-field-comment-popover-title">
+                        <i className="ti ti-message-dots" />
+                        <span>Reviewer Feedback</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="sub-field-comment-popover-close"
+                        onClick={() => setCommentOpen(false)}
+                        aria-label="Close comment"
+                      >
+                        <i className="ti ti-x" />
+                      </button>
+                    </div>
+                    <p className="sub-field-comment-popover-text">{revisionComment}</p>
+                    {onToggleDone && (
+                      <div className="sub-field-comment-popover-footer">
+                        <button
+                          type="button"
+                          className={`sub-field-comment-ack-btn ${isDone ? "is-done" : ""}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onToggleDone();
+                          }}
+                        >
+                          <i className="ti ti-check" />
+                          <span>{isDone ? "Marked as Done" : "Mark as Done"}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <div className="sub-section-subtitle">{subtitle}</div>
         </div>
       </div>
@@ -33,6 +113,10 @@ export function Field({
   action,
   tooltip,
   children,
+  revisionComment,
+  isPulsing,
+  isDone,
+  onToggleDone,
 }: {
   label: string;
   count?: string;
@@ -40,18 +124,93 @@ export function Field({
   action?: ReactNode;
   tooltip?: string;
   children: ReactNode;
+  revisionComment?: string | null;
+  isPulsing?: boolean;
+  isDone?: boolean;
+  onToggleDone?: () => void;
 }) {
+  const [commentOpen, setCommentOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!commentOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setCommentOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [commentOpen]);
+
   return (
-    <label className="sub-fgroup">
-      <span className="sub-flabel">
+    <div className={`sub-fgroup ${isPulsing ? "sub-field-pulse" : ""}`}>
+      <div className="sub-flabel">
         <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          {label}
+          <span>{label}</span>
           {tooltip && (
             <i
               className="ti ti-info-circle"
               title={tooltip}
               style={{ color: "#9ca3af", cursor: "help", fontSize: "15px" }}
             />
+          )}
+          {revisionComment && (
+            <div className="sub-field-comment-wrap" ref={popoverRef}>
+              <button
+                type="button"
+                className={`sub-field-comment-btn ${isDone ? "is-done" : ""} ${commentOpen ? "is-active" : ""}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setCommentOpen(!commentOpen);
+                }}
+                title={isDone ? "Revision resolved (Click to view note)" : "Click to view reviewer feedback"}
+                aria-label="View reviewer feedback for this field"
+              >
+                <i className={isDone ? "ti ti-check" : "ti ti-message-2"} aria-hidden="true" />
+                <span>{isDone ? "Done" : "Revision Note"}</span>
+              </button>
+
+              {commentOpen && (
+                <div
+                  className="sub-field-comment-popover"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="sub-field-comment-popover-head">
+                    <div className="sub-field-comment-popover-title">
+                      <i className="ti ti-message-dots" />
+                      <span>Reviewer Feedback</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="sub-field-comment-popover-close"
+                      onClick={() => setCommentOpen(false)}
+                      aria-label="Close comment"
+                    >
+                      <i className="ti ti-x" />
+                    </button>
+                  </div>
+                  <p className="sub-field-comment-popover-text">{revisionComment}</p>
+                  {onToggleDone && (
+                    <div className="sub-field-comment-popover-footer">
+                      <button
+                        type="button"
+                        className={`sub-field-comment-ack-btn ${isDone ? "is-done" : ""}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onToggleDone();
+                        }}
+                      >
+                        <i className="ti ti-check" />
+                        <span>{isDone ? "Marked as Done" : "Mark as Done"}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </span>
         <span className="sub-flabel-right">
@@ -60,9 +219,9 @@ export function Field({
           )}
           {action}
         </span>
-      </span>
+      </div>
       {children}
-    </label>
+    </div>
   );
 }
 
@@ -245,7 +404,7 @@ export function ConfirmModal({
   onCancel?: () => void;
   onConfirm: () => void;
 }) {
-  return (
+  return createPortal(
     <div
       className="sub-modal-overlay"
       onClick={disabled ? undefined : onCancel || onConfirm}
@@ -279,7 +438,8 @@ export function ConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -309,7 +469,7 @@ export function DraftExitModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [disabled, onContinue]);
 
-  return (
+  return createPortal(
     <div
       className="sub-modal-overlay"
       onClick={disabled ? undefined : onContinue}
@@ -359,6 +519,7 @@ export function DraftExitModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

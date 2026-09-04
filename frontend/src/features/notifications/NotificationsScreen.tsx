@@ -141,7 +141,10 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
     if (n.link !== "/dashboard" && n.link !== "/notifications" && n.link !== "/") {
       if (n.link.startsWith("/submissions/")) {
         const subId = n.link.replace("/submissions/", "");
-        const ownerView = `/submissions?submissionId=${subId}`;
+        const ownerView =
+          eventType === "submission_needs_revision"
+            ? `/submissions?submissionId=${subId}&openFeedback=true`
+            : `/submissions?submissionId=${subId}`;
         if (OWNER_FACING_EVENTS.has(eventType)) return ownerView;
         if (REVIEW_FACING_EVENTS.has(eventType)) {
           return canReview ? `/validation/queue?submissionId=${subId}` : ownerView;
@@ -181,7 +184,8 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   if (eventType === "submission_needs_revision" || eventType === "submission_rejected") {
-    // Both live under the "Action Needed" tab in My Submissions.
+    // Both live under the "Action Needed" tab in My Submissions. `openFeedback`
+    // is only honored on a single-submission route, so it's not appended here.
     return "/submissions?tab=action-needed";
   }
 

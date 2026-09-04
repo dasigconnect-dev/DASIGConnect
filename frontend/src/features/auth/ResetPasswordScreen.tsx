@@ -124,7 +124,12 @@ export default function ResetPasswordScreen({
                     value={password}
                     onChange={(event) => onPasswordChange(event.target.value)}
                   />
-                  <button type="button" className="eye-btn" onClick={onTogglePassword} aria-label="Toggle">
+                  <button
+                    type="button"
+                    className="eye-btn"
+                    onClick={onTogglePassword}
+                    aria-label={showPassword ? 'Hide new password' : 'Show new password'}
+                  >
                     <i className={showPassword ? 'ti ti-eye' : 'ti ti-eye-off'}></i>
                   </button>
                 </div>
@@ -164,7 +169,12 @@ export default function ResetPasswordScreen({
                     value={confirmPassword}
                     onChange={(event) => onConfirmPasswordChange(event.target.value)}
                   />
-                  <button type="button" className="eye-btn" onClick={onToggleConfirmPassword} aria-label="Toggle">
+                  <button
+                    type="button"
+                    className="eye-btn"
+                    onClick={onToggleConfirmPassword}
+                    aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                  >
                     <i className={showConfirmPassword ? 'ti ti-eye' : 'ti ti-eye-off'}></i>
                   </button>
                 </div>
