@@ -8,11 +8,14 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.dasigconnect.backend.event.SubmissionEditedDuringReviewEvent;
+import com.dasigconnect.backend.model.entity.ReviewEditSeverity;
 import com.dasigconnect.backend.model.entity.ReviewLock;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
@@ -36,16 +39,19 @@ public class ReviewLockService {
     private final SubmissionRepository submissionRepository;
     private final ValidationLogRepository validationLogRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ReviewLockService(
             ReviewLockRepository reviewLockRepository,
             SubmissionRepository submissionRepository,
             ValidationLogRepository validationLogRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            ApplicationEventPublisher eventPublisher) {
         this.reviewLockRepository = reviewLockRepository;
         this.submissionRepository = submissionRepository;
         this.validationLogRepository = validationLogRepository;
         this.userRepository = userRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -128,13 +134,21 @@ public class ReviewLockService {
 
         // Revert to pending only if the submission is still in_review
         // (it may already be scheduled/needs_revision/rejected if an action was taken)
-        if (submission.getStatus() == SubmissionStatus.in_review) {
+        boolean noTerminalAction = submission.getStatus() == SubmissionStatus.in_review;
+        if (noTerminalAction) {
             submission.setStatus(SubmissionStatus.pending);
             submissionRepository.save(submission);
         }
 
         logAction(submission, validator, ValidationAction.lock_released, null, null);
         log.info("Review lock released: submission={} validator={}", submissionId, caller.userId());
+
+        // A10: if the moderator changed the contributor's submission but walked away
+        // without approving/revising/rejecting, the contributor still needs to know.
+        // The terminal actions publish this event themselves.
+        if (noTerminalAction) {
+            publishEditedIfSessionHadEdits(submission, submissionId);
+        }
     }
 
     /**
@@ -188,7 +202,8 @@ public class ReviewLockService {
     private void expireLock(ReviewLock lock, Submission submission) {
         reviewLockRepository.delete(lock);
 
-        if (submission.getStatus() == SubmissionStatus.in_review) {
+        boolean noTerminalAction = submission.getStatus() == SubmissionStatus.in_review;
+        if (noTerminalAction) {
             submission.setStatus(SubmissionStatus.pending);
             submissionRepository.save(submission);
         }
@@ -196,6 +211,44 @@ public class ReviewLockService {
         logAction(submission, lock.getLockedBy(), ValidationAction.lock_expired, null, null);
         log.info("Review lock expired: submission={} validator={}",
                 submission.getId(), lock.getLockedBy().getId());
+
+        if (noTerminalAction) {
+            publishEditedIfSessionHadEdits(submission, submission.getId());
+        }
+    }
+
+    /**
+     * A10: notify the contributor when a review session that changed their
+     * submission ended without a terminal action (explicit release or lock
+     * expiry). Severity is the highest recorded across this session's
+     * {@code edited} / {@code media_added} rows; null (no edits) publishes nothing.
+     */
+    private void publishEditedIfSessionHadEdits(Submission submission, UUID submissionId) {
+        List<ValidationLog> logs = validationLogRepository
+                .findBySubmissionIdOrderByCreatedAtAsc(submissionId);
+        int lastLockIndex = -1;
+        for (int i = 0; i < logs.size(); i++) {
+            if (logs.get(i).getAction() == ValidationAction.lock_acquired) {
+                lastLockIndex = i;
+            }
+        }
+        ReviewEditSeverity severity = null;
+        for (int i = lastLockIndex + 1; i < logs.size(); i++) {
+            String raw = logs.get(i).getEditSeverity();
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            try {
+                severity = ReviewEditSeverity.max(severity,
+                        ReviewEditSeverity.valueOf(raw.trim().toUpperCase()));
+            } catch (IllegalArgumentException ignored) {
+                // unknown legacy value — skip
+            }
+        }
+        if (severity != null) {
+            eventPublisher.publishEvent(
+                    new SubmissionEditedDuringReviewEvent(submission, severity, null));
+        }
     }
 
     private void logAction(Submission submission, User validator,
