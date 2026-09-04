@@ -30,7 +30,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -175,7 +177,7 @@ class ValidationServiceTest {
 
         validationService.attachReviewLibraryAsset(submission.getId(), assetId, "  needed a wider crowd shot  ", moderator());
 
-        verify(submissionService).attachLibraryAssetTo(submission, assetId);
+        verify(submissionService).attachLibraryAssetTo(submission, assetId, moderator());
         ValidationLog entry = savedLog();
         assertThat(entry.getAction()).isEqualTo(ValidationAction.media_added);
         assertThat(entry.getEditSeverity()).isEqualTo("added_media");
@@ -253,8 +255,7 @@ class ValidationServiceTest {
     }
 
     @Test
-    void approve_selfReview_isAllowedAndFlaggedInAuditLog() {
-        // A5: self-review is allowed, not blocked — but must be distinctly flagged.
+    void approve_selfReview_isBlockedAndLeftForAnotherModerator() {
         UUID sharedId = UUID.randomUUID();
         JwtUserDetails admin = new JwtUserDetails(sharedId, "admin@dasigconnect.local", "moderator", null);
 
@@ -270,17 +271,16 @@ class ValidationServiceTest {
         contributor.setId(sharedId); // same identity as the reviewing admin
         submission.setContributor(contributor);
 
-        User adminUser = new User();
-        adminUser.setId(sharedId);
-
         when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
-        when(userRepository.findById(sharedId)).thenReturn(Optional.of(adminUser));
 
-        validationService.approve(submission.getId(), admin);
+        assertThatThrownBy(() -> validationService.approve(submission.getId(), admin))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("reviewed by another moderator");
 
-        ArgumentCaptor<ValidationLog> captor = ArgumentCaptor.forClass(ValidationLog.class);
-        verify(validationLogRepository).save(captor.capture());
-        assertThat(captor.getValue().isSelfReview()).isTrue();
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.pending);
+        verify(slotReservationService, never()).confirm(any());
+        verify(submissionRepository, never()).save(any());
+        verify(validationLogRepository, never()).save(any());
     }
 
     @Test

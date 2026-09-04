@@ -253,10 +253,9 @@ public class SubmissionService {
     }
 
     /**
-     * Moves an editable draft to a different institution when an admin composer
-     * picks a new "Posting As" scope. Media attached from the previous
-     * institution's library is detached (the {@link MediaAsset} rows stay in
-     * that library; draft-only uploads that end up orphaned are purged), any
+     * Moves an editable draft to a different institution when a network-wide
+     * composer picks a new "Posting As" scope. Selected media is kept because
+     * reviewers/admins may reuse vetted library assets across institutions. Any
      * held slot is released, and the schedule is cleared because guard rails are
      * evaluated per institution. No-op when the id is unchanged/absent.
      */
@@ -281,24 +280,13 @@ public class SubmissionService {
         // institution — they stay attached and survive the move. Only assets
         // picked from the previous institution's library are detached; those rows
         // remain in that library, so nothing is lost.
-        List<MediaAsset> libraryPicks = submissionMediaAssetRepository
-                .findMediaAssetsBySubmissionId(submission.getId()).stream()
-                .filter(asset -> asset.getStatus() != MediaAssetStatus.STAGED)
-                .toList();
-        for (MediaAsset asset : libraryPicks) {
-            submissionMediaAssetRepository
-                    .findBySubmissionIdAndMediaAssetId(submission.getId(), asset.getId())
-                    .ifPresent(submissionMediaAssetRepository::delete);
-        }
-        submissionMediaAssetRepository.flush();
         slotReservationService.deleteAllForSubmission(submission.getId());
 
         submission.setInstitution(target);
         submission.setScheduledAt(null);
         refreshManualPublishingFlag(submission);
-        log.info("Submission {} re-homed from institution {} to {} by user {} ({} library picks detached, staged uploads kept)",
-                submission.getId(), previousInstitutionId, requestedInstitutionId, user.userId(),
-                libraryPicks.size());
+        log.info("Submission {} re-homed from institution {} to {} by user {} (media kept)",
+                submission.getId(), previousInstitutionId, requestedInstitutionId, user.userId());
     }
 
     /**
@@ -404,6 +392,10 @@ public class SubmissionService {
 
     private static boolean isModerator(JwtUserDetails user) {
         return user != null && "moderator".equalsIgnoreCase(user.role());
+    }
+
+    private static boolean isNetworkRole(JwtUserDetails user) {
+        return isAdmin(user) || isModerator(user);
     }
 
     /**
@@ -747,11 +739,11 @@ public class SubmissionService {
     public SubmissionResponseDto attachAsset(UUID submissionId, AttachAssetDto dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
         assertEditableStatus(submission);
-        return attachLibraryAssetTo(submission, dto.getMediaAssetId());
+        return attachLibraryAssetTo(submission, dto.getMediaAssetId(), user);
     }
 
     /** attach-library-asset core — caller owns the auth/status checks. Reused by ValidationService. */
-    SubmissionResponseDto attachLibraryAssetTo(Submission submission, UUID mediaAssetId) {
+    SubmissionResponseDto attachLibraryAssetTo(Submission submission, UUID mediaAssetId, JwtUserDetails user) {
         UUID submissionId = submission.getId();
         MediaAsset asset = mediaAssetRepository.findActiveById(mediaAssetId)
                 .orElseThrow(() -> new MediaAssetNotFoundException(mediaAssetId));
@@ -760,8 +752,9 @@ public class SubmissionService {
         if (asset.getInstitution() == null) {
             throw new MediaAssetNotFoundException(mediaAssetId);
         }
-        // Validate asset belongs to same institution
-        if (!asset.getInstitution().getId().equals(submission.getInstitution().getId())) {
+        // Contributors stay institution-scoped. Network-wide reviewers/admins may
+        // reuse vetted library assets across institutions.
+        if (!isNetworkRole(user) && !asset.getInstitution().getId().equals(submission.getInstitution().getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Media asset does not belong to this submission's institution.");
         }

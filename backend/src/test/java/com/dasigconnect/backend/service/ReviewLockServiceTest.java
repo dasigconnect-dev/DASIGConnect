@@ -2,10 +2,12 @@ package com.dasigconnect.backend.service;
 
 import com.dasigconnect.backend.model.entity.ReviewLock;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.ReviewLockRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
+import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.repository.ValidationLogRepository;
 import java.time.Instant;
 import java.util.Optional;
@@ -19,6 +21,9 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -97,5 +102,29 @@ class ReviewLockServiceTest {
         Optional<ReviewLock> result = reviewLockService.getActiveLock(submissionId);
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    void acquire_ownSubmission_isBlocked() {
+        UUID userId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        JwtUserDetails caller = new JwtUserDetails(userId, "moderator@dasigconnect.local", "moderator", null);
+
+        User contributor = new User();
+        contributor.setId(userId);
+
+        Submission submission = new Submission();
+        submission.setId(submissionId);
+        submission.setStatus(SubmissionStatus.pending);
+        submission.setContributor(contributor);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+
+        assertThatThrownBy(() -> reviewLockService.acquire(submissionId, caller))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("Another Moderator");
+
+        verify(reviewLockRepository, never()).save(org.mockito.ArgumentMatchers.any());
+        verify(submissionRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 }

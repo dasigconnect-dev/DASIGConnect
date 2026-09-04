@@ -67,6 +67,12 @@ public class ReviewLockService {
      */
     public ReviewLock acquire(UUID submissionId, JwtUserDetails caller) {
         Submission submission = loadSubmissionInScope(submissionId, caller);
+        if (submission.getContributor() != null
+                && submission.getContributor().getId() != null
+                && submission.getContributor().getId().equals(caller.userId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You cannot review your own submission. Another Moderator must review it.");
+        }
 
         // Only PENDING submissions can be locked (IN_REVIEW may already be locked by this user)
         if (submission.getStatus() != SubmissionStatus.pending
@@ -87,7 +93,7 @@ public class ReviewLockService {
                 }
                 // Another reviewer holds it
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "This submission is currently being reviewed by someone else.");
+                        "This submission is currently being reviewed by another Moderator.");
             }
             // Expired lock — clean it up before acquiring
             expireLock(existing, submission);

@@ -124,11 +124,13 @@ public class ValidationService {
      * SubmissionService.create()), so slot confirmation is skipped for them —
      * publishing immediately is handled downstream by FastTrackPublishingListener
      * reacting to SubmissionApprovedEvent.
-     * A5: self-review is allowed but distinctly flagged in the audit log.
+     * Moderators cannot approve their own submissions; another moderator/admin
+     * must make the approval decision.
      */
     public void approve(UUID submissionId, JwtUserDetails caller) {
         Submission submission = loadSubmissionInScope(submissionId, caller);
         boolean selfReview = isSelfReview(submission, caller);
+        assertNotSelfApproval(selfReview);
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
 
@@ -226,7 +228,7 @@ public class ValidationService {
     public SubmissionResponseDto attachReviewLibraryAsset(
             UUID submissionId, UUID mediaAssetId, String justification, JwtUserDetails caller) {
         Submission submission = loadForMediaEdit(submissionId, caller);
-        SubmissionResponseDto response = submissionService.attachLibraryAssetTo(submission, mediaAssetId);
+        SubmissionResponseDto response = submissionService.attachLibraryAssetTo(submission, mediaAssetId, caller);
         String note = justification == null || justification.isBlank() ? null : justification.trim();
         logAction(submission, loadUser(caller.userId()), ValidationAction.media_added, note, null,
                 isSelfReview(submission, caller), submission.isFastTrack(),
@@ -358,6 +360,13 @@ public class ValidationService {
 
     private boolean isSelfReview(Submission submission, JwtUserDetails caller) {
         return submission.getContributor().getId().equals(caller.userId());
+    }
+
+    private void assertNotSelfApproval(boolean selfReview) {
+        if (selfReview) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Your own submission must be reviewed by another moderator.");
+        }
     }
 
     private void assertReviewableStatus(Submission submission) {

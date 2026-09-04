@@ -26,6 +26,8 @@ interface MediaAssetsPickerProps {
    * and the library resolves to their own institution.
    */
   institutionId?: string;
+  /** Show the library across every institution for network-wide roles. */
+  networkView?: boolean;
   /**
    * Hide the Upload / My Library / AI Suggestions tab bar and its panels. The
    * selected-media strip and the auto AI-suggestions block are still rendered —
@@ -46,6 +48,7 @@ export default function MediaAssetsPicker({
   onItemClick,
   getItemCaption,
   institutionId,
+  networkView,
   sourceTabs = true,
 }: MediaAssetsPickerProps) {
   const [activeTab, setActiveTab] = useState<PickerTab>("upload");
@@ -163,6 +166,7 @@ export default function MediaAssetsPicker({
               onAddItems={handleAddItems}
               disabled={disabled}
               institutionId={institutionId}
+              networkView={networkView}
             />
           )}
         </div>
