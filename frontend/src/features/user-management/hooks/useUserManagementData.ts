@@ -75,6 +75,10 @@ async function fetchUserManagementData(user: User, signal?: AbortSignal): Promis
     listAdmins(signal),
   ]);
 
+  if (signal?.aborted) {
+    throw new DOMException("User management query cancelled.", "AbortError");
+  }
+
   const institutions =
     institutionsResult.status === "fulfilled"
       ? institutionsResult.value.data.map(toInstitutionOption)

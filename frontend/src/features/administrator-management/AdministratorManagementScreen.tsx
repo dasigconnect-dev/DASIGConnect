@@ -7,17 +7,13 @@ import {
   deleteUser,
   eraseUserData,
   inviteUser,
-  listAdmins,
-  listInstitutions,
-  listPendingAdminInvitations,
   requestAdminTransfer,
   resendInvitation,
   updateUserStatus,
 } from '../../api/authApi'
-import type { PendingInvitationResponse, UserProfileResponse } from '../../api/authApi'
+import type { UserProfileResponse } from '../../api/authApi'
 import type { User } from '../../types/auth.types'
 import { useToast } from '../../context/ToastContext'
-import { registerAppCacheReset } from '../../lib/appCache'
 import { getUserDisplayName } from '../../lib/userIdentity'
 import ChangeRoleModal from '../user-management/components/ChangeRoleModal'
 import ConfirmDialog from '../user-management/components/ConfirmDialog'
@@ -25,8 +21,12 @@ import DeliveryIssuesAlert from '../user-management/components/DeliveryIssuesAle
 import InstitutionUsersCard from '../user-management/components/InstitutionUsersCard'
 import InvitationComposer from '../user-management/components/InvitationComposer'
 import { SkeletonBlock } from '../user-management/components/LoadingPrimitives'
-import type { InstitutionOption, InviteResults } from '../user-management/types'
-import { toInstitutionOption } from '../user-management/types'
+import type { InviteResults } from '../user-management/types'
+import {
+  emptyAdministratorManagementData,
+  useAdministratorManagementData,
+  useInvalidateAdministratorManagementData,
+} from './hooks/useAdministratorManagementData'
 
 interface AdminManagementScreenProps {
   user: User
@@ -42,30 +42,21 @@ interface ConfirmDialogState {
   onConfirm: () => void
 }
 
-// Survives route unmount so switching screens shows cached data instead of a
-// full reload; the mount effect still refetches quietly in the background.
-const memoryCache: {
-  admins: UserProfileResponse[] | null
-  pendingInvitations: PendingInvitationResponse[]
-} = { admins: null, pendingInvitations: [] }
-registerAppCacheReset(() => {
-  memoryCache.admins = null
-  memoryCache.pendingInvitations = []
-})
-
 export default function AdminManagementScreen({
   user,
   onProfileUpdated,
 }: AdminManagementScreenProps) {
   const toast = useToast()
-  const [admins, setAdmins] = useState<UserProfileResponse[]>(
-    () => memoryCache.admins ?? [],
-  )
-  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitationResponse[]>(
-    () => memoryCache.pendingInvitations,
-  )
-  const [loading, setLoading] = useState(() => memoryCache.admins === null)
-  const [error, setError] = useState('')
+  const administratorManagementQuery = useAdministratorManagementData(user)
+  const invalidateAdministratorManagementData = useInvalidateAdministratorManagementData()
+  const administratorManagementData = administratorManagementQuery.data ?? emptyAdministratorManagementData
+  const admins = administratorManagementData.admins
+  const pendingInvitations = administratorManagementData.pendingInvitations
+  const institutions = administratorManagementData.institutions
+  const loading = administratorManagementQuery.isLoading || administratorManagementQuery.isFetching
+  const error = [administratorManagementData.errors.roster, administratorManagementData.errors.institutions]
+    .filter(Boolean)
+    .join(' ')
 
   // Invitation modal state (mirrors Institution Management contributor invite)
   const [showInviteModal, setShowInviteModal] = useState(false)
@@ -78,7 +69,6 @@ export default function AdminManagementScreen({
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
 
   // Change role modal (demote a peer admin to moderator/contributor).
-  const [institutions, setInstitutions] = useState<InstitutionOption[]>([])
   const [roleUser, setRoleUser] = useState<UserProfileResponse | null>(null)
   const [roleBusy, setRoleBusy] = useState(false)
   const [roleError, setRoleError] = useState('')
@@ -102,24 +92,6 @@ export default function AdminManagementScreen({
   const remainingAdminSlots = Math.max(0, ADMIN_LIMIT - activeAdminCount - pendingInvitations.length)
 
   useEffect(() => {
-    void loadAdminManagement()
-  }, [])
-
-  useEffect(() => {
-    if (!isOwner) return
-    listInstitutions()
-      .then((response) => setInstitutions(response.data.map(toInstitutionOption)))
-      .catch(() => setInstitutions([]))
-  }, [isOwner])
-
-  // Keep the cross-route cache in sync with the latest lists (incl. mutations).
-  useEffect(() => {
-    if (loading) return
-    memoryCache.admins = admins
-    memoryCache.pendingInvitations = pendingInvitations
-  }, [loading, admins, pendingInvitations])
-
-  useEffect(() => {
     if (!showInviteModal || typeof document === 'undefined') return
 
     const previousOverflow = document.body.style.overflow
@@ -137,41 +109,6 @@ export default function AdminManagementScreen({
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [showInviteModal, sending])
-
-  async function loadAdminManagement() {
-    if (memoryCache.admins === null) {
-      setLoading(true)
-    }
-      setError('')
-    const [adminsResult, pendingResult] = await Promise.allSettled([
-      listAdmins(),
-      listPendingAdminInvitations(),
-    ])
-
-    if (adminsResult.status === 'fulfilled') {
-      setAdmins(adminsResult.value.data)
-    } else {
-      setAdmins([])
-    }
-
-    if (pendingResult.status === 'fulfilled') {
-      setPendingInvitations(pendingResult.value.data)
-    } else {
-      setPendingInvitations([])
-    }
-
-    const loadErrors = [
-      adminsResult.status === 'rejected'
-        ? `Admin accounts: ${getApiErrorMessage(adminsResult.reason, 'Unable to load accounts.')}`
-        : null,
-      pendingResult.status === 'rejected'
-        ? `Pending invitations: ${getApiErrorMessage(pendingResult.reason, 'Unable to load invitations.')}`
-        : null,
-    ].filter(Boolean)
-
-    setError(loadErrors.join(' '))
-    setLoading(false)
-  }
 
   function handleOpenInviteModal() {
     setEmailChips([])
@@ -263,7 +200,7 @@ export default function AdminManagementScreen({
       }
       setEmailChips([])
       setEmailDraft('')
-      await loadAdminManagement()
+      await invalidateAdministratorManagementData()
       if (failed.length === 0) {
         setShowInviteModal(false)
       }
@@ -300,10 +237,8 @@ export default function AdminManagementScreen({
   ) {
     setUpdatingUserId(managedUser.id)
     try {
-      const response = await updateUserStatus(managedUser.id, nextState)
-      setAdmins((current) =>
-        current.map((item) => (item.id === managedUser.id ? response.data : item)),
-      )
+      await updateUserStatus(managedUser.id, nextState)
+      await invalidateAdministratorManagementData()
       toast.success(nextState === 'inactive' ? 'Admin deactivated.' : 'Admin reactivated.')
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to update admin.'))
@@ -334,20 +269,15 @@ export default function AdminManagementScreen({
     try {
       const response = await deleteUser(managedUser.id)
       if (response.data.action === 'deleted') {
-        setAdmins((current) => current.filter((item) => item.id !== managedUser.id))
         toast.success(managedUser.purgedAt ? 'Record removed.' : 'Admin removed.')
       } else {
-        setAdmins((current) =>
-          current.map((item) =>
-            item.id === managedUser.id ? { ...item, accountState: 'inactive' } : item,
-          ),
-        )
         toast.info(
           managedUser.purgedAt
             ? 'This record has activity history and is kept as an anonymised tombstone for the audit trail — it cannot be removed.'
             : 'Admin account remains inactive because it has historical records.',
         )
       }
+      await invalidateAdministratorManagementData()
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to remove admin.'))
     } finally {
@@ -377,7 +307,7 @@ export default function AdminManagementScreen({
       toast.success(
         `Personal data erased.${purged > 0 ? ` ${purged} media file${purged === 1 ? '' : 's'} queued for purge.` : ''}`,
       )
-      await loadAdminManagement()
+      await invalidateAdministratorManagementData()
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to erase personal data.'))
     } finally {
@@ -403,7 +333,7 @@ export default function AdminManagementScreen({
     try {
       await requestAdminTransfer(managedUser.id)
       toast.success('Admin transfer requested.')
-      await loadAdminManagement()
+      await invalidateAdministratorManagementData()
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to request transfer.'))
     } finally {
@@ -415,7 +345,7 @@ export default function AdminManagementScreen({
     try {
       await confirmAdminTransfer()
       toast.success('Admin transfer confirmed.')
-      await loadAdminManagement()
+      await invalidateAdministratorManagementData()
       await onProfileUpdated?.()
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to confirm transfer.'))
@@ -426,7 +356,7 @@ export default function AdminManagementScreen({
     try {
       await resendInvitation(id)
       toast.success('Invitation resent.')
-      await loadAdminManagement()
+      await invalidateAdministratorManagementData()
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to resend invitation.'))
     }
@@ -437,7 +367,7 @@ export default function AdminManagementScreen({
     try {
       await cancelInvitationByUser(managedUser.id)
       toast.success('Invitation cancelled.')
-      await loadAdminManagement()
+      await invalidateAdministratorManagementData()
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Unable to cancel invitation.'))
     } finally {
@@ -475,7 +405,7 @@ export default function AdminManagementScreen({
     try {
       await changeUserRole(roleUser.id, role, institutionId)
       toast.success(`${getUserDisplayName(roleUser)} is now a ${role}.`)
-      await loadAdminManagement()
+      await invalidateAdministratorManagementData()
       setRoleUser(null)
     } catch (err: unknown) {
       setRoleError(getApiErrorMessage(err, 'Unable to change role.'))
