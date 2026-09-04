@@ -6,6 +6,7 @@ import type { CalendarEvent } from "../../api/calendarApi";
 import { rescheduleSubmission } from "../../api/calendarApi";
 import type { User } from "../../types/auth.types";
 import { useCalendarEvents } from "../../hooks/useCalendarEvents";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "../../context/ToastContext";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import MultiSelect from "../../components/ui/MultiSelect";
@@ -27,7 +28,7 @@ interface CalendarScreenProps {
 
 export default function CalendarScreen({ user }: CalendarScreenProps) {
   const calendarRef = useRef<FullCalendar>(null);
-  const { events, loading, error, refresh } = useCalendarEvents();
+  const queryClient = useQueryClient();
   const toast = useToast();
   const [selected, setSelected] = useState<CalendarEvent | null>(null);
   const [pendingReschedule, setPendingReschedule] = useState<CalendarDropInfo | null>(null);
@@ -35,7 +36,8 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
   const [calendarRange, setCalendarRange] = useState<{
     start: Date;
     end: Date;
-  } | null>(null);
+  }>(() => getDefaultMonthRange());
+  const { events, loading, error, refresh } = useCalendarEvents(user, calendarRange);
   const [showFullDay, setShowFullDay] = useState(false);
   const [institutionFilters, setInstitutionFilters] = useState<string[]>([]);
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
@@ -132,7 +134,12 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
       document.querySelectorAll(".fc-event-mirror").forEach((el) => el.remove());
     }, 0);
     toast.success("Post rescheduled.");
-    refresh();
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+      queryClient.invalidateQueries({ queryKey: ["submissions"] }),
+    ]);
   }
 
   function handleRescheduleCancel() {
@@ -225,54 +232,82 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
 
   useEffect(() => {
     if (!pendingFilterNavigation) return;
-    beginCalendarTransition();
-    if (filteredEvents.length === 0) {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      beginCalendarTransition();
+      if (filteredEvents.length === 0) {
+        setPendingFilterNavigation(false);
+        endCalendarTransition();
+        return;
+      }
+      const earliest = findEarliestEventDate(filteredEvents);
+      if (earliest) {
+        setPendingNavigation({ date: earliest });
+      }
       setPendingFilterNavigation(false);
-      endCalendarTransition();
-      return;
-    }
-    const earliest = findEarliestEventDate(filteredEvents);
-    if (earliest) {
-      setPendingNavigation({ date: earliest });
-    }
-    setPendingFilterNavigation(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [filteredEvents, pendingFilterNavigation]);
 
   useEffect(() => {
     if (!pendingNavigation) return;
-    beginCalendarTransition();
-    if (pendingNavigation.highlightId && !filteredEvents.some((event) => event.id === pendingNavigation.highlightId)) {
-      endCalendarTransition();
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      beginCalendarTransition();
+      if (pendingNavigation.highlightId && !filteredEvents.some((event) => event.id === pendingNavigation.highlightId)) {
+        endCalendarTransition();
+        setPendingNavigation(null);
+        return;
+      }
+      const api = calendarRef.current?.getApi();
+      if (!api) {
+        endCalendarTransition();
+        setPendingNavigation(null);
+        return;
+      }
+      api.gotoDate(pendingNavigation.date);
+      if (pendingNavigation.highlightId) {
+        window.setTimeout(() => {
+          setHighlightedEventId(pendingNavigation.highlightId ?? null);
+          window.setTimeout(() => setHighlightedEventId(null), 2400);
+        }, 0);
+      }
       setPendingNavigation(null);
-      return;
-    }
-    const api = calendarRef.current?.getApi();
-    if (!api) {
-      endCalendarTransition();
-      setPendingNavigation(null);
-      return;
-    }
-    api.gotoDate(pendingNavigation.date);
-    if (pendingNavigation.highlightId) {
-      window.setTimeout(() => {
-        setHighlightedEventId(pendingNavigation.highlightId ?? null);
-        window.setTimeout(() => setHighlightedEventId(null), 2400);
-      }, 0);
-    }
-    setPendingNavigation(null);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [pendingNavigation, filteredEvents]);
 
   useEffect(() => {
-    beginCalendarTransition();
-    endCalendarTransition();
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      beginCalendarTransition();
+      endCalendarTransition();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [institutionFilters, statusFilters, dateFilter]);
 
   useEffect(() => {
     if (user.role !== "contributor") return;
-    setStatusFilters((prev) => {
-      const next = prev.filter((v) => v !== "attention" && v !== "failed");
-      return next.length === prev.length ? prev : next;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setStatusFilters((prev) => {
+        const next = prev.filter((v) => v !== "attention" && v !== "failed");
+        return next.length === prev.length ? prev : next;
+      });
     });
+    return () => {
+      cancelled = true;
+    };
   }, [user.role]);
 
   useEffect(() => () => {
@@ -283,7 +318,6 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
 
   const isAdmin = user.role === "moderator" || user.role === "admin";
   const rangeLabel = useMemo(() => {
-    if (!calendarRange) return "Calendar";
     const fmt = new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric" });
     if (calendarView === "dayGridMonth") {
       return new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric" }).format(calendarRange.start);
@@ -683,4 +717,12 @@ function formatShortDate(iso: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function getDefaultMonthRange() {
+  const now = new Date();
+  return {
+    start: new Date(now.getFullYear(), now.getMonth(), 1),
+    end: new Date(now.getFullYear(), now.getMonth() + 1, 1),
+  };
 }
