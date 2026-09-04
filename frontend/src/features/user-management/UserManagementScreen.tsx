@@ -529,28 +529,24 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
               label="Active"
               value={managedUsers.filter((u) => u.accountState.toLowerCase() === 'active').length}
               loading={managementLoading && managedUsers.length === 0}
-              accent="green"
             />
             <MetricCard
               icon="ti ti-shield-check"
               label="Moderators"
               value={managedUsers.filter((u) => u.role.toLowerCase() === 'moderator').length}
               loading={managementLoading && managedUsers.length === 0}
-              accent="purple"
             />
             <MetricCard
               icon="ti ti-pencil"
               label="Contributors"
               value={managedUsers.filter((u) => u.role.toLowerCase() === 'contributor').length}
               loading={managementLoading && managedUsers.length === 0}
-              accent="blue"
             />
             <MetricCard
               icon="ti ti-clock-pause"
               label="Pending Invites"
               value={pendingInvitations.length}
               loading={managementLoading && pendingInvitations.length === 0}
-              accent={pendingInvitations.length > 0 ? 'gold' : undefined}
             />
           </div>
         )}
