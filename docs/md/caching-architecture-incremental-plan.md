@@ -1753,3 +1753,96 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2L: migrate account/settings reads such as profile page data and watermark configuration, with explicit invalidation after saves.
+
+## Phase 2L Account Settings Migration Status
+
+Status: implemented on `feature/caching-architecture-phase2l`.
+
+Changed files:
+
+- `frontend/src/features/auth/AccountSettingsScreen.tsx`
+- `frontend/src/api/authApi.ts`
+- `frontend/src/api/watermarkApi.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- `AccountSettingsScreen` used a module-level profile cache for the `GET /me` profile settings slice.
+- Page settings and watermark configuration were loaded through a one-shot effect the first time an admin opened the Page tab.
+- Watermark loading was tracked with local component state.
+- Account, page, and watermark saves updated local component state without invalidating a shared settings cache.
+- The active settings tab was mirrored from the URL hash into local state.
+
+New behavior:
+
+- Profile settings now load through TanStack Query using the existing `settings.profile` key.
+- Page settings now load lazily through TanStack Query when an admin opens the Page tab.
+- Watermark configuration now loads lazily through TanStack Query when an admin opens the Page tab or Watermark Studio route.
+- Successful account, page, and watermark saves write the returned response into the matching query cache and invalidate the `settings` query group.
+- Editable form state hydrates once from query data so background refetches do not overwrite in-progress edits.
+- The settings tab is derived directly from the URL hash instead of being mirrored through a state-setting effect.
+- Settings API read helpers now accept `AbortSignal` so query cancellation reaches Axios.
+
+Query keys:
+
+```ts
+queryKeys.settings.profile({
+  userId: user.id ?? user.email.trim().toLowerCase(),
+})
+
+queryKeys.settings.page({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: null,
+})
+
+queryKeys.settings.watermark({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: null,
+})
+```
+
+Freshness policy:
+
+- Profile settings: `staleTime: 60_000`
+- Page settings: `staleTime: 300_000`
+- Watermark configuration: `staleTime: 300_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First Settings visit for a user scope: `NETWORK` for profile settings.
+- Return within 60 seconds: `CACHE` for profile settings.
+- First admin Page tab visit: `NETWORK` for page settings and watermark configuration.
+- Return to the admin Page tab within 5 minutes: `CACHE` for page settings and watermark configuration.
+- Return after stale time while cached data exists: `CACHE immediately + BACKGROUND REFRESH`.
+- Successful account/page/watermark saves invalidate `settings` queries after caching the returned response.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`.
+
+Authentication isolation:
+
+- Profile settings are scoped by user identity.
+- Page settings and watermark configuration are scoped by user identity, role, and institution context.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for profile, page, and watermark access.
+
+Risks:
+
+- Messenger connection status remains imperative in this phase because its setup/check-code flow is a separate account channel workflow.
+- Form hydration is intentionally one-shot per mounted screen to avoid replacing unsaved edits during background refetch.
+- Profile saves still call `onProfileUpdated()` so the app-level user shell reflects the latest display name.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/features/auth/AccountSettingsScreen.tsx src/api/authApi.ts src/api/watermarkApi.ts src/lib/queryKeys.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2M: migrate the remaining ad hoc watermark consumers, such as validation previews and Facebook preview carousel reads, to shared query-backed hooks.
