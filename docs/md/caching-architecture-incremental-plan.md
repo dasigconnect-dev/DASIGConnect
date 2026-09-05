@@ -1922,3 +1922,96 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2N: review remaining authenticated imperative reads and either migrate them to query-backed hooks or explicitly document them as mutation/one-off workflows.
+
+## Phase 2N Resolution Failures Migration And Imperative Read Audit Status
+
+Status: implemented on `feature/caching-architecture-phase2n`.
+
+Changed files:
+
+- `frontend/src/hooks/useResolutionFailures.ts`
+- `frontend/src/features/validation/ValidationQueueScreen.tsx`
+- `frontend/src/lib/queryKeys.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- `useResolutionFailures()` loaded failed publications through a mount/tick effect with local `loading`, `error`, and `failures` state.
+- Manual publish detail loaded imperatively inside `openWorkflowPanel()`.
+- Refreshes used a local tick counter instead of query invalidation.
+- Resolution reads did not share authenticated query-cache lifecycle behavior.
+
+New behavior:
+
+- Failed-publication list reads now use TanStack Query through `queryKeys.resolution.failures(...)`.
+- Manual publish detail reads now use TanStack Query through `queryKeys.resolution.detail(...)`.
+- The resolution hook accepts the current `user` so list/detail keys are scoped by identity, role, and institution.
+- Manual retry/start/cancel/complete workflows invalidate the `resolution` query group after successful mutations.
+- Existing failure and detail-loading return fields are preserved for `ValidationQueueScreen`.
+- Detail-load failure toasts are preserved.
+
+Query keys:
+
+```ts
+queryKeys.resolution.failures({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: user.institutionId ?? null,
+})
+
+queryKeys.resolution.detail({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: user.institutionId ?? null,
+  submissionId,
+})
+```
+
+Freshness policy:
+
+- Resolution failures: `staleTime: 30_000`
+- Manual publish detail: `staleTime: 15_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First Failed tab visit for a reviewer scope: `NETWORK`.
+- Return within 30 seconds: `CACHE` for the failures list.
+- Open a manual workflow panel: `NETWORK` for that submission detail unless cached/fresh.
+- Return after stale time while cached data exists: `CACHE immediately + BACKGROUND REFRESH`.
+- Manual retry/start/cancel/complete invalidates `resolution` queries.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`.
+
+Authentication isolation:
+
+- Resolution failures and detail keys include user identity, role, and institution context.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for resolution visibility and workflow actions.
+
+Remaining imperative reads reviewed:
+
+- `useSubmissions()` still owns the contributor submission list and lookup module caches; this is a larger composer/workspace migration because local create/edit/withdraw/delete flows currently mutate the hook-local list.
+- Validation guard-rail checks, engagement recommendations, AI classification/media suggestions, and similar-media reads are request-on-demand workflows tied to user edits or modal actions.
+- Media upload URL reads and selected media asset detail/history reads are short-lived workflow/detail requests.
+- Messenger connection/link-code reads remain part of the account-channel setup flow.
+- Calendar/detail/modal clipboard and UI effects are not data-cache candidates.
+
+Risks:
+
+- Resolution mutation success now invalidates query state instead of incrementing a local tick, so future cross-feature invalidations should use the same query group.
+- Manual publish detail is keyed per submission and kept short-lived because workflow state can change quickly.
+- `useSubmissions()` remains the largest non-query read surface and should be handled as its own phase.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/hooks/useResolutionFailures.ts src/features/validation/ValidationQueueScreen.tsx src/lib/queryKeys.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2O: migrate `useSubmissions()` and `useSubmissionLookups()` from module-level caches to query-backed hooks, including explicit cache updates after draft/save/submit/withdraw/delete flows.

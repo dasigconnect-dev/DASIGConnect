@@ -300,7 +300,7 @@ export default function ValidationQueueScreen({
     handleCompleteManual,
     openWorkflowPanel,
     closeWorkflowPanel,
-  } = useResolutionFailures();
+  } = useResolutionFailures(user);
   const [retryItem, setRetryItem] = useState<FailedPublication | null>(null);
   const [selectedFailureId, setSelectedFailureId] = useState<string | null>(null);
   const [failureContent, setFailureContent] = useState<SubmissionSummary | null>(null);
