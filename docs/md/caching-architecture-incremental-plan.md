@@ -1583,3 +1583,83 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2J: migrate remaining lower-risk authenticated read screens such as audit log, system health, and settings reads with conservative stale times and targeted invalidation.
+
+## Phase 2J System Health Migration Status
+
+Status: implemented on `feature/caching-architecture-phase2j`.
+
+Changed files:
+
+- `frontend/src/features/system-health/SystemHealthScreen.tsx`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- `SystemHealthScreen` used module-scoped `cachedSummary`, `cachedTokens`, and `cachedAt` values.
+- The screen registered that cache with `registerAppCacheReset`.
+- System health summary and token status loaded through a local effect and manual `load()` function.
+- Running a background job manually re-called the local loader.
+
+New behavior:
+
+- `SystemHealthScreen` now uses TanStack Query for the combined system-health summary and token-status read.
+- The module-scoped system-health cache and app-cache reset registration were removed.
+- The summary remains the required part of the payload; token status still falls back to an empty list if token loading fails.
+- Manual refresh invalidates the `system-health` query group.
+- Running a background job invalidates the `system-health` query group after the job completes.
+- OAuth reauthorization and CSV export remain explicit imperative actions.
+
+Query key:
+
+```ts
+queryKeys.systemHealth.summary({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+})
+```
+
+Concrete shape:
+
+```ts
+["system-health", { role, userId }]
+```
+
+Freshness policy:
+
+- `staleTime: 60_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First System Health visit for a user scope: `NETWORK`
+- Return within 60 seconds: `CACHE`
+- Return after 60 seconds while cached data exists: `CACHE immediately + BACKGROUND REFRESH`
+- Manual refresh: invalidates system-health queries.
+- Run background job: invalidates system-health queries after completion.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`
+
+Authentication isolation:
+
+- Query key includes user identity and role.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for system-health access.
+
+Risks:
+
+- System Health remains operational telemetry, so the freshness window stays short.
+- Token-status load failure still degrades to an empty token list when summary loading succeeds, preserving previous partial-data behavior.
+- Audit Log and settings reads are intentionally left for follow-up phases because their filter/edit flows need separate review.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/features/system-health/SystemHealthScreen.tsx src/lib/queryKeys.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2K: migrate Audit Log reads with filter/page-scoped query keys, keeping export imperative and audit freshness conservative.
