@@ -1663,3 +1663,93 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2K: migrate Audit Log reads with filter/page-scoped query keys, keeping export imperative and audit freshness conservative.
+
+## Phase 2K Audit Log Migration Status
+
+Status: implemented on `feature/caching-architecture-phase2k`.
+
+Changed files:
+
+- `frontend/src/features/audit-log/AuditLogScreen.tsx`
+- `frontend/src/lib/queryKeys.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- `AuditLogScreen` used local React state for audit rows, totals, loading, load errors, and metadata options.
+- Audit categories loaded once from a mount effect.
+- Audit rows loaded through a local `loadData()` function and effect tied to filter params.
+- Filter, search, and pagination handlers manually set `loading` before state changes.
+- CSV export was already imperative and separate from the table load path.
+
+New behavior:
+
+- Audit metadata now loads through TanStack Query with a longer metadata freshness window.
+- Audit log pages now load through TanStack Query with filter/page-scoped cache keys.
+- Manual refresh/retry invalidates the `audit-log` query group.
+- Filter, search, and pagination controls rely on query loading/fetching state instead of manually setting loading.
+- CSV export remains imperative and does not cache downloaded report data.
+- Default category/entity options remain as the fallback when metadata is unavailable.
+
+Query keys:
+
+```ts
+queryKeys.auditLog.metadata({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+})
+
+queryKeys.auditLog.page({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  page,
+  pageSize,
+  startDate,
+  endDate,
+  category,
+  entityType,
+  search,
+})
+```
+
+Freshness policy:
+
+- Audit log page: `staleTime: 15_000`
+- Audit metadata: `staleTime: 300_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First Audit Log visit for a filter/page scope: `NETWORK`
+- Return to the same filter/page within 15 seconds: `CACHE`
+- Return after 15 seconds while cached data exists: `CACHE immediately + BACKGROUND REFRESH`
+- Changing filters/search/page uses a distinct query key.
+- Manual refresh/retry invalidates audit-log queries.
+- CSV export always performs a fresh download request.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`
+
+Authentication isolation:
+
+- Audit page and metadata keys include user identity and role.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for audit visibility and CSV export access.
+
+Risks:
+
+- Audit data remains freshness-sensitive, so the page stale time is intentionally short.
+- Relative timestamps are still computed at render time and can age while cached data remains visible.
+- Audit mutations are not performed from this screen; cross-feature audit log invalidation can be added later if users need newly created audit events to appear instantly without manual refresh.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/features/audit-log/AuditLogScreen.tsx src/lib/queryKeys.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2L: migrate account/settings reads such as profile page data and watermark configuration, with explicit invalidation after saves.

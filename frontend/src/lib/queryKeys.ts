@@ -93,6 +93,8 @@ export const queryKeys = {
       entityType?: string;
       search?: string;
     }) => scopedKey("audit-log", params),
+    metadata: (params: { role: string; userId?: string | null }) =>
+      scopedKey("audit-log", { ...params, view: "metadata" }),
   },
   systemHealth: {
     summary: (params: { role: string; userId?: string | null }) => scopedKey("system-health", params),
