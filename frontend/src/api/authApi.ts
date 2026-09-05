@@ -118,8 +118,8 @@ export function resendExpiredInvitation(payload: { token?: string | null; email?
   return api.post<{ message: string }>("/invitations/resend-expired", payload);
 }
 
-export function getMe() {
-  return api.get<UserProfileResponse>("/me");
+export function getMe(signal?: AbortSignal) {
+  return api.get<UserProfileResponse>("/me", { signal });
 }
 
 export function refreshSession() {
@@ -140,8 +140,11 @@ export interface PageSettingsResponse {
   updatedAt: string | null;
 }
 
-export function getPageSettings(institutionId?: string | null) {
-  return api.get<PageSettingsResponse>("/settings/page", { params: institutionId ? { institutionId } : {} });
+export function getPageSettings(institutionId?: string | null, signal?: AbortSignal) {
+  return api.get<PageSettingsResponse>("/settings/page", {
+    params: institutionId ? { institutionId } : {},
+    signal,
+  });
 }
 
 // Page Settings is the Facebook Page ID only. Watermark on/off + layout are
