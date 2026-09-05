@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import {
   getEngagementRecommendations,
@@ -25,7 +26,6 @@ import {
   detachValidationAsset,
   editSubmission,
   getReviewLockStatus,
-  getValidationQueue,
   rejectSubmission,
   releaseReviewLock,
   reorderValidationMedia,
@@ -231,10 +231,9 @@ export default function ValidationQueueScreen({
   user,
 }: ValidationQueueScreenProps) {
   const toast = useToast();
-  const { queue: activeQueue, loading: activeLoading, error: activeError, refresh } = useValidationQueue();
-  const [allQueue, setAllQueue] = useState<SubmissionSummary[]>([]);
-  const [allLoading, setAllLoading] = useState(false);
-  const [allError, setAllError] = useState("");
+  const queryClient = useQueryClient();
+  const { queue: activeQueue, loading: activeLoading, error: activeError } = useValidationQueue(user);
+  const { queue: allQueue, loading: allLoading, error: allError, refresh: refreshAllQueue } = useValidationQueue(user, true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<SubmissionSummary | null>(null);
   const [selectedLoading, setSelectedLoading] = useState(false);
@@ -273,9 +272,20 @@ export default function ValidationQueueScreen({
   const [mediaSettingsKey, setMediaSettingsKey] = useState<string | null>(null);
   const [engagementRecs, setEngagementRecs] = useState<EngagementRecommendations | null>(null);
   const [engagementLoading, setEngagementLoading] = useState(false);
-  const { log, loading: logLoading, refresh: refreshLog } = useValidationLog(selectedId);
+  const { log, loading: logLoading, refresh: refreshLog } = useValidationLog(user, selectedId);
   const modalExitTimer = useRef<number | null>(null);
   const openRequestRef = useRef(0);
+
+  const invalidateValidationWorkflow = useCallback(() => {
+    return Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["validation"] }),
+      queryClient.invalidateQueries({ queryKey: ["submissions"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] }),
+      queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+      queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    ]);
+  }, [queryClient]);
 
   const {
     failures,
@@ -296,7 +306,7 @@ export default function ValidationQueueScreen({
   const [failureContent, setFailureContent] = useState<SubmissionSummary | null>(null);
   const [failureContentLoading, setFailureContentLoading] = useState(false);
   const [failureMediaIndex, setFailureMediaIndex] = useState(0);
-  const { log: failureLog, loading: failureLogLoading } = useValidationLog(selectedFailureId);
+  const { log: failureLog, loading: failureLogLoading } = useValidationLog(user, selectedFailureId);
 
   const isAllMode = filter === "all";
   const isFailedMode = filter === "failed";
@@ -383,31 +393,6 @@ export default function ValidationQueueScreen({
       .catch(() => undefined);
   }, []);
 
-  const fetchAllQueue = useCallback(() => {
-    setAllLoading(true);
-    setAllError("");
-    return getValidationQueue({ history: true })
-      .then((res) => {
-        setAllQueue(Array.isArray(res.data) ? res.data : []);
-      })
-      .catch((err: unknown) => {
-        setAllError(readApiError(err, "Unable to load all submissions."));
-      })
-      .finally(() => setAllLoading(false));
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    queueMicrotask(() => {
-      if (active) void fetchAllQueue();
-    });
-    return () => {
-      active = false;
-    };
-  }, [fetchAllQueue]);
-
-
-
   useEffect(() => {
     if (!isFailedMode || failuresLoading) return;
     const selectionIsVisible = selectedFailureId
@@ -458,7 +443,7 @@ export default function ValidationQueueScreen({
       setFailureContent(null);
     }
     if (next === "all") {
-      void fetchAllQueue();
+      void refreshAllQueue();
     }
   }
 
@@ -579,7 +564,7 @@ export default function ValidationQueueScreen({
       const lock = await acquireReviewLock(selected.id);
       setLockFor(selected.id, lock.data);
       setLockNotice("");
-      await refresh();
+      await invalidateValidationWorkflow();
     } catch (err: unknown) {
       const message = readApiError(err, "Unable to acquire the review lock.");
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -600,7 +585,7 @@ export default function ValidationQueueScreen({
       await releaseReviewLock(activeLock.submissionId);
       clearLockFor(activeLock.submissionId);
       toast.info("Review lock released.");
-      await refresh();
+      await invalidateValidationWorkflow();
     } catch (err: unknown) {
       toast.error(readApiError(err, "Unable to release the review lock."));
     } finally {
@@ -651,8 +636,7 @@ export default function ValidationQueueScreen({
       "Your review lock is no longer held — the submission has returned to the queue " +
         "(or was claimed by another reviewer). Re-open it to continue.",
     );
-    void refresh();
-    void fetchAllQueue();
+    void invalidateValidationWorkflow();
   }
 
   async function handleApprove() {
@@ -669,7 +653,7 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
-      await refresh();
+      await invalidateValidationWorkflow();
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 403 || status === 409) {
@@ -713,11 +697,13 @@ export default function ValidationQueueScreen({
     if (!editMode || !selected) return;
     const assets = selected.mediaAssets ?? [];
     if (assets.length === 0) return;
-    setEditForm((f) =>
-      f.media.length === 0 && f.removedAssetIds.length === 0
-        ? { ...f, media: assets.map(savedAssetToMediaItem) }
-        : f,
-    );
+    queueMicrotask(() => {
+      setEditForm((f) =>
+        f.media.length === 0 && f.removedAssetIds.length === 0
+          ? { ...f, media: assets.map(savedAssetToMediaItem) }
+          : f,
+      );
+    });
   }, [editMode, selected]);
 
   function handleCancelEdit() {
@@ -738,15 +724,17 @@ export default function ValidationQueueScreen({
 
   useEffect(() => {
     if (!editMode || !scheduleChanged || !editScheduledAtIso || !selected) {
-      setGuardRails(null);
+      queueMicrotask(() => setGuardRails(null));
       return;
     }
     const controller = new AbortController();
-    setGuardRailsLoading(true);
-    validateGuardRails(editScheduledAtIso, selected.institutionId, selected.id)
-      .then((res) => setGuardRails(res.data))
-      .catch(() => setGuardRails(null))
-      .finally(() => setGuardRailsLoading(false));
+    queueMicrotask(() => {
+      setGuardRailsLoading(true);
+      validateGuardRails(editScheduledAtIso, selected.institutionId, selected.id)
+        .then((res) => setGuardRails(res.data))
+        .catch(() => setGuardRails(null))
+        .finally(() => setGuardRailsLoading(false));
+    });
     return () => controller.abort();
   }, [editMode, scheduleChanged, editScheduledAtIso, selected]);
 
@@ -796,13 +784,15 @@ export default function ValidationQueueScreen({
       return;
     }
     const controller = new AbortController();
-    setEngagementLoading(true);
-    getEngagementRecommendations(selected.institutionId, controller.signal)
-      .then((res) => setEngagementRecs(res.data.available ? res.data : null))
-      .catch((err: unknown) => {
-        if ((err as { name?: string })?.name !== "CanceledError") setEngagementRecs(null);
-      })
-      .finally(() => setEngagementLoading(false));
+    queueMicrotask(() => {
+      setEngagementLoading(true);
+      getEngagementRecommendations(selected.institutionId, controller.signal)
+        .then((res) => setEngagementRecs(res.data.available ? res.data : null))
+        .catch((err: unknown) => {
+          if ((err as { name?: string })?.name !== "CanceledError") setEngagementRecs(null);
+        })
+        .finally(() => setEngagementLoading(false));
+    });
     return () => controller.abort();
   }, [editMode, editTab, selected]);
 
@@ -919,6 +909,7 @@ export default function ValidationQueueScreen({
       setEditMode(false);
       setGuardRails(null);
       setEditedThisSession(true);
+      await invalidateValidationWorkflow();
       await refreshLog();
       toast.success("Changes saved — choose a terminal action.");
     } catch (err: unknown) {
@@ -961,7 +952,7 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
-      await refresh();
+      await invalidateValidationWorkflow();
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 403 || status === 409) {
@@ -995,7 +986,7 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
-      await refresh();
+      await invalidateValidationWorkflow();
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 403 || status === 409) {
@@ -2246,7 +2237,7 @@ function FacebookPostImage({
   const [isVeryTall, setIsVeryTall] = useState(false);
 
   useEffect(() => {
-    setIsVeryTall(false);
+    queueMicrotask(() => setIsVeryTall(false));
   }, [src]);
 
   return (
