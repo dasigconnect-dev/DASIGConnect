@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { MediaAsset, MediaUsage } from "../../api/mediaApi";
@@ -108,6 +109,7 @@ function putToStorage(
 
 export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenProps) {
   const toast = useToast();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   // Strict admin — only gates individual-asset deletion (backend does the same).
   const isAdmin = user.role === "admin";
@@ -145,11 +147,20 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   // Folder scoping is dropped while searching so matches are never hidden by the current folder.
   const listAlbumId = search.trim() ? null : currentAlbumId;
   const { assets, setAssets, loading, error, refresh } = useMediaAssets(
+    user,
     networkView,
     selectedInstitutionId,
     listAlbumId,
     !skipAssetFetch,
   );
+
+  const invalidateMediaMetadata = useCallback(() => {
+    return Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["media-assets"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+    ]);
+  }, [queryClient]);
 
   const [selectedAsset, setSelectedAsset] = useState<MediaAsset | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -592,6 +603,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     const { data } = await createMediaAlbum(name, institutionId, parentAlbumId);
     setAlbums((prev) => [...prev.filter((album) => album.id !== data.id), data]
       .sort((a, b) => a.name.localeCompare(b.name)));
+    void invalidateMediaMetadata();
     return data;
   }
 
@@ -635,6 +647,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         setSelectedAsset((prev) =>
           prev?.albumId === data.id ? { ...prev, albumName: data.name } : prev
         );
+        void invalidateMediaMetadata();
         toast.success("Folder renamed.");
       }
       closeAlbumModal();
@@ -665,6 +678,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         .sort((a, b) => a.name.localeCompare(b.name)));
       setMoveAlbumTarget(null);
       toast.success("Folder moved.");
+      void invalidateMediaMetadata();
       void reloadAlbums();
       void refresh();
     } catch (err: unknown) {
@@ -677,6 +691,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       await deleteMediaAlbum(album.id);
       setAlbums((prev) => prev.filter((item) => item.id !== album.id));
       toast.success("Folder deleted.");
+      void invalidateMediaMetadata();
     } catch (err: unknown) {
       toast.error(getErrorText(err, "Could not delete that folder."));
     }
@@ -694,6 +709,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       );
       setSelectedAsset(data);
       toast.success("Moved to folder.");
+      void invalidateMediaMetadata();
       void reloadAlbums();
     } catch {
       toast.error("Could not update the folder assignment.");
@@ -706,6 +722,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       const { data } = await getMediaAsset(assetId);
       setSelectedAsset(data);
       setAssets((prev) => prev.map((a) => (a.id === data.id ? { ...a, ...data } : a)));
+      void invalidateMediaMetadata();
     } catch {
       toast.error("Could not update tags.");
     }
@@ -759,6 +776,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
       if (!opts?.silent) {
         toast.success("Asset uploaded! AI classification in progress…");
+        void invalidateMediaMetadata();
         void refresh();
         void reloadAlbums();
       }
@@ -833,6 +851,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         `Uploaded ${done} file${done === 1 ? "" : "s"} into folders${failed > 0 ? ` · ${failed} failed` : ""}.`,
       );
       await reloadAlbums();
+      void invalidateMediaMetadata();
       void refresh();
     } catch (err: unknown) {
       toast.error(getErrorText(err, "Folder upload could not be completed."));
@@ -942,6 +961,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       });
       if (selectedAsset && ids.includes(selectedAsset.id)) closePanel();
       setDeleteOpen(false);
+      void invalidateMediaMetadata();
       toast.success(
         ids.length > 1
           ? `${ids.length} assets deleted from the media library.`

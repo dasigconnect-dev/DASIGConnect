@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, type Dispatch, type SetStateAction } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listMediaAssets, type MediaAsset } from "../../../api/mediaApi";
+import { authenticatedQueryMeta } from "../../../lib/queryClient";
+import { queryKeys } from "../../../lib/queryKeys";
+import type { User } from "../../../types/auth.types";
 
 interface ApiError {
   name?: string;
@@ -30,55 +34,58 @@ function isCanceledError(error: unknown) {
   return isApiError(error) && error.name === "CanceledError";
 }
 
+const MEDIA_ASSETS_STALE_TIME_MS = 60_000;
+
 export function useMediaAssets(
+  user: User,
   networkView = false,
   institutionId?: string | null,
   albumId?: string | null,
   enabled = true,
 ) {
-  const [assets, setAssets] = useState<MediaAsset[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+  const userScope = user.id ?? user.email.trim().toLowerCase();
+  const queryKey = queryKeys.mediaAssets.all({
+    role: user.role,
+    userId: userScope,
+    networkView,
+    institutionId: institutionId ?? null,
+    albumId: albumId ?? null,
+  });
 
-  const refresh = useCallback(
-    (signal?: AbortSignal) => {
-      if (!enabled) {
-        setAssets([]);
-        setLoading(false);
-        setError("");
-        return Promise.resolve();
-      }
-      setLoading(true);
-      setError("");
-      return listMediaAssets({ networkView, institutionId, albumId }, signal)
-        .then((response) => setAssets(Array.isArray(response.data) ? response.data : []))
-        .catch((err: unknown) => {
-          if (isCanceledError(err)) return;
-          setError(getErrorMessage(err, "Unable to load media assets."));
-        })
-        .finally(() => setLoading(false));
+  const query = useQuery({
+    queryKey,
+    queryFn: ({ signal }) =>
+      listMediaAssets({ networkView, institutionId, albumId }, signal).then((response) =>
+        Array.isArray(response.data) ? response.data : [],
+      ),
+    enabled,
+    staleTime: MEDIA_ASSETS_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
+
+  const setAssets: Dispatch<SetStateAction<MediaAsset[]>> = useCallback(
+    (value) => {
+      queryClient.setQueryData<MediaAsset[]>(queryKey, (current = []) => {
+        return typeof value === "function"
+          ? (value as (previous: MediaAsset[]) => MediaAsset[])(current)
+          : value;
+      });
     },
-    [networkView, institutionId, albumId, enabled],
+    [queryClient, queryKey],
   );
 
-  // Clear stale assets immediately when scope changes so old folder counts never flash
-  useEffect(() => {
-    setAssets([]);
-  }, [networkView, institutionId, albumId]);
+  const refresh = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: ["media-assets"] });
+  }, [queryClient]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    let active = true;
-
-    queueMicrotask(() => {
-      if (active) void refresh(controller.signal);
-    });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [refresh]);
-
-  return { assets, setAssets, loading, error, refresh };
+  return {
+    assets: enabled ? query.data ?? [] : [],
+    setAssets,
+    loading: query.isLoading || query.isFetching,
+    error: query.error && !isCanceledError(query.error)
+      ? getErrorMessage(query.error, "Unable to load media assets.")
+      : "",
+    refresh,
+  };
 }
