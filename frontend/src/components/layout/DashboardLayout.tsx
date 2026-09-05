@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Outlet, useLocation } from 'react-router-dom'
 import DashboardShell, { type DashboardNavId } from './DashboardShell'
 import PageTransition from '../common/PageTransition'
 import type { User } from '../../types/auth.types'
-import { getUnreadCount } from '../../api/notificationApi'
+import { useNotificationUnreadCount } from '../../features/notifications/hooks/useNotifications'
 
 interface DashboardLayoutProps {
   user: User
@@ -46,28 +47,26 @@ export default function DashboardLayout({
   logoutLoading,
 }: DashboardLayoutProps) {
   const { pathname } = useLocation()
-  const [notificationBadge, setNotificationBadge] = useState(0)
+  const queryClient = useQueryClient()
+  const unreadCountQuery = useNotificationUnreadCount(user)
+  const notificationBadge = unreadCountQuery.data ?? 0
 
   useEffect(() => {
-    let active = true
-    const fetchCount = () => {
-      if (document.visibilityState !== 'visible') return
-      getUnreadCount()
-        .then((res) => { if (active) setNotificationBadge(res.data.unreadCount) })
-        .catch(() => {})
+    const refreshCount = () => {
+      if (document.visibilityState === 'visible') {
+        void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      }
     }
-    fetchCount()
     // Background poll; the SSE stream delivers new notifications in real time,
     // so this only needs to catch reads made on another device.
-    const intervalId = window.setInterval(fetchCount, 3 * 60_000)
-    const onFocus = () => fetchCount()
+    const intervalId = window.setInterval(refreshCount, 3 * 60_000)
+    const onFocus = () => refreshCount()
     window.addEventListener('focus', onFocus)
     return () => {
-      active = false
       window.clearInterval(intervalId)
       window.removeEventListener('focus', onFocus)
     }
-  }, [])
+  }, [queryClient])
 
   return (
     <DashboardShell

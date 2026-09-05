@@ -1,8 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import { listInstitutions } from "../../api/authApi";
 import { listSubmissions, type SubmissionSummary } from "../../api/submissionApi";
+import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
 
 interface RecentActivityScreenProps {
   user: User;
@@ -22,49 +25,33 @@ interface ActivityItem {
   };
 }
 
+interface RecentActivityData {
+  submissions: SubmissionSummary[];
+  institutions: { id: string; name: string; code: string; emailDomain: string }[];
+}
+
+const RECENT_ACTIVITY_STALE_TIME_MS = 60_000;
+
 export default function RecentActivityScreen({ user }: RecentActivityScreenProps) {
   const navigate = useNavigate();
-  const [submissions, setSubmissions] = useState<SubmissionSummary[]>([]);
-  const [institutions, setInstitutions] = useState<
-    { id: string; name: string; code: string; emailDomain: string }[]
-  >([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const userScope = user.id ?? user.email.trim().toLowerCase();
+  const activityQuery = useQuery({
+    queryKey: queryKeys.submissions.all({
+      role: user.role,
+      userId: userScope,
+      institutionId: user.institutionId ?? null,
+      status: "recent-activity",
+    }),
+    queryFn: ({ signal }) => fetchRecentActivityData(user, signal),
+    staleTime: RECENT_ACTIVITY_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
 
-  useEffect(() => {
-    // Only admins resolve the institution list; moderators are network-wide with
-    // no owning institution, contributors get their name from the submission DTO.
-    if (user?.role !== "admin") return;
-    listInstitutions()
-      .then((response) => {
-        const mapped = response.data.map((item) => ({
-          id: item.id,
-          name: item.name,
-          code: item.institutionCode,
-          emailDomain: item.emailDomain,
-        }));
-        setInstitutions(mapped);
-      })
-      .catch(() => {
-        setInstitutions([]);
-      });
-  }, [user?.role, user?.institutionId, user?.inst]);
-
-  useEffect(() => {
-    if (!user) return;
-    setLoading(true);
-    listSubmissions()
-      .then((response) => {
-        setSubmissions(response.data);
-      })
-      .catch(() => {
-        setSubmissions([]);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [user?.role, user?.inst]);
+  const submissions = activityQuery.data?.submissions ?? [];
+  const institutions = activityQuery.data?.institutions ?? [];
+  const loading = activityQuery.isLoading;
 
   const allActivities: ActivityItem[] = useMemo(() => {
     return submissions
@@ -340,6 +327,26 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
       </div>
     </div>
   );
+}
+
+async function fetchRecentActivityData(user: User, signal?: AbortSignal): Promise<RecentActivityData> {
+  const [submissionsResult, institutionsResult] = await Promise.allSettled([
+    listSubmissions(signal),
+    user.role === "admin" ? listInstitutions(signal) : Promise.resolve({ data: [] }),
+  ]);
+
+  return {
+    submissions: submissionsResult.status === "fulfilled" ? submissionsResult.value.data : [],
+    institutions:
+      institutionsResult.status === "fulfilled"
+        ? institutionsResult.value.data.map((item) => ({
+            id: item.id,
+            name: item.name,
+            code: item.institutionCode,
+            emailDomain: item.emailDomain,
+          }))
+        : [],
+  };
 }
 
 function statusDisplay(status: SubmissionSummary["status"]): ActivityItem["status"] {

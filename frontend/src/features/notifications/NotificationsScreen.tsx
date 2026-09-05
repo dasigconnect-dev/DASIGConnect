@@ -229,7 +229,7 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
     markAllRead,
     markRead,
     refreshNotifications,
-  } = useNotifications();
+  } = useNotifications(user);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
