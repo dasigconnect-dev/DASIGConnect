@@ -1846,3 +1846,79 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2M: migrate the remaining ad hoc watermark consumers, such as validation previews and Facebook preview carousel reads, to shared query-backed hooks.
+
+## Phase 2M Watermark Consumer Migration Status
+
+Status: implemented on `feature/caching-architecture-phase2m`.
+
+Changed files:
+
+- `frontend/src/hooks/useWatermarkConfiguration.ts`
+- `frontend/src/components/facebook/FacebookPreviewMediaCarousel.tsx`
+- `frontend/src/features/validation/ValidationQueueScreen.tsx`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- `FacebookPreviewMediaCarousel` loaded watermark configuration through its own mount effect and local state.
+- `ValidationQueueScreen` loaded watermark configuration through its own mount effect and local state.
+- These consumers did not share in-flight requests or cached watermark configuration with Account Settings.
+- Watermark read failures in these preview surfaces were intentionally silent.
+
+New behavior:
+
+- Added `useWatermarkConfiguration()` as the shared query-backed read hook for watermark configuration.
+- The hook uses the existing `queryKeys.settings.watermark(...)` key shape and the authenticated query cache.
+- Facebook preview carousel now consumes `useWatermarkConfiguration()` and keeps its silent failure behavior by treating missing query data as no watermark config.
+- Validation Queue now consumes `useWatermarkConfiguration({ user })` so preview watermark data is scoped to the authenticated reviewer.
+- Account Settings save invalidation from Phase 2L now also refreshes these preview consumers through the shared `settings` query group.
+
+Query key:
+
+```ts
+queryKeys.settings.watermark({
+  role: user?.role ?? "authenticated-preview",
+  userId: user?.id ?? user?.email.trim().toLowerCase() ?? null,
+  institutionId,
+})
+```
+
+Freshness policy:
+
+- Watermark configuration: `staleTime: 300_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First preview consumer mount for a watermark scope: `NETWORK`.
+- Additional consumers for the same scope share cached/in-flight query data.
+- Return within 5 minutes: `CACHE`.
+- Return after 5 minutes while cached data exists: `CACHE immediately + BACKGROUND REFRESH`.
+- Saving watermark settings invalidates `settings` queries through the Phase 2L save path.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`.
+
+Authentication isolation:
+
+- Validation Queue passes the authenticated user into the watermark query key.
+- Generic Facebook preview components that do not receive user props use a stable authenticated-preview scope.
+- Auth tokens are not included in keys.
+- Backend authorization remains the final authority for watermark visibility.
+
+Risks:
+
+- Generic Facebook preview components still do not receive user context, so their cache scope is intentionally generic until those preview props are widened.
+- Silent preview failure behavior is preserved to avoid blocking submission review or preview rendering when watermark settings are unavailable.
+- Account Settings keeps its local query setup from Phase 2L because it has form-hydration requirements that differ from passive preview consumers.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/hooks/useWatermarkConfiguration.ts src/components/facebook/FacebookPreviewMediaCarousel.tsx src/features/validation/ValidationQueueScreen.tsx --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2N: review remaining authenticated imperative reads and either migrate them to query-backed hooks or explicitly document them as mutation/one-off workflows.

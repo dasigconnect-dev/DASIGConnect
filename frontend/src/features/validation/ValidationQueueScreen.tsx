@@ -57,10 +57,10 @@ import {
 import ReviewLibraryPickerModal from "./ReviewLibraryPickerModal";
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
-import { getWatermarkConfiguration } from "../../api/watermarkApi";
 import type { WatermarkConfiguration } from "../../types/watermark.types";
 import OptimizedImage, { canTransformImageType } from "../../components/media/OptimizedImage";
 import WatermarkOverlay from "../../components/watermark/WatermarkOverlay";
+import { useWatermarkConfiguration } from "../../hooks/useWatermarkConfiguration";
 import {
   useValidationLog,
   useValidationQueue,
@@ -383,15 +383,10 @@ export default function ValidationQueueScreen({
     selected && !REVIEWABLE_STATUSES.has(normalizeStatus(selected.status ?? "")),
   );
 
-  const [watermarkConfig, setWatermarkConfig] = useState<WatermarkConfiguration | null>(null);
+  const watermarkQuery = useWatermarkConfiguration({ user });
+  const watermarkConfig = watermarkQuery.data ?? null;
   const [showWatermarkPreview, setShowWatermarkPreview] = useState<boolean>(true);
   const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
-
-  useEffect(() => {
-    void getWatermarkConfiguration()
-      .then((res) => setWatermarkConfig(res.data))
-      .catch(() => undefined);
-  }, []);
 
   useEffect(() => {
     if (!isFailedMode || failuresLoading) return;
