@@ -1287,3 +1287,102 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2G: add Media Repository metadata caching through centralized query hooks, keeping media file/browser caching separate.
+
+## Phase 2G Media Repository Migration Status
+
+Status: implemented on `feature/caching-architecture-phase2g`.
+
+Changed files:
+
+- `frontend/src/features/media-repository/hooks/useMediaAssets.ts`
+- `frontend/src/features/media-repository/MediaRepositoryScreen.tsx`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- `useMediaAssets` used local React state and manual effect-driven fetches.
+- Scope changes cleared local assets and triggered a new `/media-assets` request.
+- Manual refresh re-ran the current list request directly.
+- Uploads, folder moves, album changes, tag edits, and deletes maintained local UI state but did not invalidate centralized query data.
+
+New behavior:
+
+- `useMediaAssets(user, networkView, institutionId, albumId, enabled)` now uses TanStack Query.
+- Media repository asset metadata reads are keyed by authenticated user scope, network/institution scope, and folder scope.
+- The hook still returns the existing `{ assets, setAssets, loading, error, refresh }` shape so the screen can keep its immediate local UI updates.
+- `setAssets` now updates the active media-assets query data instead of a separate local array.
+- Manual refresh invalidates the `media-assets` query group.
+- Media file delivery remains browser/object-storage based; this phase only caches metadata.
+
+Query key:
+
+```ts
+queryKeys.mediaAssets.all({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  networkView,
+  institutionId: selectedInstitutionId ?? null,
+  albumId: listAlbumId ?? null,
+})
+```
+
+Concrete shape:
+
+```ts
+["media-assets", { role, userId, networkView, institutionId, albumId }]
+```
+
+Freshness policy:
+
+- `staleTime: 60_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First Media Repository visit for a scope/folder: `NETWORK`
+- Return to the same scope/folder within 60 seconds: `CACHE`
+- Return after 60 seconds while cached data exists: `CACHE immediately + BACKGROUND REFRESH`
+- Manual refresh: invalidates media-assets queries and refetches active observers.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`
+
+Invalidation rules:
+
+- Media Repository metadata invalidates after:
+  - create album
+  - rename album
+  - move album
+  - delete album
+  - move asset to album
+  - add/remove asset tag
+  - upload asset
+  - upload folder
+  - single or bulk asset delete
+- Media Repository mutations also invalidate:
+  - `dashboard`
+  - `analytics`
+
+Authentication isolation:
+
+- Query key includes user identity, role, network view flag, institution ID, and album ID.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for network-wide or institution-scoped visibility.
+
+Risks:
+
+- Album lists still use local state and direct reloads; this phase only centralizes asset metadata caching.
+- Semantic search still uses direct request state because it is an explicit search action, not the main repository metadata list.
+- The hook preserves immediate `setAssets` updates by writing into the active query cache; inactive scope caches are invalidated instead of manually patched.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/features/media-repository/hooks/useMediaAssets.ts src/features/media-repository/MediaRepositoryScreen.tsx --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2H: improve Recent Activity and notification-adjacent read caching through centralized query hooks, while keeping real-time or user-initiated refresh behavior explicit.
