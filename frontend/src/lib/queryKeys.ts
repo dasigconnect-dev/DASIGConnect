@@ -81,6 +81,12 @@ export const queryKeys = {
     watermark: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
       scopedKey("settings", { ...params, view: "watermark" }),
   },
+  resolution: {
+    failures: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
+      scopedKey("resolution", { ...params, view: "failures" }),
+    detail: (params: { role: string; userId?: string | null; institutionId?: string | null; submissionId: string }) =>
+      scopedKey("resolution", { ...params, view: "detail" }),
+  },
   auditLog: {
     page: (params: {
       role: string;
