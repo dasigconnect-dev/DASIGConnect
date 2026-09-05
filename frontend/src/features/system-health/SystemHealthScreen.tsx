@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   downloadSystemHealthSnapshot,
   getSystemHealthSummary,
@@ -14,7 +15,8 @@ import {
   type TokenStatus,
 } from "../../api/systemHealthApi";
 import { useToast } from "../../context/ToastContext";
-import { registerAppCacheReset } from "../../lib/appCache";
+import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
 import type { User } from "../../types/auth.types";
 import "../../styles/system-health.css";
 import "../../styles/dasig-loader.css";
@@ -31,21 +33,39 @@ function isAbortError(reason: unknown): boolean {
   return name === "CanceledError" || name === "AbortError" || code === "ERR_CANCELED";
 }
 
-const CACHE_TTL_MS = 60_000;
-let cachedSummary: SystemHealthSummary | null = null;
-let cachedTokens: TokenStatus[] = [];
-let cachedAt = 0;
-registerAppCacheReset(() => {
-  cachedSummary = null;
-  cachedTokens = [];
-  cachedAt = 0;
-});
+const SYSTEM_HEALTH_STALE_TIME_MS = 60_000;
+
+interface SystemHealthData {
+  summary: SystemHealthSummary | null;
+  tokens: TokenStatus[];
+}
+
+function getUserCacheScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
+}
+
+async function loadSystemHealth(signal?: AbortSignal): Promise<SystemHealthData> {
+  const [summaryResponse, tokenResponse] = await Promise.allSettled([
+    getSystemHealthSummary(signal),
+    getSystemHealthTokens(signal),
+  ]);
+
+  if (
+    summaryResponse.status === "rejected" &&
+    !isAbortError(summaryResponse.reason)
+  ) {
+    throw summaryResponse.reason;
+  }
+
+  return {
+    summary: summaryResponse.status === "fulfilled" ? summaryResponse.value.data : null,
+    tokens: tokenResponse.status === "fulfilled" ? tokenResponse.value.data : [],
+  };
+}
 
 export default function SystemHealthScreen({ user }: Props) {
   const toast = useToast();
-  const [summary, setSummary] = useState<SystemHealthSummary | null>(cachedSummary);
-  const [tokens, setTokens] = useState<TokenStatus[]>(cachedTokens);
-  const [loading, setLoading] = useState(!cachedSummary);
+  const queryClient = useQueryClient();
   const [exporting, setExporting] = useState(false);
   const [runningJobKey, setRunningJobKey] = useState<string | null>(null);
   const [busyTokenId, setBusyTokenId] = useState<string | null>(null);
@@ -65,46 +85,28 @@ export default function SystemHealthScreen({ user }: Props) {
 
   const canReauthorize = user.role === "admin";
 
-  useEffect(() => {
-    if (cachedSummary && Date.now() - cachedAt < CACHE_TTL_MS) return;
-    const controller = new AbortController();
-    void load(controller.signal, Boolean(cachedSummary));
-    return () => controller.abort();
-  }, []);
+  const healthQuery = useQuery({
+    queryKey: queryKeys.systemHealth.summary({
+      role: user.role,
+      userId: getUserCacheScope(user),
+    }),
+    queryFn: ({ signal }) => loadSystemHealth(signal),
+    staleTime: SYSTEM_HEALTH_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
+
+  const summary = healthQuery.data?.summary ?? null;
+  const tokens = healthQuery.data?.tokens ?? [];
+  const loading = healthQuery.isLoading || healthQuery.isFetching;
+  const loadError = healthQuery.error ? "Unable to load system health metrics." : "";
 
   function handleTabChange(tab: SystemHealthTab) {
     setActiveTab(tab);
     window.location.hash = tab;
   }
 
-  async function load(signal?: AbortSignal, background = false) {
-    if (!background) setLoading(true);
-
-    const [summaryResponse, tokenResponse] = await Promise.allSettled([
-      getSystemHealthSummary(signal),
-      getSystemHealthTokens(signal),
-    ]);
-
-    if (signal?.aborted) return;
-
-    if (summaryResponse.status === "fulfilled") {
-      setSummary(summaryResponse.value.data);
-      cachedSummary = summaryResponse.value.data;
-      cachedAt = Date.now();
-    }
-    if (tokenResponse.status === "fulfilled") {
-      setTokens(tokenResponse.value.data);
-      cachedTokens = tokenResponse.value.data;
-    }
-    if (
-      summaryResponse.status === "rejected" &&
-      !isAbortError(summaryResponse.reason) &&
-      !cachedSummary
-    ) {
-      toast.error("Unable to load system health metrics.");
-    }
-
-    if (!background) setLoading(false);
+  function refreshHealth() {
+    void queryClient.invalidateQueries({ queryKey: ["system-health"] });
   }
 
   async function handleExport() {
@@ -123,7 +125,7 @@ export default function SystemHealthScreen({ user }: Props) {
     setRunningJobKey(job.key);
     try {
       await runSystemHealthJob(job.key);
-      await load(undefined, true);
+      await queryClient.invalidateQueries({ queryKey: ["system-health"] });
       toast.success(`Ran ${job.jobName}.`);
     } catch {
       toast.error(`Unable to run ${job.jobName}.`);
@@ -289,7 +291,7 @@ export default function SystemHealthScreen({ user }: Props) {
             <button
               type="button"
               className="notif-btn notif-btn-ghost"
-              onClick={() => void load()}
+              onClick={refreshHealth}
               disabled={loading}
               title="Refresh system health metrics"
             >
@@ -510,8 +512,8 @@ export default function SystemHealthScreen({ user }: Props) {
           <div className="card-wrap sys-error-card">
             <i className="ti ti-alert-circle sys-error-icon" aria-hidden="true" />
             <h3>System Health Unavailable</h3>
-            <p>Unable to retrieve real-time system health metrics from the backend.</p>
-            <button type="button" className="notif-btn notif-btn-ghost" onClick={() => void load()}>
+            <p>{loadError || "Unable to retrieve real-time system health metrics from the backend."}</p>
+            <button type="button" className="notif-btn notif-btn-ghost" onClick={refreshHealth}>
               <i className="ti ti-refresh" aria-hidden="true" />
               <span>Retry Connection</span>
             </button>
