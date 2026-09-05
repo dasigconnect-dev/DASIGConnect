@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, type Dispatch, type SetStateAction } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getValidationLog,
   getValidationQueue,
-  type ValidationLog,
 } from "../../../api/validationApi";
+import type { ValidationLog } from "../../../api/validationApi";
 import type { SubmissionSummary } from "../../../api/submissionApi";
+import { authenticatedQueryMeta } from "../../../lib/queryClient";
+import { queryKeys } from "../../../lib/queryKeys";
+import type { User } from "../../../types/auth.types";
 
 interface ApiError {
   name?: string;
@@ -36,80 +40,87 @@ function isCanceledError(error: unknown) {
   return isApiError(error) && error.name === "CanceledError";
 }
 
-export function useValidationQueue() {
-  const [queue, setQueue] = useState<SubmissionSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+const VALIDATION_QUEUE_STALE_TIME_MS = 5_000;
+const VALIDATION_LOG_STALE_TIME_MS = 30_000;
 
-  const refresh = useCallback((signal?: AbortSignal) => {
-    setLoading(true);
-    setError("");
-    return getValidationQueue({ signal })
-      .then((response) => setQueue(Array.isArray(response.data) ? response.data : []))
-      .catch((err: unknown) => {
-        if (isCanceledError(err)) return;
-        setError(getErrorMessage(err, "Unable to load the validation queue."));
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    let active = true;
-
-    queueMicrotask(() => {
-      if (active) void refresh(controller.signal);
-    });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [refresh]);
-
-  return { queue, setQueue, loading, error, refresh };
+function userScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
 }
 
-export function useValidationLog(submissionId?: string | null) {
-  const [log, setLog] = useState<ValidationLog[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+export function useValidationQueue(user: User, history = false) {
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.validation.queue({
+    role: user.role,
+    userId: userScope(user),
+    institutionId: user.institutionId ?? null,
+    scope: history ? "history" : "network",
+  });
 
-  const refresh = useCallback(
-    (signal?: AbortSignal) => {
-      if (!submissionId) {
-        setLog([]);
-        setError("");
-        setLoading(false);
-        return Promise.resolve();
-      }
+  const query = useQuery<SubmissionSummary[]>({
+    queryKey,
+    queryFn: ({ signal }) =>
+      getValidationQueue({ history, signal }).then((response) =>
+        Array.isArray(response.data) ? response.data : [],
+      ),
+    staleTime: VALIDATION_QUEUE_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
 
-      setLoading(true);
-      setError("");
-      return getValidationLog(submissionId, signal)
-        .then((response) => setLog(Array.isArray(response.data) ? response.data : []))
-        .catch((err: unknown) => {
-          if (isCanceledError(err)) return;
-          setError(getErrorMessage(err, "Unable to load the validation log."));
-        })
-        .finally(() => setLoading(false));
+  const setQueue: Dispatch<SetStateAction<SubmissionSummary[]>> = useCallback(
+    (value) => {
+      queryClient.setQueryData<SubmissionSummary[]>(queryKey, (current = []) => {
+        return typeof value === "function"
+          ? (value as (previous: SubmissionSummary[]) => SubmissionSummary[])(current)
+          : value;
+      });
     },
-    [submissionId],
+    [queryClient, queryKey],
   );
 
-  useEffect(() => {
-    const controller = new AbortController();
-    let active = true;
+  const refresh = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: ["validation"] });
+  }, [queryClient]);
 
-    queueMicrotask(() => {
-      if (active) void refresh(controller.signal);
-    });
+  return {
+    queue: query.data ?? [],
+    setQueue,
+    loading: query.isLoading || query.isFetching,
+    error: query.error && !isCanceledError(query.error)
+      ? getErrorMessage(query.error, history ? "Unable to load all submissions." : "Unable to load the validation queue.")
+      : "",
+    refresh,
+  };
+}
 
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [refresh]);
+export function useValidationLog(user: User, submissionId?: string | null) {
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.validation.log({
+    role: user.role,
+    userId: userScope(user),
+    submissionId: submissionId ?? "pending",
+  });
 
-  return { log, loading, error, refresh };
+  const query = useQuery<ValidationLog[]>({
+    queryKey,
+    queryFn: ({ signal }) =>
+      getValidationLog(submissionId ?? "", signal).then((response) =>
+        Array.isArray(response.data) ? response.data : [],
+      ),
+    enabled: Boolean(submissionId),
+    staleTime: VALIDATION_LOG_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
+
+  const refresh = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: ["validation"] });
+  }, [queryClient]);
+
+  return {
+    log: query.data ?? [],
+    loading: query.isLoading || query.isFetching,
+    error: query.error && !isCanceledError(query.error)
+      ? getErrorMessage(query.error, "Unable to load the validation log.")
+      : "",
+    refresh,
+  };
 }

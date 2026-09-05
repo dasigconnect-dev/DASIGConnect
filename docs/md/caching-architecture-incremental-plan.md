@@ -1486,3 +1486,100 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2I: continue migrating remaining authenticated read-heavy screens, starting with Validation Queue if it still has direct effect-driven fetching or route-local caches.
+
+## Phase 2I Validation Queue Migration Status
+
+Status: implemented on `feature/caching-architecture-phase2i`.
+
+Changed files:
+
+- `frontend/src/features/validation/hooks/useValidationQueue.ts`
+- `frontend/src/features/validation/ValidationQueueScreen.tsx`
+- `frontend/src/lib/queryKeys.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- `useValidationQueue` used local React state and a mount effect to fetch the active review queue.
+- `useValidationLog` used local React state and a mount/selection effect for validation history.
+- `ValidationQueueScreen` kept a separate local `allQueue` state and direct `getValidationQueue({ history: true })` fetch flow.
+- Review lock and decision actions refreshed only the local queue fetch paths.
+
+New behavior:
+
+- `useValidationQueue(user, history)` now uses TanStack Query for both active and history/all queue reads.
+- `useValidationLog(user, submissionId)` now uses TanStack Query and is keyed by authenticated user plus submission ID.
+- `ValidationQueueScreen` uses the same query hook for active queue and all/history queue data.
+- The direct history queue effect in `ValidationQueueScreen` was removed.
+- Review lock and terminal decision paths now invalidate validation, submissions, dashboard, calendar, analytics, and notifications query groups.
+- Existing local detail state, review lock renewal, editor state, failure workflow state, and decision modals remain unchanged.
+
+Query keys:
+
+```ts
+queryKeys.validation.queue({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: user.institutionId ?? null,
+  scope: history ? "history" : "network",
+})
+
+queryKeys.validation.log({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  submissionId,
+})
+```
+
+Freshness policy:
+
+- Validation queue: `staleTime: 5_000`
+- Validation log: `staleTime: 30_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First Validation Queue visit for active/history scope: `NETWORK`
+- Return within 5 seconds for the same queue scope: `CACHE`
+- Return after 5 seconds while cached data exists: `CACHE immediately + BACKGROUND REFRESH`
+- Open a submission's validation history within 30 seconds: `CACHE`
+- Manual/all-mode queue refresh invalidates validation queries.
+- Review lock acquire/release/loss and approve/revise/reject/edit success invalidate affected workflow query groups.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`
+
+Invalidation rules:
+
+- Validation workflow mutations invalidate:
+  - `validation`
+  - `submissions`
+  - `dashboard`
+  - `calendar-events`
+  - `analytics`
+  - `notifications`
+
+Authentication isolation:
+
+- Queue keys include user identity, role, institution ID, and queue scope.
+- Log keys include user identity, role, and submission ID.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization and review-lock enforcement remain the final authority.
+
+Risks:
+
+- Validation queue freshness is intentionally short because queue ownership and review locks are workflow-sensitive.
+- Selected submission detail reads still use direct requests so lock acquisition and detail-panel behavior remain explicit.
+- Resolution failure data remains in its existing hook and was not migrated in this phase.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/lib/queryKeys.ts src/features/validation/hooks/useValidationQueue.ts src/features/validation/ValidationQueueScreen.tsx --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2J: migrate remaining lower-risk authenticated read screens such as audit log, system health, and settings reads with conservative stale times and targeted invalidation.
