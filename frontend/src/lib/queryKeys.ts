@@ -67,6 +67,8 @@ export const queryKeys = {
   notifications: {
     all: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
       scopedKey("notifications", params),
+    unreadCount: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
+      scopedKey("notifications", { ...params, view: "unread-count" }),
   },
   analytics: {
     summary: (params: { role: string; userId?: string | null; institutionId?: string | null; range: string }) =>

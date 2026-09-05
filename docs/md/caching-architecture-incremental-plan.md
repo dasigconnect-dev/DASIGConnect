@@ -1386,3 +1386,103 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2H: improve Recent Activity and notification-adjacent read caching through centralized query hooks, while keeping real-time or user-initiated refresh behavior explicit.
+
+## Phase 2H Recent Activity And Notifications Migration Status
+
+Status: implemented on `feature/caching-architecture-phase2h`.
+
+Changed files:
+
+- `frontend/src/features/notifications/hooks/useNotifications.ts`
+- `frontend/src/features/notifications/NotificationsScreen.tsx`
+- `frontend/src/components/layout/DashboardLayout.tsx`
+- `frontend/src/features/dashboard/RecentActivityScreen.tsx`
+- `frontend/src/lib/queryKeys.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- `useNotifications` used a module-scoped TTL cache and registered it with `registerAppCacheReset`.
+- The notifications page manually fetched `/notifications` with local loading/error state.
+- SSE arrivals and optimistic read updates mutated local notification state plus the module cache.
+- The sidebar unread badge used local state and polled `/notifications/unread-count` directly.
+- Recent Activity fetched submissions and admin institution labels through local effects.
+
+New behavior:
+
+- `useNotifications(user)` now uses TanStack Query for the initial notifications list.
+- The module-scoped notification cache and app-cache reset registration were removed.
+- SSE still connects explicitly, but new events are merged into the active notifications query cache.
+- Mark-read and mark-all-read actions optimistically update the notifications query cache and synchronize the unread-count query cache.
+- `useNotificationUnreadCount(user)` centralizes the sidebar unread badge query while preserving the 3-minute visible-tab poll and focus refresh.
+- `RecentActivityScreen` now reads submissions and admin institution labels through a scoped TanStack Query.
+- Recent Activity uses the `submissions` root with a `recent-activity` view marker so existing submission invalidations continue to refresh it.
+
+Query keys:
+
+```ts
+queryKeys.notifications.all({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: user.institutionId ?? null,
+})
+
+queryKeys.notifications.unreadCount({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: user.institutionId ?? null,
+})
+
+queryKeys.submissions.all({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: user.institutionId ?? null,
+  status: "recent-activity",
+})
+```
+
+Freshness policy:
+
+- Notifications list: `staleTime: 60_000`
+- Notification unread count: `staleTime: 30_000`
+- Recent Activity: `staleTime: 60_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`; the layout keeps an explicit focus invalidation for notification counts.
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First notifications page visit for a user scope: `NETWORK`
+- Return to notifications within 60 seconds: `CACHE`
+- SSE notification event: updates active notifications cache and unread-count cache without refetching the whole list.
+- Manual notifications refresh: invalidates `notifications` queries.
+- Sidebar badge: cached unread count, plus visible-tab interval/focus invalidation.
+- First Recent Activity visit for a user scope: `NETWORK`
+- Return to Recent Activity within 60 seconds: `CACHE`
+- Existing submission mutations that invalidate `submissions` also invalidate Recent Activity.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`
+
+Authentication isolation:
+
+- Notification and unread-count keys include user identity, role, and institution ID.
+- Recent Activity key includes user identity, role, institution ID, and the view marker.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for visible notifications, unread counts, submissions, and institution labels.
+
+Risks:
+
+- Notification relative-time labels are still computed when DTOs are mapped, matching previous behavior.
+- SSE remains page-hook scoped; the layout unread badge continues to rely on polling/focus invalidation when the notifications page is not mounted.
+- Recent Activity keeps the previous partial-fallback behavior: if submissions or institution label lookup fails, that section returns an empty list rather than blocking the whole screen.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/lib/queryKeys.ts src/features/notifications/hooks/useNotifications.ts src/features/notifications/NotificationsScreen.tsx src/components/layout/DashboardLayout.tsx src/features/dashboard/RecentActivityScreen.tsx --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2I: continue migrating remaining authenticated read-heavy screens, starting with Validation Queue if it still has direct effect-driven fetching or route-local caches.
