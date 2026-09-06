@@ -2278,3 +2278,82 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2R: review institution picker loading in the composer and decide whether to reuse the institution query cache while preserving default institution seeding.
+
+## Phase 2R Composer Institution Picker Migration Status
+
+Status: implemented on `feature/caching-architecture-phase2r`.
+
+Changed files:
+
+- `frontend/src/features/submission/SubmissionScreen.tsx`
+- `frontend/src/lib/queryKeys.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- The admin/moderator composer loaded posting institutions through a component effect.
+- Active institutions were stored in local component state.
+- Loading and error state were tracked manually for the Posting As picker.
+- The same effect also seeded the default DASIG institution into a new empty form.
+
+New behavior:
+
+- Posting institution options now load through TanStack Query.
+- Added `queryKeys.institutions.composerOptions(...)` so the lightweight composer list does not conflict with the richer institution-management registry query.
+- The query still filters inactive institutions before exposing picker options.
+- Loading and error state are derived from query state.
+- Default DASIG institution seeding is preserved as a guarded effect that runs after active institutions are available.
+
+Query key:
+
+```ts
+queryKeys.institutions.composerOptions({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+})
+```
+
+Freshness policy:
+
+- Composer institution options: `staleTime: 300_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First admin/moderator composer visit: `NETWORK`.
+- Return within 5 minutes: `CACHE`.
+- Return after 5 minutes while cached data exists: `CACHE immediately + BACKGROUND REFRESH`.
+- Contributors do not run this query because they do not use the Posting As picker.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`.
+
+Authentication isolation:
+
+- Composer institution option keys include user identity and role.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for institution visibility.
+
+Remaining imperative reads reviewed:
+
+- Full submission editor hydration remains imperative for now because it coordinates route state, form state, media picker state, revision modal state, and error navigation.
+- Guard rails and engagement recommendations remain user-triggered schedule workflow reads.
+- Upload URLs, AI suggestions, similar-media reads, and clipboard/UI effects remain one-off workflows.
+
+Risks:
+
+- This phase intentionally uses a separate composer institution key instead of `queryKeys.institutions.all(...)` to avoid shape conflicts with institution management data.
+- Default institution seeding remains effect-driven because it mutates the draft form rather than only rendering fetched data.
+- Picker error rendering is preserved with a simple inline message from query error state.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/features/submission/SubmissionScreen.tsx src/lib/queryKeys.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2S: review schedule helper reads such as guard rails and engagement recommendations, and decide which should remain request-on-demand versus query-backed by scheduled time/institution.

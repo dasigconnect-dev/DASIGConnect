@@ -13,6 +13,8 @@ export const queryKeys = {
     all: (params: { role: string; userId?: string | null }) => scopedKey("institutions", params),
     detail: (params: { role: string; userId?: string | null; institutionId: string }) =>
       scopedKey("institutions", { ...params, view: "detail" }),
+    composerOptions: (params: { role: string; userId?: string | null }) =>
+      scopedKey("institutions", { ...params, view: "composer-options" }),
   },
   users: {
     all: (params: {

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
+import { listInstitutions } from "../../api/authApi";
 import {
   attachAsset,
   createDraft,
@@ -130,6 +130,7 @@ const InPageFacebookPreview = lazy(() =>
 );
 
 const AUTO_SAVE_DELAY_MS = 1200;
+const COMPOSER_INSTITUTIONS_STALE_TIME_MS = 5 * 60_000;
 
 interface SubmissionScreenProps {
   user: User;
@@ -296,9 +297,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [engagementRecommendations, setEngagementRecommendations] =
     useState<EngagementRecommendations | null>(null);
   const [engagementLoading, setEngagementLoading] = useState(false);
-  const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
-  const [institutionsLoading, setInstitutionsLoading] = useState(false);
-  const [institutionsError, setInstitutionsError] = useState("");
   const [activeStep, setActiveStep] = useState<ProgressStep>("media");
   const [captionSelection, setCaptionSelection] = useState<FancyTextSelection>({
     start: 0,
@@ -310,6 +308,18 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const isMySubmissionsPage = location.pathname === "/submissions";
   const selectedInstitutionId = isAdminComposer ? form.institutionId : user.institutionId || "";
   const currentUserScope = userScope(user);
+  const institutionsQuery = useQuery({
+    queryKey: queryKeys.institutions.composerOptions({
+      role: user.role,
+      userId: currentUserScope,
+    }),
+    queryFn: ({ signal }) => listInstitutions(signal).then((response) =>
+      response.data.filter((institution) => institution.status?.toLowerCase() !== "inactive"),
+    ),
+    enabled: isAdminComposer,
+    staleTime: COMPOSER_INSTITUTIONS_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
   const templatesQueryKey = queryKeys.submissions.templates({
     role: user.role,
     userId: currentUserScope,
@@ -341,6 +351,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const customTemplates = templatesQuery.data ?? [];
   const templatesLoading = templatesQuery.isLoading || templatesQuery.isFetching;
   const existingAlbums = selectedInstitutionId ? albumNamesQuery.data ?? [] : [];
+  const institutions = institutionsQuery.data ?? [];
+  const institutionsLoading = institutionsQuery.isLoading || institutionsQuery.isFetching;
+  const institutionsError = institutionsQuery.error ? "Institution list could not be loaded." : "";
   const templateErrorNotifiedRef = useRef(false);
   const albumErrorNotifiedRef = useRef<string | null>(null);
   const [mediaUploadFailed, setMediaUploadFailed] = useState(false);
@@ -467,31 +480,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     saveState === "saving" || submitting || withdrawing || deleting || reorderingMedia;
 
   useEffect(() => {
-    if (!isAdminComposer) return;
-    const controller = new AbortController();
-    queueMicrotask(() => setInstitutionsLoading(true));
-    listInstitutions(controller.signal)
-      .then((response) => {
-        const activeInstitutions = response.data.filter(
-          (institution) => institution.status?.toLowerCase() !== "inactive",
-        );
-        setInstitutions(activeInstitutions);
-        setInstitutionsError("");
-        setForm((prev) => {
-          if (prev.institutionId || prev.id) return prev;
-          const dasig = activeInstitutions.find(
-            (inst) => isDefaultInstitution(inst),
-          );
-          return dasig ? { ...prev, institutionId: dasig.id } : prev;
-        });
-      })
-      .catch((err: unknown) => {
-        if ((err as { name?: string })?.name === "CanceledError") return;
-        setInstitutionsError(getErrorMessage(err, "Institution list could not be loaded."));
-      })
-      .finally(() => setInstitutionsLoading(false));
-    return () => controller.abort();
-  }, [isAdminComposer]);
+    if (!isAdminComposer || !institutions.length) return;
+    queueMicrotask(() => {
+      setForm((prev) => {
+        if (prev.institutionId || prev.id) return prev;
+        const dasig = institutions.find((inst) => isDefaultInstitution(inst));
+        return dasig ? { ...prev, institutionId: dasig.id } : prev;
+      });
+    });
+  }, [institutions, isAdminComposer]);
 
   useEffect(() => {
     if (!templatesQuery.isError || templateErrorNotifiedRef.current) return;
