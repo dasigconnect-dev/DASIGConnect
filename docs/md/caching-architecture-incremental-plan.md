@@ -2682,3 +2682,86 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2W: review cache invalidation after account, institution, and settings mutations to make sure shared lookup/detail caches are invalidated or patched after writes.
+
+## Phase 2W Cross-Feature Settings and Institution Invalidation Status
+
+Status: implemented on `feature/caching-architecture-phase2w`.
+
+Changed files:
+
+- `frontend/src/features/auth/AccountSettingsScreen.tsx`
+- `frontend/src/features/institution-management/hooks/useInstitutionManagementData.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- Account, page, and watermark saves patched their matching settings query and invalidated the `settings` group.
+- Institution-management mutations invalidated `institutions`, `users`, `dashboard`, and `analytics`.
+- Shared read surfaces added in later phases could keep stale labels, profile-adjacent data, page settings, or watermark-dependent previews until their own TTL expired.
+
+New behavior:
+
+- Account settings saves now patch the profile settings query and invalidate:
+  - `settings`,
+  - `users`,
+  - `notifications`.
+- Page settings saves now patch the page settings query and invalidate:
+  - `settings`,
+  - `submissions`,
+  - `calendar-events`.
+- Watermark saves now patch the watermark query and invalidate:
+  - `settings`,
+  - `submissions`,
+  - `validation`.
+- Institution-management mutations now invalidate:
+  - `institutions`,
+  - `users`,
+  - `dashboard`,
+  - `analytics`,
+  - `settings`,
+  - `submissions`,
+  - `calendar-events`,
+  - `media-assets`,
+  - `notifications`.
+
+Covered mutation groups:
+
+- Account profile and notification preference updates.
+- Page publishing setting updates.
+- Watermark configuration updates.
+- Institution create/edit/delete/activate/deactivate/logo upload.
+- Institution-scoped user avatar upload, user status changes, user delete, invitation create/cancel/resend, and contributor reassignment through the existing institution-management invalidation helper.
+
+Why these groups are invalidated:
+
+- `settings` keeps profile, page, and watermark consumers coherent.
+- `users` keeps account/profile-derived management rows fresh.
+- `notifications` keeps sender/profile and delivery preference dependent views fresh.
+- `submissions` and `calendar-events` keep page/watermark/institution metadata dependent post surfaces fresh.
+- `validation` keeps watermark-dependent approval previews fresh.
+- `media-assets` keeps institution metadata and logo/name dependent media-library views fresh.
+- `dashboard` and `analytics` keep institution/user metric aggregates fresh.
+
+Authentication isolation:
+
+- Invalidations target authenticated query groups only; query keys still carry role, user identity, institution, and view parameters where defined.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority after each refetch.
+
+Risks:
+
+- Some invalidations are intentionally broader than the exact mutation payload because institution metadata and settings are shared by many screens.
+- Broader invalidation can cause extra background refetches after saves, but avoids stale cross-feature labels and previews.
+- A later mutation-hook extraction could move these invalidation sets closer to feature-specific write hooks.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/features/auth/AccountSettingsScreen.tsx src/features/institution-management/hooks/useInstitutionManagementData.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2X: review analytics/report modal, audit log metadata, and any remaining modal-only GET reads for query boundaries, then close out the frontend cache migration with a final consistency audit.
