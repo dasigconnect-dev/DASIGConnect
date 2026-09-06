@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
 import {
@@ -36,7 +37,8 @@ import type { User } from "../../types/auth.types";
 import type { SubmissionMediaItem } from "../../types/media";
 import type { CaptionTone } from "../../api/aiApi";
 import { useToast } from "../../context/ToastContext";
-import { registerAppCacheReset } from "../../lib/appCache";
+import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import AiCaptionButton from "./components/AiCaptionButton";
@@ -169,22 +171,18 @@ function apiTemplateToComposerTemplate(template: ApiPostTemplate): ComposerTempl
   };
 }
 
-// Composer reference data that rarely changes within a session. The effects
-// below serve these from the module cache while it's younger than the TTL, so
-// re-entering the composer doesn't re-hit the DB every time. Cleared on logout.
 const COMPOSER_REF_TTL_MS = 2 * 60_000;
-let cachedTemplates: { data: ComposerTemplate[]; at: number } | null = null;
-const cachedAlbumsByInstitution = new Map<string, { data: string[]; at: number }>();
-registerAppCacheReset(() => {
-  cachedTemplates = null;
-  cachedAlbumsByInstitution.clear();
-});
+
+function userScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
+}
 
 export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { submissionId: routeSubmissionId } = useParams<{ submissionId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const { submissions, setSubmissions, loading, error, refresh } =
     useSubmissions(user);
   const {
@@ -224,8 +222,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [captionMediaKey, setCaptionMediaKey] = useState<string | null>(null);
   const [hashtagInput, setHashtagInput] = useState("");
   const [mediaTagInput, setMediaTagInput] = useState("");
-  const [customTemplates, setCustomTemplates] = useState<ComposerTemplate[]>([]);
-  const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
@@ -306,7 +302,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
   const [institutionsLoading, setInstitutionsLoading] = useState(false);
   const [institutionsError, setInstitutionsError] = useState("");
-  const [existingAlbums, setExistingAlbums] = useState<string[]>([]);
   const [activeStep, setActiveStep] = useState<ProgressStep>("media");
   const [captionSelection, setCaptionSelection] = useState<FancyTextSelection>({
     start: 0,
@@ -317,6 +312,40 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const isAdminComposer = user.role === "moderator" || user.role === "admin";
   const isMySubmissionsPage = location.pathname === "/submissions";
   const selectedInstitutionId = isAdminComposer ? form.institutionId : user.institutionId || "";
+  const currentUserScope = userScope(user);
+  const templatesQueryKey = queryKeys.submissions.templates({
+    role: user.role,
+    userId: currentUserScope,
+    institutionId: selectedInstitutionId || null,
+  });
+  const albumNamesQueryKey = queryKeys.submissions.albumNames({
+    role: user.role,
+    userId: currentUserScope,
+    institutionId: selectedInstitutionId || "",
+  });
+  const templatesQuery = useQuery({
+    queryKey: templatesQueryKey,
+    queryFn: ({ signal }) => listPostTemplates(signal).then((response) =>
+      (response.data ?? []).map(apiTemplateToComposerTemplate),
+    ),
+    staleTime: COMPOSER_REF_TTL_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const albumNamesQuery = useQuery({
+    queryKey: albumNamesQueryKey,
+    queryFn: ({ signal }) =>
+      listMediaAlbums(selectedInstitutionId, signal).then((response) =>
+        (response.data ?? []).map((album) => album.name),
+      ),
+    enabled: Boolean(selectedInstitutionId),
+    staleTime: COMPOSER_REF_TTL_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const customTemplates = templatesQuery.data ?? [];
+  const templatesLoading = templatesQuery.isLoading || templatesQuery.isFetching;
+  const existingAlbums = selectedInstitutionId ? albumNamesQuery.data ?? [] : [];
+  const templateErrorNotifiedRef = useRef(false);
+  const albumErrorNotifiedRef = useRef<string | null>(null);
   const [mediaUploadFailed, setMediaUploadFailed] = useState(false);
   const selectedPostingInstitution = useMemo(
     () => institutions.find((institution) => institution.id === form.institutionId) ?? null,
@@ -434,57 +463,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }, [isAdminComposer]);
 
   useEffect(() => {
-    if (cachedTemplates && Date.now() - cachedTemplates.at < COMPOSER_REF_TTL_MS) {
-      const cachedTemplateData = cachedTemplates.data;
-      queueMicrotask(() => {
-        setCustomTemplates(cachedTemplateData);
-        setTemplatesLoading(false);
-      });
-      return;
-    }
-    const controller = new AbortController();
-    queueMicrotask(() => setTemplatesLoading(true));
-    listPostTemplates(controller.signal)
-      .then((response) => {
-        const mapped = (response.data ?? []).map(apiTemplateToComposerTemplate);
-        cachedTemplates = { data: mapped, at: Date.now() };
-        setCustomTemplates(mapped);
-      })
-      .catch((err: unknown) => {
-        if ((err as { name?: string })?.name === "CanceledError") return;
-        toast.error("Could not load saved templates.");
-      })
-      .finally(() => setTemplatesLoading(false));
-    return () => controller.abort();
-  }, [toast]);
+    if (!templatesQuery.isError || templateErrorNotifiedRef.current) return;
+    templateErrorNotifiedRef.current = true;
+    toast.error("Could not load saved templates.");
+  }, [templatesQuery.isError, toast]);
 
   useEffect(() => {
-    if (!selectedInstitutionId) {
-      queueMicrotask(() => setExistingAlbums([]));
-      return;
-    }
-
-    const cached = cachedAlbumsByInstitution.get(selectedInstitutionId);
-    if (cached && Date.now() - cached.at < COMPOSER_REF_TTL_MS) {
-      queueMicrotask(() => setExistingAlbums(cached.data));
-      return;
-    }
-
-    const controller = new AbortController();
-    listMediaAlbums(selectedInstitutionId, controller.signal)
-      .then((response) => {
-        const names = (response.data ?? []).map((album) => album.name);
-        cachedAlbumsByInstitution.set(selectedInstitutionId, { data: names, at: Date.now() });
-        setExistingAlbums(names);
-      })
-      .catch((err: unknown) => {
-        if ((err as { name?: string })?.name === "CanceledError") return;
-        setExistingAlbums([]);
-        toast.error("Could not load media albums.");
-      });
-
-    return () => controller.abort();
-  }, [selectedInstitutionId, toast]);
+    if (!selectedInstitutionId || !albumNamesQuery.isError || albumErrorNotifiedRef.current === selectedInstitutionId) return;
+    albumErrorNotifiedRef.current = selectedInstitutionId;
+    toast.error("Could not load media albums.");
+  }, [albumNamesQuery.isError, selectedInstitutionId, toast]);
 
   const isDetailsComplete = useMemo(
     () =>
@@ -1051,11 +1039,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         institutionId: selectedInstitutionId || null,
       });
       const template = apiTemplateToComposerTemplate(response.data);
-      setCustomTemplates((current) => {
-        const next = [template, ...current];
-        cachedTemplates = { data: next, at: Date.now() };
-        return next;
-      });
+      queryClient.setQueryData<ComposerTemplate[]>(templatesQueryKey, (current = []) => [template, ...current]);
+      templateErrorNotifiedRef.current = false;
+      await queryClient.invalidateQueries({ queryKey: ["submissions"] });
       setForm((current) => ({ ...current, selectedTemplateId: template.id }));
       setTemplateSaveOpen(false);
       toast.success("Template saved.");
@@ -1076,11 +1062,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setDeletingTemplate(true);
     try {
       await deletePostTemplate(templateDeleteId);
-      setCustomTemplates((current) => {
-        const next = current.filter((template) => template.id !== templateDeleteId);
-        cachedTemplates = { data: next, at: Date.now() };
-        return next;
-      });
+      queryClient.setQueryData<ComposerTemplate[]>(templatesQueryKey, (current = []) =>
+        current.filter((template) => template.id !== templateDeleteId),
+      );
+      templateErrorNotifiedRef.current = false;
+      await queryClient.invalidateQueries({ queryKey: ["submissions"] });
       setForm((current) =>
         current.selectedTemplateId === templateDeleteId
           ? { ...current, selectedTemplateId: null }

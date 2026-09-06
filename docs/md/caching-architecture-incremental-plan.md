@@ -2107,3 +2107,92 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2P: migrate composer reference caches such as custom templates and media album name lookups, or document them as local composer-only caches if they should stay isolated.
+
+## Phase 2P Composer Reference Cache Migration Status
+
+Status: implemented on `feature/caching-architecture-phase2p`.
+
+Changed files:
+
+- `frontend/src/features/submission/SubmissionScreen.tsx`
+- `frontend/src/lib/queryKeys.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- Custom post templates used a module-level `cachedTemplates` object with manual timestamps.
+- Existing media album names used a module-level `cachedAlbumsByInstitution` map.
+- Both reference caches were cleared through `registerAppCacheReset()`.
+- Template create/delete handlers updated local component state and the module cache manually.
+
+New behavior:
+
+- Custom post templates now load through TanStack Query using `queryKeys.submissions.templates(...)`.
+- Existing album names now load through TanStack Query using `queryKeys.submissions.albumNames(...)`.
+- Template create/delete handlers write the changed template list into the query cache and invalidate the `submissions` query group.
+- Template and album load error toasts are preserved through query error effects.
+- The composer no longer owns module-level caches for templates or album names.
+
+Query keys:
+
+```ts
+queryKeys.submissions.templates({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: selectedInstitutionId || null,
+})
+
+queryKeys.submissions.albumNames({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: selectedInstitutionId,
+})
+```
+
+Freshness policy:
+
+- Composer templates: `staleTime: 120_000`
+- Composer album names: `staleTime: 120_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First composer visit for a template scope: `NETWORK`.
+- First selected institution album-name lookup: `NETWORK`.
+- Return within 2 minutes: `CACHE`.
+- Return after 2 minutes while cached data exists: `CACHE immediately + BACKGROUND REFRESH`.
+- Template create/delete writes the returned local change to cache and invalidates `submissions`.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`.
+
+Authentication isolation:
+
+- Template and album-name keys include user identity, role, and institution context.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for template and media album visibility.
+
+Remaining imperative reads reviewed:
+
+- Institution picker loading remains effect-driven because it also seeds the default institution into an empty admin/moderator form.
+- Submission detail hydration remains imperative because it populates a large editable form and coordinates route/modal transitions.
+- Submission detail memory cache remains in `submission/constants.ts` for list-card preview hydration and can be handled independently.
+- Guard rails, engagement recommendations, media uploads, AI suggestions, and similar-media reads remain user-triggered workflow calls.
+
+Risks:
+
+- Template query scope includes `selectedInstitutionId`, matching template save payload scope and avoiding cross-institution leakage.
+- Album-name query is disabled until an institution is selected.
+- Template create/delete still use local cache writes to keep the UI responsive before invalidated data refetches.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/features/submission/SubmissionScreen.tsx src/lib/queryKeys.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2Q: review submission detail hydration and detail memory cache; either migrate read-only detail data to query keys or keep editor hydration imperative with explicit documentation.
