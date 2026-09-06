@@ -2605,3 +2605,80 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2V: review mutation cache synchronization for submission saves, submits, withdraws, deletes, template changes, media reordering, and asset attachment so newly added query-backed detail/list caches stay coherent after writes.
+
+## Phase 2V Submission Mutation Cache Synchronization Status
+
+Status: implemented on `feature/caching-architecture-phase2v`.
+
+Changed files:
+
+- `frontend/src/features/submission/SubmissionScreen.tsx`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- Save, submit, withdraw, and media-reorder flows updated the query-backed submission list through `setSubmissions(...)`.
+- Newly added editor-detail and preview-detail cache entries could remain stale after successful writes.
+- Delete removed the submission from the list but did not remove related detail cache entries.
+
+New behavior:
+
+- Added a local `syncSubmissionCaches(...)` helper in `SubmissionScreen`.
+- Successful save, submit, withdraw, and media-reorder writes now update:
+  - the query-backed submission list,
+  - `queryKeys.submissions.editorDetail(...)`,
+  - `queryKeys.submissions.detail(...)` preview data.
+- Added `removeSubmissionCaches(...)` for draft deletion.
+- Delete now removes the submission from the list and removes both editor-detail and preview-detail cache entries for the deleted submission.
+- Existing template create/delete invalidation remains in place because template writes can affect multiple submission/template read surfaces.
+
+Cache keys synchronized:
+
+```ts
+queryKeys.submissions.editorDetail({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: submission.institutionId || user.institutionId || null,
+  submissionId: submission.id,
+})
+
+queryKeys.submissions.detail({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: submission.institutionId || user.institutionId || null,
+  submissionId: submission.id,
+})
+```
+
+Write behavior:
+
+- Save draft: writes the final draft response into list, editor-detail, and preview-detail caches.
+- Submit for review: writes the submitted response into list, editor-detail, and preview-detail caches.
+- Withdraw: writes the returned draft response into list, editor-detail, and preview-detail caches.
+- Media reorder: writes the reordered response into list, editor-detail, and preview-detail caches.
+- Delete draft: removes the list row and removes detail cache entries for that draft.
+- Upload/attach flows are covered when their final response is promoted through the save or submit flow.
+
+Authentication isolation:
+
+- Detail cache synchronization reuses the same role, user identity, institution, and submission id scoping introduced by Phase 2U.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for submission write visibility.
+
+Risks:
+
+- Cache synchronization is still local to `SubmissionScreen`; a later mutation-hook extraction could move this behavior closer to the API write layer.
+- Delete removes the detail keys for the current known institution scope; if the same submission was cached under another historical institution key, auth-boundary clearing and list refetch still prevent long-lived cross-session leakage.
+- Template writes continue using broader invalidation instead of targeted detail patching because their downstream effects can span composer template lists and submission references.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/features/submission/SubmissionScreen.tsx --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2W: review cache invalidation after account, institution, and settings mutations to make sure shared lookup/detail caches are invalidated or patched after writes.

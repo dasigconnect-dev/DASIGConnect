@@ -506,6 +506,38 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     shouldLoadEngagementRecommendations &&
     (engagementRecommendationsQuery.isLoading || engagementRecommendationsQuery.isFetching);
 
+  function submissionDetailParams(submission: Pick<SubmissionSummary, "id" | "institutionId">) {
+    return {
+      role: user.role,
+      userId: currentUserScope,
+      institutionId: submission.institutionId || user.institutionId || null,
+      submissionId: submission.id,
+    };
+  }
+
+  function syncSubmissionCaches(next: SubmissionSummary) {
+    setSubmissions((current) => upsertSubmission(current, next));
+    const detailParams = submissionDetailParams(next);
+    queryClient.setQueryData<SubmissionSummary>(
+      queryKeys.submissions.editorDetail(detailParams),
+      next,
+    );
+    queryClient.setQueryData<{ caption: string; mediaAssets: SavedMediaAsset[] }>(
+      queryKeys.submissions.detail(detailParams),
+      {
+        caption: next.caption ?? "",
+        mediaAssets: next.mediaAssets ?? [],
+      },
+    );
+  }
+
+  function removeSubmissionCaches(submission: Pick<SubmissionSummary, "id" | "institutionId">) {
+    setSubmissions((current) => current.filter((item) => item.id !== submission.id));
+    const detailParams = submissionDetailParams(submission);
+    queryClient.removeQueries({ queryKey: queryKeys.submissions.editorDetail(detailParams) });
+    queryClient.removeQueries({ queryKey: queryKeys.submissions.detail(detailParams) });
+  }
+
   useEffect(() => {
     if (!isAdminComposer || !institutions.length) return;
     queueMicrotask(() => {
@@ -1410,9 +1442,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       }));
       setPickerItems(orderedSavedAssets.map(savedAssetToPickerItem));
       setCaptionMediaKey(null);
-      setSubmissions((current) =>
-        upsertSubmission(current, finalResponse.data),
-      );
+      syncSubmissionCaches(finalResponse.data);
       clearAssetIdParam();
       setSaveState("saved");
       setMediaUploadFailed(false);
@@ -1541,7 +1571,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         );
       }
       const submitted = await submitForReview(draftResponse.data.id);
-      setSubmissions((current) => upsertSubmission(current, submitted.data));
+      syncSubmissionCaches(submitted.data);
       const submittedAssets = submitted.data.mediaAssets ?? form.savedAssets;
       setForm((current) => ({
         ...current,
@@ -1619,9 +1649,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
     try {
       await deleteDraft(form.id);
-      setSubmissions((current) =>
-        current.filter((item) => item.id !== form.id),
-      );
+      removeSubmissionCaches({
+        id: form.id,
+        institutionId: form.institutionId || user.institutionId || "",
+      });
       setModal(null);
       toast.info("Draft deleted.");
       exitSubmission();
@@ -1637,7 +1668,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setWithdrawing(true);
     try {
       const { data } = await withdrawSubmission(form.id);
-      setSubmissions((current) => upsertSubmission(current, data));
+      syncSubmissionCaches(data);
       const nextAssets = data.mediaAssets ?? form.savedAssets;
       setForm((current) => ({
         ...current,
@@ -1795,7 +1826,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         mediaSkipWatermark: mediaSkipWatermarkFromSavedAssets(nextAssets),
       }));
       setPickerItems(nextAssets.map(savedAssetToPickerItem));
-      setSubmissions((current) => upsertSubmission(current, data));
+      syncSubmissionCaches(data);
       toast.success("Media order updated.");
       cleanSignatureRef.current = getDirtySignature(nextForm);
     } catch (err: unknown) {
