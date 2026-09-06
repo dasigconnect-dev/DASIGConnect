@@ -747,13 +747,26 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (ids.length === 0) return;
 
     void (async () => {
-      const results = await Promise.allSettled(ids.map((id) => getMediaAsset(id)));
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          queryClient.fetchQuery({
+            queryKey: queryKeys.mediaAssets.detail({
+              role: user.role,
+              userId: currentUserScope,
+              assetId: id,
+            }),
+            queryFn: ({ signal }) => getMediaAsset(id, signal).then((response) => response.data),
+            staleTime: COMPOSER_REF_TTL_MS,
+            meta: authenticatedQueryMeta,
+          }),
+        ),
+      );
       const assets: SavedMediaAsset[] = results
-        .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof getMediaAsset>>> =>
+        .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof getMediaAsset>>["data"]> =>
           result.status === "fulfilled",
         )
         .map((result) => {
-          const asset = result.value.data;
+          const asset = result.value;
           return {
             id: asset.id,
             storageUrl: asset.storageUrl,
@@ -784,7 +797,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         );
       }
     })();
-  }, [searchParams, toast]);
+  }, [currentUserScope, queryClient, searchParams, toast, user.role]);
 
   useEffect(() => {
     const submissionId = routeSubmissionId ?? searchParams.get("submissionId");
@@ -1232,7 +1245,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   async function applySubmission(summary: SubmissionSummary) {
     setHydratingId(summary.id);
     try {
-      const { data: submission } = await getSubmission(summary.id);
+      const submission = await queryClient.fetchQuery({
+        queryKey: queryKeys.submissions.editorDetail({
+          role: user.role,
+          userId: currentUserScope,
+          institutionId: summary.institutionId || user.institutionId || null,
+          submissionId: summary.id,
+        }),
+        queryFn: ({ signal }) => getSubmission(summary.id, signal).then((response) => response.data),
+        staleTime: 0,
+        meta: authenticatedQueryMeta,
+      });
       const nextForm: FormState = {
         id: submission.id,
         status: submission.status,
