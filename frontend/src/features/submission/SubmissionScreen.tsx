@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
 import {
@@ -51,7 +51,7 @@ import "../../styles/dasig-loader.css";
 import "../../styles/submission.css";
 
 import type { CenterMode, FormState, ModalState, PendingLeaveAction, ProgressStep, QueueFilter, ReadinessTarget, SaveState } from "./types";
-import { initialForm, postTemplates, statusLabels, submissionDetailsMemoryCache } from "./constants";
+import { initialForm, postTemplates, statusLabels } from "./constants";
 import {
   appendHashtagToCaption,
   CAPTION_WORD_LIMIT,
@@ -212,9 +212,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     return "all";
   });
   const [queueSearch, setQueueSearch] = useState("");
-  const [listDetails, setListDetails] = useState<
-    Record<string, { caption: string; mediaAssets: SavedMediaAsset[] }>
-  >(() => ({ ...submissionDetailsMemoryCache }));
   const [form, setForm] = useState<FormState>(initialForm);
   const [pickerItems, setPickerItems] = useState<SubmissionMediaItem[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -362,6 +359,40 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         : submissions.filter((item) => queueBucket(item.status) === filter);
     return base.filter((item) => matchesQueueSearch(item, queueSearch));
   }, [filter, queueSearch, submissions]);
+  const queuedPreviewItems = useMemo(
+    () =>
+      queued.filter(
+        (item) =>
+          !item.caption || ((item.mediaCount ?? 0) > 0 && !item.mediaAssets?.length),
+      ),
+    [queued],
+  );
+  const previewDetailQueries = useQueries({
+    queries: queuedPreviewItems.map((item) => ({
+      queryKey: queryKeys.submissions.detail({
+        role: user.role,
+        userId: currentUserScope,
+        institutionId: item.institutionId || user.institutionId || null,
+        submissionId: item.id,
+      }),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        getSubmission(item.id, signal).then((response) => ({
+          caption: response.data.caption ?? "",
+          mediaAssets: response.data.mediaAssets ?? [],
+        })),
+      enabled: isMySubmissionsPage,
+      staleTime: COMPOSER_REF_TTL_MS,
+      meta: authenticatedQueryMeta,
+    })),
+  });
+  const previewDetails = useMemo(() => {
+    const entries: Record<string, { caption: string; mediaAssets: SavedMediaAsset[] }> = {};
+    previewDetailQueries.forEach((query, index) => {
+      const id = queuedPreviewItems[index]?.id;
+      if (id && query.data) entries[id] = query.data;
+    });
+    return entries;
+  }, [previewDetailQueries, queuedPreviewItems]);
 
   // One pass over the list for every tab count.
   const counts = useMemo(() => {
@@ -746,40 +777,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       }
     })();
   }, [searchParams, toast]);
-
-  useEffect(() => {
-    if (!isMySubmissionsPage) return;
-    const needsPreview = queued.filter(
-      (item) =>
-        (!item.caption || ((item.mediaCount ?? 0) > 0 && !item.mediaAssets?.length)) &&
-        !listDetails[item.id],
-    );
-    if (needsPreview.length === 0) return;
-
-    let cancelled = false;
-    void Promise.allSettled(needsPreview.map((item) => getSubmission(item.id))).then((results) => {
-      if (cancelled) return;
-      const nextEntries: Record<string, { caption: string; mediaAssets: SavedMediaAsset[] }> = {};
-      results.forEach((result, index) => {
-        const id = needsPreview[index]?.id;
-        if (!id) return;
-        const entry =
-          result.status === "fulfilled"
-            ? {
-                caption: result.value.data.caption ?? "",
-                mediaAssets: result.value.data.mediaAssets ?? [],
-              }
-            : { caption: "", mediaAssets: [] };
-        nextEntries[id] = entry;
-        submissionDetailsMemoryCache[id] = entry;
-      });
-      setListDetails((current) => ({ ...current, ...nextEntries }));
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isMySubmissionsPage, listDetails, queued]);
 
   useEffect(() => {
     const submissionId = routeSubmissionId ?? searchParams.get("submissionId");
@@ -1913,7 +1910,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               />
             ) : (
               queued.map((item) => {
-                const detail = listDetails[item.id];
+                const detail = previewDetails[item.id];
                 const mediaAssets =
                   item.mediaAssets?.length ? item.mediaAssets : detail?.mediaAssets ?? [];
                 const thumbnail = mediaAssets[0];
@@ -1969,7 +1966,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     <SubmissionCardMedia
                       thumbnail={thumbnail}
                       mediaCount={item.mediaCount}
-                      detailsLoaded={Boolean(listDetails[item.id])}
+                      detailsLoaded={Boolean(previewDetails[item.id])}
                     />
 
                     {/* Reactions & Engagement Row */}

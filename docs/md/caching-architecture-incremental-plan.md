@@ -2196,3 +2196,85 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2Q: review submission detail hydration and detail memory cache; either migrate read-only detail data to query keys or keep editor hydration imperative with explicit documentation.
+
+## Phase 2Q Submission Detail Preview Cache Migration Status
+
+Status: implemented on `feature/caching-architecture-phase2q`.
+
+Changed files:
+
+- `frontend/src/features/submission/SubmissionScreen.tsx`
+- `frontend/src/features/submission/constants.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- The My Submissions list loaded missing caption/media preview details through a `Promise.allSettled()` effect.
+- Preview detail results were stored in local `listDetails` state and mirrored into `submissionDetailsMemoryCache`.
+- `submissionDetailsMemoryCache` lived in `submission/constants.ts` and was cleared through `registerAppCacheReset()`.
+- Full submission editor hydration still loaded details imperatively through `applySubmission()`.
+
+New behavior:
+
+- Missing My Submissions preview details now load through TanStack Query via `useQueries`.
+- Each preview detail request uses the existing `queryKeys.submissions.detail(...)` key shape.
+- Preview detail data is derived from query results instead of local state.
+- `submissionDetailsMemoryCache` and its app-cache reset registration were removed.
+- Full editor hydration remains imperative because it populates a large editable form, handles route state, and owns user-facing error recovery.
+
+Query key:
+
+```ts
+queryKeys.submissions.detail({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: item.institutionId || user.institutionId || null,
+  submissionId: item.id,
+})
+```
+
+Freshness policy:
+
+- Submission preview detail: `staleTime: 120_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- My Submissions list rows with complete summary data do not trigger preview detail fetches.
+- Rows missing caption/media preview data request detail data once per keyed submission scope.
+- Return within 2 minutes: `CACHE`.
+- Return after 2 minutes while cached data exists: `CACHE immediately + BACKGROUND REFRESH`.
+- Save/submit/withdraw/delete list cache updates from Phase 2O still update the summary list path.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`.
+
+Authentication isolation:
+
+- Preview detail keys include user identity, role, institution context, and submission id.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for submission detail visibility.
+
+Imperative detail hydration decision:
+
+- `applySubmission()` remains imperative in this phase because it is not a passive read surface.
+- It coordinates route-selected submissions, form hydration, media picker state, revision feedback modal state, dirty-signature tracking, and error navigation.
+- A future mutation-hook/editor-state refactor could split read-only submission detail from editable form hydration, but that would be larger than this cache migration.
+
+Risks:
+
+- `useQueries` creates one query per queued row that lacks summary preview data; complete summary rows avoid extra requests.
+- Preview detail failures remain silent at the row level, matching the previous fallback behavior of rendering empty preview data.
+- Detail cache freshness is short enough to avoid long-lived stale media previews while still removing repeated remount fetches.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/features/submission/SubmissionScreen.tsx src/features/submission/constants.ts src/lib/queryKeys.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2R: review institution picker loading in the composer and decide whether to reuse the institution query cache while preserving default institution seeding.
