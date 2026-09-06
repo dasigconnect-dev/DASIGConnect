@@ -39,6 +39,8 @@ export const queryKeys = {
       scopedKey("submissions", params),
     detail: (params: { role: string; userId?: string | null; institutionId?: string | null; submissionId: string }) =>
       scopedKey("submissions", { ...params, view: "detail" }),
+    editorDetail: (params: { role: string; userId?: string | null; institutionId?: string | null; submissionId: string }) =>
+      scopedKey("submissions", { ...params, view: "editor-detail" }),
     lookups: (params: { role: string; institutionId?: string | null }) =>
       scopedKey("submissions", { ...params, view: "lookups" }),
     templates: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
@@ -65,6 +67,8 @@ export const queryKeys = {
       sort?: string;
       mediaType?: string;
     }) => scopedKey("media-assets", params),
+    detail: (params: { role: string; userId?: string | null; assetId: string }) =>
+      scopedKey("media-assets", { ...params, view: "detail" }),
   },
   validation: {
     queue: (params: { role: string; userId?: string | null; scope?: "network" | "institution" | "history"; institutionId?: string | null }) =>

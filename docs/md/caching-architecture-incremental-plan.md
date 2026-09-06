@@ -2517,3 +2517,91 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2U: review remaining submission detail hydration and asset prefill paths, then decide whether to keep documenting them as editor workflow orchestration or split passive detail reads into a dedicated query-backed hook.
+
+## Phase 2U Editor Hydration Query Boundary Status
+
+Status: implemented on `feature/caching-architecture-phase2u`.
+
+Changed files:
+
+- `frontend/src/features/submission/SubmissionScreen.tsx`
+- `frontend/src/lib/queryKeys.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- Editable submission hydration called `getSubmission(id)` directly from `applySubmission()`.
+- Media-library composer prefill from `?assetIds=` called `getMediaAsset(id)` directly for each selected asset.
+- The lightweight list-preview detail query already used `queryKeys.submissions.detail(...)`, but that cache entry stores only preview data.
+
+New behavior:
+
+- Added `queryKeys.submissions.editorDetail(...)` for full submission payloads used by the editable composer.
+- `applySubmission()` now fetches full submission detail through `queryClient.fetchQuery(...)` while preserving the existing form, picker, revision modal, routing, and dirty-signature orchestration.
+- Added `queryKeys.mediaAssets.detail(...)` for media-library asset detail reads.
+- `?assetIds=` prefill now resolves selected media assets through `queryClient.fetchQuery(...)` and keeps the existing one-time route action behavior.
+- The existing preview-detail cache key remains separate so compact list preview data cannot conflict with full editor detail data.
+
+Query keys:
+
+```ts
+queryKeys.submissions.editorDetail({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: summary.institutionId || user.institutionId || null,
+  submissionId: summary.id,
+})
+
+queryKeys.mediaAssets.detail({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  assetId,
+})
+```
+
+Freshness policy:
+
+- Editor detail hydration: `staleTime: 0`
+- Media asset prefill detail: `staleTime: 120_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- Opening an editable submission still revalidates detail immediately to avoid stale form state.
+- Duplicate in-flight editor detail requests for the same key can now share query-client transport behavior.
+- Reusing selected media asset prefill within 2 minutes can return from cache.
+- Partial asset prefill failures still preserve the previous behavior: attach the assets that loaded and warn if some failed.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`.
+
+Authentication isolation:
+
+- Editor detail keys include user identity, role, institution context, and submission id.
+- Media asset detail keys include user identity, role, and asset id.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for submission and media asset visibility.
+
+Imperative orchestration decision:
+
+- `applySubmission()` remains imperative because it mutates editor form state, loaded review metadata, picker items, active step, route-driven modal state, save state, and dirty-signature tracking.
+- Media prefill remains a one-time route action because it converts URL-selected asset ids into pending composer selection state.
+- This phase draws the cache boundary around the GET payloads rather than trying to convert the editor workflow itself into passive render state.
+
+Risks:
+
+- Editor detail intentionally uses `staleTime: 0`; this favors correctness over avoiding the network on editable form open.
+- Editor detail uses a separate key from list preview detail to avoid shape conflicts between compact preview rows and full submission records.
+- Asset prefill cache entries are scoped by asset id and user/role; backend authorization still controls whether the asset can be read.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/features/submission/SubmissionScreen.tsx src/lib/queryKeys.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2V: review mutation cache synchronization for submission saves, submits, withdraws, deletes, template changes, media reordering, and asset attachment so newly added query-backed detail/list caches stay coherent after writes.
