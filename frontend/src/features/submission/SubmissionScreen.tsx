@@ -16,7 +16,6 @@ import {
   validateGuardRails,
   withdrawSubmission,
   type GuardRailResult,
-  type EngagementRecommendations,
   type SavedMediaAsset,
   type SubmissionSummary,
 } from "../../api/submissionApi";
@@ -178,6 +177,12 @@ function userScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
 }
 
+function isCanceledRequest(error: unknown, signal?: AbortSignal) {
+  if (signal?.aborted) return true;
+  const maybeCanceled = error as { code?: string; name?: string };
+  return maybeCanceled.code === "ERR_CANCELED" || maybeCanceled.name === "CanceledError" || maybeCanceled.name === "AbortError";
+}
+
 export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -294,9 +299,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
   const [guardRailError, setGuardRailError] = useState("");
-  const [engagementRecommendations, setEngagementRecommendations] =
-    useState<EngagementRecommendations | null>(null);
-  const [engagementLoading, setEngagementLoading] = useState(false);
   const [activeStep, setActiveStep] = useState<ProgressStep>("media");
   const [captionSelection, setCaptionSelection] = useState<FancyTextSelection>({
     start: 0,
@@ -478,6 +480,31 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const shouldPromptBeforeLeave = isDirty;
   const busy =
     saveState === "saving" || submitting || withdrawing || deleting || reorderingMedia;
+  const shouldLoadEngagementRecommendations =
+    activeStep === "schedule" &&
+    !form.fastTrack &&
+    !isReadOnlySubmission &&
+    !(isAdminComposer && !selectedInstitutionId);
+  const engagementRecommendationsQuery = useQuery({
+    queryKey: queryKeys.submissions.engagementRecommendations({
+      role: user.role,
+      userId: currentUserScope,
+      institutionId: selectedInstitutionId || null,
+    }),
+    queryFn: ({ signal }) =>
+      getEngagementRecommendations(selectedInstitutionId || null, signal).then((response) =>
+        response.data.available ? response.data : null,
+      ),
+    enabled: shouldLoadEngagementRecommendations,
+    staleTime: COMPOSER_REF_TTL_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const engagementRecommendations = shouldLoadEngagementRecommendations
+    ? engagementRecommendationsQuery.data ?? null
+    : null;
+  const engagementLoading =
+    shouldLoadEngagementRecommendations &&
+    (engagementRecommendationsQuery.isLoading || engagementRecommendationsQuery.isFetching);
 
   useEffect(() => {
     if (!isAdminComposer || !institutions.length) return;
@@ -654,6 +681,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const aiCaption = useAiCaptionAssist(form.id, hasImageAssets, form.caption);
 
   useEffect(() => {
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
       if (!scheduledAt) {
         setGuardRails(null);
@@ -669,46 +697,29 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       }
 
       setGuardRailsLoading(true);
-      validateGuardRails(scheduledAt, selectedInstitutionId || undefined, form.id || undefined)
+      validateGuardRails(scheduledAt, selectedInstitutionId || undefined, form.id || undefined, controller.signal)
         .then((response) => {
+          if (controller.signal.aborted) return;
           setGuardRails(response.data);
           setGuardRailError("");
         })
         .catch((err: unknown) => {
+          if (isCanceledRequest(err, controller.signal)) return;
           setGuardRails(null);
           setGuardRailError(getErrorMessage(err, "Slot validation is unavailable."));
         })
-        .finally(() => setGuardRailsLoading(false));
+        .finally(() => {
+          if (!controller.signal.aborted) setGuardRailsLoading(false);
+        });
     }, scheduledAt ? 350 : 0);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
     // form.id is included so validation re-runs once the first save assigns an
     // id — otherwise the check would flag the user's own new reservation.
   }, [isAdminComposer, scheduledAt, selectedInstitutionId, form.id]);
-
-  useEffect(() => {
-    if (activeStep !== "schedule" || form.fastTrack || isReadOnlySubmission
-        || (isAdminComposer && !selectedInstitutionId)) {
-      queueMicrotask(() => {
-        setEngagementRecommendations(null);
-        setEngagementLoading(false);
-      });
-      return;
-    }
-    const controller = new AbortController();
-    queueMicrotask(() => setEngagementLoading(true));
-    getEngagementRecommendations(selectedInstitutionId, controller.signal)
-      .then((response) => {
-        setEngagementRecommendations(response.data.available ? response.data : null);
-      })
-      .catch((error: unknown) => {
-        if ((error as { name?: string })?.name !== "CanceledError") {
-          setEngagementRecommendations(null);
-        }
-      })
-      .finally(() => setEngagementLoading(false));
-    return () => controller.abort();
-  }, [activeStep, form.fastTrack, isReadOnlySubmission, selectedInstitutionId]);
 
   // Clean up ?tab= from the URL after it has been consumed by the lazy filter initializer.
   useEffect(() => {

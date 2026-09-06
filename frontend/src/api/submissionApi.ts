@@ -213,11 +213,14 @@ export function validateGuardRails(
   scheduledAt: string,
   institutionId?: string | null,
   submissionId?: string | null,
+  signal?: AbortSignal,
 ) {
   return api.post<GuardRailResult>("/guardrails/validate", {
     scheduledAt,
     institutionId,
     submissionId: submissionId || undefined,
+  }, {
+    signal,
   });
 }
 
