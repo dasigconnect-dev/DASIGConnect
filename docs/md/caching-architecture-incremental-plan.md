@@ -2437,3 +2437,83 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2T: review remaining one-off composer reads such as AI caption suggestions, similar-media lookup, and modal detail hydration, then either document them as request-on-demand workflows or migrate any passive GET reads to query-backed hooks.
+
+## Phase 2T AI Helper Read Review Status
+
+Status: implemented on `feature/caching-architecture-phase2t`.
+
+Changed files:
+
+- `frontend/src/hooks/useSimilarMedia.ts`
+- `frontend/src/api/aiApi.ts`
+- `frontend/src/lib/queryKeys.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- Similar-media recommendations were fetched through hook-local state and a `fetchedForRef` guard.
+- Similar-media requests did not receive a query cancellation signal.
+- AI caption generation, AI media suggestion, and AI classification helpers were still effect or action driven.
+
+New behavior:
+
+- Similar-media recommendations now load through TanStack Query.
+- Added `queryKeys.ai.similarMedia(...)` for the submission-scoped similar-media read.
+- `getSimilarMedia(...)` now accepts an optional `AbortSignal`.
+- The similar-media hook derives `idle`, `loading`, `ready`, `empty`, and `error` states from query state while preserving the existing return contract.
+- The `media_recommendation/shown` log remains outside the query function so cached reads stay side-effect free.
+
+Query key:
+
+```ts
+queryKeys.ai.similarMedia({
+  submissionId,
+})
+```
+
+Freshness policy:
+
+- Similar media: `staleTime: 120_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First eligible similar-media render for a saved submission with saved assets: `NETWORK`.
+- Return within 2 minutes for the same submission: `CACHE`.
+- Manual refresh calls `query.refetch()`.
+- Query cancellation propagates through the AI API helper when the component unmounts or the query is canceled.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`.
+
+Authentication isolation:
+
+- Similar-media keys are scoped by submission id.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for AI recommendation visibility.
+
+Request-on-demand decisions:
+
+- AI caption assist stays imperative because it is a POST generation workflow with prompt, tone, rate-limit state, and user-visible variants.
+- AI media suggestions stay imperative because they POST draft text/category/tag context and are tied to debounced composer edits.
+- AI classification stays action driven because accepting/dismissing suggestions mutates editor state and logs explicit user decisions.
+- Editable submission detail hydration remains imperative because it populates form state, picker state, revision modal state, routing state, and dirty-signature tracking.
+- Media-library asset prefill from `?assetIds=` remains a route action because it hydrates a pending composer selection exactly once.
+
+Risks:
+
+- `queryKeys.ai.similarMedia(...)` is submission-scoped rather than user-scoped; authenticated cache clearing and backend authorization preserve boundary safety.
+- The similar-media hook is currently reusable infrastructure and has no active caller in `SubmissionScreen`; this migration keeps it ready without expanding the composer surface.
+- Manual refresh preserves the previous user-triggered behavior but now participates in query retry and cancellation behavior.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/hooks/useSimilarMedia.ts src/api/aiApi.ts src/lib/queryKeys.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2U: review remaining submission detail hydration and asset prefill paths, then decide whether to keep documenting them as editor workflow orchestration or split passive detail reads into a dedicated query-backed hook.
