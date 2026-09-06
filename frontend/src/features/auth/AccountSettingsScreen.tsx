@@ -145,6 +145,30 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const initialLoading = profileQuery.isLoading;
   const watermarkLoading = watermarkQuery.isLoading;
 
+  async function invalidateAccountSettingsDependencies() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["settings"] }),
+      queryClient.invalidateQueries({ queryKey: ["users"] }),
+      queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    ]);
+  }
+
+  async function invalidatePageSettingsDependencies() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["settings"] }),
+      queryClient.invalidateQueries({ queryKey: ["submissions"] }),
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] }),
+    ]);
+  }
+
+  async function invalidateWatermarkSettingsDependencies() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["settings"] }),
+      queryClient.invalidateQueries({ queryKey: ["submissions"] }),
+      queryClient.invalidateQueries({ queryKey: ["validation"] }),
+    ]);
+  }
+
   // Display Name Validation
   function validateDisplayName(name: string) {
     const trimmed = name.trim();
@@ -258,7 +282,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       setInitialNotifyEmail(profileForm.notifyEmail);
       queryClient.setQueryData(profileQueryKey, { data });
       profileHydratedRef.current = true;
-      await queryClient.invalidateQueries({ queryKey: ["settings"] });
+      await invalidateAccountSettingsDependencies();
       await onProfileUpdated();
       toast.success("Account settings updated.");
     } catch {
@@ -321,7 +345,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       queryClient.setQueryData(pageSettingsQueryKey, { data } satisfies { data: PageSettingsResponse });
       pageSettingsHydratedRef.current = true;
       pageSettingsErrorNotifiedRef.current = false;
-      await queryClient.invalidateQueries({ queryKey: ["settings"] });
+      await invalidatePageSettingsDependencies();
       toast.success("Facebook Page ID updated.");
     } catch {
       toast.error("Unable to update Facebook Page ID.");
@@ -343,7 +367,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       queryClient.setQueryData(watermarkQueryKey, { data });
       watermarkHydratedRef.current = true;
       watermarkErrorNotifiedRef.current = false;
-      await queryClient.invalidateQueries({ queryKey: ["settings"] });
+      await invalidateWatermarkSettingsDependencies();
       toast.success("Watermark settings saved.");
     } catch (err: unknown) {
       const errorMsg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;

@@ -81,6 +81,11 @@ export function useInvalidateInstitutionManagementData() {
       queryClient.invalidateQueries({ queryKey: ["users"] }),
       queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+      queryClient.invalidateQueries({ queryKey: ["settings"] }),
+      queryClient.invalidateQueries({ queryKey: ["submissions"] }),
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] }),
+      queryClient.invalidateQueries({ queryKey: ["media-assets"] }),
+      queryClient.invalidateQueries({ queryKey: ["notifications"] }),
     ]);
   };
 }
