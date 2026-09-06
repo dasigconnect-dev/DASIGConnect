@@ -2357,3 +2357,83 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2S: review schedule helper reads such as guard rails and engagement recommendations, and decide which should remain request-on-demand versus query-backed by scheduled time/institution.
+
+## Phase 2S Schedule Helper Cache Migration Status
+
+Status: implemented on `feature/caching-architecture-phase2s`.
+
+Changed files:
+
+- `frontend/src/features/submission/SubmissionScreen.tsx`
+- `frontend/src/api/submissionApi.ts`
+- `frontend/src/lib/queryKeys.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- Engagement recommendations were loaded through a component effect on schedule-step entry.
+- Recommendation data and loading state were stored in local component state.
+- Guard-rail validation used a debounced imperative POST, but stale in-flight requests were not wired to the cleanup abort signal.
+
+New behavior:
+
+- Engagement recommendations now load through TanStack Query.
+- Added `queryKeys.submissions.engagementRecommendations(...)` for the schedule helper cache.
+- Recommendation loading and data are derived from query state and are enabled only while the editable composer is on the schedule step.
+- Guard rails remain a debounced request-on-demand POST validation because they depend on the current scheduled timestamp and draft id.
+- Guard-rail validation now receives an `AbortSignal` and ignores canceled requests so stale schedule checks do not update component state.
+
+Query key:
+
+```ts
+queryKeys.submissions.engagementRecommendations({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: selectedInstitutionId || null,
+})
+```
+
+Freshness policy:
+
+- Engagement recommendations: `staleTime: 120_000`
+- Guard rails: uncached, debounced request-on-demand validation
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First eligible schedule-step entry for a user/institution scope: `NETWORK`.
+- Return within 2 minutes: `CACHE`.
+- Return after 2 minutes while cached data exists: `CACHE immediately + BACKGROUND REFRESH`.
+- Fast-track posts, read-only submissions, and admin composers without an institution do not load recommendations.
+- Guard rails still revalidate after scheduled date/time changes and cancel stale in-flight checks during cleanup.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`.
+
+Authentication isolation:
+
+- Engagement recommendation keys include user identity, role, and institution context.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for recommendation and guard-rail visibility.
+
+Request-on-demand decision:
+
+- Guard rails are intentionally not cached because the result is tied to the exact draft schedule and must stay sensitive to live edits.
+- Engagement recommendations are cache-backed because the API is a read-only GET scoped by institution and reused while the user works in the composer.
+
+Risks:
+
+- Recommendation freshness is scoped by institution rather than exact schedule time, matching the existing API contract.
+- Guard-rail validation remains imperative, so a broader editor-state refactor would be needed before it could become a query without changing validation semantics.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/features/submission/SubmissionScreen.tsx src/api/submissionApi.ts src/lib/queryKeys.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2T: review remaining one-off composer reads such as AI caption suggestions, similar-media lookup, and modal detail hydration, then either document them as request-on-demand workflows or migrate any passive GET reads to query-backed hooks.
