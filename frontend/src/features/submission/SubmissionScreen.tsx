@@ -186,11 +186,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const { submissionId: routeSubmissionId } = useParams<{ submissionId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { submissions, setSubmissions, loading, error, refresh } =
-    useSubmissions();
+    useSubmissions(user);
   const {
     lookups,
     loading: lookupsLoading,
-  } = useSubmissionLookups();
+  } = useSubmissionLookups(user);
   const toast = useToast();
   const detailsSectionRef = useRef<HTMLElement | null>(null);
   const mediaSectionRef = useRef<HTMLElement | null>(null);
@@ -409,7 +409,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   useEffect(() => {
     if (!isAdminComposer) return;
     const controller = new AbortController();
-    setInstitutionsLoading(true);
+    queueMicrotask(() => setInstitutionsLoading(true));
     listInstitutions(controller.signal)
       .then((response) => {
         const activeInstitutions = response.data.filter(
@@ -435,12 +435,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
   useEffect(() => {
     if (cachedTemplates && Date.now() - cachedTemplates.at < COMPOSER_REF_TTL_MS) {
-      setCustomTemplates(cachedTemplates.data);
-      setTemplatesLoading(false);
+      const cachedTemplateData = cachedTemplates.data;
+      queueMicrotask(() => {
+        setCustomTemplates(cachedTemplateData);
+        setTemplatesLoading(false);
+      });
       return;
     }
     const controller = new AbortController();
-    setTemplatesLoading(true);
+    queueMicrotask(() => setTemplatesLoading(true));
     listPostTemplates(controller.signal)
       .then((response) => {
         const mapped = (response.data ?? []).map(apiTemplateToComposerTemplate);
@@ -457,13 +460,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
   useEffect(() => {
     if (!selectedInstitutionId) {
-      setExistingAlbums([]);
+      queueMicrotask(() => setExistingAlbums([]));
       return;
     }
 
     const cached = cachedAlbumsByInstitution.get(selectedInstitutionId);
     if (cached && Date.now() - cached.at < COMPOSER_REF_TTL_MS) {
-      setExistingAlbums(cached.data);
+      queueMicrotask(() => setExistingAlbums(cached.data));
       return;
     }
 
@@ -670,12 +673,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   useEffect(() => {
     if (activeStep !== "schedule" || form.fastTrack || isReadOnlySubmission
         || (isAdminComposer && !selectedInstitutionId)) {
-      setEngagementRecommendations(null);
-      setEngagementLoading(false);
+      queueMicrotask(() => {
+        setEngagementRecommendations(null);
+        setEngagementLoading(false);
+      });
       return;
     }
     const controller = new AbortController();
-    setEngagementLoading(true);
+    queueMicrotask(() => setEngagementLoading(true));
     getEngagementRecommendations(selectedInstitutionId, controller.signal)
       .then((response) => {
         setEngagementRecommendations(response.data.available ? response.data : null);
@@ -796,24 +801,28 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
     if (routedSubmissionRef.current === submissionId) {
       if (searchParams.get("openFeedback") === "true") {
-        setRevisionModalOpen(true);
+        queueMicrotask(() => setRevisionModalOpen(true));
       }
       return;
     }
     routedSubmissionRef.current = submissionId;
     const existing = submissions.find((s) => s.id === submissionId);
     const initialStatus = existing?.status ?? "pending";
-    setFilter(queueBucket(initialStatus));
-    setCenterMode("edit");
+    queueMicrotask(() => {
+      setFilter(queueBucket(initialStatus));
+      setCenterMode("edit");
+    });
     if (existing) {
-      setForm((current) => ({
-        ...current,
-        id: existing.id,
-        status: existing.status,
-        eventTitle: existing.eventTitle || "",
-        eventDate: existing.eventDate || "",
-        institutionId: existing.institutionId || current.institutionId,
-      }));
+      queueMicrotask(() => {
+        setForm((current) => ({
+          ...current,
+          id: existing.id,
+          status: existing.status,
+          eventTitle: existing.eventTitle || "",
+          eventDate: existing.eventDate || "",
+          institutionId: existing.institutionId || current.institutionId,
+        }));
+      });
     }
     void applySubmission({
       id: submissionId,

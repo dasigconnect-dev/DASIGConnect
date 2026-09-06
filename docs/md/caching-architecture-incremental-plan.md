@@ -2015,3 +2015,95 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2O: migrate `useSubmissions()` and `useSubmissionLookups()` from module-level caches to query-backed hooks, including explicit cache updates after draft/save/submit/withdraw/delete flows.
+
+## Phase 2O Submission List And Lookup Cache Migration Status
+
+Status: implemented on `feature/caching-architecture-phase2o`.
+
+Changed files:
+
+- `frontend/src/hooks/useSubmissions.ts`
+- `frontend/src/features/submission/SubmissionScreen.tsx`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- `useSubmissions()` kept a module-level list cache with manual timestamps and a mount effect.
+- `useSubmissionLookups()` kept a module-level lookup cache with manual timestamps and a mount effect.
+- Submission list updates from save/submit/withdraw/delete wrote into local hook state and the module cache.
+- Refresh manually called `listSubmissions()` or `getSubmissionLookups()` outside the authenticated query cache.
+
+New behavior:
+
+- `useSubmissions(user)` now loads the contributor submission list through TanStack Query.
+- `useSubmissionLookups(user)` now loads composer lookup/reference data through TanStack Query.
+- Submission list cache is scoped by authenticated user, role, and institution context.
+- Lookup cache is scoped by role and institution context.
+- The existing `setSubmissions` API is preserved and now writes directly to the query cache.
+- The existing `refresh` APIs are preserved and force a fresh query fetch.
+- `SubmissionScreen` now passes the authenticated user into both hooks.
+- Synchronous effect-body state updates touched by this phase were deferred to satisfy `react-hooks/set-state-in-effect`.
+
+Query keys:
+
+```ts
+queryKeys.submissions.all({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: user.institutionId ?? null,
+})
+
+queryKeys.submissions.lookups({
+  role: user.role,
+  institutionId: user.institutionId ?? null,
+})
+```
+
+Freshness policy:
+
+- Submission list: `staleTime: 30_000`
+- Submission lookups: `staleTime: 300_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First Submissions visit for a user scope: `NETWORK`.
+- Return within 30 seconds: `CACHE` for the submission list.
+- Return within 5 minutes: `CACHE` for composer lookups.
+- Return after stale time while cached data exists: `CACHE immediately + BACKGROUND REFRESH`.
+- Save/submit/withdraw/delete flows continue updating the list through `setSubmissions`.
+- Explicit list refresh forces a fresh query fetch.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`.
+
+Authentication isolation:
+
+- Submission list keys include user identity, role, and institution context.
+- Lookup keys include role and institution context because lookup limits are role/scope driven.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for submission visibility and composer limits.
+
+Remaining imperative reads reviewed:
+
+- Submission detail hydration still uses `getSubmission(id)` imperatively because it populates a large editable form and handles route/modal transitions.
+- Composer templates, album names, and submission detail memory cache still use local reference caches and should be considered separately from the user submission list.
+- Guard rails, engagement recommendations, media uploads, AI suggestions, and similar-media reads remain user-triggered workflow calls.
+
+Risks:
+
+- The hook-level `setSubmissions` API is preserved to reduce blast radius, but future cleanup can migrate save/submit/withdraw/delete flows to dedicated mutation hooks.
+- List loading now follows query `isFetching`, so manual refresh continues to disable list refresh controls while a fetch is active.
+- Composer reference caches remain outside TanStack Query in this phase.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/hooks/useSubmissions.ts src/features/submission/SubmissionScreen.tsx src/lib/queryKeys.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Phase 2P: migrate composer reference caches such as custom templates and media album name lookups, or document them as local composer-only caches if they should stay isolated.
