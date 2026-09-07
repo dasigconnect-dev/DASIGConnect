@@ -2765,3 +2765,88 @@ Validation performed:
 Next recommended implementation step:
 
 - Phase 2X: review analytics/report modal, audit log metadata, and any remaining modal-only GET reads for query boundaries, then close out the frontend cache migration with a final consistency audit.
+
+## Phase 2X Report Modal Query Boundary and Final Consistency Status
+
+Status: implemented on `feature/caching-architecture-phase2x`.
+
+Changed files:
+
+- `frontend/src/features/analytics/AnalyticsDashboardPage.tsx`
+- `frontend/src/features/analytics/components/FullReportModal.tsx`
+- `frontend/src/lib/queryKeys.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Previous behavior:
+
+- `FullReportModal` loaded analytics report rows through a component effect and local `report`/`error` state.
+- Report requests already accepted an `AbortSignal`, but the modal did not share query cache behavior with the rest of analytics.
+- Audit log page data and audit metadata had already been migrated to query-backed reads in Phase 2K.
+
+New behavior:
+
+- Added `queryKeys.analytics.report(...)` for report-modal data.
+- `FullReportModal` now loads report data through TanStack Query.
+- Report query keys include role, user identity, institution filter, range, and metric.
+- The modal keeps UI-only state locally, including selected report tab and CSV export busy state.
+- The analytics page now passes the authenticated user into the modal so modal reads use the same auth scoping convention as the analytics summary.
+- Audit log metadata remains query-backed through `queryKeys.auditLog.metadata(...)`; no additional audit-log code change was needed.
+
+Query key:
+
+```ts
+queryKeys.analytics.report({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: institutionId ?? null,
+  range,
+  metric,
+})
+```
+
+Freshness policy:
+
+- Analytics report modal: `staleTime: 60_000`
+- Audit metadata: unchanged at `staleTime: 300_000`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Network behavior:
+
+- First report open for a metric/range/institution scope: `NETWORK`.
+- Reopen the same report within 60 seconds: `CACHE`.
+- Change metric, range, or institution filter: `NETWORK` for that scoped key.
+- Retry in the modal calls `reportQuery.refetch()`.
+- CSV download remains imperative because it creates a browser download side effect.
+- Logout/login/modal reauth: `AUTHENTICATED QUERY CACHE CLEARED`.
+
+Authentication isolation:
+
+- Report keys include user identity, role, institution filter, range, and metric.
+- Auth tokens are not included in keys.
+- The centralized authenticated query cache is still cleared at auth boundaries through `clearAuthenticatedQueryCache()`.
+- Backend authorization remains the final authority for analytics report visibility.
+
+Final consistency audit:
+
+- Main dashboard, analytics summary, user management, administrator management, institution management, calendar, media repository, recent activity, notifications, validation queue, system health, audit log, settings, watermark consumers, resolution failures, submission lists, composer reference reads, submission preview details, schedule helpers, similar media, editor detail hydration, and mutation synchronization now use centralized query boundaries where appropriate.
+- POST generation, upload, export/download, guard-rail validation, route prefill orchestration, and editor form hydration side effects remain imperative by design.
+- Mutation invalidation now covers the major cross-feature groups affected by account, settings, institution, submission, validation, notification, media, and resolution writes.
+
+Risks:
+
+- The report modal cache is short-lived to avoid stale analytics drilldowns while still avoiding repeated modal reopen requests.
+- CSV export remains outside query caching because it produces a file download and should always reflect the requested export action.
+- A later cleanup can extract repeated query parameter builders into shared helpers if the cache key surface keeps growing.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/features/analytics/AnalyticsDashboardPage.tsx src/features/analytics/components/FullReportModal.tsx src/lib/queryKeys.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Frontend cache migration close-out: perform a manual QA pass across dashboard, analytics reports, media repository, validation queue, settings, and submission composer workflows before starting a new backend or feature module phase.
