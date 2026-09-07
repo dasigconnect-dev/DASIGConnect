@@ -2850,3 +2850,87 @@ Validation performed:
 Next recommended implementation step:
 
 - Frontend cache migration close-out: perform a manual QA pass across dashboard, analytics reports, media repository, validation queue, settings, and submission composer workflows before starting a new backend or feature module phase.
+
+## Frontend Cache Migration Close-Out Audit Status
+
+Status: implemented on `feature/caching-architecture-closeout`.
+
+Changed files:
+
+- `frontend/src/features/media-repository/MediaRepositoryScreen.tsx`
+- `frontend/src/features/media-repository/components/AssetDetailPanel.tsx`
+- `frontend/src/features/calendar/CalendarEventDetailModal.tsx`
+- `frontend/src/lib/queryKeys.ts`
+- `docs/md/caching-architecture-incremental-plan.md`
+
+Additional close-out migrations:
+
+- Media repository deep-link asset detail opens now use `queryClient.fetchQuery(...)` with `queryKeys.mediaAssets.detail(...)`.
+- Media repository asset card opens now refresh detail through the same query-backed asset detail transport.
+- Media tag add/remove refreshes now re-read asset detail through the query cache with immediate revalidation.
+- Added `queryKeys.mediaAssets.history(...)`.
+- Asset activity/history in `AssetDetailPanel` now loads through TanStack Query instead of local effect state.
+- Calendar event detail drawer now loads submission detail through `queryKeys.submissions.editorDetail(...)` and TanStack Query.
+
+Query keys:
+
+```ts
+queryKeys.mediaAssets.detail({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  assetId,
+})
+
+queryKeys.mediaAssets.history({
+  assetId,
+})
+
+queryKeys.submissions.editorDetail({
+  role: user.role,
+  userId: user.id ?? user.email.trim().toLowerCase(),
+  institutionId: event?.institutionId ?? user.institutionId ?? null,
+  submissionId: event?.id ?? "",
+})
+```
+
+Freshness policy:
+
+- Media asset detail: `staleTime: 60_000`
+- Media asset history: `staleTime: 60_000`
+- Calendar event submission detail: `staleTime: 60_000`
+- Media tag refresh: `staleTime: 0`
+- `gcTime: 5 minutes` inherited from `appQueryClient`
+- `refetchOnWindowFocus: false` inherited from `appQueryClient`
+- `retry: 1` inherited from `appQueryClient`
+
+Final intentional imperative workflows:
+
+- AI caption generation remains imperative because it is a POST generation workflow with prompt, tone, variants, and rate-limit state.
+- AI media suggestions remain imperative because they POST draft context and are tied to active composer edits.
+- Guard-rail validation remains imperative because it is a debounced POST validation tied to the exact live schedule.
+- Semantic media search remains imperative because it is an explicit search action, not a passive repository list read.
+- Uploads, signed upload URLs, CSV exports, clipboard writes, Messenger link-code setup, review-lock checks, and approve/revise/reject decisions remain imperative because they create side effects or coordinate transactional workflows.
+- Editable composer hydration still orchestrates form, picker, route, modal, and dirty-signature state imperatively, while its GET payload is query-backed.
+
+Close-out audit result:
+
+- The remaining passive GET reads found during the close-out pass were migrated to query-backed transport.
+- Existing query-backed reads cover dashboard, analytics summary/report modal, user management, administrator management, institution management, calendar events and event detail, media repository metadata/detail/history, recent activity, notifications, validation queue/log, system health, audit log page/metadata, settings, watermark consumers, resolution failures, submission list/detail/editor-detail, composer references, schedule recommendations, and similar media.
+- Cross-feature invalidation covers the major mutation families that affect shared cached surfaces.
+
+Risks:
+
+- Media asset history is keyed by asset id only; authenticated cache clearing and backend authorization continue to enforce session boundaries.
+- Calendar event detail reuses the full submission editor-detail key because the payload shape matches `SubmissionSummary`.
+- A future cleanup can extract repeated `userScope(...)` and detail-key builders into shared helpers, but the current change keeps the close-out tightly scoped.
+
+Validation performed:
+
+- Ran targeted ESLint from `frontend`:
+  - `npx.cmd eslint src/features/media-repository/MediaRepositoryScreen.tsx src/features/media-repository/components/AssetDetailPanel.tsx src/features/calendar/CalendarEventDetailModal.tsx src/lib/queryKeys.ts --quiet`
+- Ran `npm.cmd run build` from `frontend`.
+- Both completed successfully.
+
+Next recommended implementation step:
+
+- Start a new module or backend phase only after manual QA confirms dashboard, analytics report modal, media repository detail/history, calendar detail drawer, validation queue, settings, and submission composer workflows behave correctly with cached reads.

@@ -29,6 +29,8 @@ import {
   type SubmissionSummary,
 } from "../../api/submissionApi";
 import { useToast } from "../../context/ToastContext";
+import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
 import { usePersistentSelection } from "../../hooks/usePersistentSelection";
 import { useMediaAssets } from "./hooks/useMediaAssets";
 import type { SortOption, ViewMode, DeleteTier } from "./types";
@@ -48,6 +50,7 @@ interface MediaRepositoryScreenProps {
 }
 
 const MAX_UPLOAD_MB = 50;
+const MEDIA_DETAIL_STALE_TIME_MS = 60_000;
 
 function isConflict(error: unknown) {
   if (typeof error !== "object" || error === null) return false;
@@ -74,6 +77,10 @@ function getErrorText(error: unknown, fallback: string) {
 function fileTypeFromFile(file: File) {
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   return ext === "jpg" ? "jpeg" : ext;
+}
+
+function getUserCacheScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
 }
 
 // PUT the file straight to object storage (Cloudflare R2) using XHR so we can
@@ -111,6 +118,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const toast = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const userScope = getUserCacheScope(user);
   // Strict admin — only gates individual-asset deletion (backend does the same).
   const isAdmin = user.role === "admin";
   // Admins and moderators are both network-wide (no home institution), so both
@@ -162,6 +170,19 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     ]);
   }, [queryClient]);
 
+  const fetchMediaAssetDetail = useCallback((assetId: string) => {
+    return queryClient.fetchQuery({
+      queryKey: queryKeys.mediaAssets.detail({
+        role: user.role,
+        userId: userScope,
+        assetId,
+      }),
+      queryFn: ({ signal }) => getMediaAsset(assetId, signal).then((res) => res.data),
+      staleTime: MEDIA_DETAIL_STALE_TIME_MS,
+      meta: authenticatedQueryMeta,
+    });
+  }, [queryClient, user.role, userScope]);
+
   const [selectedAsset, setSelectedAsset] = useState<MediaAsset | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [lightboxAssetId, setLightboxAssetId] = useState<string | null>(null);
@@ -186,10 +207,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     const assetId = searchParams.get("asset");
     if (!assetId) return;
     let active = true;
-    getMediaAsset(assetId)
-      .then((res) => {
+    fetchMediaAssetDetail(assetId)
+      .then((asset) => {
         if (!active) return;
-        setSelectedAsset(res.data);
+        setSelectedAsset(asset);
         setPanelOpen(true);
       })
       .catch(() => {
@@ -203,8 +224,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchMediaAssetDetail, searchParams, setSearchParams, toast]);
 
   const [addToDraftOpen, setAddToDraftOpen] = useState(false);
   const [drafts, setDrafts] = useState<SubmissionSummary[]>([]);
@@ -467,8 +487,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   function openAsset(asset: MediaAsset) {
     setSelectedAsset(asset);
     setPanelOpen(true);
-    getMediaAsset(asset.id)
-      .then((res) => setSelectedAsset(res.data))
+    fetchMediaAssetDetail(asset.id)
+      .then((detail) => setSelectedAsset(detail))
       .catch(() => { /* panel stays with summary data on fetch error */ });
   }
 
@@ -719,7 +739,16 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   async function handleAssetTag(assetId: string, action: () => Promise<unknown>) {
     try {
       await action();
-      const { data } = await getMediaAsset(assetId);
+      const data = await queryClient.fetchQuery({
+        queryKey: queryKeys.mediaAssets.detail({
+          role: user.role,
+          userId: userScope,
+          assetId,
+        }),
+        queryFn: ({ signal }) => getMediaAsset(assetId, signal).then((res) => res.data),
+        staleTime: 0,
+        meta: authenticatedQueryMeta,
+      });
       setSelectedAsset(data);
       setAssets((prev) => prev.map((a) => (a.id === data.id ? { ...a, ...data } : a)));
       void invalidateMediaMetadata();
