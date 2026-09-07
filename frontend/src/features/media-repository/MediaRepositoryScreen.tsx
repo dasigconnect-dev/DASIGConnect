@@ -13,7 +13,6 @@ import {
   getMediaAsset,
   removeMediaAssetTag,
   getMediaAssetUploadUrl,
-  listMediaAlbums,
   moveMediaAlbum,
   registerMediaAsset,
   renameMediaAlbum,
@@ -32,7 +31,7 @@ import { useToast } from "../../context/ToastContext";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { queryKeys } from "../../lib/queryKeys";
 import { usePersistentSelection } from "../../hooks/usePersistentSelection";
-import { useMediaAssets } from "./hooks/useMediaAssets";
+import { useMediaAlbums, useMediaAssets } from "./hooks/useMediaAssets";
 import type { SortOption, ViewMode, DeleteTier } from "./types";
 import AssetCard from "./components/AssetCard";
 import AssetLightbox from "./components/AssetLightbox";
@@ -162,9 +161,22 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     !skipAssetFetch,
   );
 
+  // Which institution's albums to load. null + network browser means every institution's albums.
+  const albumScopeInstitutionId = isNetworkBrowser ? selectedInstitutionId : (user.institutionId ?? null);
+  const {
+    albums,
+    setAlbums,
+    refresh: reloadAlbums,
+  } = useMediaAlbums(
+    user,
+    albumScopeInstitutionId,
+    isNetworkBrowser || Boolean(albumScopeInstitutionId),
+  );
+
   const invalidateMediaMetadata = useCallback(() => {
     return Promise.all([
       queryClient.invalidateQueries({ queryKey: ["media-assets"] }),
+      queryClient.invalidateQueries({ queryKey: ["media-albums"] }),
       queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       queryClient.invalidateQueries({ queryKey: ["analytics"] }),
     ]);
@@ -182,6 +194,41 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       meta: authenticatedQueryMeta,
     });
   }, [queryClient, user.role, userScope]);
+
+  const submissionsQueryKey = useMemo(
+    () =>
+      queryKeys.submissions.all({
+        role: user.role,
+        userId: userScope,
+        institutionId: user.institutionId ?? null,
+      }),
+    [user.institutionId, user.role, userScope],
+  );
+
+  const syncSubmissionCache = useCallback(
+    (submission: SubmissionSummary) => {
+      queryClient.setQueriesData<SubmissionSummary[]>(
+        { queryKey: ["submissions"] },
+        (current) =>
+          Array.isArray(current)
+            ? current.map((item) => (item.id === submission.id ? { ...item, ...submission } : item))
+            : current,
+      );
+
+      const detailParams = {
+        role: user.role,
+        userId: userScope,
+        institutionId: submission.institutionId || user.institutionId || null,
+        submissionId: submission.id,
+      };
+      queryClient.setQueryData(queryKeys.submissions.editorDetail(detailParams), submission);
+      queryClient.setQueryData(queryKeys.submissions.detail(detailParams), {
+        caption: submission.caption ?? "",
+        mediaAssets: submission.mediaAssets ?? [],
+      });
+    },
+    [queryClient, user.institutionId, user.role, userScope],
+  );
 
   const [selectedAsset, setSelectedAsset] = useState<MediaAsset | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -232,7 +279,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [busyDraftId, setBusyDraftId] = useState<string | null>(null);
 
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [albums, setAlbums] = useState<MediaAlbum[]>([]);
   const [albumModal, setAlbumModal] = useState<
     | { mode: "create"; album: null }
     | { mode: "rename"; album: MediaAlbum }
@@ -286,30 +332,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       controller.abort();
     };
   }, [isNetworkBrowser, toast]);
-
-  // Which institution's albums to load. null + network browser ⇒ every institution's albums.
-  const albumScopeInstitutionId = isNetworkBrowser ? selectedInstitutionId : (user.institutionId ?? null);
-
-  const reloadAlbums = useCallback(() => {
-    if (!isNetworkBrowser && !albumScopeInstitutionId) {
-      setAlbums([]);
-      return Promise.resolve();
-    }
-    return listMediaAlbums(albumScopeInstitutionId ?? undefined)
-      .then((res) => setAlbums(res.data ?? []))
-      .catch(() => toast.error("Could not load media albums."));
-  }, [isNetworkBrowser, albumScopeInstitutionId, toast]);
-
-  useEffect(() => {
-    let active = true;
-    // microtask defer so the fetch/clear never runs synchronously in the effect body
-    queueMicrotask(() => {
-      if (active) void reloadAlbums();
-    });
-    return () => {
-      active = false;
-    };
-  }, [reloadAlbums]);
 
   const currentAlbum = useMemo(
     () => albums.find((a) => a.id === currentAlbumId) ?? null,
@@ -556,8 +578,13 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     if (activeAssetIds().length === 0) return;
     setAddToDraftOpen(true);
     setDraftsLoading(true);
-    listSubmissions()
-      .then((res) => setDrafts(res.data.filter((item) => item.status === "draft")))
+    queryClient.fetchQuery({
+      queryKey: submissionsQueryKey,
+      queryFn: ({ signal }) => listSubmissions(signal).then((res) => res.data),
+      staleTime: 30_000,
+      meta: authenticatedQueryMeta,
+    })
+      .then((submissions) => setDrafts(submissions.filter((item) => item.status === "draft")))
       .catch(() => toast.error("Could not load your drafts."))
       .finally(() => setDraftsLoading(false));
   }
@@ -568,15 +595,21 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     setBusyDraftId(draftId);
     let added = 0;
     let alreadyThere = 0;
+    const updatedDrafts: SubmissionSummary[] = [];
     try {
       for (const assetId of ids) {
         try {
-          await attachAsset(draftId, assetId);
+          const { data } = await attachAsset(draftId, assetId);
+          updatedDrafts.push(data);
           added += 1;
         } catch (err: unknown) {
           if (isConflict(err)) alreadyThere += 1;
           else throw err;
         }
+      }
+      updatedDrafts.forEach(syncSubmissionCache);
+      if (added > 0) {
+        await queryClient.invalidateQueries({ queryKey: ["submissions"] });
       }
       setAddToDraftOpen(false);
       clearSelection();

@@ -1,6 +1,6 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { listMediaAssets, type MediaAsset } from "../../../api/mediaApi";
+import { listMediaAlbums, listMediaAssets, type MediaAlbum, type MediaAsset } from "../../../api/mediaApi";
 import { authenticatedQueryMeta } from "../../../lib/queryClient";
 import { queryKeys } from "../../../lib/queryKeys";
 import type { User } from "../../../types/auth.types";
@@ -35,6 +35,7 @@ function isCanceledError(error: unknown) {
 }
 
 const MEDIA_ASSETS_STALE_TIME_MS = 60_000;
+const MEDIA_ALBUMS_STALE_TIME_MS = 60_000;
 
 export function useMediaAssets(
   user: User,
@@ -85,6 +86,58 @@ export function useMediaAssets(
     loading: query.isLoading || query.isFetching,
     error: query.error && !isCanceledError(query.error)
       ? getErrorMessage(query.error, "Unable to load media assets.")
+      : "",
+    refresh,
+  };
+}
+
+export function useMediaAlbums(
+  user: User,
+  institutionId?: string | null,
+  enabled = true,
+) {
+  const queryClient = useQueryClient();
+  const userScope = user.id ?? user.email.trim().toLowerCase();
+  const scope = user.role === "admin" || user.role === "moderator" ? "network" : "institution";
+  const queryKey = queryKeys.mediaAlbums.all({
+    role: user.role,
+    userId: userScope,
+    institutionId: institutionId ?? null,
+    scope,
+  });
+
+  const query = useQuery({
+    queryKey,
+    queryFn: ({ signal }) =>
+      listMediaAlbums(institutionId ?? undefined, signal).then((response) =>
+        Array.isArray(response.data) ? response.data : [],
+      ),
+    enabled,
+    staleTime: MEDIA_ALBUMS_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
+
+  const setAlbums: Dispatch<SetStateAction<MediaAlbum[]>> = useCallback(
+    (value) => {
+      queryClient.setQueryData<MediaAlbum[]>(queryKey, (current = []) => {
+        return typeof value === "function"
+          ? (value as (previous: MediaAlbum[]) => MediaAlbum[])(current)
+          : value;
+      });
+    },
+    [queryClient, queryKey],
+  );
+
+  const refresh = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: ["media-albums"] });
+  }, [queryClient]);
+
+  return {
+    albums: enabled ? query.data ?? [] : [],
+    setAlbums,
+    loading: query.isLoading || query.isFetching,
+    error: query.error && !isCanceledError(query.error)
+      ? getErrorMessage(query.error, "Unable to load media albums.")
       : "",
     refresh,
   };
