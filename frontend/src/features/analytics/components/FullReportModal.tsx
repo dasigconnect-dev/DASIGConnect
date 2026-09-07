@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   downloadAnalyticsCsv,
   getAnalyticsReport,
@@ -7,9 +8,13 @@ import {
   type AnalyticsRange,
   type AnalyticsReportDto,
 } from "../../../api/analyticsApi";
+import type { User } from "../../../types/auth.types";
+import { authenticatedQueryMeta } from "../../../lib/queryClient";
+import { queryKeys } from "../../../lib/queryKeys";
 import { formatDateRange, formatNumber } from "../analyticsUtils";
 
 interface Props {
+  user: User;
   metric: AnalyticsExportMetric | null;
   range: AnalyticsRange;
   institutionId?: string | null;
@@ -83,6 +88,12 @@ const HIDDEN_COLUMNS = new Set(["submission_id", "id"]);
 
 type ActiveTab = "daily" | "detail";
 
+const REPORT_STALE_TIME_MS = 60_000;
+
+function userScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
+}
+
 function humanizeKey(key: string): string {
   return COLUMN_LABELS[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -114,6 +125,7 @@ function formatCell(value: string | number | boolean | null): string {
 }
 
 export default function FullReportModal({
+  user,
   metric,
   range,
   institutionId,
@@ -121,19 +133,27 @@ export default function FullReportModal({
   onBusyChange,
   onClose,
 }: Props) {
-  const [report, setReport] = useState<AnalyticsReportDto | null>(null);
-  const [error, setError] = useState<{ key: string; message: string } | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [tabEntry, setTabEntry] = useState<{ forMetric: string; tab: ActiveTab } | null>(null);
+  const reportQuery = useQuery<AnalyticsReportDto>({
+    queryKey: queryKeys.analytics.report({
+      role: user.role,
+      userId: userScope(user),
+      institutionId: institutionId ?? null,
+      range,
+      metric: metric ?? "none",
+    }),
+    queryFn: ({ signal }) => getAnalyticsReport(metric!, range, institutionId, signal).then((res) => res.data),
+    enabled: Boolean(metric),
+    staleTime: REPORT_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const report = reportQuery.data ?? null;
   const dailyHasData = (report?.dailyBreakdown ?? []).some(
     (p) => p.value !== 0 || (p.secondaryValue ?? 0) !== 0,
   );
   const defaultTab: ActiveTab =
     dailyHasData || !(report && report.aggregateRows.length > 0) ? "daily" : "detail";
   const activeTab: ActiveTab = tabEntry?.forMetric === metric ? tabEntry.tab : defaultTab;
-  const requestKey = metric
-    ? `${metric}:${range}:${institutionId ?? "network"}:${refreshKey}`
-    : "";
 
   useEffect(() => {
     if (!metric) return;
@@ -153,23 +173,6 @@ export default function FullReportModal({
     if (metric) setTabEntry({ forMetric: metric, tab });
   }
 
-  useEffect(() => {
-    if (!metric) return;
-    const controller = new AbortController();
-    const activeKey = `${metric}:${range}:${institutionId ?? "network"}:${refreshKey}`;
-    getAnalyticsReport(metric, range, institutionId, controller.signal)
-      .then((res) => {
-        setReport(res.data);
-        setError(null);
-      })
-      .catch((err: { code?: string }) => {
-        if (err?.code !== "ERR_CANCELED") {
-          setError({ key: activeKey, message: "Could not load the full report." });
-        }
-      });
-    return () => controller.abort();
-  }, [metric, range, institutionId, refreshKey]);
-
   const maxDailyValue = useMemo(
     () => Math.max(...(report?.dailyBreakdown ?? []).map((point) => point.value), 1),
     [report],
@@ -178,7 +181,7 @@ export default function FullReportModal({
   if (!metric) return null;
 
   const reportReady = report?.metric === metric && report.range === range;
-  const activeError = error?.key === requestKey ? error.message : null;
+  const activeError = !reportReady && reportQuery.error ? "Could not load the full report." : null;
   const loading = !reportReady && !activeError;
 
   const detailRows = reportReady ? report.aggregateRows : [];
@@ -197,9 +200,7 @@ export default function FullReportModal({
   }
 
   function reloadReport() {
-    setReport(null);
-    setError(null);
-    setRefreshKey((v) => v + 1);
+    void reportQuery.refetch();
   }
 
   return createPortal(

@@ -286,6 +286,7 @@ export default function AnalyticsDashboardPage({ user }: Props) {
         )}
 
         <FullReportModal
+          user={user}
           metric={reportMetric}
           range={range}
           institutionId={institutionId}

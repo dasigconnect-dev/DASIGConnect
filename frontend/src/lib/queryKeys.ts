@@ -85,6 +85,8 @@ export const queryKeys = {
   analytics: {
     summary: (params: { role: string; userId?: string | null; institutionId?: string | null; range: string }) =>
       scopedKey("analytics", params),
+    report: (params: { role: string; userId?: string | null; institutionId?: string | null; range: string; metric: string }) =>
+      scopedKey("analytics", { ...params, view: "report" }),
   },
   ai: {
     similarMedia: (params: { submissionId: string }) =>
