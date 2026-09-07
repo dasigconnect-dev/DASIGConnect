@@ -69,6 +69,8 @@ export const queryKeys = {
     }) => scopedKey("media-assets", params),
     detail: (params: { role: string; userId?: string | null; assetId: string }) =>
       scopedKey("media-assets", { ...params, view: "detail" }),
+    history: (params: { assetId: string }) =>
+      scopedKey("media-assets", { ...params, view: "history" }),
   },
   validation: {
     queue: (params: { role: string; userId?: string | null; scope?: "network" | "institution" | "history"; institutionId?: string | null }) =>

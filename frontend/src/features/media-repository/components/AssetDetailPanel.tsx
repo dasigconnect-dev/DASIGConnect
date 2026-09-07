@@ -1,11 +1,14 @@
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   getMediaAssetHistory,
   type MediaAlbum,
   type MediaAsset,
   type MediaAssetHistoryEntry,
 } from "../../../api/mediaApi";
+import { authenticatedQueryMeta } from "../../../lib/queryClient";
+import { queryKeys } from "../../../lib/queryKeys";
 import OptimizedImage, { canTransformImageType } from "../../../components/media/OptimizedImage";
 import { formatFileSize, formatUploadDate, formatResolution, formatFileTypeName, isVideoType } from "../utils";
 import { buildAlbumOptions } from "../albumTree";
@@ -82,36 +85,28 @@ export default function AssetDetailPanel({
   const [albumSelection, setAlbumSelection] = useState("");
   const [tab, setTab] = useState<"details" | "activity">("details");
   const [newTag, setNewTag] = useState("");
-  const [history, setHistory] = useState<MediaAssetHistoryEntry[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState(false);
+  const historyQuery = useQuery<MediaAssetHistoryEntry[]>({
+    queryKey: queryKeys.mediaAssets.history({ assetId: asset?.id ?? "" }),
+    queryFn: ({ signal }) => getMediaAssetHistory(asset!.id, signal).then((res) => res.data ?? []),
+    enabled: Boolean(asset?.id && tab === "activity" && !selectionMode),
+    staleTime: 60_000,
+    meta: authenticatedQueryMeta,
+  });
+  const history = historyQuery.data ?? [];
+  const historyLoading = historyQuery.isLoading || historyQuery.isFetching;
+  const historyError = historyQuery.isError;
   // Valid move targets: folders in the asset's own institution, plus the shared library.
   const albumOptions = buildAlbumOptions(
     asset ? albums.filter((a) => a.institutionId === asset.institutionId || a.shared) : albums,
   );
 
   useEffect(() => {
-    setAlbumSelection(asset?.albumId ?? "");
-    setTab("details");
-    setNewTag("");
-    setHistory([]);
-    setHistoryError(false);
+    queueMicrotask(() => {
+      setAlbumSelection(asset?.albumId ?? "");
+      setTab("details");
+      setNewTag("");
+    });
   }, [asset?.albumId, asset?.id]);
-
-  useEffect(() => {
-    const id = asset?.id;
-    if (!id || tab !== "activity" || selectionMode) return;
-    const controller = new AbortController();
-    setHistoryLoading(true);
-    setHistoryError(false);
-    getMediaAssetHistory(id, controller.signal)
-      .then((res) => setHistory(res.data ?? []))
-      .catch((err) => {
-        if ((err as { code?: string })?.code !== "ERR_CANCELED") setHistoryError(true);
-      })
-      .finally(() => setHistoryLoading(false));
-    return () => controller.abort();
-  }, [asset?.id, tab, selectionMode]);
 
   function submitNewTag() {
     const label = newTag.trim();
