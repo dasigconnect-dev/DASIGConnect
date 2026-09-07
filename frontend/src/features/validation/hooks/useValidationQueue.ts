@@ -84,7 +84,8 @@ export function useValidationQueue(user: User, history = false) {
   return {
     queue: query.data ?? [],
     setQueue,
-    loading: query.isLoading || query.isFetching,
+    loading: query.isLoading,
+    refreshing: query.isFetching,
     error: query.error && !isCanceledError(query.error)
       ? getErrorMessage(query.error, history ? "Unable to load all submissions." : "Unable to load the validation queue.")
       : "",
@@ -117,7 +118,8 @@ export function useValidationLog(user: User, submissionId?: string | null) {
 
   return {
     log: query.data ?? [],
-    loading: query.isLoading || query.isFetching,
+    loading: query.isLoading,
+    refreshing: query.isFetching,
     error: query.error && !isCanceledError(query.error)
       ? getErrorMessage(query.error, "Unable to load the validation log.")
       : "",
