@@ -61,6 +61,8 @@ import type { WatermarkConfiguration } from "../../types/watermark.types";
 import OptimizedImage, { canTransformImageType } from "../../components/media/OptimizedImage";
 import WatermarkOverlay from "../../components/watermark/WatermarkOverlay";
 import { useWatermarkConfiguration } from "../../hooks/useWatermarkConfiguration";
+import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
 import {
   useValidationLog,
   useValidationQueue,
@@ -85,6 +87,7 @@ type SortKey = "publish_slot" | "submitted";
 type DecisionModal = "approve" | "revise" | "reject" | null;
 const MODAL_EXIT_MS = 190;
 const REVIEWABLE_STATUSES = new Set(["pending", "in_review"]);
+const SUBMISSION_DETAIL_STALE_TIME_MS = 60_000;
 
 const VIDEO_EXT = new Set(["mp4", "mov", "webm", "avi", "mkv"]);
 
@@ -227,11 +230,16 @@ const statusLabel: Record<string, string> = {
   rejected: "Rejected",
 };
 
+function getUserCacheScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
+}
+
 export default function ValidationQueueScreen({
   user,
 }: ValidationQueueScreenProps) {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const currentUserScope = getUserCacheScope(user);
   const { queue: activeQueue, loading: activeLoading, error: activeError } = useValidationQueue(user);
   const { queue: allQueue, loading: allLoading, error: allError, refresh: refreshAllQueue } = useValidationQueue(user, true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -275,6 +283,32 @@ export default function ValidationQueueScreen({
   const { log, loading: logLoading, refresh: refreshLog } = useValidationLog(user, selectedId);
   const modalExitTimer = useRef<number | null>(null);
   const openRequestRef = useRef(0);
+
+  const submissionDetailQueryKey = useCallback(
+    (submissionId: string, institutionId?: string | null) =>
+      queryKeys.submissions.editorDetail({
+        role: user.role,
+        userId: currentUserScope,
+        institutionId: institutionId ?? user.institutionId ?? null,
+        submissionId,
+      }),
+    [currentUserScope, user.institutionId, user.role],
+  );
+
+  const fetchSubmissionDetail = useCallback(
+    (
+      submissionId: string,
+      institutionId?: string | null,
+      staleTime = SUBMISSION_DETAIL_STALE_TIME_MS,
+    ) =>
+      queryClient.fetchQuery({
+        queryKey: submissionDetailQueryKey(submissionId, institutionId),
+        queryFn: ({ signal }) => getSubmission(submissionId, signal).then((res) => res.data),
+        staleTime,
+        meta: authenticatedQueryMeta,
+      }),
+    [queryClient, submissionDetailQueryKey],
+  );
 
   const invalidateValidationWorkflow = useCallback(() => {
     return Promise.all([
@@ -405,16 +439,18 @@ export default function ValidationQueueScreen({
     let active = true;
     queueMicrotask(() => {
       if (!active) return;
-      setFailureContent(null);
+      const detailQueryKey = submissionDetailQueryKey(selectedFailureId, selectedFailure?.institutionId);
+      const cachedDetail = queryClient.getQueryData<SubmissionSummary>(detailQueryKey);
+      setFailureContent(cachedDetail ?? null);
       setFailureMediaIndex(0);
-      setFailureContentLoading(true);
-      getSubmission(selectedFailureId)
-        .then((res) => { if (active) setFailureContent(res.data); })
+      setFailureContentLoading(!cachedDetail);
+      fetchSubmissionDetail(selectedFailureId, selectedFailure?.institutionId)
+        .then((submission) => { if (active) setFailureContent(submission); })
         .catch((err: unknown) => { if (active) toast.error(readApiError(err, "Unable to load submission content.")); })
         .finally(() => { if (active) setFailureContentLoading(false); });
     });
     return () => { active = false; };
-  }, [selectedFailureId, toast]);
+  }, [fetchSubmissionDetail, queryClient, selectedFailure?.institutionId, selectedFailureId, submissionDetailQueryKey, toast]);
 
   useEffect(() => {
     return () => {
@@ -485,13 +521,20 @@ export default function ValidationQueueScreen({
     setEditedThisSession(false);
 
     try {
-      const detail = await getSubmission(summary.id);
+      const detailQueryKey = submissionDetailQueryKey(summary.id, summary.institutionId);
+      const cachedDetail = queryClient.getQueryData<SubmissionSummary>(detailQueryKey);
+      if (cachedDetail) {
+        setSelected(cachedDetail);
+        setSelectedLoading(false);
+      }
+
+      const detail = await fetchSubmissionDetail(summary.id, summary.institutionId);
       if (requestId !== openRequestRef.current) return;
-      setSelected(detail.data);
+      setSelected(detail);
 
       // Restore lock UI state (e.g. after a page refresh) without acquiring
       // anything — a read-only check against the backend's current lock.
-      if (REVIEWABLE_STATUSES.has(normalizeStatus(detail.data.status))) {
+      if (REVIEWABLE_STATUSES.has(normalizeStatus(detail.status))) {
         const lockStatus = await getReviewLockStatus(summary.id);
         if (requestId !== openRequestRef.current) return;
         const lock = lockStatus.data;
@@ -509,7 +552,7 @@ export default function ValidationQueueScreen({
     } finally {
       if (requestId === openRequestRef.current) setSelectedLoading(false);
     }
-  }, [selectedId, toast, user.email]);
+  }, [fetchSubmissionDetail, queryClient, selectedId, submissionDetailQueryKey, toast, user.email]);
 
   useEffect(() => {
     if (isFailedMode || loading) return;
@@ -670,7 +713,7 @@ export default function ValidationQueueScreen({
     let full = selected;
     if (!Array.isArray(selected.mediaAssets)) {
       try {
-        full = (await getSubmission(selected.id)).data;
+        full = await fetchSubmissionDetail(selected.id, selected.institutionId);
         setSelected(full);
       } catch {
         /* fall through with what we have */
@@ -864,7 +907,7 @@ export default function ValidationQueueScreen({
 
       // 4. reorder + per-item caption / skip-watermark. Re-read to learn the
       //    server-assigned ids for freshly uploaded files.
-      const afterMedia = (await getSubmission(id)).data.mediaAssets ?? [];
+      const afterMedia = (await fetchSubmissionDetail(id, selected.institutionId, 0)).mediaAssets ?? [];
       const orderedIds: string[] = [];
       const captions: Record<string, string> = {};
       const skips: Record<string, boolean> = {};
@@ -899,8 +942,8 @@ export default function ValidationQueueScreen({
       });
 
       // A9: stays IN_REVIEW — refresh content, keep panel + lock open.
-      const detail = await getSubmission(id);
-      setSelected(detail.data);
+      const detail = await fetchSubmissionDetail(id, selected.institutionId, 0);
+      setSelected(detail);
       setEditMode(false);
       setGuardRails(null);
       setEditedThisSession(true);
