@@ -53,6 +53,7 @@ interface ConfirmDialogState {
   message: string
   confirmLabel: string
   dangerous: boolean
+  requireTypedConfirmation?: string
   onConfirm: () => void
   onCancel?: () => void
 }
@@ -308,9 +309,10 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
 
     setConfirmDialog({
       title: 'Delete Institution',
-      message: `Permanently delete "${inst.name}"? This cannot be undone. The institution must have no contributors and no submissions.`,
+      message: `Permanently delete "${inst.name}"? This is irreversible and cannot be undone — unlike Deactivate, no data is retained. The institution must have no contributors, no submissions of any state, and no media assets.`,
       confirmLabel: 'Delete',
       dangerous: true,
+      requireTypedConfirmation: inst.code || undefined,
       onConfirm: () => {
         setConfirmDialog(null)
         void executeDeleteInstitution(inst)
@@ -1334,6 +1336,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             message={confirmDialog.message}
             confirmLabel={confirmDialog.confirmLabel}
             dangerous={confirmDialog.dangerous}
+            requireTypedConfirmation={confirmDialog.requireTypedConfirmation}
             onConfirm={confirmDialog.onConfirm}
             onCancel={() => {
               confirmDialog.onCancel?.()
