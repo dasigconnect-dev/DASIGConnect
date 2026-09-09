@@ -27,7 +27,8 @@ public enum AuditLogCategory {
         if (action == null) return OTHER;
         String a = action.toUpperCase();
 
-        if (a.contains("EDIT") || a.contains("REVISION") || a.contains("SUBMISSION_UPDATED")) {
+        if (a.contains("EDIT") || a.contains("REVISION") || a.contains("SUBMISSION_UPDATED")
+                || a.equals("MEDIA_ADDED")) {
             return EDIT_AND_REVISION;
         }
         if (a.contains("APPROVED") || a.contains("DIRECT_POST")) {

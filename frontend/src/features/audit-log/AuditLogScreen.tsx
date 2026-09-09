@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   downloadAuditLogCsv,
   formatActorRole,
@@ -8,10 +9,11 @@ import {
   type AuditLogCategory,
   type AuditLogEntry,
   type AuditLogFilterParams,
-  type AuditMetadataOptions,
 } from "../../api/auditLogApi";
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
+import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import AuditDetailModal from "./AuditDetailModal";
 import { SkeletonRows } from "../user-management/components/LoadingPrimitives";
@@ -115,8 +117,33 @@ const DEFAULT_ENTITY_TYPES = [
   { key: "SYSTEM_SETTING", label: "System Settings" },
 ];
 
-export default function AuditLogScreen({ user: _user }: Props) {
+const AUDIT_LOG_STALE_TIME_MS = 15_000;
+const AUDIT_METADATA_STALE_TIME_MS = 5 * 60_000;
+
+function getUserCacheScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
+}
+
+function isCanceledError(err: unknown) {
+  return (
+    (err as { code?: string })?.code === "ERR_CANCELED" ||
+    (err as { name?: string })?.name === "CanceledError" ||
+    (err as { name?: string })?.name === "AbortError"
+  );
+}
+
+function getAuditLoadError(err: unknown) {
+  if (isCanceledError(err)) return "";
+  return (
+    (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+    "Unable to connect to the audit service. Please retry."
+  );
+}
+
+export default function AuditLogScreen({ user }: Props) {
   const toast = useToast();
+  const queryClient = useQueryClient();
+  const userScope = getUserCacheScope(user);
 
   // Filter States
   const [datePreset, setDatePreset] = useState<DatePreset>("all");
@@ -128,26 +155,10 @@ export default function AuditLogScreen({ user: _user }: Props) {
   const [page, setPage] = useState(0);
   const pageSize = 20;
 
-  // Data States
-  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
-  const [totalElements, setTotalElements] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
   const [exporting, setExporting] = useState(false);
-  const [metadataOptions, setMetadataOptions] = useState<AuditMetadataOptions | null>(null);
 
   // Selected Log for Modal
   const [selectedEntry, setSelectedEntry] = useState<AuditLogEntry | null>(null);
-
-  // Load Categories on mount
-  useEffect(() => {
-    getAuditCategories()
-      .then((data) => setMetadataOptions(data))
-      .catch(() => {
-        // Fallback default categories if endpoint is slow
-      });
-  }, []);
 
   const filterParams: AuditLogFilterParams = useMemo(() => {
     return {
@@ -161,44 +172,46 @@ export default function AuditLogScreen({ user: _user }: Props) {
     };
   }, [startDate, endDate, category, entityType, search, page]);
 
-  const loadData = useCallback(
-    async (signal?: AbortSignal) => {
-      setLoading(true);
-      setLoadError("");
-      try {
-        const response = await getAuditLogs(filterParams, signal);
-        if (signal?.aborted) return;
-        setLogs(response.content || []);
-        setTotalElements(response.totalElements || 0);
-        setTotalPages(response.totalPages || 0);
-        setLoadError("");
-        setLoading(false);
-      } catch (err: unknown) {
-        if (signal?.aborted) return;
-        const isCanceled =
-          (err as { code?: string })?.code === "ERR_CANCELED" ||
-          (err as { name?: string })?.name === "CanceledError" ||
-          (err as { name?: string })?.name === "AbortError";
-        if (isCanceled) return;
+  const metadataQuery = useQuery({
+    queryKey: queryKeys.auditLog.metadata({
+      role: user.role,
+      userId: userScope,
+    }),
+    queryFn: ({ signal }) => getAuditCategories(signal),
+    staleTime: AUDIT_METADATA_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
 
-        setLoadError(
-          (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-            "Unable to connect to the audit service. Please retry."
-        );
-        setLoading(false);
-      }
-    },
-    [filterParams]
-  );
+  const auditLogQuery = useQuery({
+    queryKey: queryKeys.auditLog.page({
+      role: user.role,
+      userId: userScope,
+      page,
+      pageSize,
+      startDate: filterParams.startDate,
+      endDate: filterParams.endDate,
+      category: filterParams.category,
+      entityType: filterParams.entityType,
+      search: filterParams.search,
+    }),
+    queryFn: ({ signal }) => getAuditLogs(filterParams, signal),
+    staleTime: AUDIT_LOG_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
 
-  useEffect(() => {
-    const controller = new AbortController();
-    void loadData(controller.signal);
-    return () => controller.abort();
-  }, [loadData]);
+  const auditPage = auditLogQuery.data;
+  const metadataOptions = metadataQuery.data ?? null;
+  const logs = auditPage?.content ?? [];
+  const totalElements = auditPage?.totalElements ?? 0;
+  const totalPages = auditPage?.totalPages ?? 0;
+  const loading = auditLogQuery.isLoading || auditLogQuery.isFetching;
+  const loadError = auditLogQuery.error ? getAuditLoadError(auditLogQuery.error) : "";
+
+  function refreshAuditLog() {
+    void queryClient.invalidateQueries({ queryKey: ["audit-log"] });
+  }
 
   function handlePresetChange(preset: DatePreset) {
-    setLoading(true);
     setDatePreset(preset);
     if (preset !== "custom") {
       const { start, end } = getPresetDates(preset);
@@ -209,7 +222,6 @@ export default function AuditLogScreen({ user: _user }: Props) {
   }
 
   function handleResetFilters() {
-    setLoading(true);
     setDatePreset("all");
     setStartDate("");
     setEndDate("");
@@ -265,7 +277,7 @@ export default function AuditLogScreen({ user: _user }: Props) {
             <button
               type="button"
               className="notif-btn notif-btn-ghost"
-              onClick={() => void loadData()}
+              onClick={refreshAuditLog}
               disabled={loading}
               title="Refresh audit log"
             >
@@ -349,7 +361,6 @@ export default function AuditLogScreen({ user: _user }: Props) {
                 <BrandedSelect
                   value={category}
                   onChange={(v) => {
-                    setLoading(true);
                     setCategory(v as AuditLogCategory);
                     setPage(0);
                   }}
@@ -363,7 +374,6 @@ export default function AuditLogScreen({ user: _user }: Props) {
                 <BrandedSelect
                   value={entityType}
                   onChange={(v) => {
-                    setLoading(true);
                     setEntityType(v as AuditEntityType);
                     setPage(0);
                   }}
@@ -382,7 +392,6 @@ export default function AuditLogScreen({ user: _user }: Props) {
                 placeholder="Search actor or action..."
                 value={search}
                 onChange={(e) => {
-                  setLoading(true);
                   setSearch(e.target.value);
                   setPage(0);
                 }}
@@ -393,7 +402,6 @@ export default function AuditLogScreen({ user: _user }: Props) {
                   type="button"
                   className="im-search-clear"
                   onClick={() => {
-                    setLoading(true);
                     setSearch("");
                     setPage(0);
                   }}
@@ -441,7 +449,7 @@ export default function AuditLogScreen({ user: _user }: Props) {
               <button
                 type="button"
                 className="notif-btn notif-btn-ghost"
-                onClick={() => void loadData()}
+                onClick={refreshAuditLog}
               >
                 <i className="ti ti-refresh" /> Retry
               </button>
@@ -588,7 +596,6 @@ export default function AuditLogScreen({ user: _user }: Props) {
                     className="audit-page-btn"
                     disabled={page <= 0}
                     onClick={() => {
-                      setLoading(true);
                       setPage((p) => Math.max(0, p - 1));
                     }}
                   >
@@ -600,7 +607,6 @@ export default function AuditLogScreen({ user: _user }: Props) {
                     className="audit-page-btn"
                     disabled={page >= totalPages - 1}
                     onClick={() => {
-                      setLoading(true);
                       setPage((p) => p + 1);
                     }}
                   >

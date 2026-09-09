@@ -131,6 +131,7 @@ export default function WatermarkOverlay({ elements, className = "" }: Watermark
                         ? "2px"
                         : "0px",
                   borderStyle: "solid",
+                  borderColor: el.strokeColor || "transparent",
                   borderRadius: "0px",
                 }}
               />

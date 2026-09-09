@@ -131,16 +131,35 @@ public class FacebookPublisherService {
             return;
         }
         try {
-            pageTokenRepository.findByPageIdAndIsActiveTrue(pageId).ifPresentOrElse(
-                    existing -> log.info("Facebook page token already present for page {}.", pageId),
-                    () -> {
-                        FacebookPageToken token = new FacebookPageToken();
-                        token.setPageId(pageId);
-                        token.setEncryptedToken(tokenEncryptionService.encryptToken(pageAccessToken));
-                        pageTokenRepository.save(token);
-                        log.info("Facebook page token synced from env for page {}.", pageId);
-                    }
-            );
+            FacebookPageToken row = pageTokenRepository.findByPageIdAndIsActiveTrue(pageId).orElse(null);
+            if (row == null) {
+                FacebookPageToken token = new FacebookPageToken();
+                token.setPageId(pageId);
+                token.setEncryptedToken(tokenEncryptionService.encryptToken(pageAccessToken));
+                pageTokenRepository.save(token);
+                log.info("Facebook page token synced from env for page {}.", pageId);
+                return;
+            }
+            // The env var is the source of truth at boot: if the stored token no
+            // longer matches it (env rotated, or the old one expired), replace it
+            // and clear the expiry — an env token carries no expiry info, so the
+            // Reauthorize flow is still what re-establishes proper expiry tracking.
+            String stored;
+            try {
+                stored = tokenEncryptionService.decryptToken(row.getEncryptedToken());
+            } catch (RuntimeException ex) {
+                stored = null;
+            }
+            if (pageAccessToken.equals(stored)) {
+                log.info("Facebook page token already in sync with env for page {}.", pageId);
+                return;
+            }
+            row.setEncryptedToken(tokenEncryptionService.encryptToken(pageAccessToken));
+            row.setExpiresAt(null);
+            row.setActive(true);
+            row.setLastValidatedAt(null);
+            pageTokenRepository.save(row);
+            log.info("Facebook page token for page {} replaced from env (previous token differed).", pageId);
         } catch (Exception ex) {
             log.error("FacebookPublisherService: token sync failed at startup — publishing disabled until next restart. Cause: {}", ex.getMessage());
         }

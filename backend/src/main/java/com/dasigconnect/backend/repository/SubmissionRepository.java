@@ -71,11 +71,13 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         """)
     List<Submission> findValidationQueue();
 
-    // UC-2.4 approval history — network-wide, all post-review statuses, most recently updated first
+    // UC-2.4 approval history — network-wide, all post-review statuses, most recently updated first.
+    // NEEDS_REVISION is intentionally excluded: the submission is back in the contributor's hands
+    // (auto-saving, not yet resubmitted), so it must not surface in either moderator tab. It
+    // re-enters the active queue as PENDING once resubmitted.
     @Query("""
         SELECT s FROM Submission s
         WHERE s.status IN (
-            com.dasigconnect.backend.model.entity.SubmissionStatus.needs_revision,
             com.dasigconnect.backend.model.entity.SubmissionStatus.missed_review,
             com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
             com.dasigconnect.backend.model.entity.SubmissionStatus.publishing,

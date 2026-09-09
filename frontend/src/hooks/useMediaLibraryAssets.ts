@@ -28,12 +28,15 @@ export interface UseMediaLibraryAssetsReturn {
 export interface UseMediaLibraryAssetsOptions {
   /** Scope the library to a specific institution (used by network-wide admins). */
   institutionId?: string;
+  /** Show assets across every institution for network-wide roles. */
+  networkView?: boolean;
 }
 
 export function useMediaLibraryAssets(
   options?: UseMediaLibraryAssetsOptions,
 ): UseMediaLibraryAssetsReturn {
   const institutionId = options?.institutionId;
+  const networkView = options?.networkView ?? false;
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -72,7 +75,8 @@ export function useMediaLibraryAssets(
         aiCategory: cat || undefined,
         mediaType: type || undefined,
         albumId: album || undefined,
-        institutionId: institutionId || undefined,
+        institutionId: networkView ? undefined : institutionId || undefined,
+        networkView,
         page: pageNum,
         pageSize: PAGE_SIZE,
       })
@@ -83,7 +87,7 @@ export function useMediaLibraryAssets(
         .catch(() => setError(true))
         .finally(() => setLoading(false));
     },
-    [institutionId]
+    [institutionId, networkView]
   );
 
   useEffect(() => {

@@ -50,6 +50,13 @@ public class ValidationLog {
     @JdbcTypeCode(SqlTypes.JSON)
     private String editDiff;
 
+    /**
+     * A10 governance tier for {@code edited} / {@code media_added} rows:
+     * {@code quiet | flagged | added_media}. Null for lifecycle rows.
+     */
+    @Column(name = "edit_severity", length = 20)
+    private String editSeverity;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -87,6 +94,9 @@ public class ValidationLog {
 
     public String getEditDiff() { return editDiff; }
     public void setEditDiff(String editDiff) { this.editDiff = editDiff; }
+
+    public String getEditSeverity() { return editSeverity; }
+    public void setEditSeverity(String editSeverity) { this.editSeverity = editSeverity; }
 
     public Instant getCreatedAt() { return createdAt; }
 }

@@ -336,7 +336,7 @@ public class AuditLogService {
                 actions.addAll(List.of("REJECTED", "SUBMISSION_REJECTED", "TIMEOUT_REJECTED_ON_BEHALF", "OVERRIDE_DENIED"));
             }
             case EDIT_AND_REVISION -> {
-                actions.addAll(List.of("EDITED_AND_APPROVED", "SUBMISSION_EDITED_AND_APPROVED", "REVISION_REQUESTED", "SUBMISSION_REVISION_REQUESTED", "SUBMISSION_UPDATED"));
+                actions.addAll(List.of("EDITED_AND_APPROVED", "SUBMISSION_EDITED_AND_APPROVED", "REVISION_REQUESTED", "SUBMISSION_REVISION_REQUESTED", "SUBMISSION_UPDATED", "edited", "media_added"));
             }
             case RESCHEDULE_AND_OVERRIDE -> {
                 actions.addAll(List.of("SUBMISSION_RESCHEDULED", "OVERRIDE_SLOT_SUGGESTED", "TIMEOUT_DEFERRED"));
@@ -492,6 +492,7 @@ public class AuditLogService {
             case "SUBMISSION_APPROVED", "APPROVED", "approved" -> "Approved & scheduled";
             case "SUBMISSION_EDITED_AND_APPROVED", "EDITED_AND_APPROVED", "edited_and_approved" -> "Edited during review, then approved";
             case "edited" -> "Edited during review";
+            case "media_added" -> "Media added during review";
             case "SUBMISSION_REJECTED", "REJECTED", "rejected" -> "Rejected";
             case "SUBMISSION_REVISION_REQUESTED", "REVISION_REQUESTED", "needs_revision" -> "Revision requested";
             case "SUBMISSION_RESCHEDULED", "RESCHEDULE" -> "Rescheduled";
@@ -647,7 +648,10 @@ public class AuditLogService {
                 yield "Approved " + what + (slot != null ? ", scheduled for " + slot : "")
                         + (action.toUpperCase().contains("EDIT") ? " (edited during review)" : "");
             }
-            case "edited" -> "Edited " + what + " during review";
+            case "edited" -> "Edited " + what + " during review"
+                    + (m.get("editSeverity") != null ? " (" + m.get("editSeverity") + ")" : "");
+            case "media_added" -> "Moderator added media not originally submitted by the Contributor to "
+                    + what + (m.get("remarks") != null ? " — " + m.get("remarks") : "");
             case "SUBMISSION_REJECTED", "REJECTED", "rejected" -> {
                 String r = firstNonBlank(m.get("rejectionReason"), m.get("reasonCode"), m.get("remarks"));
                 yield "Rejected " + what + (r != null ? " — " + r : "");

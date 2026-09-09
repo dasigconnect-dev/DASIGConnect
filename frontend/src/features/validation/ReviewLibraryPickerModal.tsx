@@ -59,7 +59,7 @@ export default function ReviewLibraryPickerModal({
           </span>
           <div>
             <h3>Add from Media Library</h3>
-            <p>Assets in this submission&rsquo;s institution</p>
+            <p>Assets across all institutions</p>
           </div>
           <button type="button" className="val-libpick-x" onClick={onClose} aria-label="Close">
             <i className="ti ti-x" />
@@ -69,6 +69,7 @@ export default function ReviewLibraryPickerModal({
         <div className="val-libpick-body">
           <MediaLibraryTab
             institutionId={institutionId || undefined}
+            networkView
             showAlbumFilter
             alreadyAddedIds={alreadyAddedIds}
             onAddItems={handleAddItems}

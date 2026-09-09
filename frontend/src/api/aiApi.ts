@@ -35,11 +35,12 @@ export async function getClassificationSuggestions(
 }
 
 export async function getSimilarMedia(
-  submissionId: string
+  submissionId: string,
+  signal?: AbortSignal,
 ): Promise<SimilarMediaAsset[]> {
   const res = await api.get<SimilarMediaAsset[]>(
     `/ai/submissions/${submissionId}/similar-media`,
-    { validateStatus: () => true }
+    { signal, validateStatus: () => true }
   );
   if (res.status !== 200) return [];
   return res.data;

@@ -34,6 +34,7 @@ import {
 } from "../lib/userIdentity";
 import { firstPasswordError, getPasswordRules } from "../lib/passwordPolicy";
 import { clearAppCaches } from "../lib/appCache";
+import { clearAuthenticatedQueryCache } from "../lib/queryClient";
 
 const LOCKOUT_LIMIT = 5;
 const LOCKOUT_SECONDS = 15 * 60;
@@ -307,6 +308,7 @@ function App() {
     localStorage.removeItem("dasigconnect_user");
     // Drop any in-memory caches from a prior session on this tab so a new
     // account never sees the previous user's role-scoped data.
+    await clearAuthenticatedQueryCache();
     clearAppCaches();
     const email = loginEmail.trim().toLowerCase();
     try {
@@ -412,6 +414,8 @@ function App() {
         lastName,
         password: invitePassword,
       });
+      await clearAuthenticatedQueryCache();
+      clearAppCaches();
       setAuthToken(response.data.accessToken);
       const email = inviteEmail.trim().toLowerCase();
       const fallbackUser = buildUserFromLogin(
@@ -476,6 +480,7 @@ function App() {
     localStorage.removeItem("dasigconnect_token");
     localStorage.removeItem("dasigconnect_user");
     setAuthToken(null);
+    await clearAuthenticatedQueryCache();
     clearAppCaches();
     setCurrentUser(null);
     setShowDropdown(false);
@@ -495,6 +500,8 @@ function App() {
     try {
       const response = await login(email, modalPassword);
       const apiUser = response.data;
+      await clearAuthenticatedQueryCache();
+      clearAppCaches();
       setAuthToken(apiUser.accessToken);
       const fallbackUser = buildUserFromLogin(email, apiUser);
       const user = await loadCurrentUser(fallbackUser);
@@ -963,6 +970,7 @@ function buildUserFromLogin(
   fallbackInstitutionName?: string,
 ): User {
   return {
+    id: null,
     email,
     pw: "",
     role: mapApiRole(apiUser.role),
@@ -983,6 +991,7 @@ function buildUserFromProfile(
   const email = (profile.email || fallbackEmail).trim().toLowerCase();
   const displayName = getUserDisplayName(profile);
   return {
+    id: profile.id,
     email,
     pw: "",
     role: mapApiRole(profile.role),

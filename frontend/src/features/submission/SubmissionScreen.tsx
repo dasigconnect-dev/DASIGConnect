@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
+import { listInstitutions } from "../../api/authApi";
 import {
   attachAsset,
   createDraft,
@@ -15,7 +16,6 @@ import {
   validateGuardRails,
   withdrawSubmission,
   type GuardRailResult,
-  type EngagementRecommendations,
   type SavedMediaAsset,
   type SubmissionSummary,
 } from "../../api/submissionApi";
@@ -36,7 +36,8 @@ import type { User } from "../../types/auth.types";
 import type { SubmissionMediaItem } from "../../types/media";
 import type { CaptionTone } from "../../api/aiApi";
 import { useToast } from "../../context/ToastContext";
-import { registerAppCacheReset } from "../../lib/appCache";
+import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import AiCaptionButton from "./components/AiCaptionButton";
@@ -49,7 +50,7 @@ import "../../styles/dasig-loader.css";
 import "../../styles/submission.css";
 
 import type { CenterMode, FormState, ModalState, PendingLeaveAction, ProgressStep, QueueFilter, ReadinessTarget, SaveState } from "./types";
-import { initialForm, postTemplates, statusLabels, submissionDetailsMemoryCache } from "./constants";
+import { initialForm, postTemplates, statusLabels } from "./constants";
 import {
   appendHashtagToCaption,
   CAPTION_WORD_LIMIT,
@@ -128,6 +129,7 @@ const InPageFacebookPreview = lazy(() =>
 );
 
 const AUTO_SAVE_DELAY_MS = 1200;
+const COMPOSER_INSTITUTIONS_STALE_TIME_MS = 5 * 60_000;
 
 interface SubmissionScreenProps {
   user: User;
@@ -169,28 +171,30 @@ function apiTemplateToComposerTemplate(template: ApiPostTemplate): ComposerTempl
   };
 }
 
-// Composer reference data that rarely changes within a session. The effects
-// below serve these from the module cache while it's younger than the TTL, so
-// re-entering the composer doesn't re-hit the DB every time. Cleared on logout.
 const COMPOSER_REF_TTL_MS = 2 * 60_000;
-let cachedTemplates: { data: ComposerTemplate[]; at: number } | null = null;
-const cachedAlbumsByInstitution = new Map<string, { data: string[]; at: number }>();
-registerAppCacheReset(() => {
-  cachedTemplates = null;
-  cachedAlbumsByInstitution.clear();
-});
+
+function userScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
+}
+
+function isCanceledRequest(error: unknown, signal?: AbortSignal) {
+  if (signal?.aborted) return true;
+  const maybeCanceled = error as { code?: string; name?: string };
+  return maybeCanceled.code === "ERR_CANCELED" || maybeCanceled.name === "CanceledError" || maybeCanceled.name === "AbortError";
+}
 
 export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { submissionId: routeSubmissionId } = useParams<{ submissionId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const { submissions, setSubmissions, loading, error, refresh } =
-    useSubmissions();
+    useSubmissions(user);
   const {
     lookups,
     loading: lookupsLoading,
-  } = useSubmissionLookups();
+  } = useSubmissionLookups(user);
   const toast = useToast();
   const detailsSectionRef = useRef<HTMLElement | null>(null);
   const mediaSectionRef = useRef<HTMLElement | null>(null);
@@ -214,9 +218,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     return "all";
   });
   const [queueSearch, setQueueSearch] = useState("");
-  const [listDetails, setListDetails] = useState<
-    Record<string, { caption: string; mediaAssets: SavedMediaAsset[] }>
-  >(() => ({ ...submissionDetailsMemoryCache }));
   const [form, setForm] = useState<FormState>(initialForm);
   const [pickerItems, setPickerItems] = useState<SubmissionMediaItem[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -224,8 +225,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [captionMediaKey, setCaptionMediaKey] = useState<string | null>(null);
   const [hashtagInput, setHashtagInput] = useState("");
   const [mediaTagInput, setMediaTagInput] = useState("");
-  const [customTemplates, setCustomTemplates] = useState<ComposerTemplate[]>([]);
-  const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
@@ -300,13 +299,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
   const [guardRailError, setGuardRailError] = useState("");
-  const [engagementRecommendations, setEngagementRecommendations] =
-    useState<EngagementRecommendations | null>(null);
-  const [engagementLoading, setEngagementLoading] = useState(false);
-  const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
-  const [institutionsLoading, setInstitutionsLoading] = useState(false);
-  const [institutionsError, setInstitutionsError] = useState("");
-  const [existingAlbums, setExistingAlbums] = useState<string[]>([]);
   const [activeStep, setActiveStep] = useState<ProgressStep>("media");
   const [captionSelection, setCaptionSelection] = useState<FancyTextSelection>({
     start: 0,
@@ -317,6 +309,55 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const isAdminComposer = user.role === "moderator" || user.role === "admin";
   const isMySubmissionsPage = location.pathname === "/submissions";
   const selectedInstitutionId = isAdminComposer ? form.institutionId : user.institutionId || "";
+  const currentUserScope = userScope(user);
+  const institutionsQuery = useQuery({
+    queryKey: queryKeys.institutions.composerOptions({
+      role: user.role,
+      userId: currentUserScope,
+    }),
+    queryFn: ({ signal }) => listInstitutions(signal).then((response) =>
+      response.data.filter((institution) => institution.status?.toLowerCase() !== "inactive"),
+    ),
+    enabled: isAdminComposer,
+    staleTime: COMPOSER_INSTITUTIONS_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const templatesQueryKey = queryKeys.submissions.templates({
+    role: user.role,
+    userId: currentUserScope,
+    institutionId: selectedInstitutionId || null,
+  });
+  const albumNamesQueryKey = queryKeys.submissions.albumNames({
+    role: user.role,
+    userId: currentUserScope,
+    institutionId: selectedInstitutionId || "",
+  });
+  const templatesQuery = useQuery({
+    queryKey: templatesQueryKey,
+    queryFn: ({ signal }) => listPostTemplates(signal).then((response) =>
+      (response.data ?? []).map(apiTemplateToComposerTemplate),
+    ),
+    staleTime: COMPOSER_REF_TTL_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const albumNamesQuery = useQuery({
+    queryKey: albumNamesQueryKey,
+    queryFn: ({ signal }) =>
+      listMediaAlbums(selectedInstitutionId, signal).then((response) =>
+        (response.data ?? []).map((album) => album.name),
+      ),
+    enabled: Boolean(selectedInstitutionId),
+    staleTime: COMPOSER_REF_TTL_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const customTemplates = templatesQuery.data ?? [];
+  const templatesLoading = templatesQuery.isLoading || templatesQuery.isFetching;
+  const existingAlbums = selectedInstitutionId ? albumNamesQuery.data ?? [] : [];
+  const institutions = institutionsQuery.data ?? [];
+  const institutionsLoading = institutionsQuery.isLoading || institutionsQuery.isFetching;
+  const institutionsError = institutionsQuery.error ? "Institution list could not be loaded." : "";
+  const templateErrorNotifiedRef = useRef(false);
+  const albumErrorNotifiedRef = useRef<string | null>(null);
   const [mediaUploadFailed, setMediaUploadFailed] = useState(false);
   const selectedPostingInstitution = useMemo(
     () => institutions.find((institution) => institution.id === form.institutionId) ?? null,
@@ -333,6 +374,40 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         : submissions.filter((item) => queueBucket(item.status) === filter);
     return base.filter((item) => matchesQueueSearch(item, queueSearch));
   }, [filter, queueSearch, submissions]);
+  const queuedPreviewItems = useMemo(
+    () =>
+      queued.filter(
+        (item) =>
+          !item.caption || ((item.mediaCount ?? 0) > 0 && !item.mediaAssets?.length),
+      ),
+    [queued],
+  );
+  const previewDetailQueries = useQueries({
+    queries: queuedPreviewItems.map((item) => ({
+      queryKey: queryKeys.submissions.detail({
+        role: user.role,
+        userId: currentUserScope,
+        institutionId: item.institutionId || user.institutionId || null,
+        submissionId: item.id,
+      }),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        getSubmission(item.id, signal).then((response) => ({
+          caption: response.data.caption ?? "",
+          mediaAssets: response.data.mediaAssets ?? [],
+        })),
+      enabled: isMySubmissionsPage,
+      staleTime: COMPOSER_REF_TTL_MS,
+      meta: authenticatedQueryMeta,
+    })),
+  });
+  const previewDetails = useMemo(() => {
+    const entries: Record<string, { caption: string; mediaAssets: SavedMediaAsset[] }> = {};
+    previewDetailQueries.forEach((query, index) => {
+      const id = queuedPreviewItems[index]?.id;
+      if (id && query.data) entries[id] = query.data;
+    });
+    return entries;
+  }, [previewDetailQueries, queuedPreviewItems]);
 
   // One pass over the list for every tab count.
   const counts = useMemo(() => {
@@ -405,83 +480,86 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const shouldPromptBeforeLeave = isDirty;
   const busy =
     saveState === "saving" || submitting || withdrawing || deleting || reorderingMedia;
+  const shouldLoadEngagementRecommendations =
+    activeStep === "schedule" &&
+    !form.fastTrack &&
+    !isReadOnlySubmission &&
+    !(isAdminComposer && !selectedInstitutionId);
+  const engagementRecommendationsQuery = useQuery({
+    queryKey: queryKeys.submissions.engagementRecommendations({
+      role: user.role,
+      userId: currentUserScope,
+      institutionId: selectedInstitutionId || null,
+    }),
+    queryFn: ({ signal }) =>
+      getEngagementRecommendations(selectedInstitutionId || null, signal).then((response) =>
+        response.data.available ? response.data : null,
+      ),
+    enabled: shouldLoadEngagementRecommendations,
+    staleTime: COMPOSER_REF_TTL_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const engagementRecommendations = shouldLoadEngagementRecommendations
+    ? engagementRecommendationsQuery.data ?? null
+    : null;
+  const engagementLoading =
+    shouldLoadEngagementRecommendations &&
+    (engagementRecommendationsQuery.isLoading || engagementRecommendationsQuery.isFetching);
+
+  function submissionDetailParams(submission: Pick<SubmissionSummary, "id" | "institutionId">) {
+    return {
+      role: user.role,
+      userId: currentUserScope,
+      institutionId: submission.institutionId || user.institutionId || null,
+      submissionId: submission.id,
+    };
+  }
+
+  function syncSubmissionCaches(next: SubmissionSummary) {
+    setSubmissions((current) => upsertSubmission(current, next));
+    const detailParams = submissionDetailParams(next);
+    queryClient.setQueryData<SubmissionSummary>(
+      queryKeys.submissions.editorDetail(detailParams),
+      next,
+    );
+    queryClient.setQueryData<{ caption: string; mediaAssets: SavedMediaAsset[] }>(
+      queryKeys.submissions.detail(detailParams),
+      {
+        caption: next.caption ?? "",
+        mediaAssets: next.mediaAssets ?? [],
+      },
+    );
+  }
+
+  function removeSubmissionCaches(submission: Pick<SubmissionSummary, "id" | "institutionId">) {
+    setSubmissions((current) => current.filter((item) => item.id !== submission.id));
+    const detailParams = submissionDetailParams(submission);
+    queryClient.removeQueries({ queryKey: queryKeys.submissions.editorDetail(detailParams) });
+    queryClient.removeQueries({ queryKey: queryKeys.submissions.detail(detailParams) });
+  }
 
   useEffect(() => {
-    if (!isAdminComposer) return;
-    const controller = new AbortController();
-    setInstitutionsLoading(true);
-    listInstitutions(controller.signal)
-      .then((response) => {
-        const activeInstitutions = response.data.filter(
-          (institution) => institution.status?.toLowerCase() !== "inactive",
-        );
-        setInstitutions(activeInstitutions);
-        setInstitutionsError("");
-        setForm((prev) => {
-          if (prev.institutionId || prev.id) return prev;
-          const dasig = activeInstitutions.find(
-            (inst) => isDefaultInstitution(inst),
-          );
-          return dasig ? { ...prev, institutionId: dasig.id } : prev;
-        });
-      })
-      .catch((err: unknown) => {
-        if ((err as { name?: string })?.name === "CanceledError") return;
-        setInstitutionsError(getErrorMessage(err, "Institution list could not be loaded."));
-      })
-      .finally(() => setInstitutionsLoading(false));
-    return () => controller.abort();
-  }, [isAdminComposer]);
-
-  useEffect(() => {
-    if (cachedTemplates && Date.now() - cachedTemplates.at < COMPOSER_REF_TTL_MS) {
-      setCustomTemplates(cachedTemplates.data);
-      setTemplatesLoading(false);
-      return;
-    }
-    const controller = new AbortController();
-    setTemplatesLoading(true);
-    listPostTemplates(controller.signal)
-      .then((response) => {
-        const mapped = (response.data ?? []).map(apiTemplateToComposerTemplate);
-        cachedTemplates = { data: mapped, at: Date.now() };
-        setCustomTemplates(mapped);
-      })
-      .catch((err: unknown) => {
-        if ((err as { name?: string })?.name === "CanceledError") return;
-        toast.error("Could not load saved templates.");
-      })
-      .finally(() => setTemplatesLoading(false));
-    return () => controller.abort();
-  }, [toast]);
-
-  useEffect(() => {
-    if (!selectedInstitutionId) {
-      setExistingAlbums([]);
-      return;
-    }
-
-    const cached = cachedAlbumsByInstitution.get(selectedInstitutionId);
-    if (cached && Date.now() - cached.at < COMPOSER_REF_TTL_MS) {
-      setExistingAlbums(cached.data);
-      return;
-    }
-
-    const controller = new AbortController();
-    listMediaAlbums(selectedInstitutionId, controller.signal)
-      .then((response) => {
-        const names = (response.data ?? []).map((album) => album.name);
-        cachedAlbumsByInstitution.set(selectedInstitutionId, { data: names, at: Date.now() });
-        setExistingAlbums(names);
-      })
-      .catch((err: unknown) => {
-        if ((err as { name?: string })?.name === "CanceledError") return;
-        setExistingAlbums([]);
-        toast.error("Could not load media albums.");
+    if (!isAdminComposer || !institutions.length) return;
+    queueMicrotask(() => {
+      setForm((prev) => {
+        if (prev.institutionId || prev.id) return prev;
+        const dasig = institutions.find((inst) => isDefaultInstitution(inst));
+        return dasig ? { ...prev, institutionId: dasig.id } : prev;
       });
+    });
+  }, [institutions, isAdminComposer]);
 
-    return () => controller.abort();
-  }, [selectedInstitutionId, toast]);
+  useEffect(() => {
+    if (!templatesQuery.isError || templateErrorNotifiedRef.current) return;
+    templateErrorNotifiedRef.current = true;
+    toast.error("Could not load saved templates.");
+  }, [templatesQuery.isError, toast]);
+
+  useEffect(() => {
+    if (!selectedInstitutionId || !albumNamesQuery.isError || albumErrorNotifiedRef.current === selectedInstitutionId) return;
+    albumErrorNotifiedRef.current = selectedInstitutionId;
+    toast.error("Could not load media albums.");
+  }, [albumNamesQuery.isError, selectedInstitutionId, toast]);
 
   const isDetailsComplete = useMemo(
     () =>
@@ -635,6 +713,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const aiCaption = useAiCaptionAssist(form.id, hasImageAssets, form.caption);
 
   useEffect(() => {
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
       if (!scheduledAt) {
         setGuardRails(null);
@@ -650,44 +729,29 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       }
 
       setGuardRailsLoading(true);
-      validateGuardRails(scheduledAt, selectedInstitutionId || undefined, form.id || undefined)
+      validateGuardRails(scheduledAt, selectedInstitutionId || undefined, form.id || undefined, controller.signal)
         .then((response) => {
+          if (controller.signal.aborted) return;
           setGuardRails(response.data);
           setGuardRailError("");
         })
         .catch((err: unknown) => {
+          if (isCanceledRequest(err, controller.signal)) return;
           setGuardRails(null);
           setGuardRailError(getErrorMessage(err, "Slot validation is unavailable."));
         })
-        .finally(() => setGuardRailsLoading(false));
+        .finally(() => {
+          if (!controller.signal.aborted) setGuardRailsLoading(false);
+        });
     }, scheduledAt ? 350 : 0);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
     // form.id is included so validation re-runs once the first save assigns an
     // id — otherwise the check would flag the user's own new reservation.
   }, [isAdminComposer, scheduledAt, selectedInstitutionId, form.id]);
-
-  useEffect(() => {
-    if (activeStep !== "schedule" || form.fastTrack || isReadOnlySubmission
-        || (isAdminComposer && !selectedInstitutionId)) {
-      setEngagementRecommendations(null);
-      setEngagementLoading(false);
-      return;
-    }
-    const controller = new AbortController();
-    setEngagementLoading(true);
-    getEngagementRecommendations(selectedInstitutionId, controller.signal)
-      .then((response) => {
-        setEngagementRecommendations(response.data.available ? response.data : null);
-      })
-      .catch((error: unknown) => {
-        if ((error as { name?: string })?.name !== "CanceledError") {
-          setEngagementRecommendations(null);
-        }
-      })
-      .finally(() => setEngagementLoading(false));
-    return () => controller.abort();
-  }, [activeStep, form.fastTrack, isReadOnlySubmission, selectedInstitutionId]);
 
   // Clean up ?tab= from the URL after it has been consumed by the lazy filter initializer.
   useEffect(() => {
@@ -715,13 +779,26 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (ids.length === 0) return;
 
     void (async () => {
-      const results = await Promise.allSettled(ids.map((id) => getMediaAsset(id)));
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          queryClient.fetchQuery({
+            queryKey: queryKeys.mediaAssets.detail({
+              role: user.role,
+              userId: currentUserScope,
+              assetId: id,
+            }),
+            queryFn: ({ signal }) => getMediaAsset(id, signal).then((response) => response.data),
+            staleTime: COMPOSER_REF_TTL_MS,
+            meta: authenticatedQueryMeta,
+          }),
+        ),
+      );
       const assets: SavedMediaAsset[] = results
-        .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof getMediaAsset>>> =>
+        .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof getMediaAsset>>["data"]> =>
           result.status === "fulfilled",
         )
         .map((result) => {
-          const asset = result.value.data;
+          const asset = result.value;
           return {
             id: asset.id,
             storageUrl: asset.storageUrl,
@@ -752,41 +829,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         );
       }
     })();
-  }, [searchParams, toast]);
-
-  useEffect(() => {
-    if (!isMySubmissionsPage) return;
-    const needsPreview = queued.filter(
-      (item) =>
-        (!item.caption || ((item.mediaCount ?? 0) > 0 && !item.mediaAssets?.length)) &&
-        !listDetails[item.id],
-    );
-    if (needsPreview.length === 0) return;
-
-    let cancelled = false;
-    void Promise.allSettled(needsPreview.map((item) => getSubmission(item.id))).then((results) => {
-      if (cancelled) return;
-      const nextEntries: Record<string, { caption: string; mediaAssets: SavedMediaAsset[] }> = {};
-      results.forEach((result, index) => {
-        const id = needsPreview[index]?.id;
-        if (!id) return;
-        const entry =
-          result.status === "fulfilled"
-            ? {
-                caption: result.value.data.caption ?? "",
-                mediaAssets: result.value.data.mediaAssets ?? [],
-              }
-            : { caption: "", mediaAssets: [] };
-        nextEntries[id] = entry;
-        submissionDetailsMemoryCache[id] = entry;
-      });
-      setListDetails((current) => ({ ...current, ...nextEntries }));
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isMySubmissionsPage, listDetails, queued]);
+  }, [currentUserScope, queryClient, searchParams, toast, user.role]);
 
   useEffect(() => {
     const submissionId = routeSubmissionId ?? searchParams.get("submissionId");
@@ -796,24 +839,28 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
     if (routedSubmissionRef.current === submissionId) {
       if (searchParams.get("openFeedback") === "true") {
-        setRevisionModalOpen(true);
+        queueMicrotask(() => setRevisionModalOpen(true));
       }
       return;
     }
     routedSubmissionRef.current = submissionId;
     const existing = submissions.find((s) => s.id === submissionId);
     const initialStatus = existing?.status ?? "pending";
-    setFilter(queueBucket(initialStatus));
-    setCenterMode("edit");
+    queueMicrotask(() => {
+      setFilter(queueBucket(initialStatus));
+      setCenterMode("edit");
+    });
     if (existing) {
-      setForm((current) => ({
-        ...current,
-        id: existing.id,
-        status: existing.status,
-        eventTitle: existing.eventTitle || "",
-        eventDate: existing.eventDate || "",
-        institutionId: existing.institutionId || current.institutionId,
-      }));
+      queueMicrotask(() => {
+        setForm((current) => ({
+          ...current,
+          id: existing.id,
+          status: existing.status,
+          eventTitle: existing.eventTitle || "",
+          eventDate: existing.eventDate || "",
+          institutionId: existing.institutionId || current.institutionId,
+        }));
+      });
     }
     void applySubmission({
       id: submissionId,
@@ -869,10 +916,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   // Admin "Posting As" change. On an unsaved composer it's a free switch. On a
-  // saved draft, files uploaded to this draft are STAGED (no institution yet) and
-  // are kept; only assets picked from the previous institution's library are
-  // dropped (they stay in that library). The reserved slot is per-institution, so
-  // the schedule is cleared too. Mirrored server-side by
+  // saved draft, selected media is kept because reviewers/admins can reuse vetted
+  // assets network-wide. The reserved slot is per-institution, so the schedule is
+  // cleared. Mirrored server-side by
   // SubmissionService.maybeRehomeSubmission on the next save.
   function handlePostingInstitutionChange(nextInstitutionId: string) {
     if (!nextInstitutionId || nextInstitutionId === form.institutionId) return;
@@ -882,42 +928,22 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       return;
     }
 
-    const droppedAssets = form.savedAssets.filter((asset) => asset.status !== "STAGED");
-    const keptAssets = form.savedAssets.filter((asset) => asset.status === "STAGED");
-    const droppedCount = droppedAssets.length + form.pendingAssetIds.length;
     const hasSchedule = Boolean(form.scheduledDate || form.scheduledTime);
 
-    if (droppedCount > 0 || hasSchedule) {
-      const parts = [
-        droppedCount > 0
-          ? `remove ${droppedCount} item${droppedCount === 1 ? "" : "s"} you picked from the current institution's library`
-          : null,
-        hasSchedule ? "clear the preferred schedule" : null,
-      ]
-        .filter(Boolean)
-        .join(" and ");
+    if (hasSchedule) {
       const confirmed = window.confirm(
-        `Changing the institution will ${parts}. Files you uploaded to this draft are kept. Continue?`,
+        "Changing the institution will clear the preferred schedule. Selected media is kept. Continue?",
       );
       if (!confirmed) return;
     }
 
-    const droppedIds = new Set(droppedAssets.map((asset) => asset.id));
-    const droppedKeys = new Set(droppedAssets.map((asset) => savedMediaKey(asset.id)));
-
     setForm((current) => ({
       ...current,
       institutionId: nextInstitutionId,
-      savedAssets: keptAssets,
-      mediaOrder: current.mediaOrder.filter((key) => !droppedKeys.has(key)),
-      pendingAssetIds: [],
       removedAssetIds: [],
       scheduledDate: "",
       scheduledTime: "",
     }));
-    setPickerItems((current) =>
-      current.filter((item) => !(item.assetId != null && droppedIds.has(item.assetId))),
-    );
     setSaveState("idle");
     const targetName =
       institutions.find((institution) => institution.id === nextInstitutionId)?.name ??
@@ -1063,11 +1089,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         institutionId: selectedInstitutionId || null,
       });
       const template = apiTemplateToComposerTemplate(response.data);
-      setCustomTemplates((current) => {
-        const next = [template, ...current];
-        cachedTemplates = { data: next, at: Date.now() };
-        return next;
-      });
+      queryClient.setQueryData<ComposerTemplate[]>(templatesQueryKey, (current = []) => [template, ...current]);
+      templateErrorNotifiedRef.current = false;
+      await queryClient.invalidateQueries({ queryKey: ["submissions"] });
       setForm((current) => ({ ...current, selectedTemplateId: template.id }));
       setTemplateSaveOpen(false);
       toast.success("Template saved.");
@@ -1088,11 +1112,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setDeletingTemplate(true);
     try {
       await deletePostTemplate(templateDeleteId);
-      setCustomTemplates((current) => {
-        const next = current.filter((template) => template.id !== templateDeleteId);
-        cachedTemplates = { data: next, at: Date.now() };
-        return next;
-      });
+      queryClient.setQueryData<ComposerTemplate[]>(templatesQueryKey, (current = []) =>
+        current.filter((template) => template.id !== templateDeleteId),
+      );
+      templateErrorNotifiedRef.current = false;
+      await queryClient.invalidateQueries({ queryKey: ["submissions"] });
       setForm((current) =>
         current.selectedTemplateId === templateDeleteId
           ? { ...current, selectedTemplateId: null }
@@ -1253,7 +1277,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   async function applySubmission(summary: SubmissionSummary) {
     setHydratingId(summary.id);
     try {
-      const { data: submission } = await getSubmission(summary.id);
+      const submission = await queryClient.fetchQuery({
+        queryKey: queryKeys.submissions.editorDetail({
+          role: user.role,
+          userId: currentUserScope,
+          institutionId: summary.institutionId || user.institutionId || null,
+          submissionId: summary.id,
+        }),
+        queryFn: ({ signal }) => getSubmission(summary.id, signal).then((response) => response.data),
+        staleTime: 0,
+        meta: authenticatedQueryMeta,
+      });
       const nextForm: FormState = {
         id: submission.id,
         status: submission.status,
@@ -1408,9 +1442,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       }));
       setPickerItems(orderedSavedAssets.map(savedAssetToPickerItem));
       setCaptionMediaKey(null);
-      setSubmissions((current) =>
-        upsertSubmission(current, finalResponse.data),
-      );
+      syncSubmissionCaches(finalResponse.data);
       clearAssetIdParam();
       setSaveState("saved");
       setMediaUploadFailed(false);
@@ -1539,7 +1571,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         );
       }
       const submitted = await submitForReview(draftResponse.data.id);
-      setSubmissions((current) => upsertSubmission(current, submitted.data));
+      syncSubmissionCaches(submitted.data);
       const submittedAssets = submitted.data.mediaAssets ?? form.savedAssets;
       setForm((current) => ({
         ...current,
@@ -1617,9 +1649,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
     try {
       await deleteDraft(form.id);
-      setSubmissions((current) =>
-        current.filter((item) => item.id !== form.id),
-      );
+      removeSubmissionCaches({
+        id: form.id,
+        institutionId: form.institutionId || user.institutionId || "",
+      });
       setModal(null);
       toast.info("Draft deleted.");
       exitSubmission();
@@ -1635,7 +1668,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setWithdrawing(true);
     try {
       const { data } = await withdrawSubmission(form.id);
-      setSubmissions((current) => upsertSubmission(current, data));
+      syncSubmissionCaches(data);
       const nextAssets = data.mediaAssets ?? form.savedAssets;
       setForm((current) => ({
         ...current,
@@ -1793,7 +1826,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         mediaSkipWatermark: mediaSkipWatermarkFromSavedAssets(nextAssets),
       }));
       setPickerItems(nextAssets.map(savedAssetToPickerItem));
-      setSubmissions((current) => upsertSubmission(current, data));
+      syncSubmissionCaches(data);
       toast.success("Media order updated.");
       cleanSignatureRef.current = getDirtySignature(nextForm);
     } catch (err: unknown) {
@@ -1939,7 +1972,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               />
             ) : (
               queued.map((item) => {
-                const detail = listDetails[item.id];
+                const detail = previewDetails[item.id];
                 const mediaAssets =
                   item.mediaAssets?.length ? item.mediaAssets : detail?.mediaAssets ?? [];
                 const thumbnail = mediaAssets[0];
@@ -1995,7 +2028,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     <SubmissionCardMedia
                       thumbnail={thumbnail}
                       mediaCount={item.mediaCount}
-                      detailsLoaded={Boolean(listDetails[item.id])}
+                      detailsLoaded={Boolean(previewDetails[item.id])}
                     />
 
                     {/* Reactions & Engagement Row */}
@@ -2604,6 +2637,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 disabled={!isEditableSubmission}
                 onItemClick={openMediaCaption}
                 getItemCaption={(item) => form.mediaCaptions[pickerMediaKey(item)] ?? ""}
+                institutionId={selectedInstitutionId}
+                networkView={isAdminComposer}
               />
             </Suspense>
             {pickerItems.some((item) => item.mediaType === "image") &&

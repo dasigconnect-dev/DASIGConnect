@@ -26,6 +26,9 @@ export interface SavedMediaAsset {
   skipWatermark?: boolean;
   /** MediaAssetStatus name. "STAGED" = uploaded to this draft, not yet bound to an institution. */
   status?: string;
+  /** Media Library album this asset is filed under (null while STAGED). */
+  albumId?: string | null;
+  albumName?: string | null;
 }
 
 export interface SubmissionSummary {
@@ -210,11 +213,14 @@ export function validateGuardRails(
   scheduledAt: string,
   institutionId?: string | null,
   submissionId?: string | null,
+  signal?: AbortSignal,
 ) {
   return api.post<GuardRailResult>("/guardrails/validate", {
     scheduledAt,
     institutionId,
     submissionId: submissionId || undefined,
+  }, {
+    signal,
   });
 }
 

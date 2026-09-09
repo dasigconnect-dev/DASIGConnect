@@ -9,6 +9,7 @@ export type ScreenId =
   | 'dashboard'
 
 export interface User {
+  id?: string | null
   email: string
   pw: string
   role: UserRole

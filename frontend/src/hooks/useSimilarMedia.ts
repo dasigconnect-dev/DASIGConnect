@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   getSimilarMedia,
   logAiInteraction,
   type SimilarMediaAsset,
 } from "../api/aiApi";
+import { authenticatedQueryMeta } from "../lib/queryClient";
+import { queryKeys } from "../lib/queryKeys";
 
 export type SimilarMediaState = "idle" | "loading" | "ready" | "empty" | "error";
 
@@ -22,37 +25,31 @@ export function useSimilarMedia(
   submissionId: string | null,
   hasSavedAssets: boolean
 ): UseSimilarMediaReturn {
-  const [state, setState] = useState<SimilarMediaState>("idle");
-  const [assets, setAssets] = useState<SimilarMediaAsset[]>([]);
-  // Track which submissionId was last fetched to avoid double-fetches
-  const fetchedForRef = useRef<string | null>(null);
-
-  async function doFetch(id: string) {
-    setState("loading");
-    try {
-      const data = await getSimilarMedia(id);
-      setAssets(data);
-      setState(data.length === 0 ? "empty" : "ready");
-      if (data.length > 0) {
-        logAiInteraction(id, "media_recommendation", "shown");
-      }
-    } catch {
-      setState("error");
-    }
-  }
+  const shouldFetch = Boolean(submissionId && hasSavedAssets);
+  const loggedForRef = useRef<string | null>(null);
+  const query = useQuery({
+    queryKey: queryKeys.ai.similarMedia({ submissionId: submissionId ?? "" }),
+    queryFn: ({ signal }) => getSimilarMedia(submissionId!, signal),
+    enabled: shouldFetch,
+    staleTime: 2 * 60_000,
+    meta: authenticatedQueryMeta,
+  });
+  const assets = shouldFetch ? query.data ?? [] : [];
 
   useEffect(() => {
-    if (!submissionId || !hasSavedAssets) return;
-    if (fetchedForRef.current === submissionId) return;
-    fetchedForRef.current = submissionId;
-    doFetch(submissionId);
-  }, [submissionId, hasSavedAssets]);
+    if (!submissionId || assets.length === 0 || loggedForRef.current === submissionId) return;
+    loggedForRef.current = submissionId;
+    logAiInteraction(submissionId, "media_recommendation", "shown");
+  }, [assets.length, submissionId]);
 
   function refresh() {
     if (!submissionId) return;
-    fetchedForRef.current = null;
-    doFetch(submissionId);
+    loggedForRef.current = null;
+    void query.refetch();
   }
 
-  return { state, assets, refresh };
+  if (!shouldFetch) return { state: "idle", assets: [], refresh };
+  if (query.isLoading || query.isFetching) return { state: "loading", assets, refresh };
+  if (query.isError) return { state: "error", assets: [], refresh };
+  return { state: assets.length === 0 ? "empty" : "ready", assets, refresh };
 }

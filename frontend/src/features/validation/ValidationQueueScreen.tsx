@@ -1,8 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import {
+  getEngagementRecommendations,
   getSubmission,
   validateGuardRails,
+  type EngagementRecommendations,
   type GuardRailResult,
   type SavedMediaAsset,
   type SubmissionSummary,
@@ -14,18 +26,29 @@ import {
   detachValidationAsset,
   editSubmission,
   getReviewLockStatus,
-  getValidationQueue,
   rejectSubmission,
   releaseReviewLock,
   reorderValidationMedia,
   requestSubmissionRevision,
-  uploadValidationMedia,
   type RejectionReasonCode,
   type ReviewLock,
   type ValidationLog,
 } from "../../api/validationApi";
 import type { SubmissionMediaItem } from "../../types/media";
+import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
+import type { CaptionTone } from "../../api/aiApi";
+import AiCaptionButton from "../submission/components/AiCaptionButton";
+import { extractHashtags } from "../submission/utils";
 import FancyTextTool, { type FancyTextSelection } from "../submission/components/FancyTextTool";
+
+const AiCaptionSuggestion = lazy(() => import("../submission/components/AiCaptionSuggestion"));
+const AiCaptionPromptDialog = lazy(() => import("../submission/components/AiCaptionPromptDialog"));
+const MediaAssetsPicker = lazy(() => import("../../components/media/MediaAssetsPicker"));
+const EngagementRecommendationsPanel = lazy(() =>
+  import("../submission/components/EngagementRecommendationsPanel").then((m) => ({
+    default: m.EngagementRecommendationsPanel,
+  })),
+);
 import {
   encodeRevisionRemarks,
   formatRevisionRemarksForDisplay,
@@ -34,10 +57,12 @@ import {
 import ReviewLibraryPickerModal from "./ReviewLibraryPickerModal";
 import { useToast } from "../../context/ToastContext";
 import type { User } from "../../types/auth.types";
-import { getWatermarkConfiguration } from "../../api/watermarkApi";
 import type { WatermarkConfiguration } from "../../types/watermark.types";
 import OptimizedImage, { canTransformImageType } from "../../components/media/OptimizedImage";
 import WatermarkOverlay from "../../components/watermark/WatermarkOverlay";
+import { useWatermarkConfiguration } from "../../hooks/useWatermarkConfiguration";
+import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
 import {
   useValidationLog,
   useValidationQueue,
@@ -49,6 +74,9 @@ import ManualPublishWorkflowPanel from "./ManualPublishWorkflowPanel";
 import "../../styles/dasig-loader.css";
 import "../../styles/resolution.css";
 import "../../styles/validation.css";
+// Reused Submit Content authoring components (AI caption button, engagement
+// panel) rely on the `--sub-*` tokens and `.ai-caption-*` rules defined here.
+import "../../styles/submission.css";
 
 interface ValidationQueueScreenProps {
   user: User;
@@ -59,12 +87,17 @@ type SortKey = "publish_slot" | "submitted";
 type DecisionModal = "approve" | "revise" | "reject" | null;
 const MODAL_EXIT_MS = 190;
 const REVIEWABLE_STATUSES = new Set(["pending", "in_review"]);
+const SUBMISSION_DETAIL_STALE_TIME_MS = 60_000;
 
 const VIDEO_EXT = new Set(["mp4", "mov", "webm", "avi", "mkv"]);
 
 interface EditMediaItem {
   key: string;
   assetId?: string;
+  /**
+   * Legacy field kept for MediaAssetsPicker interop only. Device uploads are not
+   * allowed during review (A10), so this is never populated here.
+   */
   file?: File;
   previewUrl: string;
   fileName: string;
@@ -78,11 +111,12 @@ interface EditFormState {
   eventDate: string;
   caption: string;
   description: string;
-  tags: string;
   scheduledDate: string;
   scheduledTime: string;
   media: EditMediaItem[];
   removedAssetIds: string[];
+  /** A10: optional moderator note when attaching Library media not originally submitted. */
+  mediaAddNote: string;
 }
 
 function emptyEditForm(): EditFormState {
@@ -91,11 +125,11 @@ function emptyEditForm(): EditFormState {
     eventDate: "",
     caption: "",
     description: "",
-    tags: "",
     scheduledDate: "",
     scheduledTime: "",
     media: [],
     removedAssetIds: [],
+    mediaAddNote: "",
   };
 }
 
@@ -118,14 +152,56 @@ function toEditForm(summary: SubmissionSummary): EditFormState {
     eventDate: summary.eventDate ? summary.eventDate.slice(0, 10) : "",
     caption: summary.caption || "",
     description: summary.description || "",
-    tags: summary.tags?.join(", ") || "",
     scheduledDate: scheduled ? scheduled.toISOString().slice(0, 10) : "",
     scheduledTime: scheduled
       ? `${String(scheduled.getHours()).padStart(2, "0")}:${String(scheduled.getMinutes()).padStart(2, "0")}`
       : "",
     media: (summary.mediaAssets ?? []).map(savedAssetToMediaItem),
     removedAssetIds: [],
+    mediaAddNote: "",
   };
+}
+
+// ── Adapters between the moderator edit model (EditMediaItem) and the shared
+//    MediaAssetsPicker model (SubmissionMediaItem). EditMediaItem stays the
+//    source of truth; the picker only drives add / reorder / remove.
+function editMediaItemToPickerItem(m: EditMediaItem): SubmissionMediaItem {
+  return {
+    clientId: m.key,
+    source: m.assetId ? "library" : "upload",
+    assetId: m.assetId,
+    file: m.file,
+    previewUrl: m.previewUrl,
+    mediaType: m.isImage ? "image" : "video",
+    fileName: m.fileName,
+  };
+}
+
+/** Reconcile the picker's returned list back into EditFormState.media. */
+function reconcileEditMedia(form: EditFormState, next: SubmissionMediaItem[]): EditFormState {
+  const byKey = new Map(form.media.map((m) => [m.key, m]));
+  const media: EditMediaItem[] = next.map((item) => {
+    const existing = byKey.get(item.clientId);
+    if (existing) return existing;
+    return {
+      key: item.clientId,
+      assetId: item.assetId,
+      file: item.file,
+      previewUrl: item.previewUrl,
+      fileName: item.fileName,
+      isImage: item.mediaType === "image",
+      caption: "",
+      skipWatermark: false,
+    };
+  });
+  const survivingKeys = new Set(next.map((i) => i.clientId));
+  const dropped = form.media.filter((m) => !survivingKeys.has(m.key) && m.assetId);
+  const presentAssetIds = new Set(media.map((m) => m.assetId).filter(Boolean));
+  const removedAssetIds = [
+    ...form.removedAssetIds,
+    ...dropped.map((m) => m.assetId as string),
+  ].filter((id) => !presentAssetIds.has(id));
+  return { ...form, media, removedAssetIds };
 }
 
 const rejectionReasons: Array<{ code: RejectionReasonCode; label: string }> = [
@@ -154,14 +230,18 @@ const statusLabel: Record<string, string> = {
   rejected: "Rejected",
 };
 
+function getUserCacheScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
+}
+
 export default function ValidationQueueScreen({
   user,
 }: ValidationQueueScreenProps) {
   const toast = useToast();
-  const { queue: activeQueue, loading: activeLoading, error: activeError, refresh } = useValidationQueue();
-  const [allQueue, setAllQueue] = useState<SubmissionSummary[]>([]);
-  const [allLoading, setAllLoading] = useState(false);
-  const [allError, setAllError] = useState("");
+  const queryClient = useQueryClient();
+  const currentUserScope = getUserCacheScope(user);
+  const { queue: activeQueue, loading: activeLoading, error: activeError } = useValidationQueue(user);
+  const { queue: allQueue, loading: allLoading, error: allError, refresh: refreshAllQueue } = useValidationQueue(user, true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<SubmissionSummary | null>(null);
   const [selectedLoading, setSelectedLoading] = useState(false);
@@ -169,6 +249,7 @@ export default function ValidationQueueScreen({
   const [lockNotice, setLockNotice] = useState("");
   const [lockBusy, setLockBusy] = useState(false);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  const [showDetails, setShowDetails] = useState(true);
   const [filter, setFilter] = useState<QueueFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("submitted");
   const [search, setSearch] = useState("");
@@ -192,12 +273,53 @@ export default function ValidationQueueScreen({
   const [editTab, setEditTab] = useState<"details" | "media" | "schedule">("details");
   const [overrideReason, setOverrideReason] = useState("");
   const isAdmin = user.role === "admin";
-  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const editCaptionRef = useRef<HTMLTextAreaElement | null>(null);
-  const editFileInputRef = useRef<HTMLInputElement | null>(null);
-  const { log, loading: logLoading, refresh: refreshLog } = useValidationLog(selectedId);
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
+  // Submit Content authoring features brought into moderator edit mode.
+  const [captionPromptOpen, setCaptionPromptOpen] = useState(false);
+  const [mediaSettingsKey, setMediaSettingsKey] = useState<string | null>(null);
+  const [engagementRecs, setEngagementRecs] = useState<EngagementRecommendations | null>(null);
+  const [engagementLoading, setEngagementLoading] = useState(false);
+  const { log, loading: logLoading, refresh: refreshLog } = useValidationLog(user, selectedId);
   const modalExitTimer = useRef<number | null>(null);
   const openRequestRef = useRef(0);
+
+  const submissionDetailQueryKey = useCallback(
+    (submissionId: string, institutionId?: string | null) =>
+      queryKeys.submissions.editorDetail({
+        role: user.role,
+        userId: currentUserScope,
+        institutionId: institutionId ?? user.institutionId ?? null,
+        submissionId,
+      }),
+    [currentUserScope, user.institutionId, user.role],
+  );
+
+  const fetchSubmissionDetail = useCallback(
+    (
+      submissionId: string,
+      institutionId?: string | null,
+      staleTime = SUBMISSION_DETAIL_STALE_TIME_MS,
+    ) =>
+      queryClient.fetchQuery({
+        queryKey: submissionDetailQueryKey(submissionId, institutionId),
+        queryFn: ({ signal }) => getSubmission(submissionId, signal).then((res) => res.data),
+        staleTime,
+        meta: authenticatedQueryMeta,
+      }),
+    [queryClient, submissionDetailQueryKey],
+  );
+
+  const invalidateValidationWorkflow = useCallback(() => {
+    return Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["validation"] }),
+      queryClient.invalidateQueries({ queryKey: ["submissions"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] }),
+      queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+      queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    ]);
+  }, [queryClient]);
 
   const {
     failures,
@@ -212,13 +334,13 @@ export default function ValidationQueueScreen({
     handleCompleteManual,
     openWorkflowPanel,
     closeWorkflowPanel,
-  } = useResolutionFailures();
+  } = useResolutionFailures(user);
   const [retryItem, setRetryItem] = useState<FailedPublication | null>(null);
   const [selectedFailureId, setSelectedFailureId] = useState<string | null>(null);
   const [failureContent, setFailureContent] = useState<SubmissionSummary | null>(null);
   const [failureContentLoading, setFailureContentLoading] = useState(false);
   const [failureMediaIndex, setFailureMediaIndex] = useState(0);
-  const { log: failureLog, loading: failureLogLoading } = useValidationLog(selectedFailureId);
+  const { log: failureLog, loading: failureLogLoading } = useValidationLog(user, selectedFailureId);
 
   const isAllMode = filter === "all";
   const isFailedMode = filter === "failed";
@@ -295,40 +417,10 @@ export default function ValidationQueueScreen({
     selected && !REVIEWABLE_STATUSES.has(normalizeStatus(selected.status ?? "")),
   );
 
-  const [watermarkConfig, setWatermarkConfig] = useState<WatermarkConfiguration | null>(null);
+  const watermarkQuery = useWatermarkConfiguration({ user });
+  const watermarkConfig = watermarkQuery.data ?? null;
   const [showWatermarkPreview, setShowWatermarkPreview] = useState<boolean>(true);
   const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
-
-  useEffect(() => {
-    void getWatermarkConfiguration()
-      .then((res) => setWatermarkConfig(res.data))
-      .catch(() => undefined);
-  }, []);
-
-  const fetchAllQueue = useCallback(() => {
-    setAllLoading(true);
-    setAllError("");
-    return getValidationQueue({ history: true })
-      .then((res) => {
-        setAllQueue(Array.isArray(res.data) ? res.data : []);
-      })
-      .catch((err: unknown) => {
-        setAllError(readApiError(err, "Unable to load all submissions."));
-      })
-      .finally(() => setAllLoading(false));
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    queueMicrotask(() => {
-      if (active) void fetchAllQueue();
-    });
-    return () => {
-      active = false;
-    };
-  }, [fetchAllQueue]);
-
-
 
   useEffect(() => {
     if (!isFailedMode || failuresLoading) return;
@@ -347,16 +439,18 @@ export default function ValidationQueueScreen({
     let active = true;
     queueMicrotask(() => {
       if (!active) return;
-      setFailureContent(null);
+      const detailQueryKey = submissionDetailQueryKey(selectedFailureId, selectedFailure?.institutionId);
+      const cachedDetail = queryClient.getQueryData<SubmissionSummary>(detailQueryKey);
+      setFailureContent(cachedDetail ?? null);
       setFailureMediaIndex(0);
-      setFailureContentLoading(true);
-      getSubmission(selectedFailureId)
-        .then((res) => { if (active) setFailureContent(res.data); })
+      setFailureContentLoading(!cachedDetail);
+      fetchSubmissionDetail(selectedFailureId, selectedFailure?.institutionId)
+        .then((submission) => { if (active) setFailureContent(submission); })
         .catch((err: unknown) => { if (active) toast.error(readApiError(err, "Unable to load submission content.")); })
         .finally(() => { if (active) setFailureContentLoading(false); });
     });
     return () => { active = false; };
-  }, [selectedFailureId, toast]);
+  }, [fetchSubmissionDetail, queryClient, selectedFailure?.institutionId, selectedFailureId, submissionDetailQueryKey, toast]);
 
   useEffect(() => {
     return () => {
@@ -380,11 +474,15 @@ export default function ValidationQueueScreen({
       setFailureContent(null);
     }
     if (next === "all") {
-      void fetchAllQueue();
+      void refreshAllQueue();
     }
   }
 
   function openDecisionModal(nextModal: Exclude<DecisionModal, null>) {
+    if (nextModal === "approve" && isSelfReview) {
+      toast.error("Your own submission must be reviewed by another moderator.");
+      return;
+    }
     if (modalExitTimer.current) window.clearTimeout(modalExitTimer.current);
     setModalClosing(false);
     if (nextModal === "revise") {
@@ -423,13 +521,20 @@ export default function ValidationQueueScreen({
     setEditedThisSession(false);
 
     try {
-      const detail = await getSubmission(summary.id);
+      const detailQueryKey = submissionDetailQueryKey(summary.id, summary.institutionId);
+      const cachedDetail = queryClient.getQueryData<SubmissionSummary>(detailQueryKey);
+      if (cachedDetail) {
+        setSelected(cachedDetail);
+        setSelectedLoading(false);
+      }
+
+      const detail = await fetchSubmissionDetail(summary.id, summary.institutionId);
       if (requestId !== openRequestRef.current) return;
-      setSelected(detail.data);
+      setSelected(detail);
 
       // Restore lock UI state (e.g. after a page refresh) without acquiring
       // anything — a read-only check against the backend's current lock.
-      if (REVIEWABLE_STATUSES.has(normalizeStatus(detail.data.status))) {
+      if (REVIEWABLE_STATUSES.has(normalizeStatus(detail.status))) {
         const lockStatus = await getReviewLockStatus(summary.id);
         if (requestId !== openRequestRef.current) return;
         const lock = lockStatus.data;
@@ -437,7 +542,7 @@ export default function ValidationQueueScreen({
           if (lock.lockedByEmail.toLowerCase() === user.email.toLowerCase()) {
             setLocks((prev) => ({ ...prev, [summary.id]: lock }));
           } else {
-            setLockNotice(`This submission is currently being reviewed by ${lock.lockedByEmail}.`);
+            setLockNotice(`This submission is currently being reviewed by Moderator ${lock.lockedByEmail}.`);
           }
         }
       }
@@ -447,7 +552,7 @@ export default function ValidationQueueScreen({
     } finally {
       if (requestId === openRequestRef.current) setSelectedLoading(false);
     }
-  }, [selectedId, toast, user.email]);
+  }, [fetchSubmissionDetail, queryClient, selectedId, submissionDetailQueryKey, toast, user.email]);
 
   useEffect(() => {
     if (isFailedMode || loading) return;
@@ -488,12 +593,16 @@ export default function ValidationQueueScreen({
 
   async function handleAcquireLock() {
     if (!selected) return;
+    if (isSelfReview) {
+      toast.error("You cannot review your own submission. Another Moderator must review it.");
+      return;
+    }
     setLockBusy(true);
     try {
       const lock = await acquireReviewLock(selected.id);
       setLockFor(selected.id, lock.data);
       setLockNotice("");
-      await refresh();
+      await invalidateValidationWorkflow();
     } catch (err: unknown) {
       const message = readApiError(err, "Unable to acquire the review lock.");
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -514,7 +623,7 @@ export default function ValidationQueueScreen({
       await releaseReviewLock(activeLock.submissionId);
       clearLockFor(activeLock.submissionId);
       toast.info("Review lock released.");
-      await refresh();
+      await invalidateValidationWorkflow();
     } catch (err: unknown) {
       toast.error(readApiError(err, "Unable to release the review lock."));
     } finally {
@@ -565,12 +674,15 @@ export default function ValidationQueueScreen({
       "Your review lock is no longer held — the submission has returned to the queue " +
         "(or was claimed by another reviewer). Re-open it to continue.",
     );
-    void refresh();
-    void fetchAllQueue();
+    void invalidateValidationWorkflow();
   }
 
   async function handleApprove() {
     if (!selected) return;
+    if (isSelfReview) {
+      toast.error("Your own submission must be reviewed by another moderator.");
+      return;
+    }
     setDecisionBusy(true);
     try {
       await approveSubmission(selected.id);
@@ -579,7 +691,7 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
-      await refresh();
+      await invalidateValidationWorkflow();
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 403 || status === 409) {
@@ -594,9 +706,20 @@ export default function ValidationQueueScreen({
     }
   }
 
-  function handleStartEdit() {
+  async function handleStartEdit() {
     if (!selected) return;
-    setEditForm(toEditForm(selected));
+    // The queue summary carries no mediaAssets — only the detail does. Guarantee
+    // a full record so the editor seeds the already-attached media.
+    let full = selected;
+    if (!Array.isArray(selected.mediaAssets)) {
+      try {
+        full = await fetchSubmissionDetail(selected.id, selected.institutionId);
+        setSelected(full);
+      } catch {
+        /* fall through with what we have */
+      }
+    }
+    setEditForm(toEditForm(full));
     setGuardRails(null);
     setCaptionSelection({ start: 0, end: 0 });
     setEditTab("details");
@@ -604,6 +727,22 @@ export default function ValidationQueueScreen({
     setIsPanelCollapsed(true);
     setEditMode(true);
   }
+
+  // Safety net for the race where edit mode opens before the detail's media
+  // arrives: backfill the attached media once, only while the moderator hasn't
+  // touched the media list yet.
+  useEffect(() => {
+    if (!editMode || !selected) return;
+    const assets = selected.mediaAssets ?? [];
+    if (assets.length === 0) return;
+    queueMicrotask(() => {
+      setEditForm((f) =>
+        f.media.length === 0 && f.removedAssetIds.length === 0
+          ? { ...f, media: assets.map(savedAssetToMediaItem) }
+          : f,
+      );
+    });
+  }, [editMode, selected]);
 
   function handleCancelEdit() {
     setEditMode(false);
@@ -623,65 +762,93 @@ export default function ValidationQueueScreen({
 
   useEffect(() => {
     if (!editMode || !scheduleChanged || !editScheduledAtIso || !selected) {
-      setGuardRails(null);
+      queueMicrotask(() => setGuardRails(null));
       return;
     }
     const controller = new AbortController();
-    setGuardRailsLoading(true);
-    validateGuardRails(editScheduledAtIso, selected.institutionId, selected.id)
-      .then((res) => setGuardRails(res.data))
-      .catch(() => setGuardRails(null))
-      .finally(() => setGuardRailsLoading(false));
+    queueMicrotask(() => {
+      setGuardRailsLoading(true);
+      validateGuardRails(editScheduledAtIso, selected.institutionId, selected.id)
+        .then((res) => setGuardRails(res.data))
+        .catch(() => setGuardRails(null))
+        .finally(() => setGuardRailsLoading(false));
+    });
     return () => controller.abort();
   }, [editMode, scheduleChanged, editScheduledAtIso, selected]);
 
   const hardBlocked = (guardRails?.hardBlocks?.length ?? 0) > 0;
+
+  // ── Content completeness (mirrors SubmissionService.assertContentComplete) ─
+  const editMissingFields = useMemo(() => {
+    const missing: string[] = [];
+    if (!editForm.eventTitle.trim()) missing.push("an event title");
+    if (!editForm.eventDate) missing.push("an event date");
+    if (!editForm.caption.trim()) missing.push("a caption");
+    if (editForm.media.length < 1) missing.push("at least one media attachment");
+    return missing;
+  }, [editForm]);
+
   // Only an admin can bypass a hard block — with a reason. Moderators cannot
   // save a blocked slot at all.
   const canSaveEdit =
     !editSaving &&
+    editMissingFields.length === 0 &&
     (!hardBlocked || (isAdmin && overrideReason.trim().length >= 10));
+
+  // ── AI caption assist (Details tab) ──────────────────────────────────────
+  const editCaptionHashtags = useMemo(
+    () => extractHashtags(editForm.caption),
+    [editForm.caption],
+  );
+  const editHasImage = editForm.media.some((m) => m.isImage);
+  const aiCaption = useAiCaptionAssist(
+    editMode ? selectedId : null,
+    editHasImage,
+    editForm.caption,
+  );
+
+  function applyEditCaption(caption: string) {
+    setEditForm((f) => ({ ...f, caption }));
+  }
+
+  async function handleAiCaptionPromptSubmit(prompt: string, tone: CaptionTone) {
+    const generated = await aiCaption.suggest(prompt, tone, undefined, editForm.caption);
+    if (generated) setCaptionPromptOpen(false);
+  }
+
+  // ── Recommended publish times (Schedule tab) ─────────────────────────────
+  useEffect(() => {
+    if (!editMode || editTab !== "schedule" || !selected) {
+      return;
+    }
+    const controller = new AbortController();
+    queueMicrotask(() => {
+      setEngagementLoading(true);
+      getEngagementRecommendations(selected.institutionId, controller.signal)
+        .then((res) => setEngagementRecs(res.data.available ? res.data : null))
+        .catch((err: unknown) => {
+          if ((err as { name?: string })?.name !== "CanceledError") setEngagementRecs(null);
+        })
+        .finally(() => setEngagementLoading(false));
+    });
+    return () => controller.abort();
+  }, [editMode, editTab, selected]);
+
+  function applyRecommendedSlot(scheduledAt: string) {
+    const slot = new Date(scheduledAt);
+    if (Number.isNaN(slot.getTime())) return;
+    setEditForm((f) => ({
+      ...f,
+      scheduledDate: `${slot.getFullYear()}-${String(slot.getMonth() + 1).padStart(2, "0")}-${String(slot.getDate()).padStart(2, "0")}`,
+      scheduledTime: `${String(slot.getHours()).padStart(2, "0")}:${String(slot.getMinutes()).padStart(2, "0")}`,
+    }));
+  }
 
   function updateMedia(key: string, patch: Partial<EditMediaItem>) {
     setEditForm((f) => ({
       ...f,
       media: f.media.map((m) => (m.key === key ? { ...m, ...patch } : m)),
     }));
-  }
-
-  function moveMedia(index: number, dir: -1 | 1) {
-    setEditForm((f) => {
-      const next = [...f.media];
-      const target = index + dir;
-      if (target < 0 || target >= next.length) return f;
-      [next[index], next[target]] = [next[target], next[index]];
-      return { ...f, media: next };
-    });
-  }
-
-  function removeMedia(item: EditMediaItem) {
-    setEditForm((f) => ({
-      ...f,
-      media: f.media.filter((m) => m.key !== item.key),
-      removedAssetIds: item.assetId ? [...f.removedAssetIds, item.assetId] : f.removedAssetIds,
-    }));
-  }
-
-  function addMediaFiles(files: FileList | null) {
-    if (!files?.length) return;
-    const items: EditMediaItem[] = Array.from(files).map((file) => {
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-      return {
-        key: `new-${crypto.randomUUID()}`,
-        file,
-        previewUrl: URL.createObjectURL(file),
-        fileName: file.name,
-        isImage: !VIDEO_EXT.has(ext),
-        caption: "",
-        skipWatermark: false,
-      };
-    });
-    setEditForm((f) => ({ ...f, media: [...f.media, ...items] }));
   }
 
   function addLibraryAssets(items: SubmissionMediaItem[]) {
@@ -700,25 +867,36 @@ export default function ValidationQueueScreen({
           caption: "",
           skipWatermark: false,
         }));
-      return { ...f, media: [...f.media, ...next] };
+      return {
+        ...f,
+        media: [...f.media, ...next],
+        removedAssetIds: f.removedAssetIds.filter(
+          (id) => !next.some((n) => n.assetId === id),
+        ),
+      };
     });
   }
 
   async function handleSaveEdit() {
-    if (!selected || !canSaveEdit) return;
+    if (!selected) return;
+    if (editMissingFields.length > 0) {
+      toast.error(`Add ${editMissingFields.join(", ")} before saving.`);
+      return;
+    }
+    if (!canSaveEdit) return;
     setEditSaving(true);
     try {
       const id = selected.id;
 
-      // 1. upload any new device files
-      const newFiles = editForm.media.filter((m) => m.file).map((m) => m.file as File);
-      if (newFiles.length > 0) await uploadValidationMedia(id, newFiles);
-
-      // 2. attach staged library picks that aren't on the submission yet
+      // Attach staged library picks that aren't on the submission yet. The
+      // optional note is recorded on the distinct `media_added` audit event.
+      // Device-file uploads are not allowed during review (A10) — moderators
+      // attach vetted Library assets only; new media goes back via Request Revision.
       const attached = new Set((selected.mediaAssets ?? []).map((a) => a.id));
+      const note = editForm.mediaAddNote.trim() || undefined;
       for (const item of editForm.media) {
         if (item.assetId && !attached.has(item.assetId)) {
-          await attachValidationLibraryAsset(id, item.assetId).catch(() => undefined);
+          await attachValidationLibraryAsset(id, item.assetId, note).catch(() => undefined);
         }
       }
 
@@ -729,7 +907,7 @@ export default function ValidationQueueScreen({
 
       // 4. reorder + per-item caption / skip-watermark. Re-read to learn the
       //    server-assigned ids for freshly uploaded files.
-      const afterMedia = (await getSubmission(id)).data.mediaAssets ?? [];
+      const afterMedia = (await fetchSubmissionDetail(id, selected.institutionId, 0)).mediaAssets ?? [];
       const orderedIds: string[] = [];
       const captions: Record<string, string> = {};
       const skips: Record<string, boolean> = {};
@@ -758,18 +936,18 @@ export default function ValidationQueueScreen({
         caption: editForm.caption,
         overrideReason:
           isAdmin && hardBlocked && overrideReason.trim() ? overrideReason.trim() : undefined,
-        tags: editForm.tags
-          ? editForm.tags.split(",").map((t) => t.trim()).filter(Boolean)
-          : undefined,
+        // Tags live only in the caption's #hashtags, matching Submit Content.
+        tags: [],
         scheduledAt: scheduleChanged && editScheduledAtIso ? editScheduledAtIso : undefined,
       });
 
       // A9: stays IN_REVIEW — refresh content, keep panel + lock open.
-      const detail = await getSubmission(id);
-      setSelected(detail.data);
+      const detail = await fetchSubmissionDetail(id, selected.institutionId, 0);
+      setSelected(detail);
       setEditMode(false);
       setGuardRails(null);
       setEditedThisSession(true);
+      await invalidateValidationWorkflow();
       await refreshLog();
       toast.success("Changes saved — choose a terminal action.");
     } catch (err: unknown) {
@@ -788,7 +966,15 @@ export default function ValidationQueueScreen({
   async function handleRevise() {
     if (!selected) return;
     const finalRemarks = encodeRevisionRemarks(remarks, revisionFieldComments);
-    if (finalRemarks.trim().length < 10) {
+    // Validate the human-written content, not the JSON envelope that
+    // encodeRevisionRemarks wraps around field-specific comments.
+    const writtenLength =
+      remarks.trim().length +
+      Object.values(revisionFieldComments).reduce(
+        (sum, value) => sum + (value || "").trim().length,
+        0,
+      );
+    if (writtenLength < 10) {
       toast.error("Revision remarks must be at least 10 characters.");
       return;
     }
@@ -804,7 +990,7 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
-      await refresh();
+      await invalidateValidationWorkflow();
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 403 || status === 409) {
@@ -838,7 +1024,7 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
-      await refresh();
+      await invalidateValidationWorkflow();
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 403 || status === 409) {
@@ -1113,6 +1299,18 @@ export default function ValidationQueueScreen({
             <span>Show Queue</span>
           </button>
         )}
+        {!isFailedMode && selected && !editMode && !selectedLoading && !showDetails && (
+          <button
+            type="button"
+            className="val-details-btn"
+            onClick={() => setShowDetails(true)}
+            title="Show submission details"
+            aria-label="Show submission details"
+          >
+            <i className="ti ti-layout-sidebar-right-expand" />
+            <span>Details</span>
+          </button>
+        )}
         {isFailedMode && !selectedFailure && (
           <div className="val-empty">
             <i className="ti ti-mood-sad"></i>
@@ -1268,24 +1466,25 @@ export default function ValidationQueueScreen({
                 <NoticeBar
                   tone="warn"
                   icon="ti-alert-triangle"
-                  text="You are reviewing your own submission. This action will be flagged in the audit log."
+                  text="You cannot review your own submission. Another Moderator must review it."
                 />
               )}
               {lockNotice && (
                 <NoticeBar tone="warn" icon="ti-lock" text={lockNotice} />
               )}
-              {activeLock && (
-                <NoticeBar
-                  tone="info"
-                  icon="ti-lock-open"
-                  text={`You hold the review lock until ${formatDateTime(activeLock.expiresAt)}.`}
-                />
-              )}
 
               {selectedLoading ? (
                 <PanelContentLoader text="Loading submission details" />
               ) : (
-                <div className={editMode ? "val-edit-layout" : "val-edit-layout--off"}>
+                <div
+                  className={
+                    editMode
+                      ? "val-edit-layout"
+                      : showDetails
+                        ? "val-review-layout"
+                        : "val-edit-layout--off"
+                  }
+                >
                   <FacebookPostPreviewCard
                     submission={selected}
                     editMode={editMode}
@@ -1298,6 +1497,15 @@ export default function ValidationQueueScreen({
                     onToggleWatermark={() => setShowWatermarkPreview((prev) => !prev)}
                     onOpenHistory={() => setShowHistoryModal(true)}
                   />
+
+                  {!editMode && showDetails && (
+                    <SubmissionDetailsPanel
+                      submission={selected}
+                      log={log}
+                      currentUserEmail={user.email}
+                      onHide={() => setShowDetails(false)}
+                    />
+                  )}
 
                   {editMode && (
                     <section className="val-edit-grid-panel">
@@ -1350,16 +1558,25 @@ export default function ValidationQueueScreen({
                           <div className="val-edit-field">
                             <div className="val-edit-label-row">
                               <span>Caption</span>
-                              <FancyTextTool
-                                caption={editForm.caption}
-                                selection={captionSelection}
-                                onReplaceSelection={(next, sel) => {
-                                  setEditForm((f) => ({ ...f, caption: next }));
-                                  setCaptionSelection(sel);
-                                }}
-                                onPreviewSelection={(next) => setEditForm((f) => ({ ...f, caption: next }))}
-                                onRestoreSelection={setCaptionSelection}
-                              />
+                              <div className="val-edit-caption-tools">
+                                <FancyTextTool
+                                  caption={editForm.caption}
+                                  selection={captionSelection}
+                                  onReplaceSelection={(next, sel) => {
+                                    setEditForm((f) => ({ ...f, caption: next }));
+                                    setCaptionSelection(sel);
+                                  }}
+                                  onPreviewSelection={(next) => setEditForm((f) => ({ ...f, caption: next }))}
+                                  onRestoreSelection={setCaptionSelection}
+                                />
+                                <AiCaptionButton
+                                  state={aiCaption.state}
+                                  canSuggest={aiCaption.canSuggest}
+                                  rateLimitReset={aiCaption.rateLimitReset}
+                                  notice={aiCaption.notice}
+                                  onSuggest={() => setCaptionPromptOpen(true)}
+                                />
+                              </div>
                             </div>
                             <textarea
                               ref={editCaptionRef}
@@ -1376,16 +1593,36 @@ export default function ValidationQueueScreen({
                                 })
                               }
                             />
+                            {aiCaption.variants && (
+                              <Suspense fallback={null}>
+                                <AiCaptionSuggestion
+                                  variants={aiCaption.variants}
+                                  onApply={(caption, tone, action) => {
+                                    applyEditCaption(caption);
+                                    aiCaption.logApply(tone, action);
+                                  }}
+                                  onDismissOne={aiCaption.logDismissOne}
+                                  onDismissAll={aiCaption.dismissAll}
+                                  onRegenerate={aiCaption.regenerate}
+                                />
+                              </Suspense>
+                            )}
                           </div>
 
-                          <label className="val-edit-field">
+                          <div className="val-edit-field">
                             <span>Tags</span>
-                            <input
-                              placeholder="comma-separated, e.g. Volunteer, Outreach"
-                              value={editForm.tags}
-                              onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
-                            />
-                          </label>
+                            {editCaptionHashtags.length > 0 ? (
+                              <div className="val-edit-hashtags">
+                                {editCaptionHashtags.map((tag) => (
+                                  <span key={tag} className="val-edit-hashtag">{tag}</span>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="val-edit-hashtags-hint">
+                                Add <code>#hashtags</code> in the caption — they become the post's tags.
+                              </p>
+                            )}
+                          </div>
                         </div>
                       )}
 
@@ -1397,92 +1634,73 @@ export default function ValidationQueueScreen({
                               <button
                                 type="button"
                                 className="val-edit-add-media"
-                                onClick={() => editFileInputRef.current?.click()}
-                              >
-                                <i className="ti ti-plus" /> Add files
-                              </button>
-                              <button
-                                type="button"
-                                className="val-edit-add-media"
                                 onClick={() => setLibraryPickerOpen(true)}
                               >
                                 <i className="ti ti-library-photo" /> From Library
                               </button>
                             </div>
-                            <input
-                              ref={editFileInputRef}
-                              type="file"
-                              accept="image/*,video/*"
-                              multiple
-                              hidden
-                              onChange={(e) => {
-                                addMediaFiles(e.target.files);
-                                e.target.value = "";
+                          </div>
+                          <p className="val-edit-media-note-hint">
+                            <i className="ti ti-info-circle" /> Only vetted Media Library
+                            assets can be added during review. New media a contributor
+                            needs to supply should go back via Request Revision.
+                          </p>
+                          <Suspense fallback={<PanelContentLoader text="Loading media tools" />}>
+                            <MediaAssetsPicker
+                              sourceTabs={false}
+                              items={editForm.media.map(editMediaItemToPickerItem)}
+                              onItemsChange={(next) => {
+                                if (next.length === 0) {
+                                  toast.error("Keep at least one media asset.");
+                                  return;
+                                }
+                                setEditForm((f) => reconcileEditMedia(f, next));
                               }}
+                              submissionId={selected?.id ?? null}
+                              institutionId={selected?.institutionId}
+                              eventTitle={editForm.eventTitle}
+                              caption={editForm.caption}
+                              category={selected?.category ?? ""}
+                              tags={editCaptionHashtags.map((h) => h.slice(1))}
+                              onItemClick={(item) => setMediaSettingsKey(item.clientId)}
+                              getItemCaption={(item) =>
+                                editForm.media.find((m) => m.key === item.clientId)?.caption ?? ""
+                              }
                             />
-                          </div>
-                          <div className="val-edit-media-list">
-                            {editForm.media.length === 0 && (
-                              <p className="val-edit-media-empty">
-                                <i className="ti ti-photo-off" />
-                                No media attached — add files above.
-                              </p>
-                            )}
-                            {editForm.media.map((item, i) => (
-                              <div key={item.key} className="val-edit-media-row">
-                                <div className="val-edit-media-thumb">
-                                  {item.isImage ? (
-                                    <OptimizedImage
-                                      src={item.previewUrl}
-                                      alt={item.fileName}
-                                      width={96}
-                                      height={72}
-                                      sizes="96px"
-                                      candidateWidths={[96, 192]}
-                                      transform={Boolean(item.assetId) && canTransformImageType(item.fileName.split(".").pop())}
-                                    />
-                                  ) : (
-                                    <video src={item.previewUrl} muted />
-                                  )}
-                                </div>
-                                <div className="val-edit-media-main">
-                                  <div className="val-edit-media-name">{item.fileName}</div>
-                                  <input
-                                    className="val-edit-media-caption"
-                                    placeholder="Optional caption"
-                                    value={item.caption}
-                                    onChange={(e) => updateMedia(item.key, { caption: e.target.value })}
-                                  />
-                                  {item.isImage && (
-                                    <label className="val-edit-media-wm">
-                                      <input
-                                        type="checkbox"
-                                        checked={item.skipWatermark}
-                                        onChange={(e) => updateMedia(item.key, { skipWatermark: e.target.checked })}
-                                      />
-                                      Skip watermark
-                                    </label>
-                                  )}
-                                </div>
-                                <div className="val-edit-media-actions">
-                                  <button type="button" onClick={() => moveMedia(i, -1)} disabled={i === 0} aria-label="Move up">
-                                    <i className="ti ti-chevron-up" />
-                                  </button>
-                                  <button type="button" onClick={() => moveMedia(i, 1)} disabled={i === editForm.media.length - 1} aria-label="Move down">
-                                    <i className="ti ti-chevron-down" />
-                                  </button>
-                                  <button type="button" className="val-edit-media-remove" onClick={() => removeMedia(item)} aria-label="Remove">
-                                    <i className="ti ti-trash" />
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                          </Suspense>
+                          {editForm.media.some(
+                            (m) =>
+                              m.assetId &&
+                              !(selected?.mediaAssets ?? []).some((a) => a.id === m.assetId),
+                          ) && (
+                            <label className="val-edit-field val-edit-media-note">
+                              <span>
+                                Why is this media being added? (optional — recorded on the
+                                audit trail)
+                              </span>
+                              <textarea
+                                rows={2}
+                                value={editForm.mediaAddNote}
+                                onChange={(e) =>
+                                  setEditForm({ ...editForm, mediaAddNote: e.target.value })
+                                }
+                                placeholder="e.g. contributor's photos were all title slides — added a crowd shot from the Library"
+                              />
+                            </label>
+                          )}
                         </div>
                       )}
 
                       {editTab === "schedule" && (
                         <div className="val-edit-body">
+                          <Suspense fallback={null}>
+                            <EngagementRecommendationsPanel
+                              loading={engagementLoading}
+                              recommendations={engagementRecs}
+                              selectedAt={editScheduledAtIso || undefined}
+                              onSelect={applyRecommendedSlot}
+                            />
+                          </Suspense>
                           <div className="val-edit-row">
                             <label className="val-edit-field">
                               <span>Preferred Date</span>
@@ -1601,7 +1819,7 @@ export default function ValidationQueueScreen({
                 <div className="val-action-status">
                   <span className="val-action-lock-pill">
                     <i className="ti ti-lock-check" />
-                    Review in progress
+                    Review in progress by you until {formatDateTime(activeLock.expiresAt)}
                   </span>
                 </div>
                 <div className="val-action-group">
@@ -1645,6 +1863,8 @@ export default function ValidationQueueScreen({
                   <button
                     className="val-btn val-btn-primary"
                     type="button"
+                    disabled={isSelfReview}
+                    title={isSelfReview ? "Your own submission must be reviewed by another moderator." : undefined}
                     onClick={() => openDecisionModal("approve")}
                   >
                     <i className="ti ti-check" />
@@ -1657,14 +1877,17 @@ export default function ValidationQueueScreen({
                 <div className="val-action-status">
                   <span className="val-action-hint">
                     <i className="ti ti-info-circle" />
-                    Acquire review lock to record a decision.
+                    {isSelfReview
+                      ? "You cannot review your own submission."
+                      : "Acquire review lock to record a decision."}
                   </span>
                 </div>
                 <div className="val-action-group">
                   <button
                     className="val-btn val-btn-primary"
                     type="button"
-                    disabled={lockBusy}
+                    disabled={lockBusy || isSelfReview}
+                    title={isSelfReview ? "Another Moderator must review this submission." : undefined}
                     onClick={() => void handleAcquireLock()}
                   >
                     <i className="ti ti-lock" />
@@ -1887,12 +2110,87 @@ export default function ValidationQueueScreen({
       {editMode && libraryPickerOpen && selected && (
         <ReviewLibraryPickerModal
           institutionId={selected.institutionId}
-          excludeIds={editForm.media.map((m) => m.assetId).filter((x): x is string => Boolean(x))}
+          excludeIds={editForm.media
+            .map((m) => m.assetId)
+            .filter((x): x is string => Boolean(x))}
           onAdd={addLibraryAssets}
           onClose={() => setLibraryPickerOpen(false)}
         />
       )}
+
+      {editMode && captionPromptOpen && (
+        <Suspense fallback={null}>
+          <AiCaptionPromptDialog
+            open={captionPromptOpen}
+            state={aiCaption.state}
+            hasImageAssets={editHasImage}
+            existingCaption={editForm.caption}
+            onClose={() => setCaptionPromptOpen(false)}
+            onSubmit={(prompt, tone) => void handleAiCaptionPromptSubmit(prompt, tone)}
+          />
+        </Suspense>
+      )}
+
+      {editMode && mediaSettingsKey && (() => {
+        const item = editForm.media.find((m) => m.key === mediaSettingsKey);
+        if (!item) return null;
+        return (
+          <MediaItemSettingsModal
+            item={item}
+            onChange={(patch) => updateMedia(item.key, patch)}
+            onClose={() => setMediaSettingsKey(null)}
+          />
+        );
+      })()}
+
     </div>
+  );
+}
+
+function MediaItemSettingsModal({
+  item,
+  onChange,
+  onClose,
+}: {
+  item: EditMediaItem;
+  onChange: (patch: Partial<EditMediaItem>) => void;
+  onClose: () => void;
+}) {
+  return createPortal(
+    <div className="val-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="val-media-settings-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="val-preview-modal-head">
+          <span><i className="ti ti-photo-edit" /> Media settings</span>
+          <button type="button" className="val-details-hide" onClick={onClose} aria-label="Close">
+            <i className="ti ti-x" />
+          </button>
+        </div>
+        <div className="val-media-settings-body">
+          <div className="val-media-settings-name">{item.fileName}</div>
+          <label className="val-edit-field">
+            <span>Caption for this item</span>
+            <textarea
+              rows={3}
+              maxLength={500}
+              placeholder="Optional caption"
+              value={item.caption}
+              onChange={(e) => onChange({ caption: e.target.value })}
+            />
+          </label>
+          {item.isImage && (
+            <label className="val-media-settings-wm">
+              <input
+                type="checkbox"
+                checked={item.skipWatermark}
+                onChange={(e) => onChange({ skipWatermark: e.target.checked })}
+              />
+              Skip watermark on this image
+            </label>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1977,7 +2275,7 @@ function FacebookPostImage({
   const [isVeryTall, setIsVeryTall] = useState(false);
 
   useEffect(() => {
-    setIsVeryTall(false);
+    queueMicrotask(() => setIsVeryTall(false));
   }, [src]);
 
   return (
@@ -2001,6 +2299,139 @@ function FacebookPostImage({
         <WatermarkOverlay elements={watermarkConfig.elements} />
       )}
     </div>
+  );
+}
+
+/**
+ * Collapsible side panel beside the Facebook preview: who submitted it, who
+ * edited it during review, its institution, when it was submitted, and how /
+ * when it publishes. Live Event Fast-Track posts have no reserved slot — they
+ * go out the moment a moderator approves them.
+ */
+function SubmissionDetailsPanel({
+  submission,
+  log,
+  currentUserEmail,
+  onHide,
+}: {
+  submission: SubmissionSummary;
+  log: ValidationLog[];
+  currentUserEmail: string;
+  onHide: () => void;
+}) {
+  const isLive = Boolean(submission.fastTrack);
+  const slot = submission.scheduledAt;
+  const missingSlot = !isLive && !slot;
+  const submittedAt = submission.submittedAt || submission.createdAt;
+  const modeClass = isLive ? "is-live" : missingSlot ? "is-unset" : "is-scheduled";
+
+  const isYou = (email?: string | null) =>
+    Boolean(email) && email!.toLowerCase() === currentUserEmail.toLowerCase();
+
+  // Co-authors = anyone who applied an inline edit during review, newest activity last.
+  const editors: { email: string; count: number; lastAt: string }[] = [];
+  for (const entry of log) {
+    if (entry.action !== "edited") continue;
+    const match = editors.find(
+      (e) => e.email.toLowerCase() === entry.validatorEmail.toLowerCase(),
+    );
+    if (match) {
+      match.count += 1;
+      match.lastAt = entry.createdAt;
+    } else {
+      editors.push({ email: entry.validatorEmail, count: 1, lastAt: entry.createdAt });
+    }
+  }
+
+  return (
+    <aside className="val-details-panel" aria-label="Submission details">
+      <div className="val-details-head">
+        <span>
+          <i className="ti ti-info-circle" /> Submission details
+        </span>
+        <button
+          type="button"
+          className="val-details-hide"
+          onClick={onHide}
+          title="Hide details"
+          aria-label="Hide submission details panel"
+        >
+          <i className="ti ti-layout-sidebar-right-collapse" />
+        </button>
+      </div>
+
+      <dl className="val-details-list">
+        <div>
+          <dt>Submitted by</dt>
+          <dd>
+            {submission.contributorEmail || "—"}
+            {isYou(submission.contributorEmail) && <span className="val-details-you">You</span>}
+          </dd>
+        </div>
+
+        <div>
+          <dt>Institution</dt>
+          <dd>{submission.institutionName || "—"}</dd>
+        </div>
+
+        <div>
+          <dt>Submitted</dt>
+          <dd>{submittedAt ? `${formatDate(submittedAt)} at ${formatTime(submittedAt)}` : "—"}</dd>
+        </div>
+
+        <div>
+          <dt>Publishing</dt>
+          <dd>
+            <span className={`val-details-mode ${modeClass}`}>
+              <i
+                className={`ti ${
+                  isLive ? "ti-bolt" : missingSlot ? "ti-calendar-x" : "ti-calendar-clock"
+                }`}
+              />
+              {isLive ? "Live Event" : missingSlot ? "No slot" : "Scheduled"}
+            </span>
+            <span className="val-details-sub">
+              {isLive
+                ? "Publishes immediately on approval"
+                : missingSlot
+                  ? "No publish slot selected"
+                  : `${formatDate(slot)} at ${formatTime(slot)}`}
+            </span>
+            {isLive && submission.liveEventName && (
+              <span className="val-details-sub">Event: {submission.liveEventName}</span>
+            )}
+            {submission.publishedAt && (
+              <span className="val-details-sub">
+                Published {formatDate(submission.publishedAt)} at {formatTime(submission.publishedAt)}
+              </span>
+            )}
+          </dd>
+        </div>
+
+        <div>
+          <dt>Edits during review</dt>
+          <dd>
+            {editors.length === 0 ? (
+              <span className="val-details-muted">None yet</span>
+            ) : (
+              <ul className="val-details-editors">
+                {editors.map((e) => (
+                  <li key={e.email}>
+                    <span>
+                      {e.email}
+                      {isYou(e.email) && <span className="val-details-you">You</span>}
+                    </span>
+                    <span className="val-details-muted">
+                      {e.count} edit{e.count > 1 ? "s" : ""} · {formatDateTime(e.lastAt)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </dd>
+        </div>
+      </dl>
+    </aside>
   );
 }
 
@@ -2031,7 +2462,7 @@ function FacebookPostPreviewCard({
   const pageName = submission.institutionName || "DasigConnect";
   const displayCaption = editMode ? editForm.caption : (submission.caption || submission.eventTitle);
   const displayTags: string[] = editMode
-    ? editForm.tags.split(",").map((t: string) => t.trim()).filter(Boolean)
+    ? extractHashtags(editForm.caption)
     : (submission.tags || []);
 
   const formattedTags: string[] = displayTags.map((t: string) => (t.startsWith("#") ? t : `#${t}`));
@@ -2357,6 +2788,7 @@ function ValidationHistoryModal({
                     <div className="val-log-content">
                       <strong>
                         {formatAction(entry.action)}
+                        {editSeverityBadge(entry.editSeverity)}
                         {entry.selfReview && <span className="val-log-flag">Self-review</span>}
                         {entry.fastTrack && <span className="val-log-flag fast-track">Fast-Track</span>}
                       </strong>
@@ -2543,6 +2975,19 @@ function logIcon(action: string) {
 
 function formatAction(action: string) {
   return action.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+/** A10: small badge showing how prominently a moderator review-edit was logged. */
+function editSeverityBadge(severity?: string | null): ReactNode {
+  if (!severity) return null;
+  const map: Record<string, { label: string; cls: string }> = {
+    quiet: { label: "Minor edit", cls: "sev-quiet" },
+    flagged: { label: "Significant edit", cls: "sev-flagged" },
+    added_media: { label: "Media added", cls: "sev-added-media" },
+  };
+  const meta = map[severity.toLowerCase()];
+  if (!meta) return null;
+  return <span className={`val-log-flag ${meta.cls}`}>{meta.label}</span>;
 }
 
 function formatDate(value?: string) {

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   cancelManualPublish,
   completeManualPublish,
@@ -10,6 +11,9 @@ import {
   type ManualPublishDetail,
 } from "../api/resolutionApi";
 import { useToast } from "../context/ToastContext";
+import { authenticatedQueryMeta } from "../lib/queryClient";
+import { queryKeys } from "../lib/queryKeys";
+import type { User } from "../types/auth.types";
 
 export interface UseResolutionFailuresResult {
   failures: FailedPublication[];
@@ -35,49 +39,61 @@ export interface UseResolutionFailuresResult {
   closeWorkflowPanel: () => void;
 }
 
-export function useResolutionFailures(): UseResolutionFailuresResult {
+const RESOLUTION_FAILURES_STALE_TIME_MS = 30_000;
+const RESOLUTION_DETAIL_STALE_TIME_MS = 15_000;
+
+function userScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
+}
+
+export function useResolutionFailures(user: User): UseResolutionFailuresResult {
   const toast = useToast();
-  const [failures, setFailures] = useState<FailedPublication[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
-  const [activeDetail, setActiveDetail] = useState<ManualPublishDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [activeDetailId, setActiveDetailId] = useState<string | null>(null);
+  const detailErrorNotifiedRef = useRef<string | null>(null);
+  const userId = userScope(user);
+  const resolutionScope = {
+    role: user.role,
+    userId,
+    institutionId: user.institutionId ?? null,
+  };
+
+  const failuresQuery = useQuery({
+    queryKey: queryKeys.resolution.failures(resolutionScope),
+    queryFn: ({ signal }) => getResolutionFailures(signal).then((response) => response.data),
+    staleTime: RESOLUTION_FAILURES_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
+
+  const detailQuery = useQuery({
+    queryKey: queryKeys.resolution.detail({
+      ...resolutionScope,
+      submissionId: activeDetailId ?? "",
+    }),
+    queryFn: ({ signal }) => getResolutionDetail(activeDetailId ?? "", signal).then((response) => response.data),
+    enabled: Boolean(activeDetailId),
+    staleTime: RESOLUTION_DETAIL_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
 
   useEffect(() => {
-    const controller = new AbortController();
-    queueMicrotask(() => {
-      setLoading(true);
-      setError("");
-      getResolutionFailures(controller.signal)
-        .then((res) => setFailures(res.data))
-        .catch((err: unknown) => {
-          if ((err as { name?: string }).name === "CanceledError") return;
-          setError("Could not load failed publications. Please try again.");
-        })
-        .finally(() => setLoading(false));
-    });
-    return () => controller.abort();
-  }, [tick]);
+    if (!activeDetailId || !detailQuery.isError || detailErrorNotifiedRef.current === activeDetailId) return;
+    detailErrorNotifiedRef.current = activeDetailId;
+    toast.error("Could not load submission details.");
+  }, [activeDetailId, detailQuery.isError, toast]);
 
-  const refresh = useCallback(() => setTick((n) => n + 1), []);
+  const refresh = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["resolution"] });
+  }, [queryClient]);
 
   function openWorkflowPanel(item: FailedPublication) {
-    setActiveDetail(null);
-    setDetailLoading(true);
-    getResolutionDetail(item.submissionId)
-      .then((res) => setActiveDetail(res.data))
-      .catch(() => {
-        toast.error("Could not load submission details.");
-        setDetailLoading(false);
-      })
-      .finally(() => setDetailLoading(false));
+    detailErrorNotifiedRef.current = null;
+    setActiveDetailId(item.submissionId);
   }
 
   function closeWorkflowPanel() {
-    setActiveDetail(null);
-    setDetailLoading(false);
+    setActiveDetailId(null);
   }
 
   async function handleRetryWithNewSchedule(
@@ -96,7 +112,7 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
           ? `"${item.eventTitle}" rescheduled and sent back to the approval queue.`
           : `"${item.eventTitle}" rescheduled and re-queued.`,
       );
-      refresh();
+      await queryClient.invalidateQueries({ queryKey: ["resolution"] });
     } catch (err: unknown) {
       const data = (err as { response?: { data?: unknown } })?.response?.data as
         | { message?: string; error?: string | { message?: string } }
@@ -117,8 +133,7 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
     try {
       await startManualPublish(item.submissionId);
       toast.success("Manual publish session started.");
-      refresh();
-      // Automatically open the workflow panel after starting
+      await queryClient.invalidateQueries({ queryKey: ["resolution"] });
       openWorkflowPanel({ ...item, manualPublishInProgress: true });
     } catch {
       toast.error("Could not start manual publish.");
@@ -133,7 +148,7 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
       await cancelManualPublish(item.submissionId);
       toast.info("Manual publish cancelled.");
       closeWorkflowPanel();
-      refresh();
+      await queryClient.invalidateQueries({ queryKey: ["resolution"] });
     } catch {
       toast.error("Could not cancel manual publish.");
     } finally {
@@ -154,7 +169,7 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
       });
       toast.success(`"${item.eventTitle}" marked as published.`);
       closeWorkflowPanel();
-      refresh();
+      await queryClient.invalidateQueries({ queryKey: ["resolution"] });
     } catch {
       toast.error("Could not complete manual publish.");
     } finally {
@@ -163,12 +178,12 @@ export function useResolutionFailures(): UseResolutionFailuresResult {
   }
 
   return {
-    failures,
-    loading,
-    error,
+    failures: failuresQuery.data ?? [],
+    loading: failuresQuery.isLoading || failuresQuery.isFetching,
+    error: failuresQuery.error ? "Could not load failed publications. Please try again." : "",
     busy,
-    activeDetail,
-    detailLoading,
+    activeDetail: detailQuery.data ?? null,
+    detailLoading: detailQuery.isLoading || detailQuery.isFetching,
     refresh,
     handleRetryWithNewSchedule,
     handleStartManual,

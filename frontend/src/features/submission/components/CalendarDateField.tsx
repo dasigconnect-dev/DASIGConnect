@@ -18,7 +18,7 @@ export function CalendarDateField({
   const [open, setOpen] = useState(false);
   const { rootRef, popoverRef, placement, maxHeight } =
     usePopoverCollision(open);
-  const selectedDate = parseInputDate(value);
+  const selectedDate = useMemo(() => parseInputDate(value), [value]);
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const base = selectedDate || new Date();
     return new Date(base.getFullYear(), base.getMonth(), 1);
@@ -46,7 +46,7 @@ export function CalendarDateField({
         new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
       );
     }
-  }, [value, selectedDate]);
+  }, [selectedDate]);
 
   const days = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
   const todayValue = dateToInputValue(new Date());

@@ -118,8 +118,8 @@ export function resendExpiredInvitation(payload: { token?: string | null; email?
   return api.post<{ message: string }>("/invitations/resend-expired", payload);
 }
 
-export function getMe() {
-  return api.get<UserProfileResponse>("/me");
+export function getMe(signal?: AbortSignal) {
+  return api.get<UserProfileResponse>("/me", { signal });
 }
 
 export function refreshSession() {
@@ -140,8 +140,11 @@ export interface PageSettingsResponse {
   updatedAt: string | null;
 }
 
-export function getPageSettings(institutionId?: string | null) {
-  return api.get<PageSettingsResponse>("/settings/page", { params: institutionId ? { institutionId } : {} });
+export function getPageSettings(institutionId?: string | null, signal?: AbortSignal) {
+  return api.get<PageSettingsResponse>("/settings/page", {
+    params: institutionId ? { institutionId } : {},
+    signal,
+  });
 }
 
 // Page Settings is the Facebook Page ID only. Watermark on/off + layout are
@@ -213,18 +216,20 @@ export function getInstitutionLogoUrl(id: string, logoUpdatedAt: string | null) 
   });
 }
 
-export function getUserCounts(institutionId: string) {
+export function getUserCounts(institutionId: string, signal?: AbortSignal) {
   return api.get<{ contributors: number; moderators: number }>(
     "/users/counts",
     {
       params: { institutionId },
+      signal,
     },
   );
 }
 
-export function listUsers(institutionId: string) {
+export function listUsers(institutionId: string, signal?: AbortSignal) {
   return api.get<UserProfileResponse[]>("/users", {
     params: { institutionId },
+    signal,
   }).then((response) => {
     response.data = response.data.map((user) => ({
       ...user,
@@ -234,8 +239,8 @@ export function listUsers(institutionId: string) {
   });
 }
 
-export function listAdmins() {
-  return api.get<UserProfileResponse[]>("/users/admins", {}).then((response) => {
+export function listAdmins(signal?: AbortSignal) {
+  return api.get<UserProfileResponse[]>("/users/admins", { signal }).then((response) => {
     response.data = response.data.map((user) => ({
       ...user,
       avatarUrl: user.hasAvatar ? getUserAvatarUrl(user.id, user.avatarUpdatedAt) : null,
@@ -244,8 +249,8 @@ export function listAdmins() {
   });
 }
 
-export function listNetworkUsers() {
-  return api.get<UserProfileResponse[]>("/users/network", {}).then((response) => {
+export function listNetworkUsers(signal?: AbortSignal) {
+  return api.get<UserProfileResponse[]>("/users/network", { signal }).then((response) => {
     response.data = response.data.map((user) => ({
       ...user,
       avatarUrl: user.hasAvatar ? getUserAvatarUrl(user.id, user.avatarUpdatedAt) : null,
@@ -304,23 +309,25 @@ export interface PendingInvitationResponse {
   canManage: boolean;
 }
 
-export function listPendingInvitations(institutionId: string) {
+export function listPendingInvitations(institutionId: string, signal?: AbortSignal) {
   return api.get<PendingInvitationResponse[]>("/invitations/pending", {
     params: { institutionId },
+    signal,
   });
 }
 
-export function listPendingAdminInvitations() {
-  return api.get<PendingInvitationResponse[]>("/invitations/pending/admins");
+export function listPendingAdminInvitations(signal?: AbortSignal) {
+  return api.get<PendingInvitationResponse[]>("/invitations/pending/admins", { signal });
 }
 
-export function listPendingNetworkInvitations() {
-  return api.get<PendingInvitationResponse[]>("/invitations/pending/network");
+export function listPendingNetworkInvitations(signal?: AbortSignal) {
+  return api.get<PendingInvitationResponse[]>("/invitations/pending/network", { signal });
 }
 
-export function getPendingInvitationCount(institutionId: string) {
+export function getPendingInvitationCount(institutionId: string, signal?: AbortSignal) {
   return api.get<{ pendingInvitations: number }>("/invitations/pending/count", {
     params: { institutionId },
+    signal,
   });
 }
 
