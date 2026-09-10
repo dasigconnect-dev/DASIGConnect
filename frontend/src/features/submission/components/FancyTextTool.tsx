@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 
+import { CAPTION_CHAR_LIMIT } from "../utils";
+
 export interface FancyTextSelection {
   start: number;
   end: number;
@@ -35,7 +37,6 @@ interface Props {
   onPreviewStateChange?: (active: boolean) => void;
 }
 
-const CAPTION_WORD_LIMIT = 3000;
 const PREVIEW_TEXT_LIMIT = 54;
 const UPPER_A = "A".codePointAt(0)!;
 const LOWER_A = "a".codePointAt(0)!;
@@ -304,7 +305,7 @@ export default function FancyTextTool({
                 Array.from(activeCaption.slice(0, effectiveSelection.start)).length +
                 Array.from(style.replacement).length +
                 Array.from(activeCaption.slice(effectiveSelection.end)).length;
-              const exceedsLimit = nextLength > CAPTION_WORD_LIMIT;
+              const exceedsLimit = nextLength > CAPTION_CHAR_LIMIT;
               const disabledStyle = !canUseSelection || exceedsLimit;
 
               return (

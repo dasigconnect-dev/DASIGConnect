@@ -147,6 +147,49 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void create_withCaptionOverCharLimit_returns400() {
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        SubmissionCreateDto dto = createDto(scheduledAt);
+        dto.setCaption("x".repeat(3001));
+
+        assertThatThrownBy(() -> submissionService.create(dto, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(submissionRepository, never()).save(any(Submission.class));
+    }
+
+    @Test
+    void create_withCaptionAtCharLimit_isAccepted() {
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        SubmissionCreateDto dto = createDto(scheduledAt);
+        dto.setCaption("x".repeat(3000));
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(entityManager.getReference(Institution.class, institutionId)).thenReturn(institution);
+        when(submissionRepository.save(any(Submission.class))).thenAnswer(invocation -> assignSubmissionId(invocation.getArgument(0)));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(any())).thenReturn(List.of());
+
+        SubmissionResponseDto result = submissionService.create(dto, contributorPrincipal);
+
+        assertThat(result.getStatus()).isEqualTo("draft");
+    }
+
+    @Test
+    void submit_withCaptionOverCharLimit_returns422() {
+        UUID submissionId = UUID.randomUUID();
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
+        submission.setCaption("x".repeat(3001));
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(new GuardRailResult());
+
+        assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    @Test
     void create_byModeratorWithoutInstitutionId_defaultsToDasigCentralVisayas() {
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
         SubmissionCreateDto dto = createDto(scheduledAt);
