@@ -27,6 +27,8 @@ import {
   useAdministratorManagementData,
   useInvalidateAdministratorManagementData,
 } from './hooks/useAdministratorManagementData'
+import '../../styles/user-management.css'
+import '../../styles/institution-management.css'
 
 interface AdminManagementScreenProps {
   user: User

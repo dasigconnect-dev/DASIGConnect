@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, type ReactNode } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
 
@@ -43,7 +43,26 @@ export default function DashboardShell({
   children,
 }: DashboardShellProps) {
   const navigate = useNavigate()
+  const location = useLocation()
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const navItems = dashboardNavItems(user)
+
+  // Auto-close drawer on route change
+  useEffect(() => {
+    setMobileDrawerOpen(false)
+  }, [location.pathname])
+
+  // Prevent body scrolling when mobile drawer is open
+  useEffect(() => {
+    if (mobileDrawerOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [mobileDrawerOpen])
 
   return (
     <>
@@ -65,7 +84,14 @@ export default function DashboardShell({
       </div>
 
       <div className="dash-shell">
-        <aside className="dash-sidebar" id="dash-sidebar">
+        {/* Mobile Drawer Backdrop */}
+        <div
+          className={`dash-drawer-backdrop${mobileDrawerOpen ? ' is-open' : ''}`}
+          onClick={() => setMobileDrawerOpen(false)}
+          aria-hidden="true"
+        />
+
+        <aside className={`dash-sidebar${mobileDrawerOpen ? ' mobile-open' : ''}`} id="dash-sidebar">
           <div className="sidebar-brand-wrapper">
             <div className="dash-brand">
               <div className="dash-brand-icon">
@@ -77,6 +103,14 @@ export default function DashboardShell({
                 DASIG<em>Connect</em>
               </div>
             </div>
+            <button
+              type="button"
+              className="dash-drawer-close-btn"
+              onClick={() => setMobileDrawerOpen(false)}
+              aria-label="Close navigation menu"
+            >
+              <i className="ti ti-x" aria-hidden="true" />
+            </button>
           </div>
 
           <div className="sidebar-nav">
@@ -89,6 +123,7 @@ export default function DashboardShell({
                 type="button"
                 key={item.id}
                 onClick={() => {
+                  setMobileDrawerOpen(false)
                   if (item.path) navigate(item.path)
                 }}
                 aria-current={activeNav === item.id ? 'page' : undefined}
@@ -111,14 +146,27 @@ export default function DashboardShell({
 
         <div className="dash-content-container">
           <nav className="dash-nav">
-            <div className="dash-brand">
-              <div className="dash-brand-icon">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 2L22 7V17L12 22L2 17V7L12 2Z" />
-                </svg>
-              </div>
-              <div className="dash-brand-name">
-                DASIG<em>Connect</em>
+            <div className="dash-nav-left">
+              <button
+                type="button"
+                className="dash-menu-toggle"
+                onClick={() => setMobileDrawerOpen(true)}
+                aria-label="Open navigation menu"
+              >
+                <i className="ti ti-menu-2" aria-hidden="true" />
+                {notificationBadge > 0 && (
+                  <span className="dash-menu-badge-dot" aria-hidden="true" />
+                )}
+              </button>
+              <div className="dash-brand">
+                <div className="dash-brand-icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 2L22 7V17L12 22L2 17V7L12 2Z" />
+                  </svg>
+                </div>
+                <div className="dash-brand-name">
+                  DASIG<em>Connect</em>
+                </div>
               </div>
             </div>
             <div className="dash-nav-right">

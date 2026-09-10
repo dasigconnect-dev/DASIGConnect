@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import "../../styles/institution-management.css";
 import type { User } from "../../types/auth.types";
 import { listInstitutions } from "../../api/authApi";
 import { listSubmissions, type SubmissionSummary } from "../../api/submissionApi";
