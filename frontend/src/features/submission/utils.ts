@@ -17,7 +17,7 @@ import {
 } from "./constants";
 import type { FormState, ProgressStep, ReadinessCheck } from "./types";
 
-export const CAPTION_WORD_LIMIT = 3000;
+export const CAPTION_CHAR_LIMIT = 3000;
 
 export function isDraftStatus(status: SubmissionStatus) {
   return status === "draft" || status === "needs_revision";
@@ -226,7 +226,7 @@ export function countWords(value: string) {
   return value.trim().match(/\S+/g)?.length ?? 0;
 }
 
-export function trimToWordLimit(value: string, limit = CAPTION_WORD_LIMIT) {
+export function trimToCharLimit(value: string, limit = CAPTION_CHAR_LIMIT) {
   const characters = Array.from(value);
   if (characters.length <= limit) return value;
   return characters.slice(0, limit).join("");
@@ -541,7 +541,7 @@ export function getReadinessChecklist(
       title: "Caption length",
       target: "captionLength",
       pass: captionTone(form.caption) === "ok",
-      sub: `${Array.from(form.caption).length} / ${CAPTION_WORD_LIMIT} characters`,
+      sub: `${Array.from(form.caption).length} / ${CAPTION_CHAR_LIMIT} characters`,
     },
     {
       title: "Tags in caption",
@@ -681,7 +681,7 @@ export function isWithinPublishWindow(timeValue: string) {
 
 export function captionTone(caption: string) {
   const characters = Array.from(caption).length;
-  if (characters > 0 && characters <= CAPTION_WORD_LIMIT) return "ok";
+  if (characters > 0 && characters <= CAPTION_CHAR_LIMIT) return "ok";
   if (characters === 0) return "";
   return "warn";
 }

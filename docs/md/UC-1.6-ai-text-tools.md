@@ -4,7 +4,7 @@
 
 **Use Case Name:** AI & Text Tools Integration
 
-**Actor(s):** Contributor, Administrator, Moderator — all three use the same composer. The AI caption endpoint is `hasAnyRole('CONTRIBUTOR','MODERATOR','ADMIN')`; a Moderator without an institution scope may generate captions for any institution's submission.
+**Actor(s):** Contributor, Moderator, Administrator — all use the same composer. The AI caption endpoint is `hasAnyRole('CONTRIBUTOR','MODERATOR','ADMIN')`. A Contributor may only generate for a submission in their own institution; Moderators and Admins are network-wide (no institution binding), so their token carries no `institutionId` and the ownership check is skipped — they can generate for any institution's submission.
 
 **Precondition(s):** The actor is in an active composer session (UC-1.5) **on a saved draft** — the "Suggest Caption" control is not rendered until the draft has an id, and the backend rejects a caption request without a real `submissionId`. Fancy Text works on any editable draft. Both tools are available in Live Event Fast-Track mode. Neither is available on a read-only submission (rejected / published / etc.).
 
@@ -46,7 +46,7 @@ The caption field reflects the actor's chosen AI-suggested caption (one caption,
 
 ---
 
-_Verified against the running code as of 2026-09-11. Primary sources: `CaptionController` (`/ai/caption`, `/ai/caption/log`, the 30/hour rate limiter), `CaptionGenerationService`, `ClaudeVisionClient` (30 s timeout, ≤4 images, >5 MB downscale, one-variant prompt, requested-word-count cap `MAX_REQUESTED_CAPTION_WORDS = 2000`), `CaptionRequestDto` (`@Size(max = 280)` prompt, `professional|community|energetic` tone), `frontend/src/hooks/useAiCaptionAssist.ts`, `AiCaptionButton.tsx` / `AiCaptionPromptDialog.tsx` (`AI_CAPTION_PROMPT_MAX_LENGTH = 280`), `FancyTextTool.tsx`._
+_Verified against the running code as of 2026-09-11 (caption char-limit unification landed the same day). Primary sources: `CaptionController` (`/ai/caption`, `/ai/caption/log`, the 30/hour rate limiter), `CaptionGenerationService`, `ClaudeVisionClient` (30 s timeout, ≤4 images, >5 MB downscale, one-variant prompt, requested-word-count cap `MAX_REQUESTED_CAPTION_WORDS = 2000`), `CaptionRequestDto` (`@Size(max = 280)` prompt, `professional|community|energetic` tone), `frontend/src/hooks/useAiCaptionAssist.ts`, `AiCaptionButton.tsx` / `AiCaptionPromptDialog.tsx` (`AI_CAPTION_PROMPT_MAX_LENGTH = 280`), `FancyTextTool.tsx`._
 
 **Corrections from the prior draft of this UC:**
 - Actors: added Moderator.
@@ -57,4 +57,4 @@ _Verified against the running code as of 2026-09-11. Primary sources: `CaptionCo
 - A5: the limit is **280 characters**.
 - Fancy Text step 1: the panel is opened by a **button**, not shown automatically on selection. The style set is Bold/Italic Serif, Bold/Italic Sans, Script, and Plain — there is no "small caps".
 
-**Known follow-up (not fixed):** Fancy Text enforces a **3000-character** caption ceiling on styled output, while the composer's own caption trim/readiness logic uses **2000** — the two limits should be unified.
+**Caption length limit (unified 2026-09-11):** the caption ceiling is **3000 characters**, counted by code points, on both ends. Frontend: `CAPTION_CHAR_LIMIT` in `frontend/src/features/submission/utils.ts` (was `CAPTION_WORD_LIMIT` — it always measured characters, not words) drives the composer's trim (`trimToCharLimit`), the readiness "Caption length" check, the counter, and Fancy Text's over-limit guard (which now imports the shared constant instead of keeping its own copy). Backend: `SubmissionService.MAX_CAPTION_CHARS = 3000` (`validateCaptionCharLimit`, code-point count) rejects an over-length caption on create/update with `400` and on submit with `422`. Unrelated: `ClaudeVisionClient.MAX_REQUESTED_CAPTION_WORDS = 2000` still caps the *word count a user may request in the prompt* — that is a prompt-parsing guard, not the stored-caption limit, and is intentionally left in words.

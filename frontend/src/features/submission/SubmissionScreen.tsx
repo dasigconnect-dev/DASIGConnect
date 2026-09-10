@@ -53,7 +53,7 @@ import type { CenterMode, FormState, ModalState, PendingLeaveAction, ProgressSte
 import { initialForm, postTemplates, statusLabels } from "./constants";
 import {
   appendHashtagToCaption,
-  CAPTION_WORD_LIMIT,
+  CAPTION_CHAR_LIMIT,
   captionTone,
   captionsForSavedIds,
   dateToInputValue,
@@ -92,7 +92,7 @@ import {
   sortFilesByOrder,
   sortSavedAssetsByOrder,
   toPayload,
-  trimToWordLimit,
+  trimToCharLimit,
   upsertSubmission,
 } from "./utils";
 import {
@@ -974,14 +974,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     nextCaption: string,
     nextSelection: FancyTextSelection,
   ) {
-    updateField("caption", trimToWordLimit(nextCaption));
+    updateField("caption", trimToCharLimit(nextCaption));
     restoreCaptionSelection(nextSelection);
   }
 
   function updateCaption(nextCaption: string) {
-    const limitedCaption = trimToWordLimit(nextCaption);
+    const limitedCaption = trimToCharLimit(nextCaption);
     if (limitedCaption !== nextCaption) {
-      toast.warning(`Caption is limited to ${CAPTION_WORD_LIMIT} characters.`);
+      toast.warning(`Caption is limited to ${CAPTION_CHAR_LIMIT} characters.`);
     }
     updateField("caption", limitedCaption);
   }
@@ -2524,7 +2524,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   placeholder="Write a compelling caption for the DASIG Facebook page..."
                 />
                 <span className={`sub-caption-counter ${captionTone(form.caption)}`}>
-                  {Array.from(form.caption).length} / {CAPTION_WORD_LIMIT} characters
+                  {Array.from(form.caption).length} / {CAPTION_CHAR_LIMIT} characters
                 </span>
               </div>
               {canUseAiCaption && aiCaption.variants && (
@@ -2543,7 +2543,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 </Suspense>
               )}
               <div className="sub-finput-hint">
-                Captions can contain up to {CAPTION_WORD_LIMIT} characters. Include relevant tags.
+                Captions can contain up to {CAPTION_CHAR_LIMIT} characters. Include relevant tags.
               </div>
               {canUseAiCaption && captionPromptOpen && (
                 <Suspense fallback={null}>
