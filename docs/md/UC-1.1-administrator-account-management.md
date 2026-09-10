@@ -1,84 +1,49 @@
 # UC-1.1 Administrator Account Management
 
-## 1.1.1 Use Case Diagram
-
-To be generated once the team confirms the final flow.
-
-## 1.1.2 Use Case Description
-
 **Use Case ID:** UC-1.1
 
 **Use Case Name:** Administrator Account Management
 
-**Actor(s):** Administrator, Super Administrator
+**Actor(s):** Administrator (Admin Owner required only for actions targeting an *existing* Admin account)
 
-**Precondition:** The actor holds a valid, authenticated ACTIVE session with Administrator or Super Administrator privileges. The initial Super Administrator account is provisioned directly by the development team prior to pilot deployment and is outside the scope of this use case.
+**Precondition(s):** The actor holds a valid, authenticated ACTIVE session with Administrator privileges. Admin Owner status is required for every action targeting an existing Admin account (A3–A6, the demotion path within A7, and A8): deactivation, reactivation, deletion, erasure, demotion, and ownership transfer. A peer (non-owner) Administrator may invite new Admins (subject to the cap, A2), manage Moderator/Contributor accounts, and propose an Admin promotion for one of them (A7) — proposing carries no more unilateral risk than sending an invitation, since the target must still confirm. Self-targeting is blocked across every role-change and account-management action, Owner-gated or not. The initial Admin account is provisioned directly by the development team prior to pilot deployment and is outside the scope of this use case.
 
 ## Main Flow
 
-1. The actor opens the account management panel and selects `Invite New Administrator`.
-2. The system validates the request as a network-scoped Administrator invitation with no institution assignment.
-3. The system generates a unique, single-use, time-sensitive invitation token bound to the invitee email address, valid for 72 hours.
-4. The system stores only the token hash, creates or updates the invitee account record in `pending` state, and marks older unused invitations for the same email as used.
+1. The Admin navigates to Admin Management and selects **Invite Admin**.
+2. The system validates the request as a network-scoped Admin invitation with no institution assignment, and validates that active Admins plus outstanding Admin invitations plus pending promotions number fewer than 3 (A2).
+3. The system generates a unique, single-use, time-sensitive invitation token bound to the invitee's email address, valid for 72 hours, and stores only the token hash.
+4. The system creates or updates the invitee's account record in `PENDING` state, reusing an existing `PENDING`, `PENDING_EMAIL_UNDELIVERED`, `CANCELLED`, or `EXPIRED` record for that email if one exists (an existing `ACTIVE` account, or a re-invitation targeting an `INACTIVE` account, returns a conflict error — the latter must go through Reactivation, A4), and marks any older unused invitation tokens for the same email as used.
 5. The system dispatches an activation email containing the activation link with the raw token.
-6. The invitee completes activation by setting their password.
-7. The account transitions to `active`, receives the `administrator` role, remains institutionless, and can invite Administrators, Validators, and Contributors.
+6. The invitee completes activation by setting their password. The system re-validates the Admin cap at this step (A2) so a stale pending invitation cannot exceed the limit.
+7. The account transitions to `ACTIVE`, receives the Admin role, remains institutionless, and gains network-wide Admin privileges.
 
 ## Alternative Flows
 
-- **A1 - Invitation Email Undelivered:** If dispatch fails after retries, the account remains in `pending_email_undelivered` until an Administrator verifies the address and triggers a resend.
-- **A2 - Super Administrator Removes Administrator:** Only the Super Administrator may deactivate or remove another Administrator account. The system revokes active sessions for the removed or deactivated account. If a non-Super Administrator attempts this action, the system rejects it with an authorization error.
-- **A3 - Reactivate Administrator:** The Super Administrator may reactivate a previously deactivated Administrator account without requiring re-invitation.
-- **A4 - Super Administrator Transfer:** The current Super Administrator requests transfer to an existing ACTIVE Administrator. The target Administrator must confirm before the transfer takes effect. On confirmation, the outgoing account is demoted to standard Administrator, the incoming account becomes Super Administrator, outgoing sessions are revoked, and the transfer is recorded in the audit log.
-- **A5 - Super Administrator Unreachable:** If the Super Administrator cannot be reached to initiate a transfer, resolution is an out-of-scope post-pilot governance concern requiring direct development team or DOST Region 7 oversight.
+- **A1 — Invitation Email Undelivered:** If dispatch fails after retries, the account remains `PENDING_EMAIL_UNDELIVERED` until an Admin verifies the address and triggers a resend (A9).
+- **A2 — Admin Limit Reached:** The system enforces a single combined count — active Admins plus outstanding Admin invitations plus pending promotions — against a maximum of 3, uniformly across every gate that could grant Admin access: invitation (Main Flow step 2), invitation acceptance (step 6), direct promotion (A7), and reactivation (A4). Each gate excludes only its own in-flight item from the count where relevant (an invitation excludes itself when being accepted; a promotion excludes itself when being confirmed), so no single gate can be used to route around the cap. Reactivation is the strictest case, with no exclusions — a deactivated 4th Admin cannot be reactivated into a network already holding 3. When any gate would exceed the cap, the system rejects the action and directs the Admin to remove or transfer an existing Admin first.
+- **A3 — Deactivate Admin Account:** *(Admin Owner only.)* Deactivates another `ACTIVE` Admin account (a non-active target returns a validation error). Revokes all active sessions, blocks login, retains historical submissions and audit data, and records the action in the audit log.
+- **A4 — Reactivate Admin Account:** *(Admin Owner only.)* Reactivates a previously deactivated (`INACTIVE`) Admin account, blocked at the Admin cap (A2). The account's existing password remains valid and no new session token is issued — the user logs in fresh with their existing credentials. A non-inactive target returns a validation error. Re-inviting a deactivated Admin is explicitly rejected; reactivation is the only path back to `ACTIVE`.
+- **A5 — Delete Admin Account:** *(Admin Owner only.)* Permanently removes an Admin account only when it is `INACTIVE`, `CANCELLED`, or `EXPIRED` (an `ACTIVE` target is rejected, requiring deactivation first). If the account has any historical footprint (submissions, media uploads, validation logs, albums, or any audit entry), it is not hard-deleted — it persists as an anonymized-at-rest inactive row with a `USER_REMOVED` audit entry. Only a completely footprint-free account is hard-deleted, writing `USER_DELETED` instead.
+- **A6 — Erase Admin Account (Right to Be Forgotten):** *(Admin Owner only.)* Target must be `INACTIVE` or `CANCELLED`, must not be the Owner's own account, and must not already be erased. Anonymizes the record in place (name nulled, email replaced with a placeholder, related notifications/lockout records purged) and writes a `USER_ANONYMIZED` audit entry.
+- **A7 — Promote Existing User to Admin:** *(Propose/confirm flow. Proposing is open to any active Admin; only demoting an existing Admin is Owner-only.)*
+  - **Propose:** Any active Administrator (Owner or peer) selects an existing `ACTIVE` Moderator or Contributor to promote. The target cannot already be Admin (no-op) or the Owner's own account, and the action is blocked at the Admin cap (A2). The system reserves a slot and creates a pending promotion; the target's role and access do not change yet. Writes `ADMIN_PROMOTION_REQUESTED` and notifies the target. A target cannot have two pending promotions at once (a second proposal while one is outstanding is rejected).
+  - **Confirm:** The target confirms the promotion on their own account (any authenticated caller may confirm their own pending promotion — this step is not role-restricted). The system re-checks the Admin cap (a slot may have filled while pending) before applying the change: institution assignment is cleared, the account gains network-wide Admin privileges (Admin Owner flag remains false), and active sessions are revoked, requiring the user to log in again. Writes `ADMIN_PROMOTION_CONFIRMED`. If unconfirmed after 72 hours, the request automatically expires (`410 Gone`) and the reserved slot frees itself, since the cap check filters on expiry rather than requiring a manual sweep.
+  - **Decline:** The target declines the pending promotion. The system clears the request, immediately frees the reserved slot, and notifies the Admin Owner (or peer admin) who proposed it. Writes `ADMIN_PROMOTION_DECLINED`.
+  - **Cancel:** The Admin Owner rescinds a pending promotion before the target responds, with the same effect as a decline. Writes `ADMIN_PROMOTION_CANCELLED`.
+  - **Demotion** (Admin → Moderator or Contributor, **Admin Owner only**) remains a separate, immediate action with no confirmation step, recorded as `USER_ROLE_CHANGED`; demotion to Contributor requires assigning an active institution.
+- **A8 — Admin Owner Transfer:** The current Admin Owner initiates a transfer request to a target account, which must be either an existing `ACTIVE` Administrator or an `ACTIVE` Moderator. The target has 24 hours to confirm before the request expires and is cleared (`410 Gone`). The system writes an `ADMIN_TRANSFER_REQUESTED` audit entry at initiation.
+  - If the target is an existing Administrator: upon confirmation, the outgoing account's Admin Owner flag is revoked and reassigned to the incoming account; both remain Administrators. **(This path currently cannot be confirmed through the API due to a role-gating inconsistency on the confirmation endpoint — flagged for engineering resolution, still open as of this revision.)**
+  - If the target is a Moderator: upon confirmation, the target is promoted to Administrator and becomes the new Admin Owner; the outgoing Owner is demoted to Moderator, keeping the total Admin headcount constant. This path is fully implemented.
+  - In both cases, the outgoing account's active sessions are invalidated upon confirmation, and the system writes an `ADMIN_TRANSFER_CONFIRMED` audit entry.
+- **A9 — Cancel Pending Admin Invitation:** An Admin cancels a pending Admin invitation while the target account is `PENDING`, `PENDING_EMAIL_UNDELIVERED`, or `EXPIRED`. The system deletes all outstanding tokens for that email and sets the account to `CANCELLED`.
+- **A10 — Resend Pending Admin Invitation:** An Admin resends an invitation for an account in `PENDING_EMAIL_UNDELIVERED`, `EXPIRED`, or `CANCELLED` state. The system generates a fresh 72-hour token, invalidates all prior open tokens, and resets the account to `PENDING`.
+- **A11 — Admin Owner Unreachable:** If the current Admin Owner cannot be reached to initiate a transfer, resolution is an out-of-scope, post-pilot governance concern requiring direct intervention by the development team or DOST Region 7 oversight.
 
-## Postcondition
+## Postcondition(s)
 
-A new Administrator account exists in `pending`, `pending_email_undelivered`, or `active` state, or an existing Administrator account has been deactivated, reactivated, or involved in a confirmed Super Administrator transfer. State-changing account management actions are reflected in the audit log.
+A new Admin account exists in `PENDING` or `ACTIVE` state; an existing Admin account has been deactivated, reactivated, deleted (if footprint-free), anonymized, had a promotion proposed, confirmed, declined, or cancelled, or been demoted; its pending invitation has been cancelled or resent; or Admin Owner status has been transferred. Every state-changing action revokes the affected account's active sessions where applicable, and is reflected in the audit log under one of: `INVITATION_ACCEPTED`, `USER_STATUS_UPDATED`, `USER_ROLE_CHANGED`, `USER_REMOVED`, `USER_DELETED`, `USER_ANONYMIZED`, `ADMIN_TRANSFER_REQUESTED`, `ADMIN_TRANSFER_CONFIRMED`, `ADMIN_PROMOTION_REQUESTED`, `ADMIN_PROMOTION_CONFIRMED`, `ADMIN_PROMOTION_DECLINED`, or `ADMIN_PROMOTION_CANCELLED`.
 
-## Business Rules
+---
 
-- Administrator accounts are network-scoped and are not assigned to an institution.
-- Administrator invitation tokens remain valid for 72 hours and are single-use.
-- Standard Administrators may invite Administrators and institution users but may not deactivate, remove, or reactivate Administrator accounts.
-- A deactivated Administrator account cannot be re-invited to bypass Super Administrator reactivation.
-- Only one active Administrator account may hold Super Administrator designation.
-- Super Administrator transfer requires confirmation from the incoming Administrator.
-- User sessions are revoked when an account is deactivated, removed, or loses Super Administrator privileges.
-
-## Backend Coverage
-
-- Migration: `V28__administrator_account_management.sql`
-- Entity updates: `User`, `InvitationToken`
-- DTO updates: `CreateInvitationRequestDto`, `InvitationResponseDto`, `InvitationValidateResponseDto`, `PendingInvitationDto`, `UserDto`, `SuperAdministratorTransferResponseDto`
-- Services: `InvitationService`, `UserService`, `JWTService`, `AuditLogService`
-- Controllers: `InvitationController`, `UserController`
-- Endpoints:
-  - `POST /api/v1/invitations`
-  - `GET /api/v1/invitations/validate`
-  - `POST /api/v1/invitations/accept`
-  - `POST /api/v1/invitations/{id}/resend`
-  - `PATCH /api/v1/users/{id}/status`
-  - `DELETE /api/v1/users/{id}`
-  - `POST /api/v1/users/{id}/super-administrator-transfer`
-  - `POST /api/v1/users/super-administrator-transfer/confirm`
-
-## Verification
-
-- Focused backend tests passed:
-  - `InvitationControllerTest`
-  - `UserControllerTest`
-  - `InvitationServiceTest`
-  - `UserServiceTest`
-  - `JWTServiceTest`
-- Focused result: 78 tests, 0 failures, 0 errors.
-- Full backend result: 294 tests, 0 failures, 0 errors.
-
-## PR Notes
-
-- Scope: backend UC-1.1 Administrator Account Management plus matching documentation.
-- Changed areas: database migration, user/invitation entities and DTOs, invitation/user/JWT services, user controller, focused tests, UC documentation.
-- Breakage risk: low to medium. Existing contributor and validator invitation behavior is preserved, but the invitation schema now permits null `institution_id` for Administrator invitations.
-- Target branch: `dev`.
-- Source branch: `feature/uc11-admin-account-management`.
-- Reviewer: tag team lead as reviewee before merging.
+_Verified against the running code as of 2026-09-10. Primary sources: `UserService` (`changeRole`, `confirmAdminPromotion`, `declineAdminPromotion`, `cancelAdminPromotion`, `updateStatus`, `removeUser`, `erasePersonalData`, `requestAdminTransfer`, `confirmAdminTransfer`), `InvitationService`, `AdminCapPolicy`, `UserController`, `InvitationController`, migration `V87__admin_promotion_pending.sql`. Known open gap: A8's Administrator-target confirmation path (see inline note)._
