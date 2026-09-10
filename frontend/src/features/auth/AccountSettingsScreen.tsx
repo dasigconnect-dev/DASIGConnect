@@ -1023,34 +1023,18 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                 <SettingsHeader
                   icon="ti ti-shield-check"
                   title="Scheduling Guard Rails"
-                  description="Network-wide rules for the shared publishing calendar: ±30-minute spacing, ≤6 posts/day, ≥2h lead time, and an 8:00 AM–8:00 PM publish window."
+                  description="Network-wide limits on the shared publishing calendar."
                 />
                 <div className="settings-card-body">
                   <Toggle
-                    title="Enforce scheduling guard rails"
-                    description="When on, a valid future slot within the publish window is required to submit. When off, contributors may submit without a preferred schedule and the 8:00 AM–8:00 PM window is not enforced (a chosen date still can't be in the past). Fast-Track is unaffected either way."
+                    title="Require a scheduled slot"
+                    description="Off lets contributors submit without picking a time. Fast-Track is unaffected."
                     checked={guardrailsEnforced}
                     onChange={setGuardrailsEnforced}
                   />
-                  <div className="settings-studio-summary-box">
-                    <div className="settings-summary-stat">
-                      <span className="settings-summary-stat-label">Scope</span>
-                      <span className="settings-summary-stat-val">
-                        <span className="wm-elements-badge">
-                          <i className="ti ti-world" /> Network-wide
-                        </span>
-                      </span>
-                    </div>
-                    <div className="settings-summary-stat">
-                      <span className="settings-summary-stat-label">Status</span>
-                      <span className={`settings-summary-stat-badge ${guardrailsEnforced ? "is-active" : "is-inactive"}`}>
-                        {guardrailsEnforced ? "Enforced" : "Off"}
-                      </span>
-                    </div>
-                  </div>
                 </div>
                 <SettingsFooter
-                  label="Save Guard Rails"
+                  label="Save"
                   icon="ti ti-device-floppy"
                   busy={saving === "guardrails"}
                   onClick={() => void saveGuardrails()}
