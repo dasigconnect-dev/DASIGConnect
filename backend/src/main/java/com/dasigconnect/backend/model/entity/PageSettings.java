@@ -21,6 +21,12 @@ public class PageSettings {
     private String watermarkText;
     @Column(name = "facebook_page_id", length = 255)
     private String facebookPageId;
+    /**
+     * Network-wide scheduling guard-rail switch. Only meaningful on the
+     * no-institution row (institution_id IS NULL); see GuardRailSettingsService.
+     */
+    @Column(name = "guardrails_enforced", nullable = false)
+    private boolean guardrailsEnforced = true;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "updated_by")
     private User updatedBy;
@@ -38,6 +44,8 @@ public class PageSettings {
     public void setWatermarkText(String value) { watermarkText = value; }
     public String getFacebookPageId() { return facebookPageId; }
     public void setFacebookPageId(String value) { facebookPageId = value; }
+    public boolean isGuardrailsEnforced() { return guardrailsEnforced; }
+    public void setGuardrailsEnforced(boolean value) { guardrailsEnforced = value; }
     public void setUpdatedBy(User value) { updatedBy = value; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

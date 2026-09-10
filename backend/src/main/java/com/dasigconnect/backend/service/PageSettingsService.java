@@ -18,18 +18,21 @@ public class PageSettingsService {
     private final PageSettingsRepository repository;
     private final InstitutionRepository institutions;
     private final UserRepository users;
+    private final GuardRailSettingsService guardRailSettings;
 
-    public PageSettingsService(PageSettingsRepository repository, InstitutionRepository institutions, UserRepository users) {
+    public PageSettingsService(PageSettingsRepository repository, InstitutionRepository institutions,
+            UserRepository users, GuardRailSettingsService guardRailSettings) {
         this.repository = repository;
         this.institutions = institutions;
         this.users = users;
+        this.guardRailSettings = guardRailSettings;
     }
 
     @Transactional(readOnly = true)
     public PageSettingsDto get(UUID institutionId, JwtUserDetails actor) {
         authorize(institutionId, actor);
         return find(institutionId).map(PageSettingsDto::from)
-                .orElse(new PageSettingsDto(institutionId, null, null));
+                .orElse(new PageSettingsDto(institutionId, null, guardRailSettings.enforced(), null));
     }
 
     @Transactional
@@ -41,6 +44,11 @@ public class PageSettingsService {
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Institution not found")));
         }
         settings.setFacebookPageId(trim(request.facebookPageId()));
+        // The guard-rail switch is network-wide — only honoured on the
+        // no-institution row; ignored on per-institution Page Settings.
+        if (institutionId == null && request.guardrailsEnforced() != null) {
+            settings.setGuardrailsEnforced(request.guardrailsEnforced());
+        }
         settings.setUpdatedBy(users.getReferenceById(actor.userId()));
         return PageSettingsDto.from(repository.save(settings));
     }

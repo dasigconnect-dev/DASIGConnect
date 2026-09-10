@@ -455,12 +455,18 @@ export function getReadinessChecklist(
   const acceptedFormats = form.files.every((file) =>
     isAllowedFile(file, lookups.allowedFileTypes),
   );
+  const guardRailsEnforced = lookups.guardrailsEnforced;
   const scheduledDate = scheduledAt ? new Date(scheduledAt) : null;
   const futureSlot = !scheduledDate || scheduledDate > new Date();
   const publishWindow = !form.scheduledTime || isWithinPublishWindow(form.scheduledTime);
   const slotReady = form.fastTrack
     ? true
-    : Boolean(scheduledAt) && futureSlot && publishWindow && !guardRails?.blocked;
+    : guardRailsEnforced
+      ? Boolean(scheduledAt) && futureSlot && publishWindow && !guardRails?.blocked
+      // Guard rails off: a preferred schedule is optional; a chosen one just
+      // can't be in the past. Publish-window and slot-conflict checks are
+      // skipped (the backend won't run them either).
+      : futureSlot;
 
   const required: ReadinessCheck[] = [
     {
@@ -505,21 +511,27 @@ export function getReadinessChecklist(
       sub: form.albumName.trim() || "Required before approval submission",
     },
     {
-      title: form.fastTrack ? "Fast-Track route" : "Schedule guard rails",
+      title: form.fastTrack
+        ? "Fast-Track route"
+        : guardRailsEnforced
+          ? "Schedule guard rails"
+          : "Preferred schedule",
       target: form.fastTrack ? "caption" : "schedule",
       pass: slotReady,
-      idle: !form.fastTrack && guardRailsLoading,
+      idle: !form.fastTrack && guardRailsEnforced && guardRailsLoading,
       sub: form.fastTrack
         ? "No scheduled slot required"
-        : guardRailsLoading
+        : guardRailsEnforced && guardRailsLoading
           ? "Checking selected slot..."
           : !scheduledAt
-            ? "Preferred date and time required"
+            ? guardRailsEnforced
+              ? "Preferred date and time required"
+              : "Optional — guard rails are off"
             : !futureSlot
-              ? "Schedule must be in the future"
-              : !publishWindow
+              ? "Schedule can't be in the past"
+              : guardRailsEnforced && !publishWindow
                 ? "Publish time must be 8:00 AM - 8:00 PM"
-                : guardRails?.blocked
+                : guardRailsEnforced && guardRails?.blocked
                   ? "Resolve blocked publishing slot"
                   : formatDateTime(scheduledAt),
     },
@@ -600,6 +612,7 @@ export function getPreviewValidation(
   lookups: SubmissionLookups,
   guardRails: GuardRailResult | null,
 ) {
+  const guardRailsEnforced = lookups.guardrailsEnforced;
   const missingItems: string[] = [];
   const blockingErrors: string[] = [];
   const oversizedFile = form.files.find(
@@ -614,11 +627,11 @@ export function getPreviewValidation(
   if (!form.caption.trim()) missingItems.push("Write a caption.");
   if (form.files.length + form.savedAssets.length < 1) missingItems.push("Attach at least one media asset.");
   if (!form.albumName.trim()) missingItems.push("Assign an album.");
-  if (!form.fastTrack && !scheduledAt) missingItems.push("Choose a preferred schedule.");
+  if (guardRailsEnforced && !form.fastTrack && !scheduledAt) missingItems.push("Choose a preferred schedule.");
   if (scheduledAt && new Date(scheduledAt) <= new Date()) {
     missingItems.push("Schedule must be set in the future.");
   }
-  if (form.scheduledTime) {
+  if (guardRailsEnforced && form.scheduledTime) {
     if (!isWithinPublishWindow(form.scheduledTime)) {
       missingItems.push("Publish time must be between 8:00 AM and 8:00 PM.");
     }
@@ -631,7 +644,7 @@ export function getPreviewValidation(
   if (unsupportedFile) {
     missingItems.push(`${unsupportedFile.name} uses an unsupported format.`);
   }
-  if (!form.fastTrack && guardRails?.blocked) {
+  if (guardRailsEnforced && !form.fastTrack && guardRails?.blocked) {
     missingItems.push("Resolve the blocked publishing slot.");
   }
 
@@ -640,11 +653,11 @@ export function getPreviewValidation(
   if (!form.caption.trim()) blockingErrors.push("Caption is required.");
   if (form.files.length + form.savedAssets.length < 1) blockingErrors.push("At least one media attachment is required.");
   if (!form.albumName.trim()) blockingErrors.push("Album assignment is required.");
-  if (!form.fastTrack && !scheduledAt) blockingErrors.push("Preferred schedule is required.");
+  if (guardRailsEnforced && !form.fastTrack && !scheduledAt) blockingErrors.push("Preferred schedule is required.");
   if (scheduledAt && new Date(scheduledAt) <= new Date()) {
     blockingErrors.push("Preferred schedule must be set in the future.");
   }
-  if (form.scheduledTime) {
+  if (guardRailsEnforced && form.scheduledTime) {
     if (!isWithinPublishWindow(form.scheduledTime)) {
       blockingErrors.push("Publish time must be between 8:00 AM and 8:00 PM.");
     }

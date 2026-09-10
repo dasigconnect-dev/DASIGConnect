@@ -100,8 +100,7 @@ public class SubmissionService {
     @PersistenceContext
     private EntityManager entityManager;
 
-    @Value("${app.guardrails.enforced:true}")
-    private boolean guardRailsEnforced = true;
+    private final GuardRailSettingsService guardRailSettings;
 
     private final AssetTagRepository assetTagRepository;
     private final MediaAlbumRepository mediaAlbumRepository;
@@ -121,7 +120,8 @@ public class SubmissionService {
             UserRepository userRepository,
             AssetTagRepository assetTagRepository,
             MediaAlbumRepository mediaAlbumRepository,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            GuardRailSettingsService guardRailSettings) {
         this.submissionRepository = submissionRepository;
         this.institutionRepository = institutionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
@@ -137,6 +137,7 @@ public class SubmissionService {
         this.assetTagRepository = assetTagRepository;
         this.mediaAlbumRepository = mediaAlbumRepository;
         this.eventPublisher = eventPublisher;
+        this.guardRailSettings = guardRailSettings;
     }
 
     @Transactional(readOnly = true)
@@ -354,7 +355,7 @@ public class SubmissionService {
             boolean isReviewer = isAdmin || isModerator(user);
             // Reviewers always have guard rails applied on a schedule change; for a
             // contributor's own edit it follows the app.guardrails.enforced flag.
-            if (guardRailsEnforced || isReviewer) {
+            if (guardRailSettings.enforced() || isReviewer) {
                 GuardRailResult gr = guardRailService.validate(submission.getInstitution().getId(), dto.getScheduledAt(), submission.getId());
                 if (gr.isBlocked()) {
                     String reason = dto.getOverrideReason() == null ? "" : dto.getOverrideReason().trim();
@@ -441,13 +442,13 @@ public class SubmissionService {
 
         boolean fastTrack = submission.isFastTrack();
 
-        if (!fastTrack && guardRailsEnforced && submission.getScheduledAt() == null) {
+        if (!fastTrack && guardRailSettings.enforced() && submission.getScheduledAt() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A scheduled time must be selected before submitting.");
         }
 
         // Re-run guard rails — slot may have been taken since draft was saved
-        if (!fastTrack && guardRailsEnforced && submission.getScheduledAt() != null) {
+        if (!fastTrack && guardRailSettings.enforced() && submission.getScheduledAt() != null) {
             GuardRailResult result = guardRailService.validate(submission.getInstitution().getId(), submission.getScheduledAt(), submission.getId());
             if (result.isBlocked()) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,

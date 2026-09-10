@@ -83,6 +83,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [facebookPageId, setFacebookPageId] = useState("");
+  const [guardrailsEnforced, setGuardrailsEnforced] = useState(true);
 
   // Watermark Studio States
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
@@ -94,7 +95,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [copiedCode, setCopiedCode] = useState(false);
   const [messengerExpanded, setMessengerExpanded] = useState(false);
 
-  const [saving, setSaving] = useState<"account" | "password" | "page" | "watermark" | "messenger" | null>(null);
+  const [saving, setSaving] = useState<"account" | "password" | "page" | "watermark" | "messenger" | "guardrails" | null>(null);
   const pageInstitutionId = null;
   const profileQueryKey = queryKeys.settings.profile({ userId: userScope });
   const pageSettingsQueryKey = queryKeys.settings.page({
@@ -245,6 +246,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   useEffect(() => {
     if (pageSettingsQuery.data && !pageSettingsHydratedRef.current) {
       setFacebookPageId(pageSettingsQuery.data.data.facebookPageId || "");
+      setGuardrailsEnforced(pageSettingsQuery.data.data.guardrailsEnforced ?? true);
       pageSettingsHydratedRef.current = true;
     }
 
@@ -342,6 +344,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     try {
       const { data } = await updatePageSettings({ facebookPageId }, pageInstitutionId);
       setFacebookPageId(data.facebookPageId || "");
+      setGuardrailsEnforced(data.guardrailsEnforced ?? true);
       queryClient.setQueryData(pageSettingsQueryKey, { data } satisfies { data: PageSettingsResponse });
       pageSettingsHydratedRef.current = true;
       pageSettingsErrorNotifiedRef.current = false;
@@ -349,6 +352,28 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       toast.success("Facebook Page ID updated.");
     } catch {
       toast.error("Unable to update Facebook Page ID.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function saveGuardrails() {
+    setSaving("guardrails");
+    try {
+      const { data } = await updatePageSettings({ guardrailsEnforced }, pageInstitutionId);
+      setGuardrailsEnforced(data.guardrailsEnforced ?? true);
+      setFacebookPageId(data.facebookPageId || "");
+      queryClient.setQueryData(pageSettingsQueryKey, { data } satisfies { data: PageSettingsResponse });
+      pageSettingsHydratedRef.current = true;
+      pageSettingsErrorNotifiedRef.current = false;
+      await invalidatePageSettingsDependencies();
+      toast.success(
+        data.guardrailsEnforced
+          ? "Scheduling guard rails are on."
+          : "Scheduling guard rails are off — contributors can submit without a slot.",
+      );
+    } catch {
+      toast.error("Unable to update scheduling guard rails.");
     } finally {
       setSaving(null);
     }
@@ -990,6 +1015,45 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                   icon="ti ti-device-floppy"
                   busy={saving === "page"}
                   onClick={() => void savePage()}
+                />
+              </section>
+
+              {/* Card 3: Scheduling Guard Rails */}
+              <section className="settings-card" id="guardrails-card">
+                <SettingsHeader
+                  icon="ti ti-shield-check"
+                  title="Scheduling Guard Rails"
+                  description="Network-wide rules for the shared publishing calendar: ±30-minute spacing, ≤6 posts/day, ≥2h lead time, and an 8:00 AM–8:00 PM publish window."
+                />
+                <div className="settings-card-body">
+                  <Toggle
+                    title="Enforce scheduling guard rails"
+                    description="When on, a valid future slot within the publish window is required to submit. When off, contributors may submit without a preferred schedule and the 8:00 AM–8:00 PM window is not enforced (a chosen date still can't be in the past). Fast-Track is unaffected either way."
+                    checked={guardrailsEnforced}
+                    onChange={setGuardrailsEnforced}
+                  />
+                  <div className="settings-studio-summary-box">
+                    <div className="settings-summary-stat">
+                      <span className="settings-summary-stat-label">Scope</span>
+                      <span className="settings-summary-stat-val">
+                        <span className="wm-elements-badge">
+                          <i className="ti ti-world" /> Network-wide
+                        </span>
+                      </span>
+                    </div>
+                    <div className="settings-summary-stat">
+                      <span className="settings-summary-stat-label">Status</span>
+                      <span className={`settings-summary-stat-badge ${guardrailsEnforced ? "is-active" : "is-inactive"}`}>
+                        {guardrailsEnforced ? "Enforced" : "Off"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <SettingsFooter
+                  label="Save Guard Rails"
+                  icon="ti ti-device-floppy"
+                  busy={saving === "guardrails"}
+                  onClick={() => void saveGuardrails()}
                 />
               </section>
             </div>

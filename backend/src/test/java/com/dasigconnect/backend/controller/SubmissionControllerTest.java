@@ -54,13 +54,18 @@ class SubmissionControllerTest {
     @MockitoBean
     private TenantScopeService tenantScopeService;
 
+    @MockitoBean
+    private com.dasigconnect.backend.service.GuardRailSettingsService guardRailSettings;
+
     @Test
     @WithMockUser
     void lookups_authenticated_returnsReferenceData() throws Exception {
+        when(guardRailSettings.enforced()).thenReturn(true);
         mockMvc.perform(get("/api/v1/submissions/lookups"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.allowedFileTypes").isArray())
-                .andExpect(jsonPath("$.data.maxMediaAssetsPerSubmission").exists());
+                .andExpect(jsonPath("$.data.maxMediaAssetsPerSubmission").exists())
+                .andExpect(jsonPath("$.data.guardrailsEnforced").value(true));
     }
 
     @Test

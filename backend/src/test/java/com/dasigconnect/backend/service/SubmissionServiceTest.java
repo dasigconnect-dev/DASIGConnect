@@ -101,6 +101,9 @@ class SubmissionServiceTest {
     @Mock
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private GuardRailSettingsService guardRailSettings;
+
     @InjectMocks
     private SubmissionService submissionService;
 
@@ -122,7 +125,7 @@ class SubmissionServiceTest {
                 .thenReturn(List.of());
 
         ReflectionTestUtils.setField(submissionService, "entityManager", entityManager);
-        ReflectionTestUtils.setField(submissionService, "guardRailsEnforced", true);
+        when(guardRailSettings.enforced()).thenReturn(true);
     }
 
     @Test
@@ -289,7 +292,7 @@ class SubmissionServiceTest {
 
     @Test
     void submit_blockedGuardRail_whenEnforcementDisabled_transitionsToPending() {
-        ReflectionTestUtils.setField(submissionService, "guardRailsEnforced", false);
+        when(guardRailSettings.enforced()).thenReturn(false);
         UUID submissionId = UUID.randomUUID();
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
