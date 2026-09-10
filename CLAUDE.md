@@ -108,6 +108,13 @@ the private Supabase bucket.
 
 current branch: uc-2.1-library-albums
 
+> ### 2026-09-10 — `fix/reinvite-inactive-contributor-conflict`: UC-1.3 reconciliation
+>
+> - **Context:** continuing the same UC-driven pass, comparing UC-1.3 (Contributor Account Management) against the code. Confirmed two behaviors already worked as specified with no change needed: promotion to admin requires the target's confirmation regardless of whether they start as Contributor or Moderator (`changeRole`'s pending-promotion branch is unconditional on `fromRole`), and promotion to Moderator plus every demotion apply immediately and fire `UserRoleChangedEvent` (in-app notification) either way.
+> - **Bug found and fixed:** `InvitationService.prepareExistingPendingUser`'s inactive-reinvite guard only checked `role == moderator || role == admin`. Re-inviting a deactivated **Contributor** silently reset their row to `pending` and issued a fresh activation link — bypassing Reactivation entirely, inconsistent with how Moderators/Admins are handled in the exact same situation. Guard is now just `accountState == inactive`, role-independent, so all three roles 409 the same way ("must be reactivated by an admin"). New test `createInvitation_deactivatedContributorEmail_throws409`.
+> - **Still open, not yet fixed this session:** UC-1.3's Main Flow step 4 reuse-state list is missing `PENDING_EMAIL_UNDELIVERED` (A5 lists it correctly); UC-1.3 has no alternative flow for the `changeRole` lateral/promotion paths into and out of Contributor (same gap noted for UC-1.10 below).
+> - **Verification:** backend `.\mvnw.cmd test` → **598 passing, 0 failures**.
+
 > ### 2026-09-10 — `feat/admin-cap-and-promotion-confirmation` + `fix/protect-institution-deletion`: UC-1.1/UC-1.2 use-case reconciliation
 >
 > - **Context:** this session worked from the actual UC-1.1 (Administrator Account Management), UC-1.2 (Institution Management), and UC-1.10 (Moderator Account Management) documents, diffing each against the running code and closing the gaps found. Both branches merged to `dev` (**PR #190**, **PR #191**).
