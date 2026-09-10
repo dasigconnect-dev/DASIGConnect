@@ -443,6 +443,40 @@ public class NotificationEventListener {
         notificationService.createNotification(user, NotificationEventType.user_role_changed, msg, "/dashboard");
     }
 
+    // ── Administrator promotion (UC-1.1) — proposed, awaiting confirmation ────
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onAdminPromotionRequested(AdminPromotionRequestedEvent event) {
+        User user = event.user();
+        if (user == null) {
+            return;
+        }
+        String msg = "You've been proposed for Administrator access"
+                + (event.requestedByEmail() != null ? " by " + event.requestedByEmail() : "")
+                + ". Confirm before it expires, or decline to keep your current role.";
+        String link = "/dashboard";
+        notificationService.createNotification(user, NotificationEventType.admin_promotion_requested, msg, link);
+        emailDeliveryService.send(user,
+                NotificationEventType.admin_promotion_requested.name(),
+                "DASIGConnect — Confirm your Administrator promotion",
+                msg + "\n\nSign in to respond: " + frontendBaseUrl + link);
+    }
+
+    // ── Administrator promotion declined — notify whoever proposed it ─────────
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onAdminPromotionDeclined(AdminPromotionDeclinedEvent event) {
+        if (event.requestedByUserId() == null) {
+            return;
+        }
+        userRepository.findById(event.requestedByUserId()).ifPresent(requestedBy -> {
+            String declinedEmail = event.user() != null ? event.user().getEmail() : "The account";
+            String msg = declinedEmail + " declined the Administrator promotion. The reserved slot is free again.";
+            notificationService.createNotification(
+                    requestedBy, NotificationEventType.admin_promotion_declined, msg, "/admin/admin-management");
+        });
+    }
+
     private static String roleLabel(UserRole role) {
         if (role == null) {
             return "unknown";

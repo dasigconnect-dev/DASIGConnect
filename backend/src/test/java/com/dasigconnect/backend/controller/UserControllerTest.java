@@ -317,6 +317,47 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.data.adminOwner").value(true));
     }
 
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void confirmAdminPromotion_asPromotedModerator_returnsAdmin() throws Exception {
+        User promoted = user(UUID.randomUUID(), "promoted@dasigconnect.com", UserRole.admin, null);
+        when(userService.confirmAdminPromotion(any())).thenReturn(UserDto.from(promoted));
+
+        mockMvc.perform(post("/api/v1/users/promotion/confirm"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.email").value("promoted@dasigconnect.com"))
+                .andExpect(jsonPath("$.data.role").value("admin"));
+    }
+
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
+    void declineAdminPromotion_asContributor_returnsUnchangedAccount() throws Exception {
+        User declined = user(UUID.randomUUID(), "declined@cit.edu.ph", UserRole.contributor, null);
+        when(userService.declineAdminPromotion(any())).thenReturn(UserDto.from(declined));
+
+        mockMvc.perform(post("/api/v1/users/promotion/decline"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.role").value("contributor"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void cancelAdminPromotion_asAdminOwner_returnsUpdatedTarget() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        User target = user(targetId, "target@dasigconnect.com", UserRole.moderator, null);
+        when(userService.cancelAdminPromotion(any(), any())).thenReturn(UserDto.from(target));
+
+        mockMvc.perform(delete("/api/v1/users/{id}/promotion", targetId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.role").value("moderator"));
+    }
+
+    @Test
+    void cancelAdminPromotion_unauthenticated_returns401() throws Exception {
+        mockMvc.perform(delete("/api/v1/users/{id}/promotion", UUID.randomUUID()))
+                .andExpect(status().isUnauthorized());
+    }
+
     private static UserDto userDto(UUID id, String email, UserRole role, UUID institutionId) {
         return UserDto.from(user(id, email, role, institution(institutionId)));
     }

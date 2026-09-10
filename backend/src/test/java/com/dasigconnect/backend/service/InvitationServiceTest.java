@@ -23,6 +23,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -38,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -61,6 +63,8 @@ class InvitationServiceTest {
     AuditLogService auditLogService;
     @Mock
     InstitutionService institutionService;
+    @Mock
+    AdminCapPolicy adminCapPolicy;
     @InjectMocks
     InvitationService invitationService;
 
@@ -80,7 +84,6 @@ class InvitationServiceTest {
         institution.setStatus(InstitutionStatus.active); // default for most tests
         adminPrincipal = new JwtUserDetails(UUID.randomUUID(), "admin@dasigconnect.com", "admin", null);
         validatorPrincipal = new JwtUserDetails(UUID.randomUUID(), "moderator@example.com", "moderator", institutionId);
-        org.springframework.test.util.ReflectionTestUtils.setField(invitationService, "maxAdmins", 3L);
     }
 
     private InvitationToken buildToken(boolean used, boolean expired) {
@@ -280,6 +283,27 @@ class InvitationServiceTest {
         // Moderators are network-wide now — no institution is attached to the invite.
         CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
                 "admin@example.com", null, UserRole.moderator);
+
+        assertThatThrownBy(() -> invitationService.createInvitation(dto, adminPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(409);
+    }
+
+    @Test
+    void createInvitation_deactivatedContributorEmail_throws409() {
+        // The inactive-reinvite guard used to only check moderator/admin roles —
+        // re-inviting a deactivated Contributor silently reset them to pending
+        // instead of 409ing. Reactivation (A4) must be the only path back.
+        User existingContributor = new User();
+        existingContributor.setEmail("jane@example.com");
+        existingContributor.setRole(UserRole.contributor);
+        existingContributor.setAccountState(UserStatus.inactive);
+        when(userRepository.findByEmail("jane@example.com")).thenReturn(Optional.of(existingContributor));
+        when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
+
+        CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
+                "jane@example.com", institutionId, UserRole.contributor);
 
         assertThatThrownBy(() -> invitationService.createInvitation(dto, adminPrincipal))
                 .isInstanceOf(ResponseStatusException.class)
@@ -499,8 +523,8 @@ class InvitationServiceTest {
 
     @Test
     void createInvitation_whenAdminLimitReached_throws409() {
-        when(userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active))
-                .thenReturn(3L);
+        org.mockito.Mockito.doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "cap reached"))
+                .when(adminCapPolicy).assertHasFreeSlot(eq("fourth-admin@example.com"), isNull());
 
         CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
                 "fourth-admin@example.com", null, UserRole.admin);
@@ -517,8 +541,8 @@ class InvitationServiceTest {
         token.setInstitution(null);
         when(invitationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(token));
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(new User()));
-        when(userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active))
-                .thenReturn(3L);
+        org.mockito.Mockito.doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "cap reached"))
+                .when(adminCapPolicy).assertHasFreeSlot(eq(token.getRecipientEmail()), isNull());
 
         assertThatThrownBy(() -> invitationService.acceptInvitation(
                 new AcceptInvitationRequestDto("validrawtoken", "Ava", "Admin", STRONG_PASSWORD)))

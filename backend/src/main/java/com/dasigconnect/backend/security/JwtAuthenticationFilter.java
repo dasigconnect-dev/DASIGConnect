@@ -3,8 +3,6 @@ package com.dasigconnect.backend.security;
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.TenantScopeService;
-import com.dasigconnect.backend.repository.UserRepository;
-import com.dasigconnect.backend.model.entity.UserStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.beans.factory.ObjectProvider;
@@ -35,15 +33,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JWTService jwtService;
     private final TenantScopeService tenantScopeService;
-    private final ObjectProvider<UserRepository> userRepositoryProvider;
     private final ObjectMapper objectMapper;
 
     public JwtAuthenticationFilter(JWTService jwtService, TenantScopeService tenantScopeService,
-            ObjectProvider<UserRepository> userRepositoryProvider,
             ObjectProvider<ObjectMapper> objectMapperProvider) {
         this.jwtService = jwtService;
         this.tenantScopeService = tenantScopeService;
-        this.userRepositoryProvider = userRepositoryProvider;
         this.objectMapper = objectMapperProvider.getIfAvailable(() -> JsonMapper.builder().findAndAddModules().build());
     }
 
@@ -64,7 +59,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (auth != null && auth.startsWith("Bearer ")) {
             String token = auth.substring(7);
             try {
-                if (!jwtService.validateToken(token)) {
+                Claims claims;
+                try {
+                    // Parses the signature/expiry AND enforces the persisted
+                    // revocation checks (single-token blacklist + account-state /
+                    // session_version) — throws JwtException if the session is dead.
+                    claims = jwtService.extractClaims(token);
+                    if (claims == null) {
+                        throw new io.jsonwebtoken.JwtException("Token yielded no claims");
+                    }
+                } catch (RuntimeException ex) {
                     if (request.getRequestURI().endsWith("/auth/logout") || request.getRequestURI().endsWith("/auth/login")) {
                         filterChain.doFilter(request, response);
                         return;
@@ -73,7 +77,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     return;
                 }
                 {
-                    Claims claims = jwtService.extractClaims(token);
                     String role = claims.getOrDefault("role", "").toString();
                     String userIdStr = claims.getOrDefault("user_id", "").toString();
                     String email = claims.getOrDefault("email", "").toString();
@@ -98,17 +101,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         log.debug("Invalid institution_id in token: {}", instStr);
                     }
 
-                    long tokenSessionVersion = claims.get("session_version", Number.class) == null
-                            ? -1 : claims.get("session_version", Number.class).longValue();
-                    UserRepository userRepository = userRepositoryProvider.getIfAvailable();
-                    if (userRepository != null) {
-                        var currentUser = userId == null ? null : userRepository.findById(userId).orElse(null);
-                        if (currentUser == null || currentUser.getAccountState() != UserStatus.active
-                                || currentUser.getSessionVersion() != tokenSessionVersion) {
-                            writeUnauthorized(response, "Session has been revoked");
-                            return;
-                        }
-                    }
+                    // Account-state and session_version revocation checks now live
+                    // inside JWTService.extractClaims (persisted, checked for every
+                    // caller) — the extractClaims() call above already threw if this
+                    // token's account is inactive or its session has been revoked, so
+                    // there is nothing further to check here.
 
                     List<SimpleGrantedAuthority> authorities = new ArrayList<>();
                     if (!role.isBlank()) {

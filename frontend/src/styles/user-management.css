@@ -1402,6 +1402,13 @@ button.um-user-avatar:focus-visible {
 .um-badge.is-cancelled { background: transparent; color: #DC2626; }
 .um-badge.is-muted { background: transparent; color: #374151; }
 
+.um-badge-promotion-pending {
+  margin-left: 6px;
+  background: #EFF6FF;
+  color: #1D4ED8;
+  border: 1px solid #BFDBFE;
+}
+
 /* Role tags */
 .um-role-tag {
   display: inline-flex;

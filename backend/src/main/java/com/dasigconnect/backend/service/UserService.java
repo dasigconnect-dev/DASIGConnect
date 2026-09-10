@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -42,6 +41,8 @@ import com.dasigconnect.backend.security.JwtUserDetails;
 public class UserService {
 
     private static final Duration SUPER_ADMIN_TRANSFER_TTL = Duration.ofHours(24);
+    /** A proposed Administrator promotion lapses if the invitee does not confirm within this window. */
+    private static final Duration ADMIN_PROMOTION_TTL = Duration.ofHours(72);
     private static final long MAX_AVATAR_BYTES = 2L * 1024 * 1024;
 
     private final UserRepository userRepository;
@@ -59,10 +60,8 @@ public class UserService {
     private final InvitationTokenRepository invitationTokenRepository;
     private final AuditLogService auditLogService;
     private final ApplicationEventPublisher eventPublisher;
-
-    /** Administrative policy cap: maximum active admin accounts network-wide (`app.admins.max`, default 3). */
-    @Value("${app.admins.max:3}")
-    private long maxAdmins;
+    /** Administrator headcount cap (`app.admins.max`, default 3) — see {@link AdminCapPolicy}. */
+    private final AdminCapPolicy adminCapPolicy;
 
     public UserService(
             UserRepository userRepository,
@@ -79,7 +78,8 @@ public class UserService {
             InstitutionRepository institutionRepository,
             InvitationTokenRepository invitationTokenRepository,
             AuditLogService auditLogService,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            AdminCapPolicy adminCapPolicy) {
         this.userRepository = userRepository;
         this.notificationRepository = notificationRepository;
         this.emailDeliveryLogRepository = emailDeliveryLogRepository;
@@ -95,6 +95,7 @@ public class UserService {
         this.invitationTokenRepository = invitationTokenRepository;
         this.auditLogService = auditLogService;
         this.eventPublisher = eventPublisher;
+        this.adminCapPolicy = adminCapPolicy;
     }
 
     /**
@@ -208,6 +209,11 @@ public class UserService {
         } else if (newStatus == UserStatus.active) {
             if (user.getAccountState() != UserStatus.inactive) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only inactive users can be reactivated.");
+            }
+            // Reactivating a deactivated admin re-adds an Administrator — it must
+            // pass the same headcount cap as an invite or a promotion.
+            if (user.getRole() == UserRole.admin) {
+                adminCapPolicy.assertHasFreeSlot(null, null);
             }
         } else if (newStatus == UserStatus.cancelled) {
             if (user.getAccountState() != UserStatus.pending
@@ -470,19 +476,35 @@ public class UserService {
      *
      * <ul>
      *   <li>Any active admin may move an account between contributor and
-     *       moderator; only the Admin Owner may promote to admin or change an
-     *       existing admin's role.</li>
+     *       moderator, and may propose promoting a contributor/moderator to
+     *       admin — the target still has to confirm (see below), so this
+     *       carries no more unilateral risk than sending an admin invitation.
+     *       Only the Admin Owner may change an <em>existing</em> admin's role
+     *       (demotion).</li>
+     *   <li>Proposing a promotion does NOT apply the role change. It reserves
+     *       an Administrator slot and records
+     *       {@code adminPromotionRequestedBy}/{@code adminPromotionExpiresAt}
+     *       on the target (72h TTL). The role only becomes {@code admin} once
+     *       the target calls {@link #confirmAdminPromotion}; they may instead
+     *       {@link #declineAdminPromotion}, or the proposer can
+     *       {@link #cancelAdminPromotion} before either happens. Every demotion
+     *       and every contributor/moderator move, by contrast, still applies
+     *       immediately.</li>
      *   <li>{@code contributor} requires an active {@code institutionId}; the
      *       network-wide roles clear the institution.</li>
-     *   <li>Promotion to admin is blocked once the active-admin count reaches
-     *       {@code app.admins.max}.</li>
+     *   <li>Promoting to admin is blocked when
+     *       {@link AdminCapPolicy#assertHasFreeSlot} finds no free slot —
+     *       confirmed admins + pending admin invites + pending promotions
+     *       already at {@code app.admins.max}.</li>
      *   <li>The Admin Owner's own role cannot be changed here — transfer
      *       ownership first. Nobody can change their own role.</li>
      * </ul>
      *
-     * The account's tokens are invalidated (role and institution live in the
-     * JWT), so the person must sign in again. Historical submissions, media, and
-     * validation logs keep their original institution and authorship.
+     * For every transition applied immediately here (demotion, and
+     * contributor/moderator moves), the account's tokens are invalidated (role
+     * and institution live in the JWT), so the person must sign in again.
+     * Historical submissions, media, and validation logs keep their original
+     * institution and authorship.
      */
     @Transactional
     public UserDto changeRole(UUID userId, UserRole newRole, UUID institutionId, JwtUserDetails requester) {
@@ -497,8 +519,13 @@ public class UserService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         UserRole fromRole = target.getRole();
-        boolean touchesAdmin = fromRole == UserRole.admin || newRole == UserRole.admin;
-        if (touchesAdmin) {
+        // Only demoting/otherwise changing an EXISTING admin's role is Owner-only.
+        // Proposing a promotion to admin (fromRole != admin, newRole == admin) is
+        // open to any active admin, same as inviting a new admin — the target
+        // still has to confirm before anything takes effect, so this carries no
+        // more unilateral risk than sending an invitation.
+        boolean targetIsCurrentlyAdmin = fromRole == UserRole.admin;
+        if (targetIsCurrentlyAdmin) {
             requireActiveAdminOwner(requester);
         } else {
             requireActiveAdmin(requester);
@@ -515,11 +542,36 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only active accounts can be reassigned. Reactivate or re-invite the account first.");
         }
-        if (newRole == UserRole.admin
-                && userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active) >= maxAdmins) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Admin limit reached (" + maxAdmins
-                            + "). Remove or transfer an existing admin before promoting another.");
+        // Promotion to admin is NOT applied here — it is proposed. The target
+        // keeps their current role until they confirm (UC-1.1: "the promoted
+        // person must accept"). An Administrator slot is reserved immediately so
+        // the cap can never be exceeded by concurrent invites/promotions.
+        if (newRole == UserRole.admin) {
+            if (userRepository.hasLivePendingAdminPromotion(userId, Instant.now())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "This account already has an Administrator promotion awaiting confirmation.");
+            }
+            adminCapPolicy.assertHasFreeSlot(null, userId);
+
+            Instant expiresAt = Instant.now().plus(ADMIN_PROMOTION_TTL);
+            target.setAdminPromotionRequestedBy(requester != null ? requester.userId() : null);
+            target.setAdminPromotionExpiresAt(expiresAt);
+            User pending = userRepository.save(target);
+
+            auditLogService.record(
+                    findRequesterForAudit(requester),
+                    "ADMIN_PROMOTION_REQUESTED",
+                    null, null,
+                    pending.getId(),
+                    Map.of(
+                            "email", pending.getEmail(),
+                            "fromRole", fromRole.name(),
+                            "expiresAt", expiresAt.toString()));
+
+            eventPublisher.publishEvent(new com.dasigconnect.backend.event.AdminPromotionRequestedEvent(
+                    pending, requester != null ? requester.email() : null, expiresAt));
+
+            return UserDto.from(pending);
         }
 
         UUID fromInstitutionId = target.getInstitution() != null ? target.getInstitution().getId() : null;
@@ -573,6 +625,131 @@ public class UserService {
                 saved, fromRole, newRole, actorEmail));
 
         return UserDto.from(saved);
+    }
+
+    /**
+     * The invitee accepts a pending Administrator promotion (UC-1.1). Only the
+     * account itself may confirm its own promotion. Re-checks the cap, since
+     * slots may have filled up while the promotion sat pending; a lapsed
+     * promotion (past {@code adminPromotionExpiresAt}) is cleared and reported
+     * as expired rather than confirmed.
+     */
+    @Transactional
+    public UserDto confirmAdminPromotion(JwtUserDetails requester) {
+        User self = requireSelf(requester);
+
+        if (self.getAdminPromotionRequestedBy() == null || self.getAdminPromotionExpiresAt() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No pending Administrator promotion exists for this account.");
+        }
+        if (self.getAdminPromotionExpiresAt().isBefore(Instant.now())) {
+            clearAdminPromotion(self);
+            userRepository.save(self);
+            throw new ResponseStatusException(HttpStatus.GONE, "This Administrator promotion has expired.");
+        }
+        if (self.getAccountState() != UserStatus.active) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only an active account can confirm an Administrator promotion.");
+        }
+
+        // Exclude this account's own reserved slot — it is converting from
+        // "pending promotion" to "confirmed admin", net zero.
+        adminCapPolicy.assertHasFreeSlot(null, self.getId());
+
+        UserRole fromRole = self.getRole();
+        self.setRole(UserRole.admin);
+        self.setInstitution(null);
+        self.setAdminOwner(false);
+        clearAdminPromotion(self);
+        if (fromRole == UserRole.moderator) {
+            reviewLockRepository.deleteByLockedById(self.getId());
+        }
+
+        User saved = userRepository.save(self);
+        jwtService.invalidateUserTokens(saved.getId());
+
+        auditLogService.record(
+                saved,
+                "ADMIN_PROMOTION_CONFIRMED",
+                null, null,
+                saved.getId(),
+                Map.of("email", saved.getEmail(), "fromRole", fromRole.name()));
+
+        eventPublisher.publishEvent(new com.dasigconnect.backend.event.UserRoleChangedEvent(
+                saved, fromRole, UserRole.admin, saved.getEmail()));
+
+        return UserDto.from(saved);
+    }
+
+    /**
+     * The invitee declines a pending Administrator promotion. Releases the
+     * reserved slot immediately and notifies whoever proposed it.
+     */
+    @Transactional
+    public UserDto declineAdminPromotion(JwtUserDetails requester) {
+        User self = requireSelf(requester);
+
+        if (self.getAdminPromotionRequestedBy() == null || self.getAdminPromotionExpiresAt() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No pending Administrator promotion exists for this account.");
+        }
+
+        UUID requestedBy = self.getAdminPromotionRequestedBy();
+        clearAdminPromotion(self);
+        User saved = userRepository.save(self);
+
+        auditLogService.record(
+                saved,
+                "ADMIN_PROMOTION_DECLINED",
+                null, null,
+                saved.getId(),
+                Map.of("email", saved.getEmail()));
+
+        eventPublisher.publishEvent(
+                new com.dasigconnect.backend.event.AdminPromotionDeclinedEvent(saved, requestedBy));
+
+        return UserDto.from(saved);
+    }
+
+    /**
+     * The Admin Owner rescinds a pending Administrator promotion before the
+     * invitee has responded, freeing the reserved slot right away.
+     */
+    @Transactional
+    public UserDto cancelAdminPromotion(UUID userId, JwtUserDetails requester) {
+        requireActiveAdminOwner(requester);
+
+        User target = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        if (target.getAdminPromotionRequestedBy() == null || target.getAdminPromotionExpiresAt() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No pending Administrator promotion exists for this account.");
+        }
+
+        clearAdminPromotion(target);
+        User saved = userRepository.save(target);
+
+        auditLogService.record(
+                findRequesterForAudit(requester),
+                "ADMIN_PROMOTION_CANCELLED",
+                null, null,
+                saved.getId(),
+                Map.of("email", saved.getEmail()));
+
+        return UserDto.from(saved);
+    }
+
+    private void clearAdminPromotion(User user) {
+        user.setAdminPromotionRequestedBy(null);
+        user.setAdminPromotionExpiresAt(null);
+    }
+
+    private User requireSelf(JwtUserDetails requester) {
+        if (requester == null || requester.userId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required.");
+        }
+        return userRepository.findById(requester.userId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
     }
 
     /**
