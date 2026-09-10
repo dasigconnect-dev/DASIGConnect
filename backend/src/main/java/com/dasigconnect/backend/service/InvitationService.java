@@ -232,8 +232,11 @@ public class InvitationService {
         if (user.getAccountState() == UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "An active account already exists for this email");
         }
-        if ((user.getRole() == UserRole.moderator || user.getRole() == UserRole.admin)
-                && user.getAccountState() == UserStatus.inactive) {
+        // Deactivated is deactivated, regardless of role — a fresh invitation
+        // never bypasses Reactivation (A4). Previously this only checked
+        // moderator/admin, so re-inviting an inactive Contributor silently
+        // reset their row to pending instead of 409ing.
+        if (user.getAccountState() == UserStatus.inactive) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A deactivated account must be reactivated by an admin");
         }
