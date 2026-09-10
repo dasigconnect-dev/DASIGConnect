@@ -1480,3 +1480,31 @@
     justify-content: center;
   }
 }
+
+@media (max-width: 560px) {
+  .canva-bottom-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .canva-pill-segment {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .canva-segment-item {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  .canva-rail-btn {
+    width: 48px;
+    height: 48px;
+    font-size: 9.5px;
+  }
+
+  .canva-rail-btn i {
+    font-size: 17px;
+  }
+}

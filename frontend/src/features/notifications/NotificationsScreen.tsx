@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../styles/notifications.css";
+import "../../styles/institution-management.css";
 import "../../styles/dasig-loader.css";
 import { useNotifications } from "./hooks/useNotifications";
 import type { User } from "../../types/auth.types";

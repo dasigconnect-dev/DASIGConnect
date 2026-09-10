@@ -286,6 +286,7 @@
   background: var(--sub-surface, #ffffff);
   box-shadow: 0 1px 4px rgba(12, 29, 61, 0.04);
   width: 100%;
+  overflow: hidden;
 }
 .sub-registry-toolbar {
   display: flex;
@@ -295,13 +296,15 @@
   padding: 14px 20px;
   background: var(--sub-surface, #ffffff);
   border-radius: 12px;
+  flex-wrap: wrap;
 }
 .sub-status-tabs {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   flex-wrap: wrap;
+  min-width: 0;
 }
 .sub-status-tab {
   display: inline-flex;
@@ -373,8 +376,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  width: min(100%, 320px);
-  flex: 0 0 320px;
+  width: min(100%, 300px);
+  flex: 0 1 300px;
   margin-left: auto;
 }
 .sub-search-icon {
@@ -4481,19 +4484,74 @@ textarea.sub-finput {
   .fb-preview-large .fb-preview-empty-media {
     height: min(460px, 56vh);
   }
+  .sub-registry-toolbar {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+  .sub-search-wrap {
+    width: 100%;
+    flex: 1 1 100%;
+    max-width: 100%;
+    margin-left: 0;
+  }
 }
 
 @media (max-width: 768px) {
-  .sub-topnav {
-    height: auto;
-    min-height: var(--sub-nav-h);
-    align-items: flex-start;
+  .sub-list-page {
+    padding: 20px 16px 60px;
+  }
+  .sub-list-head {
     flex-direction: column;
-    padding: 10px 14px;
+    align-items: stretch;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .sub-list-title {
+    font-size: 24px;
+  }
+  .sub-list-subtitle {
+    font-size: 13px;
+  }
+  .sub-list-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+  .sub-list-new {
+    width: 100%;
+    min-height: 42px;
+    justify-content: center;
+  }
+  .sub-registry-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px 14px;
+  }
+  .sub-status-tabs {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    padding-bottom: 6px;
+  }
+  .sub-search-wrap {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+  }
+  .sub-list-results {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .sub-topnav {
+    height: 52px;
+    padding: 0 14px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
   }
   .sub-nav-right {
-    width: 100%;
-    justify-content: space-between;
+    gap: 8px;
   }
   .sub-workspace {
     grid-template-columns: 1fr;
@@ -4501,12 +4559,24 @@ textarea.sub-finput {
   .sub-sidebar {
     position: static;
     height: auto;
-    max-height: 360px;
+    max-height: none;
+    padding: 14px;
     border-right: none;
     border-bottom: 1px solid var(--sub-border);
   }
+  .sub-sidebar-template-list {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 10px;
+    padding-bottom: 6px;
+  }
+  .sub-sidebar-template-card {
+    min-width: 220px;
+    flex-shrink: 0;
+  }
   .sub-form-canvas {
-    padding: 22px 16px 60px;
+    padding: 18px 14px 60px;
   }
   .sub-form-page-head,
   .sub-form-page-actions,
@@ -4515,6 +4585,38 @@ textarea.sub-finput {
     grid-template-columns: 1fr;
     flex-direction: column;
     align-items: stretch;
+  }
+  .sub-form-page-actions {
+    gap: 8px;
+    width: 100%;
+  }
+  .sub-form-page-actions .sub-btn-ghost,
+  .sub-form-page-actions .sub-btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+  .sub-step-nav {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 4px;
+    border-radius: 999px;
+  }
+  .sub-step {
+    padding: 6px 10px;
+    justify-content: center;
+    gap: 6px;
+  }
+  .sub-step-circle {
+    width: 22px;
+    height: 22px;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+  .sub-step-text strong {
+    font-size: 11.5px;
+  }
+  .sub-step-text span {
+    display: none;
   }
   .sub-template-save-modal {
     padding: 24px 18px 18px;
@@ -4554,9 +4656,6 @@ textarea.sub-finput {
   .sub-btn-ghost,
   .sub-btn-primary {
     justify-content: center;
-  }
-  .sub-step-nav {
-    grid-template-columns: 1fr;
   }
   .sub-preview-stage-head,
   .sub-preview-footer {
@@ -4634,6 +4733,48 @@ textarea.sub-finput {
   }
   .fb-preview-modal-btn {
     width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .sub-list-page {
+    padding: 14px 12px 40px;
+  }
+  .sub-nav-chip {
+    display: none;
+  }
+  .sub-back-btn span {
+    font-size: 12.5px;
+  }
+  .sub-nav-save-status {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+  .sub-form-canvas {
+    padding: 14px 10px 48px;
+  }
+  .sub-step-nav {
+    padding: 3px;
+  }
+  .sub-step {
+    padding: 5px 6px;
+  }
+  .sub-step-circle {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+  }
+  .sub-step-text strong {
+    font-size: 10.5px;
+  }
+  .sub-fb-card-head {
+    padding: 10px 12px;
+  }
+  .sub-fb-card-content {
+    padding: 8px 12px;
+  }
+  .sub-fb-reactions-bar {
+    padding: 6px 12px;
   }
 }
 

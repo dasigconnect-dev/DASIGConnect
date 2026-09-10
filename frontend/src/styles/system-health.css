@@ -70,6 +70,12 @@
 
 @media (max-width: 768px) {
   .sys-strip-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .sys-strip-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -1074,6 +1080,57 @@
 @media (max-width: 768px) {
   .sys-main-tabs-wrapper {
     overflow-x: auto;
-    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    padding-bottom: 6px;
+    scrollbar-width: none;
+  }
+
+  .sys-main-tabs-wrapper::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sys-main-tabs {
+    flex-shrink: 0;
+  }
+
+  .sys-jobs-table,
+  .sys-token-table {
+    min-width: 580px;
+  }
+}
+
+@media (max-width: 600px) {
+  .dash-view-header.sys-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  .sys-toolbar {
+    width: 100%;
+  }
+
+  .sys-toolbar > * {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .sys-hires-donut-layout {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .sys-hires-fasttrack-layout {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+}
+
+@media (max-width: 420px) {
+  .sys-fallback-stats-grid {
+    grid-template-columns: 1fr;
   }
 }

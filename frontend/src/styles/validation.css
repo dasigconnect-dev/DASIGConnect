@@ -2360,18 +2360,27 @@
     min-height: calc(100vh - 56px);
     overflow: visible;
   }
-  .val-queue-panel,
+  .val-page.is-queue-collapsed {
+    grid-template-columns: 1fr;
+  }
+  .val-page.is-queue-collapsed .val-queue-panel {
+    display: none !important;
+  }
+  .val-queue-panel {
+    border-right: none;
+    border-bottom: 1px solid var(--val-border);
+    min-height: auto;
+  }
   .val-review-panel {
     min-height: auto;
   }
   .val-queue-list {
-    max-height: 360px;
+    max-height: min(42vh, 360px);
   }
   .val-scroll {
     padding: 18px 16px 120px;
   }
-  .val-review-header,
-  .val-action-bar {
+  .val-review-header {
     flex-direction: column;
     align-items: stretch;
   }
@@ -2384,6 +2393,213 @@
   }
   .val-action-bar {
     position: sticky;
+    bottom: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 18px;
+  }
+  .val-action-bar span {
+    flex-basis: auto;
+  }
+  .val-action-status {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .val-action-group {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 640px) {
+  .val-queue-header {
+    padding: 12px 14px 10px;
+  }
+  .val-title-row {
+    margin-bottom: 8px;
+  }
+  .val-title-row h1 {
+    font-size: 18px;
+  }
+  .val-tabs {
+    gap: 2px;
+    padding: 2px;
+  }
+  .val-tabs button {
+    padding: 5px 3px;
+    font-size: 11px;
+    gap: 3px;
+  }
+  .val-tabs span {
+    font-size: 10px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+  }
+  .val-queue-list {
+    max-height: min(36vh, 280px);
+    padding: 6px;
+  }
+  .val-queue-item {
+    padding: 10px 12px;
+    margin-bottom: 6px;
+  }
+  .val-qi-title {
+    font-size: 13px;
+  }
+  .val-scroll {
+    padding: 14px 12px 120px;
+  }
+  .val-review-header {
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .val-review-header h2 {
+    font-size: 21px;
+    line-height: 1.15;
+  }
+  .val-slot-card {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 12px;
+  }
+  .val-slot-card strong {
+    font-size: 15px;
+  }
+  .val-fb-header {
+    padding: 10px 12px 8px;
+    gap: 8px;
+  }
+  .val-fb-author {
+    gap: 8px;
+  }
+  .val-fb-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+  }
+  .val-fb-author-name strong {
+    font-size: 14px;
+  }
+  .val-fb-time-row {
+    font-size: 11px;
+    gap: 3px;
+  }
+  .val-fb-body {
+    padding: 4px 12px 10px;
+  }
+  .val-fb-text {
+    font-size: 13.5px;
+  }
+  .val-wm-toggle-btn {
+    padding: 3px 8px;
+    font-size: 10.5px;
+  }
+  .val-action-bar {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .val-action-hint {
+    font-size: 12px;
+    line-height: 1.35;
+    gap: 6px;
+  }
+  .val-action-hint i {
+    font-size: 15px;
+  }
+  .val-action-group {
+    width: 100%;
+    gap: 6px;
+  }
+  .val-action-group .val-btn {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 110px;
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .val-action-divider {
+    display: none;
+  }
+  .val-edit-tabs button {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  .val-edit-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .val-edit-field input,
+  .val-edit-field textarea,
+  .val-edit-field select {
+    font-size: 16px;
+  }
+  .val-edit-caption-tools {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+  .val-modal-overlay {
+    padding: 12px;
+  }
+  .val-modal {
+    width: 100%;
+    border-radius: 12px;
+    padding: 18px 14px;
+  }
+  .val-modal-actions {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+  .val-modal-actions button {
+    width: 100%;
+    min-height: 38px;
+  }
+  .val-history-modal {
+    max-height: 90vh;
+    border-radius: 12px;
+  }
+  .val-history-header {
+    padding: 12px 14px;
+  }
+  .val-history-body {
+    padding: 14px;
+    gap: 12px;
+  }
+  .val-history-meta-grid {
+    grid-template-columns: 1fr;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .val-libpick-backdrop {
+    padding: 10px;
+  }
+  .val-libpick {
+    height: min(94vh, 760px);
+    border-radius: 12px;
+  }
+  .val-libpick-head {
+    padding: 12px 14px;
+  }
+  .val-libpick-body .mlt-filters {
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 -10px 10px;
+    padding: 10px;
+  }
+  .val-libpick-body .mlt-search-wrap,
+  .val-libpick-body .dc-select.mlt-select {
+    width: 100%;
+    min-width: 100%;
+  }
+  .val-libpick-body .mag-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
   }
 }
 

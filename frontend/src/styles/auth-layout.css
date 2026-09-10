@@ -244,8 +244,7 @@
   }
 
   #screen-invite .split,
-  #screen-invite .panel-l,
-  #screen-invite .panel-r {
+  #screen-invite .panel-l {
     height: 100dvh;
     min-height: 0;
     overflow: hidden;
@@ -258,6 +257,10 @@
   #screen-invite .panel-r {
     align-items: center;
     padding: 24px 36px;
+    height: 100dvh;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   #screen-invite .form-card {
@@ -322,9 +325,16 @@
 }
 
 @media (max-width: 768px) {
+  .screen {
+    min-height: 100vh;
+    min-height: 100dvh;
+    height: auto;
+  }
   .split {
     flex-direction: column;
-    min-height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    height: auto;
   }
   .panel-l {
     width: 100%;
@@ -346,7 +356,6 @@
   .l-desc,
   .l-features,
   .l-members,
-  .l-orb,
   .brand-footer-part {
     display: none;
   }
@@ -355,19 +364,26 @@
     align-items: center;
     gap: 14px;
     height: auto;
+    width: 100%;
   }
   .dost-badge {
     display: none;
   }
   .panel-r {
-    padding: 28px 20px;
+    padding: 28px 20px 48px;
     align-items: flex-start;
+    width: 100%;
+    min-height: auto;
+    overflow-y: visible;
   }
   .form-card {
     max-width: 100%;
   }
   .form-title {
     font-size: 26px;
+  }
+  .finput {
+    font-size: 16px;
   }
   .pw-rules {
     grid-template-columns: 1fr;
@@ -376,17 +392,38 @@
     grid-template-columns: 1fr;
     gap: 0;
   }
+  .steps {
+    margin-bottom: 20px;
+  }
+  .step-label {
+    font-size: 10.5px;
+  }
 }
 
 @media (max-width: 420px) {
   .panel-l {
-    padding: 16px;
+    padding: 14px 16px;
+  }
+  .brand-icon {
+    width: 36px;
+    height: 36px;
+  }
+  .brand-name {
+    font-size: 18px;
   }
   .panel-r {
-    padding: 20px 16px;
+    padding: 20px 16px 40px;
   }
   .form-title {
     font-size: 22px;
+  }
+  .form-desc {
+    font-size: 13px;
+  }
+  .token-box {
+    padding: 10px 12px;
+    font-size: 12px;
+    word-break: break-all;
   }
 }
 
