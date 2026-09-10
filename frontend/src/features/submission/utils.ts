@@ -459,14 +459,14 @@ export function getReadinessChecklist(
   const scheduledDate = scheduledAt ? new Date(scheduledAt) : null;
   const futureSlot = !scheduledDate || scheduledDate > new Date();
   const publishWindow = !form.scheduledTime || isWithinPublishWindow(form.scheduledTime);
+  // A Standard post always needs a future scheduled slot. The guard-rail switch
+  // only relaxes the *rules* on that slot — off means any interval, any time of
+  // day (no ±30-min spacing, daily cap, lead time, or 8 AM–8 PM window).
   const slotReady = form.fastTrack
     ? true
-    : guardRailsEnforced
-      ? Boolean(scheduledAt) && futureSlot && publishWindow && !guardRails?.blocked
-      // Guard rails off: a preferred schedule is optional; a chosen one just
-      // can't be in the past. Publish-window and slot-conflict checks are
-      // skipped (the backend won't run them either).
-      : futureSlot;
+    : Boolean(scheduledAt)
+      && futureSlot
+      && (!guardRailsEnforced || (publishWindow && !guardRails?.blocked));
 
   const required: ReadinessCheck[] = [
     {
@@ -524,9 +524,7 @@ export function getReadinessChecklist(
         : guardRailsEnforced && guardRailsLoading
           ? "Checking selected slot..."
           : !scheduledAt
-            ? guardRailsEnforced
-              ? "Preferred date and time required"
-              : "Optional — guard rails are off"
+            ? "Preferred date and time required"
             : !futureSlot
               ? "Schedule can't be in the past"
               : guardRailsEnforced && !publishWindow
@@ -627,7 +625,7 @@ export function getPreviewValidation(
   if (!form.caption.trim()) missingItems.push("Write a caption.");
   if (form.files.length + form.savedAssets.length < 1) missingItems.push("Attach at least one media asset.");
   if (!form.albumName.trim()) missingItems.push("Assign an album.");
-  if (guardRailsEnforced && !form.fastTrack && !scheduledAt) missingItems.push("Choose a preferred schedule.");
+  if (!form.fastTrack && !scheduledAt) missingItems.push("Choose a preferred schedule.");
   if (scheduledAt && new Date(scheduledAt) <= new Date()) {
     missingItems.push("Schedule must be set in the future.");
   }
@@ -653,7 +651,7 @@ export function getPreviewValidation(
   if (!form.caption.trim()) blockingErrors.push("Caption is required.");
   if (form.files.length + form.savedAssets.length < 1) blockingErrors.push("At least one media attachment is required.");
   if (!form.albumName.trim()) blockingErrors.push("Album assignment is required.");
-  if (guardRailsEnforced && !form.fastTrack && !scheduledAt) blockingErrors.push("Preferred schedule is required.");
+  if (!form.fastTrack && !scheduledAt) blockingErrors.push("Preferred schedule is required.");
   if (scheduledAt && new Date(scheduledAt) <= new Date()) {
     blockingErrors.push("Preferred schedule must be set in the future.");
   }

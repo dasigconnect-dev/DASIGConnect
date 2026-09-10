@@ -291,6 +291,21 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void submit_withoutSchedule_returns400_evenWhenGuardRailsDisabled() {
+        // The guard-rail switch governs the rules on a scheduled time, not
+        // whether one is picked — a Standard post always needs a slot.
+        when(guardRailSettings.enforced()).thenReturn(false);
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, null);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+
+        assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
     void submit_blockedGuardRail_whenEnforcementDisabled_transitionsToPending() {
         when(guardRailSettings.enforced()).thenReturn(false);
         UUID submissionId = UUID.randomUUID();

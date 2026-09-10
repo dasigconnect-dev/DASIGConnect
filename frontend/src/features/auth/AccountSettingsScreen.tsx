@@ -1027,8 +1027,8 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                 />
                 <div className="settings-card-body">
                   <Toggle
-                    title="Require a scheduled slot"
-                    description="Off lets contributors submit without picking a time. Fast-Track is unaffected."
+                    title="Enforce guard rails"
+                    description="Off lets posts be scheduled at any interval and any time of day. A scheduled time is still required."
                     checked={guardrailsEnforced}
                     onChange={setGuardrailsEnforced}
                   />

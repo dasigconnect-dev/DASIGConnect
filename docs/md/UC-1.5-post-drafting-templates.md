@@ -29,7 +29,7 @@
 ### Step 3 — Organize & Schedule
 
 10. The actor organises media into an **album** and adds media tags (UC-1.7). On submit the backend reconciles the album — freshly uploaded assets are filed into the album resolved from the post's album name, **auto-creating one from the event title if none is set**; library picks keep their own album; all attached assets receive the post's media tags.
-11. The actor chooses **Set a Schedule** (default) with peak-hour suggestions (UC-1.8), or **Live Event Fast-Track**, which hides the scheduling fields. Guard-rail behaviour depends on the network switch (see below).
+11. The actor chooses **Set a Schedule** (default) with peak-hour suggestions (UC-1.8), or **Live Event Fast-Track**, which hides the scheduling fields. A Standard post always needs a future scheduled time; the network guard-rail switch only controls the *rules* on that time (see below).
 12. The actor may open a **Facebook-style preview** — a persistent centre-panel toggle available on any step, not just Step 3.
 13. The actor clicks **Submit** to send for approval (UC-1.9). Submit is disabled while any blocking readiness item is unmet; if only Recommended items remain, Submit is allowed after a non-blocking confirmation showing the readiness score (A7).
 
@@ -44,9 +44,9 @@ A right-panel checklist updates live, and produces a **readiness score out of 10
 - ≥1 media attachment
 - **File requirements** — every attached file within the size limit and an accepted format
 - Album assigned
-- **Schedule** — *conditional on the guard-rail switch:*
-  - **Guard rails ON:** a preferred slot that is in the future, within the 8:00 AM–8:00 PM publish window, and not blocked by a guard-rail conflict. (Fast-Track: no slot needed.)
-  - **Guard rails OFF:** a preferred slot is optional; if one is chosen it just can't be in the past. The publish-window and slot-conflict checks are skipped.
+- **Schedule** — a Standard post always needs a preferred slot that is in the future (Fast-Track needs none). The guard-rail switch only governs the *rules* on that slot:
+  - **Guard rails ON:** the slot must also fall within the 8:00 AM–8:00 PM publish window and not collide with a guard-rail conflict (±30-min spacing, ≤6 posts/day, ≥2h lead time).
+  - **Guard rails OFF:** any interval, any time of day — publish-window and slot-conflict checks are skipped. A future date is still required.
 
 **Recommended (non-blocking):**
 - Caption length within a comfortable range
@@ -57,7 +57,9 @@ A right-panel checklist updates live, and produces a **readiness score out of 10
 
 ## Scheduling Guard Rails (network-wide switch)
 
-Guard rails (±30-minute spacing, ≤6 posts/day network-wide, ≥2h lead time, 8:00 AM–8:00 PM publish window) govern the one shared DASIG publishing calendar. An Administrator toggles enforcement in **Settings → Page → Scheduling Guard Rails**; the switch is stored on the no-institution `page_settings` row and served to the composer via `GET /api/v1/submissions/lookups` (`guardrailsEnforced`). When **on**, a valid future in-window slot is required to submit a Standard post and `SlotReservationService` runs the full guard-rail check. When **off**, a preferred schedule and the publish window are non-blocking, and `SubmissionService.submit` / `SlotReservationService.reserve` skip guard-rail validation — a future date is still enforced if one is set, and Fast-Track is unaffected either way.
+Guard rails (±30-minute spacing, ≤6 posts/day network-wide, ≥2h lead time, 8:00 AM–8:00 PM publish window) govern the one shared DASIG publishing calendar. An Administrator toggles enforcement in **Settings → Page → Scheduling Guard Rails**; the switch is stored on the no-institution `page_settings` row and served to the composer via `GET /api/v1/submissions/lookups` (`guardrailsEnforced`).
+
+The switch governs the *rules* on a scheduled time, **not whether one is picked** — a Standard post always requires a future scheduled slot and always gets a `SlotReservation` (Fast-Track never does). When **on**, `SlotReservationService.reserve` / `SubmissionService.submit` additionally run `GuardRailService.validate` (spacing, daily cap, lead time) and the composer enforces the 8:00 AM–8:00 PM window. When **off**, that validation is skipped — posts may be scheduled at any interval, any time of day — while the "must be a future date" check still applies.
 
 ## Templates
 
@@ -94,5 +96,5 @@ _Verified against the running code as of 2026-09-10. Primary sources: `frontend/
 - Actors: added Moderator (the code gives moderators the full composer and Posting-As selector).
 - Removed the "event category" field from Step 2 — it isn't in the composer (decision: not needed).
 - Readiness checklist rewritten to the actual 7 Required / 5 Recommended items, plus the previously-undocumented score / grade / dial and clickable rows.
-- Schedule readiness/blocking is now explicitly tied to the network guard-rail switch (new this session): future-date always enforced; schedule-required and the 8:00 AM–8:00 PM window only when guard rails are on.
+- Schedule readiness/blocking is now explicitly tied to the network guard-rail switch (new this session): a future scheduled time is **always** required for a Standard post; only the ±30-min spacing / daily cap / lead time / 8:00 AM–8:00 PM window relax when the switch is off.
 - Documented what the prior draft omitted entirely: personal Save-as-Template + delete, built-in vs custom templates, autosave, withdraw (A9), the media/album reconciliation on submit, the per-field revision UI, and that reviewer remarks appear only on request-revision or reject.

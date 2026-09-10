@@ -442,7 +442,10 @@ public class SubmissionService {
 
         boolean fastTrack = submission.isFastTrack();
 
-        if (!fastTrack && guardRailSettings.enforced() && submission.getScheduledAt() == null) {
+        // A Standard post always needs a scheduled time — the guard-rail switch
+        // only governs the *rules* on that time (spacing, daily cap, lead time,
+        // publish window), not whether one is picked at all.
+        if (!fastTrack && submission.getScheduledAt() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A scheduled time must be selected before submitting.");
         }
