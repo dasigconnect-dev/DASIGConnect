@@ -561,13 +561,33 @@ class UserServiceTest {
     }
 
     @Test
-    void changeRole_peerAdminCannotPromoteToAdmin() {
+    void changeRole_peerAdminCanProposeAdminPromotion() {
+        // A peer (non-owner) admin may propose a promotion — the target still
+        // has to confirm, so this carries no more unilateral risk than sending
+        // an admin invitation. Only changing an EXISTING admin's role is
+        // Owner-only.
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
         when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
         when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        when(userRepository.save(target)).thenReturn(target);
 
-        assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.admin, null,
+        UserDto result = userService.changeRole(target.getId(), UserRole.admin, null,
+                principal(peerAdmin.getId(), "admin", null));
+
+        assertThat(result.getRole()).isEqualTo("moderator");
+        assertThat(result.isAdminPromotionPending()).isTrue();
+        assertThat(target.getAdminPromotionRequestedBy()).isEqualTo(peerAdmin.getId());
+    }
+
+    @Test
+    void changeRole_peerAdminCannotDemoteExistingAdmin() {
+        User target = user(UUID.randomUUID(), "other@dasigconnect.com", UserRole.admin, null);
+        User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+
+        assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.moderator, null,
                 principal(peerAdmin.getId(), "admin", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())

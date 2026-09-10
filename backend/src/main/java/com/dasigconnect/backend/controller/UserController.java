@@ -123,8 +123,9 @@ public class UserController {
     /**
      * PATCH /api/v1/users/{id}/role Promotes or demotes an account between
      * contributor, moderator, and admin. Admin-authenticated; the service layer
-     * refines this (peer admin for contributor/moderator, Admin Owner for
-     * anything touching an admin account).
+     * refines this — any active admin for contributor/moderator moves and for
+     * proposing a promotion to admin (which the target must still confirm),
+     * Admin Owner only for changing an existing admin's role.
      */
     @PatchMapping("/users/{id}/role")
     @PreAuthorize("hasRole('ADMIN')")

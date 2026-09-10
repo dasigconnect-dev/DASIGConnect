@@ -476,19 +476,35 @@ public class UserService {
      *
      * <ul>
      *   <li>Any active admin may move an account between contributor and
-     *       moderator; only the Admin Owner may promote to admin or change an
-     *       existing admin's role.</li>
+     *       moderator, and may propose promoting a contributor/moderator to
+     *       admin — the target still has to confirm (see below), so this
+     *       carries no more unilateral risk than sending an admin invitation.
+     *       Only the Admin Owner may change an <em>existing</em> admin's role
+     *       (demotion).</li>
+     *   <li>Proposing a promotion does NOT apply the role change. It reserves
+     *       an Administrator slot and records
+     *       {@code adminPromotionRequestedBy}/{@code adminPromotionExpiresAt}
+     *       on the target (72h TTL). The role only becomes {@code admin} once
+     *       the target calls {@link #confirmAdminPromotion}; they may instead
+     *       {@link #declineAdminPromotion}, or the proposer can
+     *       {@link #cancelAdminPromotion} before either happens. Every demotion
+     *       and every contributor/moderator move, by contrast, still applies
+     *       immediately.</li>
      *   <li>{@code contributor} requires an active {@code institutionId}; the
      *       network-wide roles clear the institution.</li>
-     *   <li>Promotion to admin is blocked once the active-admin count reaches
-     *       {@code app.admins.max}.</li>
+     *   <li>Promoting to admin is blocked when
+     *       {@link AdminCapPolicy#assertHasFreeSlot} finds no free slot —
+     *       confirmed admins + pending admin invites + pending promotions
+     *       already at {@code app.admins.max}.</li>
      *   <li>The Admin Owner's own role cannot be changed here — transfer
      *       ownership first. Nobody can change their own role.</li>
      * </ul>
      *
-     * The account's tokens are invalidated (role and institution live in the
-     * JWT), so the person must sign in again. Historical submissions, media, and
-     * validation logs keep their original institution and authorship.
+     * For every transition applied immediately here (demotion, and
+     * contributor/moderator moves), the account's tokens are invalidated (role
+     * and institution live in the JWT), so the person must sign in again.
+     * Historical submissions, media, and validation logs keep their original
+     * institution and authorship.
      */
     @Transactional
     public UserDto changeRole(UUID userId, UserRole newRole, UUID institutionId, JwtUserDetails requester) {
@@ -503,8 +519,13 @@ public class UserService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         UserRole fromRole = target.getRole();
-        boolean touchesAdmin = fromRole == UserRole.admin || newRole == UserRole.admin;
-        if (touchesAdmin) {
+        // Only demoting/otherwise changing an EXISTING admin's role is Owner-only.
+        // Proposing a promotion to admin (fromRole != admin, newRole == admin) is
+        // open to any active admin, same as inviting a new admin — the target
+        // still has to confirm before anything takes effect, so this carries no
+        // more unilateral risk than sending an invitation.
+        boolean targetIsCurrentlyAdmin = fromRole == UserRole.admin;
+        if (targetIsCurrentlyAdmin) {
             requireActiveAdminOwner(requester);
         } else {
             requireActiveAdmin(requester);
