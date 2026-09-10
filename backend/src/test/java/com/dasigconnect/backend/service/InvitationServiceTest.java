@@ -291,6 +291,27 @@ class InvitationServiceTest {
     }
 
     @Test
+    void createInvitation_deactivatedContributorEmail_throws409() {
+        // The inactive-reinvite guard used to only check moderator/admin roles —
+        // re-inviting a deactivated Contributor silently reset them to pending
+        // instead of 409ing. Reactivation (A4) must be the only path back.
+        User existingContributor = new User();
+        existingContributor.setEmail("jane@example.com");
+        existingContributor.setRole(UserRole.contributor);
+        existingContributor.setAccountState(UserStatus.inactive);
+        when(userRepository.findByEmail("jane@example.com")).thenReturn(Optional.of(existingContributor));
+        when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
+
+        CreateInvitationRequestDto dto = new CreateInvitationRequestDto(
+                "jane@example.com", institutionId, UserRole.contributor);
+
+        assertThatThrownBy(() -> invitationService.createInvitation(dto, adminPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(409);
+    }
+
+    @Test
     void createInvitation_validatorForPendingInstitution_doesNotTransitionAgain() {
         institution.setStatus(InstitutionStatus.pending);
         when(entityManager.find(Institution.class, institutionId)).thenReturn(institution);
