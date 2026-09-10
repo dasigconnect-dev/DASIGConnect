@@ -125,8 +125,15 @@ export default function ChangeRoleModal({
           <div className="im-reassign-notice">
             <i className="ti ti-info-circle" aria-hidden="true"></i>
             <span>
-              This person will be signed out and must sign in again.
-              {currentRole === 'admin' && ' They will lose network-admin access.'}
+              {role === 'admin' ? (
+                'This proposes Administrator access — nothing changes until they confirm. '
+                + 'They keep their current role and access until then, and can decline instead.'
+              ) : (
+                <>
+                  This person will be signed out and must sign in again.
+                  {currentRole === 'admin' && ' They will lose network-admin access.'}
+                </>
+              )}
             </span>
           </div>
 
@@ -150,8 +157,10 @@ export default function ChangeRoleModal({
               {busy ? (
                 <>
                   <i className="ti ti-loader-2 im-spin" aria-hidden="true"></i>
-                  Applying...
+                  {role === 'admin' ? 'Sending...' : 'Applying...'}
                 </>
+              ) : role === 'admin' ? (
+                'Send promotion request'
               ) : (
                 'Change role'
               )}

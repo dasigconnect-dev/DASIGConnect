@@ -208,6 +208,42 @@ public class UserController {
     }
 
     /**
+     * POST /api/v1/users/promotion/confirm A Contributor or Moderator accepts
+     * their own pending Administrator promotion (UC-1.1). Any authenticated
+     * account may call this — the service verifies a pending promotion actually
+     * exists for the caller.
+     */
+    @PostMapping("/users/promotion/confirm")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<UserDto>> confirmAdminPromotion(
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.confirmAdminPromotion(user)));
+    }
+
+    /**
+     * POST /api/v1/users/promotion/decline Declines a pending Administrator
+     * promotion, releasing the reserved slot immediately.
+     */
+    @PostMapping("/users/promotion/decline")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<UserDto>> declineAdminPromotion(
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.declineAdminPromotion(user)));
+    }
+
+    /**
+     * DELETE /api/v1/users/{id}/promotion Admin-Owner-only: rescinds a pending
+     * Administrator promotion before the invitee has responded.
+     */
+    @DeleteMapping("/users/{id}/promotion")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<UserDto>> cancelAdminPromotion(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.cancelAdminPromotion(id, user)));
+    }
+
+    /**
      * GET /api/v1/users/counts?institutionId={uuid} Returns contributor and
      * validator counts for an institution. Used by dashboard summary tiles.
      */

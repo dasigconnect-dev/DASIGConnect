@@ -347,6 +347,7 @@ public class AuditLogService {
             case ACCOUNT_MANAGEMENT -> {
                 actions.addAll(List.of("USER_STATUS_UPDATED", "USER_AVATAR_UPDATED", "USER_ROLE_CHANGED", "USER_REMOVED", "USER_DELETED", "USER_ANONYMIZED",
                         "SUPER_ADMIN_TRANSFERRED", "ADMIN_OWNER_TRANSFERRED", "ADMIN_TRANSFER_REQUESTED", "ADMIN_OWNER_TRANSFER_REQUESTED", "ADMIN_TRANSFER_CONFIRMED",
+                        "ADMIN_PROMOTION_REQUESTED", "ADMIN_PROMOTION_CONFIRMED", "ADMIN_PROMOTION_DECLINED", "ADMIN_PROMOTION_CANCELLED",
                         "CONTRIBUTOR_REASSIGNED", "INVITATION_SENT", "INVITATION_ACCEPTED", "INVITATION_REVOKED",
                         "PASSWORD_RESET", "PASSWORD_CHANGED", "LOGIN_SUCCESS", "LOGIN_FAILED", "LOGOUT"));
             }
@@ -530,6 +531,10 @@ public class AuditLogService {
             case "INVITATION_REVOKED" -> "Invitation cancelled";
             case "ADMIN_TRANSFER_REQUESTED", "ADMIN_OWNER_TRANSFER_REQUESTED" -> "Admin ownership transfer requested";
             case "ADMIN_TRANSFER_CONFIRMED", "ADMIN_OWNER_TRANSFERRED", "SUPER_ADMIN_TRANSFERRED" -> "Admin ownership transferred";
+            case "ADMIN_PROMOTION_REQUESTED" -> "Administrator promotion proposed";
+            case "ADMIN_PROMOTION_CONFIRMED" -> "Administrator promotion confirmed";
+            case "ADMIN_PROMOTION_DECLINED" -> "Administrator promotion declined";
+            case "ADMIN_PROMOTION_CANCELLED" -> "Administrator promotion rescinded";
             // ── Institutions ──
             case "INSTITUTION_CREATED" -> "Institution added";
             case "INSTITUTION_UPDATED" -> "Institution details changed";
@@ -690,6 +695,11 @@ public class AuditLogService {
             case "ADMIN_TRANSFER_REQUESTED", "ADMIN_OWNER_TRANSFER_REQUESTED",
                  "ADMIN_TRANSFER_CONFIRMED", "ADMIN_OWNER_TRANSFERRED", "SUPER_ADMIN_TRANSFERRED" ->
                     formatActionLabel(action) + (m.get("toEmail") != null ? " to " + m.get("toEmail") : "");
+            case "ADMIN_PROMOTION_REQUESTED" -> "Proposed " + userLabel(m, what) + " as Administrator"
+                    + (m.get("fromRole") != null ? " (currently " + m.get("fromRole") + ")" : "");
+            case "ADMIN_PROMOTION_CONFIRMED" -> userLabel(m, what) + " accepted the Administrator promotion";
+            case "ADMIN_PROMOTION_DECLINED" -> userLabel(m, what) + " declined the Administrator promotion";
+            case "ADMIN_PROMOTION_CANCELLED" -> "Rescinded the Administrator promotion offered to " + userLabel(m, what);
             case "CONTRIBUTOR_REASSIGNED" -> "Moved " + userLabel(m, what) + " from "
                     + firstNonBlank(m.get("fromInstitutionName"), "their institution") + " to "
                     + firstNonBlank(m.get("toInstitutionName"), "another institution");

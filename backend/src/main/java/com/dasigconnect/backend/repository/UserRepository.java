@@ -36,6 +36,24 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     /** Network-wide count for a role in a given account state (e.g. active admins). */
     long countByRoleAndAccountState(UserRole role, UserStatus accountState);
 
+    /** Live pending Administrator promotions — counts toward the 3-admin cap. */
+    @Query("""
+            select count(u)
+            from User u
+            where u.adminPromotionRequestedBy is not null
+              and u.adminPromotionExpiresAt > :now
+            """)
+    long countLivePendingAdminPromotions(@Param("now") java.time.Instant now);
+
+    @Query("""
+            select (count(u) > 0)
+            from User u
+            where u.id = :id
+              and u.adminPromotionRequestedBy is not null
+              and u.adminPromotionExpiresAt > :now
+            """)
+    boolean hasLivePendingAdminPromotion(@Param("id") UUID id, @Param("now") java.time.Instant now);
+
     /**
      * A3: check if institution has any active moderators before reactivating
      */
