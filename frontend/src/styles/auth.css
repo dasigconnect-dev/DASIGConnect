@@ -662,6 +662,38 @@ body {
   background: rgba(34, 197, 94, 0.08);
 }
 
+/* UC-1.1 — pending Administrator promotion. Static (not fixed) so it stacks
+   above the dashboard shell without overlapping #session-banner. */
+#admin-promotion-banner {
+  position: relative;
+  z-index: 850;
+  background: #1a2a4a;
+  border-bottom: 1px solid rgba(96, 165, 250, 0.25);
+  padding: 11px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+#admin-promotion-banner .banner-msg {
+  color: #93c5fd;
+}
+#admin-promotion-banner .banner-msg i {
+  color: #60a5fa;
+}
+#admin-promotion-banner .banner-btn-stay {
+  background: #60a5fa;
+  color: #0b1929;
+}
+#admin-promotion-banner .banner-btn-dismiss {
+  color: #93c5fd;
+  border: 1px solid rgba(96, 165, 250, 0.3) !important;
+}
+#admin-promotion-banner .banner-btn-dismiss:hover {
+  background: rgba(96, 165, 250, 0.08);
+}
+
 #session-modal {
   position: fixed;
   inset: 0;

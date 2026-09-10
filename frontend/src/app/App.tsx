@@ -20,6 +20,7 @@ import {
 import type { LoginResponse, UserProfileResponse } from "../api/authApi";
 import type { User } from "../types/auth.types";
 import DashboardLayout from "../components/layout/DashboardLayout";
+import AdminPromotionBanner from "../components/layout/AdminPromotionBanner";
 import SessionModal from "../components/modals/SessionModal";
 import Toast from "../components/common/Toast";
 import LoginSplash from "../components/common/LoginSplash";
@@ -762,17 +763,20 @@ function App() {
         <Route
           element={
             currentUser ? (
-              <DashboardLayout
-                user={currentUser}
-                showBanner={bannerRemaining > 0}
-                bannerTime={bannerTime}
-                showDropdown={showDropdown}
-                onToggleDropdown={() => setShowDropdown(!showDropdown)}
-                onDismissBanner={dismissSessionBanner}
-                onStayLoggedIn={handleStayLoggedIn}
-                onLogout={() => void handleLogout()}
-                logoutLoading={logoutLoading}
-              />
+              <>
+                <AdminPromotionBanner />
+                <DashboardLayout
+                  user={currentUser}
+                  showBanner={bannerRemaining > 0}
+                  bannerTime={bannerTime}
+                  showDropdown={showDropdown}
+                  onToggleDropdown={() => setShowDropdown(!showDropdown)}
+                  onDismissBanner={dismissSessionBanner}
+                  onStayLoggedIn={handleStayLoggedIn}
+                  onLogout={() => void handleLogout()}
+                  logoutLoading={logoutLoading}
+                />
+              </>
             ) : (
               <Navigate to="/login" replace />
             )

@@ -25,5 +25,7 @@ public enum NotificationEventType {
     fast_track_submission,
     embedding_failure_digest,
     user_role_changed,
+    admin_promotion_requested,
+    admin_promotion_declined,
     generic
 }

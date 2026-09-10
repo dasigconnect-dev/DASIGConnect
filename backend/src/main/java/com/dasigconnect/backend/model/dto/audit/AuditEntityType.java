@@ -40,6 +40,7 @@ public enum AuditEntityType {
             return MEDIA_ASSET;
         }
         if (a.startsWith("USER_") || a.contains("SUPER_ADMIN") || a.contains("ADMIN_TRANSFER") || a.contains("ADMIN_OWNER")
+                || a.contains("ADMIN_PROMOTION")
                 || a.startsWith("CONTRIBUTOR_") || a.contains("INVITATION") || a.contains("PASSWORD")
                 || a.startsWith("LOGIN_") || a.equals("LOGOUT") || a.contains("ACCOUNT_LOCKED")) {
             return USER;

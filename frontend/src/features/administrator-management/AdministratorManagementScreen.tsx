@@ -404,7 +404,11 @@ export default function AdminManagementScreen({
     setRoleError('')
     try {
       await changeUserRole(roleUser.id, role, institutionId)
-      toast.success(`${getUserDisplayName(roleUser)} is now a ${role}.`)
+      if (role === 'admin') {
+        toast.success(`Administrator promotion sent to ${getUserDisplayName(roleUser)} — awaiting their confirmation.`)
+      } else {
+        toast.success(`${getUserDisplayName(roleUser)} is now a ${role}.`)
+      }
       await invalidateAdministratorManagementData()
       setRoleUser(null)
     } catch (err: unknown) {

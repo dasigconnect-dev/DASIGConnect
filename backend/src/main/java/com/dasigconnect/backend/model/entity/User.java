@@ -67,6 +67,18 @@ public class User {
     @Column(name = "super_admin_transfer_expires_at")
     private Instant superAdminTransferExpiresAt;
 
+    /**
+     * Set while an Admin Owner has proposed promoting this (contributor /
+     * moderator) account to admin and the account has not yet confirmed. The
+     * role is not changed until confirmation. Cleared on confirm, decline,
+     * admin rescind, or (lazily) expiry.
+     */
+    @Column(name = "admin_promotion_requested_by")
+    private UUID adminPromotionRequestedBy;
+
+    @Column(name = "admin_promotion_expires_at")
+    private Instant adminPromotionExpiresAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -202,6 +214,22 @@ public class User {
 
     public void setSuperAdminTransferExpiresAt(Instant superAdminTransferExpiresAt) {
         this.superAdminTransferExpiresAt = superAdminTransferExpiresAt;
+    }
+
+    public UUID getAdminPromotionRequestedBy() {
+        return adminPromotionRequestedBy;
+    }
+
+    public void setAdminPromotionRequestedBy(UUID adminPromotionRequestedBy) {
+        this.adminPromotionRequestedBy = adminPromotionRequestedBy;
+    }
+
+    public Instant getAdminPromotionExpiresAt() {
+        return adminPromotionExpiresAt;
+    }
+
+    public void setAdminPromotionExpiresAt(Instant adminPromotionExpiresAt) {
+        this.adminPromotionExpiresAt = adminPromotionExpiresAt;
     }
 
     public Instant getCreatedAt() {

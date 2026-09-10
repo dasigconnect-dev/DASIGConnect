@@ -53,6 +53,11 @@ export interface UserProfileResponse {
   adminOwner: boolean;
   superAdminTransferRequestedBy: string | null;
   superAdminTransferExpiresAt: string | null;
+  /** Set while an Admin Owner has proposed promoting this account to Administrator (UC-1.1). */
+  adminPromotionRequestedBy?: string | null;
+  adminPromotionExpiresAt?: string | null;
+  /** True when adminPromotionRequestedBy/ExpiresAt describe a still-live (unexpired) promotion. */
+  adminPromotionPending?: boolean;
   institutionId: string | null;
   institutionName: string | null;
   createdAt: string;
@@ -380,6 +385,21 @@ export function requestAdminTransfer(id: string) {
 
 export function confirmAdminTransfer() {
   return api.post<UserProfileResponse>("/users/admin-transfer/confirm");
+}
+
+/** The invitee accepts their own pending Administrator promotion (UC-1.1). */
+export function confirmAdminPromotion() {
+  return api.post<UserProfileResponse>("/users/promotion/confirm");
+}
+
+/** The invitee declines their own pending Administrator promotion, freeing the reserved slot. */
+export function declineAdminPromotion() {
+  return api.post<UserProfileResponse>("/users/promotion/decline");
+}
+
+/** Admin-Owner-only: rescinds a pending Administrator promotion before the invitee has responded. */
+export function cancelAdminPromotion(userId: string) {
+  return api.delete<UserProfileResponse>(`/users/${userId}/promotion`);
 }
 
 export interface InvitationResponse {

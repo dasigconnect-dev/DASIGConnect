@@ -123,8 +123,9 @@ public class UserController {
     /**
      * PATCH /api/v1/users/{id}/role Promotes or demotes an account between
      * contributor, moderator, and admin. Admin-authenticated; the service layer
-     * refines this (peer admin for contributor/moderator, Admin Owner for
-     * anything touching an admin account).
+     * refines this — any active admin for contributor/moderator moves and for
+     * proposing a promotion to admin (which the target must still confirm),
+     * Admin Owner only for changing an existing admin's role.
      */
     @PatchMapping("/users/{id}/role")
     @PreAuthorize("hasRole('ADMIN')")
@@ -205,6 +206,42 @@ public class UserController {
     public ResponseEntity<ApiResponse<UserDto>> confirmAdminTransfer(
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(userService.confirmAdminTransfer(user)));
+    }
+
+    /**
+     * POST /api/v1/users/promotion/confirm A Contributor or Moderator accepts
+     * their own pending Administrator promotion (UC-1.1). Any authenticated
+     * account may call this — the service verifies a pending promotion actually
+     * exists for the caller.
+     */
+    @PostMapping("/users/promotion/confirm")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<UserDto>> confirmAdminPromotion(
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.confirmAdminPromotion(user)));
+    }
+
+    /**
+     * POST /api/v1/users/promotion/decline Declines a pending Administrator
+     * promotion, releasing the reserved slot immediately.
+     */
+    @PostMapping("/users/promotion/decline")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<UserDto>> declineAdminPromotion(
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.declineAdminPromotion(user)));
+    }
+
+    /**
+     * DELETE /api/v1/users/{id}/promotion Admin-Owner-only: rescinds a pending
+     * Administrator promotion before the invitee has responded.
+     */
+    @DeleteMapping("/users/{id}/promotion")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<UserDto>> cancelAdminPromotion(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.cancelAdminPromotion(id, user)));
     }
 
     /**

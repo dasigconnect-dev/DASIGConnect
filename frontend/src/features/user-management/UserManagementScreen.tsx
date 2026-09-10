@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Navigate } from 'react-router-dom'
 import {
+  cancelAdminPromotion,
   cancelInvitationByUser,
   changeUserRole,
   deleteUser,
@@ -306,6 +307,32 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     }
   }
 
+  function handleCancelAdminPromotion(managedUser: UserProfileResponse) {
+    setConfirmDialog({
+      title: 'Cancel Promotion',
+      message: `Rescind the Administrator promotion offered to ${getUserDisplayName(managedUser)}? They keep their current role and access.`,
+      confirmLabel: 'Cancel promotion',
+      dangerous: true,
+      onConfirm: () => {
+        setConfirmDialog(null)
+        void executeCancelAdminPromotion(managedUser)
+      },
+    })
+  }
+
+  async function executeCancelAdminPromotion(managedUser: UserProfileResponse) {
+    setUpdatingUserId(managedUser.id)
+    try {
+      await cancelAdminPromotion(managedUser.id)
+      toast.success('Administrator promotion cancelled.')
+      await invalidateUserManagementData()
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Unable to cancel the promotion.'))
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
   function handleCancelInvitationFromUsers(managedUser: UserProfileResponse) {
     setConfirmDialog({
       title: 'Cancel Invitation',
@@ -426,7 +453,11 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
     setRoleError('')
     try {
       await changeUserRole(roleUser.id, role, institutionId)
-      toast.success(`${getUserDisplayName(roleUser)} is now a ${role}.`)
+      if (role === 'admin') {
+        toast.success(`Administrator promotion sent to ${getUserDisplayName(roleUser)} — awaiting their confirmation.`)
+      } else {
+        toast.success(`${getUserDisplayName(roleUser)} is now a ${role}.`)
+      }
       await invalidateUserManagementData()
       setRoleUser(null)
     } catch (err: unknown) {
@@ -511,6 +542,7 @@ export default function UserManagementScreen({ user }: UserManagementScreenProps
           onReassign={handleOpenReassign}
           onChangeRole={handleOpenChangeRole}
           onEraseData={isOwner ? handleEraseData : undefined}
+          onCancelAdminPromotion={isOwner ? handleCancelAdminPromotion : undefined}
           showRoleControls
           showInstitutionColumn
           title="All Users"
