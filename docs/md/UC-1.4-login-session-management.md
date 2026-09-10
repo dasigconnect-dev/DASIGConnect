@@ -33,17 +33,18 @@
 
 The actor holds a valid authenticated session scoped to their role and institution (Contributors) or network-wide (Moderators, Admins), or the requested settings/session action has completed. Admin-only surfaces remain unavailable to Moderators and Contributors; Messenger linking remains unavailable to Contributors.
 
-## Known Implementation Risk
+## Session Revocation — Persistence
 
-**Token blacklisting and `session_version` revocation checks (logout, password reset, deactivation, role change, erasure — everywhere a session is supposed to end) are held in in-process `ConcurrentHashMap`s (`JWTService.blacklistedTokens`, `userTokensRevokedAt`), not a database or shared cache.** Two consequences, both currently true of this deployment:
-- **A backend restart silently un-revokes every session.** A token blacklisted by logout, or a user whose `session_version` was bumped by a password reset/deactivation/erasure/role change, becomes valid again after a restart — up to its original 8-hour expiry — because the revocation record that would reject it no longer exists.
-- **A second backend instance would not see the first instance's revocations.** Harmless today (single Render instance) but would silently break every "revoke all sessions" guarantee in UC-1.1/1.3/1.4/1.10 the moment the deployment scales horizontally.
+Both revocation paths are DB-backed (Postgres), so they survive a backend restart and are visible across instances:
 
-Not a doc inaccuracy — the alternative flows above correctly describe what revocation is *supposed* to do — but every "invalidates all sessions" claim in this and the other account-management UCs is contingent on the backend process never restarting and never running more than one instance. Worth a persisted (DB- or Redis-backed) revocation store before this is relied on operationally.
+- **Single-token logout (A10):** `JWTService.invalidateToken` writes a row to `revoked_tokens` (SHA-256 hash of the raw JWT, never the token; migration `V88`); `JWTService.isBlacklisted` is an indexed point lookup on every validation. `RevokedTokenCleanupJob` deletes rows past their JWT's expiry hourly.
+- **Account-wide revocation (A5, plus deactivation / role change / erasure / owner transfer):** `JWTService.invalidateUserTokens` increments `users.session_version`; `JWTService.extractClaims` rejects any token whose baked-in `session_version` claim no longer matches the DB, or whose account is not `active`. This check now lives in `JWTService` itself (not just the HTTP filter), so it applies to every caller.
+
+*(Historical note: before 2026-09-10 both of these were held in in-process `ConcurrentHashMap`s, so a restart re-admitted every logged-out / deactivated / reset token up to its 8-hour expiry, and a second instance saw none of another's revocations. That is fixed.)*
 
 ---
 
-_Verified against the running code as of 2026-09-10. Primary sources: `AuthController`/`AuthService` (`login`, `logout`, `refresh`), `JWTService` (`generateAccessToken`, `invalidateToken`, `invalidateUserTokens`), `PasswordService` (`resetPassword`, `changePassword`), `PasswordPolicy`, `AccountLockoutService`, `MessengerConnectionController`/`MessengerConnectionService`/`MessengerWebhookController`, `frontend/src/app/App.tsx` (`ProtectedRoute` role gates, session countdown/modal logic), `AccountSettingsScreen.tsx` (`canManagePage`, `canUseMessenger`)._
+_Verified against the running code as of 2026-09-10. Primary sources: `AuthController`/`AuthService` (`login`, `logout`, `refresh`), `JWTService` (`generateAccessToken`, `invalidateToken`, `invalidateUserTokens`, `extractClaims`), `JwtAuthenticationFilter`, `RevokedToken`/`RevokedTokenRepository`/`RevokedTokenCleanupJob`, migration `V88__revoked_tokens.sql`, `PasswordService` (`resetPassword`, `changePassword`), `PasswordPolicy`, `AccountLockoutService`, `MessengerConnectionController`/`MessengerConnectionService`/`MessengerWebhookController`, `frontend/src/app/App.tsx` (`ProtectedRoute` role gates, session countdown/modal logic), `AccountSettingsScreen.tsx` (`canManagePage`, `canUseMessenger`)._
 
 **Corrections from the prior draft of this UC, found this session:**
 - Step 3's "Contributors and Moderators receive institution-scoped sessions" was wrong for Moderators — they've been network-wide (institutionless) since the 2026-08-29 role-model change, same as Admins.
@@ -55,4 +56,5 @@ _Verified against the running code as of 2026-09-10. Primary sources: `AuthContr
 - Concrete numbers: 8-hour JWT TTL, 5-attempt/15-minute lockout, the full password policy.
 - A7 didn't mention the proactive countdown banner stage, and implied a token refresh where the actual mechanism is full re-login — plus the unused `/auth/refresh` endpoint.
 - A10 (Logout) didn't exist as a flow at all, despite `/auth/logout` being a distinct, narrower revocation mechanism (single token) than A5's account-wide revocation.
-- The in-memory-only session-revocation storage risk above.
+
+**Also fixed in code this session:** session revocation was in-process-only (lost on restart, per-instance) — now persisted to Postgres (`revoked_tokens` table + `users.session_version`), see the Session Revocation section above.
