@@ -108,6 +108,12 @@ the private Supabase bucket.
 
 current branch: uc-2.1-library-albums
 
+> ### 2026-09-10 — `docs/uc-account-management-consolidation`: living UC markdown files for account management
+>
+> - **Why:** `docs/md/UC-1.1-administrator-account-management.md` existed but was badly stale (still said "Super Administrator"/"Validator", migration V28, endpoints like `/super-administrator-transfer` that no longer exist) and was the only UC file in the repo despite `uc-1.2`/`uc-1.3`/etc. branches in history. It was written once for the original PR and carried PR-specific sections (Backend Coverage/Verification/PR Notes) that don't scale to a living reference.
+> - **Rewrote UC-1.1 and added `UC-1.2-institution-management.md`, `UC-1.3-contributor-account-management.md`, `UC-1.10-moderator-account-management.md`** under `docs/md/` — the account-management use cases reconciled line-by-line against the code across this and the prior two dated entries below. Dropped the PR-specific sections in favor of a single "Verified against the running code as of `<date>`" footer naming primary source files and any known open gaps.
+> - **Two content decisions folded in:** UC-1.2 Main Flow step 5 no longer claims the protected default institution is excluded from Contributor assignment (was unenforced in code; decided to leave it open); UC-1.2 A8 gained the protected-institution deletion blocker to match the code fix from the entry below.
+> - **Going forward:** these four files are the living reference for UC-1.1/1.2/1.3/1.10 — keep them in sync alongside this dev-log whenever a session changes code that touches account management, same standing practice as the CLAUDE.md updates themselves.
 > ### 2026-09-10 — `fix/reinvite-inactive-contributor-conflict`: UC-1.3 reconciliation
 >
 > - **Context:** continuing the same UC-driven pass, comparing UC-1.3 (Contributor Account Management) against the code. Confirmed two behaviors already worked as specified with no change needed: promotion to admin requires the target's confirmation regardless of whether they start as Contributor or Moderator (`changeRole`'s pending-promotion branch is unconditional on `fromRole`), and promotion to Moderator plus every demotion apply immediately and fire `UserRoleChangedEvent` (in-app notification) either way.
