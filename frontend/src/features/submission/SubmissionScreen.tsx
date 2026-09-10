@@ -2494,7 +2494,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                         onPreviewStateChange={setFancyTextPreviewActive}
                       />
                     </Suspense>
-                    {canUseAiCaption && !form.fastTrack && (
+                    {canUseAiCaption && (
                       <AiCaptionButton
                         state={aiCaption.state}
                         canSuggest={aiCaption.canSuggest}
@@ -2527,7 +2527,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   {Array.from(form.caption).length} / {CAPTION_WORD_LIMIT} characters
                 </span>
               </div>
-              {canUseAiCaption && !form.fastTrack && aiCaption.variants && (
+              {canUseAiCaption && aiCaption.variants && (
                 <Suspense fallback={<DeferredSubmissionPanelFallback />}>
                   <AiCaptionSuggestion
                     variants={aiCaption.variants}
@@ -2545,7 +2545,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               <div className="sub-finput-hint">
                 Captions can contain up to {CAPTION_WORD_LIMIT} characters. Include relevant tags.
               </div>
-              {canUseAiCaption && !form.fastTrack && captionPromptOpen && (
+              {canUseAiCaption && captionPromptOpen && (
                 <Suspense fallback={null}>
                   <AiCaptionPromptDialog
                     open={captionPromptOpen}

@@ -6,7 +6,7 @@
 
 **Actor(s):** Contributor, Administrator, Moderator — all three use the same composer. The AI caption endpoint is `hasAnyRole('CONTRIBUTOR','MODERATOR','ADMIN')`; a Moderator without an institution scope may generate captions for any institution's submission.
 
-**Precondition(s):** The actor is in an active composer session (UC-1.5) **on a saved draft** — the "Suggest Caption" control is not rendered until the draft has an id, and the backend rejects a caption request without a real `submissionId`. Fancy Text works on any editable draft. Neither tool is available on a read-only submission (rejected / published / etc.), and **AI caption is also hidden while the composer is in Live Event Fast-Track mode** (a frontend-only gate — the backend does not block it; see note at the end).
+**Precondition(s):** The actor is in an active composer session (UC-1.5) **on a saved draft** — the "Suggest Caption" control is not rendered until the draft has an id, and the backend rejects a caption request without a real `submissionId`. Fancy Text works on any editable draft. Both tools are available in Live Event Fast-Track mode. Neither is available on a read-only submission (rejected / published / etc.).
 
 ## Main Flow — AI Caption Generation
 
@@ -50,13 +50,11 @@ _Verified against the running code as of 2026-09-11. Primary sources: `CaptionCo
 
 **Corrections from the prior draft of this UC:**
 - Actors: added Moderator.
-- Precondition: the draft must be **saved** before "Suggest Caption" appears; AI caption is also hidden in Fast-Track mode and on read-only submissions.
+- Precondition: the draft must be **saved** before "Suggest Caption" appears; both tools are hidden only on read-only submissions. (The earlier Fast-Track exclusion on AI caption was removed this session — it was a frontend-only gate with no rationale, and the backend never enforced it.)
 - Main Flow: the system returns **one** caption per request (selected tone), not "1–3 variants". Added the concrete tone set, the 30/hour rate limit, the requested-word-count cap, the ≤4-image limit, the interaction-logging endpoint, and the model id — none were in the prior draft.
 - A2: the control is not persistently disabled while the service is down — it shows a transient error and auto-recovers after ~5 s; there is no health check.
 - A4: an empty prompt yields one caption in the default tone, not plural tone-labeled variants.
 - A5: the limit is **280 characters**.
 - Fancy Text step 1: the panel is opened by a **button**, not shown automatically on selection. The style set is Bold/Italic Serif, Bold/Italic Sans, Script, and Plain — there is no "small caps".
 
-**Known follow-ups (not fixed):**
-- Fancy Text enforces a **3000-character** caption ceiling on styled output, while the composer's own caption trim/readiness logic uses **2000** — the two limits should be unified.
-- The Fast-Track gate on AI caption is frontend-only and uncommented; decide whether it's intentional.
+**Known follow-up (not fixed):** Fancy Text enforces a **3000-character** caption ceiling on styled output, while the composer's own caption trim/readiness logic uses **2000** — the two limits should be unified.
