@@ -419,6 +419,21 @@ class InstitutionServiceTest {
     class DeleteInstitutionTests {
 
         @Test
+        @DisplayName("should reject deletion when institution is protected with 400 Bad Request")
+        void shouldRejectDeletion_whenInstitutionIsProtected() {
+            mockInstitution.setProtected(true);
+            when(institutionRepository.findById(institutionId)).thenReturn(Optional.of(mockInstitution));
+
+            assertThatThrownBy(() -> institutionService.deleteInstitution(institutionId))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .hasMessageContaining("This institution cannot be deleted")
+                    .extracting(ex -> ((ResponseStatusException) ex).getStatusCode().value())
+                    .isEqualTo(400);
+
+            verify(institutionRepository, never()).delete(any());
+        }
+
+        @Test
         @DisplayName("purges media assets before albums so the self-referencing album FK is not tripped")
         void shouldPurgeAssetsBeforeAlbums() {
             mockInstitution.setProtected(false);
