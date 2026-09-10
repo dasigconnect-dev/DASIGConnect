@@ -28,6 +28,13 @@ public class SubmissionLookupsDto {
             "Students", "Faculty", "Partnership", "DOST", "DASIG"
     );
 
+    /**
+     * Network-wide scheduling guard-rail switch (Page Settings). When false the
+     * composer treats a preferred schedule and the 8:00 AM–8:00 PM publish
+     * window as non-blocking; a future date is still required if one is set.
+     */
+    private boolean guardrailsEnforced = true;
+
     public List<String> getAllowedFileTypes() {
         return allowedFileTypes;
     }
@@ -66,5 +73,13 @@ public class SubmissionLookupsDto {
 
     public List<String> getAvailableTags() {
         return availableTags;
+    }
+
+    public boolean isGuardrailsEnforced() {
+        return guardrailsEnforced;
+    }
+
+    public void setGuardrailsEnforced(boolean guardrailsEnforced) {
+        this.guardrailsEnforced = guardrailsEnforced;
     }
 }

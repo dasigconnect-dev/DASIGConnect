@@ -8,4 +8,7 @@ import jakarta.validation.constraints.Size;
  * source {@code WatermarkApplicationService} actually reads) — see
  * {@code /api/v1/settings/watermark}.
  */
-public record UpdatePageSettingsRequestDto(@Size(max = 255) String facebookPageId) {}
+public record UpdatePageSettingsRequestDto(
+        @Size(max = 255) String facebookPageId,
+        /** Network-wide scheduling guard-rail switch; null = leave unchanged. Only applied on the no-institution row. */
+        Boolean guardrailsEnforced) {}

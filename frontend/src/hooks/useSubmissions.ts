@@ -21,6 +21,7 @@ const emptyLookups: SubmissionLookups = {
   maxScheduleDaysAhead: 30,
   categories: [],
   availableTags: [],
+  guardrailsEnforced: true,
 };
 
 const SUBMISSIONS_STALE_TIME_MS = 30_000;

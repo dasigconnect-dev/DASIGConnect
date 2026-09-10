@@ -101,6 +101,9 @@ class SubmissionServiceTest {
     @Mock
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private GuardRailSettingsService guardRailSettings;
+
     @InjectMocks
     private SubmissionService submissionService;
 
@@ -122,7 +125,7 @@ class SubmissionServiceTest {
                 .thenReturn(List.of());
 
         ReflectionTestUtils.setField(submissionService, "entityManager", entityManager);
-        ReflectionTestUtils.setField(submissionService, "guardRailsEnforced", true);
+        when(guardRailSettings.enforced()).thenReturn(true);
     }
 
     @Test
@@ -288,8 +291,23 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void submit_withoutSchedule_returns400_evenWhenGuardRailsDisabled() {
+        // The guard-rail switch governs the rules on a scheduled time, not
+        // whether one is picked — a Standard post always needs a slot.
+        when(guardRailSettings.enforced()).thenReturn(false);
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, null);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+
+        assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
     void submit_blockedGuardRail_whenEnforcementDisabled_transitionsToPending() {
-        ReflectionTestUtils.setField(submissionService, "guardRailsEnforced", false);
+        when(guardRailSettings.enforced()).thenReturn(false);
         UUID submissionId = UUID.randomUUID();
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);

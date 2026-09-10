@@ -89,6 +89,12 @@ export interface SubmissionLookups {
   maxScheduleDaysAhead: number;
   categories: string[];
   availableTags: string[];
+  /**
+   * Network-wide scheduling guard-rail switch (Page Settings). When false the
+   * composer treats a preferred schedule and the 8:00 AM–8:00 PM publish window
+   * as non-blocking; a future date is still required if one is set.
+   */
+  guardrailsEnforced: boolean;
 }
 
 export interface GuardRailViolation {

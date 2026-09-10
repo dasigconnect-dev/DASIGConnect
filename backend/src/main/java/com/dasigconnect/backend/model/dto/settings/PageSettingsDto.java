@@ -8,11 +8,16 @@ import java.util.UUID;
  * Page Settings response — the Facebook Page ID only. Watermark on/off + layout
  * live in {@code WatermarkConfiguration} (see {@code /api/v1/settings/watermark}).
  */
-public record PageSettingsDto(UUID institutionId, String facebookPageId, Instant updatedAt) {
+public record PageSettingsDto(
+        UUID institutionId,
+        String facebookPageId,
+        boolean guardrailsEnforced,
+        Instant updatedAt) {
     public static PageSettingsDto from(PageSettings value) {
         return new PageSettingsDto(
                 value.getInstitution() == null ? null : value.getInstitution().getId(),
                 value.getFacebookPageId(),
+                value.isGuardrailsEnforced(),
                 value.getUpdatedAt());
     }
 }

@@ -455,12 +455,18 @@ export function getReadinessChecklist(
   const acceptedFormats = form.files.every((file) =>
     isAllowedFile(file, lookups.allowedFileTypes),
   );
+  const guardRailsEnforced = lookups.guardrailsEnforced;
   const scheduledDate = scheduledAt ? new Date(scheduledAt) : null;
   const futureSlot = !scheduledDate || scheduledDate > new Date();
   const publishWindow = !form.scheduledTime || isWithinPublishWindow(form.scheduledTime);
+  // A Standard post always needs a future scheduled slot. The guard-rail switch
+  // only relaxes the *rules* on that slot — off means any interval, any time of
+  // day (no ±30-min spacing, daily cap, lead time, or 8 AM–8 PM window).
   const slotReady = form.fastTrack
     ? true
-    : Boolean(scheduledAt) && futureSlot && publishWindow && !guardRails?.blocked;
+    : Boolean(scheduledAt)
+      && futureSlot
+      && (!guardRailsEnforced || (publishWindow && !guardRails?.blocked));
 
   const required: ReadinessCheck[] = [
     {
@@ -505,21 +511,25 @@ export function getReadinessChecklist(
       sub: form.albumName.trim() || "Required before approval submission",
     },
     {
-      title: form.fastTrack ? "Fast-Track route" : "Schedule guard rails",
+      title: form.fastTrack
+        ? "Fast-Track route"
+        : guardRailsEnforced
+          ? "Schedule guard rails"
+          : "Preferred schedule",
       target: form.fastTrack ? "caption" : "schedule",
       pass: slotReady,
-      idle: !form.fastTrack && guardRailsLoading,
+      idle: !form.fastTrack && guardRailsEnforced && guardRailsLoading,
       sub: form.fastTrack
         ? "No scheduled slot required"
-        : guardRailsLoading
+        : guardRailsEnforced && guardRailsLoading
           ? "Checking selected slot..."
           : !scheduledAt
             ? "Preferred date and time required"
             : !futureSlot
-              ? "Schedule must be in the future"
-              : !publishWindow
+              ? "Schedule can't be in the past"
+              : guardRailsEnforced && !publishWindow
                 ? "Publish time must be 8:00 AM - 8:00 PM"
-                : guardRails?.blocked
+                : guardRailsEnforced && guardRails?.blocked
                   ? "Resolve blocked publishing slot"
                   : formatDateTime(scheduledAt),
     },
@@ -600,6 +610,7 @@ export function getPreviewValidation(
   lookups: SubmissionLookups,
   guardRails: GuardRailResult | null,
 ) {
+  const guardRailsEnforced = lookups.guardrailsEnforced;
   const missingItems: string[] = [];
   const blockingErrors: string[] = [];
   const oversizedFile = form.files.find(
@@ -618,7 +629,7 @@ export function getPreviewValidation(
   if (scheduledAt && new Date(scheduledAt) <= new Date()) {
     missingItems.push("Schedule must be set in the future.");
   }
-  if (form.scheduledTime) {
+  if (guardRailsEnforced && form.scheduledTime) {
     if (!isWithinPublishWindow(form.scheduledTime)) {
       missingItems.push("Publish time must be between 8:00 AM and 8:00 PM.");
     }
@@ -631,7 +642,7 @@ export function getPreviewValidation(
   if (unsupportedFile) {
     missingItems.push(`${unsupportedFile.name} uses an unsupported format.`);
   }
-  if (!form.fastTrack && guardRails?.blocked) {
+  if (guardRailsEnforced && !form.fastTrack && guardRails?.blocked) {
     missingItems.push("Resolve the blocked publishing slot.");
   }
 
@@ -644,7 +655,7 @@ export function getPreviewValidation(
   if (scheduledAt && new Date(scheduledAt) <= new Date()) {
     blockingErrors.push("Preferred schedule must be set in the future.");
   }
-  if (form.scheduledTime) {
+  if (guardRailsEnforced && form.scheduledTime) {
     if (!isWithinPublishWindow(form.scheduledTime)) {
       blockingErrors.push("Publish time must be between 8:00 AM and 8:00 PM.");
     }

@@ -7,7 +7,6 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,19 +50,19 @@ public class SlotReservationService {
     private final SubmissionRepository submissionRepository;
     private final InstitutionRepository institutionRepository;
     private final GuardRailService guardRailService;
-
-    @Value("${app.guardrails.enforced:true}")
-    private boolean guardRailsEnforced = true;
+    private final GuardRailSettingsService guardRailSettings;
 
     public SlotReservationService(
             SlotReservationRepository slotReservationRepository,
             SubmissionRepository submissionRepository,
             InstitutionRepository institutionRepository,
-            GuardRailService guardRailService) {
+            GuardRailService guardRailService,
+            GuardRailSettingsService guardRailSettings) {
         this.slotReservationRepository = slotReservationRepository;
         this.submissionRepository = submissionRepository;
         this.institutionRepository = institutionRepository;
         this.guardRailService = guardRailService;
+        this.guardRailSettings = guardRailSettings;
     }
 
     /**
@@ -88,7 +87,7 @@ public class SlotReservationService {
             return existingReservation;
         }
 
-        if (guardRailsEnforced) {
+        if (guardRailSettings.enforced()) {
             // Step 1: Guard rail validation
             GuardRailResult result = guardRailService.validate(institutionId, requestedSlot, submissionId);
             if (result.isBlocked()) {
