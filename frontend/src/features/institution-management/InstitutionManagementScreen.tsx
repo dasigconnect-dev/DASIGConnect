@@ -1215,6 +1215,8 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
                     className="im-inst-actions-item is-delete"
                     role="menuitem"
                     onClick={() => { setShowInstActionsMenu(false); handleDeleteInstitution(selectedInstitution); }}
+                    disabled={!!selectedInstitution.isProtected}
+                    title={selectedInstitution.isProtected ? 'Protected institutions cannot be deleted' : undefined}
                   >
                     <i className="ti ti-trash" aria-hidden="true" />
                     Delete

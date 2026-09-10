@@ -417,15 +417,21 @@ public class InstitutionService {
     /**
      * Permanently removes an institution.
      *
-     * Blocked with 400 if the institution still has users, submissions, or
-     * active media assets — the admin must clear those first. Invitation
-     * tokens, slot reservations, and override requests are cleaned up
-     * automatically since they are ephemeral administrative records that are
-     * meaningless without the owning institution.
+     * Blocked with 400 if the institution is the protected network default (it
+     * is structurally required for admin-attributed posting, UC-1.5, and the
+     * default watermark configuration, UC-2.5) or if it still has users,
+     * submissions, or active media assets — the admin must clear those first.
+     * Invitation tokens, slot reservations, and override requests are cleaned
+     * up automatically since they are ephemeral administrative records that
+     * are meaningless without the owning institution.
      */
     public void deleteInstitution(UUID institutionId) {
         Institution institution = institutionRepository.findById(institutionId)
                 .orElseThrow(() -> new InstitutionNotFoundException(institutionId));
+
+        if (institution.isProtected()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This institution cannot be deleted");
+        }
 
         if (hasBlockingContributorAccounts(institutionId)) {
             throw new IllegalArgumentException(
