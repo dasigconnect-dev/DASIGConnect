@@ -4501,25 +4501,61 @@ textarea.sub-finput {
     padding: 20px 16px 60px;
   }
   .sub-list-head {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 14px;
-    margin-bottom: 18px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    row-gap: 6px;
+    column-gap: 10px;
+    margin-bottom: 16px;
+  }
+  .sub-list-head > div:first-child {
+    display: contents;
   }
   .sub-list-title {
-    font-size: 24px;
+    grid-column: 1;
+    grid-row: 1;
+    font-size: 22px;
+    margin: 0;
+    line-height: 1.2;
+    min-width: 0;
   }
   .sub-list-subtitle {
-    font-size: 13px;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    font-size: 12.5px;
+    line-height: 1.4;
+    margin: 0;
+    color: var(--sub-muted);
   }
   .sub-list-actions {
-    width: 100%;
-    justify-content: stretch;
+    grid-column: 2;
+    grid-row: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: nowrap;
+    width: auto;
+  }
+  .sub-list-actions .sub-btn-ghost {
+    height: 34px;
+    padding: 0 10px;
+    font-size: 12px;
+    border-radius: 999px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    gap: 5px;
   }
   .sub-list-new {
-    width: 100%;
-    min-height: 42px;
-    justify-content: center;
+    height: 34px;
+    min-height: 34px;
+    padding: 0 12px;
+    font-size: 12px;
+    border-radius: 999px;
+    flex-shrink: 0;
+    width: auto;
+    white-space: nowrap;
+    gap: 5px;
   }
   .sub-registry-toolbar {
     flex-direction: column;
@@ -4739,6 +4775,27 @@ textarea.sub-finput {
 @media (max-width: 480px) {
   .sub-list-page {
     padding: 14px 12px 40px;
+  }
+  .sub-list-title {
+    font-size: 20px;
+  }
+  .sub-list-actions .sub-btn-ghost {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: 50%;
+    justify-content: center;
+  }
+  .sub-list-actions .sub-btn-ghost span {
+    display: none;
+  }
+  .sub-list-actions .sub-btn-ghost i {
+    font-size: 14px;
+    margin: 0;
+  }
+  .sub-list-new {
+    padding: 0 10px;
+    font-size: 11.5px;
   }
   .sub-nav-chip {
     display: none;
