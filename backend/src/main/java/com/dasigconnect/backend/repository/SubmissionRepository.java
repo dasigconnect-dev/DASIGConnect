@@ -60,14 +60,17 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("windowStart") java.time.Instant windowStart,
             @Param("windowEnd") java.time.Instant windowEnd);
 
-    // UC-2.4 approval queue — network-wide PENDING + IN_REVIEW sorted by scheduledAt ASC
+    // UC-2.4 approval queue — network-wide PENDING + IN_REVIEW. Fast-Track
+    // submissions (no scheduledAt) sort first as the urgent items UC-1.9
+    // expects; everything else follows by scheduledAt ASC, then by submittedAt
+    // as a stable tiebreaker among same-priority items (oldest first).
     @Query("""
         SELECT s FROM Submission s
         WHERE s.status IN (
             com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
             com.dasigconnect.backend.model.entity.SubmissionStatus.in_review
         )
-        ORDER BY s.scheduledAt ASC NULLS LAST
+        ORDER BY s.fastTrack DESC, s.scheduledAt ASC NULLS LAST, s.submittedAt ASC
         """)
     List<Submission> findValidationQueue();
 
