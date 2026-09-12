@@ -356,7 +356,7 @@ export default function AssetDetailPanel({
                 {(asset.userTags ?? []).map((tag) => (
                   <span key={tag.id} className="med-user-tag">
                     {tag.label}
-                    {onRemoveTag && (
+                    {onRemoveTag && (asset.userTags ?? []).length > 1 && (
                       <button
                         type="button"
                         className="med-user-tag-x"
@@ -371,6 +371,11 @@ export default function AssetDetailPanel({
                     )}
                   </span>
                 ))}
+                {onRemoveTag && (asset.userTags ?? []).length === 1 && (
+                  <span className="med-tag-empty" title="At least one tag is required — add another before removing this one.">
+                    (last tag)
+                  </span>
+                )}
                 {(asset.userTags ?? []).length === 0 && (
                   <span className="med-tag-empty">No tags yet</span>
                 )}

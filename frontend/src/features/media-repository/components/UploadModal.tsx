@@ -31,6 +31,52 @@ interface UploadModalProps {
 const ACCEPTED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm"]);
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
+// Auto-Match scoring (UC-2.1 A4): tag/filename word overlap against each
+// existing album's name. There's no visual/embedding signal available at
+// this point — the file hasn't been uploaded (let alone classified and
+// embedded) yet — so this stays text-based, just scored and tiered instead
+// of the old "first substring match wins" binary.
+const ALBUM_MATCH_CONFIDENT = 0.6;
+const ALBUM_MATCH_AMBIGUOUS = 0.3;
+
+interface AlbumMatchCandidate {
+  album: MediaAlbum;
+  score: number;
+  reasons: string[];
+}
+
+function scoreAlbumMatches(cues: Set<string>, albums: MediaAlbum[]): AlbumMatchCandidate[] {
+  if (cues.size === 0) return [];
+  return albums
+    .map((album) => {
+      const albumName = album.name.trim().toLowerCase();
+      if (!albumName) return { album, score: 0, reasons: [] };
+      const albumWords = new Set(albumName.split(/[^a-z0-9]+/i).filter(Boolean));
+      const matched = new Set<string>();
+      let exact = false;
+      cues.forEach((cue) => {
+        if (cue === albumName) {
+          exact = true;
+          matched.add(cue);
+        } else if (albumName.includes(cue) || cue.includes(albumName) || albumWords.has(cue)) {
+          matched.add(cue);
+        }
+      });
+      if (matched.size === 0) return { album, score: 0, reasons: [] };
+      // A word overlap alone rarely spans every cue (filenames add a lot of
+      // noise words), so a modest boost keeps one strong match from reading
+      // as barely-ambiguous; an exact full-name match is always confident.
+      const score = exact ? 1 : Math.min(0.95, matched.size / cues.size + 0.2);
+      return {
+        album,
+        score,
+        reasons: [`Matches "${[...matched].slice(0, 3).join(", ")}" in "${album.name}".`],
+      };
+    })
+    .filter((candidate) => candidate.score > 0)
+    .sort((a, b) => b.score - a.score);
+}
+
 export default function UploadModal({
   open,
   institutionName,
@@ -48,6 +94,8 @@ export default function UploadModal({
   const [uploading, setUploading] = useState(false);
   const [albumInput, setAlbumInput] = useState("");
   const [autoMatched, setAutoMatched] = useState(false);
+  const [autoMatchAttempted, setAutoMatchAttempted] = useState(false);
+  const [matchedReasons, setMatchedReasons] = useState<string[]>([]);
   const [useCurrentAlbum, setUseCurrentAlbum] = useState(true);
   const [pickedInstId, setPickedInstId] = useState("");
   const [tagsInput, setTagsInput] = useState("");
@@ -92,30 +140,24 @@ export default function UploadModal({
     return scopedAlbums.find((album) => album.name.trim().toLowerCase() === trimmed) ?? null;
   }, [albumInput, scopedAlbums]);
 
-  const autoMatchedAlbum = useMemo(() => {
+  const albumMatches = useMemo(() => {
     const cues = new Set(tags.map((tag) => tag.toLowerCase()));
     for (const file of selectedFiles) {
-      const name = file.name.toLowerCase();
-      name
+      file.name
+        .toLowerCase()
         .replace(/\.[^.]+$/, "")
         .split(/[^a-z0-9]+/i)
-        .map((part) => part.trim().toLowerCase())
+        .map((part) => part.trim())
         .filter(Boolean)
         .forEach((part) => cues.add(part));
     }
-
-    return scopedAlbums.find((album) => {
-      const albumName = album.name.trim().toLowerCase();
-      if (!albumName) return false;
-      const albumWords = albumName.split(/[^a-z0-9]+/i).filter(Boolean);
-      return [...cues].some((cue) =>
-        cue === albumName ||
-        albumName.includes(cue) ||
-        cue.includes(albumName) ||
-        albumWords.some((word) => word === cue),
-      );
-    }) ?? null;
+    return scoreAlbumMatches(cues, scopedAlbums);
   }, [scopedAlbums, selectedFiles, tags]);
+
+  const confidentMatch = albumMatches[0]?.score >= ALBUM_MATCH_CONFIDENT ? albumMatches[0] : null;
+  const ambiguousMatches = confidentMatch
+    ? []
+    : albumMatches.filter((candidate) => candidate.score >= ALBUM_MATCH_AMBIGUOUS).slice(0, 3);
 
   const fileError = useMemo(() => {
     for (const file of selectedFiles) {
@@ -154,6 +196,8 @@ export default function UploadModal({
     setInlineError("");
     setAlbumInput("");
     setAutoMatched(false);
+    setAutoMatchAttempted(false);
+    setMatchedReasons([]);
     setUseCurrentAlbum(true);
     setPickedInstId("");
     setTagsInput("");
@@ -162,15 +206,28 @@ export default function UploadModal({
   function handleAlbumChange(value: string) {
     setAlbumInput(value);
     setAutoMatched(false);
+    setAutoMatchAttempted(false);
+    setMatchedReasons([]);
     setInlineError("");
   }
 
   function handleAutoMatchAlbum() {
-    if (autoMatchedAlbum) {
-      setAlbumInput(autoMatchedAlbum.name);
+    setAutoMatchAttempted(true);
+    if (confidentMatch) {
+      setAlbumInput(confidentMatch.album.name);
       setAutoMatched(true);
+      setMatchedReasons(confidentMatch.reasons);
+      setInlineError("");
+    } else if (ambiguousMatches.length > 0) {
+      // Ambiguous (A4): don't auto-apply — AlbumCombobox's own dropdown lists
+      // the ranked candidates (via the `suggestions` prop below) for the
+      // actor to confirm, pick a different one, or create a new folder.
+      setAutoMatched(false);
+      setMatchedReasons([]);
       setInlineError("");
     } else {
+      setAutoMatched(false);
+      setMatchedReasons([]);
       setInlineError("No confident folder match from tags or filenames. Type a folder name instead.");
     }
   }
@@ -385,6 +442,16 @@ export default function UploadModal({
                     createHint={isCreatingNewAlbum ? `Will be created ${newAlbumLocationLabel}` : undefined}
                     onChange={handleAlbumChange}
                     onAutoMatch={handleAutoMatchAlbum}
+                    matchedBadge={autoMatched && matchedReasons.length > 0 ? { albumName: albumInput, reasons: matchedReasons } : null}
+                    suggestions={autoMatchAttempted && !autoMatched
+                      ? ambiguousMatches.map((candidate) => ({
+                          albumId: candidate.album.id,
+                          albumName: candidate.album.name,
+                          score: candidate.score,
+                          reasons: candidate.reasons,
+                        }))
+                      : []}
+                    noMatchNotice={autoMatchAttempted && !autoMatched && ambiguousMatches.length === 0}
                   />
 
                   {autoMatched && resolvedExistingAlbum ? (

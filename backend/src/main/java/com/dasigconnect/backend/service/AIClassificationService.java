@@ -100,7 +100,14 @@ public class AIClassificationService {
         }
         if (!generateAndStoreEmbeddingInternal(assetId, embeddingText)) {
             mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
+            return;
         }
+
+        // Step 5: classification + both embeddings all succeeded — the asset is
+        // no longer PROCESSING. (Previously nothing set this on the success
+        // path, so every asset stayed "Processing…" forever regardless of
+        // outcome — see UC-2.1.)
+        mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.READY.name());
     }
 
     /**

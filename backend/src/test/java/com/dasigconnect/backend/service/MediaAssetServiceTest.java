@@ -22,6 +22,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
@@ -78,6 +79,9 @@ class MediaAssetServiceTest {
 
     private MediaAssetService mediaAssetService;
 
+    @Mock
+    private jakarta.persistence.EntityManager entityManager;
+
     @BeforeEach
     void setUp() {
         mediaAssetService = new MediaAssetService(
@@ -96,6 +100,79 @@ class MediaAssetServiceTest {
                 auditLogRepository,
                 userRepository,
                 objectMapper);
+        ReflectionTestUtils.setField(mediaAssetService, "entityManager", entityManager);
+    }
+
+    @Test
+    void upload_imageAsset_staysProcessingAndTriggersClassification() {
+        UUID institutionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID albumId = UUID.randomUUID();
+        Institution institution = new Institution();
+        institution.setId(institutionId);
+        User uploader = new User();
+        uploader.setId(userId);
+        MediaAlbum album = album(albumId, institutionId, null);
+
+        when(entityManager.getReference(Institution.class, institutionId)).thenReturn(institution);
+        when(entityManager.getReference(User.class, userId)).thenReturn(uploader);
+        when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album));
+        when(mediaAssetRepository.save(any(MediaAsset.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(assetTagRepository.save(any(com.dasigconnect.backend.model.entity.AssetTag.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto dto =
+                new com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto();
+        dto.setFileType("jpeg");
+        dto.setFileSizeBytes(1024L);
+        dto.setStorageUrl("https://example.com/a.jpg");
+        dto.setFileName("a.jpg");
+        dto.setTags(List.of("Event"));
+        dto.setAlbumId(albumId);
+        dto.setInstitutionId(institutionId);
+
+        mediaAssetService.upload(dto, user(userId, "moderator", institutionId));
+
+        ArgumentCaptor<MediaAsset> savedAsset = ArgumentCaptor.forClass(MediaAsset.class);
+        verify(mediaAssetRepository).save(savedAsset.capture());
+        assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.PROCESSING, savedAsset.getValue().getStatus());
+        verify(aiClassificationService).classifyAndEmbed(any(), eq("https://example.com/a.jpg"));
+    }
+
+    @Test
+    void upload_videoAsset_isReadyImmediatelyAndSkipsClassification() {
+        UUID institutionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID albumId = UUID.randomUUID();
+        Institution institution = new Institution();
+        institution.setId(institutionId);
+        User uploader = new User();
+        uploader.setId(userId);
+        MediaAlbum album = album(albumId, institutionId, null);
+
+        when(entityManager.getReference(Institution.class, institutionId)).thenReturn(institution);
+        when(entityManager.getReference(User.class, userId)).thenReturn(uploader);
+        when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album));
+        when(mediaAssetRepository.save(any(MediaAsset.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(assetTagRepository.save(any(com.dasigconnect.backend.model.entity.AssetTag.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto dto =
+                new com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto();
+        dto.setFileType("mp4");
+        dto.setFileSizeBytes(1024L);
+        dto.setStorageUrl("https://example.com/a.mp4");
+        dto.setFileName("a.mp4");
+        dto.setTags(List.of("Event"));
+        dto.setAlbumId(albumId);
+        dto.setInstitutionId(institutionId);
+
+        mediaAssetService.upload(dto, user(userId, "moderator", institutionId));
+
+        ArgumentCaptor<MediaAsset> savedAsset = ArgumentCaptor.forClass(MediaAsset.class);
+        verify(mediaAssetRepository).save(savedAsset.capture());
+        assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.READY, savedAsset.getValue().getStatus());
+        verify(aiClassificationService, never()).classifyAndEmbed(any(), any());
     }
 
     @Test
@@ -386,6 +463,88 @@ class MediaAssetServiceTest {
         mediaAssetService.updateAlbum(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId));
 
         verify(auditLogService).record(any(), eq("MEDIA_ASSET_MOVED"), isNull(), isNull(), eq(assetId), any());
+    }
+
+    @Test
+    void updateAlbum_withNullAlbumId_isRejected() {
+        // Every library asset must belong to an album — there's no "unfiled"
+        // state to move into, unlike a submission's transient STAGED uploads.
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+
+        com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto dto =
+                new com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto();
+        dto.setAlbumId(null);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.updateAlbum(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId)));
+        assertEquals(400, ex.getStatusCode().value());
+        verify(mediaAssetRepository, never()).save(any());
+    }
+
+    @Test
+    void removeTag_lastManualTag_isRejected() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        com.dasigconnect.backend.model.entity.AssetTag onlyTag = tag(asset, "hackathon", "manual");
+
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(assetTagRepository.findById(onlyTag.getId())).thenReturn(Optional.of(onlyTag));
+        when(assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of(onlyTag));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.removeTag(assetId, onlyTag.getId(), user(UUID.randomUUID(), "moderator", institutionId)));
+        assertEquals(400, ex.getStatusCode().value());
+        verify(assetTagRepository, never()).delete(any());
+    }
+
+    @Test
+    void removeTag_withAnotherManualTagRemaining_succeeds() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        com.dasigconnect.backend.model.entity.AssetTag first = tag(asset, "hackathon", "manual");
+        com.dasigconnect.backend.model.entity.AssetTag second = tag(asset, "students", "manual");
+
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(assetTagRepository.findById(first.getId())).thenReturn(Optional.of(first));
+        when(assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of(first, second));
+
+        mediaAssetService.removeTag(assetId, first.getId(), user(UUID.randomUUID(), "moderator", institutionId));
+
+        verify(assetTagRepository).delete(first);
+    }
+
+    @Test
+    void removeTag_lastManualTag_ignoresAiGeneratedTagCount() {
+        // An AI-generated tag doesn't count as a stand-in for the actor's own
+        // required tag — removing the only manual tag is still blocked even
+        // when AI tags exist on the same asset.
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        com.dasigconnect.backend.model.entity.AssetTag manual = tag(asset, "hackathon", "manual");
+        com.dasigconnect.backend.model.entity.AssetTag aiTag = tag(asset, "students", "ai_generated");
+
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(assetTagRepository.findById(manual.getId())).thenReturn(Optional.of(manual));
+        when(assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of(manual, aiTag));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.removeTag(assetId, manual.getId(), user(UUID.randomUUID(), "moderator", institutionId)));
+        assertEquals(400, ex.getStatusCode().value());
+    }
+
+    private static com.dasigconnect.backend.model.entity.AssetTag tag(MediaAsset asset, String label, String source) {
+        com.dasigconnect.backend.model.entity.AssetTag tag = new com.dasigconnect.backend.model.entity.AssetTag();
+        tag.setId(UUID.randomUUID());
+        tag.setMediaAsset(asset);
+        tag.setLabel(label);
+        tag.setSource(source);
+        return tag;
     }
 
     @Test

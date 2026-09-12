@@ -548,7 +548,9 @@ public class MediaAssetService {
         asset.setFileName(dto.getFileName());
         asset.setFileType(fileType);
         asset.setFileSizeBytes(dto.getFileSizeBytes());
-        asset.setStatus(MediaAssetStatus.PROCESSING);
+        // Only images get queued for classification below — a video has nothing
+        // async pending, so it shouldn't sit on "Processing…" forever either.
+        asset.setStatus(fileType.isImage() ? MediaAssetStatus.PROCESSING : MediaAssetStatus.READY);
         asset = mediaAssetRepository.save(asset);
         List<AssetTagDto> savedTags = saveManualTags(asset, manualTags);
 
@@ -877,6 +879,19 @@ public class MediaAssetService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tag not found."));
         if (!tag.getMediaAsset().getId().equals(assetId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tag not found.");
+        }
+        // A9 (UC-2.1): at least one actor-entered tag must always remain —
+        // mirrors the mandatory-tag rule enforced at upload. AI-generated
+        // tags don't count toward (or against) this; they're classification
+        // metadata, not the actor's own tagging.
+        if ("manual".equalsIgnoreCase(tag.getSource())) {
+            long manualTagCount = assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId).stream()
+                    .filter(t -> "manual".equalsIgnoreCase(t.getSource()))
+                    .count();
+            if (manualTagCount <= 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "At least one media tag is required — add a replacement before removing the last one.");
+            }
         }
         String label = tag.getLabel();
         assetTagRepository.delete(tag);
