@@ -67,7 +67,7 @@ class CaptionGenerationServiceTest {
                 new CaptionVariantDto("energetic", "Energetic caption! #DASIG")
         );
         when(claudeVisionClient.generateCaptions(
-                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(variants);
+                any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(variants);
         when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         CaptionResponseDto result = service.generateCaptions(
@@ -82,7 +82,6 @@ class CaptionGenerationServiceTest {
                 eq("Science Fair 2026"),
                 eq("2026-07-01"),
                 eq("CIT-U"),
-                eq("Hackathon"),
                 any(),
                 eq("Focus on student innovation."),
                 eq("community"));
@@ -104,7 +103,7 @@ class CaptionGenerationServiceTest {
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(List.of(imageJunction(s, classifiedImage)));
         when(claudeVisionClient.generateCaptions(
-                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
+                any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
                 new CaptionVariantDto("professional", "Metadata caption #DASIG")
         ));
         when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -114,7 +113,6 @@ class CaptionGenerationServiceTest {
         verify(claudeVisionClient).generateCaptions(
                 eq(List.of()),
                 org.mockito.ArgumentMatchers.contains("Students demonstrating robotics prototypes"),
-                any(),
                 any(),
                 any(),
                 any(),
@@ -136,7 +134,7 @@ class CaptionGenerationServiceTest {
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(List.of(videoSma));
         when(claudeVisionClient.generateCaptions(
-                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
+                any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
                 new CaptionVariantDto("professional", "Text-only caption #DASIG")
         ));
         when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -151,7 +149,6 @@ class CaptionGenerationServiceTest {
                 eq("Science Fair 2026"),
                 eq("2026-07-01"),
                 eq("CIT-U"),
-                eq("Hackathon"),
                 eq("Existing draft"),
                 eq("Make it concise."),
                 eq("professional"));
@@ -168,7 +165,7 @@ class CaptionGenerationServiceTest {
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(List.of());
         when(claudeVisionClient.generateCaptions(
-                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
+                any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
                 new CaptionVariantDto("community", "Community caption #DASIG")
         ));
         when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -183,7 +180,6 @@ class CaptionGenerationServiceTest {
                 eq("Science Fair 2026"),
                 eq("2026-07-01"),
                 eq("CIT-U"),
-                eq("Hackathon"),
                 any(),
                 eq("Write a general announcement."),
                 eq("community"));
@@ -217,7 +213,7 @@ class CaptionGenerationServiceTest {
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(List.of(sma));
         when(claudeVisionClient.generateCaptions(
-                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
+                any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
                 new CaptionVariantDto("professional", "Caption #DASIG")
         ));
         when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -257,7 +253,7 @@ class CaptionGenerationServiceTest {
         when(submissionMediaAssetRepository.findBySubmissionIdWithMediaAsset(submissionId))
                 .thenReturn(fiveImages);
         when(claudeVisionClient.generateCaptions(
-                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
+                any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(List.of(
                 new CaptionVariantDto("professional", "Caption #DASIG")
         ));
         when(aiInteractionLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -270,7 +266,6 @@ class CaptionGenerationServiceTest {
                         .map(sma -> sma.getMediaAsset().getStorageUrl())
                         .limit(4)
                         .toList()),
-                any(),
                 any(),
                 any(),
                 any(),
@@ -320,7 +315,6 @@ class CaptionGenerationServiceTest {
         s.setId(id);
         s.setEventTitle("Science Fair 2026");
         s.setEventDate(LocalDate.of(2026, 7, 1));
-        s.setCategory("Hackathon");
         s.setStatus(SubmissionStatus.draft);
         s.setContributor(contributor);
         s.setInstitution(institution);
