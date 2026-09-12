@@ -1457,6 +1457,34 @@
   line-height: 1.5;
 }
 
+/* ── NOTIFICATIONS SCREEN (dash-body layout) ────────────────────────── */
+.notif-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.notif-header-text {
+  min-width: 0;
+}
+
+.notif-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.notif-count-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding: 0 2px;
+}
+
 /* ── RESPONSIVE ──────────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .notif-data-table th:nth-child(2),
@@ -1485,6 +1513,196 @@
   .notif-data-table th:nth-child(3),
   .notif-data-table td:nth-child(3) {
     display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  #screen-notifications .dash-body {
+    padding: 20px 16px 60px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+
+  .notif-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    row-gap: 4px;
+    column-gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .notif-header-text {
+    display: contents;
+  }
+
+  .notif-title {
+    grid-column: 1;
+    grid-row: 1;
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.25;
+    margin: 0;
+    min-width: 0;
+  }
+
+  .notif-subtitle {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    font-size: 13px;
+    line-height: 1.45;
+    margin: 0;
+    color: var(--d-muted, #5a6f8a);
+  }
+
+  .notif-header-actions {
+    grid-column: 2;
+    grid-row: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    width: auto;
+  }
+
+  .notif-header-actions .notif-btn {
+    height: 36px;
+    padding: 0 14px;
+    font-size: 12.5px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .notif-header-actions .notif-btn-icon {
+    width: 36px;
+    height: 36px;
+    padding: 0 !important;
+  }
+
+  .notif-card-toolbar {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    padding: 12px 14px !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  .notif-status-tabs {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    flex-wrap: nowrap !important;
+    padding: 2px 2px 8px !important;
+    margin: 0 !important;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+
+  .notif-status-tabs::-webkit-scrollbar {
+    height: 4px;
+    display: block;
+  }
+  .notif-status-tabs::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 999px;
+  }
+  .notif-status-tabs::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
+  }
+
+  .notif-status-tabs .im-status-tab {
+    flex: 0 0 auto !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 12px !important;
+    font-size: 12px !important;
+  }
+
+  .notif-search-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 1 1 auto !important;
+    margin: 0 !important;
+    height: 38px !important;
+  }
+
+  .notif-search-wrap .im-search-input {
+    width: 100% !important;
+    height: 38px !important;
+    font-size: 13px !important;
+  }
+
+  #screen-notifications .card-wrap {
+    border-radius: 12px;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  #screen-notifications .card-wrap:not(.notif-toolbar-card) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #screen-notifications .data-table {
+    min-width: 520px;
+  }
+}
+
+@media (max-width: 480px) {
+  #screen-notifications .dash-body {
+    padding: 16px 12px 50px;
+  }
+
+  .notif-title {
+    font-size: 21px;
+  }
+
+  .notif-header-actions .notif-btn {
+    height: 34px;
+    padding: 0 10px;
+    font-size: 11.5px;
+  }
+
+  .notif-header-actions .notif-btn-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .notif-card-toolbar {
+    padding: 10px 12px !important;
+    gap: 10px !important;
+  }
+
+  .notif-count-strip {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .notif-view-all-pill {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 380px) {
+  .notif-header-actions .notif-btn-mark-read span {
+    display: none;
+  }
+  .notif-header-actions .notif-btn-mark-read {
+    width: 34px;
+    height: 34px;
+    padding: 0 !important;
+    justify-content: center;
   }
 }
 

@@ -870,6 +870,7 @@ body {
   background: #ffffff;
   border: 1px solid #dde3ee;
   color: #0c1d3d;
+  color-scheme: light;
 }
 
 #session-modal .modal-title {
@@ -904,12 +905,13 @@ body {
   width: 100%;
   height: 42px;
   padding: 0 14px;
-  background: #f8fafc;
+  background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 9px;
   color: #0f172a;
   font-family: var(--ff-body, system-ui, sans-serif);
   font-size: 13.5px;
+  color-scheme: light;
   transition: all 0.18s ease;
 }
 
@@ -926,6 +928,50 @@ body {
   border-color: #0B5FCC;
   box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.14);
   outline: none;
+}
+
+#session-modal .finput:-webkit-autofill,
+#session-modal .finput:-webkit-autofill:hover,
+#session-modal .finput:-webkit-autofill:active,
+#session-modal .finput:autofill,
+#session-modal .finput:autofill:hover,
+#session-modal .finput:autofill:active {
+  -webkit-text-fill-color: #0f172a !important;
+  caret-color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  transition: background-color 9999s ease-out;
+}
+
+#session-modal .finput:-webkit-autofill:focus,
+#session-modal .finput:autofill:focus {
+  -webkit-text-fill-color: #0f172a !important;
+  caret-color: #0f172a !important;
+  border-color: #0B5FCC !important;
+  -webkit-box-shadow:
+    0 0 0 1000px #ffffff inset,
+    0 0 0 3px rgba(24, 119, 242, 0.14) !important;
+  box-shadow:
+    0 0 0 1000px #ffffff inset,
+    0 0 0 3px rgba(24, 119, 242, 0.14) !important;
+}
+
+#session-modal .finput.err:-webkit-autofill,
+#session-modal .finput.err:-webkit-autofill:hover,
+#session-modal .finput.err:-webkit-autofill:focus,
+#session-modal .finput.err:-webkit-autofill:active,
+#session-modal .finput.err:autofill,
+#session-modal .finput.err:autofill:hover,
+#session-modal .finput.err:autofill:focus,
+#session-modal .finput.err:autofill:active {
+  border-color: var(--error, #ef4444) !important;
+  -webkit-box-shadow:
+    0 0 0 1000px #ffffff inset,
+    0 0 0 3px rgba(239, 68, 68, 0.14) !important;
+  box-shadow:
+    0 0 0 1000px #ffffff inset,
+    0 0 0 3px rgba(239, 68, 68, 0.14) !important;
 }
 
 #session-modal .finput:disabled,
