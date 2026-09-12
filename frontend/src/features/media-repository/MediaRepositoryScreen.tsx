@@ -751,21 +751,21 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   }
 
   async function handleUpdateAssetAlbum(assetId: string, albumId: string | null) {
+    if (!albumId) return;
     try {
       const { data } = await updateMediaAssetAlbum(assetId, albumId);
-      // A null albumId (remove from album) or a move out of the folder
-      // currently being viewed both mean the asset leaves this grid.
+      // The asset leaves the folder currently being viewed, so drop it from the grid.
       setAssets((prev) =>
-        !data.albumId || (currentAlbumId && data.albumId !== currentAlbumId)
+        currentAlbumId && data.albumId !== currentAlbumId
           ? prev.filter((asset) => asset.id !== data.id)
           : prev.map((asset) => (asset.id === data.id ? { ...asset, ...data } : asset)),
       );
       setSelectedAsset(data);
-      toast.success(albumId ? "Moved to folder." : "Removed from folder.");
+      toast.success("Moved to folder.");
       void invalidateMediaMetadata();
       void reloadAlbums();
     } catch {
-      toast.error(albumId ? "Could not update the folder assignment." : "Could not remove this asset from its folder.");
+      toast.error("Could not update the folder assignment.");
     }
   }
 

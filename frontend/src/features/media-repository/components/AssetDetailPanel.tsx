@@ -325,16 +325,6 @@ export default function AssetDetailPanel({
                     Move here
                   </button>
                 )}
-                {onUpdateAlbum && asset.albumId && (
-                  <button
-                    className="med-btn med-btn-ghost med-btn-sm med-album-move-btn"
-                    type="button"
-                    title="Take this asset out of its album — it stays in the library, just unfiled."
-                    onClick={() => onUpdateAlbum(asset.id, null)}
-                  >
-                    Remove from album
-                  </button>
-                )}
               </div>
             </div>
 

@@ -814,24 +814,8 @@ public class MediaAssetService {
 
     public MediaAssetDetailDto updateAlbum(UUID assetId, MediaAssetAlbumRequestDto dto, JwtUserDetails user) {
         MediaAsset asset = loadAsset(assetId, user);
-
-        // A5 (UC-2.1): a null albumId removes the asset from all albums —
-        // legitimate, not a partial request. media_album_id has always been
-        // nullable (STAGED submission uploads sit album-less until filed at
-        // submit time); this just exposes that as a deliberate library action.
         if (dto.getAlbumId() == null) {
-            MediaAlbum fromAlbum = asset.getMediaAlbum();
-            asset.setMediaAlbum(null);
-            MediaAssetDetailDto result =
-                    MediaAssetDetailDto.from(mediaAssetRepository.save(asset), List.of(), currentTags(assetId));
-
-            Map<String, Object> removeMeta = new LinkedHashMap<>();
-            if (fromAlbum != null) {
-                removeMeta.put("fromAlbumId", fromAlbum.getId().toString());
-                removeMeta.put("fromAlbumName", fromAlbum.getName());
-            }
-            recordAssetAudit(user, "MEDIA_ASSET_UNASSIGNED", assetId, removeMeta);
-            return result;
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An album is required.");
         }
 
         MediaAlbum album = mediaAlbumRepository.findById(dto.getAlbumId())

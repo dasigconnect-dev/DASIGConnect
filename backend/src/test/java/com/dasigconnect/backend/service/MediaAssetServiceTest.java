@@ -1,7 +1,6 @@
 package com.dasigconnect.backend.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -467,27 +466,22 @@ class MediaAssetServiceTest {
     }
 
     @Test
-    void updateAlbum_withNullAlbumId_unassignsAndRecordsAuditEntry() {
+    void updateAlbum_withNullAlbumId_isRejected() {
+        // Every library asset must belong to an album — there's no "unfiled"
+        // state to move into, unlike a submission's transient STAGED uploads.
         UUID institutionId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
-        UUID fromAlbumId = UUID.randomUUID();
         MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
-        asset.setMediaAlbum(album(fromAlbumId, institutionId, null));
-
         when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
-        when(mediaAssetRepository.save(asset)).thenReturn(asset);
-        when(assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of());
 
         com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto dto =
                 new com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto();
         dto.setAlbumId(null);
 
-        var result = mediaAssetService.updateAlbum(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId));
-
-        assertNull(result.getAlbumId());
-        assertNull(asset.getMediaAlbum());
-        verify(mediaAlbumRepository, never()).findById(any());
-        verify(auditLogService).record(any(), eq("MEDIA_ASSET_UNASSIGNED"), isNull(), isNull(), eq(assetId), any());
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.updateAlbum(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId)));
+        assertEquals(400, ex.getStatusCode().value());
+        verify(mediaAssetRepository, never()).save(any());
     }
 
     @Test
