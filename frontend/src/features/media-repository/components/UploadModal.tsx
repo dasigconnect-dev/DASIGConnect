@@ -36,8 +36,17 @@ const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 // this point — the file hasn't been uploaded (let alone classified and
 // embedded) yet — so this stays text-based, just scored and tiered instead
 // of the old "first substring match wins" binary.
-const ALBUM_MATCH_CONFIDENT = 0.6;
-const ALBUM_MATCH_AMBIGUOUS = 0.3;
+//
+// NOT the same feature as AIRecommendationService.suggestAlbum's Auto-Match
+// (UC-1.7, ALBUM_MATCH_CONFIDENT_THRESHOLD/ALBUM_MATCH_AMBIGUOUS_THRESHOLD =
+// 0.55/0.32) — that one scores already-attached, already-embedded assets
+// with a visual+tag blend. Both happen to produce a 0-1 score and land in
+// the same confident/ambiguous/none shape, but the numbers are calibrated
+// independently for two different scoring formulas. Do not "sync" these
+// thresholds with that one — a shared value would be a coincidence, not a
+// contract.
+const TEXT_MATCH_CONFIDENT = 0.6;
+const TEXT_MATCH_AMBIGUOUS = 0.3;
 
 interface AlbumMatchCandidate {
   album: MediaAlbum;
@@ -154,10 +163,10 @@ export default function UploadModal({
     return scoreAlbumMatches(cues, scopedAlbums);
   }, [scopedAlbums, selectedFiles, tags]);
 
-  const confidentMatch = albumMatches[0]?.score >= ALBUM_MATCH_CONFIDENT ? albumMatches[0] : null;
+  const confidentMatch = albumMatches[0]?.score >= TEXT_MATCH_CONFIDENT ? albumMatches[0] : null;
   const ambiguousMatches = confidentMatch
     ? []
-    : albumMatches.filter((candidate) => candidate.score >= ALBUM_MATCH_AMBIGUOUS).slice(0, 3);
+    : albumMatches.filter((candidate) => candidate.score >= TEXT_MATCH_AMBIGUOUS).slice(0, 3);
 
   const fileError = useMemo(() => {
     for (const file of selectedFiles) {
