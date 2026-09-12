@@ -69,7 +69,6 @@ public class CaptionGenerationService {
                 ctx.eventTitle(),
                 ctx.eventDate(),
                 ctx.institutionName(),
-                ctx.category(),
                 existingCaption,
                 prompt,
                 tone);
@@ -143,7 +142,6 @@ public class CaptionGenerationService {
                 submission.getEventTitle(),
                 eventDate,
                 institutionName,
-                submission.getCategory(),
                 resolvedInstitutionId);
     }
 
@@ -214,6 +212,6 @@ public class CaptionGenerationService {
 
     private record SubmissionContext(List<String> imageUrls, String mediaMetadata,
                                      String eventTitle, String eventDate,
-                                     String institutionName, String category,
+                                     String institutionName,
                                      UUID institutionId) {}
 }
