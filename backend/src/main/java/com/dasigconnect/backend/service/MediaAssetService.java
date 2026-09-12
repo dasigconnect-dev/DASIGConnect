@@ -880,6 +880,19 @@ public class MediaAssetService {
         if (!tag.getMediaAsset().getId().equals(assetId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tag not found.");
         }
+        // A9 (UC-2.1): at least one actor-entered tag must always remain —
+        // mirrors the mandatory-tag rule enforced at upload. AI-generated
+        // tags don't count toward (or against) this; they're classification
+        // metadata, not the actor's own tagging.
+        if ("manual".equalsIgnoreCase(tag.getSource())) {
+            long manualTagCount = assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId).stream()
+                    .filter(t -> "manual".equalsIgnoreCase(t.getSource()))
+                    .count();
+            if (manualTagCount <= 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "At least one media tag is required — add a replacement before removing the last one.");
+            }
+        }
         String label = tag.getLabel();
         assetTagRepository.delete(tag);
         recordAssetAudit(user, "MEDIA_ASSET_TAG_REMOVED", assetId, Map.of("label", label));

@@ -485,6 +485,69 @@ class MediaAssetServiceTest {
     }
 
     @Test
+    void removeTag_lastManualTag_isRejected() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        com.dasigconnect.backend.model.entity.AssetTag onlyTag = tag(asset, "hackathon", "manual");
+
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(assetTagRepository.findById(onlyTag.getId())).thenReturn(Optional.of(onlyTag));
+        when(assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of(onlyTag));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.removeTag(assetId, onlyTag.getId(), user(UUID.randomUUID(), "moderator", institutionId)));
+        assertEquals(400, ex.getStatusCode().value());
+        verify(assetTagRepository, never()).delete(any());
+    }
+
+    @Test
+    void removeTag_withAnotherManualTagRemaining_succeeds() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        com.dasigconnect.backend.model.entity.AssetTag first = tag(asset, "hackathon", "manual");
+        com.dasigconnect.backend.model.entity.AssetTag second = tag(asset, "students", "manual");
+
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(assetTagRepository.findById(first.getId())).thenReturn(Optional.of(first));
+        when(assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of(first, second));
+
+        mediaAssetService.removeTag(assetId, first.getId(), user(UUID.randomUUID(), "moderator", institutionId));
+
+        verify(assetTagRepository).delete(first);
+    }
+
+    @Test
+    void removeTag_lastManualTag_ignoresAiGeneratedTagCount() {
+        // An AI-generated tag doesn't count as a stand-in for the actor's own
+        // required tag — removing the only manual tag is still blocked even
+        // when AI tags exist on the same asset.
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        com.dasigconnect.backend.model.entity.AssetTag manual = tag(asset, "hackathon", "manual");
+        com.dasigconnect.backend.model.entity.AssetTag aiTag = tag(asset, "students", "ai_generated");
+
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(assetTagRepository.findById(manual.getId())).thenReturn(Optional.of(manual));
+        when(assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of(manual, aiTag));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.removeTag(assetId, manual.getId(), user(UUID.randomUUID(), "moderator", institutionId)));
+        assertEquals(400, ex.getStatusCode().value());
+    }
+
+    private static com.dasigconnect.backend.model.entity.AssetTag tag(MediaAsset asset, String label, String source) {
+        com.dasigconnect.backend.model.entity.AssetTag tag = new com.dasigconnect.backend.model.entity.AssetTag();
+        tag.setId(UUID.randomUUID());
+        tag.setMediaAsset(asset);
+        tag.setLabel(label);
+        tag.setSource(source);
+        return tag;
+    }
+
+    @Test
     void delete_recordsDeletedAuditEntry() {
         UUID institutionId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
