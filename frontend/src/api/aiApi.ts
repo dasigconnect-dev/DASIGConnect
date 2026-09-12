@@ -79,6 +79,40 @@ export async function suggestMedia(
   return res.data ?? [];
 }
 
+export interface AlbumMatchCandidate {
+  albumId: string;
+  albumName: string;
+  score: number;
+  reasons: string[];
+}
+
+export type AlbumMatchStatus = "confident" | "ambiguous" | "none";
+
+export interface AlbumMatchResult {
+  status: AlbumMatchStatus;
+  candidates: AlbumMatchCandidate[];
+}
+
+export interface AlbumMatchRequest {
+  eventTitle?: string;
+  caption?: string;
+  tags?: string[];
+}
+
+/** Album Auto-Match (UC-1.7): ranks existing root albums against the draft's context. */
+export async function suggestAlbum(
+  submissionId: string,
+  params: AlbumMatchRequest
+): Promise<AlbumMatchResult> {
+  const res = await api.post<AlbumMatchResult>(
+    `/ai/submissions/${submissionId}/suggest-album`,
+    params,
+    { validateStatus: () => true }
+  );
+  if (res.status !== 200) return { status: "none", candidates: [] };
+  return res.data ?? { status: "none", candidates: [] };
+}
+
 /** Fire-and-forget — never throws. */
 export function logAiInteraction(
   submissionId: string,
