@@ -34,7 +34,8 @@ import { useFacebookPreviewData } from "../../hooks/useFacebookPreviewData";
 import { fileMediaKey, savedMediaKey } from "../../hooks/useMediaReorder";
 import type { User } from "../../types/auth.types";
 import type { SubmissionMediaItem } from "../../types/media";
-import type { CaptionTone } from "../../api/aiApi";
+import type { AlbumMatchCandidate, CaptionTone } from "../../api/aiApi";
+import { suggestAlbum } from "../../api/aiApi";
 import { useToast } from "../../context/ToastContext";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { queryKeys } from "../../lib/queryKeys";
@@ -221,6 +222,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [form, setForm] = useState<FormState>(initialForm);
   const [pickerItems, setPickerItems] = useState<SubmissionMediaItem[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [albumMatching, setAlbumMatching] = useState(false);
+  const [albumMatchBadge, setAlbumMatchBadge] = useState<{ albumName: string; reasons: string[] } | null>(null);
+  const [albumMatchCandidates, setAlbumMatchCandidates] = useState<AlbumMatchCandidate[]>([]);
+  const [albumMatchNoResult, setAlbumMatchNoResult] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
   const [captionMediaKey, setCaptionMediaKey] = useState<string | null>(null);
   const [hashtagInput, setHashtagInput] = useState("");
@@ -1184,9 +1189,45 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setSaveState("idle");
   }
 
-  function applyAutoAlbum() {
-    if (isReadOnlySubmission) return;
-    updateField("albumName", form.eventTitle.trim() || form.liveEventName.trim() || "Auto-Matched Album");
+  async function applyAutoAlbum() {
+    if (isReadOnlySubmission || albumMatching) return;
+    setAlbumMatchBadge(null);
+    setAlbumMatchCandidates([]);
+    setAlbumMatchNoResult(false);
+
+    if (!form.id) {
+      // No saved draft yet — the match endpoint needs a submissionId. Fall back
+      // to the plain event-title fill rather than blocking the action.
+      updateField("albumName", form.eventTitle.trim() || form.liveEventName.trim() || "Auto-Matched Album");
+      return;
+    }
+
+    setAlbumMatching(true);
+    try {
+      const result = await suggestAlbum(form.id, {
+        eventTitle: form.eventTitle.trim() || undefined,
+        caption: form.caption.trim() || undefined,
+        tags: effectiveMediaTags(form),
+      });
+      if (result.status === "confident" && result.candidates.length > 0) {
+        const top = result.candidates[0];
+        updateField("albumName", top.albumName);
+        setAlbumMatchBadge({ albumName: top.albumName, reasons: top.reasons });
+      } else if (result.status === "ambiguous" && result.candidates.length > 0) {
+        setAlbumMatchCandidates(result.candidates);
+      } else {
+        setAlbumMatchNoResult(true);
+      }
+    } finally {
+      setAlbumMatching(false);
+    }
+  }
+
+  function handleAlbumNameChange(value: string) {
+    setAlbumMatchBadge(null);
+    setAlbumMatchCandidates([]);
+    setAlbumMatchNoResult(false);
+    updateField("albumName", value);
   }
 
   function resetComposer() {
@@ -2682,8 +2723,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     existingAlbums={existingAlbums}
                     readOnly={isReadOnlySubmission}
                     placeholder="Search, select, or create a new album"
-                    onChange={(value) => updateField("albumName", value)}
+                    onChange={handleAlbumNameChange}
                     onAutoMatch={applyAutoAlbum}
+                    matching={albumMatching}
+                    matchedBadge={albumMatchBadge}
+                    suggestions={albumMatchCandidates}
+                    noMatchNotice={albumMatchNoResult}
                 />
                 </Field>
 

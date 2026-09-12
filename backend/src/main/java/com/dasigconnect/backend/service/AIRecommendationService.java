@@ -1,14 +1,19 @@
 package com.dasigconnect.backend.service;
 import com.dasigconnect.backend.external.VoyageAIClient;
+import com.dasigconnect.backend.model.dto.ai.AlbumMatchCandidateDto;
+import com.dasigconnect.backend.model.dto.ai.AlbumMatchRequestDto;
+import com.dasigconnect.backend.model.dto.ai.AlbumMatchResponseDto;
 import com.dasigconnect.backend.model.dto.ai.MediaSuggestRequestDto;
 import com.dasigconnect.backend.model.dto.ai.MediaSuggestResultDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
 import com.dasigconnect.backend.model.entity.AiInteractionLog;
+import com.dasigconnect.backend.model.entity.MediaAlbum;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.repository.AiInteractionLogRepository;
 import com.dasigconnect.backend.repository.AssetTagRepository;
+import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
@@ -58,6 +63,7 @@ public class AIRecommendationService {
     private final AssetTagRepository assetTagRepository;
     private final AiInteractionLogRepository aiInteractionLogRepository;
     private final VoyageAIClient voyageAIClient;
+    private final MediaAlbumRepository mediaAlbumRepository;
 
     public AIRecommendationService(SubmissionRepository submissionRepository,
                                    SubmissionMediaAssetRepository submissionMediaAssetRepository,
@@ -65,7 +71,8 @@ public class AIRecommendationService {
                                    MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
                                    AssetTagRepository assetTagRepository,
                                    AiInteractionLogRepository aiInteractionLogRepository,
-                                   VoyageAIClient voyageAIClient) {
+                                   VoyageAIClient voyageAIClient,
+                                   MediaAlbumRepository mediaAlbumRepository) {
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.mediaAssetRepository = mediaAssetRepository;
@@ -73,6 +80,7 @@ public class AIRecommendationService {
         this.assetTagRepository = assetTagRepository;
         this.aiInteractionLogRepository = aiInteractionLogRepository;
         this.voyageAIClient = voyageAIClient;
+        this.mediaAlbumRepository = mediaAlbumRepository;
     }
 
     /**
@@ -173,6 +181,137 @@ public class AIRecommendationService {
         }
 
         return rankedResults;
+    }
+
+    private static final double ALBUM_MATCH_CONFIDENT_THRESHOLD = 0.55;
+    private static final double ALBUM_MATCH_AMBIGUOUS_THRESHOLD = 0.32;
+    private static final double ALBUM_MATCH_EMBEDDING_WEIGHT = 0.65;
+    private static final double ALBUM_MATCH_TAG_WEIGHT = 0.35;
+
+    /**
+     * Album Auto-Match (UC-1.7): ranks the institution's existing root albums
+     * against the draft's current context — a blend of "closest existing asset"
+     * visual similarity (Voyage embedding + pgvector, when available) and tag
+     * overlap. Scoring is on the same 0-1 scale as {@link #suggestMedia} but the
+     * bands mean something different here since the caller applies the result
+     * directly rather than just listing options:
+     * <ul>
+     *   <li>{@code confident} (&ge; {@value #ALBUM_MATCH_CONFIDENT_THRESHOLD}) — top candidate only.</li>
+     *   <li>{@code ambiguous} (&ge; {@value #ALBUM_MATCH_AMBIGUOUS_THRESHOLD}) — up to 3 ranked candidates.</li>
+     *   <li>{@code none} — no root album yet, or nothing cleared the ambiguous floor.</li>
+     * </ul>
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public AlbumMatchResponseDto suggestAlbum(UUID submissionId, AlbumMatchRequestDto dto, JwtUserDetails user) {
+        Submission submission = loadAndAuthoriseForAlbumMatch(submissionId, user);
+        UUID institutionId = submission.getInstitution().getId();
+
+        List<MediaAlbum> rootAlbums = mediaAlbumRepository.findByInstitutionIdOrderByName(institutionId)
+                .stream()
+                .filter(album -> album.getParentAlbum() == null)
+                .toList();
+        if (rootAlbums.isEmpty()) {
+            return AlbumMatchResponseDto.of(AlbumMatchResponseDto.Status.none, List.of());
+        }
+
+        Set<String> draftTags = normalizedAlbumMatchTerms(dto);
+        Map<UUID, Set<String>> albumTagMap = loadRootAlbumTagMap(institutionId);
+
+        Map<UUID, Double> embeddingScores = Map.of();
+        String embeddingText = buildAlbumMatchEmbeddingText(dto);
+        if (!embeddingText.isBlank()) {
+            try {
+                String queryVector = voyageAIClient.embedQuery(embeddingText);
+                embeddingScores = mediaAssetEmbeddingRepository
+                        .findMaxSimilarityByRootAlbum(institutionId, MediaAssetEmbeddingType.SEMANTIC, queryVector)
+                        .stream()
+                        .collect(Collectors.toMap(
+                                row -> toUuid(row[0]),
+                                row -> row[1] instanceof Number number ? number.doubleValue() : 0.0));
+            } catch (Exception e) {
+                log.warn("Voyage AI embedding failed for album Auto-Match on submission {}: {}", submissionId, e.getMessage());
+            }
+        }
+
+        boolean hasEmbeddingSignal = !embeddingScores.isEmpty();
+        Map<UUID, Double> scores = embeddingScores;
+        List<AlbumMatchCandidateDto> ranked = rootAlbums.stream()
+                .map(album -> scoreAlbumMatch(
+                        album,
+                        draftTags,
+                        albumTagMap.getOrDefault(album.getId(), Set.of()),
+                        scores.getOrDefault(album.getId(), 0.0),
+                        hasEmbeddingSignal))
+                .filter(candidate -> candidate.getScore() >= ALBUM_MATCH_AMBIGUOUS_THRESHOLD)
+                .sorted(Comparator.comparingDouble(AlbumMatchCandidateDto::getScore).reversed())
+                .limit(3)
+                .toList();
+
+        if (ranked.isEmpty()) {
+            return AlbumMatchResponseDto.of(AlbumMatchResponseDto.Status.none, List.of());
+        }
+        if (ranked.get(0).getScore() >= ALBUM_MATCH_CONFIDENT_THRESHOLD) {
+            return AlbumMatchResponseDto.of(AlbumMatchResponseDto.Status.confident, List.of(ranked.get(0)));
+        }
+        return AlbumMatchResponseDto.of(AlbumMatchResponseDto.Status.ambiguous, ranked);
+    }
+
+    private AlbumMatchCandidateDto scoreAlbumMatch(MediaAlbum album, Set<String> draftTags, Set<String> albumTags,
+                                                   double embeddingScore, boolean hasEmbeddingSignal) {
+        Set<String> overlap = new LinkedHashSet<>(draftTags);
+        overlap.retainAll(albumTags);
+        double tagScore = draftTags.isEmpty() ? 0.0 : Math.min(1.0, overlap.size() / (double) draftTags.size());
+
+        double score = hasEmbeddingSignal
+                ? (ALBUM_MATCH_EMBEDDING_WEIGHT * embeddingScore) + (ALBUM_MATCH_TAG_WEIGHT * tagScore)
+                : tagScore;
+
+        List<String> reasons = new ArrayList<>();
+        if (hasEmbeddingSignal && embeddingScore > 0) {
+            reasons.add("Visually similar to existing media in \"" + album.getName() + "\".");
+        }
+        if (!overlap.isEmpty()) {
+            reasons.add("Shares tag" + (overlap.size() > 1 ? "s " : " ") + String.join(", ", overlap) + ".");
+        }
+        return AlbumMatchCandidateDto.of(album.getId(), album.getName(), score, reasons);
+    }
+
+    private Map<UUID, Set<String>> loadRootAlbumTagMap(UUID institutionId) {
+        Map<UUID, Set<String>> map = new HashMap<>();
+        for (Object[] row : assetTagRepository.findLabelsByRootAlbumForInstitution(institutionId)) {
+            UUID albumId = toUuid(row[0]);
+            String label = row[1] instanceof String s ? s : null;
+            if (label != null && !label.isBlank()) {
+                map.computeIfAbsent(albumId, ignored -> new LinkedHashSet<>()).add(normalize(label));
+            }
+        }
+        return map;
+    }
+
+    private static Set<String> normalizedAlbumMatchTerms(AlbumMatchRequestDto dto) {
+        Set<String> terms = new LinkedHashSet<>();
+        addAllTerms(terms, dto.getTags());
+        addLooseWords(terms, dto.getEventTitle());
+        return terms;
+    }
+
+    private static String buildAlbumMatchEmbeddingText(AlbumMatchRequestDto dto) {
+        StringBuilder sb = new StringBuilder();
+        append(sb, "event_title", dto.getEventTitle());
+        append(sb, "caption", dto.getCaption());
+        appendAll(sb, "tags", dto.getTags());
+        return sb.toString().trim();
+    }
+
+    private Submission loadAndAuthoriseForAlbumMatch(UUID submissionId, JwtUserDetails user) {
+        Submission submission = submissionRepository.findById(submissionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found."));
+        // institutionId is null for moderators/admins — they act network-wide.
+        UUID institutionId = user.institutionId();
+        if (institutionId != null && !submission.getInstitution().getId().equals(institutionId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Submission does not belong to your institution.");
+        }
+        return submission;
     }
 
     @Transactional
