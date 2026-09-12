@@ -2752,30 +2752,132 @@
 
 @media (max-width: 640px) {
   .med-page {
-    padding: 18px 14px;
-    gap: 14px;
+    padding: 20px 16px 60px;
+    gap: 18px;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
   }
   .med-page.panel-open {
-    padding-right: 14px;
+    padding-right: 16px;
   }
   .med-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    row-gap: 4px;
+    column-gap: 12px;
+    margin-bottom: 4px;
+  }
+  .med-header > div:first-child {
+    display: contents;
   }
   .med-title {
-    font-size: 22px;
+    grid-column: 1;
+    grid-row: 1;
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0;
+    line-height: 1.2;
+    min-width: 0;
+  }
+  .med-subtitle {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    font-size: 13px;
+    line-height: 1.4;
+    margin: 0;
+    color: var(--med-text-2);
   }
   .med-header-actions {
-    width: 100%;
-    justify-content: flex-start;
+    grid-column: 2;
+    grid-row: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: auto;
   }
-  .med-search-input {
-    font-size: 16px;
-    height: 40px;
+  .med-header-actions .med-btn-primary {
+    height: 36px;
+    padding: 0 16px;
+    font-size: 13px;
+    font-weight: 650;
+    border-radius: 999px;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(11, 95, 204, 0.25);
+  }
+  .med-filter-bar {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    gap: 12px;
+    padding: 2px 0 0;
   }
   .med-filter-row1 {
+    display: flex;
+    flex-wrap: wrap;
     gap: 8px;
+    align-items: center;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .med-search-wrap {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    position: relative;
+  }
+  .med-search-wrap .med-search-input {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    font-size: 13.5px;
+    height: 42px;
+    padding-left: 38px;
+    padding-right: 96px;
+    text-overflow: ellipsis;
+  }
+  .med-search-wrap .med-search-input::placeholder {
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    color: var(--med-muted);
+  }
+  .med-semantic-toggle {
+    right: 5px;
+    height: 32px;
+    padding: 0 10px;
+    font-size: 11px;
+    gap: 5px;
+    white-space: nowrap;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+  .dc-select.med-inst-select,
+  .dc-select.med-sort-select {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+  .dc-select.med-inst-select .dc-select-trigger,
+  .dc-select.med-sort-select .dc-select-trigger {
+    min-height: 38px;
+    height: 38px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .med-view-toggle {
+    flex: 0 0 auto;
+    margin-left: auto;
+    display: inline-flex;
+  }
+  .med-view-btn {
+    width: 34px;
+    height: 38px;
   }
   .med-filter-row2 {
     gap: 6px;
@@ -2787,29 +2889,31 @@
   }
   .med-grid {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 10px;
+    gap: 12px;
   }
   .med-card-body {
-    padding: 8px 10px;
+    padding: 10px 12px;
   }
   .med-card-title {
     font-size: 12px;
     margin-bottom: 4px;
   }
   .med-folder-open {
-    padding: 12px 10px;
+    padding: 14px 12px;
   }
   .med-folder-name {
-    font-size: 13px;
+    font-size: 13.5px;
   }
   .med-result-strip {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
     gap: 8px;
+    margin-top: 2px;
   }
   .med-result-strip-left {
-    width: 100%;
-    justify-content: space-between;
+    width: auto;
+    justify-content: flex-start;
   }
   .med-content-type-nav {
     width: 100%;
@@ -2874,21 +2978,36 @@
 
 @media (max-width: 480px) {
   .med-page {
-    padding: 16px 12px;
-    gap: 12px;
+    padding: 16px 12px 50px;
+    gap: 16px;
   }
-  .med-inst-select,
-  .med-sort-select {
-    flex: 1 1 100%;
-    width: 100%;
-    max-width: 100%;
+  .med-title {
+    font-size: 22px;
   }
-  .med-view-toggle {
-    margin-left: auto;
+  .med-header-actions .med-btn-primary {
+    height: 34px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+  .med-filter-row1 {
+    gap: 6px;
+  }
+  .med-search-wrap .med-search-input {
+    font-size: 13px;
+    padding-left: 36px;
+    padding-right: 90px;
+  }
+  .med-semantic-toggle {
+    padding: 0 8px;
+    font-size: 10.5px;
+    gap: 4px;
   }
   .med-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    gap: 10px;
+  }
+  .med-card-body {
+    padding: 10px 12px;
   }
 }
 

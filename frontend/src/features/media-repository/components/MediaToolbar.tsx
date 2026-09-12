@@ -62,7 +62,7 @@ export default function MediaToolbar({
             placeholder={
               semantic
                 ? "Describe what you're looking for, then press Enter…"
-                : "Search filename, folder, tag, or description…"
+                : "Search files, folders, or tags…"
             }
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
