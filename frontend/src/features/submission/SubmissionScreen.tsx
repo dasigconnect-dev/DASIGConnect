@@ -2846,6 +2846,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 />
               </Field>
             </div>
+            {lookups.guardrailsEnforced && !guardRailsLoading && !guardRails?.blocked
+              && guardRails?.softWarnings[0] && (
+              <div className="sub-inline-warning" role="status">
+                <i className="ti ti-alert-triangle" aria-hidden />
+                {guardRails.softWarnings[0].message}
+              </div>
+            )}
               </>
             )}
             {!form.fastTrack && guardRailError && (
