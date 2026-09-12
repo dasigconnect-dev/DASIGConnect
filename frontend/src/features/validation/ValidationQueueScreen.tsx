@@ -249,6 +249,7 @@ export default function ValidationQueueScreen({
   const [lockNotice, setLockNotice] = useState("");
   const [lockBusy, setLockBusy] = useState(false);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  const [mobileView, setMobileView] = useState<"queue" | "review">("queue");
   const [showDetails, setShowDetails] = useState(true);
   const [filter, setFilter] = useState<QueueFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("submitted");
@@ -461,6 +462,7 @@ export default function ValidationQueueScreen({
   function handleFilterChange(next: QueueFilter) {
     if (next === filter) return;
     openRequestRef.current += 1;
+    setMobileView("queue");
     setSortKey(next === "all" ? "submitted" : "publish_slot");
     setFilter(next);
     setSelectedId(null);
@@ -691,6 +693,7 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
+      setMobileView("queue");
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -990,6 +993,7 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
+      setMobileView("queue");
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -1024,6 +1028,7 @@ export default function ValidationQueueScreen({
       clearLockFor(selected.id);
       setSelected(null);
       setSelectedId(null);
+      setMobileView("queue");
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -1040,7 +1045,7 @@ export default function ValidationQueueScreen({
   }
 
   return (
-    <div className={`val-page ${isPanelCollapsed ? "is-queue-collapsed" : ""}`}>
+    <div className={`val-page ${isPanelCollapsed ? "is-queue-collapsed" : ""} val-mobile-view--${mobileView}`}>
       <aside className="val-queue-panel">
         <div className="val-queue-header">
           <div className="val-title-row">
@@ -1165,7 +1170,10 @@ export default function ValidationQueueScreen({
                     className={`val-queue-item ${item.submissionId === selectedFailureId ? "active" : ""}`}
                     key={item.submissionId}
                     type="button"
-                    onClick={() => setSelectedFailureId(item.submissionId)}
+                    onClick={() => {
+                      setSelectedFailureId(item.submissionId);
+                      setMobileView("review");
+                    }}
                     title={`${item.eventTitle || "Untitled submission"} • ${item.institutionName || "Unknown institution"}`}
                   >
                     <div className="val-qi-head">
@@ -1232,7 +1240,10 @@ export default function ValidationQueueScreen({
                     className={`val-queue-item ${item.id === selectedId ? "active" : ""} ${deadlineTone(item.scheduledAt)}`}
                     key={item.id}
                     type="button"
-                    onClick={() => void openSubmission(item)}
+                    onClick={() => {
+                      void openSubmission(item);
+                      setMobileView("review");
+                    }}
                     title={`${item.eventTitle || "Untitled submission"} • ${item.institutionName || "Unknown institution"}`}
                   >
                     <div className="val-qi-head">
@@ -1287,6 +1298,20 @@ export default function ValidationQueueScreen({
       </aside>
 
       <main className="val-review-panel">
+        <div className="val-mobile-topbar">
+          <button
+            type="button"
+            className="val-mobile-back-btn"
+            onClick={() => setMobileView("queue")}
+            aria-label="Back to queue list"
+          >
+            <i className="ti ti-arrow-left" />
+            <span>Back to Queue</span>
+          </button>
+          <span className="val-mobile-queue-badge">
+            {isFailedMode ? "Failed" : filter === "all" ? "All Queue" : statusLabel[filter] || filter}
+          </span>
+        </div>
         {isPanelCollapsed && (
           <button
             type="button"
@@ -1299,10 +1324,10 @@ export default function ValidationQueueScreen({
             <span>Show Queue</span>
           </button>
         )}
-        {!isFailedMode && selected && !editMode && !selectedLoading && !showDetails && (
+        {!isFailedMode && selected && !editMode && !selectedLoading && (
           <button
             type="button"
-            className="val-details-btn"
+            className={`val-details-btn ${showDetails ? "is-hidden" : ""}`}
             onClick={() => setShowDetails(true)}
             title="Show submission details"
             aria-label="Show submission details"
@@ -1480,9 +1505,7 @@ export default function ValidationQueueScreen({
                   className={
                     editMode
                       ? "val-edit-layout"
-                      : showDetails
-                        ? "val-review-layout"
-                        : "val-edit-layout--off"
+                      : `val-review-layout ${showDetails ? "is-details-open" : "is-details-collapsed"}`
                   }
                 >
                   <FacebookPostPreviewCard
@@ -1498,12 +1521,13 @@ export default function ValidationQueueScreen({
                     onOpenHistory={() => setShowHistoryModal(true)}
                   />
 
-                  {!editMode && showDetails && (
+                  {!editMode && (
                     <SubmissionDetailsPanel
                       submission={selected}
                       log={log}
                       currentUserEmail={user.email}
                       onHide={() => setShowDetails(false)}
+                      isOpen={showDetails}
                     />
                   )}
 
@@ -2313,11 +2337,13 @@ function SubmissionDetailsPanel({
   log,
   currentUserEmail,
   onHide,
+  isOpen = true,
 }: {
   submission: SubmissionSummary;
   log: ValidationLog[];
   currentUserEmail: string;
   onHide: () => void;
+  isOpen?: boolean;
 }) {
   const isLive = Boolean(submission.fastTrack);
   const slot = submission.scheduledAt;
@@ -2344,21 +2370,26 @@ function SubmissionDetailsPanel({
   }
 
   return (
-    <aside className="val-details-panel" aria-label="Submission details">
-      <div className="val-details-head">
-        <span>
-          <i className="ti ti-info-circle" /> Submission details
-        </span>
-        <button
-          type="button"
-          className="val-details-hide"
-          onClick={onHide}
-          title="Hide details"
-          aria-label="Hide submission details panel"
-        >
-          <i className="ti ti-layout-sidebar-right-collapse" />
-        </button>
-      </div>
+    <aside
+      className={`val-details-panel ${isOpen ? "is-open" : "is-collapsed"}`}
+      aria-label="Submission details"
+      aria-hidden={!isOpen}
+    >
+      <div className="val-details-panel-inner">
+        <div className="val-details-head">
+          <span>
+            <i className="ti ti-info-circle" /> Submission details
+          </span>
+          <button
+            type="button"
+            className="val-details-hide"
+            onClick={onHide}
+            title="Hide details"
+            aria-label="Hide submission details panel"
+          >
+            <i className="ti ti-layout-sidebar-right-collapse" />
+          </button>
+        </div>
 
       <dl className="val-details-list">
         <div>
@@ -2431,6 +2462,7 @@ function SubmissionDetailsPanel({
           </dd>
         </div>
       </dl>
+      </div>
     </aside>
   );
 }
@@ -2480,9 +2512,11 @@ function FacebookPostPreviewCard({
               <strong>{pageName}</strong>
             </div>
             <div className="val-fb-time-row">
-              <span>Published by {pageName}</span>
+              <span className="val-fb-published-by" title={`Published by ${pageName}`}>
+                Published by {pageName}
+              </span>
               <span className="val-fb-dot">·</span>
-              <span>
+              <span className="val-fb-schedule-text">
                 {submission.fastTrack
                   ? "Live Event Fast-Track"
                   : submission.scheduledAt
