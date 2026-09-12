@@ -1633,7 +1633,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       toast.success("Submission sent for approval.");
       void refresh();
     } catch (err: unknown) {
-      toast.error(getErrorMessage(err, "Submission failed."));
+      const message = getErrorMessage(err, "Submission failed.");
+      // A4 — another submission claimed this slot between the last save and
+      // this submit attempt. Guide the actor back to Schedule instead of just
+      // toasting a generic error, since the fix is always "pick a new time."
+      if (isConflictError(err) && /guard rail/i.test(message)) {
+        toast.error(`${message} Choose a new time and resubmit.`);
+        setModal(null);
+        setActiveStep("schedule");
+      } else {
+        toast.error(message);
+      }
     } finally {
       setSubmitting(false);
     }

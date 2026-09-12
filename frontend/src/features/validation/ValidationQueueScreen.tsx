@@ -386,6 +386,13 @@ export default function ValidationQueueScreen({
           .some((value) => value!.toLowerCase().includes(term));
       })
       .sort((a, b) => {
+        // Fast-Track (Live Event) submissions are urgent — they sort to the
+        // top of the active queue (UC-1.9 A5). Not applied in the "All"
+        // history tab, where already-resolved items are just browsed by date.
+        if (!isAllMode) {
+          const fastTrackDiff = Number(Boolean(b.fastTrack)) - Number(Boolean(a.fastTrack));
+          if (fastTrackDiff !== 0) return fastTrackDiff;
+        }
         // Live Event / Fast-Track submissions never reserve a slot — once
         // published their publish time IS their slot, so fall back to it.
         const left =
