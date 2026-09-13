@@ -294,7 +294,7 @@
 .im-registry-header {
   min-height: 48px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  background: var(--d-blue, #0B5FCC);
+  background: var(--d-blue, #1877f2);
   color: #ffffff;
   font-size: 11px;
   font-weight: 700;
@@ -532,7 +532,7 @@
   top: 0;
   bottom: 0;
   width: 3px;
-  background: linear-gradient(180deg, #0B5FCC, #3b82f6);
+  background: linear-gradient(180deg, #1877f2, #3b82f6);
   z-index: 2;
 }
 
@@ -771,7 +771,7 @@
 }
 
 .im-back-btn:hover {
-  color: #084a9f;
+  color: #1565d8;
   transform: translateX(-4px);
 }
 
@@ -1398,7 +1398,7 @@
     align-items: center;
     justify-content: center;
     gap: 5px;
-    box-shadow: 0 2px 8px rgba(11, 95, 204, 0.25);
+    box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
   }
 
   .im-toolbar-card {

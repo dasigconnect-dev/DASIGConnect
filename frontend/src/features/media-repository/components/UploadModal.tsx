@@ -11,12 +11,22 @@ export interface UploadMetadata {
   tags: string[];
   /** Institution the upload is scoped to — resolved from the open folder or the modal's picker. */
   institutionId: string | null;
+  allowDuplicate?: boolean;
+}
+
+interface DuplicateUploadPrompt {
+  file: File;
+  index: number;
+  metadata: UploadMetadata;
+  assetId: string;
+  assetCode: string;
 }
 
 interface UploadModalProps {
   open: boolean;
   institutionName: string;
   onClose: () => void;
+  onUseExistingAsset: (assetId: string) => void;
   albums: MediaAlbum[];
   /** The folder currently open in the repository — offered as the default upload target. */
   currentAlbum?: MediaAlbum | null;
@@ -96,6 +106,7 @@ export default function UploadModal({
   defaultInstitutionId,
   onCreateAlbum,
   onUpload,
+  onUseExistingAsset,
 }: UploadModalProps) {
   const [dragOver, setDragOver] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -109,6 +120,7 @@ export default function UploadModal({
   const [pickedInstId, setPickedInstId] = useState("");
   const [tagsInput, setTagsInput] = useState("");
   const [inlineError, setInlineError] = useState("");
+  const [duplicatePrompt, setDuplicatePrompt] = useState<DuplicateUploadPrompt | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const tags = useMemo(
@@ -210,6 +222,7 @@ export default function UploadModal({
     setUseCurrentAlbum(true);
     setPickedInstId("");
     setTagsInput("");
+    setDuplicatePrompt(null);
   }
 
   function handleAlbumChange(value: string) {
@@ -254,6 +267,37 @@ export default function UploadModal({
     e.target.value = "";
   }
 
+  function duplicateDetails(error: unknown) {
+    if (typeof error !== "object" || error === null) return null;
+    const response = (error as { response?: { status?: number; data?: { error?: { code?: string; details?: { assetId?: string; assetCode?: string } } } } }).response;
+    const details = response?.data?.error?.details;
+    if (response?.status !== 409 || response.data?.error?.code !== "MEDIA_ASSET_DUPLICATE"
+      || !details?.assetId || !details.assetCode) return null;
+    return { assetId: details.assetId, assetCode: details.assetCode };
+  }
+
+  async function uploadFromIndex(startIndex: number, metadata: UploadMetadata, allowDuplicateIndex = -1) {
+    const total = selectedFiles.length;
+    for (let index = startIndex; index < total; index += 1) {
+      const file = selectedFiles[index];
+      const completedBase = (index / total) * 100;
+      try {
+        await onUpload(
+          file,
+          { ...metadata, allowDuplicate: index === allowDuplicateIndex },
+          (pct) => setProgress(Math.round(completedBase + pct / total)),
+        );
+      } catch (err) {
+        const duplicate = duplicateDetails(err);
+        if (!duplicate) throw err;
+        setDuplicatePrompt({ file, index, metadata, ...duplicate });
+        setUploading(false);
+        return false;
+      }
+    }
+    return true;
+  }
+
   async function handleUpload() {
     if (selectedFiles.length === 0) return;
     if (fileError || metadataError) {
@@ -292,13 +336,8 @@ export default function UploadModal({
       }
 
       const metadata: UploadMetadata = { albumId, albumName, autoMatchAlbum, tags, institutionId };
-      const total = selectedFiles.length;
-      for (const [index, file] of selectedFiles.entries()) {
-        const completedBase = (index / total) * 100;
-        await onUpload(file, metadata, (pct) => {
-          setProgress(Math.round(completedBase + pct / total));
-        });
-      }
+      const finished = await uploadFromIndex(0, metadata);
+      if (!finished) return;
       setProgress(100);
       setTimeout(() => {
         resetForm();
@@ -310,6 +349,47 @@ export default function UploadModal({
       setProgress(0);
       const detail = err instanceof Error ? err.message : String(err);
       setInlineError(`Upload failed: ${detail}`);
+    }
+  }
+
+  async function uploadDuplicateAnyway() {
+    if (!duplicatePrompt) return;
+    const prompt = duplicatePrompt;
+    setDuplicatePrompt(null);
+    setUploading(true);
+    try {
+      const finished = await uploadFromIndex(prompt.index, prompt.metadata, prompt.index);
+      if (!finished) return;
+      setProgress(100);
+      setTimeout(() => {
+        resetForm();
+        setUploading(false);
+        onClose();
+      }, 600);
+    } catch (err) {
+      setUploading(false);
+      setInlineError(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  async function cancelDuplicateFile() {
+    if (!duplicatePrompt) return;
+    const nextIndex = duplicatePrompt.index + 1;
+    const metadata = duplicatePrompt.metadata;
+    setDuplicatePrompt(null);
+    setUploading(true);
+    try {
+      const finished = await uploadFromIndex(nextIndex, metadata);
+      if (!finished) return;
+      setProgress(100);
+      setTimeout(() => {
+        resetForm();
+        setUploading(false);
+        onClose();
+      }, 600);
+    } catch (err) {
+      setUploading(false);
+      setInlineError(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -348,6 +428,32 @@ export default function UploadModal({
         </div>
 
         <div className="med-modal-body">
+          {duplicatePrompt && (
+            <div className="med-delete-warning-banner" role="alert">
+              <div className="med-banner-title warn">Duplicate asset detected</div>
+              <p>
+                <strong>{duplicatePrompt.file.name}</strong> matches existing asset {duplicatePrompt.assetCode}.
+                Choose whether to open the existing asset, upload this file anyway, or cancel this file.
+              </p>
+              <div className="med-modal-actions">
+                <button type="button" className="med-btn med-btn-secondary" onClick={() => {
+                  const assetId = duplicatePrompt.assetId;
+                  setDuplicatePrompt(null);
+                  resetForm();
+                  onClose();
+                  onUseExistingAsset(assetId);
+                }}>
+                  Use Existing
+                </button>
+                <button type="button" className="med-btn med-btn-warn-confirm" onClick={() => void uploadDuplicateAnyway()}>
+                  Upload Anyway
+                </button>
+                <button type="button" className="med-btn med-btn-ghost" onClick={() => void cancelDuplicateFile()}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
           {selectedCount === 0 ? (
             <div
               className={`med-dropzone${dragOver ? " drag-over" : ""}`}

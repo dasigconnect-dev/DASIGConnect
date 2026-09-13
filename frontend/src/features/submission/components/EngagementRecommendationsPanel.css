@@ -12,7 +12,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -22,7 +22,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
 }
 
 .sub-engagement-heading small,
@@ -78,12 +78,12 @@
 
 .sub-engagement-slots button.selected {
   background: #eff6ff;
-  border: 1.5px solid var(--d-blue, #0B5FCC);
+  border: 1.5px solid var(--d-blue, #1877f2);
   box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.15);
 }
 
 .sub-engagement-slots button.selected strong {
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
 }
 
 .sub-engagement-slots span {

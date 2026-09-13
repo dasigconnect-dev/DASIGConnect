@@ -25,6 +25,59 @@ export function markAllNotificationsRead() {
   return api.patch<void>("/notifications/read-all");
 }
 
+type NotificationSseParser = {
+  push: (chunk: string) => void;
+};
+
+export function createNotificationSseParser(
+  onNotification: (dto: NotificationDto) => void,
+): NotificationSseParser {
+  let buffer = "";
+  let eventName = "";
+  let dataLines: string[] = [];
+
+  const dispatchEvent = () => {
+    if (eventName === "notification" && dataLines.length > 0) {
+      try {
+        onNotification(JSON.parse(dataLines.join("\n")) as NotificationDto);
+      } catch {
+        // Ignore malformed payloads without closing an otherwise healthy stream.
+      }
+    }
+    eventName = "";
+    dataLines = [];
+  };
+
+  const processLine = (rawLine: string) => {
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    if (line === "") {
+      dispatchEvent();
+      return;
+    }
+    if (line.startsWith(":")) return;
+
+    const separator = line.indexOf(":");
+    const field = separator === -1 ? line : line.slice(0, separator);
+    let value = separator === -1 ? "" : line.slice(separator + 1);
+    if (value.startsWith(" ")) value = value.slice(1);
+
+    if (field === "event") eventName = value;
+    if (field === "data") dataLines.push(value);
+  };
+
+  return {
+    push(chunk) {
+      buffer += chunk;
+      let newlineIndex = buffer.indexOf("\n");
+      while (newlineIndex >= 0) {
+        processLine(buffer.slice(0, newlineIndex));
+        buffer = buffer.slice(newlineIndex + 1);
+        newlineIndex = buffer.indexOf("\n");
+      }
+    },
+  };
+}
+
 export function openNotificationStream(
   onNotification: (dto: NotificationDto) => void,
   onConnect: () => void,
@@ -50,36 +103,17 @@ export function openNotificationStream(
       onConnect();
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = "";
+      const parser = createNotificationSseParser(onNotification);
 
       function pump(): Promise<void> {
         return reader.read().then(({ done, value }) => {
           if (done) {
+            const finalChunk = decoder.decode();
+            if (finalChunk) parser.push(finalChunk);
             onDisconnect();
             return;
           }
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-          let evtName = "";
-          let data = "";
-          for (const line of lines) {
-            if (line.startsWith("event:")) {
-              evtName = line.slice(6).trim();
-            } else if (line.startsWith("data:")) {
-              data = line.slice(5).trim();
-            } else if (line === "" && data) {
-              if (evtName === "notification") {
-                try {
-                  onNotification(JSON.parse(data) as NotificationDto);
-                } catch {
-                  // Ignore malformed SSE payloads and keep the stream open.
-                }
-              }
-              evtName = "";
-              data = "";
-            }
-          }
+          parser.push(decoder.decode(value, { stream: true }));
           return pump();
         });
       }

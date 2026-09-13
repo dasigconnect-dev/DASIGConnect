@@ -24,7 +24,10 @@ public class MediaAssetSummaryDto {
     private String uploaderEmail;
     private String caption;
     private boolean skipWatermark;
-    /** MediaAssetStatus name. "STAGED" = a draft upload not yet bound to an institution. */
+    /**
+     * MediaAssetStatus name. "STAGED" = a draft upload not yet bound to an
+     * institution.
+     */
     private String status;
 
     public static MediaAssetSummaryDto from(MediaAsset asset) {
@@ -50,6 +53,10 @@ public class MediaAssetSummaryDto {
         dto.uploaderId = asset.getUploader().getId();
         dto.uploaderEmail = asset.getUploader().getEmail();
         dto.status = asset.getStatus() != null ? asset.getStatus().name() : null;
+        if (asset.getDeletedAt() != null || asset.getStatus() == com.dasigconnect.backend.model.entity.MediaAssetStatus.DELETED) {
+            dto.title = "[Asset Deleted]";
+            dto.storageUrl = null;
+        }
         return dto;
     }
 
@@ -60,22 +67,75 @@ public class MediaAssetSummaryDto {
         return dto;
     }
 
-    public UUID getId() { return id; }
-    public String getAssetCode() { return assetCode; }
-    public String getStorageUrl() { return storageUrl; }
-    public String getFileName() { return fileName; }
-    public String getTitle() { return title; }
-    public String getFileType() { return fileType; }
-    public long getFileSizeBytes() { return fileSizeBytes; }
-    public String getAiCategory() { return aiCategory; }
-    public UUID getAlbumId() { return albumId; }
-    public String getAlbumName() { return albumName; }
-    public Instant getCreatedAt() { return createdAt; }
-    public UUID getInstitutionId() { return institutionId; }
-    public String getInstitutionName() { return institutionName; }
-    public UUID getUploaderId() { return uploaderId; }
-    public String getUploaderEmail() { return uploaderEmail; }
-    public String getCaption() { return caption; }
-    public boolean isSkipWatermark() { return skipWatermark; }
-    public String getStatus() { return status; }
+    public UUID getId() {
+        return id;
+    }
+
+    public String getAssetCode() {
+        return assetCode;
+    }
+
+    public String getStorageUrl() {
+        return storageUrl;
+    }
+
+    public String getFileName() {
+        return fileName;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public String getFileType() {
+        return fileType;
+    }
+
+    public long getFileSizeBytes() {
+        return fileSizeBytes;
+    }
+
+    public String getAiCategory() {
+        return aiCategory;
+    }
+
+    public UUID getAlbumId() {
+        return albumId;
+    }
+
+    public String getAlbumName() {
+        return albumName;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public UUID getInstitutionId() {
+        return institutionId;
+    }
+
+    public String getInstitutionName() {
+        return institutionName;
+    }
+
+    public UUID getUploaderId() {
+        return uploaderId;
+    }
+
+    public String getUploaderEmail() {
+        return uploaderEmail;
+    }
+
+    public String getCaption() {
+        return caption;
+    }
+
+    public boolean isSkipWatermark() {
+        return skipWatermark;
+    }
+
+    public String getStatus() {
+        return status;
+    }
 }

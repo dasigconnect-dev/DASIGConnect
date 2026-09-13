@@ -3,6 +3,7 @@ import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
 import { getPasswordRules } from '../../lib/passwordPolicy'
+import dasigLogo from '../../assets/dasigconnect-logo.png'
 
 interface ResetPasswordScreenProps {
   active: boolean
@@ -52,7 +53,7 @@ export default function ResetPasswordScreen({
             </div>
             <div className="brand-lockup">
               <div className="brand-icon">
-                <img src="/dasigconnect-logo.png" alt="DASIGConnect logo" />
+                <img src={dasigLogo} alt="DASIGConnect logo" />
               </div>
               <div className="brand-text">
                 <div className="brand-name">

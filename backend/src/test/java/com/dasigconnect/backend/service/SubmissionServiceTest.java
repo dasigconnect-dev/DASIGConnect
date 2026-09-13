@@ -49,6 +49,7 @@ import org.springframework.web.server.ResponseStatusException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -501,6 +502,28 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void submit_withOnlyDeletedMedia_returns422() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        MediaAsset deletedAsset = mediaAsset(UUID.randomUUID(), institution);
+        deletedAsset.setStatus(MediaAssetStatus.DELETED);
+        deletedAsset.setDeletedAt(Instant.now());
+        SubmissionMediaAsset link = mediaLink(submission, deletedAsset, 0);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId))
+                .thenReturn(List.of(link));
+
+        assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("non-deleted media attachment")
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode().value())
+                .isEqualTo(422);
+        verify(submissionRepository, never()).save(argThat(saved -> saved.getStatus() == SubmissionStatus.pending));
+    }
+
+    @Test
     void attachAsset_rejectsAssetFromOtherInstitution() {
         UUID submissionId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
@@ -540,6 +563,8 @@ class SubmissionServiceTest {
         submissionService.attachAsset(submissionId, dto, moderatorPrincipal);
 
         verify(submissionMediaAssetRepository).save(any(SubmissionMediaAsset.class));
+        verify(auditLogService).record(
+                any(), eq("MEDIA_ASSET_REUSED"), eq(null), eq(null), eq(assetId), any());
     }
 
     @Test
@@ -675,8 +700,8 @@ class SubmissionServiceTest {
 
         submissionService.attachMedia(submissionId, dto, contributorPrincipal);
 
-        org.mockito.ArgumentCaptor<com.dasigconnect.backend.model.entity.AssetTag> tags =
-                org.mockito.ArgumentCaptor.forClass(com.dasigconnect.backend.model.entity.AssetTag.class);
+        org.mockito.ArgumentCaptor<com.dasigconnect.backend.model.entity.AssetTag> tags
+                = org.mockito.ArgumentCaptor.forClass(com.dasigconnect.backend.model.entity.AssetTag.class);
         verify(assetTagRepository, org.mockito.Mockito.times(2)).save(tags.capture());
         assertThat(tags.getAllValues()).extracting(com.dasigconnect.backend.model.entity.AssetTag::getLabel)
                 .containsExactly("event", "dost7");

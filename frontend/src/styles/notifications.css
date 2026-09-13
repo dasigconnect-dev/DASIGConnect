@@ -2,7 +2,7 @@
 :root {
   --notif-navy-deep:      #0A1628;
   --notif-navy-mid:       #1A3A6B;
-  --notif-blue-brand:     #0b5fcc;
+  --notif-blue-brand:     #1877f2;
   --notif-gold:           #F59E0B;
   --notif-gold-light:     #FEF3C7;
   --notif-surface-0:      #FFFFFF;
@@ -90,7 +90,7 @@
 .notif-btn-ghost:hover {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   transform: translateY(-0.5px);
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.12);
 }
@@ -118,7 +118,7 @@
 .notif-icon-btn:hover {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   transform: translateY(-0.5px);
 }
 
@@ -1233,7 +1233,7 @@
   border-radius: 999px;
   background: #ffffff;
   border: 1px solid var(--d-border, #e2e8f0);
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -1246,7 +1246,7 @@
 .notif-view-all-pill:hover {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: #084a9f;
+  color: #1565d8;
   transform: translateY(-0.5px);
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.12);
 }
@@ -1400,7 +1400,7 @@
   gap: 4px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   text-decoration: none;
   padding: 4px 10px;
   border-radius: 6px;
@@ -1412,7 +1412,7 @@
 
 .notif-table-deeplink:hover {
   background: #dbeafe;
-  color: #084a9f;
+  color: #1565d8;
   transform: translateX(2px);
 }
 

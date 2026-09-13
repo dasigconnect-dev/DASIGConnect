@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   downloadAuditLogCsv,
@@ -204,8 +204,20 @@ export default function AuditLogScreen({ user }: Props) {
   const logs = auditPage?.content ?? [];
   const totalElements = auditPage?.totalElements ?? 0;
   const totalPages = auditPage?.totalPages ?? 0;
-  const loading = auditLogQuery.isLoading || auditLogQuery.isFetching;
+  const loading = auditLogQuery.isLoading;
+  const refreshing = auditLogQuery.isFetching && !auditLogQuery.isLoading;
   const loadError = auditLogQuery.error ? getAuditLoadError(auditLogQuery.error) : "";
+  const refreshErrorNotifiedRef = useRef(false);
+
+  useEffect(() => {
+    if (!loadError || logs.length === 0) {
+      if (!loadError) refreshErrorNotifiedRef.current = false;
+      return;
+    }
+    if (refreshErrorNotifiedRef.current) return;
+    refreshErrorNotifiedRef.current = true;
+    toast.error(loadError);
+  }, [loadError, logs.length, toast]);
 
   function refreshAuditLog() {
     void queryClient.invalidateQueries({ queryKey: ["audit-log"] });
@@ -278,10 +290,10 @@ export default function AuditLogScreen({ user }: Props) {
               type="button"
               className="notif-btn notif-btn-ghost"
               onClick={refreshAuditLog}
-              disabled={loading}
+              disabled={loading || refreshing}
               title="Refresh audit log"
             >
-              <i className={`ti ti-refresh${loading ? " spin" : ""}`} style={{ fontSize: 14 }} />
+              <i className={`ti ti-refresh${loading || refreshing ? " spin" : ""}`} style={{ fontSize: 14 }} />
               <span>Refresh</span>
             </button>
 
@@ -289,7 +301,7 @@ export default function AuditLogScreen({ user }: Props) {
               type="button"
               className="audit-export-btn"
               onClick={handleExport}
-              disabled={exporting || loading}
+              disabled={exporting || loading || refreshing}
               title="Download formatted CSV report for DOST Region 7 governance reporting"
             >
               {exporting ? (
@@ -320,9 +332,9 @@ export default function AuditLogScreen({ user }: Props) {
                   onClick={() => handlePresetChange("all")}
                 >
                   <span>All</span>
-                  <span className="sub-status-tab-count">
-                    {datePreset === "all" ? totalElements : "•"}
-                  </span>
+                  {datePreset === "all" && (
+                    <span className="sub-status-tab-count">{totalElements}</span>
+                  )}
                 </button>
                 <button
                   type="button"
@@ -330,9 +342,9 @@ export default function AuditLogScreen({ user }: Props) {
                   onClick={() => handlePresetChange("today")}
                 >
                   <span>Today</span>
-                  <span className="sub-status-tab-count">
-                    {datePreset === "today" ? totalElements : "•"}
-                  </span>
+                  {datePreset === "today" && (
+                    <span className="sub-status-tab-count">{totalElements}</span>
+                  )}
                 </button>
                 <button
                   type="button"
@@ -340,9 +352,9 @@ export default function AuditLogScreen({ user }: Props) {
                   onClick={() => handlePresetChange("7d")}
                 >
                   <span>7D</span>
-                  <span className="sub-status-tab-count">
-                    {datePreset === "7d" ? totalElements : "•"}
-                  </span>
+                  {datePreset === "7d" && (
+                    <span className="sub-status-tab-count">{totalElements}</span>
+                  )}
                 </button>
                 <button
                   type="button"
@@ -350,9 +362,9 @@ export default function AuditLogScreen({ user }: Props) {
                   onClick={() => handlePresetChange("30d")}
                 >
                   <span>30D</span>
-                  <span className="sub-status-tab-count">
-                    {datePreset === "30d" ? totalElements : "•"}
-                  </span>
+                  {datePreset === "30d" && (
+                    <span className="sub-status-tab-count">{totalElements}</span>
+                  )}
                 </button>
               </div>
 
@@ -429,7 +441,7 @@ export default function AuditLogScreen({ user }: Props) {
           <span
             className="audit-entity-badge"
             title="Records are immutable and tamper-evident"
-            style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--d-blue, #0B5FCC)", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 999, padding: "3px 10px", fontWeight: 600 }}
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--d-blue, #1877f2)", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 999, padding: "3px 10px", fontWeight: 600 }}
           >
             <i className="ti ti-clock-shield" style={{ fontSize: 13 }} />
             <span>Immutable Trail</span>

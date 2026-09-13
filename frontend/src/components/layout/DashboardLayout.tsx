@@ -1,5 +1,3 @@
-import { useEffect } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { Outlet, useLocation } from 'react-router-dom'
 import DashboardShell, { type DashboardNavId } from './DashboardShell'
 import PageTransition from '../common/PageTransition'
@@ -47,26 +45,8 @@ export default function DashboardLayout({
   logoutLoading,
 }: DashboardLayoutProps) {
   const { pathname } = useLocation()
-  const queryClient = useQueryClient()
   const unreadCountQuery = useNotificationUnreadCount(user)
   const notificationBadge = unreadCountQuery.data ?? 0
-
-  useEffect(() => {
-    const refreshCount = () => {
-      if (document.visibilityState === 'visible') {
-        void queryClient.invalidateQueries({ queryKey: ['notifications'] })
-      }
-    }
-    // Background poll; the SSE stream delivers new notifications in real time,
-    // so this only needs to catch reads made on another device.
-    const intervalId = window.setInterval(refreshCount, 3 * 60_000)
-    const onFocus = () => refreshCount()
-    window.addEventListener('focus', onFocus)
-    return () => {
-      window.clearInterval(intervalId)
-      window.removeEventListener('focus', onFocus)
-    }
-  }, [queryClient])
 
   return (
     <DashboardShell

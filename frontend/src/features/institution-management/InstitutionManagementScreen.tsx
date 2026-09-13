@@ -66,7 +66,7 @@ interface InstitutionManagementLocationState {
   openAddInstitution?: boolean
 }
 
-type InstitutionStatusFilter = 'all' | 'active' | 'pending'
+type InstitutionStatusFilter = 'all' | 'active' | 'inactive'
 
 export default function InstitutionManagementScreen({ user }: InstitutionManagementScreenProps) {
   const toast = useToast()
@@ -212,7 +212,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     () => ({
       all: institutions.length,
       active: institutions.filter((institution) => institution.status === 'active').length,
-      pending: institutions.filter((institution) => institution.status === 'pending').length,
+      inactive: institutions.filter((institution) => institution.status === 'inactive').length,
     }),
     [institutions],
   )
@@ -1537,7 +1537,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
               <div className="im-registry-toolbar">
                 <div className="im-registry-toolbar-row">
                   <div className="im-status-tabs" role="group" aria-label="Filter institutions by status">
-                    {(['all', 'active', 'pending'] as InstitutionStatusFilter[]).map((status) => (
+                    {(['all', 'active', 'inactive'] as InstitutionStatusFilter[]).map((status) => (
                       <button
                         key={status}
                         type="button"
