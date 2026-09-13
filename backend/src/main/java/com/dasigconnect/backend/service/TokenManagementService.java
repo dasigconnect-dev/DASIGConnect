@@ -7,11 +7,15 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,7 +38,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  *
  * Handles Facebook Page Access Token status display and OAuth 2.0 re-authentication flow.
  *
- * OAuth state (CSRF): stored in-memory with a 10-minute TTL (acceptable for single-instance capstone deployment).
+ * OAuth state (CSRF): a self-contained, HMAC-signed token — tokenId + expiry
+ * + signature, all encoded into the state string itself. Deliberately NOT
+ * server-side session/memory state: this service previously kept pending
+ * states in an in-memory map, which broke ("Invalid or expired OAuth state")
+ * any time the backend process restarted between initOAuth and the Meta
+ * redirect back — a redeploy, or a free-tier instance spinning down from
+ * inactivity while the admin was on Facebook's consent screen. Signing the
+ * state instead of storing it makes verification stateless, so it survives
+ * restarts, redeploys, and multiple instances.
  */
 @Service
 @Transactional
@@ -45,9 +57,7 @@ public class TokenManagementService {
     private static final String META_OAUTH_URL = "https://www.facebook.com/dialog/oauth";
     private static final String META_TOKEN_URL = "https://graph.facebook.com/oauth/access_token";
     private static final String META_PAGE_TOKEN_URL = "https://graph.facebook.com/%s/%s";
-
-    /** CSRF state map: state → tokenId awaiting re-auth. Entries expire after 10 minutes. */
-    private final ConcurrentHashMap<String, OAuthState> pendingStates = new ConcurrentHashMap<>();
+    private static final long OAUTH_STATE_TTL_SECONDS = 600;
 
     private final FacebookPageTokenRepository pageTokenRepository;
     private final TokenEncryptionService tokenEncryptionService;
@@ -89,15 +99,15 @@ public class TokenManagementService {
 
     /**
      * Builds the Meta OAuth authorization URL for re-authentication.
-     * Stores a CSRF state token keyed to the token record.
+     * The state parameter is self-verifying (HMAC-signed) — nothing is stored
+     * server-side, so there's no session for a restart to lose.
      */
     public OAuthInitResponseDto initOAuth(UUID tokenId, JwtUserDetails admin) {
         FacebookPageToken token = pageTokenRepository.findById(tokenId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Facebook page token not found."));
 
-        String state = UUID.randomUUID().toString();
-        pendingStates.put(state, new OAuthState(tokenId, Instant.now().plusSeconds(600)));
+        String state = signState(tokenId, Instant.now().plusSeconds(OAUTH_STATE_TTL_SECONDS));
 
         String url = META_OAUTH_URL
                 + "?client_id=" + encode(appId)
@@ -116,13 +126,13 @@ public class TokenManagementService {
      * encrypts and stores it, then resumes GR-T4 health checks.
      */
     public String handleCallback(String code, String state) {
-        OAuthState oauthState = pendingStates.remove(state);
-        if (oauthState == null || oauthState.expiresAt().isBefore(Instant.now())) {
+        UUID tokenId = verifyState(state);
+        if (tokenId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Invalid or expired OAuth state. Please restart the re-authentication flow.");
         }
 
-        FacebookPageToken token = pageTokenRepository.findById(oauthState.tokenId())
+        FacebookPageToken token = pageTokenRepository.findById(tokenId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Facebook page token not found."));
 
@@ -152,7 +162,7 @@ public class TokenManagementService {
         } catch (ResponseStatusException ex) {
             throw ex;
         } catch (Exception ex) {
-            log.error("OAuth callback failed for token {}: {}", oauthState.tokenId(), ex.getMessage());
+            log.error("OAuth callback failed for token {}: {}", tokenId, ex.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                     "Failed to complete Facebook re-authentication: " + ex.getMessage());
         }
@@ -347,5 +357,52 @@ public class TokenManagementService {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
-    private record OAuthState(UUID tokenId, Instant expiresAt) {}
+    // ── Stateless OAuth state (CSRF) ─────────────────────────────────────────
+
+    /** {@code base64url(tokenId:expiresAtEpochSeconds:hmacSignature)} — no server-side storage. */
+    private String signState(UUID tokenId, Instant expiresAt) {
+        String payload = tokenId + ":" + expiresAt.getEpochSecond();
+        String signature = hmac(payload);
+        return Base64.getUrlEncoder().withoutPadding()
+                .encodeToString((payload + ":" + signature).getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Verifies signature and expiry; returns the tokenId if valid, else null. Never throws. */
+    private UUID verifyState(String state) {
+        try {
+            String raw = new String(Base64.getUrlDecoder().decode(state), StandardCharsets.UTF_8);
+            int firstColon = raw.indexOf(':');
+            int secondColon = raw.indexOf(':', firstColon + 1);
+            if (firstColon < 0 || secondColon < 0) return null;
+
+            String tokenIdPart = raw.substring(0, firstColon);
+            String expiresAtPart = raw.substring(firstColon + 1, secondColon);
+            String signaturePart = raw.substring(secondColon + 1);
+
+            String expectedSignature = hmac(tokenIdPart + ":" + expiresAtPart);
+            if (!MessageDigest.isEqual(
+                    signaturePart.getBytes(StandardCharsets.UTF_8),
+                    expectedSignature.getBytes(StandardCharsets.UTF_8))) {
+                return null;
+            }
+
+            Instant expiresAt = Instant.ofEpochSecond(Long.parseLong(expiresAtPart));
+            if (expiresAt.isBefore(Instant.now())) return null;
+
+            return UUID.fromString(tokenIdPart);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private String hmac(String payload) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(appSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] signature = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(signature);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to sign OAuth state", ex);
+        }
+    }
 }
