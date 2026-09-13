@@ -1,5 +1,7 @@
+import { Suspense } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import DashboardShell, { type DashboardNavId } from './DashboardShell'
+import PageLoader from '../common/PageLoader'
 import PageTransition from '../common/PageTransition'
 import type { User } from '../../types/auth.types'
 import { useNotificationUnreadCount } from '../../features/notifications/hooks/useNotifications'
@@ -63,7 +65,9 @@ export default function DashboardLayout({
       notificationBadge={notificationBadge}
     >
       <PageTransition>
-        <Outlet />
+        <Suspense fallback={<PageLoader contained />}>
+          <Outlet />
+        </Suspense>
       </PageTransition>
     </DashboardShell>
   )
