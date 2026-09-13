@@ -61,7 +61,7 @@ export const queryKeys = {
       scopedKey("submissions", { ...params, view: "engagement-recommendations" }),
   },
   calendarEvents: {
-    range: (params: { role: string; userId?: string | null; institutionId?: string | null; startDate: string; endDate: string }) =>
+    all: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
       scopedKey("calendar-events", params),
   },
   mediaAssets: {

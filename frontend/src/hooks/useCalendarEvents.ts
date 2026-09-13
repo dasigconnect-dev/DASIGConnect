@@ -12,29 +12,19 @@ export interface UseCalendarEventsResult {
   refresh: () => void;
 }
 
-export interface CalendarQueryRange {
-  start: Date;
-  end: Date;
-}
-
 const CALENDAR_EVENTS_STALE_TIME_MS = 2 * 60_000;
 
-export function useCalendarEvents(user: User, range: CalendarQueryRange | null): UseCalendarEventsResult {
+export function useCalendarEvents(user: User): UseCalendarEventsResult {
   const queryClient = useQueryClient();
   const userScope = user.id ?? user.email.trim().toLowerCase();
-  const startDate = range ? toDateKey(range.start) : "pending";
-  const endDate = range ? toDateKey(range.end) : "pending";
 
   const query = useQuery({
-    queryKey: queryKeys.calendarEvents.range({
+    queryKey: queryKeys.calendarEvents.all({
       role: user.role,
       userId: userScope,
       institutionId: user.institutionId ?? null,
-      startDate,
-      endDate,
     }),
     queryFn: ({ signal }) => getCalendarEvents(signal).then((response) => response.data),
-    enabled: Boolean(range),
     staleTime: CALENDAR_EVENTS_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
@@ -49,8 +39,4 @@ export function useCalendarEvents(user: User, range: CalendarQueryRange | null):
     error: query.error ? "Could not load calendar. Please try again." : "",
     refresh,
   };
-}
-
-function toDateKey(date: Date) {
-  return date.toISOString().slice(0, 10);
 }

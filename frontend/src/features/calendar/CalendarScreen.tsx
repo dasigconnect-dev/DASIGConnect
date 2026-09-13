@@ -37,7 +37,7 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
     start: Date;
     end: Date;
   }>(() => getDefaultMonthRange());
-  const { events, loading, error, refresh } = useCalendarEvents(user, calendarRange);
+  const { events, loading, error, refresh } = useCalendarEvents(user);
   const [showFullDay, setShowFullDay] = useState(false);
   const [institutionFilters, setInstitutionFilters] = useState<string[]>([]);
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
