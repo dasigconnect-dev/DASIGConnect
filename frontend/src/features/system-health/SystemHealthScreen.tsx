@@ -161,11 +161,12 @@ export default function SystemHealthScreen({ user }: Props) {
     try {
       await setSystemHealthTokenManually(tokenId, manualTokenValue.trim());
       await queryClient.invalidateQueries({ queryKey: queryKeys.systemHealth.summary({ role: user.role, userId: getUserCacheScope(user) }) });
-      toast.success("Facebook Page Access Token updated. It will be verified on the next token health check.");
+      toast.success("Facebook Page Access Token verified and updated.");
       setManualEntryTokenId(null);
       setManualTokenValue("");
-    } catch {
-      toast.error("Unable to save the token. Make sure it's a valid Page Access Token.");
+    } catch (err: unknown) {
+      const backendMessage = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error(backendMessage || "Unable to save the token. Make sure it's a valid Page Access Token.");
     } finally {
       setBusyTokenId(null);
     }

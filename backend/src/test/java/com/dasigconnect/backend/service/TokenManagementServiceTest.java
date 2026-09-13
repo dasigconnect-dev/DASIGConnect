@@ -3,8 +3,11 @@ package com.dasigconnect.backend.service;
 import com.dasigconnect.backend.model.entity.FacebookPageToken;
 import com.dasigconnect.backend.repository.FacebookPageTokenRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
+import java.net.http.HttpClient;
+import java.net.http.HttpResponse;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -16,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,14 +29,22 @@ class TokenManagementServiceTest {
     @Mock FacebookPageTokenRepository pageTokenRepository;
     @Mock TokenEncryptionService tokenEncryptionService;
     @Mock AuditLogService auditLogService;
+    @Mock HttpClient httpClient;
+    @Mock HttpResponse<String> graphResponse;
 
     @InjectMocks TokenManagementService service;
 
     private final JwtUserDetails admin =
             new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null);
 
+    @BeforeEach
+    void injectMockHttpClient() {
+        ReflectionTestUtils.setField(service, "httpClient", httpClient);
+        ReflectionTestUtils.setField(service, "apiVersion", "v25.0");
+    }
+
     @Test
-    void setManualToken_encryptsStoresAndAudits() {
+    void setManualToken_validForPage_encryptsStoresAndAudits() throws Exception {
         UUID tokenId = UUID.randomUUID();
         FacebookPageToken token = new FacebookPageToken();
         ReflectionTestUtils.setField(token, "id", tokenId);
@@ -40,6 +52,8 @@ class TokenManagementServiceTest {
         token.setActive(false);
 
         when(pageTokenRepository.findById(tokenId)).thenReturn(Optional.of(token));
+        when(graphResponse.body()).thenReturn("{\"id\":\"123456\"}");
+        org.mockito.Mockito.doReturn(graphResponse).when(httpClient).send(any(), any());
         when(tokenEncryptionService.encryptToken("raw-token")).thenReturn("encrypted-blob");
         when(pageTokenRepository.save(any(FacebookPageToken.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -47,10 +61,42 @@ class TokenManagementServiceTest {
 
         assertThat(token.getEncryptedToken()).isEqualTo("encrypted-blob");
         assertThat(token.isActive()).isTrue();
-        assertThat(token.getLastValidatedAt()).isNull();
+        assertThat(token.getLastValidatedAt()).isNotNull();
         assertThat(result.getPageId()).isEqualTo("123456");
         verify(auditLogService).recordSystemAction("TOKEN_MANUALLY_SET", tokenId,
                 java.util.Map.of("pageId", "123456", "setBy", admin.userId().toString()));
+    }
+
+    @Test
+    void setManualToken_tokenValidButForADifferentPage_rejectedWithoutSaving() throws Exception {
+        UUID tokenId = UUID.randomUUID();
+        FacebookPageToken token = new FacebookPageToken();
+        token.setPageId("123456");
+
+        when(pageTokenRepository.findById(tokenId)).thenReturn(Optional.of(token));
+        when(graphResponse.body()).thenReturn("{\"id\":\"999999\"}");
+        org.mockito.Mockito.doReturn(graphResponse).when(httpClient).send(any(), any());
+
+        assertThatThrownBy(() -> service.setManualToken(tokenId, "raw-token", admin))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("not valid for page");
+        verify(pageTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void setManualToken_facebookRejectsToken_rejectedWithoutSaving() throws Exception {
+        UUID tokenId = UUID.randomUUID();
+        FacebookPageToken token = new FacebookPageToken();
+        token.setPageId("123456");
+
+        when(pageTokenRepository.findById(tokenId)).thenReturn(Optional.of(token));
+        when(graphResponse.body()).thenReturn("{\"error\":{\"message\":\"Invalid OAuth access token.\"}}");
+        org.mockito.Mockito.doReturn(graphResponse).when(httpClient).send(any(), any());
+
+        assertThatThrownBy(() -> service.setManualToken(tokenId, "garbage-token", admin))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Facebook rejected this token");
+        verify(pageTokenRepository, never()).save(any());
     }
 
     @Test
