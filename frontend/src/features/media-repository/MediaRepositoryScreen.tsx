@@ -1461,7 +1461,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onNewPost={handleNewPost}
         onClearSelection={clearChecked}
         onClose={closePanel}
-        canAddToDraft={user.role === "contributor"}
+        canAddToDraft
         onAddToDraft={openAddToDraft}
         onDownload={() => void handleDownload()}
         canDelete={selectedAsset ? canDeleteAsset(selectedAsset) : false}
