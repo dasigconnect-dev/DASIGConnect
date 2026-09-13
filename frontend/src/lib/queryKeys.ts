@@ -14,7 +14,7 @@ export const queryKeys = {
       scopedKey("messenger", { ...params, view: "connection" }),
   },
   dashboard: {
-    summary: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
+    resource: (params: { role: string; userId?: string | null; institutionId?: string | null; resource: string }) =>
       scopedKey("dashboard", params),
   },
   institutions: {
@@ -137,6 +137,8 @@ export const queryKeys = {
   },
   systemHealth: {
     summary: (params: { role: string; userId?: string | null }) => scopedKey("system-health", params),
+    tokens: (params: { role: string; userId?: string | null }) =>
+      scopedKey("system-health", { ...params, view: "tokens" }),
   },
 } as const;
 
