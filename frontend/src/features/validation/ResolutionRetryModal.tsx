@@ -34,31 +34,53 @@ export default function ResolutionRetryModal({
 
   useEffect(() => {
     if (!item) return;
+    let active = true;
     queueMicrotask(() => {
+      if (!active) return;
       setScheduledAt(toDatetimeLocal(item.scheduledAt));
       setOverrideReason("");
       setGuardRails(null);
     });
+    return () => {
+      active = false;
+    };
   }, [item]);
 
   // Re-check guard rails whenever the picked slot changes.
   useEffect(() => {
+    let active = true;
     if (!item || !scheduledAt) {
       const clear = window.setTimeout(() => {
+        if (!active) return;
         setGuardRails(null);
         setChecking(false);
       }, 0);
-      return () => window.clearTimeout(clear);
+      return () => {
+        active = false;
+        window.clearTimeout(clear);
+      };
     }
+    const controller = new AbortController();
     const iso = new Date(scheduledAt).toISOString();
     const t = window.setTimeout(() => {
+      if (!active) return;
       setChecking(true);
-      validateGuardRails(iso, item.institutionId, item.submissionId)
-        .then((res) => setGuardRails(res.data))
-        .catch(() => setGuardRails(null))
-        .finally(() => setChecking(false));
+      validateGuardRails(iso, item.institutionId, item.submissionId, controller.signal)
+        .then((res) => {
+          if (active) setGuardRails(res.data);
+        })
+        .catch(() => {
+          if (active && !controller.signal.aborted) setGuardRails(null);
+        })
+        .finally(() => {
+          if (active) setChecking(false);
+        });
     }, 250);
-    return () => window.clearTimeout(t);
+    return () => {
+      active = false;
+      window.clearTimeout(t);
+      controller.abort();
+    };
   }, [item, scheduledAt]);
 
   if (!item) return null;
