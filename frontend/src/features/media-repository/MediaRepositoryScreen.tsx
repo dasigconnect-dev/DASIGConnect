@@ -147,6 +147,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [semanticResults, setSemanticResults] = useState<MediaAsset[] | null>(null);
   const [semanticQuery, setSemanticQuery] = useState("");
   const [semanticBusy, setSemanticBusy] = useState(false);
+  const semanticRequestRef = useRef<{ id: number; controller: AbortController } | null>(null);
+  const semanticRequestIdRef = useRef(0);
 
   // Admin with no institution filter: the repository shows every institution's
   // top-level albums together, each card badged with its institution.
@@ -410,6 +412,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   }, [albums, currentAlbum]);
 
   function navigateToAlbum(albumId: string | null) {
+    cancelSemanticRequest();
     const next = new URLSearchParams(searchParams);
     if (albumId) next.set("album", albumId);
     else next.delete("album");
@@ -421,21 +424,53 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     setContentTypeFilter("all");
   }
 
+  function cancelSemanticRequest() {
+    semanticRequestIdRef.current += 1;
+    semanticRequestRef.current?.controller.abort();
+    semanticRequestRef.current = null;
+    setSemanticBusy(false);
+  }
+
+  useEffect(() => {
+    return () => {
+      semanticRequestIdRef.current += 1;
+      semanticRequestRef.current?.controller.abort();
+      semanticRequestRef.current = null;
+    };
+  }, []);
+
   async function runSemanticSearch() {
     const q = search.trim();
     if (q.length < 2) {
+      cancelSemanticRequest();
       setSemanticResults(null);
       return;
     }
+    semanticRequestRef.current?.controller.abort();
+    const request = {
+      id: ++semanticRequestIdRef.current,
+      controller: new AbortController(),
+    };
+    semanticRequestRef.current = request;
     setSemanticBusy(true);
     try {
-      const results = await semanticSearchMediaAssets(q, selectedInstitutionId);
+      const results = await semanticSearchMediaAssets(
+        q,
+        selectedInstitutionId,
+        request.controller.signal,
+      );
+      if (semanticRequestRef.current?.id !== request.id) return;
       setSemanticResults(results);
       setSemanticQuery(q);
     } catch (err: unknown) {
-      toast.error(getErrorText(err, "Semantic search failed. Try again."));
+      if (semanticRequestRef.current?.id === request.id && !request.controller.signal.aborted) {
+        toast.error(getErrorText(err, "Semantic search failed. Try again."));
+      }
     } finally {
-      setSemanticBusy(false);
+      if (semanticRequestRef.current?.id === request.id) {
+        semanticRequestRef.current = null;
+        setSemanticBusy(false);
+      }
     }
   }
 
@@ -1220,11 +1255,13 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onInstitutionChange={(id) => (id ? openInstitution(id) : goToAllInstitutions())}
         search={search}
         onSearchChange={(v) => {
+          cancelSemanticRequest();
           setSearch(v);
           if (!v.trim()) setSemanticResults(null);
         }}
         semantic={semantic}
         onSemanticToggle={() => {
+          cancelSemanticRequest();
           setSemantic((on) => {
             if (on) setSemanticResults(null);
             return !on;
@@ -1295,7 +1332,15 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
             <strong>{semanticResults.length}</strong> meaning-based {semanticResults.length === 1 ? "match" : "matches"} for
             {" "}<em>“{semanticQuery}”</em>
           </span>
-          <button type="button" onClick={() => setSemanticResults(null)}>Clear</button>
+          <button
+            type="button"
+            onClick={() => {
+              cancelSemanticRequest();
+              setSemanticResults(null);
+            }}
+          >
+            Clear
+          </button>
         </div>
       )}
 

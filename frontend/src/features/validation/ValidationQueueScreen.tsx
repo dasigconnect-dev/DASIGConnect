@@ -765,19 +765,41 @@ export default function ValidationQueueScreen({
   const scheduleChanged = editScheduledAtIso !== originalScheduledIso;
 
   useEffect(() => {
+    let active = true;
     if (!editMode || !scheduleChanged || !editScheduledAtIso || !selected) {
-      queueMicrotask(() => setGuardRails(null));
-      return;
+      queueMicrotask(() => {
+        if (!active) return;
+        setGuardRails(null);
+        setGuardRailsLoading(false);
+      });
+      return () => {
+        active = false;
+      };
     }
     const controller = new AbortController();
     queueMicrotask(() => {
+      if (!active) return;
       setGuardRailsLoading(true);
-      validateGuardRails(editScheduledAtIso, selected.institutionId, selected.id)
-        .then((res) => setGuardRails(res.data))
-        .catch(() => setGuardRails(null))
-        .finally(() => setGuardRailsLoading(false));
+      validateGuardRails(
+        editScheduledAtIso,
+        selected.institutionId,
+        selected.id,
+        controller.signal,
+      )
+        .then((res) => {
+          if (active) setGuardRails(res.data);
+        })
+        .catch(() => {
+          if (active && !controller.signal.aborted) setGuardRails(null);
+        })
+        .finally(() => {
+          if (active) setGuardRailsLoading(false);
+        });
     });
-    return () => controller.abort();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [editMode, scheduleChanged, editScheduledAtIso, selected]);
 
   const hardBlocked = (guardRails?.hardBlocks?.length ?? 0) > 0;
@@ -826,16 +848,27 @@ export default function ValidationQueueScreen({
       return;
     }
     const controller = new AbortController();
+    let active = true;
     queueMicrotask(() => {
+      if (!active) return;
       setEngagementLoading(true);
       getEngagementRecommendations(selected.institutionId, controller.signal)
-        .then((res) => setEngagementRecs(res.data.available ? res.data : null))
-        .catch((err: unknown) => {
-          if ((err as { name?: string })?.name !== "CanceledError") setEngagementRecs(null);
+        .then((res) => {
+          if (active) setEngagementRecs(res.data.available ? res.data : null);
         })
-        .finally(() => setEngagementLoading(false));
+        .catch((err: unknown) => {
+          if (active && (err as { name?: string })?.name !== "CanceledError") {
+            setEngagementRecs(null);
+          }
+        })
+        .finally(() => {
+          if (active) setEngagementLoading(false);
+        });
     });
-    return () => controller.abort();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [editMode, editTab, selected]);
 
   function applyRecommendedSlot(scheduledAt: string) {

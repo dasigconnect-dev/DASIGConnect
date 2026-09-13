@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   suggestCaption,
   logCaptionInteraction,
@@ -48,9 +48,23 @@ export function useAiCaptionAssist(
   const [lastPrompt, setLastPrompt] = useState("");
   const [lastTone, setLastTone] = useState<CaptionTone>("professional");
   const [notice, setNotice] = useState<string | null>(null);
+  const [responseContext, setResponseContext] = useState<string | null>(null);
   const cooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestRef = useRef<{ id: number; controller: AbortController } | null>(null);
+  const requestIdRef = useRef(0);
 
   const canSuggest = !!submissionId;
+  const contextMatches = responseContext === submissionId;
+
+  useEffect(() => {
+    return () => {
+      requestIdRef.current += 1;
+      requestRef.current?.controller.abort();
+      requestRef.current = null;
+      if (cooldownRef.current) clearTimeout(cooldownRef.current);
+      cooldownRef.current = null;
+    };
+  }, [submissionId]);
 
   async function suggest(
     prompt = "",
@@ -59,12 +73,22 @@ export function useAiCaptionAssist(
     existingCaptionOverride?: string,
   ) {
     const targetSubmissionId = submissionIdOverride ?? submissionId;
-    if (!targetSubmissionId || state === "loading") return null;
+    if (!targetSubmissionId || (state === "loading" && responseContext === targetSubmissionId)) {
+      return null;
+    }
     if (cooldownRef.current) clearTimeout(cooldownRef.current);
+    cooldownRef.current = null;
+    requestRef.current?.controller.abort();
+    const request = {
+      id: ++requestIdRef.current,
+      controller: new AbortController(),
+    };
+    requestRef.current = request;
     const normalizedPrompt = prompt.trim();
     setLastPrompt(normalizedPrompt);
     setLastTone(tone);
     setNotice(null);
+    setResponseContext(targetSubmissionId);
     setState("loading");
 
     try {
@@ -73,12 +97,17 @@ export function useAiCaptionAssist(
         existingCaptionOverride ?? existingCaption,
         normalizedPrompt,
         tone,
+        request.controller.signal,
       );
+      if (requestRef.current?.id !== request.id) return null;
       const generatedVariant = response.variants[0] ?? null;
       setVariants(response.variants.length > 0 ? response.variants : null);
       setState("idle");
       return generatedVariant;
     } catch (err) {
+      if (requestRef.current?.id !== request.id || request.controller.signal.aborted) {
+        return null;
+      }
       if (isRateLimitError(err)) {
         setRateLimitReset(err.rateLimitReset ?? null);
         setState("rate-limited");
@@ -92,12 +121,22 @@ export function useAiCaptionAssist(
           : "AI caption service is unavailable. You can still write captions manually.",
       );
       setState(timedOut ? "error-timeout" : "error-unavailable");
-      cooldownRef.current = setTimeout(() => setState("idle"), 5000);
+      cooldownRef.current = setTimeout(() => {
+        if (requestIdRef.current === request.id) setState("idle");
+      }, 5000);
       return null;
+    } finally {
+      if (requestRef.current?.id === request.id) requestRef.current = null;
     }
   }
 
   function dismissAll() {
+    requestIdRef.current += 1;
+    requestRef.current?.controller.abort();
+    requestRef.current = null;
+    if (cooldownRef.current) clearTimeout(cooldownRef.current);
+    cooldownRef.current = null;
+    setResponseContext(submissionId);
     setVariants(null);
     setState("idle");
     if (submissionId) logCaptionInteraction(submissionId, "dismiss");
@@ -136,11 +175,11 @@ export function useAiCaptionAssist(
   }
 
   return {
-    state,
-    variants,
-    rateLimitReset,
+    state: contextMatches ? state : "idle",
+    variants: contextMatches ? variants : null,
+    rateLimitReset: contextMatches ? rateLimitReset : null,
     canSuggest,
-    notice,
+    notice: contextMatches ? notice : null,
     suggest,
     dismissAll,
     regenerate,
