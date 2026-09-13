@@ -693,7 +693,7 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
               cy="38"
               r={radius}
               fill="none"
-              stroke="#0B5FCC"
+              stroke="#1877f2"
               strokeWidth="7"
               strokeDasharray={`${editedDash} ${circumference}`}
               strokeDashoffset="0"

@@ -2,6 +2,7 @@ import { useState, useEffect, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import type { User } from '../../types/auth.types'
 import Spinner from '../common/Spinner'
+import dasigLogo from '../../assets/dasigconnect-logo.png'
 
 export type DashboardNavId = 'home' | 'submit' | 'review-queue' | 'institution-management' | 'user-management' | 'admin-management' | 'system-health' | 'audit-log' | 'scheduler' | 'analytics' | 'media-repository' | 'notifications'
 
@@ -95,7 +96,7 @@ export default function DashboardShell({
           <div className="sidebar-brand-wrapper">
             <div className="dash-brand">
               <div className="dash-brand-icon">
-                <img src="/dasigconnect-logo.png" alt="DASIGConnect" />
+                <img src={dasigLogo} alt="DASIGConnect" />
               </div>
               <div className="dash-brand-name" style={{ marginLeft: 8 }}>
                 DASIG<em>Connect</em>
@@ -158,7 +159,7 @@ export default function DashboardShell({
               </button>
               <div className="dash-brand">
                 <div className="dash-brand-icon">
-                  <img src="/dasigconnect-logo.png" alt="DASIGConnect" />
+                  <img src={dasigLogo} alt="DASIGConnect" />
                 </div>
                 <div className="dash-brand-name">
                   DASIG<em>Connect</em>

@@ -111,13 +111,13 @@
 
 .settings-nav-sidebar .sidebar-link:hover {
   background: #eef3ff;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   transform: translateX(2px);
 }
 
 .settings-nav-sidebar .sidebar-link.active {
   background: #eef3ff;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   font-weight: 650;
 }
 
@@ -139,9 +139,9 @@
 }
 
 .settings-nav-sidebar .sidebar-link.active .sidebar-admin-tag {
-  background: #0B5FCC;
+  background: #1877f2;
   color: #ffffff;
-  border-color: #0B5FCC;
+  border-color: #1877f2;
 }
 
 .settings-content-area {
@@ -235,7 +235,7 @@
 
 .wm-elements-badge i {
   font-size: 13px;
-  color: #0B5FCC;
+  color: #1877f2;
 }
 
 .wm-elements-badge.is-override {
@@ -340,7 +340,7 @@
 }
 
 .settings-eye-btn:hover {
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   background: #f1f5f9;
 }
 
@@ -365,7 +365,7 @@
   gap: 4px;
   border: none;
   background: transparent;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
@@ -540,7 +540,7 @@
   border: none;
   border-radius: 999px;
   padding: 0 22px;
-  background: var(--d-blue, #0B5FCC);
+  background: var(--d-blue, #1877f2);
   color: #fff;
   font-family: var(--ff-body);
   font-size: 13px;
@@ -712,8 +712,8 @@
   width: 100%;
   height: 38px;
   padding: 0 16px;
-  background: var(--d-blue, #0B5FCC);
-  border: 1px solid var(--d-blue, #0B5FCC);
+  background: var(--d-blue, #1877f2);
+  border: 1px solid var(--d-blue, #1877f2);
   border-radius: 8px;
   color: #ffffff;
   font-family: var(--ff-body);
@@ -768,7 +768,7 @@
   gap: 6px;
   border: none;
   background: transparent;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   font-family: var(--ff-body);
   font-size: 13.5px;
   font-weight: 600;
@@ -783,7 +783,7 @@
 }
 
 .settings-studio-back-btn:hover {
-  color: #084a9f;
+  color: #1565d8;
   transform: translateX(-4px);
 }
 
@@ -872,12 +872,12 @@
 }
 
 .settings-icon-purple {
-  color: #0B5FCC;
+  color: #1877f2;
   background: #eff6ff;
 }
 
 .settings-icon-blue {
-  color: #0B5FCC;
+  color: #1877f2;
   background: #eff6ff;
 }
 
@@ -897,7 +897,7 @@
   left: 12px;
   top: 50%;
   z-index: 1;
-  color: #0B5FCC;
+  color: #1877f2;
   font-size: 16px;
   transform: translateY(-50%);
 }
@@ -921,7 +921,7 @@
   padding: 0 15px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   background: #fff;
   border: 1px solid #bfdbfe;
   border-radius: 999px;
@@ -1020,7 +1020,7 @@
   padding: 0;
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   cursor: pointer;
 }
 

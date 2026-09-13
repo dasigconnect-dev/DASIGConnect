@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { User } from '../../types/auth.types'
 import { getGreetingName } from '../../lib/userIdentity'
 import '../../styles/dasig-loader.css'
+import dasigLogo from '../../assets/dasigconnect-logo.png'
 
 interface LoginSplashProps {
   user: User | null
@@ -46,7 +47,7 @@ export default function LoginSplash({ user, visible }: LoginSplashProps) {
     >
       <div className="dc-splash-inner">
         <div className="dc-splash-logo">
-          <img src="/dasigconnect-logo.png" alt="DASIGConnect logo" />
+          <img src={dasigLogo} alt="DASIGConnect logo" />
         </div>
         <div>
           <div className="dc-splash-brand">DASIG<em>Connect</em></div>

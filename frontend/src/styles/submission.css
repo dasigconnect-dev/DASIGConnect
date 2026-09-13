@@ -9,8 +9,8 @@
   --sub-text-2: #3a506b;
   --sub-muted: #6a7f9a;
   --sub-muted-2: #a0b0c8;
-  --sub-blue: #0b5fcc;
-  --sub-blue-2: #084a9f;
+  --sub-blue: #1877f2;
+  --sub-blue-2: #1565d8;
   --sub-blue-dim: #eff6ff;
   --sub-blue-bdr: #bfdbfe;
   --sub-gold: #d97706;
@@ -82,7 +82,7 @@
   height: 36px;
   border: none;
   background: transparent;
-  color: var(--sub-blue, #0B5FCC);
+  color: var(--sub-blue, #1877f2);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -251,7 +251,7 @@
 .sub-list-new {
   border: none;
   border-radius: 999px;
-  background: var(--d-blue, #0B5FCC);
+  background: var(--d-blue, #1877f2);
   color: white;
   min-height: 38px;
   height: 38px;
@@ -327,15 +327,15 @@
   box-sizing: border-box;
 }
 .sub-status-tab:hover {
-  color: var(--sub-blue, #0B5FCC);
+  color: var(--sub-blue, #1877f2);
   border-color: #bfdbfe;
   background: #eff6ff;
 }
 .sub-status-tab.is-active {
   color: #fff;
   font-weight: 650;
-  background: var(--sub-blue, #0B5FCC);
-  border-color: var(--sub-blue, #0B5FCC);
+  background: var(--sub-blue, #1877f2);
+  border-color: var(--sub-blue, #1877f2);
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
 }
 .sub-status-tab-count {
@@ -346,7 +346,7 @@
   height: 19px;
   padding: 0 6px;
   border-radius: 999px;
-  color: var(--sub-blue, #0B5FCC);
+  color: var(--sub-blue, #1877f2);
   background: #dbeafe;
   font-size: 10px;
   font-weight: 700;
@@ -406,7 +406,7 @@
 }
 .sub-search-input:focus {
   outline: none;
-  border-color: var(--sub-blue, #0B5FCC);
+  border-color: var(--sub-blue, #1877f2);
   box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.1);
 }
 .sub-list-results {
@@ -453,7 +453,7 @@
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: var(--sub-blue, #0B5FCC);
+  background: var(--sub-blue, #1877f2);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -553,7 +553,7 @@
   width: 32px;
   height: 32px;
   border: 3px solid #e2e8f0;
-  border-top-color: var(--sub-blue, #0B5FCC);
+  border-top-color: var(--sub-blue, #1877f2);
   border-radius: 50%;
   animation: sub-fb-spin 0.75s linear infinite;
 }
@@ -642,7 +642,7 @@
 }
 
 .sub-fb-react-icon.fb-like-icon {
-  background: #0B5FCC;
+  background: #1877f2;
 }
 
 .sub-fb-react-icon.fb-heart-icon {
@@ -663,7 +663,7 @@
   gap: 3px;
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--sub-blue, #0B5FCC);
+  color: var(--sub-blue, #1877f2);
 }
 
 .sub-fb-actions-bar {
@@ -690,7 +690,7 @@
 }
 .sub-fb-action-btn:hover {
   background: #f1f5f9;
-  color: var(--sub-blue, #0B5FCC);
+  color: var(--sub-blue, #1877f2);
 }
 .sub-sidebar,
 .sub-guard-panel {
@@ -908,7 +908,7 @@
 .sub-sidebar-template-save {
   border: 1px solid var(--sub-blue-bdr, #bfdbfe);
   background: var(--sub-blue-dim, #eff6ff);
-  color: var(--sub-blue, #0B5FCC);
+  color: var(--sub-blue, #1877f2);
   border-radius: 999px;
   min-height: 38px;
   height: 38px;
@@ -925,8 +925,8 @@
   box-sizing: border-box;
 }
 .sub-sidebar-template-save:hover:not(:disabled) {
-  background: var(--sub-blue, #0B5FCC);
-  border-color: var(--sub-blue, #0B5FCC);
+  background: var(--sub-blue, #1877f2);
+  border-color: var(--sub-blue, #1877f2);
   color: #fff;
   transform: translateY(-0.5px);
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
@@ -1390,7 +1390,7 @@
 .status-direct_post_scheduled,
 .status-admin_direct_post {
   background: #eff6ff !important;
-  color: #0B5FCC !important;
+  color: #1877f2 !important;
   border: 1px solid #bfdbfe !important;
 }
 .status-published,
@@ -1455,7 +1455,7 @@
 }
 .sub-btn-new,
 .sub-guard-submit-btn {
-  background: var(--d-blue, #0B5FCC);
+  background: var(--d-blue, #1877f2);
   color: white;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
 }
@@ -1485,7 +1485,7 @@
 .sub-guard-save-btn:hover:not(:disabled) {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   transform: translateY(-0.5px);
 }
 
@@ -1554,13 +1554,13 @@
 .sub-btn-ghost:hover {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: var(--sub-blue, #0B5FCC);
+  color: var(--sub-blue, #1877f2);
   transform: translateY(-0.5px);
 }
 .sub-btn-ghost.save:hover:not(:disabled) {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: var(--sub-blue, #0B5FCC);
+  color: var(--sub-blue, #1877f2);
 }
 .sub-btn-ghost.danger:hover:not(:disabled) {
   background: var(--sub-red-dim);
@@ -1568,7 +1568,7 @@
   color: var(--sub-red);
 }
 .sub-btn-primary {
-  background: var(--sub-blue, #0B5FCC);
+  background: var(--sub-blue, #1877f2);
   color: white;
   border: none;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
@@ -1750,12 +1750,12 @@
 .sub-step-panel-btn.secondary:hover:not(:disabled) {
   background: #eff6ff;
   border-color: #bfdbfe;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   transform: translateY(-0.5px);
 }
 .sub-step-panel-btn.primary {
-  background: var(--d-blue, #0B5FCC);
-  border-color: var(--d-blue, #0B5FCC);
+  background: var(--d-blue, #1877f2);
+  border-color: var(--d-blue, #1877f2);
   color: white;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
 }
@@ -1981,7 +1981,7 @@
 .sub-section-icon.gold,
 .sub-section-icon.purple {
   background: var(--sub-blue-dim, #eff6ff);
-  color: var(--sub-blue, #0B5FCC);
+  color: var(--sub-blue, #1877f2);
 }
 .sub-section-title {
   font-size: 14px;
@@ -2728,7 +2728,7 @@ textarea.sub-finput {
   line-height: 1;
 }
 .sub-caption-counter.warn { color: var(--sub-muted-2, #94a3b8); }
-.sub-caption-counter.ok   { color: var(--sub-blue, #0B5FCC); }
+.sub-caption-counter.ok   { color: var(--sub-blue, #1877f2); }
 .sub-field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2749,7 +2749,7 @@ textarea.sub-finput {
   width: 18px;
   height: 18px;
   margin-top: 1px;
-  accent-color: var(--sub-blue, #0B5FCC);
+  accent-color: var(--sub-blue, #1877f2);
   flex-shrink: 0;
 }
 .sub-fast-track-toggle strong,
@@ -2784,7 +2784,7 @@ textarea.sub-finput {
   width: 18px;
   height: 18px;
   margin-top: 2px;
-  accent-color: var(--sub-blue, #0B5FCC);
+  accent-color: var(--sub-blue, #1877f2);
   flex-shrink: 0;
 }
 .sub-watermark-toggle span,
@@ -2851,7 +2851,7 @@ textarea.sub-finput {
   height: 42px;
   border: none;
   border-radius: 999px;
-  background: var(--d-blue, #0B5FCC);
+  background: var(--d-blue, #1877f2);
   color: white;
   cursor: pointer;
   display: inline-flex;
@@ -2944,7 +2944,7 @@ textarea.sub-finput {
 
 .sub-posting-select.is-default .dc-select-trigger:hover:not(:disabled),
 .sub-posting-select.is-default .dc-select-trigger.open {
-  border-color: var(--sub-blue, #0B5FCC);
+  border-color: var(--sub-blue, #1877f2);
   box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.12);
   background: #ffffff;
 }
@@ -3541,7 +3541,7 @@ textarea.sub-finput {
   font-weight: 800;
 }
 .fb-preview-insights button:last-child {
-  background: #0B5FCC;
+  background: #1877f2;
   color: white;
   padding: 8px 12px;
 }
@@ -4621,8 +4621,8 @@ textarea.sub-finput {
     display: inline-block;
     font-size: 11px;
     font-weight: 600;
-    color: var(--d-blue, #0B5FCC);
-    background: rgba(11, 95, 204, 0.08);
+    color: var(--d-blue, #1877f2);
+    background: rgba(24, 119, 242, 0.08);
     padding: 2px 8px;
     border-radius: 999px;
     margin-top: 4px;
@@ -4638,7 +4638,7 @@ textarea.sub-finput {
     max-height: none;
     padding-bottom: 12px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(11, 95, 204, 0.4) rgba(0, 0, 0, 0.05);
+    scrollbar-color: rgba(24, 119, 242, 0.4) rgba(0, 0, 0, 0.05);
   }
   .sub-sidebar-template-list::-webkit-scrollbar {
     display: block;
@@ -4649,7 +4649,7 @@ textarea.sub-finput {
     border-radius: 999px;
   }
   .sub-sidebar-template-list::-webkit-scrollbar-thumb {
-    background: rgba(11, 95, 204, 0.4);
+    background: rgba(24, 119, 242, 0.4);
     border-radius: 999px;
   }
   .sub-sidebar-template-card {
@@ -5732,12 +5732,12 @@ textarea.sub-finput {
 }
 
 .sub-mode-toggle button:hover:not(.active) {
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   background: rgba(255, 255, 255, 0.7);
 }
 
 .sub-mode-toggle button.active {
-  background: var(--d-blue, #0B5FCC);
+  background: var(--d-blue, #1877f2);
   color: #ffffff;
   font-weight: 650;
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
@@ -5750,7 +5750,7 @@ textarea.sub-finput {
 .sub-spin {
   animation: sub-spin 0.85s linear infinite;
   display: inline-block;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   font-size: 16px;
 }
 
@@ -5780,7 +5780,7 @@ textarea.sub-finput {
   height: 48px;
   border-radius: 50%;
   background: var(--sub-blue-dim, #eff6ff);
-  color: var(--sub-blue, #0B5FCC);
+  color: var(--sub-blue, #1877f2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5839,7 +5839,7 @@ textarea.sub-finput {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: var(--sub-blue, #0B5FCC) !important;
+  background: var(--sub-blue, #1877f2) !important;
   color: #ffffff !important;
   border: 1px solid #166fe5 !important;
   font-family: inherit;
@@ -5889,7 +5889,7 @@ textarea.sub-finput {
 }
 
 .sub-revision-banner-icon {
-  color: var(--sub-blue, #0B5FCC);
+  color: var(--sub-blue, #1877f2);
   font-size: 20px;
   flex-shrink: 0;
   display: flex;
@@ -5908,7 +5908,7 @@ textarea.sub-finput {
 .sub-revision-banner-content strong {
   font-size: 13px;
   font-weight: 700;
-  color: var(--sub-blue, #0B5FCC);
+  color: var(--sub-blue, #1877f2);
 }
 
 .sub-revision-banner-content p {
@@ -5921,16 +5921,16 @@ textarea.sub-finput {
 /* Subtle Live Breathing / Pulsing Outline Animation for Requested Revisions */
 @keyframes subFieldPulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(11, 95, 204, 0.45);
-    border-color: #0B5FCC;
+    box-shadow: 0 0 0 0 rgba(24, 119, 242, 0.45);
+    border-color: #1877f2;
   }
   50% {
-    box-shadow: 0 0 0 6px rgba(11, 95, 204, 0.08);
+    box-shadow: 0 0 0 6px rgba(24, 119, 242, 0.08);
     border-color: #3b82f6;
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(11, 95, 204, 0.45);
-    border-color: #0B5FCC;
+    box-shadow: 0 0 0 0 rgba(24, 119, 242, 0.45);
+    border-color: #1877f2;
   }
 }
 
@@ -5940,7 +5940,7 @@ textarea.sub-finput {
 .sub-fgroup.sub-field-pulse .sub-date-input,
 section.sub-form-section.sub-field-pulse {
   animation: subFieldPulse 2.2s infinite ease-in-out;
-  border-color: #0B5FCC !important;
+  border-color: #1877f2 !important;
   border-radius: 9px;
 }
 
@@ -5959,7 +5959,7 @@ section.sub-form-section.sub-field-pulse {
   gap: 4px;
   background: #eff6ff;
   border: 1px solid #bfdbfe;
-  color: #0B5FCC;
+  color: #1877f2;
   font-family: inherit;
   font-size: 11.5px;
   font-weight: 700;
@@ -5974,10 +5974,10 @@ section.sub-form-section.sub-field-pulse {
 
 .sub-field-comment-btn:hover,
 .sub-field-comment-btn.is-active {
-  background: #0B5FCC;
-  border-color: #0B5FCC;
+  background: #1877f2;
+  border-color: #1877f2;
   color: #ffffff;
-  box-shadow: 0 2px 6px rgba(11, 95, 204, 0.25);
+  box-shadow: 0 2px 6px rgba(24, 119, 242, 0.25);
 }
 
 .sub-field-comment-btn.is-done {
@@ -6005,7 +6005,7 @@ section.sub-form-section.sub-field-pulse {
   border: 1px solid #93c5fd;
   border-radius: 10px;
   padding: 12px;
-  box-shadow: 0 10px 25px -5px rgba(11, 95, 204, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 10px 25px -5px rgba(24, 119, 242, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
   animation: subCommentPopIn 150ms cubic-bezier(0.16, 1, 0.3, 1) both;
   text-transform: none;
   letter-spacing: normal;
@@ -6037,7 +6037,7 @@ section.sub-form-section.sub-field-pulse {
   gap: 5px;
   font-size: 12px;
   font-weight: 700;
-  color: #0B5FCC;
+  color: #1877f2;
   text-transform: none;
   letter-spacing: normal;
 }
@@ -6092,14 +6092,14 @@ section.sub-form-section.sub-field-pulse {
   transition: all 0.15s ease;
   border: 1px solid #bfdbfe;
   background: #eff6ff;
-  color: #0B5FCC;
+  color: #1877f2;
   text-transform: none;
   letter-spacing: normal;
 }
 
 .sub-field-comment-ack-btn:hover {
-  background: #0B5FCC;
-  border-color: #0B5FCC;
+  background: #1877f2;
+  border-color: #1877f2;
   color: #ffffff;
 }
 
@@ -6137,14 +6137,14 @@ section.sub-form-section.sub-field-pulse {
 
 .sub-unaddressed-revision-notice i {
   font-size: 15px;
-  color: #0B5FCC;
+  color: #1877f2;
   margin-top: 1px;
   flex-shrink: 0;
 }
 
 .sub-unaddressed-revision-notice strong {
   font-weight: 700;
-  color: #0B5FCC;
+  color: #1877f2;
 }
 
 
