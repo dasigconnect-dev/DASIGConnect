@@ -74,7 +74,23 @@ React SPA (Vercel) -> Spring Boot REST API (Render) -> Supabase PostgreSQL + pgv
 wraps the AWS S3 SDK against any S3-compatible endpoint; config lives under
 `app.r2.*` / `R2_*` (`R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`,
 `R2_SECRET_ACCESS_KEY`, `R2_PUBLIC_BASE_URL`). The browser `PUT`s bytes straight
-to an R2 presigned URL; the DB stores the public read URL. Supabase is now
+to an R2 presigned URL for upload, but reads go through **this backend's own
+proxy**, not R2 directly (2026-09-13) — `getPublicUrl()` returns
+`{BACKEND_PUBLIC_BASE_URL}/api/v1/media-files/<key>`, served by
+`MediaProxyController` (unauthenticated, matching the R2 URL it replaces) via
+`MediaStorageService.downloadObject()`. This exists because R2's "Public
+Development URL" (`pub-*.r2.dev`) is explicitly documented by Cloudflare as not
+for production use and can be disabled or rotated to a new hash at any time —
+when that happened here, every previously-stored `media_assets.storage_url`
+died simultaneously (DNS stopped resolving), breaking every media preview in
+the app at once. `R2_PUBLIC_BASE_URL` is now used only to recognize
+already-stored pre-migration URLs so deletes keep resolving an object key for
+them (`deletePublicObject`/`objectPathFromPublicUrl`) — new URLs never use it.
+**Production deploy needs `BACKEND_PUBLIC_BASE_URL` set** to the backend's real
+public origin (defaults to `http://localhost:8080`, which only works locally);
+existing rows still on the old R2 host need a one-time SQL backfill
+(`UPDATE media_assets SET storage_url = REPLACE(storage_url, '<old R2 host>/', '<BACKEND_PUBLIC_BASE_URL>/api/v1/media-files/') WHERE storage_url LIKE '<old R2 host>/%'`)
+— not run automatically, since the old host isn't knowable at build time. Supabase is now
 **database only** (Postgres + pgvector). `DASIG_SUPABASE_SERVICE_ROLE_KEY` is kept
 solely as a legacy read fallback in `ClaudeVisionClient` for old images still on
 the private Supabase bucket.
