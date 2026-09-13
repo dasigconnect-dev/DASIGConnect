@@ -1,6 +1,14 @@
 package com.dasigconnect.backend.service;
 
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -8,6 +16,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.dasigconnect.backend.model.dto.systemhealth.BackgroundJobHealthDto;
 import com.dasigconnect.backend.model.dto.systemhealth.HealthStatus;
@@ -15,14 +24,6 @@ import com.dasigconnect.backend.model.dto.systemhealth.OperationalMetricDto;
 import com.dasigconnect.backend.model.entity.ScheduledJobRun;
 import com.dasigconnect.backend.repository.PublishSuccessRateRepository;
 import com.dasigconnect.backend.repository.ScheduledJobRunRepository;
-import java.sql.Timestamp;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.List;
-import java.util.Map;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 class SystemHealthServiceTest {
 
@@ -146,8 +147,18 @@ class SystemHealthServiceTest {
         assertThat(jobs).extracting(BackgroundJobHealthDto::jobName)
                 .contains("Review Lock Cleanup", "Validation Deadline Notification",
                         "Embedding Failure Digest", "Empty Schedule Warning", "Job Run Retention");
-        assertThat(jobs).allSatisfy(j ->
-                assertThat(j.status()).isIn(HealthStatus.UNAVAILABLE, HealthStatus.SCHEDULED));
+        assertThat(jobs).allSatisfy(j
+                -> assertThat(j.status()).isIn(HealthStatus.UNAVAILABLE, HealthStatus.SCHEDULED));
+    }
+
+    @Test
+    void backgroundJobs_ignoresRetiredJobHistory() {
+        when(scheduledJobRunRepository.findLatestRunsByJobName()).thenReturn(List.of(
+                run("ExpiredOverrideCleanupJob", "SUCCESS", Instant.now())));
+
+        assertThat(service.backgroundJobs())
+                .extracting(BackgroundJobHealthDto::jobName)
+                .doesNotContain("Expired Override Cleanup");
     }
 
     @Test

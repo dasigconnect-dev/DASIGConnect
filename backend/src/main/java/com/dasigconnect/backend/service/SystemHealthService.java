@@ -1,15 +1,5 @@
 package com.dasigconnect.backend.service;
 
-import com.dasigconnect.backend.model.dto.exception.TokenStatusDto;
-import com.dasigconnect.backend.model.dto.systemhealth.BackgroundJobHealthDto;
-import com.dasigconnect.backend.model.dto.systemhealth.ExternalServiceHealthDto;
-import com.dasigconnect.backend.model.dto.systemhealth.HealthStatus;
-import com.dasigconnect.backend.model.dto.systemhealth.OperationalMetricDto;
-import com.dasigconnect.backend.model.dto.systemhealth.StorageMetricDto;
-import com.dasigconnect.backend.model.dto.systemhealth.SystemHealthSummaryDto;
-import com.dasigconnect.backend.model.entity.ScheduledJobRun;
-import com.dasigconnect.backend.repository.PublishSuccessRateRepository;
-import com.dasigconnect.backend.repository.ScheduledJobRunRepository;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -23,6 +13,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,18 +21,31 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.dasigconnect.backend.model.dto.exception.TokenStatusDto;
+import com.dasigconnect.backend.model.dto.systemhealth.BackgroundJobHealthDto;
+import com.dasigconnect.backend.model.dto.systemhealth.ExternalServiceHealthDto;
+import com.dasigconnect.backend.model.dto.systemhealth.HealthStatus;
+import com.dasigconnect.backend.model.dto.systemhealth.OperationalMetricDto;
+import com.dasigconnect.backend.model.dto.systemhealth.StorageMetricDto;
+import com.dasigconnect.backend.model.dto.systemhealth.SystemHealthSummaryDto;
+import com.dasigconnect.backend.model.entity.ScheduledJobRun;
+import com.dasigconnect.backend.repository.PublishSuccessRateRepository;
+import com.dasigconnect.backend.repository.ScheduledJobRunRepository;
+
 @Service
 public class SystemHealthService {
 
     private static final Logger log = LoggerFactory.getLogger(SystemHealthService.class);
 
     /**
-     * Every scheduled job that reports health, mapped to how often it is expected
-     * to run. A job is flagged WARNING (stale) only once its last run is older
-     * than twice its expected interval, so weekly jobs are not permanently stale.
-     * Insertion order controls display order before the alphabetical sort.
+     * Every scheduled job that reports health, mapped to how often it is
+     * expected to run. A job is flagged WARNING (stale) only once its last run
+     * is older than twice its expected interval, so weekly jobs are not
+     * permanently stale. Insertion order controls display order before the
+     * alphabetical sort.
      */
     private static final Map<String, Duration> EXPECTED_JOBS = new LinkedHashMap<>();
+
     static {
         EXPECTED_JOBS.put("PublishingSchedulerJob", Duration.ofMinutes(1));
         EXPECTED_JOBS.put("ReviewLockCleanupJob", Duration.ofMinutes(1));
@@ -128,8 +132,8 @@ public class SystemHealthService {
         int warnings = count(statuses, HealthStatus.WARNING);
         HealthStatus overall = unhealthy > 0 ? HealthStatus.UNHEALTHY
                 : warnings > 0 ? HealthStatus.WARNING
-                : unavailable > 0 ? HealthStatus.UNAVAILABLE
-                : HealthStatus.HEALTHY;
+                        : unavailable > 0 ? HealthStatus.UNAVAILABLE
+                                : HealthStatus.HEALTHY;
 
         return new SystemHealthSummaryDto(
                 Instant.now(),
@@ -160,8 +164,10 @@ public class SystemHealthService {
         return services;
     }
 
-    /** Supabase PostgreSQL — a timed {@code SELECT 1}. Slow-but-up is a WARNING;
-     *  the Session Pooler + Hikari-5 setup makes latency worth watching. */
+    /**
+     * Supabase PostgreSQL — a timed {@code SELECT 1}. Slow-but-up is a WARNING;
+     * the Session Pooler + Hikari-5 setup makes latency worth watching.
+     */
     private ExternalServiceHealthDto databaseHealth() {
         long startNanos = System.nanoTime();
         try {
@@ -178,7 +184,9 @@ public class SystemHealthService {
         }
     }
 
-    /** Cloudflare R2 media bucket — a one-key list to confirm creds + endpoint. */
+    /**
+     * Cloudflare R2 media bucket — a one-key list to confirm creds + endpoint.
+     */
     private ExternalServiceHealthDto mediaObjectStorageHealth() {
         if (!mediaStorage.isConfigured()) {
             return service("Cloudflare R2 (Media Storage)", HealthStatus.UNAVAILABLE,
@@ -198,7 +206,11 @@ public class SystemHealthService {
     public List<BackgroundJobHealthDto> backgroundJobs() {
         Map<String, ScheduledJobRun> latestByName = new LinkedHashMap<>();
         for (ScheduledJobRun run : scheduledJobRunRepository.findLatestRunsByJobName()) {
-            latestByName.put(run.getJobName(), run);
+            // Retired jobs can remain in the history table until retention removes
+            // them. Only expose jobs that are still registered in this application.
+            if (EXPECTED_JOBS.containsKey(run.getJobName())) {
+                latestByName.put(run.getJobName(), run);
+            }
         }
         for (String expected : EXPECTED_JOBS.keySet()) {
             latestByName.putIfAbsent(expected, null);
@@ -285,8 +297,8 @@ public class SystemHealthService {
         double percent = limit > 0 ? round(used * 100.0 / limit) : 0;
         HealthStatus status = limit <= 0 ? HealthStatus.UNAVAILABLE
                 : percent >= storageCriticalThreshold ? HealthStatus.UNHEALTHY
-                : percent >= storageWarningThreshold ? HealthStatus.WARNING
-                : HealthStatus.HEALTHY;
+                        : percent >= storageWarningThreshold ? HealthStatus.WARNING
+                                : HealthStatus.HEALTHY;
         String escalated = status == HealthStatus.UNHEALTHY
                 ? detail + String.format(" Usage is at %.0f%% of the %s budget — reduce usage or raise the plan to avoid overage charges.",
                         percent, humanBytes(limit))
@@ -317,10 +329,14 @@ public class SystemHealthService {
                     .min(Comparator.comparingInt(token -> tokenPriority(token.getTokenStatus())))
                     .orElse(tokens.get(0));
             HealthStatus status = switch (mostUrgent.getTokenStatus()) {
-                case "ACTIVE" -> HealthStatus.HEALTHY;
-                case "EXPIRING" -> HealthStatus.WARNING;
-                case "EXPIRED", "INVALID" -> HealthStatus.UNHEALTHY;
-                default -> HealthStatus.UNAVAILABLE;
+                case "ACTIVE" ->
+                    HealthStatus.HEALTHY;
+                case "EXPIRING" ->
+                    HealthStatus.WARNING;
+                case "EXPIRED", "INVALID" ->
+                    HealthStatus.UNHEALTHY;
+                default ->
+                    HealthStatus.UNAVAILABLE;
             };
             Long seconds = mostUrgent.getExpiresAt() == null ? null
                     : Duration.between(Instant.now(), mostUrgent.getExpiresAt()).getSeconds();
@@ -358,8 +374,11 @@ public class SystemHealthService {
         return httpReachability("Email Service Provider", mailApiBaseUrl, mailApiKey);
     }
 
-    /** A job that is expected no more than once a day is not "unavailable" just because
-     *  it has not run since the last restart — only frequent jobs that never run are. */
+    /**
+     * A job that is expected no more than once a day is not "unavailable" just
+     * because it has not run since the last restart — only frequent jobs that
+     * never run are.
+     */
     private static final Duration INFREQUENT_JOB_THRESHOLD = Duration.ofHours(23);
 
     private BackgroundJobHealthDto toJobDto(String jobName, ScheduledJobRun run) {
@@ -474,8 +493,8 @@ public class SystemHealthService {
             // Same calculator the Analytics operational-health block uses, so the
             // two dashboards can never disagree on the definition — only on the
             // window (here: network-wide, last 30 days).
-            PublishSuccessRateRepository.Stats stats =
-                    publishSuccessRateRepository.networkWide(start, Instant.now());
+            PublishSuccessRateRepository.Stats stats
+                    = publishSuccessRateRepository.networkWide(start, Instant.now());
             if (stats.attempts() == 0) {
                 return noSampleMetric("publish_success_rate", "Publish success rate", "percent",
                         "No publishing attempts were recorded in the last 30 days.");
@@ -528,40 +547,64 @@ public class SystemHealthService {
 
     private static int tokenPriority(String status) {
         return switch (status) {
-            case "EXPIRED", "INVALID" -> 0;
-            case "EXPIRING" -> 1;
-            case "ACTIVE" -> 2;
-            default -> 3;
+            case "EXPIRED", "INVALID" ->
+                0;
+            case "EXPIRING" ->
+                1;
+            case "ACTIVE" ->
+                2;
+            default ->
+                3;
         };
     }
 
     private static String tokenStatusLabel(String status) {
         return switch (status) {
-            case "ACTIVE" -> "active";
-            case "EXPIRING" -> "nearing expiry";
-            case "EXPIRED" -> "expired";
-            case "INVALID" -> "invalid";
-            default -> "unavailable";
+            case "ACTIVE" ->
+                "active";
+            case "EXPIRING" ->
+                "nearing expiry";
+            case "EXPIRED" ->
+                "expired";
+            case "INVALID" ->
+                "invalid";
+            default ->
+                "unavailable";
         };
     }
 
     private static String jobDisplayName(String jobName) {
         return switch (jobName) {
-            case "PublishingSchedulerJob" -> "Publishing Scheduler";
-            case "StaleSubmissionDetectorJob" -> "Stale Submission Detector";
-            case "EmbeddingReconciliationJob" -> "Embedding Reconciliation";
-            case "MediaAssetRetentionPurgeJob" -> "Media Asset Retention Purge";
-            case "StaleDraftSlotReleaseJob" -> "Stale Draft Slot Release";
-            case "TokenHealthCheckJob" -> "Token Health Check";
-            case "TokenPublishingEscalationJob" -> "Token Publishing Escalation";
-            case "SocialEngagementSyncJob" -> "Social Engagement Sync";
-            case "AbandonmentDetectorJob" -> "Abandonment Detector";
-            case "ReviewLockCleanupJob" -> "Review Lock Cleanup";
-            case "ValidationDeadlineNotificationJob" -> "Validation Deadline Notification";
-            case "EmbeddingFailureDigestJob" -> "Embedding Failure Digest";
-            case "EmptyScheduleWarningJob" -> "Empty Schedule Warning";
-            case "ScheduledJobRunRetentionJob" -> "Job Run Retention";
-            default -> jobName.replaceAll("(?<=[a-z])(?=[A-Z])", " ").replace(" Job", "");
+            case "PublishingSchedulerJob" ->
+                "Publishing Scheduler";
+            case "StaleSubmissionDetectorJob" ->
+                "Stale Submission Detector";
+            case "EmbeddingReconciliationJob" ->
+                "Embedding Reconciliation";
+            case "MediaAssetRetentionPurgeJob" ->
+                "Media Asset Retention Purge";
+            case "StaleDraftSlotReleaseJob" ->
+                "Stale Draft Slot Release";
+            case "TokenHealthCheckJob" ->
+                "Token Health Check";
+            case "TokenPublishingEscalationJob" ->
+                "Token Publishing Escalation";
+            case "SocialEngagementSyncJob" ->
+                "Social Engagement Sync";
+            case "AbandonmentDetectorJob" ->
+                "Abandonment Detector";
+            case "ReviewLockCleanupJob" ->
+                "Review Lock Cleanup";
+            case "ValidationDeadlineNotificationJob" ->
+                "Validation Deadline Notification";
+            case "EmbeddingFailureDigestJob" ->
+                "Embedding Failure Digest";
+            case "EmptyScheduleWarningJob" ->
+                "Empty Schedule Warning";
+            case "ScheduledJobRunRetentionJob" ->
+                "Job Run Retention";
+            default ->
+                jobName.replaceAll("(?<=[a-z])(?=[A-Z])", " ").replace(" Job", "");
         };
     }
 
