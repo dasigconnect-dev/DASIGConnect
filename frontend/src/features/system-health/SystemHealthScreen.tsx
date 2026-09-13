@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   downloadSystemHealthSnapshot,
@@ -6,6 +6,7 @@ import {
   getSystemHealthTokens,
   initSystemHealthOAuth,
   runSystemHealthJob,
+  setSystemHealthTokenManually,
   type BackgroundJobHealth,
   type ExternalServiceHealth,
   type HealthStatus,
@@ -69,6 +70,8 @@ export default function SystemHealthScreen({ user }: Props) {
   const [exporting, setExporting] = useState(false);
   const [runningJobKey, setRunningJobKey] = useState<string | null>(null);
   const [busyTokenId, setBusyTokenId] = useState<string | null>(null);
+  const [manualEntryTokenId, setManualEntryTokenId] = useState<string | null>(null);
+  const [manualTokenValue, setManualTokenValue] = useState("");
 
   // Active top-level tab (jobs | integrations | performance | storage)
   const [activeTab, setActiveTab] = useState<SystemHealthTab>(() => {
@@ -142,6 +145,27 @@ export default function SystemHealthScreen({ user }: Props) {
       toast.info("Facebook OAuth opened in a new tab.");
     } catch {
       toast.error("Unable to start reauthorization.");
+    } finally {
+      setBusyTokenId(null);
+    }
+  }
+
+  function toggleManualEntry(tokenId: string) {
+    setManualEntryTokenId((current) => (current === tokenId ? null : tokenId));
+    setManualTokenValue("");
+  }
+
+  async function handleSetManualToken(tokenId: string) {
+    if (!manualTokenValue.trim()) return;
+    setBusyTokenId(tokenId);
+    try {
+      await setSystemHealthTokenManually(tokenId, manualTokenValue.trim());
+      await queryClient.invalidateQueries({ queryKey: queryKeys.systemHealth.summary({ role: user.role, userId: getUserCacheScope(user) }) });
+      toast.success("Facebook Page Access Token updated. It will be verified on the next token health check.");
+      setManualEntryTokenId(null);
+      setManualTokenValue("");
+    } catch {
+      toast.error("Unable to save the token. Make sure it's a valid Page Access Token.");
     } finally {
       setBusyTokenId(null);
     }
@@ -443,6 +467,11 @@ export default function SystemHealthScreen({ user }: Props) {
                     busyTokenId={busyTokenId}
                     canReauthorize={canReauthorize}
                     onReauthorize={handleReauthorize}
+                    manualEntryTokenId={manualEntryTokenId}
+                    manualTokenValue={manualTokenValue}
+                    onToggleManualEntry={toggleManualEntry}
+                    onManualTokenValueChange={setManualTokenValue}
+                    onSetManualToken={handleSetManualToken}
                   />
                 </Section>
 
@@ -1003,11 +1032,21 @@ function TokenTable({
   busyTokenId,
   canReauthorize,
   onReauthorize,
+  manualEntryTokenId,
+  manualTokenValue,
+  onToggleManualEntry,
+  onManualTokenValueChange,
+  onSetManualToken,
 }: {
   tokens: TokenStatus[];
   busyTokenId: string | null;
   canReauthorize: boolean;
   onReauthorize: (token: TokenStatus) => void;
+  manualEntryTokenId: string | null;
+  manualTokenValue: string;
+  onToggleManualEntry: (tokenId: string) => void;
+  onManualTokenValueChange: (value: string) => void;
+  onSetManualToken: (tokenId: string) => void;
 }) {
   if (tokens.length === 0) {
     return (
@@ -1015,7 +1054,7 @@ function TokenTable({
         <i className="ti ti-brand-facebook" aria-hidden="true" />
         <div>
           <strong>No Facebook Page Tokens Configured</strong>
-          <p>Connect a Facebook Page in Settings to activate automated publishing and engagement sync.</p>
+          <p>Set FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN in the backend environment to connect a page — it appears here once the app restarts.</p>
         </div>
       </div>
     );
@@ -1035,29 +1074,71 @@ function TokenTable({
         </thead>
         <tbody>
           {tokens.map((token) => (
-            <tr key={token.id}>
-              <td>
-                <div className="sys-page-cell">
-                  <i className="ti ti-brand-facebook" />
-                  <strong>Page ····{token.pageId.slice(-4) || "----"}</strong>
-                </div>
-              </td>
-              <td><StatusBadge status={tokenStatusToHealth(token.tokenStatus)} /></td>
-              <td><span className="sys-date-text">{formatDate(token.expiresAt)}</span></td>
-              <td><span className="sys-date-text">{formatDate(token.lastValidatedAt)}</span></td>
-              <td style={{ textAlign: "right" }}>
-                <button
-                  type="button"
-                  className="notif-btn notif-btn-ghost notif-btn-sm"
-                  disabled={!canReauthorize || busyTokenId === token.id}
-                  onClick={() => onReauthorize(token)}
-                  title="Renew Facebook Page Access Token"
-                >
-                  <i className={busyTokenId === token.id ? "ti ti-loader-2 sys-spin" : "ti ti-refresh"} aria-hidden="true" />
-                  <span>Reauthorize</span>
-                </button>
-              </td>
-            </tr>
+            <Fragment key={token.id}>
+              <tr>
+                <td>
+                  <div className="sys-page-cell">
+                    <i className="ti ti-brand-facebook" />
+                    <strong>Page ····{token.pageId.slice(-4) || "----"}</strong>
+                  </div>
+                </td>
+                <td><StatusBadge status={tokenStatusToHealth(token.tokenStatus)} /></td>
+                <td><span className="sys-date-text">{formatDate(token.expiresAt)}</span></td>
+                <td><span className="sys-date-text">{formatDate(token.lastValidatedAt)}</span></td>
+                <td style={{ textAlign: "right" }}>
+                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                    <button
+                      type="button"
+                      className="notif-btn notif-btn-ghost notif-btn-sm"
+                      disabled={!canReauthorize || busyTokenId === token.id}
+                      onClick={() => onReauthorize(token)}
+                      title="Renew Facebook Page Access Token via Facebook OAuth"
+                    >
+                      <i className={busyTokenId === token.id && manualEntryTokenId !== token.id ? "ti ti-loader-2 sys-spin" : "ti ti-refresh"} aria-hidden="true" />
+                      <span>Reauthorize</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="notif-btn notif-btn-ghost notif-btn-sm"
+                      disabled={!canReauthorize}
+                      onClick={() => onToggleManualEntry(token.id)}
+                      title="Paste a Page Access Token directly, without the OAuth flow"
+                    >
+                      <i className="ti ti-key" aria-hidden="true" />
+                      <span>{manualEntryTokenId === token.id ? "Cancel" : "Set Manually"}</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {manualEntryTokenId === token.id && (
+                <tr>
+                  <td colSpan={5}>
+                    <div className="sys-manual-token-row">
+                      <input
+                        type="password"
+                        className="settings-input"
+                        placeholder="Paste the Page Access Token"
+                        value={manualTokenValue}
+                        onChange={(e) => onManualTokenValueChange(e.target.value)}
+                        autoComplete="off"
+                      />
+                      <button
+                        type="button"
+                        className="notif-btn notif-btn-ghost notif-btn-sm"
+                        disabled={!manualTokenValue.trim() || busyTokenId === token.id}
+                        onClick={() => onSetManualToken(token.id)}
+                      >
+                        <i className={busyTokenId === token.id ? "ti ti-loader-2 sys-spin" : "ti ti-device-floppy"} aria-hidden="true" />
+                        <span>Save</span>
+                      </button>
+                      <span className="sys-manual-token-hint">
+                        Must already be a Page Access Token for page ····{token.pageId.slice(-4) || "----"} — this cannot change which page is connected.
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>

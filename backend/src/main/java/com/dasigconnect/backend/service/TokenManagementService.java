@@ -157,6 +157,42 @@ public class TokenManagementService {
         }
     }
 
+    /**
+     * Manually sets the Page Access Token on an existing token row — an
+     * alternative to {@link #initOAuth} for an admin who already has a
+     * long-lived token (e.g. from the Graph API Explorer). Encrypts and stores
+     * it exactly as the OAuth callback does, but skips the Meta OAuth dance.
+     * Does not create a new page — {@code tokenId} must already exist, so this
+     * can never change which page the system publishes to (that's fixed by
+     * {@code FACEBOOK_PAGE_ID} in the environment, seeded at startup).
+     */
+    public TokenStatusDto setManualToken(UUID tokenId, String accessToken, JwtUserDetails admin) {
+        FacebookPageToken token = pageTokenRepository.findById(tokenId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Facebook page token not found."));
+
+        String trimmed = accessToken == null ? "" : accessToken.trim();
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Access token cannot be blank.");
+        }
+
+        token.setEncryptedToken(tokenEncryptionService.encryptToken(trimmed));
+        token.setActive(true);
+        // Left unset (not "validated now") — this is an unverified admin-supplied
+        // value until TokenHealthCheckJob's debug_token probe actually confirms
+        // it against Graph, same as a freshly-seeded env token would be.
+        token.setLastValidatedAt(null);
+        token.setExpiresAt(null);
+        pageTokenRepository.save(token);
+
+        auditLogService.recordSystemAction("TOKEN_MANUALLY_SET", token.getId(),
+                Map.of("pageId", token.getPageId(), "setBy", admin.userId().toString()));
+
+        log.info("Admin {} manually set the Facebook page token {} (page {}).",
+                admin.userId(), tokenId, token.getPageId());
+        return TokenStatusDto.from(token);
+    }
+
     // ── OAuth helpers ─────────────────────────────────────────────────────────
 
     private String exchangeCodeForToken(String code) throws IOException, InterruptedException {
