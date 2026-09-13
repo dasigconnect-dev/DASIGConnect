@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
-import type { WatermarkElement } from "../../types/watermark.types";
+import type { WatermarkConfiguration, WatermarkElement } from "../../types/watermark.types";
 import {
   changePassword,
   getMe,
@@ -16,12 +16,13 @@ import {
   type UserProfileResponse,
 } from "../../api/authApi";
 import { createMessengerLinkCode, disconnectMessenger, getMessengerConnectionStatus, type MessengerConnection, type MessengerLinkCode } from "../../api/messengerApi";
-import { getWatermarkConfiguration, saveWatermarkConfiguration } from "../../api/watermarkApi";
+import { saveWatermarkConfiguration } from "../../api/watermarkApi";
 import WatermarkCanvasEditor from "../settings/components/WatermarkCanvasEditor";
 import { useToast } from "../../context/ToastContext";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { queryKeys } from "../../lib/queryKeys";
 import { firstPasswordError, getPasswordRules } from "../../lib/passwordPolicy";
+import { watermarkConfigurationQueryOptions } from "../../hooks/useWatermarkConfiguration";
 
 interface Props {
   user: User;
@@ -38,7 +39,6 @@ type ProfileSettingsForm = {
 
 const PROFILE_CACHE_TTL_MS = 60_000;
 const PAGE_SETTINGS_STALE_TIME_MS = 5 * 60_000;
-const WATERMARK_STALE_TIME_MS = 5 * 60_000;
 
 function getUserCacheScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
@@ -102,11 +102,12 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     userId: userScope,
     institutionId: pageInstitutionId,
   });
-  const watermarkQueryKey = queryKeys.settings.watermark({
-    role: user.role,
-    userId: userScope,
+  const watermarkQueryOptions = watermarkConfigurationQueryOptions({
+    user,
     institutionId: pageInstitutionId,
+    enabled: canManagePage && activeTab === "page",
   });
+  const watermarkQueryKey = watermarkQueryOptions.queryKey;
   const profileHydratedRef = useRef(false);
   const pageSettingsHydratedRef = useRef(false);
   const watermarkHydratedRef = useRef(false);
@@ -134,13 +135,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     meta: authenticatedQueryMeta,
   });
 
-  const watermarkQuery = useQuery({
-    queryKey: watermarkQueryKey,
-    queryFn: ({ signal }) => getWatermarkConfiguration(pageInstitutionId, signal),
-    enabled: canManagePage && activeTab === "page",
-    staleTime: WATERMARK_STALE_TIME_MS,
-    meta: authenticatedQueryMeta,
-  });
+  const watermarkQuery = useQuery(watermarkQueryOptions);
 
   const initialLoading = profileQuery.isLoading;
   const watermarkLoading = watermarkQuery.isLoading;
@@ -249,8 +244,8 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     }
 
     if (watermarkQuery.data && !watermarkHydratedRef.current) {
-      setWatermarkEnabled(watermarkQuery.data.data.enabled);
-      setWatermarkElements(watermarkQuery.data.data.elements || []);
+      setWatermarkEnabled(watermarkQuery.data.enabled);
+      setWatermarkElements(watermarkQuery.data.elements || []);
       watermarkHydratedRef.current = true;
     }
 
@@ -368,7 +363,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       });
       setWatermarkEnabled(data.enabled);
       setWatermarkElements(data.elements || []);
-      queryClient.setQueryData(watermarkQueryKey, { data });
+      queryClient.setQueryData<WatermarkConfiguration>(watermarkQueryKey, data);
       watermarkHydratedRef.current = true;
       watermarkErrorNotifiedRef.current = false;
       await invalidateWatermarkSettingsDependencies();
