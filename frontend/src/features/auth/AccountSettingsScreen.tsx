@@ -7,7 +7,6 @@ import type { User } from "../../types/auth.types";
 import type { WatermarkConfiguration, WatermarkElement } from "../../types/watermark.types";
 import {
   changePassword,
-  getMe,
   getPageSettings,
   requestPasswordReset,
   updateAccountSettings,
@@ -23,6 +22,7 @@ import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { queryKeys } from "../../lib/queryKeys";
 import { firstPasswordError, getPasswordRules } from "../../lib/passwordPolicy";
 import { watermarkConfigurationQueryOptions } from "../../hooks/useWatermarkConfiguration";
+import { currentProfileQueryOptions } from "../../hooks/useCurrentProfile";
 
 interface Props {
   user: User;
@@ -37,7 +37,7 @@ type ProfileSettingsForm = {
   notifyEmail: boolean;
 };
 
-const PROFILE_CACHE_TTL_MS = 60_000;
+const MESSENGER_CONNECTION_STALE_TIME_MS = 60_000;
 const PAGE_SETTINGS_STALE_TIME_MS = 5 * 60_000;
 
 function getUserCacheScope(user: User) {
@@ -89,14 +89,15 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [watermarkElements, setWatermarkElements] = useState<WatermarkElement[]>([]);
 
   // Messenger Integration States
-  const [messengerStatus, setMessengerStatus] = useState<MessengerConnection | null>(null);
   const [linkCode, setLinkCode] = useState<MessengerLinkCode | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [messengerExpanded, setMessengerExpanded] = useState(false);
 
   const [saving, setSaving] = useState<"account" | "password" | "watermark" | "messenger" | "guardrails" | null>(null);
   const pageInstitutionId = null;
-  const profileQueryKey = queryKeys.settings.profile({ userId: userScope });
+  const profileQueryOptions = currentProfileQueryOptions(user);
+  const profileQueryKey = profileQueryOptions.queryKey;
+  const messengerConnectionQueryKey = queryKeys.messenger.connection({ userId: userScope });
   const pageSettingsQueryKey = queryKeys.settings.page({
     role: user.role,
     userId: userScope,
@@ -120,10 +121,13 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   ]);
   const newPasswordOk = Object.values(newPasswordRules).every(Boolean);
 
-  const profileQuery = useQuery({
-    queryKey: profileQueryKey,
-    queryFn: ({ signal }) => getMe(signal),
-    staleTime: PROFILE_CACHE_TTL_MS,
+  const profileQuery = useQuery(profileQueryOptions);
+
+  const messengerConnectionQuery = useQuery({
+    queryKey: messengerConnectionQueryKey,
+    queryFn: ({ signal }) => getMessengerConnectionStatus(signal),
+    enabled: canUseMessenger,
+    staleTime: MESSENGER_CONNECTION_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
 
@@ -138,6 +142,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const watermarkQuery = useQuery(watermarkQueryOptions);
 
   const initialLoading = profileQuery.isLoading;
+  const messengerStatus = messengerConnectionQuery.data ?? null;
   const watermarkLoading = watermarkQuery.isLoading;
 
   async function invalidateAccountSettingsDependencies() {
@@ -186,9 +191,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
 
   const loadMessenger = () => {
     if (!canUseMessenger) return;
-    getMessengerConnectionStatus()
-      .then((data) => setMessengerStatus(data))
-      .catch(() => setMessengerStatus(null));
+    void messengerConnectionQuery.refetch();
   };
 
   function switchTab(tab: SettingsTab) {
@@ -208,9 +211,8 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   // Hydrate editable forms once from query data so background refetches do not
   // replace in-progress edits.
   useEffect(() => {
-    let isCurrent = true;
     if (profileQuery.data && !profileHydratedRef.current) {
-      const profileForm = getProfileSettingsForm(profileQuery.data.data);
+      const profileForm = getProfileSettingsForm(profileQuery.data);
       setDisplayName(profileForm.name);
       setInitialDisplayName(profileForm.name);
       setNotifyInApp(profileForm.notifyInApp);
@@ -220,20 +222,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       profileHydratedRef.current = true;
     }
 
-    if (canUseMessenger) {
-      getMessengerConnectionStatus()
-        .then((data) => {
-          if (isCurrent) setMessengerStatus(data);
-        })
-        .catch(() => {
-          if (isCurrent) setMessengerStatus(null);
-        });
-    }
-
-    return () => {
-      isCurrent = false;
-    };
-  }, [canUseMessenger, profileQuery.data]);
+  }, [profileQuery.data]);
 
   // Page and watermark data load lazily through queries when admins open the
   // Page tab.
@@ -275,7 +264,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       setInitialNotifyInApp(profileForm.notifyInApp);
       setNotifyEmail(profileForm.notifyEmail);
       setInitialNotifyEmail(profileForm.notifyEmail);
-      queryClient.setQueryData(profileQueryKey, { data });
+      queryClient.setQueryData(profileQueryKey, data);
       profileHydratedRef.current = true;
       await invalidateAccountSettingsDependencies();
       await onProfileUpdated();
@@ -395,7 +384,11 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     setSaving("messenger");
     try {
       await disconnectMessenger();
-      setMessengerStatus({ connected: false, enabled: false, linkedAt: null });
+      queryClient.setQueryData<MessengerConnection>(messengerConnectionQueryKey, {
+        connected: false,
+        enabled: false,
+        linkedAt: null,
+      });
       setLinkCode(null);
       setMessengerExpanded(false);
       toast.success("Facebook Messenger disconnected.");

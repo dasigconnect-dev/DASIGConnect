@@ -5,6 +5,14 @@ function scopedKey<TParams extends ScopedQueryParams>(root: string, params: TPar
 }
 
 export const queryKeys = {
+  principal: {
+    profile: (params: { userId: string }) =>
+      scopedKey("principal", { ...params, view: "profile" }),
+  },
+  messenger: {
+    connection: (params: { userId: string }) =>
+      scopedKey("messenger", { ...params, view: "connection" }),
+  },
   dashboard: {
     summary: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
       scopedKey("dashboard", params),
@@ -99,7 +107,6 @@ export const queryKeys = {
       scopedKey("ai", { ...params, view: "similar-media" }),
   },
   settings: {
-    profile: (params: { userId?: string | null }) => scopedKey("settings", { ...params, view: "profile" }),
     page: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
       scopedKey("settings", { ...params, view: "page" }),
     watermark: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
@@ -132,6 +139,8 @@ export const queryKeys = {
 } as const;
 
 export const queryRoots = {
+  principal: ["principal"],
+  messenger: ["messenger"],
   dashboard: ["dashboard"],
   institutions: ["institutions"],
   users: ["users"],
