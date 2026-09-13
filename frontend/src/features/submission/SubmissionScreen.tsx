@@ -187,6 +187,8 @@ function isCanceledRequest(error: unknown, signal?: AbortSignal) {
 export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const isMySubmissionsPage = location.pathname === "/submissions";
+  const isComposerRoute = !isMySubmissionsPage;
   const { submissionId: routeSubmissionId } = useParams<{ submissionId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -195,7 +197,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const {
     lookups,
     loading: lookupsLoading,
-  } = useSubmissionLookups(user);
+  } = useSubmissionLookups(user, isComposerRoute);
   const toast = useToast();
   const detailsSectionRef = useRef<HTMLElement | null>(null);
   const mediaSectionRef = useRef<HTMLElement | null>(null);
@@ -312,7 +314,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [captionPromptOpen, setCaptionPromptOpen] = useState(false);
   const [fancyTextPreviewActive, setFancyTextPreviewActive] = useState(false);
   const isAdminComposer = user.role === "moderator" || user.role === "admin";
-  const isMySubmissionsPage = location.pathname === "/submissions";
   const selectedInstitutionId = isAdminComposer ? form.institutionId : user.institutionId || "";
   const currentUserScope = userScope(user);
   const institutionsQuery = useQuery({
@@ -323,7 +324,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     queryFn: ({ signal }) => listInstitutions(signal).then((response) =>
       response.data.filter((institution) => institution.status?.toLowerCase() !== "inactive"),
     ),
-    enabled: isAdminComposer,
+    enabled: isComposerRoute && isAdminComposer,
     staleTime: COMPOSER_INSTITUTIONS_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
@@ -342,6 +343,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     queryFn: ({ signal }) => listPostTemplates(signal).then((response) =>
       (response.data ?? []).map(apiTemplateToComposerTemplate),
     ),
+    enabled: isComposerRoute,
     staleTime: COMPOSER_REF_TTL_MS,
     meta: authenticatedQueryMeta,
   });
@@ -351,7 +353,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       listMediaAlbums(selectedInstitutionId, signal).then((response) =>
         (response.data ?? []).map((album) => album.name),
       ),
-    enabled: Boolean(selectedInstitutionId),
+    enabled: isComposerRoute && Boolean(selectedInstitutionId),
     staleTime: COMPOSER_REF_TTL_MS,
     meta: authenticatedQueryMeta,
   });
@@ -384,10 +386,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     () =>
       queued.filter(
         (item) =>
-          !item.caption || ((item.mediaCount ?? 0) > 0 && !item.mediaAssets?.length),
+          (item.mediaCount ?? 0) > 0 && !item.mediaAssets?.length,
       ),
     [queued],
   );
+  // The list DTO already includes the complete caption. The remaining detail
+  // fallback exists only because it does not yet expose a compact first-media
+  // preview (id, storageUrl, fileName, fileType, fileSizeBytes).
   const previewDetailQueries = useQueries({
     queries: queuedPreviewItems.map((item) => ({
       queryKey: queryKeys.submissions.detail({
@@ -556,10 +561,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }, [institutions, isAdminComposer]);
 
   useEffect(() => {
-    if (!templatesQuery.isError || templateErrorNotifiedRef.current) return;
+    if (!isComposerRoute || !templatesQuery.isError || templateErrorNotifiedRef.current) return;
     templateErrorNotifiedRef.current = true;
     toast.error("Could not load saved templates.");
-  }, [templatesQuery.isError, toast]);
+  }, [isComposerRoute, templatesQuery.isError, toast]);
 
   useEffect(() => {
     if (!error || submissions.length === 0) {
@@ -572,10 +577,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }, [error, submissions.length, toast]);
 
   useEffect(() => {
-    if (!selectedInstitutionId || !albumNamesQuery.isError || albumErrorNotifiedRef.current === selectedInstitutionId) return;
+    if (!isComposerRoute || !selectedInstitutionId || !albumNamesQuery.isError || albumErrorNotifiedRef.current === selectedInstitutionId) return;
     albumErrorNotifiedRef.current = selectedInstitutionId;
     toast.error("Could not load media albums.");
-  }, [albumNamesQuery.isError, selectedInstitutionId, toast]);
+  }, [albumNamesQuery.isError, isComposerRoute, selectedInstitutionId, toast]);
 
   const isDetailsComplete = useMemo(
     () =>
