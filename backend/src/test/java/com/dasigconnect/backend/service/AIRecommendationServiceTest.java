@@ -1,14 +1,32 @@
 package com.dasigconnect.backend.service;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import org.springframework.web.server.ResponseStatusException;
+
+import com.dasigconnect.backend.external.VoyageAIClient;
 import com.dasigconnect.backend.model.dto.ai.AlbumMatchRequestDto;
 import com.dasigconnect.backend.model.dto.ai.AlbumMatchResponseDto;
 import com.dasigconnect.backend.model.dto.ai.MediaSuggestRequestDto;
 import com.dasigconnect.backend.model.dto.ai.MediaSuggestResultDto;
+import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAlbum;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType;
 import com.dasigconnect.backend.model.entity.MediaFileType;
-import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.AiInteractionLogRepository;
@@ -19,24 +37,6 @@ import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
-import com.dasigconnect.backend.external.VoyageAIClient;
-import org.junit.jupiter.api.Test;
-import org.springframework.web.server.ResponseStatusException;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class AIRecommendationServiceTest {
 
@@ -145,10 +145,18 @@ class AIRecommendationServiceTest {
         assertEquals(fallbackId, results.getFirst().getId());
         assertTrue(results.getFirst().getMatchReasons().stream()
                 .anyMatch(reason -> reason.toLowerCase().contains("category")));
+
+        List<MediaSuggestResultDto> moderatorResults = service.suggestMedia(
+                submissionId,
+                dto,
+                new JwtUserDetails(UUID.randomUUID(), "moderator@test.edu", "moderator", null)
+        );
+
+        assertEquals(1, moderatorResults.size());
+        assertEquals(fallbackId, moderatorResults.getFirst().getId());
     }
 
     // ── suggestAlbum() — album Auto-Match (UC-1.7) ──────────────────────────────
-
     @Test
     void suggestAlbum_confidentWhenTagsAndEmbeddingBothMatch() {
         Harness h = harness();
@@ -243,9 +251,11 @@ class AIRecommendationServiceTest {
     }
 
     private record Harness(AIRecommendationService service, UUID submissionId, UUID institutionId,
-                           JwtUserDetails contributorPrincipal, MediaAlbumRepository mediaAlbumRepository,
-                           AssetTagRepository assetTagRepository, VoyageAIClient voyageAIClient,
-                           MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository) {}
+            JwtUserDetails contributorPrincipal, MediaAlbumRepository mediaAlbumRepository,
+            AssetTagRepository assetTagRepository, VoyageAIClient voyageAIClient,
+            MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository) {
+
+    }
 
     private static Harness harness() {
         UUID institutionId = UUID.randomUUID();
