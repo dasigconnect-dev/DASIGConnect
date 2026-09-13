@@ -39,6 +39,7 @@ import { suggestAlbum } from "../../api/aiApi";
 import { useToast } from "../../context/ToastContext";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { queryKeys } from "../../lib/queryKeys";
+import { mapSettledWithConcurrency } from "../../lib/boundedConcurrency";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import AiCaptionButton from "./components/AiCaptionButton";
@@ -184,6 +185,10 @@ function isCanceledRequest(error: unknown, signal?: AbortSignal) {
   return maybeCanceled.code === "ERR_CANCELED" || maybeCanceled.name === "CanceledError" || maybeCanceled.name === "AbortError";
 }
 
+function uploadFileSignature(file: Pick<File, "name" | "size">) {
+  return `${file.name}:${file.size}`;
+}
+
 export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -214,6 +219,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const cleanSignatureRef = useRef(getDirtySignature(initialForm));
   const shouldPromptBeforeLeaveRef = useRef(false);
   const browserBackGuardRef = useRef(false);
+  const uploadBatchControllerRef = useRef<AbortController | null>(null);
   const [filter, setFilter] = useState<QueueFilter>(() => {
     const tab = new URLSearchParams(window.location.search).get("tab");
     const valid: QueueFilter[] = ["drafts", "action-needed", "submitted", "published", "failed", "all"];
@@ -548,6 +554,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     queryClient.removeQueries({ queryKey: queryKeys.submissions.editorDetail(detailParams) });
     queryClient.removeQueries({ queryKey: queryKeys.submissions.detail(detailParams) });
   }
+
+  useEffect(() => () => {
+    uploadBatchControllerRef.current?.abort();
+    uploadBatchControllerRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (!isAdminComposer || !institutions.length) return;
@@ -1672,38 +1683,91 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     files: File[],
     initialResponse: T,
   ): Promise<T> {
-    let latestResponse = initialResponse;
+    uploadBatchControllerRef.current?.abort();
+    const controller = new AbortController();
+    uploadBatchControllerRef.current = controller;
 
-    for (let index = 0; index < files.length; index += 1) {
-      try {
-        const uploaded = await uploadSubmissionMedia(submissionId, [files[index]]);
-        if (uploaded) latestResponse = uploaded as unknown as T;
-      } catch (error) {
-        const remainingFiles = files.slice(index);
+    try {
+      const availableSlots = Math.max(
+        0,
+        lookups.maxMediaAssetsPerSubmission - (initialResponse.data.mediaAssets?.length ?? 0),
+      );
+      const concurrency = files.length > availableSlots ? 1 : 3;
+      const results = await mapSettledWithConcurrency(files, concurrency, (file) =>
+        uploadSubmissionMedia(submissionId, [file], controller.signal),
+      );
+      const fulfilledResponses = results
+        .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof uploadSubmissionMedia>>> =>
+          result.status === "fulfilled" && result.value != null,
+        )
+        .map((result) => result.value as unknown as T);
+      let latestResponse = fulfilledResponses.reduce(
+        (latest, response) =>
+          (response.data.mediaAssets?.length ?? 0) >= (latest.data.mediaAssets?.length ?? 0)
+            ? response
+            : latest,
+        initialResponse,
+      );
+      if (!controller.signal.aborted) {
+        try {
+          latestResponse = await getSubmission(submissionId, controller.signal) as unknown as T;
+        } catch {
+          // Registration responses remain a safe fallback if the consistency read fails.
+        }
+      }
+      const initialAssetIds = new Set((initialResponse.data.mediaAssets ?? []).map((asset) => asset.id));
+      const registeredCounts = new Map<string, number>();
+      for (const asset of latestResponse.data.mediaAssets ?? []) {
+        if (initialAssetIds.has(asset.id)) continue;
+        const signature = uploadFileSignature({ name: asset.fileName, size: asset.fileSizeBytes });
+        registeredCounts.set(signature, (registeredCounts.get(signature) ?? 0) + 1);
+      }
+      for (let index = 0; index < files.length; index += 1) {
+        if (results[index].status !== "fulfilled") continue;
+        const signature = uploadFileSignature(files[index]);
+        registeredCounts.set(signature, Math.max(0, (registeredCounts.get(signature) ?? 0) - 1));
+      }
+      const failedFiles = files.filter((file, index) => {
+        if (results[index].status !== "rejected") return false;
+        const signature = uploadFileSignature(file);
+        const alreadyRegistered = registeredCounts.get(signature) ?? 0;
+        if (alreadyRegistered <= 0) return true;
+        registeredCounts.set(signature, alreadyRegistered - 1);
+        return false;
+      });
+
+      const firstFailure = results.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
+      if (failedFiles.length > 0 && firstFailure) {
         const savedAssets = latestResponse.data.mediaAssets ?? form.savedAssets;
-        setForm((current) => ({
-          ...current,
-          id: submissionId,
-          files: remainingFiles,
-          savedAssets,
-          mediaOrder: [
-            ...savedAssets.map((asset) => savedMediaKey(asset.id)),
-            ...remainingFiles.map(fileMediaKey),
-          ],
-          pendingAssetIds: [],
-          removedAssetIds: [],
-        }));
-        setPickerItems((current) => [
-          ...savedAssets.map(savedAssetToPickerItem),
-          ...current.filter(
-            (item) => item.file != null && remainingFiles.includes(item.file),
-          ),
-        ]);
-        throw error;
+        if (!controller.signal.aborted) {
+          setForm((current) => ({
+            ...current,
+            id: submissionId,
+            files: failedFiles,
+            savedAssets,
+            mediaOrder: [
+              ...savedAssets.map((asset) => savedMediaKey(asset.id)),
+              ...failedFiles.map(fileMediaKey),
+            ],
+            pendingAssetIds: [],
+            removedAssetIds: [],
+          }));
+          setPickerItems((current) => [
+            ...savedAssets.map(savedAssetToPickerItem),
+            ...current.filter(
+              (item) => item.file != null && failedFiles.includes(item.file),
+            ),
+          ]);
+        }
+        throw firstFailure.reason;
+      }
+
+      return latestResponse;
+    } finally {
+      if (uploadBatchControllerRef.current === controller) {
+        uploadBatchControllerRef.current = null;
       }
     }
-
-    return latestResponse;
   }
 
   async function handleDelete() {

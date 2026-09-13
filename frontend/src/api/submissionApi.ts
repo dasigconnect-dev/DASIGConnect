@@ -178,7 +178,7 @@ export function detachAsset(id: string, mediaAssetId: string) {
   return api.delete(`/submissions/${id}/assets/${mediaAssetId}`);
 }
 
-export async function uploadSubmissionMedia(id: string, files: File[]) {
+export async function uploadSubmissionMedia(id: string, files: File[], signal?: AbortSignal) {
   const responses = [];
   for (const file of files) {
     const {
@@ -190,11 +190,13 @@ export async function uploadSubmissionMedia(id: string, files: File[]) {
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
       },
+      { signal },
     );
     const upload = await fetchWithDeadline(signedUrl, {
       method: "PUT",
       headers: { "Content-Type": file.type || "application/octet-stream" },
       body: file,
+      signal,
     });
     if (!upload.ok) {
       const msg = await upload.text().catch(() => "");
@@ -206,7 +208,7 @@ export async function uploadSubmissionMedia(id: string, files: File[]) {
         fileName: file.name,
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
-      }),
+      }, { signal }),
     );
   }
   return responses.at(-1);
