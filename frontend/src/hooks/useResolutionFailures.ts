@@ -47,7 +47,10 @@ function userScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
 }
 
-export function useResolutionFailures(user: User): UseResolutionFailuresResult {
+export function useResolutionFailures(
+  user: User,
+  enabled = true,
+): UseResolutionFailuresResult {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
@@ -64,6 +67,7 @@ export function useResolutionFailures(user: User): UseResolutionFailuresResult {
     queryKey: queryKeys.resolution.failures(resolutionScope),
     queryFn: ({ signal }) => getResolutionFailures(signal).then((response) => response.data),
     staleTime: RESOLUTION_FAILURES_STALE_TIME_MS,
+    enabled,
     meta: authenticatedQueryMeta,
   });
 
@@ -190,11 +194,11 @@ export function useResolutionFailures(user: User): UseResolutionFailuresResult {
 
   return {
     failures: failuresQuery.data ?? [],
-    loading: failuresQuery.isLoading || failuresQuery.isFetching,
+    loading: failuresQuery.isLoading,
     error: failuresQuery.error ? "Could not load failed publications. Please try again." : "",
     busy,
     activeDetail: detailQuery.data ?? null,
-    detailLoading: detailQuery.isLoading || detailQuery.isFetching,
+    detailLoading: detailQuery.isLoading,
     refresh,
     handleRetryWithNewSchedule,
     handleStartManual,
