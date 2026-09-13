@@ -40,6 +40,7 @@ import { seedCurrentProfile } from "../hooks/useCurrentProfile";
 const LOCKOUT_LIMIT = 5;
 const LOCKOUT_SECONDS = 15 * 60;
 const SESSION_WARNING_SECONDS = 5 * 60;
+const LOGIN_SPLASH_VISIBLE_MS = 500;
 const TABLER_ICONS_STYLESHEET = "https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css";
 
 const LoginScreen = lazy(() => import("../features/auth/LoginScreen"));
@@ -127,6 +128,7 @@ function App() {
   const profileRequestRef = useRef<{ id: number; controller: AbortController } | null>(null);
   const profileRequestIdRef = useRef(0);
   const authenticationFlowIdRef = useRef(0);
+  const splashTimerRef = useRef<number | null>(null);
 
   function cancelPendingProfileRequest() {
     profileRequestIdRef.current += 1;
@@ -176,6 +178,7 @@ function App() {
       profileRequestIdRef.current += 1;
       profileRequestRef.current?.controller.abort();
       profileRequestRef.current = null;
+      if (splashTimerRef.current) window.clearTimeout(splashTimerRef.current);
     };
   }, []);
 
@@ -353,6 +356,22 @@ function App() {
     }
   }
 
+  function showLoginSplash(user: User) {
+    if (splashTimerRef.current) window.clearTimeout(splashTimerRef.current);
+    setSplashUser(user);
+    setShowSplash(true);
+    splashTimerRef.current = window.setTimeout(() => {
+      setShowSplash(false);
+      splashTimerRef.current = null;
+    }, LOGIN_SPLASH_VISIBLE_MS);
+  }
+
+  function stopLoginSplash() {
+    if (splashTimerRef.current) window.clearTimeout(splashTimerRef.current);
+    splashTimerRef.current = null;
+    setShowSplash(false);
+  }
+
   async function handleLogin() {
     if (lockRemaining > 0) return;
     const flowId = ++authenticationFlowIdRef.current;
@@ -376,9 +395,7 @@ function App() {
       localStorage.setItem("dasigconnect_user", JSON.stringify(user));
       setCurrentUser(user);
       startSessionCountdown(apiUser.accessToken);
-      setSplashUser(user);
-      setShowSplash(true);
-      window.setTimeout(() => setShowSplash(false), 1900);
+      showLoginSplash(user);
       navigate("/dashboard");
       resetLoginState();
     } catch (err: unknown) {
@@ -555,6 +572,7 @@ function App() {
       }
       setShowDropdown(false);
       setShowSessionModal(false);
+      stopLoginSplash();
       stopSessionCountdown();
       resetLoginState();
       setLoginLoading(false);
