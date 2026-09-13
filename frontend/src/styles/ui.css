@@ -20,7 +20,7 @@
 .dc-spinner.md { font-size: 22px; width: 22px; height: 22px; }
 .dc-spinner.lg { font-size: 32px; width: 32px; height: 32px; }
 
-.dc-spinner.color-blue  { color: var(--d-blue, #0B5FCC); }
+.dc-spinner.color-blue  { color: var(--d-blue, #1877f2); }
 .dc-spinner.color-white { color: #ffffff; }
 .dc-spinner.color-muted { color: var(--d-muted, #5A6F8A); }
 
@@ -47,7 +47,7 @@
 .dc-page-loader-icon {
   width: 42px;
   height: 42px;
-  background: var(--d-blue, #0B5FCC);
+  background: var(--d-blue, #1877f2);
   border-radius: 11px;
   display: flex;
   align-items: center;
@@ -69,12 +69,12 @@
 }
 
 .dc-page-loader-name em {
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   font-style: normal;
 }
 
 .dc-page-loader-spinner {
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   opacity: 0.6;
 }
 
@@ -118,7 +118,7 @@
 .dc-toast-item.success { background: #15803D; }
 .dc-toast-item.error   { background: #DC2626; }
 .dc-toast-item.warning { background: #D97706; }
-.dc-toast-item.info    { background: var(--d-blue, #0B5FCC); }
+.dc-toast-item.info    { background: var(--d-blue, #1877f2); }
 
 .dc-toast-icon {
   font-size: 16px;
@@ -188,7 +188,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 12px 32px rgba(11, 95, 204, 0.32);
+  box-shadow: 0 12px 32px rgba(24, 119, 242, 0.32);
   margin-bottom: 20px;
   overflow: hidden;
 }
@@ -217,7 +217,7 @@
 }
 
 .dc-splash-brand em {
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   font-style: normal;
 }
 
@@ -254,7 +254,7 @@
   border-radius: 999px;
   background: #EEF3FF;
   border: 1px solid #DCE8FF;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   font-size: 11.5px;
   font-weight: 700;
   font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
@@ -265,7 +265,7 @@
 .dc-splash-divider {
   width: 40px;
   height: 2px;
-  background: linear-gradient(90deg, var(--d-blue, #0B5FCC), #60A5FA);
+  background: linear-gradient(90deg, var(--d-blue, #1877f2), #60A5FA);
   border-radius: 2px;
   opacity: 0.6;
   margin: 22px 0;
@@ -280,7 +280,7 @@
 .dc-splash-progress {
   width: 48px;
   height: 48px;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   opacity: 0.45;
   animation: dc-spin 1s linear infinite;
   font-size: 48px;

@@ -320,9 +320,9 @@ export default function AuditLogScreen({ user }: Props) {
                   onClick={() => handlePresetChange("all")}
                 >
                   <span>All</span>
-                  <span className="sub-status-tab-count">
-                    {datePreset === "all" ? totalElements : "•"}
-                  </span>
+                  {datePreset === "all" && (
+                    <span className="sub-status-tab-count">{totalElements}</span>
+                  )}
                 </button>
                 <button
                   type="button"
@@ -330,9 +330,9 @@ export default function AuditLogScreen({ user }: Props) {
                   onClick={() => handlePresetChange("today")}
                 >
                   <span>Today</span>
-                  <span className="sub-status-tab-count">
-                    {datePreset === "today" ? totalElements : "•"}
-                  </span>
+                  {datePreset === "today" && (
+                    <span className="sub-status-tab-count">{totalElements}</span>
+                  )}
                 </button>
                 <button
                   type="button"
@@ -340,9 +340,9 @@ export default function AuditLogScreen({ user }: Props) {
                   onClick={() => handlePresetChange("7d")}
                 >
                   <span>7D</span>
-                  <span className="sub-status-tab-count">
-                    {datePreset === "7d" ? totalElements : "•"}
-                  </span>
+                  {datePreset === "7d" && (
+                    <span className="sub-status-tab-count">{totalElements}</span>
+                  )}
                 </button>
                 <button
                   type="button"
@@ -350,9 +350,9 @@ export default function AuditLogScreen({ user }: Props) {
                   onClick={() => handlePresetChange("30d")}
                 >
                   <span>30D</span>
-                  <span className="sub-status-tab-count">
-                    {datePreset === "30d" ? totalElements : "•"}
-                  </span>
+                  {datePreset === "30d" && (
+                    <span className="sub-status-tab-count">{totalElements}</span>
+                  )}
                 </button>
               </div>
 
@@ -429,7 +429,7 @@ export default function AuditLogScreen({ user }: Props) {
           <span
             className="audit-entity-badge"
             title="Records are immutable and tamper-evident"
-            style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--d-blue, #0B5FCC)", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 999, padding: "3px 10px", fontWeight: 600 }}
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--d-blue, #1877f2)", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 999, padding: "3px 10px", fontWeight: 600 }}
           >
             <i className="ti ti-clock-shield" style={{ fontSize: 13 }} />
             <span>Immutable Trail</span>

@@ -28,8 +28,8 @@
   height: 38px;
   padding: 0 20px;
   border-radius: 9999px;
-  background: var(--d-blue, #0B5FCC);
-  border: 1px solid var(--d-blue, #0B5FCC);
+  background: var(--d-blue, #1877f2);
+  border: 1px solid var(--d-blue, #1877f2);
   color: #ffffff;
   font-size: 13px;
   font-weight: 650;
@@ -86,6 +86,76 @@
   position: relative;
 }
 
+/* ── Time Window Filter Tabs ────────────────────────────────────────────── */
+.audit-status-tabs,
+.sub-status-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+
+.audit-status-tab,
+.sub-status-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid #dde3ee;
+  border-radius: 9999px;
+  background: #f8fafc;
+  color: #5a6f8a;
+  font-family: var(--ff-body, system-ui, sans-serif);
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.16s ease;
+  user-select: none;
+  text-decoration: none;
+}
+
+.audit-status-tab:hover,
+.sub-status-tab:hover {
+  background: #eff6ff;
+  color: var(--d-blue, #1877f2);
+  border-color: #bfdbfe;
+}
+
+.audit-status-tab.is-active,
+.sub-status-tab.is-active {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: var(--d-blue, #1877f2);
+  font-weight: 650;
+}
+
+.audit-status-tab-count,
+.sub-status-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  transition: all 0.16s ease;
+}
+
+.audit-status-tab.is-active .audit-status-tab-count,
+.sub-status-tab.is-active .sub-status-tab-count {
+  background: var(--d-blue, #1877f2);
+  color: #ffffff;
+}
+
 /* ── Subheader Meta Row ─────────────────────────────────────────────────── */
 .audit-meta-row {
   display: flex;
@@ -128,7 +198,7 @@
   height: 28px;
   border-radius: 50%;
   background: #eff6ff;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   border: 1px solid #bfdbfe;
   display: flex;
   align-items: center;
@@ -159,7 +229,7 @@
   font-family: var(--ff-body, system-ui, -apple-system, sans-serif);
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   background: transparent;
   border: none;
   padding: 0;
@@ -194,7 +264,7 @@
   border-radius: 6px;
   background: #eff6ff;
   border: 1px solid #bfdbfe;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   font-size: 11.5px;
   font-weight: 600;
   text-decoration: none;
@@ -262,7 +332,7 @@
   border-radius: 6px;
   border: 1px solid #E2E8F0;
   background: #FFFFFF;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -334,7 +404,7 @@
 .audit-page-btn:hover:not(:disabled) {
   background: #EFF6FF;
   border-color: #BFDBFE;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
 }
 
 .audit-page-btn:disabled {
@@ -572,7 +642,7 @@
 .audit-kv-code {
   font-family: monospace;
   font-size: 12px;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   font-weight: 700;
 }
 
@@ -580,7 +650,7 @@
   padding: 12px 14px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
-  border-left: 3px solid var(--d-blue, #0B5FCC);
+  border-left: 3px solid var(--d-blue, #1877f2);
   border-radius: 6px;
   font-size: 13px;
   color: #1e293b;
@@ -685,7 +755,7 @@
 .audit-expand-hint {
   font-size: 11px;
   font-weight: 600;
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
   background: #eff6ff;
   border: 1px solid #dbeafe;
   padding: 2px 8px;
@@ -700,12 +770,12 @@
 }
 
 .audit-json-summary:hover .audit-chevron-icon {
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
 }
 
 details[open] .audit-chevron-icon {
   transform: rotate(180deg);
-  color: var(--d-blue, #0B5FCC);
+  color: var(--d-blue, #1877f2);
 }
 
 details[open] .audit-expand-hint {

@@ -371,7 +371,7 @@ function statsForRole(
   institutionCount: number,
 ): StatItem[] {
   if (!user) return [];
-  const accessibleBlue = "var(--d-blue, #0B5FCC)";
+  const accessibleBlue = "var(--d-blue, #1877f2)";
   const submissions = stats.submissions;
   const publishedCount = submissions.filter(
     (item) =>
