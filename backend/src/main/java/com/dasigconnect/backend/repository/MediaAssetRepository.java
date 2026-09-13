@@ -98,6 +98,10 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     boolean existsByAssetCode(String assetCode);
 
+    @Query("SELECT m FROM MediaAsset m WHERE m.institution.id = :institutionId AND m.contentHash = :contentHash AND m.deletedAt IS NULL")
+    Optional<MediaAsset> findActiveByInstitutionIdAndContentHash(@Param("institutionId") UUID institutionId,
+            @Param("contentHash") String contentHash);
+
     boolean existsByUploaderId(UUID uploaderId);
 
     /**

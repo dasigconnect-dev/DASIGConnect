@@ -2,6 +2,7 @@ package com.dasigconnect.backend.service;
 
 import java.time.Instant;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -148,7 +149,10 @@ public class SubmissionService {
         return signedUploadUrlFor(submission, dto);
     }
 
-    /** Media-upload URL core — caller owns the auth/status checks. Reused by ValidationService. */
+    /**
+     * Media-upload URL core — caller owns the auth/status checks. Reused by
+     * ValidationService.
+     */
     SignedUploadUrlResponse signedUploadUrlFor(Submission submission, SignedUploadUrlRequest dto) {
         validateMediaFile(dto.getFileType(), dto.getFileSizeBytes());
         String safeFileName = dto.getFileName().replaceAll("[^a-zA-Z0-9._-]", "-");
@@ -258,8 +262,8 @@ public class SubmissionService {
      * Moves an editable draft to a different institution when a network-wide
      * composer picks a new "Posting As" scope. Selected media is kept because
      * reviewers/admins may reuse vetted library assets across institutions. Any
-     * held slot is released, and the schedule is cleared because guard rails are
-     * evaluated per institution. No-op when the id is unchanged/absent.
+     * held slot is released, and the schedule is cleared because guard rails
+     * are evaluated per institution. No-op when the id is unchanged/absent.
      */
     private void maybeRehomeSubmission(Submission submission, UUID requestedInstitutionId, JwtUserDetails user) {
         if (requestedInstitutionId == null
@@ -274,7 +278,7 @@ public class SubmissionService {
         }
         Institution target = institutionRepository.findById(requestedInstitutionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Institution not found: " + requestedInstitutionId));
+                "Institution not found: " + requestedInstitutionId));
 
         UUID previousInstitutionId = submission.getInstitution().getId();
 
@@ -292,10 +296,10 @@ public class SubmissionService {
     }
 
     /**
-     * Applies the editable-field subset of a SubmissionUpdateDto to an already-loaded
-     * submission and saves it. Shared by the contributor-facing update() above and
-     * ValidationService's admin Edit & Approve action — callers own their own
-     * ownership/status checks before calling this.
+     * Applies the editable-field subset of a SubmissionUpdateDto to an
+     * already-loaded submission and saves it. Shared by the contributor-facing
+     * update() above and ValidationService's admin Edit & Approve action —
+     * callers own their own ownership/status checks before calling this.
      */
     Submission applySubmissionEdits(Submission submission, SubmissionUpdateDto dto, JwtUserDetails user) {
         UUID submissionId = submission.getId();
@@ -370,8 +374,8 @@ public class SubmissionService {
                                 entityManager.getReference(User.class, user.userId()),
                                 "SCHEDULE_GUARDRAIL_OVERRIDE", null, null, submissionId,
                                 Map.of("newSlot", dto.getScheduledAt().toString(),
-                                       "overrideReason", reason,
-                                       "violations", gr.getHardBlocks().toString()));
+                                        "overrideReason", reason,
+                                        "violations", gr.getHardBlocks().toString()));
                     } else if (isModerator(user)) {
                         throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                                 "This slot is blocked by a guard rail. Only an administrator can override it.");
@@ -404,8 +408,8 @@ public class SubmissionService {
      * Deletes a DRAFT submission and removes its slot reservations. Only the
      * owning contributor may delete. Only DRAFT status is deletable. Media that
      * was uploaded solely for this draft and is now orphaned is permanently
-     * purged (row + storage object); assets picked from the library or ever used
-     * beyond draft status stay put.
+     * purged (row + storage object); assets picked from the library or ever
+     * used beyond draft status stay put.
      */
     public void delete(UUID submissionId, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
@@ -413,8 +417,8 @@ public class SubmissionService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only DRAFT submissions can be deleted. Current status: " + submission.getStatus());
         }
-        List<MediaAsset> attached =
-                submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId);
+        List<MediaAsset> attached
+                = submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId);
         submissionMediaAssetRepository.deleteBySubmissionId(submissionId);
         submissionMediaAssetRepository.flush();
         for (MediaAsset asset : attached) {
@@ -544,9 +548,9 @@ public class SubmissionService {
     }
 
     /**
-     * Rejects a submit when the post is missing fields required for a publishable
-     * post: an event title, an event date, a caption, and at least one media
-     * asset. Throws 422 listing everything that is still missing.
+     * Rejects a submit when the post is missing fields required for a
+     * publishable post: an event title, an event date, a caption, and at least
+     * one media asset. Throws 422 listing everything that is still missing.
      */
     void assertContentComplete(Submission submission) {
         List<String> missing = new java.util.ArrayList<>();
@@ -561,8 +565,19 @@ public class SubmissionService {
         } else {
             validateCaptionCharLimit(submission.getCaption(), HttpStatus.UNPROCESSABLE_ENTITY);
         }
-        if (submissionMediaAssetRepository.countBySubmissionId(submission.getId()) < 1) {
+        long attachmentCount = submissionMediaAssetRepository.countBySubmissionId(submission.getId());
+        if (attachmentCount < 1) {
             missing.add("at least one media attachment");
+        } else {
+            boolean hasUsableAttachment = submissionMediaAssetRepository
+                    .findMediaAssetsBySubmissionId(submission.getId())
+                    .stream()
+                    .anyMatch(asset -> asset != null
+                    && asset.getDeletedAt() == null
+                    && asset.getStatus() != MediaAssetStatus.DELETED);
+            if (!hasUsableAttachment) {
+                missing.add("at least one non-deleted media attachment");
+            }
         }
         if (submission.getAlbumName() == null || submission.getAlbumName().isBlank()) {
             missing.add("an album assignment");
@@ -615,12 +630,13 @@ public class SubmissionService {
      * directly to Supabase Storage and passes the resulting URL here. A
      * MediaAsset record is created and linked.
      *
-     * <p>While the submission is a DRAFT the asset is <b>staged</b>: no institution
-     * and {@code status = STAGED}, so it stays out of the Media Repository and is
-     * not bound to the draft's (still tentative) institution. It is bound to the
-     * final institution — and flipped to {@code PROCESSING} — in {@link #submit}.
-     * Uploads during NEEDS_REVISION go straight to the already-committed
-     * institution, as before.
+     * <p>
+     * While the submission is a DRAFT the asset is <b>staged</b>: no
+     * institution and {@code status = STAGED}, so it stays out of the Media
+     * Repository and is not bound to the draft's (still tentative) institution.
+     * It is bound to the final institution — and flipped to {@code PROCESSING}
+     * — in {@link #submit}. Uploads during NEEDS_REVISION go straight to the
+     * already-committed institution, as before.
      */
     public SubmissionResponseDto attachMedia(UUID submissionId, AttachMediaDto dto, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
@@ -628,7 +644,10 @@ public class SubmissionService {
         return attachUploadedMediaTo(submission, dto, user);
     }
 
-    /** attach-uploaded-media core — caller owns the auth/status checks. Reused by ValidationService. */
+    /**
+     * attach-uploaded-media core — caller owns the auth/status checks. Reused
+     * by ValidationService.
+     */
     SubmissionResponseDto attachUploadedMediaTo(Submission submission, AttachMediaDto dto, JwtUserDetails user) {
         UUID submissionId = submission.getId();
         long currentCount = submissionMediaAssetRepository.countBySubmissionId(submissionId);
@@ -668,8 +687,9 @@ public class SubmissionService {
 
     /**
      * Copy the media tags the contributor entered on the Submit-Content upload
-     * step onto the new asset as {@code manual} {@code asset_tags}, so those tags
-     * show up in the Media Library alongside library-uploaded assets' tags.
+     * step onto the new asset as {@code manual} {@code asset_tags}, so those
+     * tags show up in the Media Library alongside library-uploaded assets'
+     * tags.
      */
     private void applySubmissionMediaTags(MediaAsset asset, String joinedTags) {
         if (joinedTags == null || joinedTags.isBlank()) {
@@ -692,20 +712,20 @@ public class SubmissionService {
      * The album a submission's brand-new uploads are filed into on submit: an
      * existing <b>root</b> album of the submission's institution whose name
      * matches {@code submission.albumName} (case-insensitive), otherwise a new
-     * root album created with that name. Returns {@code null} only when no album
-     * name is set — {@link #assertContentComplete} already rejects that for a
-     * normal submit, so in practice this is always non-null when there are
-     * staged uploads to file.
+     * root album created with that name. Returns {@code null} only when no
+     * album name is set — {@link #assertContentComplete} already rejects that
+     * for a normal submit, so in practice this is always non-null when there
+     * are staged uploads to file.
      */
     private MediaAlbum resolveSubmissionAlbum(Submission submission, JwtUserDetails user) {
         return resolveAlbumByName(submission.getInstitution(), submission.getAlbumName(), user.userId());
     }
 
     /**
-     * Finds the root album of {@code institution} whose name matches {@code name}
-     * (case-insensitive), creating it if absent. Shared by the contributor
-     * submit path and the reviewer upload path. Returns {@code null} when the
-     * name is blank or the institution is unknown.
+     * Finds the root album of {@code institution} whose name matches
+     * {@code name} (case-insensitive), creating it if absent. Shared by the
+     * contributor submit path and the reviewer upload path. Returns
+     * {@code null} when the name is blank or the institution is unknown.
      */
     private MediaAlbum resolveAlbumByName(Institution institution, String rawName, UUID createdBy) {
         String name = rawName == null ? "" : rawName.trim();
@@ -747,7 +767,10 @@ public class SubmissionService {
         return attachLibraryAssetTo(submission, dto.getMediaAssetId(), user);
     }
 
-    /** attach-library-asset core — caller owns the auth/status checks. Reused by ValidationService. */
+    /**
+     * attach-library-asset core — caller owns the auth/status checks. Reused by
+     * ValidationService.
+     */
     SubmissionResponseDto attachLibraryAssetTo(Submission submission, UUID mediaAssetId, JwtUserDetails user) {
         UUID submissionId = submission.getId();
         MediaAsset asset = mediaAssetRepository.findActiveById(mediaAssetId)
@@ -777,6 +800,14 @@ public class SubmissionService {
         linkAssetToSubmission(submission, asset, (int) currentCount);
         refreshManualPublishingFlag(submission);
 
+        Map<String, Object> reuseMetadata = new LinkedHashMap<>();
+        reuseMetadata.put("submissionId", submissionId.toString());
+        reuseMetadata.put("submissionTitle", submission.getEventTitle());
+        reuseMetadata.put("submissionStatus", submission.getStatus().name());
+        auditLogService.record(
+                userRepository.getReferenceById(user.userId()),
+                "MEDIA_ASSET_REUSED", null, null, mediaAssetId, reuseMetadata);
+
         log.info("Existing asset {} attached to submission {}", asset.getId(), submissionId);
         return buildResponse(submissionRepository.findById(submissionId).orElseThrow());
     }
@@ -787,13 +818,16 @@ public class SubmissionService {
         detachAssetFrom(submission, mediaAssetId);
     }
 
-    /** detach-asset core — caller owns the auth/status checks. Reused by ValidationService. */
+    /**
+     * detach-asset core — caller owns the auth/status checks. Reused by
+     * ValidationService.
+     */
     void detachAssetFrom(Submission submission, UUID mediaAssetId) {
         UUID submissionId = submission.getId();
         SubmissionMediaAsset link = submissionMediaAssetRepository
                 .findBySubmissionIdAndMediaAssetId(submissionId, mediaAssetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Media asset is not attached to this submission."));
+                "Media asset is not attached to this submission."));
 
         submissionMediaAssetRepository.delete(link);
         submissionMediaAssetRepository.flush();
@@ -809,12 +843,13 @@ public class SubmissionService {
      * attached to nothing served no purpose beyond that draft, so it is removed
      * outright rather than soft-deleted into the 30-day retention queue like a
      * deliberate library deletion. Assets that were ever used in a submission
-     * beyond draft status, or that are still attached elsewhere, are left alone.
-     * {@code asset_tags} and {@code media_asset_embeddings} cascade-delete at the
-     * database level (ON DELETE CASCADE). Safe to call for any asset id — it is a
-     * no-op unless the asset is a genuine orphaned draft-only upload. Staged
-     * uploads ({@code status = STAGED}) are always caught here: they are never
-     * "used beyond draft", so an abandoned draft leaves no library asset behind.
+     * beyond draft status, or that are still attached elsewhere, are left
+     * alone. {@code asset_tags} and {@code media_asset_embeddings}
+     * cascade-delete at the database level (ON DELETE CASCADE). Safe to call
+     * for any asset id — it is a no-op unless the asset is a genuine orphaned
+     * draft-only upload. Staged uploads ({@code status = STAGED}) are always
+     * caught here: they are never "used beyond draft", so an abandoned draft
+     * leaves no library asset behind.
      */
     private void purgeOrphanedDraftUpload(UUID mediaAssetId, String context) {
         boolean everUsedBeyondDraft = !submissionMediaAssetRepository
@@ -843,14 +878,15 @@ public class SubmissionService {
     }
 
     /**
-     * True when the reorder request would change nothing — same asset order, same
-     * captions, same skip-watermark flags. Lets the review flow skip an audit-log
-     * entry for a no-op "Save Changes". Malformed requests (wrong size / unknown
-     * ids) return {@code false} and are left for {@link #reorderMediaOf} to reject.
+     * True when the reorder request would change nothing — same asset order,
+     * same captions, same skip-watermark flags. Lets the review flow skip an
+     * audit-log entry for a no-op "Save Changes". Malformed requests (wrong
+     * size / unknown ids) return {@code false} and are left for
+     * {@link #reorderMediaOf} to reject.
      */
     boolean isNoOpMediaOrder(Submission submission, SubmissionMediaOrderDto dto) {
-        List<SubmissionMediaAsset> links =
-                submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submission.getId());
+        List<SubmissionMediaAsset> links
+                = submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submission.getId());
         List<UUID> requested = dto.getMediaAssetIds();
         if (requested == null || links.size() != requested.size()) {
             return false;
@@ -876,11 +912,14 @@ public class SubmissionService {
         return true;
     }
 
-    /** reorder + per-asset caption/skip-watermark core — caller owns the auth/status checks. Reused by ValidationService. */
+    /**
+     * reorder + per-asset caption/skip-watermark core — caller owns the
+     * auth/status checks. Reused by ValidationService.
+     */
     SubmissionResponseDto reorderMediaOf(Submission submission, SubmissionMediaOrderDto dto) {
         UUID submissionId = submission.getId();
-        List<SubmissionMediaAsset> links =
-                submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId);
+        List<SubmissionMediaAsset> links
+                = submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId);
         if (links.size() != dto.getMediaAssetIds().size()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "mediaAssetIds must include every attached media asset exactly once.");
@@ -917,7 +956,6 @@ public class SubmissionService {
     }
 
     // ── UC-3.1 Admin Reschedule ───────────────────────────────────────────────
-
     /**
      * Allows an Moderator to move a SCHEDULED submission to a new slot.
      *
@@ -953,10 +991,10 @@ public class SubmissionService {
                     null, null,
                     submissionId,
                     Map.of(
-                        "originalSlot", originalSlot.toString(),
-                        "newSlot", newSlot.toString(),
-                        "overrideReason", dto.getOverrideReason(),
-                        "violations", guardRailResult.getHardBlocks().toString()
+                            "originalSlot", originalSlot.toString(),
+                            "newSlot", newSlot.toString(),
+                            "overrideReason", dto.getOverrideReason(),
+                            "violations", guardRailResult.getHardBlocks().toString()
                     )
             );
         }
@@ -990,7 +1028,7 @@ public class SubmissionService {
             return institutionRepository.findByNameIgnoreCase("DASIG Central Visayas")
                     .map(Institution::getId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                            "Default institution 'DASIG Central Visayas' not found."));
+                    "Default institution 'DASIG Central Visayas' not found."));
         }
         if (user.institutionId() == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -1079,19 +1117,25 @@ public class SubmissionService {
     }
 
     private static void validateCaptionCharLimit(String caption, HttpStatus status) {
-        if (captionLength(caption) <= MAX_CAPTION_CHARS) return;
+        if (captionLength(caption) <= MAX_CAPTION_CHARS) {
+            return;
+        }
         throw new ResponseStatusException(
                 status,
                 "Caption must not exceed " + MAX_CAPTION_CHARS + " characters.");
     }
 
     private static int captionLength(String value) {
-        if (value == null || value.isEmpty()) return 0;
+        if (value == null || value.isEmpty()) {
+            return 0;
+        }
         return value.codePointCount(0, value.length());
     }
 
     private static String joinTags(List<String> tags) {
-        if (tags == null || tags.isEmpty()) return null;
+        if (tags == null || tags.isEmpty()) {
+            return null;
+        }
         String joined = tags.stream()
                 .map(SubmissionService::normalizeOptional)
                 .filter(tag -> tag != null && !tag.isBlank())
