@@ -34,7 +34,8 @@ import {
 } from "../lib/userIdentity";
 import { firstPasswordError, getPasswordRules } from "../lib/passwordPolicy";
 import { clearAppCaches } from "../lib/appCache";
-import { clearAuthenticatedQueryCache } from "../lib/queryClient";
+import { appQueryClient, clearAuthenticatedQueryCache } from "../lib/queryClient";
+import { seedCurrentProfile } from "../hooks/useCurrentProfile";
 
 const LOCKOUT_LIMIT = 5;
 const LOCKOUT_SECONDS = 15 * 60;
@@ -151,11 +152,12 @@ function App() {
     };
     profileRequestRef.current = request;
     try {
-      const user = await loadCurrentUser(email, request.controller.signal);
+      const result = await loadCurrentUser(email, request.controller.signal);
       if (profileRequestRef.current?.id !== request.id) {
         throw new DOMException("Superseded profile request.", "AbortError");
       }
-      return user;
+      seedCurrentProfile(appQueryClient, result.profile);
+      return result.user;
     } finally {
       if (profileRequestRef.current?.id === request.id) {
         profileRequestRef.current = null;
@@ -235,8 +237,10 @@ function App() {
       void (async () => {
         try {
           const parsedUser = JSON.parse(savedUser) as User;
-          const user = await loadCurrentUser(parsedUser.email, controller.signal);
+          const result = await loadCurrentUser(parsedUser.email, controller.signal);
           if (!active) return;
+          seedCurrentProfile(appQueryClient, result.profile);
+          const user = result.user;
           localStorage.setItem("dasigconnect_user", JSON.stringify(user));
           setCurrentUser(user);
           startSessionCountdown(savedToken);
@@ -845,7 +849,7 @@ function App() {
           element={
             currentUser ? (
               <>
-                <AdminPromotionBanner />
+                <AdminPromotionBanner user={currentUser} />
                 <DashboardLayout
                   user={currentUser}
                   showBanner={bannerRemaining > 0}
@@ -1042,7 +1046,10 @@ function mapApiRole(role: string): User["role"] {
 
 async function loadCurrentUser(email: string, signal?: AbortSignal) {
   const response = await getMe(signal);
-  return buildUserFromProfile(response.data, email);
+  return {
+    profile: response.data,
+    user: buildUserFromProfile(response.data, email),
+  };
 }
 
 function buildUserFromProfile(
