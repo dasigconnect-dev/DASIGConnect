@@ -232,16 +232,6 @@ export function getInstitutionLogoUrl(id: string, logoUpdatedAt: string | null) 
   });
 }
 
-export function getUserCounts(institutionId: string, signal?: AbortSignal) {
-  return api.get<{ contributors: number; moderators: number }>(
-    "/users/counts",
-    {
-      params: { institutionId },
-      signal,
-    },
-  );
-}
-
 export function listUsers(institutionId: string, signal?: AbortSignal) {
   return api.get<UserProfileResponse[]>("/users", {
     params: { institutionId },
@@ -338,13 +328,6 @@ export function listPendingAdminInvitations(signal?: AbortSignal) {
 
 export function listPendingNetworkInvitations(signal?: AbortSignal) {
   return api.get<PendingInvitationResponse[]>("/invitations/pending/network", { signal });
-}
-
-export function getPendingInvitationCount(institutionId: string, signal?: AbortSignal) {
-  return api.get<{ pendingInvitations: number }>("/invitations/pending/count", {
-    params: { institutionId },
-    signal,
-  });
 }
 
 export function resendInvitation(id: string) {

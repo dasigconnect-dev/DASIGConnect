@@ -28,7 +28,6 @@ import { SkeletonBlock } from '../user-management/components/LoadingPrimitives'
 import type { InviteResults, InviteRole } from '../user-management/types'
 import { useToast } from '../../context/ToastContext'
 import {
-  emptyInstitutionDetailData,
   useInstitutionDetailData,
   useInstitutionRegistryData,
   useInvalidateInstitutionManagementData,
@@ -40,6 +39,7 @@ import '../../styles/user-management.css'
 
 const DEFAULT_INSTITUTION_NAME = 'dasig central visayas'
 const DEFAULT_INSTITUTION_CODE = 'dasig-cv'
+const EMPTY_INSTITUTIONS: InstitutionWithStats[] = []
 
 interface AddFormState {
   name: string
@@ -134,7 +134,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const [reassignError, setReassignError] = useState<string>('')
 
   const institutionRegistryQuery = useInstitutionRegistryData(user)
-  const institutions = institutionRegistryQuery.data ?? []
+  const institutions = institutionRegistryQuery.data ?? EMPTY_INSTITUTIONS
   const listLoading = institutionRegistryQuery.isLoading
   const listError = institutionRegistryQuery.error
     ? getApiErrorMessage(institutionRegistryQuery.error, 'Unable to load institutions.')
@@ -143,13 +143,20 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     ? institutions.find((institution) => institution.id === selectedInstitutionId) ?? null
     : null
   const institutionDetailQuery = useInstitutionDetailData(user, selectedInstitution?.id ?? null)
-  const institutionDetailData = institutionDetailQuery.data ?? emptyInstitutionDetailData
+  const institutionDetailData = institutionDetailQuery.data
   const managedUsers = institutionDetailData.managedUsers
   const pendingInvitations = institutionDetailData.pendingInvitations
-  const managementLoading = institutionDetailQuery.isLoading || institutionDetailQuery.isFetching
-  const managementError = institutionDetailQuery.error
-    ? getApiErrorMessage(institutionDetailQuery.error, 'Unable to load users and invitations.')
-    : ''
+  const managementLoading =
+    institutionDetailQuery.usersQuery.isLoading ||
+    institutionDetailQuery.usersQuery.isFetching
+  const managementError = [
+    institutionDetailQuery.usersQuery.error
+      ? getApiErrorMessage(institutionDetailQuery.usersQuery.error, 'Unable to load users.')
+      : '',
+    institutionDetailQuery.pendingInvitationsQuery.error
+      ? getApiErrorMessage(institutionDetailQuery.pendingInvitationsQuery.error, 'Unable to load invitations.')
+      : '',
+  ].filter(Boolean).join(' ')
 
   // Close institution actions dropdown when clicking outside
   useEffect(() => {
@@ -217,14 +224,12 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     [institutions],
   )
 
-  const activeContributorsCount = useMemo(() => {
-    if (managementLoading && selectedInstitution) {
-      return selectedInstitution.contributors
-    }
-    return managedUsers.filter(
+  const activeContributorsCount = useMemo(
+    () => managedUsers.filter(
       (u) => u.role.toLowerCase() === 'contributor' && u.accountState.toLowerCase() === 'active',
-    ).length
-  }, [managementLoading, managedUsers, selectedInstitution])
+    ).length,
+    [managedUsers],
+  )
 
   const trimmedAddName = addForm.name.trim()
   const normalizedAddDomain = normalizeDomain(addForm.domain)
@@ -1263,15 +1268,27 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             <div className="im-detail-stats">
               <div className="im-detail-stat">
                 <span className="im-detail-stat-val">
-                  {activeContributorsCount}
+                  {institutionDetailQuery.usersQuery.isLoading ? (
+                    <SkeletonBlock className="um-skeleton-number" />
+                  ) : institutionDetailQuery.usersQuery.error && !institutionDetailQuery.usersQuery.data ? (
+                    <span title="Contributor count unavailable">—</span>
+                  ) : (
+                    activeContributorsCount
+                  )}
                 </span>
                 <span className="im-detail-stat-lbl">Contributors</span>
               </div>
               <div className="im-detail-stat">
                 <span
-                  className={`im-detail-stat-val${selectedInstitution.pendingInvitations > 0 ? ' is-warn' : ''}`}
+                  className={`im-detail-stat-val${pendingInvitations.length > 0 ? ' is-warn' : ''}`}
                 >
-                  {selectedInstitution.pendingInvitations}
+                  {institutionDetailQuery.pendingInvitationsQuery.isLoading ? (
+                    <SkeletonBlock className="um-skeleton-number" />
+                  ) : institutionDetailQuery.pendingInvitationsQuery.error && !institutionDetailQuery.pendingInvitationsQuery.data ? (
+                    <span title="Pending invitation count unavailable">—</span>
+                  ) : (
+                    pendingInvitations.length
+                  )}
                 </span>
                 <span className="im-detail-stat-lbl">Pending Invites</span>
               </div>
