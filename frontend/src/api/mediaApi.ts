@@ -372,3 +372,8 @@ export function updateMediaAssetAlbum(id: string, albumId: string | null) {
   return api.post<MediaAssetDetailResponse>(`/media-assets/${id}/album`, { albumId })
     .then((res) => ({ ...res, data: mapDetailToAsset(res.data) }));
 }
+
+/** UC-2.2 A2: records that this browser session browsed Network View. Never throws — best-effort. */
+export function logNetworkViewAccess() {
+  return api.post<void>("/media-assets/network-view/log").catch(() => {});
+}

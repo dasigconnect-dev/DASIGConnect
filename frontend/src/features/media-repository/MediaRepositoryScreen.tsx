@@ -18,6 +18,7 @@ import {
   renameMediaAlbum,
   semanticSearchMediaAssets,
   updateMediaAssetAlbum,
+  logNetworkViewAccess,
   type MediaAlbum,
 } from "../../api/mediaApi";
 import { listInstitutions, getInstitutionLogoUrl, type InstitutionResponse } from "../../api/authApi";
@@ -332,6 +333,21 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       controller.abort();
     };
   }, [isNetworkBrowser, toast]);
+
+  // UC-2.2 A2: the Network View banner tells the actor this session is being
+  // logged — make that true, once per browser session (sessionStorage survives
+  // navigating away and back, but not a fresh tab/reload of the auth session).
+  useEffect(() => {
+    if (!isNetworkBrowser) return;
+    const flagKey = `dasig:network-view-logged:${user.id ?? user.email}`;
+    try {
+      if (sessionStorage.getItem(flagKey)) return;
+      sessionStorage.setItem(flagKey, "1");
+    } catch {
+      // sessionStorage unavailable (e.g. private browsing) — log anyway rather than silently skip.
+    }
+    void logNetworkViewAccess();
+  }, [isNetworkBrowser, user.id, user.email]);
 
   const currentAlbum = useMemo(
     () => albums.find((a) => a.id === currentAlbumId) ?? null,

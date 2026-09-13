@@ -291,6 +291,59 @@ class MediaAssetServiceTest {
     }
 
     @Test
+    void list_matchesQueryAgainstManualTag() {
+        // UC-2.2 A3: a custom tag added after upload must be searchable.
+        UUID institutionId = UUID.randomUUID();
+        UUID uploaderId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, uploaderId);
+        when(mediaAssetRepository.findActiveByInstitutionIds(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(asset));
+        when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(List.of(assetId))).thenReturn(Set.of());
+        when(assetTagRepository.findLabelsByMediaAssetIds(List.of(assetId)))
+                .thenReturn(List.<Object[]>of(new Object[]{assetId, "Hackathon"}));
+
+        MediaAssetListResponseDto result = mediaAssetService.list(
+                "hackathon", null, null, null, null, null, null, 1, 20, null,
+                user(UUID.randomUUID(), "contributor", institutionId));
+
+        assertEquals(1, result.getItems().size());
+    }
+
+    @Test
+    void list_queryWithNoMatchingTagOrFilename_excludesAsset() {
+        UUID institutionId = UUID.randomUUID();
+        UUID uploaderId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, uploaderId);
+        when(mediaAssetRepository.findActiveByInstitutionIds(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(asset));
+        when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(List.of(assetId))).thenReturn(Set.of());
+        when(assetTagRepository.findLabelsByMediaAssetIds(List.of(assetId)))
+                .thenReturn(List.<Object[]>of(new Object[]{assetId, "Hackathon"}));
+
+        MediaAssetListResponseDto result = mediaAssetService.list(
+                "graduation", null, null, null, null, null, null, 1, 20, null,
+                user(UUID.randomUUID(), "contributor", institutionId));
+
+        assertTrue(result.getItems().isEmpty());
+    }
+
+    @Test
+    void logNetworkViewAccess_moderator_recordsAuditEntry() {
+        UUID userId = UUID.randomUUID();
+        mediaAssetService.logNetworkViewAccess(user(userId, "moderator", null));
+
+        verify(auditLogService).record(any(), eq("MEDIA_NETWORK_VIEW_ACCESSED"), isNull(), isNull(), isNull(), any());
+    }
+
+    @Test
+    void logNetworkViewAccess_contributor_isNoOp() {
+        UUID institutionId = UUID.randomUUID();
+        mediaAssetService.logNetworkViewAccess(user(UUID.randomUUID(), "contributor", institutionId));
+
+        verify(auditLogService, never()).record(any(), eq("MEDIA_NETWORK_VIEW_ACCESSED"), any(), any(), any(), any());
+    }
+
+    @Test
     void listAlbums_adminWithoutInstitution_returnsAlbumsAcrossInstitutions() {
         MediaAlbum a = album(UUID.randomUUID(), UUID.randomUUID(), null);
         MediaAlbum b = album(UUID.randomUUID(), UUID.randomUUID(), null);

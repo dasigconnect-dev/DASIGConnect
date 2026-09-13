@@ -145,6 +145,18 @@ public class MediaAssetService {
         return ids;
     }
 
+    /**
+     * UC-2.2 A2: the Network View banner tells a Moderator/Admin their session
+     * is being logged. Nothing ever actually wrote that log entry — this does,
+     * once per browser session (the frontend guards the repeat calls). Silently
+     * a no-op for a non-network role, so a stray or replayed call can't forge
+     * an audit entry for someone else's session.
+     */
+    public void logNetworkViewAccess(JwtUserDetails user) {
+        if (!isNetworkRole(user)) return;
+        recordAssetAudit(user, "MEDIA_NETWORK_VIEW_ACCESSED", null, Map.of());
+    }
+
     @Transactional(readOnly = true)
     public MediaAssetListResponseDto list(
             String query,
@@ -179,6 +191,9 @@ public class MediaAssetService {
         List<UUID> sourceIds = source.stream().map(MediaAsset::getId).toList();
         Set<UUID> attachedAssetIds = submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(sourceIds);
         Set<UUID> assetIdsUsedBeyondDraft = submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(sourceIds);
+        // Every tag (manual or AI-generated) per asset, so a custom tag added
+        // after upload (UC-2.2 A3) is searchable here, not just the AI ones.
+        Map<UUID, List<String>> tagsByAsset = loadAllTagLabels(sourceIds);
 
         List<MediaAsset> filtered = source
                 .stream()
@@ -189,7 +204,10 @@ public class MediaAssetService {
                 || (asset.getMediaAlbum() != null && albumId.equals(asset.getMediaAlbum().getId())))
                 .filter(asset -> trimmedQuery.isBlank()
                 || containsIgnoreCase(asset.getFileName(), trimmedQuery)
-                || containsIgnoreCase(asset.getAssetCode(), trimmedQuery))
+                || containsIgnoreCase(asset.getAssetCode(), trimmedQuery)
+                || (asset.getUploader() != null && containsIgnoreCase(asset.getUploader().getEmail(), trimmedQuery))
+                || tagsByAsset.getOrDefault(asset.getId(), List.of()).stream()
+                        .anyMatch(label -> containsIgnoreCase(label, trimmedQuery)))
                 .filter(asset -> trimmedCategory.isBlank()
                 || (asset.getAiCategory() != null && asset.getAiCategory().equalsIgnoreCase(trimmedCategory)))
                 .filter(asset -> trimmedMediaType.isBlank()
@@ -264,9 +282,10 @@ public class MediaAssetService {
             }
 
             String lower = trimmed.toLowerCase();
+            Map<UUID, List<String>> manualTagsByAsset = loadAllTagLabels(new ArrayList<>(byId.keySet()));
             byId.values().stream()
                     .filter(a -> !ordered.containsKey(a.getId()))
-                    .filter(a -> matchesKeyword(a, lower))
+                    .filter(a -> matchesKeyword(a, lower, manualTagsByAsset.getOrDefault(a.getId(), List.of())))
                     .sorted(resolveSort("newest"))
                     .forEach(a -> ordered.put(a.getId(), a));
         }
@@ -278,11 +297,12 @@ public class MediaAssetService {
         return new MediaAssetListResponseDto(items, items.size(), 1, items.size());
     }
 
-    private static boolean matchesKeyword(MediaAsset a, String lower) {
+    private static boolean matchesKeyword(MediaAsset a, String lower, List<String> manualTags) {
         if (containsIgnoreCase(a.getFileName(), lower)
                 || containsIgnoreCase(a.getAssetCode(), lower)
                 || containsIgnoreCase(a.getAiDescription(), lower)
-                || containsIgnoreCase(a.getAiCategory(), lower)) {
+                || containsIgnoreCase(a.getAiCategory(), lower)
+                || (a.getUploader() != null && containsIgnoreCase(a.getUploader().getEmail(), lower))) {
             return true;
         }
         String[] tags = a.getAiTags();
@@ -293,7 +313,9 @@ public class MediaAssetService {
                 }
             }
         }
-        return false;
+        // UC-2.2 A3: a custom tag added after upload must be searchable too,
+        // not just AI-generated ones.
+        return manualTags.stream().anyMatch(label -> containsIgnoreCase(label, lower));
     }
 
     @Transactional(readOnly = true)
@@ -1113,6 +1135,26 @@ public class MediaAssetService {
             return false;
         }
         return value.toLowerCase().contains(query);
+    }
+
+    /**
+     * Every tag (manual or AI-generated) for each of the given assets, batched
+     * in one query instead of N+1. UC-2.2 A3: a custom tag added after upload
+     * must be searchable, same as an AI-generated one.
+     */
+    private Map<UUID, List<String>> loadAllTagLabels(List<UUID> assetIds) {
+        if (assetIds.isEmpty()) return Map.of();
+        Map<UUID, List<String>> result = new java.util.HashMap<>();
+        List<Object[]> rows = assetTagRepository.findLabelsByMediaAssetIds(assetIds);
+        if (rows == null) return Map.of();
+        for (Object[] row : rows) {
+            UUID assetId = (UUID) row[0];
+            String label = row[1] instanceof String s ? s : null;
+            if (label != null && !label.isBlank()) {
+                result.computeIfAbsent(assetId, ignored -> new java.util.ArrayList<>()).add(label);
+            }
+        }
+        return result;
     }
 
     private static Comparator<MediaAsset> resolveSort(String sort) {
