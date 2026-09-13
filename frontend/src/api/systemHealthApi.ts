@@ -81,6 +81,15 @@ export function initSystemHealthOAuth(tokenId: string) {
   return api.get<{ authorizationUrl: string }>(`/system-health/tokens/${tokenId}/oauth-init`);
 }
 
+/**
+ * Pastes a Page Access Token directly onto an existing token row — an
+ * alternative to the OAuth flow above. Cannot create a new page; the target
+ * page is still whatever FACEBOOK_PAGE_ID is set to in the environment.
+ */
+export function setSystemHealthTokenManually(tokenId: string, accessToken: string) {
+  return api.put<TokenStatus>(`/system-health/tokens/${tokenId}/manual`, { accessToken });
+}
+
 export async function downloadSystemHealthSnapshot() {
   const response = await api.get<string>("/system-health/export", {
     responseType: "text",

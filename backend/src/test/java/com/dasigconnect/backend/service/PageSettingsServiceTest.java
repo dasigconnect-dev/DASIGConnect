@@ -58,7 +58,7 @@ class PageSettingsServiceTest {
         when(users.getReferenceById(actor.userId())).thenReturn(new com.dasigconnect.backend.model.entity.User());
         when(repository.save(any(PageSettings.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        var result = service.update(null, new UpdatePageSettingsRequestDto(null, false), actor);
+        var result = service.update(null, new UpdatePageSettingsRequestDto(false), actor);
 
         assertThat(result.guardrailsEnforced()).isFalse();
     }
@@ -76,7 +76,7 @@ class PageSettingsServiceTest {
         when(users.getReferenceById(actor.userId())).thenReturn(new com.dasigconnect.backend.model.entity.User());
         when(repository.save(any(PageSettings.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        var result = service.update(institutionId, new UpdatePageSettingsRequestDto(null, false), actor);
+        var result = service.update(institutionId, new UpdatePageSettingsRequestDto(false), actor);
 
         // The switch is network-wide only — a per-institution PUT leaves it alone.
         assertThat(result.guardrailsEnforced()).isTrue();

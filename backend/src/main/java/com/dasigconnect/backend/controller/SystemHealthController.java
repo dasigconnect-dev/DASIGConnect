@@ -2,6 +2,7 @@ package com.dasigconnect.backend.controller;
 
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.exception.OAuthInitResponseDto;
+import com.dasigconnect.backend.model.dto.exception.SetManualTokenRequestDto;
 import com.dasigconnect.backend.model.dto.exception.TokenStatusDto;
 import com.dasigconnect.backend.model.dto.systemhealth.BackgroundJobHealthDto;
 import com.dasigconnect.backend.model.dto.systemhealth.ExternalServiceHealthDto;
@@ -25,8 +26,11 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/system-health")
@@ -84,6 +88,21 @@ public class SystemHealthController {
             @PathVariable java.util.UUID tokenId,
             @AuthenticationPrincipal JwtUserDetails admin) {
         return ResponseEntity.ok(ApiResponse.success(tokenManagementService.initOAuth(tokenId, admin)));
+    }
+
+    /**
+     * Manually pastes a Page Access Token onto an existing token row —
+     * an alternative to the OAuth re-authorization flow above. Cannot create a
+     * new page; {@code tokenId} must already exist (seeded from
+     * {@code FACEBOOK_PAGE_ID} at startup).
+     */
+    @PutMapping("/tokens/{tokenId}/manual")
+    public ResponseEntity<ApiResponse<TokenStatusDto>> setManualToken(
+            @PathVariable java.util.UUID tokenId,
+            @RequestBody @Valid SetManualTokenRequestDto request,
+            @AuthenticationPrincipal JwtUserDetails admin) {
+        return ResponseEntity.ok(ApiResponse.success(
+                tokenManagementService.setManualToken(tokenId, request.accessToken(), admin)));
     }
 
     /**

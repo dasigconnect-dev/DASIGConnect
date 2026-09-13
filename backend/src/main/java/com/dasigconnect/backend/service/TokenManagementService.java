@@ -58,7 +58,8 @@ public class TokenManagementService {
     private final String apiVersion;
     private final String redirectUri;
 
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    // Not final: swapped for a mock in TokenManagementServiceTest via ReflectionTestUtils.
+    private HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public TokenManagementService(
@@ -154,6 +155,75 @@ public class TokenManagementService {
             log.error("OAuth callback failed for token {}: {}", oauthState.tokenId(), ex.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                     "Failed to complete Facebook re-authentication: " + ex.getMessage());
+        }
+    }
+
+    /**
+     * Manually sets the Page Access Token on an existing token row — an
+     * alternative to {@link #initOAuth} for an admin who already has a
+     * long-lived token (e.g. from the Graph API Explorer). Encrypts and stores
+     * it exactly as the OAuth callback does, but skips the Meta OAuth dance.
+     * Does not create a new page — {@code tokenId} must already exist, so this
+     * can never change which page the system publishes to (that's fixed by
+     * {@code FACEBOOK_PAGE_ID} in the environment, seeded at startup).
+     *
+     * The candidate token is checked against the live Graph API before
+     * anything is persisted — an admin pasting a bad/mismatched token gets an
+     * immediate 400 instead of silently breaking publishing until the next
+     * TokenHealthCheckJob run discovers it.
+     */
+    public TokenStatusDto setManualToken(UUID tokenId, String accessToken, JwtUserDetails admin) {
+        FacebookPageToken token = pageTokenRepository.findById(tokenId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Facebook page token not found."));
+
+        String trimmed = accessToken == null ? "" : accessToken.trim();
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Access token cannot be blank.");
+        }
+
+        assertTokenBelongsToPage(token.getPageId(), trimmed);
+
+        token.setEncryptedToken(tokenEncryptionService.encryptToken(trimmed));
+        token.setActive(true);
+        token.setLastValidatedAt(Instant.now());
+        token.setExpiresAt(null);
+        pageTokenRepository.save(token);
+
+        auditLogService.recordSystemAction("TOKEN_MANUALLY_SET", token.getId(),
+                Map.of("pageId", token.getPageId(), "setBy", admin.userId().toString()));
+
+        log.info("Admin {} manually set the Facebook page token {} (page {}).",
+                admin.userId(), tokenId, token.getPageId());
+        return TokenStatusDto.from(token);
+    }
+
+    /**
+     * Confirms {@code candidateToken} actually works for {@code pageId}, via
+     * {@code GET /{page-id}?fields=id}. Facebook rejects the call outright if
+     * the token is expired/invalid, and a Page Access Token can only read its
+     * own page this way, so a successful response whose {@code id} doesn't
+     * match {@code pageId} would mean Facebook's contract changed, not that
+     * the token is fine — treated as a failure either way.
+     */
+    private void assertTokenBelongsToPage(String pageId, String candidateToken) {
+        String url = String.format(META_PAGE_TOKEN_URL, apiVersion, pageId)
+                + "?fields=id&access_token=" + encode(candidateToken);
+        JsonNode node;
+        try {
+            node = getJson(url);
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Facebook rejected this token: " + ex.getMessage());
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Interrupted while validating the token against Facebook.");
+        }
+        String returnedId = node.path("id").asText(null);
+        if (returnedId == null || !returnedId.equals(pageId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "This token is not valid for page " + pageId + ".");
         }
     }
 

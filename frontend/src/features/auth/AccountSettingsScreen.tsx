@@ -82,7 +82,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [resetLinkSent, setResetLinkSent] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
-  const [facebookPageId, setFacebookPageId] = useState("");
   const [guardrailsEnforced, setGuardrailsEnforced] = useState(true);
 
   // Watermark Studio States
@@ -95,7 +94,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [copiedCode, setCopiedCode] = useState(false);
   const [messengerExpanded, setMessengerExpanded] = useState(false);
 
-  const [saving, setSaving] = useState<"account" | "password" | "page" | "watermark" | "messenger" | "guardrails" | null>(null);
+  const [saving, setSaving] = useState<"account" | "password" | "watermark" | "messenger" | "guardrails" | null>(null);
   const pageInstitutionId = null;
   const profileQueryKey = queryKeys.settings.profile({ userId: userScope });
   const pageSettingsQueryKey = queryKeys.settings.page({
@@ -245,7 +244,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   // Page tab.
   useEffect(() => {
     if (pageSettingsQuery.data && !pageSettingsHydratedRef.current) {
-      setFacebookPageId(pageSettingsQuery.data.data.facebookPageId || "");
       setGuardrailsEnforced(pageSettingsQuery.data.data.guardrailsEnforced ?? true);
       pageSettingsHydratedRef.current = true;
     }
@@ -339,30 +337,11 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     }
   }
 
-  async function savePage() {
-    setSaving("page");
-    try {
-      const { data } = await updatePageSettings({ facebookPageId }, pageInstitutionId);
-      setFacebookPageId(data.facebookPageId || "");
-      setGuardrailsEnforced(data.guardrailsEnforced ?? true);
-      queryClient.setQueryData(pageSettingsQueryKey, { data } satisfies { data: PageSettingsResponse });
-      pageSettingsHydratedRef.current = true;
-      pageSettingsErrorNotifiedRef.current = false;
-      await invalidatePageSettingsDependencies();
-      toast.success("Facebook Page ID updated.");
-    } catch {
-      toast.error("Unable to update Facebook Page ID.");
-    } finally {
-      setSaving(null);
-    }
-  }
-
   async function saveGuardrails() {
     setSaving("guardrails");
     try {
       const { data } = await updatePageSettings({ guardrailsEnforced }, pageInstitutionId);
       setGuardrailsEnforced(data.guardrailsEnforced ?? true);
-      setFacebookPageId(data.facebookPageId || "");
       queryClient.setQueryData(pageSettingsQueryKey, { data } satisfies { data: PageSettingsResponse });
       pageSettingsHydratedRef.current = true;
       pageSettingsErrorNotifiedRef.current = false;
@@ -986,39 +965,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                 </footer>
               </section>
 
-              {/* Card 2: Facebook Integration */}
-              <section className="settings-card" id="facebook-card">
-                <SettingsHeader
-                  icon="ti ti-brand-facebook"
-                  title="Facebook Integration"
-                  description="Identify the target Facebook Page used for automated publishing."
-                />
-                <div className="settings-card-body">
-                  <div className="settings-field">
-                    <label htmlFor="settings-facebook-id">Facebook Page ID</label>
-                    <div className="settings-input-with-icon">
-                      <i className="ti ti-brand-facebook" />
-                      <input
-                        id="settings-facebook-id"
-                        className="settings-input"
-                        value={facebookPageId}
-                        maxLength={255}
-                        placeholder="Enter Facebook Page ID"
-                        onChange={(e) => setFacebookPageId(e.target.value)}
-                      />
-                    </div>
-                    <span className="settings-field-hint">Access tokens and credentials remain secured separately.</span>
-                  </div>
-                </div>
-                <SettingsFooter
-                  label="Save Facebook ID"
-                  icon="ti ti-device-floppy"
-                  busy={saving === "page"}
-                  onClick={() => void savePage()}
-                />
-              </section>
-
-              {/* Card 3: Scheduling Guard Rails */}
+              {/* Card 2: Scheduling Guard Rails */}
               <section className="settings-card" id="guardrails-card">
                 <SettingsHeader
                   icon="ti ti-shield-check"

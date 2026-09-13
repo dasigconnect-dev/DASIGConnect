@@ -141,7 +141,6 @@ export function changePassword(currentPassword: string, newPassword: string) {
 
 export interface PageSettingsResponse {
   institutionId: string | null;
-  facebookPageId: string | null;
   /** Network-wide scheduling guard-rail switch. Only meaningful / editable on the no-institution row. */
   guardrailsEnforced: boolean;
   updatedAt: string | null;
@@ -154,10 +153,12 @@ export function getPageSettings(institutionId?: string | null, signal?: AbortSig
   });
 }
 
-// Page Settings is the Facebook Page ID only. Watermark on/off + layout are
-// saved via saveWatermarkConfiguration (/settings/watermark).
+// Page Settings is the network-wide scheduling guard-rail switch only.
+// Watermark on/off + layout are saved via saveWatermarkConfiguration
+// (/settings/watermark); the Facebook Page ID/token used for publishing is
+// managed in System Health -> Tokens, not here.
 export function updatePageSettings(
-  data: { facebookPageId?: string | null; guardrailsEnforced?: boolean },
+  data: { guardrailsEnforced?: boolean },
   institutionId?: string | null,
 ) {
   return api.put<PageSettingsResponse>("/settings/page", data, { params: institutionId ? { institutionId } : {} });

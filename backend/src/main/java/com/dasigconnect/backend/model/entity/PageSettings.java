@@ -19,6 +19,11 @@ public class PageSettings {
     private boolean watermarkEnabled;
     @Column(name = "watermark_text", length = 150)
     private String watermarkText;
+    // Legacy — never read by anything that actually publishes. The live
+    // publishing target is FacebookPageToken.pageId (bootstrapped from
+    // app.facebook.page-id, managed in System Health -> Tokens). Column kept
+    // (unused) to avoid a migration; drop in a future cleanup, same as the
+    // watermark columns above.
     @Column(name = "facebook_page_id", length = 255)
     private String facebookPageId;
     /**
