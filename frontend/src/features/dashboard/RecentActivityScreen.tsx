@@ -26,36 +26,52 @@ interface ActivityItem {
   };
 }
 
-interface RecentActivityData {
-  submissions: SubmissionSummary[];
-  institutions: { id: string; name: string; code: string; emailDomain: string }[];
-}
-
 const RECENT_ACTIVITY_STALE_TIME_MS = 60_000;
+const EMPTY_SUBMISSIONS: SubmissionSummary[] = [];
+const EMPTY_INSTITUTIONS: { id: string; name: string; code: string; emailDomain: string }[] = [];
 
 export default function RecentActivityScreen({ user }: RecentActivityScreenProps) {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const userScope = user.id ?? user.email.trim().toLowerCase();
-  const activityQuery = useQuery({
+  const submissionsQuery = useQuery({
     queryKey: queryKeys.submissions.all({
       role: user.role,
       userId: userScope,
       institutionId: user.institutionId ?? null,
       status: "recent-activity",
     }),
-    queryFn: ({ signal }) => fetchRecentActivityData(user, signal),
+    queryFn: ({ signal }) => listSubmissions(signal).then((response) => response.data),
+    staleTime: RECENT_ACTIVITY_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const institutionsQuery = useQuery({
+    queryKey: queryKeys.dashboard.resource({
+      role: user.role,
+      userId: userScope,
+      institutionId: user.institutionId ?? null,
+      resource: "recent-activity-institutions",
+    }),
+    queryFn: ({ signal }) => listInstitutions(signal).then((response) =>
+      response.data.map((item) => ({
+        id: item.id,
+        name: item.name,
+        code: item.institutionCode,
+        emailDomain: item.emailDomain,
+      }))),
+    enabled: user.role === "admin",
     staleTime: RECENT_ACTIVITY_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
 
-  const submissions = activityQuery.data?.submissions ?? [];
-  const institutions = activityQuery.data?.institutions ?? [];
-  const loading = activityQuery.isLoading;
+  const submissions = submissionsQuery.data ?? EMPTY_SUBMISSIONS;
+  const institutions = institutionsQuery.data ?? EMPTY_INSTITUTIONS;
+  const loading = submissionsQuery.isLoading;
+  const loadError = submissionsQuery.isError && !submissionsQuery.data;
 
   const allActivities: ActivityItem[] = useMemo(() => {
-    return submissions
+    return [...submissions]
       .sort((a, b) => {
         const dateA = a.submittedAt ?? a.createdAt ?? "";
         const dateB = b.submittedAt ?? b.createdAt ?? "";
@@ -249,6 +265,17 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
                     </td>
                   </tr>
                 ))
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: "center", padding: "44px 20px" }}>
+                    <div style={{ color: "var(--d-muted)", fontSize: 13, marginBottom: 10 }}>
+                      Unable to load recent activities.
+                    </div>
+                    <button type="button" className="btn-ghost" onClick={() => void submissionsQuery.refetch()}>
+                      Retry
+                    </button>
+                  </td>
+                </tr>
               ) : filteredActivities.length === 0 ? (
                 <tr>
                   <td
@@ -328,26 +355,6 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
       </div>
     </div>
   );
-}
-
-async function fetchRecentActivityData(user: User, signal?: AbortSignal): Promise<RecentActivityData> {
-  const [submissionsResult, institutionsResult] = await Promise.allSettled([
-    listSubmissions(signal),
-    user.role === "admin" ? listInstitutions(signal) : Promise.resolve({ data: [] }),
-  ]);
-
-  return {
-    submissions: submissionsResult.status === "fulfilled" ? submissionsResult.value.data : [],
-    institutions:
-      institutionsResult.status === "fulfilled"
-        ? institutionsResult.value.data.map((item) => ({
-            id: item.id,
-            name: item.name,
-            code: item.institutionCode,
-            emailDomain: item.emailDomain,
-          }))
-        : [],
-  };
 }
 
 function statusDisplay(status: SubmissionSummary["status"]): ActivityItem["status"] {
