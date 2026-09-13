@@ -117,6 +117,10 @@ public class FacebookPublisherService {
     /**
      * On startup, sync the env-supplied page access token to the DB if no active
      * token exists for this page. The DB record is the runtime source of truth.
+     * Also deactivates any other page's row still marked active — if
+     * FACEBOOK_PAGE_ID changed since last boot, the previous page's row would
+     * otherwise sit forever showing "ACTIVE" in System Health -> Tokens even
+     * though nothing publishes to it anymore.
      *
      * Note: @Transactional does not apply to @PostConstruct — Spring calls this
      * method on the raw bean before the CGLIB proxy is in place. The repository
@@ -131,7 +135,13 @@ public class FacebookPublisherService {
             return;
         }
         try {
-            FacebookPageToken row = pageTokenRepository.findByPageIdAndIsActiveTrue(pageId).orElse(null);
+            deactivateOtherActiveTokens(pageId);
+
+            // Looked up regardless of active state — page_id is unique, so a row
+            // may already exist here but deactivated (e.g. switching back to a
+            // page used before). Reactivating it avoids a duplicate-key error on
+            // insert and preserves its history instead of creating a new row.
+            FacebookPageToken row = pageTokenRepository.findByPageId(pageId).orElse(null);
             if (row == null) {
                 FacebookPageToken token = new FacebookPageToken();
                 token.setPageId(pageId);
@@ -150,19 +160,32 @@ public class FacebookPublisherService {
             } catch (RuntimeException ex) {
                 stored = null;
             }
-            if (pageAccessToken.equals(stored)) {
+            if (row.isActive() && pageAccessToken.equals(stored)) {
                 log.info("Facebook page token already in sync with env for page {}.", pageId);
                 return;
             }
-            row.setEncryptedToken(tokenEncryptionService.encryptToken(pageAccessToken));
-            row.setExpiresAt(null);
+            if (!pageAccessToken.equals(stored)) {
+                row.setEncryptedToken(tokenEncryptionService.encryptToken(pageAccessToken));
+                row.setExpiresAt(null);
+                row.setLastValidatedAt(null);
+            }
             row.setActive(true);
-            row.setLastValidatedAt(null);
             pageTokenRepository.save(row);
-            log.info("Facebook page token for page {} replaced from env (previous token differed).", pageId);
+            log.info("Facebook page token for page {} synced from env.", pageId);
         } catch (Exception ex) {
             log.error("FacebookPublisherService: token sync failed at startup — publishing disabled until next restart. Cause: {}", ex.getMessage());
         }
+    }
+
+    private void deactivateOtherActiveTokens(String currentPageId) {
+        List<FacebookPageToken> stale = pageTokenRepository.findByIsActiveTrueAndPageIdNot(currentPageId);
+        if (stale.isEmpty()) return;
+        for (FacebookPageToken token : stale) {
+            token.setActive(false);
+        }
+        pageTokenRepository.saveAll(stale);
+        log.info("Deactivated {} Facebook page token(s) for page(s) other than {} (FACEBOOK_PAGE_ID changed).",
+                stale.size(), currentPageId);
     }
 
     /**
