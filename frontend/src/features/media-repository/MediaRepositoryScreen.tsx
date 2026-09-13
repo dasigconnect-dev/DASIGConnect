@@ -18,6 +18,8 @@ import {
   renameMediaAlbum,
   semanticSearchMediaAssets,
   updateMediaAssetAlbum,
+  renameMediaAsset,
+  logNetworkViewAccess,
   type MediaAlbum,
 } from "../../api/mediaApi";
 import { listInstitutions, getInstitutionLogoUrl, type InstitutionResponse } from "../../api/authApi";
@@ -332,6 +334,21 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       controller.abort();
     };
   }, [isNetworkBrowser, toast]);
+
+  // UC-2.2 A2: the Network View banner tells the actor this session is being
+  // logged — make that true, once per browser session (sessionStorage survives
+  // navigating away and back, but not a fresh tab/reload of the auth session).
+  useEffect(() => {
+    if (!isNetworkBrowser) return;
+    const flagKey = `dasig:network-view-logged:${user.id ?? user.email}`;
+    try {
+      if (sessionStorage.getItem(flagKey)) return;
+      sessionStorage.setItem(flagKey, "1");
+    } catch {
+      // sessionStorage unavailable (e.g. private browsing) — log anyway rather than silently skip.
+    }
+    void logNetworkViewAccess();
+  }, [isNetworkBrowser, user.id, user.email]);
 
   const currentAlbum = useMemo(
     () => albums.find((a) => a.id === currentAlbumId) ?? null,
@@ -766,6 +783,17 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       void reloadAlbums();
     } catch {
       toast.error("Could not update the folder assignment.");
+    }
+  }
+
+  async function handleRenameAsset(assetId: string, title: string) {
+    try {
+      const { data } = await renameMediaAsset(assetId, title);
+      setSelectedAsset(data);
+      setAssets((prev) => prev.map((a) => (a.id === data.id ? { ...a, ...data } : a)));
+      void invalidateMediaMetadata();
+    } catch {
+      toast.error("Could not rename this asset.");
     }
   }
 
@@ -1445,7 +1473,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onNewPost={handleNewPost}
         onClearSelection={clearChecked}
         onClose={closePanel}
-        canAddToDraft={user.role === "contributor"}
+        canAddToDraft
         onAddToDraft={openAddToDraft}
         onDownload={() => void handleDownload()}
         canDelete={selectedAsset ? canDeleteAsset(selectedAsset) : false}
@@ -1455,6 +1483,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         albums={albums}
         onUpdateAlbum={(assetId, albumId) => void handleUpdateAssetAlbum(assetId, albumId)}
         onRenameAlbum={(album) => void handleRenameAlbum(album)}
+        onRenameAsset={(assetId, title) => void handleRenameAsset(assetId, title)}
         onAddTag={(assetId, label) => void handleAssetTag(assetId, () => addMediaAssetTag(assetId, label))}
         onRemoveTag={(assetId, tagId) => void handleAssetTag(assetId, () => removeMediaAssetTag(assetId, tagId))}
       />

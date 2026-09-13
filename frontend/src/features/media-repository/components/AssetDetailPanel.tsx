@@ -34,6 +34,7 @@ interface AssetDetailPanelProps {
   albums?: MediaAlbum[];
   onUpdateAlbum?: (assetId: string, albumId: string | null) => void;
   onRenameAlbum?: (album: MediaAlbum) => void;
+  onRenameAsset?: (assetId: string, title: string) => void | Promise<void>;
   onAddTag?: (assetId: string, label: string) => void | Promise<void>;
   onRemoveTag?: (assetId: string, tagId: string) => void | Promise<void>;
 }
@@ -78,6 +79,7 @@ export default function AssetDetailPanel({
   onRequestBulkDelete,
   albums = [],
   onUpdateAlbum,
+  onRenameAsset,
   onAddTag,
   onRemoveTag,
 }: AssetDetailPanelProps) {
@@ -85,6 +87,8 @@ export default function AssetDetailPanel({
   const [albumSelection, setAlbumSelection] = useState("");
   const [tab, setTab] = useState<"details" | "activity">("details");
   const [newTag, setNewTag] = useState("");
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
   const historyQuery = useQuery<MediaAssetHistoryEntry[]>({
     queryKey: queryKeys.mediaAssets.history({ assetId: asset?.id ?? "" }),
     queryFn: ({ signal }) => getMediaAssetHistory(asset!.id, signal).then((res) => res.data ?? []),
@@ -105,8 +109,23 @@ export default function AssetDetailPanel({
       setAlbumSelection(asset?.albumId ?? "");
       setTab("details");
       setNewTag("");
+      setEditingTitle(false);
     });
   }, [asset?.albumId, asset?.id]);
+
+  function startEditingTitle() {
+    if (!asset || !onRenameAsset) return;
+    setTitleDraft(asset.title);
+    setEditingTitle(true);
+  }
+
+  function commitTitleEdit() {
+    if (!asset || !onRenameAsset) return;
+    setEditingTitle(false);
+    const trimmed = titleDraft.trim();
+    if (!trimmed || trimmed === asset.title) return;
+    void Promise.resolve(onRenameAsset(asset.id, trimmed));
+  }
 
   function submitNewTag() {
     const label = newTag.trim();
@@ -261,9 +280,39 @@ export default function AssetDetailPanel({
                 </svg>
                 {asset.code}
               </span>
-              <div className="med-editable-title" title={asset.title}>
-                {asset.title}
-              </div>
+              {editingTitle ? (
+                <input
+                  className="med-editable-title"
+                  value={titleDraft}
+                  autoFocus
+                  maxLength={255}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={commitTitleEdit}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitTitleEdit();
+                    else if (e.key === "Escape") setEditingTitle(false);
+                  }}
+                />
+              ) : (
+                <div
+                  className={`med-editable-title${onRenameAsset ? " editable" : ""}`}
+                  title={onRenameAsset ? "Click to rename" : asset.title}
+                  onClick={startEditingTitle}
+                  role={onRenameAsset ? "button" : undefined}
+                  tabIndex={onRenameAsset ? 0 : undefined}
+                  onKeyDown={(e) => {
+                    if (onRenameAsset && (e.key === "Enter" || e.key === " ")) startEditingTitle();
+                  }}
+                >
+                  {asset.title}
+                  {onRenameAsset && (
+                    <svg className="med-editable-title-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Metadata */}

@@ -980,6 +980,31 @@
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
 }
 
+div.med-editable-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+div.med-editable-title.editable {
+  cursor: pointer;
+}
+
+div.med-editable-title.editable:hover {
+  background: var(--med-surface-2);
+}
+
+.med-editable-title-icon {
+  flex: none;
+  color: var(--med-muted);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+div.med-editable-title.editable:hover .med-editable-title-icon {
+  opacity: 1;
+}
+
 /* Meta grid */
 .med-meta-grid {
   display: grid;
