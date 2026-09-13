@@ -4,8 +4,6 @@ import com.dasigconnect.backend.model.entity.FacebookPageToken;
 import com.dasigconnect.backend.repository.FacebookPageTokenRepository;
 import com.dasigconnect.backend.repository.PublicationAttemptRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
-import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -14,15 +12,14 @@ import org.springframework.context.ApplicationEventPublisher;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Covers only {@code syncTokenFromEnv()} — the rest of this service makes real
- * Graph API calls and isn't unit-tested (pre-existing gap, not introduced here).
+ * Covers only {@code bootstrapTokenFromEnvIfEmpty()} — the rest of this service
+ * makes real Graph API calls and isn't unit-tested (pre-existing gap, not
+ * introduced here).
  */
 @ExtendWith(MockitoExtension.class)
 class FacebookPublisherServiceTest {
@@ -35,60 +32,60 @@ class FacebookPublisherServiceTest {
     @Mock WatermarkApplicationService watermarkApplicationService;
     @Mock AuditLogService auditLogService;
 
-    private FacebookPublisherService build(String pageAccessToken, String pageId) {
+    private FacebookPublisherService build(String envPageAccessToken, String envPageId) {
         return new FacebookPublisherService(
-                pageAccessToken, pageId, "app-id", "app-secret", "v25.0",
+                envPageAccessToken, envPageId, "app-id", "app-secret", "v25.0",
                 tokenEncryptionService, pageTokenRepository, publicationAttemptRepository,
                 submissionRepository, eventPublisher, watermarkApplicationService, auditLogService);
     }
 
     @Test
-    void syncTokenFromEnv_newPage_deactivatesStaleRowsAndCreatesNewOne() {
-        FacebookPageToken staleRow = new FacebookPageToken();
-        staleRow.setPageId("old-page");
-        staleRow.setActive(true);
+    void bootstrap_tableAlreadyHasARow_ignoresEnvEntirely() {
+        when(pageTokenRepository.count()).thenReturn(1L);
 
-        when(tokenEncryptionService.isConfigured()).thenReturn(true);
-        when(pageTokenRepository.findByIsActiveTrueAndPageIdNot("new-page")).thenReturn(List.of(staleRow));
-        when(pageTokenRepository.findByPageId("new-page")).thenReturn(Optional.empty());
-        when(tokenEncryptionService.encryptToken(anyString())).thenReturn("encrypted");
+        build("raw-token", "page-id").bootstrapTokenFromEnvIfEmpty();
 
-        build("raw-token", "new-page").syncTokenFromEnv();
-
-        assertThat(staleRow.isActive()).isFalse();
-        verify(pageTokenRepository).saveAll(List.of(staleRow));
-        verify(pageTokenRepository).save(any(FacebookPageToken.class));
+        verify(pageTokenRepository, never()).save(any());
     }
 
     @Test
-    void syncTokenFromEnv_switchingBackToAPreviouslyUsedPage_reactivatesInsteadOfDuplicating() {
-        FacebookPageToken existingInactiveRow = new FacebookPageToken();
-        existingInactiveRow.setPageId("returning-page");
-        existingInactiveRow.setActive(false);
-        existingInactiveRow.setEncryptedToken("old-encrypted");
-
+    void bootstrap_emptyTableWithEnvConfigured_seedsOneRow() {
+        when(pageTokenRepository.count()).thenReturn(0L);
         when(tokenEncryptionService.isConfigured()).thenReturn(true);
-        when(pageTokenRepository.findByIsActiveTrueAndPageIdNot("returning-page")).thenReturn(List.of());
-        when(pageTokenRepository.findByPageId("returning-page")).thenReturn(Optional.of(existingInactiveRow));
-        when(tokenEncryptionService.decryptToken("old-encrypted")).thenReturn("old-raw-token");
-        when(tokenEncryptionService.encryptToken("new-raw-token")).thenReturn("new-encrypted");
+        when(tokenEncryptionService.encryptToken("raw-token")).thenReturn("encrypted");
 
-        build("new-raw-token", "returning-page").syncTokenFromEnv();
+        build("raw-token", "new-page").bootstrapTokenFromEnvIfEmpty();
 
-        assertThat(existingInactiveRow.isActive()).isTrue();
-        assertThat(existingInactiveRow.getEncryptedToken()).isEqualTo("new-encrypted");
-        verify(pageTokenRepository, times(1)).save(existingInactiveRow);
+        var captor = org.mockito.ArgumentCaptor.forClass(FacebookPageToken.class);
+        verify(pageTokenRepository).save(captor.capture());
+        assertThat(captor.getValue().getPageId()).isEqualTo("new-page");
+        assertThat(captor.getValue().getEncryptedToken()).isEqualTo("encrypted");
     }
 
     @Test
-    void syncTokenFromEnv_noStaleRows_doesNotCallSaveAll() {
-        when(tokenEncryptionService.isConfigured()).thenReturn(true);
-        when(pageTokenRepository.findByIsActiveTrueAndPageIdNot("page")).thenReturn(List.of());
-        when(pageTokenRepository.findByPageId("page")).thenReturn(Optional.empty());
-        when(tokenEncryptionService.encryptToken(anyString())).thenReturn("encrypted");
+    void bootstrap_emptyTableButEnvBlank_doesNothing() {
+        when(pageTokenRepository.count()).thenReturn(0L);
 
-        build("raw-token", "page").syncTokenFromEnv();
+        build("", "").bootstrapTokenFromEnvIfEmpty();
 
-        verify(pageTokenRepository, never()).saveAll(any());
+        verify(pageTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void bootstrap_emptyTableButEncryptionNotConfigured_doesNothing() {
+        when(pageTokenRepository.count()).thenReturn(0L);
+        when(tokenEncryptionService.isConfigured()).thenReturn(false);
+
+        build("raw-token", "new-page").bootstrapTokenFromEnvIfEmpty();
+
+        verify(pageTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void isConfigured_reflectsWhetherAnActiveRowExists() {
+        when(pageTokenRepository.findFirstByIsActiveTrue())
+                .thenReturn(java.util.Optional.of(new FacebookPageToken()));
+
+        assertThat(build("", "").isConfigured()).isTrue();
     }
 }

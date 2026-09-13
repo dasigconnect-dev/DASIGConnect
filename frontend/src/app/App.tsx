@@ -1006,6 +1006,7 @@ function buildUserFromProfile(
     inst: profile.institutionName || institutionFallbackFromEmail(email),
     institutionId: profile.institutionId,
     initials: getUserInitials(profile),
+    adminOwner: profile.adminOwner,
   };
 }
 

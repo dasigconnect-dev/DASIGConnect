@@ -42,7 +42,7 @@ class MetricsAggregatorServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MetricsAggregatorService(analyticsRepository, facebookInsightsClient, "page-123");
+        service = new MetricsAggregatorService(analyticsRepository, facebookInsightsClient);
     }
 
     private void stubCoreQueries() {

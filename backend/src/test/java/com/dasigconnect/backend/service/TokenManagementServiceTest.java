@@ -35,7 +35,9 @@ class TokenManagementServiceTest {
     @InjectMocks TokenManagementService service;
 
     private final JwtUserDetails admin =
-            new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null);
+            new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null, false);
+    private final JwtUserDetails owner =
+            new JwtUserDetails(UUID.randomUUID(), "owner@example.com", "admin", null, true);
 
     @BeforeEach
     void injectMockHttpClient() {
@@ -119,5 +121,58 @@ class TokenManagementServiceTest {
         assertThatThrownBy(() -> service.setManualToken(tokenId, "raw-token", admin))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("not found");
+    }
+
+    @Test
+    void connectPage_nonOwnerAdmin_isForbidden() {
+        assertThatThrownBy(() -> service.connectPage("new-page", "raw-token", admin))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Admin Owner");
+        verify(pageTokenRepository, never()).save(any());
+    }
+
+    @Test
+    void connectPage_blankFields_isRejected() {
+        assertThatThrownBy(() -> service.connectPage(" ", "raw-token", owner))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("required");
+        assertThatThrownBy(() -> service.connectPage("new-page", " ", owner))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("required");
+    }
+
+    @Test
+    void connectPage_newPage_validatesDeactivatesOldAndCreatesNewRow() throws Exception {
+        FacebookPageToken oldActive = new FacebookPageToken();
+        oldActive.setPageId("old-page");
+        oldActive.setActive(true);
+
+        when(pageTokenRepository.findFirstByIsActiveTrue()).thenReturn(Optional.of(oldActive));
+        when(graphResponse.body()).thenReturn("{\"id\":\"new-page\"}");
+        org.mockito.Mockito.doReturn(graphResponse).when(httpClient).send(any(), any());
+        when(pageTokenRepository.findByIsActiveTrueAndPageIdNot("new-page")).thenReturn(java.util.List.of(oldActive));
+        when(pageTokenRepository.findByPageId("new-page")).thenReturn(Optional.empty());
+        when(tokenEncryptionService.encryptToken("raw-token")).thenReturn("encrypted-blob");
+        when(pageTokenRepository.save(any(FacebookPageToken.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var result = service.connectPage("new-page", "raw-token", owner);
+
+        assertThat(oldActive.isActive()).isFalse();
+        assertThat(result.getPageId()).isEqualTo("new-page");
+        verify(pageTokenRepository).saveAll(java.util.List.of(oldActive));
+        verify(auditLogService).recordSystemAction("FACEBOOK_PAGE_CONNECTED", null, java.util.Map.of(
+                "fromPageId", "old-page", "toPageId", "new-page", "connectedBy", owner.userId().toString()));
+    }
+
+    @Test
+    void connectPage_tokenNotValidForTargetPage_rejectedWithoutSaving() throws Exception {
+        when(graphResponse.body()).thenReturn("{\"id\":\"different-page\"}");
+        org.mockito.Mockito.doReturn(graphResponse).when(httpClient).send(any(), any());
+
+        assertThatThrownBy(() -> service.connectPage("target-page", "raw-token", owner))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("not valid for page");
+        verify(pageTokenRepository, never()).save(any());
+        verify(pageTokenRepository, never()).saveAll(any());
     }
 }
