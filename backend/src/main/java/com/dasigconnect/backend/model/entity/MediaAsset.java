@@ -43,6 +43,18 @@ public class MediaAsset {
     @Column(name = "file_name", nullable = false, length = 255)
     private String fileName;
 
+    @Column(name = "content_hash", length = 64)
+    private String contentHash;
+
+    /**
+     * Optional display name, independent of {@link #fileName} and the R2
+     * storage key (which stays keyed by asset id + original filename and is
+     * never touched by a rename). Null means "use fileName" — see
+     * {@link #getDisplayTitle()}.
+     */
+    @Column(name = "display_title", length = 255)
+    private String displayTitle;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "file_type", nullable = false, length = 10)
     private MediaFileType fileType;
@@ -91,7 +103,6 @@ public class MediaAsset {
 
     // embedding VECTOR(1024) — managed via native queries; Hibernate does not map pgvector type natively
     // Use MediaAssetRepository.updateEmbedding() for writes and cosine search for reads
-
     @Column(name = "embedding_generated_at")
     private Instant embeddingGeneratedAt;
 
@@ -119,99 +130,276 @@ public class MediaAsset {
 
     @PrePersist
     void onCreate() {
-        if (id == null) id = UUID.randomUUID();
-        if (status == null) status = MediaAssetStatus.PROCESSING;
+        if (id == null) {
+            id = UUID.randomUUID();
+        }
+        if (status == null) {
+            status = MediaAssetStatus.PROCESSING;
+        }
         createdAt = Instant.now();
     }
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
+    public UUID getId() {
+        return id;
+    }
 
-    public Institution getInstitution() { return institution; }
-    public void setInstitution(Institution institution) { this.institution = institution; }
+    public void setId(UUID id) {
+        this.id = id;
+    }
 
-    public User getUploader() { return uploader; }
-    public void setUploader(User uploader) { this.uploader = uploader; }
+    public Institution getInstitution() {
+        return institution;
+    }
 
-    public String getAssetCode() { return assetCode; }
-    public void setAssetCode(String assetCode) { this.assetCode = assetCode; }
+    public void setInstitution(Institution institution) {
+        this.institution = institution;
+    }
 
-    public String getStorageUrl() { return storageUrl; }
-    public void setStorageUrl(String storageUrl) { this.storageUrl = storageUrl; }
+    public User getUploader() {
+        return uploader;
+    }
 
-    public MediaAlbum getMediaAlbum() { return mediaAlbum; }
-    public void setMediaAlbum(MediaAlbum mediaAlbum) { this.mediaAlbum = mediaAlbum; }
+    public void setUploader(User uploader) {
+        this.uploader = uploader;
+    }
 
-    public String getFileName() { return fileName; }
-    public void setFileName(String fileName) { this.fileName = fileName; }
+    public String getAssetCode() {
+        return assetCode;
+    }
 
-    public MediaFileType getFileType() { return fileType; }
-    public void setFileType(MediaFileType fileType) { this.fileType = fileType; }
+    public void setAssetCode(String assetCode) {
+        this.assetCode = assetCode;
+    }
 
-    public long getFileSizeBytes() { return fileSizeBytes; }
-    public void setFileSizeBytes(long fileSizeBytes) { this.fileSizeBytes = fileSizeBytes; }
+    public String getStorageUrl() {
+        return storageUrl;
+    }
 
-    public String getAiCategory() { return aiCategory; }
-    public void setAiCategory(String aiCategory) { this.aiCategory = aiCategory; }
+    public void setStorageUrl(String storageUrl) {
+        this.storageUrl = storageUrl;
+    }
 
-    public java.math.BigDecimal getAiConfidence() { return aiConfidence; }
-    public void setAiConfidence(java.math.BigDecimal aiConfidence) { this.aiConfidence = aiConfidence; }
+    public MediaAlbum getMediaAlbum() {
+        return mediaAlbum;
+    }
 
-    public String getAiDescription() { return aiDescription; }
-    public void setAiDescription(String aiDescription) { this.aiDescription = aiDescription; }
+    public void setMediaAlbum(MediaAlbum mediaAlbum) {
+        this.mediaAlbum = mediaAlbum;
+    }
 
-    public String getAssetType() { return assetType; }
-    public void setAssetType(String assetType) { this.assetType = assetType; }
+    public String getFileName() {
+        return fileName;
+    }
 
-    public String[] getVisibleObjects() { return visibleObjects; }
-    public void setVisibleObjects(String[] visibleObjects) { this.visibleObjects = visibleObjects; }
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
+    }
 
-    public String[] getSpecificSubjects() { return specificSubjects; }
-    public void setSpecificSubjects(String[] specificSubjects) { this.specificSubjects = specificSubjects; }
+    public String getContentHash() {
+        return contentHash;
+    }
 
-    public String[] getVisualStyle() { return visualStyle; }
-    public void setVisualStyle(String[] visualStyle) { this.visualStyle = visualStyle; }
+    public void setContentHash(String contentHash) {
+        this.contentHash = contentHash;
+    }
 
-    public String[] getDominantColors() { return dominantColors; }
-    public void setDominantColors(String[] dominantColors) { this.dominantColors = dominantColors; }
+    public String getDisplayTitle() {
+        return displayTitle;
+    }
 
-    public String[] getPossibleUseCases() { return possibleUseCases; }
-    public void setPossibleUseCases(String[] possibleUseCases) { this.possibleUseCases = possibleUseCases; }
+    public void setDisplayTitle(String displayTitle) {
+        this.displayTitle = displayTitle;
+    }
 
-    public String[] getAiTags() { return aiTags; }
-    public void setAiTags(String[] aiTags) { this.aiTags = aiTags; }
+    /**
+     * The actor-facing title — the rename if one was set, otherwise the
+     * original filename.
+     */
+    public String getTitle() {
+        return displayTitle != null && !displayTitle.isBlank() ? displayTitle : fileName;
+    }
 
-    public String[] getExcludedCategories() { return excludedCategories; }
-    public void setExcludedCategories(String[] excludedCategories) { this.excludedCategories = excludedCategories; }
+    public MediaFileType getFileType() {
+        return fileType;
+    }
 
-    public Instant getAiClassifiedAt() { return aiClassifiedAt; }
-    public void setAiClassifiedAt(Instant aiClassifiedAt) { this.aiClassifiedAt = aiClassifiedAt; }
+    public void setFileType(MediaFileType fileType) {
+        this.fileType = fileType;
+    }
 
-    public String getAiClassificationModel() { return aiClassificationModel; }
-    public void setAiClassificationModel(String aiClassificationModel) { this.aiClassificationModel = aiClassificationModel; }
+    public long getFileSizeBytes() {
+        return fileSizeBytes;
+    }
 
-    public Instant getEmbeddingGeneratedAt() { return embeddingGeneratedAt; }
-    public void setEmbeddingGeneratedAt(Instant embeddingGeneratedAt) { this.embeddingGeneratedAt = embeddingGeneratedAt; }
+    public void setFileSizeBytes(long fileSizeBytes) {
+        this.fileSizeBytes = fileSizeBytes;
+    }
 
-    public String getEmbeddingModel() { return embeddingModel; }
-    public void setEmbeddingModel(String embeddingModel) { this.embeddingModel = embeddingModel; }
+    public String getAiCategory() {
+        return aiCategory;
+    }
 
-    public Instant getReclassifiedAt() { return reclassifiedAt; }
-    public void setReclassifiedAt(Instant reclassifiedAt) { this.reclassifiedAt = reclassifiedAt; }
+    public void setAiCategory(String aiCategory) {
+        this.aiCategory = aiCategory;
+    }
 
-    public MediaAssetStatus getStatus() { return status; }
-    public void setStatus(MediaAssetStatus status) { this.status = status; }
+    public java.math.BigDecimal getAiConfidence() {
+        return aiConfidence;
+    }
 
-    public Instant getDeletedAt() { return deletedAt; }
-    public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
+    public void setAiConfidence(java.math.BigDecimal aiConfidence) {
+        this.aiConfidence = aiConfidence;
+    }
 
-    public UUID getDeletedByUserId() { return deletedByUserId; }
-    public void setDeletedByUserId(UUID deletedByUserId) { this.deletedByUserId = deletedByUserId; }
+    public String getAiDescription() {
+        return aiDescription;
+    }
 
-    public Instant getPurgedAt() { return purgedAt; }
-    public void setPurgedAt(Instant purgedAt) { this.purgedAt = purgedAt; }
+    public void setAiDescription(String aiDescription) {
+        this.aiDescription = aiDescription;
+    }
 
-    public Instant getCreatedAt() { return createdAt; }
+    public String getAssetType() {
+        return assetType;
+    }
 
-    public boolean isDeleted() { return deletedAt != null; }
+    public void setAssetType(String assetType) {
+        this.assetType = assetType;
+    }
+
+    public String[] getVisibleObjects() {
+        return visibleObjects;
+    }
+
+    public void setVisibleObjects(String[] visibleObjects) {
+        this.visibleObjects = visibleObjects;
+    }
+
+    public String[] getSpecificSubjects() {
+        return specificSubjects;
+    }
+
+    public void setSpecificSubjects(String[] specificSubjects) {
+        this.specificSubjects = specificSubjects;
+    }
+
+    public String[] getVisualStyle() {
+        return visualStyle;
+    }
+
+    public void setVisualStyle(String[] visualStyle) {
+        this.visualStyle = visualStyle;
+    }
+
+    public String[] getDominantColors() {
+        return dominantColors;
+    }
+
+    public void setDominantColors(String[] dominantColors) {
+        this.dominantColors = dominantColors;
+    }
+
+    public String[] getPossibleUseCases() {
+        return possibleUseCases;
+    }
+
+    public void setPossibleUseCases(String[] possibleUseCases) {
+        this.possibleUseCases = possibleUseCases;
+    }
+
+    public String[] getAiTags() {
+        return aiTags;
+    }
+
+    public void setAiTags(String[] aiTags) {
+        this.aiTags = aiTags;
+    }
+
+    public String[] getExcludedCategories() {
+        return excludedCategories;
+    }
+
+    public void setExcludedCategories(String[] excludedCategories) {
+        this.excludedCategories = excludedCategories;
+    }
+
+    public Instant getAiClassifiedAt() {
+        return aiClassifiedAt;
+    }
+
+    public void setAiClassifiedAt(Instant aiClassifiedAt) {
+        this.aiClassifiedAt = aiClassifiedAt;
+    }
+
+    public String getAiClassificationModel() {
+        return aiClassificationModel;
+    }
+
+    public void setAiClassificationModel(String aiClassificationModel) {
+        this.aiClassificationModel = aiClassificationModel;
+    }
+
+    public Instant getEmbeddingGeneratedAt() {
+        return embeddingGeneratedAt;
+    }
+
+    public void setEmbeddingGeneratedAt(Instant embeddingGeneratedAt) {
+        this.embeddingGeneratedAt = embeddingGeneratedAt;
+    }
+
+    public String getEmbeddingModel() {
+        return embeddingModel;
+    }
+
+    public void setEmbeddingModel(String embeddingModel) {
+        this.embeddingModel = embeddingModel;
+    }
+
+    public Instant getReclassifiedAt() {
+        return reclassifiedAt;
+    }
+
+    public void setReclassifiedAt(Instant reclassifiedAt) {
+        this.reclassifiedAt = reclassifiedAt;
+    }
+
+    public MediaAssetStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(MediaAssetStatus status) {
+        this.status = status;
+    }
+
+    public Instant getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(Instant deletedAt) {
+        this.deletedAt = deletedAt;
+    }
+
+    public UUID getDeletedByUserId() {
+        return deletedByUserId;
+    }
+
+    public void setDeletedByUserId(UUID deletedByUserId) {
+        this.deletedByUserId = deletedByUserId;
+    }
+
+    public Instant getPurgedAt() {
+        return purgedAt;
+    }
+
+    public void setPurgedAt(Instant purgedAt) {
+        this.purgedAt = purgedAt;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
 }

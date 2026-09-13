@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   downloadAnalyticsCsv,
   getAnalyticsReport,
@@ -7,13 +8,16 @@ import {
   type AnalyticsRange,
   type AnalyticsReportDto,
 } from "../../../api/analyticsApi";
-import { formatDateRange, formatMetric, formatNumber } from "../analyticsUtils";
+import type { User } from "../../../types/auth.types";
+import { authenticatedQueryMeta } from "../../../lib/queryClient";
+import { queryKeys } from "../../../lib/queryKeys";
+import { formatDateRange, formatNumber } from "../analyticsUtils";
 
 interface Props {
+  user: User;
   metric: AnalyticsExportMetric | null;
   range: AnalyticsRange;
   institutionId?: string | null;
-  category?: string | null;
   busy: boolean;
   onBusyChange: (busy: boolean) => void;
   onClose: () => void;
@@ -46,25 +50,110 @@ const REPORT_UNITS: Record<AnalyticsExportMetric, string> = {
   "facebook-engagement": "reach",
 };
 
-type ActiveTab = "daily" | "submissions";
+// The second tab shows the metric-specific rows (same data as the CSV), so its
+// label matches what those rows actually are per report instead of always saying
+// "Submission Detail".
+const DETAIL_TAB_LABEL: Record<AnalyticsExportMetric, string> = {
+  "posting-delay": "Submission Detail",
+  "content-completeness": "Submission Detail",
+  "posts-by-institution": "By Institution",
+  "ai-performance": "By Interaction",
+  "operational-health": "Metric Summary",
+  "facebook-engagement": "Per-Post Engagement",
+};
+
+// Friendlier headers for the columns that come back from the aggregate rows.
+const COLUMN_LABELS: Record<string, string> = {
+  institution_name: "Institution",
+  event_title: "Submission Title",
+  status: "State",
+  first_submitted_at: "First Submitted",
+  published_at: "Published At",
+  delay_days: "Delay (days)",
+  has_event_title: "Event Title",
+  has_event_date: "Event Date",
+  has_caption: "Caption",
+  has_media: "Media",
+  post_count: "Posts",
+  interaction_type: "Interaction",
+  action_taken: "Action",
+  event_count: "Events",
+  comments_count: "Comments",
+  metric: "Metric",
+  value: "Value",
+  pending: "Awaiting Sync",
+};
+
+const HIDDEN_COLUMNS = new Set(["submission_id", "id"]);
+
+type ActiveTab = "daily" | "detail";
+
+const REPORT_STALE_TIME_MS = 60_000;
+
+function userScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
+}
+
+function humanizeKey(key: string): string {
+  return COLUMN_LABELS[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function looksLikeDate(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?/.test(value);
+}
+
+function formatCell(value: string | number | boolean | null): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? formatNumber(value) : formatNumber(Math.round(value * 100) / 100);
+  }
+  if (looksLikeDate(value)) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleString("en-PH", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: value.length > 10 ? "numeric" : undefined,
+        minute: value.length > 10 ? "2-digit" : undefined,
+        hour12: true,
+      });
+    }
+  }
+  return value;
+}
 
 export default function FullReportModal({
+  user,
   metric,
   range,
   institutionId,
-  category,
   busy,
   onBusyChange,
   onClose,
 }: Props) {
-  const [report, setReport] = useState<AnalyticsReportDto | null>(null);
-  const [error, setError] = useState<{ key: string; message: string } | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [tabEntry, setTabEntry] = useState<{ forMetric: string; tab: ActiveTab } | null>(null);
-  const activeTab: ActiveTab = tabEntry?.forMetric === metric ? tabEntry.tab : "daily";
-  const requestKey = metric
-    ? `${metric}:${range}:${institutionId ?? "network"}:${category ?? "all"}:${refreshKey}`
-    : "";
+  const reportQuery = useQuery<AnalyticsReportDto>({
+    queryKey: queryKeys.analytics.report({
+      role: user.role,
+      userId: userScope(user),
+      institutionId: institutionId ?? null,
+      range,
+      metric: metric ?? "none",
+    }),
+    queryFn: ({ signal }) => getAnalyticsReport(metric!, range, institutionId, signal).then((res) => res.data),
+    enabled: Boolean(metric),
+    staleTime: REPORT_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const report = reportQuery.data ?? null;
+  const dailyHasData = (report?.dailyBreakdown ?? []).some(
+    (p) => p.value !== 0 || (p.secondaryValue ?? 0) !== 0,
+  );
+  const defaultTab: ActiveTab =
+    dailyHasData || !(report && report.aggregateRows.length > 0) ? "daily" : "detail";
+  const activeTab: ActiveTab = tabEntry?.forMetric === metric ? tabEntry.tab : defaultTab;
 
   useEffect(() => {
     if (!metric) return;
@@ -84,23 +173,6 @@ export default function FullReportModal({
     if (metric) setTabEntry({ forMetric: metric, tab });
   }
 
-  useEffect(() => {
-    if (!metric) return;
-    const controller = new AbortController();
-    const activeKey = `${metric}:${range}:${institutionId ?? "network"}:${category ?? "all"}:${refreshKey}`;
-    getAnalyticsReport(metric, range, institutionId, category, controller.signal)
-      .then((res) => {
-        setReport(res.data);
-        setError(null);
-      })
-      .catch((err: { code?: string }) => {
-        if (err?.code !== "ERR_CANCELED") {
-          setError({ key: activeKey, message: "Could not load the full report." });
-        }
-      });
-    return () => controller.abort();
-  }, [metric, range, institutionId, category, refreshKey]);
-
   const maxDailyValue = useMemo(
     () => Math.max(...(report?.dailyBreakdown ?? []).map((point) => point.value), 1),
     [report],
@@ -109,27 +181,26 @@ export default function FullReportModal({
   if (!metric) return null;
 
   const reportReady = report?.metric === metric && report.range === range;
-  const activeError = error?.key === requestKey ? error.message : null;
+  const activeError = !reportReady && reportQuery.error ? "Could not load the full report." : null;
   const loading = !reportReady && !activeError;
 
-  const showContributor = reportReady && report.submissions.some((r) => r.contributorName);
-  const showInstitution = reportReady && report.submissions.some((r) => r.institutionName);
-  const showRevisions = reportReady && report.submissions.some((r) => r.revisionCycles !== null);
+  const detailRows = reportReady ? report.aggregateRows : [];
+  const detailColumns = detailRows.length
+    ? Object.keys(detailRows[0]).filter((key) => !HIDDEN_COLUMNS.has(key))
+    : [];
 
   async function handleDownload() {
     if (!metric) return;
     onBusyChange(true);
     try {
-      await downloadAnalyticsCsv(metric, range, institutionId, category);
+      await downloadAnalyticsCsv(metric, range, institutionId);
     } finally {
       onBusyChange(false);
     }
   }
 
   function reloadReport() {
-    setReport(null);
-    setError(null);
-    setRefreshKey((v) => v + 1);
+    void reportQuery.refetch();
   }
 
   return createPortal(
@@ -189,13 +260,13 @@ export default function FullReportModal({
             <button
               type="button"
               role="tab"
-              aria-selected={activeTab === "submissions"}
-              className={`analytics-tab-btn${activeTab === "submissions" ? " active" : ""}`}
-              onClick={() => switchTab("submissions")}
+              aria-selected={activeTab === "detail"}
+              className={`analytics-tab-btn${activeTab === "detail" ? " active" : ""}`}
+              onClick={() => switchTab("detail")}
             >
               <i className="ti ti-table" aria-hidden="true" />
-              <span>Submission Detail</span>
-              <span className="analytics-tab-count">{report.submissions.length}</span>
+              <span>{DETAIL_TAB_LABEL[metric]}</span>
+              <span className="analytics-tab-count">{report.aggregateRows.length}</span>
             </button>
           </div>
         )}
@@ -279,79 +350,51 @@ export default function FullReportModal({
                 </section>
               )}
 
-              {/* Submission Detail Tab */}
-              {activeTab === "submissions" && (
-                <section className="analytics-report-section" role="tabpanel" aria-label="Submission Detail">
+              {/* Metric-specific detail tab — same rows as the CSV export */}
+              {activeTab === "detail" && (
+                <section className="analytics-report-section" role="tabpanel" aria-label={DETAIL_TAB_LABEL[metric]}>
                   <div className="analytics-report-section-header">
                     <div>
-                      <h3>Submission Detail</h3>
-                      <p>Full itemized list of submissions recorded during this reporting period.</p>
+                      <h3>{DETAIL_TAB_LABEL[metric]}</h3>
+                      <p>Every row behind {REPORT_LABELS[metric]} for this period — matches the CSV export.</p>
                     </div>
                   </div>
-                  <div className="analytics-table-wrap">
-                    <table className="analytics-table">
-                      <thead>
-                        <tr>
-                          <th>Submission Title</th>
-                          <th>Publication State</th>
-                          <th>First Submitted</th>
-                          <th>Published At</th>
-                          <th>Delay</th>
-                          <th>Completeness</th>
-                          {showContributor && <th>Contributor</th>}
-                          {showInstitution && <th>Institution</th>}
-                          {showRevisions && <th>Revisions</th>}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {report.submissions.length === 0 ? (
+                  {detailRows.length === 0 ? (
+                    <div className="analytics-empty">No rows recorded for this period.</div>
+                  ) : (
+                    <div className="analytics-table-wrap">
+                      <table className="analytics-table">
+                        <thead>
                           <tr>
-                            <td colSpan={9} style={{ textAlign: "center", padding: "36px 16px", color: "var(--d-muted)" }}>
-                              No submission rows for this period.
-                            </td>
+                            {detailColumns.map((col) => (
+                              <th key={col}>{humanizeKey(col)}</th>
+                            ))}
                           </tr>
-                        ) : (
-                          report.submissions.map((row) => (
-                            <tr key={row.submissionId}>
-                              <td>
-                                <strong style={{ color: "var(--d-text, #0c1d3d)" }}>{row.eventTitle || "Untitled"}</strong>
-                              </td>
-                              <td>
-                                <span className={`status-pill ${getStatusPillClass(row.publicationState)}`}>
-                                  {row.publicationState}
-                                </span>
-                              </td>
-                              <td>{formatNullableDate(row.firstSubmittedAt)}</td>
-                              <td>{formatNullableDate(row.publishedAt)}</td>
-                              <td>
-                                {formatMetric({
-                                  id: "delay",
-                                  label: "Delay",
-                                  value: row.postingDelayDays,
-                                  unit: "days",
-                                  sampleSize: 1,
-                                  target: null,
-                                  targetMet: true,
-                                  deltaPercent: null,
-                                  sparkline: [],
-                                  secondaryLabel: null,
-                                  secondaryValue: null,
-                                })}
-                              </td>
-                              <td>
-                                <span style={{ fontWeight: 600, color: row.complete ? "#16a34a" : "#ca8a04" }}>
-                                  {row.complete ? "100%" : "Partial"}
-                                </span>
-                              </td>
-                              {showContributor && <td>{row.contributorName ?? "—"}</td>}
-                              {showInstitution && <td>{row.institutionName ?? "—"}</td>}
-                              {showRevisions && <td>{row.revisionCycles !== null ? `${row.revisionCycles} cycles` : "—"}</td>}
+                        </thead>
+                        <tbody>
+                          {detailRows.map((row, rowIndex) => (
+                            <tr key={String(row.submission_id ?? row.id ?? rowIndex)}>
+                              {detailColumns.map((col) => {
+                                const raw = row[col];
+                                const isState = col === "status" && typeof raw === "string";
+                                return (
+                                  <td key={col}>
+                                    {isState ? (
+                                      <span className={`status-pill ${getStatusPillClass(raw as string)}`}>
+                                        {raw as string}
+                                      </span>
+                                    ) : (
+                                      formatCell(raw)
+                                    )}
+                                  </td>
+                                );
+                              })}
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </section>
               )}
             </>
@@ -392,16 +435,4 @@ function formatReportValue(value: number, unit: string): string {
   if (unit === "percent") return `${value.toFixed(1)}%`;
   if (unit === "days") return `${value.toFixed(1)}d`;
   return formatNumber(value);
-}
-
-function formatNullableDate(value: string | null): string {
-  if (!value) return "—";
-  return new Date(value).toLocaleString("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
 }

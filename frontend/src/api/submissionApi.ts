@@ -26,6 +26,9 @@ export interface SavedMediaAsset {
   skipWatermark?: boolean;
   /** MediaAssetStatus name. "STAGED" = uploaded to this draft, not yet bound to an institution. */
   status?: string;
+  /** Media Library album this asset is filed under (null while STAGED). */
+  albumId?: string | null;
+  albumName?: string | null;
 }
 
 export interface SubmissionSummary {
@@ -86,6 +89,12 @@ export interface SubmissionLookups {
   maxScheduleDaysAhead: number;
   categories: string[];
   availableTags: string[];
+  /**
+   * Network-wide scheduling guard-rail switch (Page Settings). When false the
+   * composer treats a preferred schedule and the 8:00 AM–8:00 PM publish window
+   * as non-blocking; a future date is still required if one is set.
+   */
+  guardrailsEnforced: boolean;
 }
 
 export interface GuardRailViolation {
@@ -210,11 +219,14 @@ export function validateGuardRails(
   scheduledAt: string,
   institutionId?: string | null,
   submissionId?: string | null,
+  signal?: AbortSignal,
 ) {
   return api.post<GuardRailResult>("/guardrails/validate", {
     scheduledAt,
     institutionId,
     submissionId: submissionId || undefined,
+  }, {
+    signal,
   });
 }
 

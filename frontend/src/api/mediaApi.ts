@@ -48,6 +48,8 @@ export interface DeleteCheckResult {
 export interface MediaAssetUploadUrlRequest {
   fileName: string;
   fileType: string;
+  contentHash?: string;
+  allowDuplicate?: boolean;
   /** Target institution, so the backend keys the object under the right tenant partition. */
   institutionId?: string | null;
 }
@@ -63,6 +65,8 @@ export interface MediaAssetRegisterRequest {
   fileName: string;
   fileType: string;
   fileSizeBytes: number;
+  contentHash?: string;
+  allowDuplicate?: boolean;
   institutionId?: string | null;
   albumId?: string | null;
   albumName?: string;
@@ -93,6 +97,8 @@ interface MediaAssetPageResponse {
     assetCode: string;
     storageUrl: string;
     fileName: string;
+    /** The rename if one was set (MediaAsset.getTitle()), otherwise the same as fileName. */
+    title?: string;
     fileType: string;
     fileSizeBytes: number;
     aiCategory?: string | null;
@@ -131,7 +137,7 @@ function rawToAsset(raw: MediaAssetPageResponse["items"][0]): MediaAsset {
   return {
     id: raw.id,
     code: raw.assetCode,
-    title: raw.fileName,
+    title: raw.title || raw.fileName,
     fileName: raw.fileName,
     fileType: raw.fileType,
     fileSizeBytes: raw.fileSizeBytes,
@@ -218,6 +224,8 @@ interface MediaAssetDetailResponse {
   assetCode: string;
   storageUrl: string;
   fileName: string;
+  /** The rename if one was set (MediaAsset.getTitle()), otherwise the same as fileName. */
+  title?: string;
   fileType: string;
   fileSizeBytes: number;
   aiCategory?: string | null;
@@ -266,7 +274,7 @@ function mapDetailToAsset(raw: MediaAssetDetailResponse): MediaAsset {
   return {
     id: raw.id,
     code: raw.assetCode,
-    title: raw.fileName,
+    title: raw.title || raw.fileName,
     fileName: raw.fileName,
     fileType: raw.fileType,
     fileSizeBytes: raw.fileSizeBytes,
@@ -371,4 +379,15 @@ export function deleteMediaAlbum(id: string) {
 export function updateMediaAssetAlbum(id: string, albumId: string | null) {
   return api.post<MediaAssetDetailResponse>(`/media-assets/${id}/album`, { albumId })
     .then((res) => ({ ...res, data: mapDetailToAsset(res.data) }));
+}
+
+/** Renames an asset's display title. Never touches the original filename or storage object. */
+export function renameMediaAsset(id: string, title: string) {
+  return api.post<MediaAssetDetailResponse>(`/media-assets/${id}/title`, { title })
+    .then((res) => ({ ...res, data: mapDetailToAsset(res.data) }));
+}
+
+/** UC-2.2 A2: records that this browser session browsed Network View. Never throws — best-effort. */
+export function logNetworkViewAccess() {
+  return api.post<void>("/media-assets/network-view/log").catch(() => {});
 }

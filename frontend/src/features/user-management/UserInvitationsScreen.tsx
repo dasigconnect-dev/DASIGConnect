@@ -576,28 +576,24 @@ export default function UserInvitationsScreen({ user }: UserInvitationsScreenPro
                   label="Active"
                   value={visibleManagedUsers.filter((u) => u.accountState.toLowerCase() === 'active').length}
                   loading={managementLoading && managedUsers.length === 0}
-                  accent="green"
                 />
                 <MetricCard
-                    icon="ti ti-shield-check"
-                    label="Moderators"
-                    value={managedUsers.filter((u) => u.role.toLowerCase() === 'moderator').length}
-                    loading={managementLoading && managedUsers.length === 0}
-                    accent="purple"
-                  />
+                  icon="ti ti-shield-check"
+                  label="Moderators"
+                  value={managedUsers.filter((u) => u.role.toLowerCase() === 'moderator').length}
+                  loading={managementLoading && managedUsers.length === 0}
+                />
                 <MetricCard
                   icon="ti ti-pencil"
                   label="Contributors"
                   value={visibleManagedUsers.filter((u) => u.role.toLowerCase() === 'contributor').length}
                   loading={managementLoading && managedUsers.length === 0}
-                  accent="blue"
                 />
                 <MetricCard
                   icon="ti ti-clock-pause"
                   label="Pending Invites"
                   value={visiblePendingInvitations.length}
                   loading={managementLoading && pendingInvitations.length === 0}
-                  accent={visiblePendingInvitations.length > 0 ? 'gold' : undefined}
                 />
               </div>
             )}

@@ -73,12 +73,6 @@ export interface ContentIssueDto {
   count: number;
 }
 
-export interface CategoryPerformanceDto {
-  category: string;
-  postCount: number;
-  completenessRate: number;
-}
-
 export interface InstitutionFilterOptionDto {
   institutionId: string;
   institutionName: string;
@@ -113,6 +107,18 @@ export interface FacebookEngagementSummaryDto {
   totalShares: number;
   sampleSize: number;
   pendingCount: number;
+  /** Connected Facebook Page id, for deep-linking admins to Meta's own reach insights. */
+  pageId: string | null;
+}
+
+export interface PagePerformanceDto {
+  reach: number;
+  engagements: number;
+  newFollows: number;
+  views: number;
+  pageId: string | null;
+  periodStart: string;
+  periodEnd: string;
 }
 
 export interface AnalyticsSummaryDto {
@@ -131,13 +137,13 @@ export interface AnalyticsSummaryDto {
   contributorBreakdown: ContributorBreakdownDto[];
   statusBreakdown: StatusBreakdownDto[];
   contentIssues: ContentIssueDto[];
-  topCategories: CategoryPerformanceDto[];
   contributorAnalytics: ContributorAnalyticsDto | null;
   validatorAnalytics: ValidatorAnalyticsDto | null;
   aiPerformance: AiPerformanceDto | null;
   adminAnalytics: AdminAnalyticsDto | null;
   operationalHealth: OperationalHealthDto | null;
   facebookEngagement: FacebookEngagementSummaryDto;
+  pagePerformance: PagePerformanceDto | null;
 }
 
 export interface DailyAnalyticsPointDto {
@@ -180,11 +186,10 @@ export type AnalyticsExportMetric =
 export function getAnalyticsSummary(
   range: AnalyticsRange,
   institutionId?: string | null,
-  category?: string | null,
   signal?: AbortSignal,
 ) {
   return api.get<AnalyticsSummaryDto>("/analytics/summary", {
-    params: { range, ...(institutionId ? { institutionId } : {}), ...(category ? { category } : {}) },
+    params: { range, ...(institutionId ? { institutionId } : {}) },
     signal,
   });
 }
@@ -193,11 +198,10 @@ export function getAnalyticsReport(
   metric: AnalyticsExportMetric,
   range: AnalyticsRange,
   institutionId?: string | null,
-  category?: string | null,
   signal?: AbortSignal,
 ) {
   return api.get<AnalyticsReportDto>(`/analytics/report/${metric}`, {
-    params: { range, ...(institutionId ? { institutionId } : {}), ...(category ? { category } : {}) },
+    params: { range, ...(institutionId ? { institutionId } : {}) },
     signal,
   });
 }
@@ -206,10 +210,9 @@ export async function downloadAnalyticsCsv(
   metric: AnalyticsExportMetric,
   range: AnalyticsRange,
   institutionId?: string | null,
-  category?: string | null,
 ) {
   const response = await api.get<string>(`/analytics/export/${metric}`, {
-    params: { range, ...(institutionId ? { institutionId } : {}), ...(category ? { category } : {}) },
+    params: { range, ...(institutionId ? { institutionId } : {}) },
     responseType: "text",
   });
   const blob = new Blob([response.data], { type: "text/csv;charset=utf-8" });

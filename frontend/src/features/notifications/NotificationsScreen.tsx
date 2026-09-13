@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../styles/notifications.css";
+import "../../styles/institution-management.css";
 import "../../styles/dasig-loader.css";
 import { useNotifications } from "./hooks/useNotifications";
 import type { User } from "../../types/auth.types";
@@ -141,7 +142,10 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
     if (n.link !== "/dashboard" && n.link !== "/notifications" && n.link !== "/") {
       if (n.link.startsWith("/submissions/")) {
         const subId = n.link.replace("/submissions/", "");
-        const ownerView = `/submissions?submissionId=${subId}`;
+        const ownerView =
+          eventType === "submission_needs_revision"
+            ? `/submissions?submissionId=${subId}&openFeedback=true`
+            : `/submissions?submissionId=${subId}`;
         if (OWNER_FACING_EVENTS.has(eventType)) return ownerView;
         if (REVIEW_FACING_EVENTS.has(eventType)) {
           return canReview ? `/validation/queue?submissionId=${subId}` : ownerView;
@@ -181,7 +185,8 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
   }
 
   if (eventType === "submission_needs_revision" || eventType === "submission_rejected") {
-    // Both live under the "Action Needed" tab in My Submissions.
+    // Both live under the "Action Needed" tab in My Submissions. `openFeedback`
+    // is only honored on a single-submission route, so it's not appended here.
     return "/submissions?tab=action-needed";
   }
 
@@ -225,7 +230,7 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
     markAllRead,
     markRead,
     refreshNotifications,
-  } = useNotifications();
+  } = useNotifications(user);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
@@ -344,9 +349,11 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
     return (
       <div id="screen-notifications" style={{ background: "var(--d-bg)" }}>
         <div className="dash-body">
-          <div className="dash-view-header">
-            <h1 className="dash-view-title">{pageTitle}</h1>
-            <p className="dash-view-desc">{pageSubtitle}</p>
+          <div className="notif-header">
+            <div className="notif-header-text">
+              <h1 className="dash-view-title notif-title">{pageTitle}</h1>
+              <p className="dash-view-desc notif-subtitle">{pageSubtitle}</p>
+            </div>
           </div>
 
           <div
@@ -380,16 +387,16 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
     <div id="screen-notifications" style={{ background: "var(--d-bg)" }}>
       <div className="dash-body">
         {/* Page Header */}
-        <div className="dash-view-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
-          <div>
-            <h1 className="dash-view-title">{pageTitle}</h1>
-            <p className="dash-view-desc">{pageSubtitle}</p>
+        <div className="notif-header">
+          <div className="notif-header-text">
+            <h1 className="dash-view-title notif-title">{pageTitle}</h1>
+            <p className="dash-view-desc notif-subtitle">{pageSubtitle}</p>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div className="notif-header-actions">
             <button
               type="button"
-              className="notif-btn notif-btn-ghost"
+              className="notif-btn notif-btn-ghost notif-btn-mark-read"
               onClick={markAllRead}
               title="Mark all notifications as read"
             >
@@ -410,63 +417,55 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
         </div>
 
         {/* Card 1: Filter Tabs & Search Toolbar */}
-        <div className="card-wrap" style={{ marginBottom: "16px" }}>
-          <div className="dash-card-toolbar">
-            <div className="im-status-tabs" role="group" aria-label="Filter notifications by category">
+        <div className="card-wrap notif-toolbar-card" style={{ marginBottom: "16px" }}>
+          <div className="dash-card-toolbar notif-card-toolbar">
+            <div className="im-status-tabs notif-status-tabs" role="group" aria-label="Filter notifications by category">
               {displayFilters.map((f) => (
-                    <button
-                      key={f}
-                      type="button"
-                      className={`im-status-tab${activeFilter === f ? " is-active" : ""}`}
-                      onClick={() => handleFilterChange(f)}
-                      aria-pressed={activeFilter === f}
-                    >
-                      {FILTER_LABELS[f]}
-                      <span className="im-status-tab-count">{displayCounts[f]}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="im-search-wrap">
-                  <i className="ti ti-search im-search-icon" aria-hidden="true" />
-                  <input
-                    className="im-search-input"
-                    type="search"
-                    placeholder="Search notifications..."
-                    value={searchQuery}
-                    onChange={(e) => handleSearchChange(e.target.value)}
-                    aria-label="Search notifications"
-                  />
-                </div>
-              </div>
+                <button
+                  key={f}
+                  type="button"
+                  className={`im-status-tab${activeFilter === f ? " is-active" : ""}`}
+                  onClick={() => handleFilterChange(f)}
+                  aria-pressed={activeFilter === f}
+                >
+                  {FILTER_LABELS[f]}
+                  <span className="im-status-tab-count">{displayCounts[f]}</span>
+                </button>
+              ))}
             </div>
 
-            {/* Independent Action Row between Card 1 and Card 2 */}
-            {filteredNotifications.length > PAGE_SIZE && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: "14px",
-                  padding: "0 2px",
-                }}
-              >
-                <span style={{ fontSize: "13px", color: "var(--d-muted, #5a6f8a)", fontWeight: 500 }}>
-                  Showing {displayedNotifications.length} of {filteredNotifications.length} notifications
-                </span>
+            <div className="im-search-wrap notif-search-wrap">
+              <i className="ti ti-search im-search-icon" aria-hidden="true" />
+              <input
+                className="im-search-input"
+                type="search"
+                placeholder="Search notifications..."
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                aria-label="Search notifications"
+              />
+            </div>
+          </div>
+        </div>
 
-                <button
-                  type="button"
-                  className="notif-view-all-pill"
-                  onClick={() => setShowAll((prev) => !prev)}
-                  title={showAll ? "Show top 7 notifications" : "Show all notifications"}
-                >
-                  <i className={showAll ? "ti ti-chevron-up" : "ti ti-list-details"} />
-                  <span>{showAll ? `Show Top ${PAGE_SIZE}` : `View All Notifications (${filteredNotifications.length})`}</span>
-                </button>
-              </div>
-            )}
+        {/* Independent Action Row between Card 1 and Card 2 */}
+        {filteredNotifications.length > PAGE_SIZE && (
+          <div className="notif-count-strip">
+            <span style={{ fontSize: "13px", color: "var(--d-muted, #5a6f8a)", fontWeight: 500 }}>
+              Showing {displayedNotifications.length} of {filteredNotifications.length} notifications
+            </span>
+
+            <button
+              type="button"
+              className="notif-view-all-pill"
+              onClick={() => setShowAll((prev) => !prev)}
+              title={showAll ? "Show top 7 notifications" : "Show all notifications"}
+            >
+              <i className={showAll ? "ti ti-chevron-up" : "ti ti-list-details"} />
+              <span>{showAll ? `Show Top ${PAGE_SIZE}` : `View All Notifications (${filteredNotifications.length})`}</span>
+            </button>
+          </div>
+        )}
 
             {/* Card 2: Data Table */}
             <div className="card-wrap">

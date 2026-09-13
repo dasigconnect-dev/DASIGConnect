@@ -27,7 +27,8 @@ public enum AuditLogCategory {
         if (action == null) return OTHER;
         String a = action.toUpperCase();
 
-        if (a.contains("EDIT") || a.contains("REVISION") || a.contains("SUBMISSION_UPDATED")) {
+        if (a.contains("EDIT") || a.contains("REVISION") || a.contains("SUBMISSION_UPDATED")
+                || a.equals("MEDIA_ADDED")) {
             return EDIT_AND_REVISION;
         }
         if (a.contains("APPROVED") || a.contains("DIRECT_POST")) {
@@ -43,6 +44,7 @@ public enum AuditLogCategory {
             return PUBLISHING;
         }
         if (a.startsWith("USER_") || a.contains("SUPER_ADMIN") || a.contains("ADMIN_TRANSFER") || a.contains("ADMIN_OWNER")
+                || a.contains("ADMIN_PROMOTION")
                 || a.startsWith("CONTRIBUTOR_") || a.contains("INVITATION") || a.contains("PASSWORD")
                 || a.startsWith("LOGIN_") || a.equals("LOGOUT")) {
             return ACCOUNT_MANAGEMENT;

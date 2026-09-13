@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { CaptionVariant, CaptionTone } from "../../../api/aiApi";
+import "./AiCaptionSuggestion.css";
 
 interface Props {
   variants: CaptionVariant[];

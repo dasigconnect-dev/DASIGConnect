@@ -1,24 +1,21 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import "../styles/index.css";
-import "../styles/submission.css";
-import "../styles/validation.css";
-import "../styles/user-management.css";
-import "../styles/institution-management.css";
-import "../styles/calendar.css";
-import "../styles/media-picker.css";
 import "../styles/ui.css";
-import "../styles/settings.css";
 import { ToastProvider } from "../context/ToastContext";
+import { appQueryClient } from "../lib/queryClient";
 import App from "./App.tsx";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BrowserRouter>
-      <ToastProvider>
-        <App />
-      </ToastProvider>
-    </BrowserRouter>
+    <QueryClientProvider client={appQueryClient}>
+      <BrowserRouter>
+        <ToastProvider>
+          <App />
+        </ToastProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
   </StrictMode>,
 );

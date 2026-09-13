@@ -1,6 +1,8 @@
 package com.dasigconnect.backend.controller;
 
 import com.dasigconnect.backend.model.dto.ai.AiInteractionLogRequestDto;
+import com.dasigconnect.backend.model.dto.ai.AlbumMatchRequestDto;
+import com.dasigconnect.backend.model.dto.ai.AlbumMatchResponseDto;
 import com.dasigconnect.backend.model.dto.ai.MediaSuggestRequestDto;
 import com.dasigconnect.backend.model.dto.ai.MediaSuggestResultDto;
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
@@ -50,6 +52,20 @@ public class AIRecommendationController {
             @RequestBody MediaSuggestRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(aiRecommendationService.suggestMedia(id, dto, user)));
+    }
+
+    /**
+     * Album Auto-Match (UC-1.7): ranks the institution's existing root albums against
+     * the draft's current event title/caption/tags. See {@link AlbumMatchResponseDto}
+     * for how the "confident"/"ambiguous"/"none" status maps to the composer's UI.
+     */
+    @PostMapping("/{id}/suggest-album")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<AlbumMatchResponseDto>> suggestAlbum(
+            @PathVariable UUID id,
+            @RequestBody AlbumMatchRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(aiRecommendationService.suggestAlbum(id, dto, user)));
     }
 
     /** Records a user action (accepted/dismissed) for tag_classification or media_recommendation. */

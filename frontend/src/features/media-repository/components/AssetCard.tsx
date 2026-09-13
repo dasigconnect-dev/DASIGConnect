@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import type { MediaAsset } from "../../../api/mediaApi";
+import OptimizedImage, { canTransformImageType } from "../../../components/media/OptimizedImage";
 import { formatFileSize, formatUploadDate, isVideoType } from "../utils";
 
 interface AssetCardProps {
@@ -80,16 +81,20 @@ export default function AssetCard({
               src={asset.storageUrl}
               muted
               playsInline
-              preload="metadata"
+              preload="none"
               aria-label={asset.title}
             />
           ) : (
-          <img
-            className="med-card-thumb-img"
-            src={asset.storageUrl}
-            alt={asset.title}
-            loading="lazy"
-          />
+            <OptimizedImage
+              className="med-card-thumb-img"
+              src={asset.storageUrl}
+              alt={asset.title}
+              width={listView ? 180 : 360}
+              height={listView ? 135 : 225}
+              sizes={listView ? "120px" : "(max-width: 768px) 50vw, 280px"}
+              candidateWidths={listView ? [180, 240] : [240, 360, 560]}
+              transform={canTransformImageType(asset.fileType)}
+            />
           )
         ) : (
           <div

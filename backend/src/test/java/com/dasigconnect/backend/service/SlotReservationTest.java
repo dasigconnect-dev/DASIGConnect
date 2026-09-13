@@ -22,7 +22,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.dasigconnect.backend.exception.GuardRailViolationException;
 import com.dasigconnect.backend.exception.SlotAlreadyTakenException;
@@ -51,6 +50,9 @@ class SlotReservationServiceTest {
     @Mock
     private GuardRailService guardRailService;
 
+    @Mock
+    private GuardRailSettingsService guardRailSettings;
+
     @InjectMocks
     private SlotReservationService slotReservationService;
 
@@ -73,7 +75,7 @@ class SlotReservationServiceTest {
         mockInstitution.setId(institutionId);
 
         lenient().when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult());
-        ReflectionTestUtils.setField(slotReservationService, "guardRailsEnforced", true);
+        lenient().when(guardRailSettings.enforced()).thenReturn(true);
     }
 
     // ── reserve() ─────────────────────────────────────────────────────────────
@@ -146,7 +148,7 @@ class SlotReservationServiceTest {
         @Test
         @DisplayName("should save reservation when guard rail enforcement is disabled")
         void shouldSave_whenGuardRailEnforcementDisabled() {
-            ReflectionTestUtils.setField(slotReservationService, "guardRailsEnforced", false);
+            when(guardRailSettings.enforced()).thenReturn(false);
             when(slotReservationRepository.save(any())).thenReturn(new SlotReservation());
 
             slotReservationService.reserve(submissionId, institutionId, validSlot);

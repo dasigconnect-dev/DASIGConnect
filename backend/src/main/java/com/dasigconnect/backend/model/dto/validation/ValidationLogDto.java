@@ -17,6 +17,7 @@ public class ValidationLogDto {
     private boolean selfReview;
     private boolean fastTrack;
     private String editDiff;
+    private String editSeverity;
     private Instant createdAt;
 
     public static ValidationLogDto from(ValidationLog entry) {
@@ -31,6 +32,7 @@ public class ValidationLogDto {
         dto.selfReview = entry.isSelfReview();
         dto.fastTrack = entry.isFastTrack();
         dto.editDiff = entry.getEditDiff();
+        dto.editSeverity = entry.getEditSeverity();
         dto.createdAt = entry.getCreatedAt();
         return dto;
     }
@@ -45,5 +47,6 @@ public class ValidationLogDto {
     public boolean isSelfReview() { return selfReview; }
     public boolean isFastTrack() { return fastTrack; }
     public String getEditDiff() { return editDiff; }
+    public String getEditSeverity() { return editSeverity; }
     public Instant getCreatedAt() { return createdAt; }
 }

@@ -13,6 +13,7 @@ public class MediaAssetDetailDto {
     private String assetCode;
     private String storageUrl;
     private String fileName;
+    private String title;
     private String fileType;
     private long fileSizeBytes;
     private String aiCategory;
@@ -38,6 +39,7 @@ public class MediaAssetDetailDto {
         dto.assetCode = asset.getAssetCode();
         dto.storageUrl = asset.getStorageUrl();
         dto.fileName = asset.getFileName();
+        dto.title = asset.getTitle();
         dto.fileType = asset.getFileType().name();
         dto.fileSizeBytes = asset.getFileSizeBytes();
         dto.aiCategory = asset.getAiCategory();
@@ -75,6 +77,10 @@ public class MediaAssetDetailDto {
 
     public String getFileName() {
         return fileName;
+    }
+
+    public String getTitle() {
+        return title;
     }
 
     public String getFileType() {

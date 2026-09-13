@@ -2,6 +2,7 @@ import type { FormEvent } from 'react'
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
+import dasigLogo from '../../assets/dasigconnect-logo.png'
 
 type InviteState = 'form' | 'expired' | 'already' | 'success'
 
@@ -84,9 +85,7 @@ export default function InviteScreen({
             </div>
             <div className="brand-lockup">
               <div className="brand-icon">
-                <svg viewBox="0 0 24 24">
-                  <path d="M12 2L22 7V17L12 22L2 17V7L12 2Z" />
-                </svg>
+                <img src={dasigLogo} alt="DASIGConnect logo" />
               </div>
               <div className="brand-text">
                 <div className="brand-name">
@@ -307,7 +306,7 @@ export default function InviteScreen({
                   type="button"
                   className="eye-btn"
                   onClick={onTogglePassword}
-                  aria-label="Toggle"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   <i className={showPassword ? 'ti ti-eye' : 'ti ti-eye-off'}></i>
                 </button>
@@ -388,7 +387,7 @@ export default function InviteScreen({
                   type="button"
                   className="eye-btn"
                   onClick={onToggleConfirmPassword}
-                  aria-label="Toggle"
+                  aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
                 >
                   <i
                     className={showConfirmPassword ? 'ti ti-eye' : 'ti ti-eye-off'}

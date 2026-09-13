@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { listInstitutions, type InstitutionResponse } from "../../api/authApi";
+import { listInstitutions } from "../../api/authApi";
 import {
   attachAsset,
   createDraft,
@@ -15,7 +16,6 @@ import {
   validateGuardRails,
   withdrawSubmission,
   type GuardRailResult,
-  type EngagementRecommendations,
   type SavedMediaAsset,
   type SubmissionSummary,
 } from "../../api/submissionApi";
@@ -34,25 +34,27 @@ import { useFacebookPreviewData } from "../../hooks/useFacebookPreviewData";
 import { fileMediaKey, savedMediaKey } from "../../hooks/useMediaReorder";
 import type { User } from "../../types/auth.types";
 import type { SubmissionMediaItem } from "../../types/media";
-import type { CaptionTone } from "../../api/aiApi";
+import type { AlbumMatchCandidate, CaptionTone } from "../../api/aiApi";
+import { suggestAlbum } from "../../api/aiApi";
 import { useToast } from "../../context/ToastContext";
-import { registerAppCacheReset } from "../../lib/appCache";
-import MediaAssetsPicker from "../../components/media/MediaAssetsPicker";
+import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import AiCaptionButton from "./components/AiCaptionButton";
-import AiCaptionPromptDialog from "./components/AiCaptionPromptDialog";
-import AiCaptionSuggestion from "./components/AiCaptionSuggestion";
-import FancyTextTool, { type FancyTextSelection } from "./components/FancyTextTool";
-import SubmissionReadOnlyBody from "./components/SubmissionReadOnlyView";
+import type { FancyTextSelection } from "./components/FancyTextTool";
 import AlbumCombobox from "../../components/ui/AlbumCombobox";
+import { RevisionFeedbackModal } from "./components/RevisionFeedbackModal";
+import { RevisionFeedbackBanner } from "./components/RevisionFeedbackBanner";
+import { parseRevisionRemarks, REVISION_SUPPORTED_FIELDS } from "./utils/revisionComments";
 import "../../styles/dasig-loader.css";
+import "../../styles/submission.css";
 
 import type { CenterMode, FormState, ModalState, PendingLeaveAction, ProgressStep, QueueFilter, ReadinessTarget, SaveState } from "./types";
-import { initialForm, postTemplates, statusLabels, submissionDetailsMemoryCache } from "./constants";
+import { initialForm, postTemplates, statusLabels } from "./constants";
 import {
   appendHashtagToCaption,
-  CAPTION_WORD_LIMIT,
+  CAPTION_CHAR_LIMIT,
   captionTone,
   captionsForSavedIds,
   dateToInputValue,
@@ -91,7 +93,7 @@ import {
   sortFilesByOrder,
   sortSavedAssetsByOrder,
   toPayload,
-  trimToWordLimit,
+  trimToCharLimit,
   upsertSubmission,
 } from "./utils";
 import {
@@ -107,13 +109,28 @@ import {
   SectionHead,
 } from "./components/SharedPrimitives";
 import { StepPanelActions, StepProgress } from "./components/StepProgress";
-import { EngagementRecommendationsPanel } from "./components/EngagementRecommendationsPanel";
-import { InPageFacebookPreview } from "./components/InPageFacebookPreview";
 import { CalendarDateField } from "./components/CalendarDateField";
 import { TimePickerField } from "./components/TimePickerField";
 import { SubmissionCardMedia } from "./components/SubmissionCardMedia";
 
+const MediaAssetsPicker = lazy(() => import("../../components/media/MediaAssetsPicker"));
+const AiCaptionPromptDialog = lazy(() => import("./components/AiCaptionPromptDialog"));
+const AiCaptionSuggestion = lazy(() => import("./components/AiCaptionSuggestion"));
+const FancyTextTool = lazy(() => import("./components/FancyTextTool"));
+const SubmissionReadOnlyBody = lazy(() => import("./components/SubmissionReadOnlyView"));
+const EngagementRecommendationsPanel = lazy(() =>
+  import("./components/EngagementRecommendationsPanel").then((module) => ({
+    default: module.EngagementRecommendationsPanel,
+  })),
+);
+const InPageFacebookPreview = lazy(() =>
+  import("./components/InPageFacebookPreview").then((module) => ({
+    default: module.InPageFacebookPreview,
+  })),
+);
+
 const AUTO_SAVE_DELAY_MS = 1200;
+const COMPOSER_INSTITUTIONS_STALE_TIME_MS = 5 * 60_000;
 
 interface SubmissionScreenProps {
   user: User;
@@ -132,6 +149,15 @@ type ComposerTemplate = (typeof postTemplates)[number] & {
   createdAt?: string;
 };
 
+function DeferredSubmissionPanelFallback() {
+  return (
+    <div className="sub-inline-note" role="status">
+      <i className="ti ti-loader-2 sub-spin" aria-hidden="true" />
+      Loading panel...
+    </div>
+  );
+}
+
 function apiTemplateToComposerTemplate(template: ApiPostTemplate): ComposerTemplate {
   return {
     id: template.id,
@@ -146,28 +172,30 @@ function apiTemplateToComposerTemplate(template: ApiPostTemplate): ComposerTempl
   };
 }
 
-// Composer reference data that rarely changes within a session. The effects
-// below serve these from the module cache while it's younger than the TTL, so
-// re-entering the composer doesn't re-hit the DB every time. Cleared on logout.
 const COMPOSER_REF_TTL_MS = 2 * 60_000;
-let cachedTemplates: { data: ComposerTemplate[]; at: number } | null = null;
-const cachedAlbumsByInstitution = new Map<string, { data: string[]; at: number }>();
-registerAppCacheReset(() => {
-  cachedTemplates = null;
-  cachedAlbumsByInstitution.clear();
-});
+
+function userScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
+}
+
+function isCanceledRequest(error: unknown, signal?: AbortSignal) {
+  if (signal?.aborted) return true;
+  const maybeCanceled = error as { code?: string; name?: string };
+  return maybeCanceled.code === "ERR_CANCELED" || maybeCanceled.name === "CanceledError" || maybeCanceled.name === "AbortError";
+}
 
 export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { submissionId: routeSubmissionId } = useParams<{ submissionId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { submissions, setSubmissions, loading, error, refresh } =
-    useSubmissions();
+  const queryClient = useQueryClient();
+  const { submissions, setSubmissions, loading, refreshing, error, refresh } =
+    useSubmissions(user);
   const {
     lookups,
     loading: lookupsLoading,
-  } = useSubmissionLookups();
+  } = useSubmissionLookups(user);
   const toast = useToast();
   const detailsSectionRef = useRef<HTMLElement | null>(null);
   const mediaSectionRef = useRef<HTMLElement | null>(null);
@@ -191,18 +219,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     return "all";
   });
   const [queueSearch, setQueueSearch] = useState("");
-  const [listDetails, setListDetails] = useState<
-    Record<string, { caption: string; mediaAssets: SavedMediaAsset[] }>
-  >(() => ({ ...submissionDetailsMemoryCache }));
   const [form, setForm] = useState<FormState>(initialForm);
   const [pickerItems, setPickerItems] = useState<SubmissionMediaItem[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [albumMatching, setAlbumMatching] = useState(false);
+  const [albumMatchBadge, setAlbumMatchBadge] = useState<{ albumName: string; reasons: string[] } | null>(null);
+  const [albumMatchCandidates, setAlbumMatchCandidates] = useState<AlbumMatchCandidate[]>([]);
+  const [albumMatchNoResult, setAlbumMatchNoResult] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
   const [captionMediaKey, setCaptionMediaKey] = useState<string | null>(null);
   const [hashtagInput, setHashtagInput] = useState("");
   const [mediaTagInput, setMediaTagInput] = useState("");
-  const [customTemplates, setCustomTemplates] = useState<ComposerTemplate[]>([]);
-  const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
@@ -221,17 +248,62 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [loadedDetail, setLoadedDetail] = useState<
     { id: string; rejectionReason?: string | null; validatorRemarks?: string | null } | null
   >(null);
+  const [revisionModalOpen, setRevisionModalOpen] = useState(false);
+  const shownRevisionModalForIdRef = useRef<string | null>(null);
+  const [addressedRevisionFields, setAddressedRevisionFields] = useState<Set<string>>(new Set());
+
+  const parsedRevision = useMemo(
+    () => parseRevisionRemarks(loadedDetail?.id === form.id ? loadedDetail.validatorRemarks : null),
+    [loadedDetail, form.id],
+  );
+
+  const isNeedsRevision = form.status === "needs_revision";
+  const captionPulsing = isNeedsRevision && Boolean(parsedRevision.fields.caption) && !addressedRevisionFields.has("caption");
+  const eventTitlePulsing = isNeedsRevision && Boolean(parsedRevision.fields.eventTitle) && !addressedRevisionFields.has("eventTitle");
+  const eventDatePulsing = isNeedsRevision && Boolean(parsedRevision.fields.eventDate) && !addressedRevisionFields.has("eventDate");
+  const tagsPulsing = isNeedsRevision && Boolean(parsedRevision.fields.tags) && !addressedRevisionFields.has("tags");
+  const mediaPulsing = isNeedsRevision && Boolean(parsedRevision.fields.media) && !addressedRevisionFields.has("media");
+
+  const requestedRevisionFieldKeys = useMemo(
+    () =>
+      isNeedsRevision
+        ? Object.keys(parsedRevision.fields).filter((k) => Boolean(parsedRevision.fields[k]))
+        : [],
+    [isNeedsRevision, parsedRevision.fields],
+  );
+
+  const unaddressedRevisionFields = useMemo(
+    () => requestedRevisionFieldKeys.filter((k) => !addressedRevisionFields.has(k)),
+    [requestedRevisionFieldKeys, addressedRevisionFields],
+  );
+
+  const unaddressedRevisionLabels = useMemo(
+    () =>
+      unaddressedRevisionFields.map((k) => {
+        const found = REVISION_SUPPORTED_FIELDS.find((f) => f.key === k);
+        return found ? found.label : k;
+      }),
+    [unaddressedRevisionFields],
+  );
+
+  const hasUnaddressedRevisions = isNeedsRevision && unaddressedRevisionFields.length > 0;
+
+  function toggleRevisionFieldDone(fieldKey: string) {
+    setAddressedRevisionFields((prev) => {
+      const next = new Set(prev);
+      if (next.has(fieldKey)) {
+        next.delete(fieldKey);
+      } else {
+        next.add(fieldKey);
+      }
+      return next;
+    });
+  }
+
   const [refreshingQueue, setRefreshingQueue] = useState(false);
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
   const [guardRailError, setGuardRailError] = useState("");
-  const [engagementRecommendations, setEngagementRecommendations] =
-    useState<EngagementRecommendations | null>(null);
-  const [engagementLoading, setEngagementLoading] = useState(false);
-  const [institutions, setInstitutions] = useState<InstitutionResponse[]>([]);
-  const [institutionsLoading, setInstitutionsLoading] = useState(false);
-  const [institutionsError, setInstitutionsError] = useState("");
-  const [existingAlbums, setExistingAlbums] = useState<string[]>([]);
   const [activeStep, setActiveStep] = useState<ProgressStep>("media");
   const [captionSelection, setCaptionSelection] = useState<FancyTextSelection>({
     start: 0,
@@ -242,6 +314,56 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const isAdminComposer = user.role === "moderator" || user.role === "admin";
   const isMySubmissionsPage = location.pathname === "/submissions";
   const selectedInstitutionId = isAdminComposer ? form.institutionId : user.institutionId || "";
+  const currentUserScope = userScope(user);
+  const institutionsQuery = useQuery({
+    queryKey: queryKeys.institutions.composerOptions({
+      role: user.role,
+      userId: currentUserScope,
+    }),
+    queryFn: ({ signal }) => listInstitutions(signal).then((response) =>
+      response.data.filter((institution) => institution.status?.toLowerCase() !== "inactive"),
+    ),
+    enabled: isAdminComposer,
+    staleTime: COMPOSER_INSTITUTIONS_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const templatesQueryKey = queryKeys.submissions.templates({
+    role: user.role,
+    userId: currentUserScope,
+    institutionId: selectedInstitutionId || null,
+  });
+  const albumNamesQueryKey = queryKeys.submissions.albumNames({
+    role: user.role,
+    userId: currentUserScope,
+    institutionId: selectedInstitutionId || "",
+  });
+  const templatesQuery = useQuery({
+    queryKey: templatesQueryKey,
+    queryFn: ({ signal }) => listPostTemplates(signal).then((response) =>
+      (response.data ?? []).map(apiTemplateToComposerTemplate),
+    ),
+    staleTime: COMPOSER_REF_TTL_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const albumNamesQuery = useQuery({
+    queryKey: albumNamesQueryKey,
+    queryFn: ({ signal }) =>
+      listMediaAlbums(selectedInstitutionId, signal).then((response) =>
+        (response.data ?? []).map((album) => album.name),
+      ),
+    enabled: Boolean(selectedInstitutionId),
+    staleTime: COMPOSER_REF_TTL_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const customTemplates = templatesQuery.data ?? [];
+  const templatesLoading = templatesQuery.isLoading || templatesQuery.isFetching;
+  const existingAlbums = selectedInstitutionId ? albumNamesQuery.data ?? [] : [];
+  const institutions = institutionsQuery.data ?? [];
+  const institutionsLoading = institutionsQuery.isLoading || institutionsQuery.isFetching;
+  const institutionsError = institutionsQuery.error ? "Institution list could not be loaded." : "";
+  const templateErrorNotifiedRef = useRef(false);
+  const albumErrorNotifiedRef = useRef<string | null>(null);
+  const submissionsRefreshErrorNotifiedRef = useRef(false);
   const [mediaUploadFailed, setMediaUploadFailed] = useState(false);
   const selectedPostingInstitution = useMemo(
     () => institutions.find((institution) => institution.id === form.institutionId) ?? null,
@@ -258,6 +380,40 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         : submissions.filter((item) => queueBucket(item.status) === filter);
     return base.filter((item) => matchesQueueSearch(item, queueSearch));
   }, [filter, queueSearch, submissions]);
+  const queuedPreviewItems = useMemo(
+    () =>
+      queued.filter(
+        (item) =>
+          !item.caption || ((item.mediaCount ?? 0) > 0 && !item.mediaAssets?.length),
+      ),
+    [queued],
+  );
+  const previewDetailQueries = useQueries({
+    queries: queuedPreviewItems.map((item) => ({
+      queryKey: queryKeys.submissions.detail({
+        role: user.role,
+        userId: currentUserScope,
+        institutionId: item.institutionId || user.institutionId || null,
+        submissionId: item.id,
+      }),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        getSubmission(item.id, signal).then((response) => ({
+          caption: response.data.caption ?? "",
+          mediaAssets: response.data.mediaAssets ?? [],
+        })),
+      enabled: isMySubmissionsPage,
+      staleTime: COMPOSER_REF_TTL_MS,
+      meta: authenticatedQueryMeta,
+    })),
+  });
+  const previewDetails = useMemo(() => {
+    const entries: Record<string, { caption: string; mediaAssets: SavedMediaAsset[] }> = {};
+    previewDetailQueries.forEach((query, index) => {
+      const id = queuedPreviewItems[index]?.id;
+      if (id && query.data) entries[id] = query.data;
+    });
+    return entries;
+  }, [previewDetailQueries, queuedPreviewItems]);
 
   // One pass over the list for every tab count.
   const counts = useMemo(() => {
@@ -330,83 +486,96 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const shouldPromptBeforeLeave = isDirty;
   const busy =
     saveState === "saving" || submitting || withdrawing || deleting || reorderingMedia;
+  const shouldLoadEngagementRecommendations =
+    activeStep === "schedule" &&
+    !form.fastTrack &&
+    !isReadOnlySubmission &&
+    !(isAdminComposer && !selectedInstitutionId);
+  const engagementRecommendationsQuery = useQuery({
+    queryKey: queryKeys.submissions.engagementRecommendations({
+      role: user.role,
+      userId: currentUserScope,
+      institutionId: selectedInstitutionId || null,
+    }),
+    queryFn: ({ signal }) =>
+      getEngagementRecommendations(selectedInstitutionId || null, signal).then((response) =>
+        response.data.available ? response.data : null,
+      ),
+    enabled: shouldLoadEngagementRecommendations,
+    staleTime: COMPOSER_REF_TTL_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const engagementRecommendations = shouldLoadEngagementRecommendations
+    ? engagementRecommendationsQuery.data ?? null
+    : null;
+  const engagementLoading =
+    shouldLoadEngagementRecommendations &&
+    (engagementRecommendationsQuery.isLoading || engagementRecommendationsQuery.isFetching);
+
+  function submissionDetailParams(submission: Pick<SubmissionSummary, "id" | "institutionId">) {
+    return {
+      role: user.role,
+      userId: currentUserScope,
+      institutionId: submission.institutionId || user.institutionId || null,
+      submissionId: submission.id,
+    };
+  }
+
+  function syncSubmissionCaches(next: SubmissionSummary) {
+    setSubmissions((current) => upsertSubmission(current, next));
+    const detailParams = submissionDetailParams(next);
+    queryClient.setQueryData<SubmissionSummary>(
+      queryKeys.submissions.editorDetail(detailParams),
+      next,
+    );
+    queryClient.setQueryData<{ caption: string; mediaAssets: SavedMediaAsset[] }>(
+      queryKeys.submissions.detail(detailParams),
+      {
+        caption: next.caption ?? "",
+        mediaAssets: next.mediaAssets ?? [],
+      },
+    );
+  }
+
+  function removeSubmissionCaches(submission: Pick<SubmissionSummary, "id" | "institutionId">) {
+    setSubmissions((current) => current.filter((item) => item.id !== submission.id));
+    const detailParams = submissionDetailParams(submission);
+    queryClient.removeQueries({ queryKey: queryKeys.submissions.editorDetail(detailParams) });
+    queryClient.removeQueries({ queryKey: queryKeys.submissions.detail(detailParams) });
+  }
 
   useEffect(() => {
-    if (!isAdminComposer) return;
-    const controller = new AbortController();
-    setInstitutionsLoading(true);
-    listInstitutions(controller.signal)
-      .then((response) => {
-        const activeInstitutions = response.data.filter(
-          (institution) => institution.status?.toLowerCase() !== "inactive",
-        );
-        setInstitutions(activeInstitutions);
-        setInstitutionsError("");
-        setForm((prev) => {
-          if (prev.institutionId || prev.id) return prev;
-          const dasig = activeInstitutions.find(
-            (inst) => isDefaultInstitution(inst),
-          );
-          return dasig ? { ...prev, institutionId: dasig.id } : prev;
-        });
-      })
-      .catch((err: unknown) => {
-        if ((err as { name?: string })?.name === "CanceledError") return;
-        setInstitutionsError(getErrorMessage(err, "Institution list could not be loaded."));
-      })
-      .finally(() => setInstitutionsLoading(false));
-    return () => controller.abort();
-  }, [isAdminComposer]);
-
-  useEffect(() => {
-    if (cachedTemplates && Date.now() - cachedTemplates.at < COMPOSER_REF_TTL_MS) {
-      setCustomTemplates(cachedTemplates.data);
-      setTemplatesLoading(false);
-      return;
-    }
-    const controller = new AbortController();
-    setTemplatesLoading(true);
-    listPostTemplates(controller.signal)
-      .then((response) => {
-        const mapped = (response.data ?? []).map(apiTemplateToComposerTemplate);
-        cachedTemplates = { data: mapped, at: Date.now() };
-        setCustomTemplates(mapped);
-      })
-      .catch((err: unknown) => {
-        if ((err as { name?: string })?.name === "CanceledError") return;
-        toast.error("Could not load saved templates.");
-      })
-      .finally(() => setTemplatesLoading(false));
-    return () => controller.abort();
-  }, [toast]);
-
-  useEffect(() => {
-    if (!selectedInstitutionId) {
-      setExistingAlbums([]);
-      return;
-    }
-
-    const cached = cachedAlbumsByInstitution.get(selectedInstitutionId);
-    if (cached && Date.now() - cached.at < COMPOSER_REF_TTL_MS) {
-      setExistingAlbums(cached.data);
-      return;
-    }
-
-    const controller = new AbortController();
-    listMediaAlbums(selectedInstitutionId, controller.signal)
-      .then((response) => {
-        const names = (response.data ?? []).map((album) => album.name);
-        cachedAlbumsByInstitution.set(selectedInstitutionId, { data: names, at: Date.now() });
-        setExistingAlbums(names);
-      })
-      .catch((err: unknown) => {
-        if ((err as { name?: string })?.name === "CanceledError") return;
-        setExistingAlbums([]);
-        toast.error("Could not load media albums.");
+    if (!isAdminComposer || !institutions.length) return;
+    queueMicrotask(() => {
+      setForm((prev) => {
+        if (prev.institutionId || prev.id) return prev;
+        const dasig = institutions.find((inst) => isDefaultInstitution(inst));
+        return dasig ? { ...prev, institutionId: dasig.id } : prev;
       });
+    });
+  }, [institutions, isAdminComposer]);
 
-    return () => controller.abort();
-  }, [selectedInstitutionId, toast]);
+  useEffect(() => {
+    if (!templatesQuery.isError || templateErrorNotifiedRef.current) return;
+    templateErrorNotifiedRef.current = true;
+    toast.error("Could not load saved templates.");
+  }, [templatesQuery.isError, toast]);
+
+  useEffect(() => {
+    if (!error || submissions.length === 0) {
+      if (!error) submissionsRefreshErrorNotifiedRef.current = false;
+      return;
+    }
+    if (submissionsRefreshErrorNotifiedRef.current) return;
+    submissionsRefreshErrorNotifiedRef.current = true;
+    toast.error(error);
+  }, [error, submissions.length, toast]);
+
+  useEffect(() => {
+    if (!selectedInstitutionId || !albumNamesQuery.isError || albumErrorNotifiedRef.current === selectedInstitutionId) return;
+    albumErrorNotifiedRef.current = selectedInstitutionId;
+    toast.error("Could not load media albums.");
+  }, [albumNamesQuery.isError, selectedInstitutionId, toast]);
 
   const isDetailsComplete = useMemo(
     () =>
@@ -560,6 +729,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const aiCaption = useAiCaptionAssist(form.id, hasImageAssets, form.caption);
 
   useEffect(() => {
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
       if (!scheduledAt) {
         setGuardRails(null);
@@ -575,44 +745,29 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       }
 
       setGuardRailsLoading(true);
-      validateGuardRails(scheduledAt, selectedInstitutionId || undefined, form.id || undefined)
+      validateGuardRails(scheduledAt, selectedInstitutionId || undefined, form.id || undefined, controller.signal)
         .then((response) => {
+          if (controller.signal.aborted) return;
           setGuardRails(response.data);
           setGuardRailError("");
         })
         .catch((err: unknown) => {
+          if (isCanceledRequest(err, controller.signal)) return;
           setGuardRails(null);
           setGuardRailError(getErrorMessage(err, "Slot validation is unavailable."));
         })
-        .finally(() => setGuardRailsLoading(false));
+        .finally(() => {
+          if (!controller.signal.aborted) setGuardRailsLoading(false);
+        });
     }, scheduledAt ? 350 : 0);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
     // form.id is included so validation re-runs once the first save assigns an
     // id — otherwise the check would flag the user's own new reservation.
   }, [isAdminComposer, scheduledAt, selectedInstitutionId, form.id]);
-
-  useEffect(() => {
-    if (activeStep !== "schedule" || form.fastTrack || isReadOnlySubmission
-        || (isAdminComposer && !selectedInstitutionId)) {
-      setEngagementRecommendations(null);
-      setEngagementLoading(false);
-      return;
-    }
-    const controller = new AbortController();
-    setEngagementLoading(true);
-    getEngagementRecommendations(selectedInstitutionId, controller.signal)
-      .then((response) => {
-        setEngagementRecommendations(response.data.available ? response.data : null);
-      })
-      .catch((error: unknown) => {
-        if ((error as { name?: string })?.name !== "CanceledError") {
-          setEngagementRecommendations(null);
-        }
-      })
-      .finally(() => setEngagementLoading(false));
-    return () => controller.abort();
-  }, [activeStep, form.fastTrack, isReadOnlySubmission, selectedInstitutionId]);
 
   // Clean up ?tab= from the URL after it has been consumed by the lazy filter initializer.
   useEffect(() => {
@@ -640,13 +795,26 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (ids.length === 0) return;
 
     void (async () => {
-      const results = await Promise.allSettled(ids.map((id) => getMediaAsset(id)));
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          queryClient.fetchQuery({
+            queryKey: queryKeys.mediaAssets.detail({
+              role: user.role,
+              userId: currentUserScope,
+              assetId: id,
+            }),
+            queryFn: ({ signal }) => getMediaAsset(id, signal).then((response) => response.data),
+            staleTime: COMPOSER_REF_TTL_MS,
+            meta: authenticatedQueryMeta,
+          }),
+        ),
+      );
       const assets: SavedMediaAsset[] = results
-        .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof getMediaAsset>>> =>
+        .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof getMediaAsset>>["data"]> =>
           result.status === "fulfilled",
         )
         .map((result) => {
-          const asset = result.value.data;
+          const asset = result.value;
           return {
             id: asset.id,
             storageUrl: asset.storageUrl,
@@ -677,41 +845,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         );
       }
     })();
-  }, [searchParams, toast]);
-
-  useEffect(() => {
-    if (!isMySubmissionsPage) return;
-    const needsPreview = queued.filter(
-      (item) =>
-        (!item.caption || ((item.mediaCount ?? 0) > 0 && !item.mediaAssets?.length)) &&
-        !listDetails[item.id],
-    );
-    if (needsPreview.length === 0) return;
-
-    let cancelled = false;
-    void Promise.allSettled(needsPreview.map((item) => getSubmission(item.id))).then((results) => {
-      if (cancelled) return;
-      const nextEntries: Record<string, { caption: string; mediaAssets: SavedMediaAsset[] }> = {};
-      results.forEach((result, index) => {
-        const id = needsPreview[index]?.id;
-        if (!id) return;
-        const entry =
-          result.status === "fulfilled"
-            ? {
-                caption: result.value.data.caption ?? "",
-                mediaAssets: result.value.data.mediaAssets ?? [],
-              }
-            : { caption: "", mediaAssets: [] };
-        nextEntries[id] = entry;
-        submissionDetailsMemoryCache[id] = entry;
-      });
-      setListDetails((current) => ({ ...current, ...nextEntries }));
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isMySubmissionsPage, listDetails, queued]);
+  }, [currentUserScope, queryClient, searchParams, toast, user.role]);
 
   useEffect(() => {
     const submissionId = routeSubmissionId ?? searchParams.get("submissionId");
@@ -719,21 +853,30 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       routedSubmissionRef.current = null;
       return;
     }
-    if (routedSubmissionRef.current === submissionId) return;
+    if (routedSubmissionRef.current === submissionId) {
+      if (searchParams.get("openFeedback") === "true") {
+        queueMicrotask(() => setRevisionModalOpen(true));
+      }
+      return;
+    }
     routedSubmissionRef.current = submissionId;
     const existing = submissions.find((s) => s.id === submissionId);
     const initialStatus = existing?.status ?? "pending";
-    setFilter(queueBucket(initialStatus));
-    setCenterMode("edit");
+    queueMicrotask(() => {
+      setFilter(queueBucket(initialStatus));
+      setCenterMode("edit");
+    });
     if (existing) {
-      setForm((current) => ({
-        ...current,
-        id: existing.id,
-        status: existing.status,
-        eventTitle: existing.eventTitle || "",
-        eventDate: existing.eventDate || "",
-        institutionId: existing.institutionId || current.institutionId,
-      }));
+      queueMicrotask(() => {
+        setForm((current) => ({
+          ...current,
+          id: existing.id,
+          status: existing.status,
+          eventTitle: existing.eventTitle || "",
+          eventDate: existing.eventDate || "",
+          institutionId: existing.institutionId || current.institutionId,
+        }));
+      });
     }
     void applySubmission({
       id: submissionId,
@@ -769,6 +912,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
+    if (key === "eventTitle" || key === "eventDate" || key === "caption") {
+      setAddressedRevisionFields((prev) => new Set(prev).add(key));
+    }
     setForm((current) => {
       const next = { ...current, [key]: value };
       if (key === "eventTitle" && typeof value === "string") {
@@ -786,10 +932,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   // Admin "Posting As" change. On an unsaved composer it's a free switch. On a
-  // saved draft, files uploaded to this draft are STAGED (no institution yet) and
-  // are kept; only assets picked from the previous institution's library are
-  // dropped (they stay in that library). The reserved slot is per-institution, so
-  // the schedule is cleared too. Mirrored server-side by
+  // saved draft, selected media is kept because reviewers/admins can reuse vetted
+  // assets network-wide. The reserved slot is per-institution, so the schedule is
+  // cleared. Mirrored server-side by
   // SubmissionService.maybeRehomeSubmission on the next save.
   function handlePostingInstitutionChange(nextInstitutionId: string) {
     if (!nextInstitutionId || nextInstitutionId === form.institutionId) return;
@@ -799,42 +944,22 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       return;
     }
 
-    const droppedAssets = form.savedAssets.filter((asset) => asset.status !== "STAGED");
-    const keptAssets = form.savedAssets.filter((asset) => asset.status === "STAGED");
-    const droppedCount = droppedAssets.length + form.pendingAssetIds.length;
     const hasSchedule = Boolean(form.scheduledDate || form.scheduledTime);
 
-    if (droppedCount > 0 || hasSchedule) {
-      const parts = [
-        droppedCount > 0
-          ? `remove ${droppedCount} item${droppedCount === 1 ? "" : "s"} you picked from the current institution's library`
-          : null,
-        hasSchedule ? "clear the preferred schedule" : null,
-      ]
-        .filter(Boolean)
-        .join(" and ");
+    if (hasSchedule) {
       const confirmed = window.confirm(
-        `Changing the institution will ${parts}. Files you uploaded to this draft are kept. Continue?`,
+        "Changing the institution will clear the preferred schedule. Selected media is kept. Continue?",
       );
       if (!confirmed) return;
     }
 
-    const droppedIds = new Set(droppedAssets.map((asset) => asset.id));
-    const droppedKeys = new Set(droppedAssets.map((asset) => savedMediaKey(asset.id)));
-
     setForm((current) => ({
       ...current,
       institutionId: nextInstitutionId,
-      savedAssets: keptAssets,
-      mediaOrder: current.mediaOrder.filter((key) => !droppedKeys.has(key)),
-      pendingAssetIds: [],
       removedAssetIds: [],
       scheduledDate: "",
       scheduledTime: "",
     }));
-    setPickerItems((current) =>
-      current.filter((item) => !(item.assetId != null && droppedIds.has(item.assetId))),
-    );
     setSaveState("idle");
     const targetName =
       institutions.find((institution) => institution.id === nextInstitutionId)?.name ??
@@ -865,14 +990,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     nextCaption: string,
     nextSelection: FancyTextSelection,
   ) {
-    updateField("caption", trimToWordLimit(nextCaption));
+    updateField("caption", trimToCharLimit(nextCaption));
     restoreCaptionSelection(nextSelection);
   }
 
   function updateCaption(nextCaption: string) {
-    const limitedCaption = trimToWordLimit(nextCaption);
+    const limitedCaption = trimToCharLimit(nextCaption);
     if (limitedCaption !== nextCaption) {
-      toast.warning(`Caption is limited to ${CAPTION_WORD_LIMIT} characters.`);
+      toast.warning(`Caption is limited to ${CAPTION_CHAR_LIMIT} characters.`);
     }
     updateField("caption", limitedCaption);
   }
@@ -980,11 +1105,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         institutionId: selectedInstitutionId || null,
       });
       const template = apiTemplateToComposerTemplate(response.data);
-      setCustomTemplates((current) => {
-        const next = [template, ...current];
-        cachedTemplates = { data: next, at: Date.now() };
-        return next;
-      });
+      queryClient.setQueryData<ComposerTemplate[]>(templatesQueryKey, (current = []) => [template, ...current]);
+      templateErrorNotifiedRef.current = false;
+      await queryClient.invalidateQueries({ queryKey: ["submissions"] });
       setForm((current) => ({ ...current, selectedTemplateId: template.id }));
       setTemplateSaveOpen(false);
       toast.success("Template saved.");
@@ -1005,11 +1128,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setDeletingTemplate(true);
     try {
       await deletePostTemplate(templateDeleteId);
-      setCustomTemplates((current) => {
-        const next = current.filter((template) => template.id !== templateDeleteId);
-        cachedTemplates = { data: next, at: Date.now() };
-        return next;
-      });
+      queryClient.setQueryData<ComposerTemplate[]>(templatesQueryKey, (current = []) =>
+        current.filter((template) => template.id !== templateDeleteId),
+      );
+      templateErrorNotifiedRef.current = false;
+      await queryClient.invalidateQueries({ queryKey: ["submissions"] });
       setForm((current) =>
         current.selectedTemplateId === templateDeleteId
           ? { ...current, selectedTemplateId: null }
@@ -1029,6 +1152,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (isReadOnlySubmission) return;
     const hashtag = normalizeHashtagInput(hashtagInput);
     if (!hashtag) return;
+    setAddressedRevisionFields((prev) => new Set(prev).add("tags"));
     setForm((current) => ({
       ...current,
       caption: appendHashtagToCaption(current.caption, hashtag),
@@ -1040,6 +1164,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
   function removeHashtagFromCaption(hashtag: string) {
     if (isReadOnlySubmission) return;
+    setAddressedRevisionFields((prev) => new Set(prev).add("tags"));
     setForm((current) => ({
       ...current,
       caption: removeHashtag(current.caption, hashtag),
@@ -1075,9 +1200,45 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setSaveState("idle");
   }
 
-  function applyAutoAlbum() {
-    if (isReadOnlySubmission) return;
-    updateField("albumName", form.eventTitle.trim() || form.liveEventName.trim() || "Auto-Matched Album");
+  async function applyAutoAlbum() {
+    if (isReadOnlySubmission || albumMatching) return;
+    setAlbumMatchBadge(null);
+    setAlbumMatchCandidates([]);
+    setAlbumMatchNoResult(false);
+
+    if (!form.id) {
+      // No saved draft yet — the match endpoint needs a submissionId. Fall back
+      // to the plain event-title fill rather than blocking the action.
+      updateField("albumName", form.eventTitle.trim() || form.liveEventName.trim() || "Auto-Matched Album");
+      return;
+    }
+
+    setAlbumMatching(true);
+    try {
+      const result = await suggestAlbum(form.id, {
+        eventTitle: form.eventTitle.trim() || undefined,
+        caption: form.caption.trim() || undefined,
+        tags: effectiveMediaTags(form),
+      });
+      if (result.status === "confident" && result.candidates.length > 0) {
+        const top = result.candidates[0];
+        updateField("albumName", top.albumName);
+        setAlbumMatchBadge({ albumName: top.albumName, reasons: top.reasons });
+      } else if (result.status === "ambiguous" && result.candidates.length > 0) {
+        setAlbumMatchCandidates(result.candidates);
+      } else {
+        setAlbumMatchNoResult(true);
+      }
+    } finally {
+      setAlbumMatching(false);
+    }
+  }
+
+  function handleAlbumNameChange(value: string) {
+    setAlbumMatchBadge(null);
+    setAlbumMatchCandidates([]);
+    setAlbumMatchNoResult(false);
+    updateField("albumName", value);
   }
 
   function resetComposer() {
@@ -1096,6 +1257,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setActiveStep("media");
     setMediaUploadFailed(false);
     clearAssetIdParam();
+    shownRevisionModalForIdRef.current = null;
+    setRevisionModalOpen(false);
+    setAddressedRevisionFields(new Set());
   }
 
   function startNewSubmission() {
@@ -1119,6 +1283,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setSaveState("idle");
     cleanSignatureRef.current = getDirtySignature(initialForm);
     browserBackGuardRef.current = false;
+    shownRevisionModalForIdRef.current = null;
+    setRevisionModalOpen(false);
+    setAddressedRevisionFields(new Set());
     navigate(returnTo || "/submissions", { replace: true });
   }
 
@@ -1154,6 +1321,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setRefreshingQueue(true);
     try {
       await refresh();
+    } catch {
+      // The query error state preserves cached results and drives the existing toast feedback.
     } finally {
       setRefreshingQueue(false);
     }
@@ -1162,7 +1331,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   async function applySubmission(summary: SubmissionSummary) {
     setHydratingId(summary.id);
     try {
-      const { data: submission } = await getSubmission(summary.id);
+      const submission = await queryClient.fetchQuery({
+        queryKey: queryKeys.submissions.editorDetail({
+          role: user.role,
+          userId: currentUserScope,
+          institutionId: summary.institutionId || user.institutionId || null,
+          submissionId: summary.id,
+        }),
+        queryFn: ({ signal }) => getSubmission(summary.id, signal).then((response) => response.data),
+        staleTime: 0,
+        meta: authenticatedQueryMeta,
+      });
       const nextForm: FormState = {
         id: submission.id,
         status: submission.status,
@@ -1205,6 +1384,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         rejectionReason: submission.rejectionReason,
         validatorRemarks: submission.validatorRemarks,
       });
+      setAddressedRevisionFields(new Set());
       setPickerItems((submission.mediaAssets ?? []).map(savedAssetToPickerItem));
       setCaptionMediaKey(null);
       setHashtagInput("");
@@ -1217,6 +1397,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setSaveState("saved");
       setMediaUploadFailed(false);
       cleanSignatureRef.current = getDirtySignature(nextForm);
+
+      if (submission.status === "needs_revision") {
+        const forceOpen = searchParams.get("openFeedback") === "true";
+        if (forceOpen || shownRevisionModalForIdRef.current !== submission.id) {
+          shownRevisionModalForIdRef.current = submission.id;
+          setRevisionModalOpen(true);
+        }
+      }
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } }).response?.status;
       if (status === 403) {
@@ -1308,9 +1496,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       }));
       setPickerItems(orderedSavedAssets.map(savedAssetToPickerItem));
       setCaptionMediaKey(null);
-      setSubmissions((current) =>
-        upsertSubmission(current, finalResponse.data),
-      );
+      syncSubmissionCaches(finalResponse.data);
       clearAssetIdParam();
       setSaveState("saved");
       setMediaUploadFailed(false);
@@ -1362,6 +1548,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
   async function handleSubmit() {
     if (isReadOnlySubmission || busy) return;
+    if (hasUnaddressedRevisions) {
+      toast.error(
+        `Please edit all requested revision fields (${unaddressedRevisionLabels.join(", ")}) before submitting.`,
+      );
+      setModal(null);
+      return;
+    }
     const missing: string[] = [];
     if (isAdminComposer && !form.institutionId) missing.push("an institution scope");
     if (!form.eventTitle.trim()) missing.push("an event title");
@@ -1432,7 +1625,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         );
       }
       const submitted = await submitForReview(draftResponse.data.id);
-      setSubmissions((current) => upsertSubmission(current, submitted.data));
+      syncSubmissionCaches(submitted.data);
       const submittedAssets = submitted.data.mediaAssets ?? form.savedAssets;
       setForm((current) => ({
         ...current,
@@ -1453,7 +1646,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       toast.success("Submission sent for approval.");
       void refresh();
     } catch (err: unknown) {
-      toast.error(getErrorMessage(err, "Submission failed."));
+      const message = getErrorMessage(err, "Submission failed.");
+      // A4 — another submission claimed this slot between the last save and
+      // this submit attempt. Guide the actor back to Schedule instead of just
+      // toasting a generic error, since the fix is always "pick a new time."
+      if (isConflictError(err) && /guard rail/i.test(message)) {
+        toast.error(`${message} Choose a new time and resubmit.`);
+        setModal(null);
+        setActiveStep("schedule");
+      } else {
+        toast.error(message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -1510,9 +1713,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
     try {
       await deleteDraft(form.id);
-      setSubmissions((current) =>
-        current.filter((item) => item.id !== form.id),
-      );
+      removeSubmissionCaches({
+        id: form.id,
+        institutionId: form.institutionId || user.institutionId || "",
+      });
       setModal(null);
       toast.info("Draft deleted.");
       exitSubmission();
@@ -1528,7 +1732,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setWithdrawing(true);
     try {
       const { data } = await withdrawSubmission(form.id);
-      setSubmissions((current) => upsertSubmission(current, data));
+      syncSubmissionCaches(data);
       const nextAssets = data.mediaAssets ?? form.savedAssets;
       setForm((current) => ({
         ...current,
@@ -1567,6 +1771,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function handlePickerChange(items: SubmissionMediaItem[]) {
+    setAddressedRevisionFields((prev) => new Set(prev).add("media"));
     setPickerItems(items);
     if (captionMediaKey && !items.some((item) => pickerMediaKey(item) === captionMediaKey)) {
       setCaptionMediaKey(null);
@@ -1685,7 +1890,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         mediaSkipWatermark: mediaSkipWatermarkFromSavedAssets(nextAssets),
       }));
       setPickerItems(nextAssets.map(savedAssetToPickerItem));
-      setSubmissions((current) => upsertSubmission(current, data));
+      syncSubmissionCaches(data);
       toast.success("Media order updated.");
       cleanSignatureRef.current = getDirtySignature(nextForm);
     } catch (err: unknown) {
@@ -1724,10 +1929,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 className="sub-btn-ghost"
                 type="button"
                 onClick={() => void refreshQueue()}
-                disabled={refreshingQueue || loading}
+                disabled={refreshingQueue || loading || refreshing}
                 title="Refresh submissions list"
               >
-                <i className={`ti ti-refresh${refreshingQueue || loading ? " spin" : ""}`} style={{ fontSize: 14 }} />
+                <i className={`ti ti-refresh${refreshingQueue || loading || refreshing ? " spin" : ""}`} style={{ fontSize: 14 }} />
                 <span>Refresh</span>
               </button>
               <button
@@ -1815,9 +2020,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           </div>
 
           <section className="sub-list-results" aria-label="My submissions">
-            {loading || refreshingQueue ? (
+            {loading ? (
               <QueueLoadingState />
-            ) : error ? (
+            ) : error && submissions.length === 0 ? (
               <QueueState
                 icon="ti-database-off"
                 title="Unable to load submissions"
@@ -1831,7 +2036,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               />
             ) : (
               queued.map((item) => {
-                const detail = listDetails[item.id];
+                const detail = previewDetails[item.id];
                 const mediaAssets =
                   item.mediaAssets?.length ? item.mediaAssets : detail?.mediaAssets ?? [];
                 const thumbnail = mediaAssets[0];
@@ -1887,7 +2092,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     <SubmissionCardMedia
                       thumbnail={thumbnail}
                       mediaCount={item.mediaCount}
-                      detailsLoaded={Boolean(listDetails[item.id])}
+                      detailsLoaded={Boolean(previewDetails[item.id])}
                     />
 
                     {/* Reactions & Engagement Row */}
@@ -2204,44 +2409,60 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           </div>
 
           {centerMode === "preview" ? (
-            <InPageFacebookPreview
-              pageName={facebookPreview.pageName}
-              pageAvatarUrl={facebookPreview.pageAvatarUrl}
-              publishDate={facebookPreview.publishDate}
-              caption={facebookPreview.caption}
-              mediaItems={facebookPreview.mediaItems}
-              activeMediaIndex={activeMediaIndex}
-              canSaveDraft={form.status === "draft" && isDirty}
-              canSubmitForReview={canSubmitCurrentSubmission}
-              submitDisabledReason={
-                canSubmitCurrentSubmission
-                  ? submitDisabledReason
-                  : "This submission has already moved beyond draft status."
-              }
-              isSaving={saveState === "saving"}
-              isSubmitting={submitting}
-              reorderDisabled={isReadOnlySubmission || reorderingMedia || saveState === "saving" || submitting}
-              onMediaIndexChange={setActiveMediaIndex}
-              onReorderMedia={(orderedIds) => void handleReorderMedia(orderedIds)}
-              onSaveDraft={() => void handleSave()}
-              onSubmitForReview={() => setModal("submit")}
-              onEditDetails={handleEditPreviewDetails}
-            />
+            <Suspense fallback={<DeferredSubmissionPanelFallback />}>
+              <InPageFacebookPreview
+                pageName={facebookPreview.pageName}
+                pageAvatarUrl={facebookPreview.pageAvatarUrl}
+                publishDate={facebookPreview.publishDate}
+                caption={facebookPreview.caption}
+                mediaItems={facebookPreview.mediaItems}
+                activeMediaIndex={activeMediaIndex}
+                canSaveDraft={form.status === "draft" && isDirty}
+                canSubmitForReview={canSubmitCurrentSubmission}
+                submitDisabledReason={
+                  canSubmitCurrentSubmission
+                    ? submitDisabledReason
+                    : "This submission has already moved beyond draft status."
+                }
+                isSaving={saveState === "saving"}
+                isSubmitting={submitting}
+                reorderDisabled={isReadOnlySubmission || reorderingMedia || saveState === "saving" || submitting}
+                onMediaIndexChange={setActiveMediaIndex}
+                onReorderMedia={(orderedIds) => void handleReorderMedia(orderedIds)}
+                onSaveDraft={() => void handleSave()}
+                onSubmitForReview={() => setModal("submit")}
+                onEditDetails={handleEditPreviewDetails}
+              />
+            </Suspense>
           ) : isReadOnlySubmission ? (
-            <SubmissionReadOnlyBody
-              form={form}
-              scheduledAt={scheduledAt}
-              mediaItems={pickerItems}
-              captionHashtags={captionHashtags}
-              mediaTags={effectiveMediaTags(form)}
-              facebookPreview={facebookPreview}
-              activeMediaIndex={activeMediaIndex}
-              onMediaIndexChange={setActiveMediaIndex}
-              rejectionReason={loadedDetail?.id === form.id ? loadedDetail.rejectionReason : null}
-              revisionNotes={loadedDetail?.id === form.id ? loadedDetail.validatorRemarks : null}
-            />
+            <Suspense fallback={<DeferredSubmissionPanelFallback />}>
+              <SubmissionReadOnlyBody
+                form={form}
+                scheduledAt={scheduledAt}
+                mediaItems={pickerItems}
+                captionHashtags={captionHashtags}
+                mediaTags={effectiveMediaTags(form)}
+                facebookPreview={facebookPreview}
+                activeMediaIndex={activeMediaIndex}
+                onMediaIndexChange={setActiveMediaIndex}
+                rejectionReason={loadedDetail?.id === form.id ? loadedDetail.rejectionReason : null}
+                revisionNotes={loadedDetail?.id === form.id ? loadedDetail.validatorRemarks : null}
+              />
+            </Suspense>
           ) : (
             <>
+          {form.status === "needs_revision" && (
+            <RevisionFeedbackBanner
+              remarks={
+                parsedRevision.general ||
+                (parsedRevision.hasFieldComments
+                  ? "Please revise all input fields marked with a comment icon."
+                  : loadedDetail?.id === form.id
+                    ? loadedDetail.validatorRemarks
+                    : undefined)
+              }
+            />
+          )}
           {!isReadOnlySubmission && (
             <StepProgress
               steps={progressSteps}
@@ -2264,36 +2485,31 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               subtitle="Use backend field names for the saved submission draft."
             />
             {isAdminComposer && (
-              <Field label="Posting As">
+              <Field label="Posting As" count="" tone="" action={undefined}>
                 <BrandedSelect
-                  value={form.institutionId}
-                  placeholder={institutionsLoading ? "Loading institutions..." : "Select institution"}
-                  hint={institutionsLoading ? undefined : "Select institution"}
-                  options={institutions.map((institution) => ({
-                    value: institution.id,
-                    label: isDefaultInstitution(institution)
-                      ? `${institution.name} (Default)`
-                      : institution.name,
-                  }))}
-                  disabled={isReadOnlySubmission}
-                  loading={institutionsLoading}
-                  ariaLabel="Posting As"
+                  value={selectedInstitutionId}
+                  onChange={(val) => handlePostingInstitutionChange(val)}
+                  disabled={isReadOnlySubmission || institutionsLoading}
+                  placeholder="Select institution"
                   className={`sub-posting-select${selectedPostingIsDefault ? " is-default" : ""}`}
-                  onChange={handlePostingInstitutionChange}
+                  options={institutions.map((inst) => ({
+                    value: inst.id,
+                    label: isDefaultInstitution(inst) ? `${inst.name} (Default)` : inst.name,
+                  }))}
                 />
-                {/* {selectedPostingIsDefault && (
-                  <div className="sub-inline-default-note">
-                    <i className="ti ti-sparkles" aria-hidden="true"></i>
-                    Default institution for network-wide DASIG announcements.
-                  </div>
-                )} */}
                 {institutionsError && (
                   <div className="sub-inline-note">{institutionsError}</div>
                 )}
               </Field>
             )}
             <div className="sub-field-row">
-              <Field label="Event Title">
+              <Field
+                label="Event Title"
+                revisionComment={parsedRevision.fields.eventTitle}
+                isPulsing={eventTitlePulsing}
+                isDone={addressedRevisionFields.has("eventTitle")}
+                onToggleDone={() => toggleRevisionFieldDone("eventTitle")}
+              >
                 <input
                   ref={eventTitleRef}
                   className="sub-finput"
@@ -2305,7 +2521,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 />
               </Field>
               <div ref={eventDateRef}>
-                <Field label="Event Date">
+                <Field
+                  label="Event Date"
+                  revisionComment={parsedRevision.fields.eventDate}
+                  isPulsing={eventDatePulsing}
+                  isDone={addressedRevisionFields.has("eventDate")}
+                  onToggleDone={() => toggleRevisionFieldDone("eventDate")}
+                >
                   <CalendarDateField
                     value={form.eventDate}
                     readOnly={isReadOnlySubmission}
@@ -2318,19 +2540,25 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
             <Field
               label="Caption"
+              revisionComment={parsedRevision.fields.caption}
+              isPulsing={captionPulsing}
+              isDone={addressedRevisionFields.has("caption")}
+              onToggleDone={() => toggleRevisionFieldDone("caption")}
               action={
                 !isReadOnlySubmission ? (
                   <div className="sub-caption-actions">
-                    <FancyTextTool
-                      caption={form.caption}
-                      selection={captionSelection}
-                      disabled={isReadOnlySubmission}
-                      onReplaceSelection={updateCaptionSelection}
-                      onPreviewSelection={updateCaptionSelection}
-                      onRestoreSelection={restoreCaptionSelection}
-                      onPreviewStateChange={setFancyTextPreviewActive}
-                    />
-                    {canUseAiCaption && !form.fastTrack && (
+                    <Suspense fallback={null}>
+                      <FancyTextTool
+                        caption={form.caption}
+                        selection={captionSelection}
+                        disabled={isReadOnlySubmission}
+                        onReplaceSelection={updateCaptionSelection}
+                        onPreviewSelection={updateCaptionSelection}
+                        onRestoreSelection={restoreCaptionSelection}
+                        onPreviewStateChange={setFancyTextPreviewActive}
+                      />
+                    </Suspense>
+                    {canUseAiCaption && (
                       <AiCaptionButton
                         state={aiCaption.state}
                         canSuggest={aiCaption.canSuggest}
@@ -2347,7 +2575,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 <textarea
                   ref={captionRef}
                   className={`sub-finput ${captionTone(form.caption)}`}
-                  rows={4}
+                  rows={8}
                   readOnly={isReadOnlySubmission}
                   value={form.caption}
                   onChange={(event) => {
@@ -2360,38 +2588,48 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   placeholder="Write a compelling caption for the DASIG Facebook page..."
                 />
                 <span className={`sub-caption-counter ${captionTone(form.caption)}`}>
-                  {Array.from(form.caption).length} / {CAPTION_WORD_LIMIT} characters
+                  {Array.from(form.caption).length} / {CAPTION_CHAR_LIMIT} characters
                 </span>
               </div>
-              {canUseAiCaption && !form.fastTrack && aiCaption.variants && (
-                <AiCaptionSuggestion
-                  variants={aiCaption.variants}
-                  onApply={(caption, tone, action) => {
-                    if (!canUseAiCaption) return;
-                    updateCaption(caption);
-                    aiCaption.logApply(tone, action);
-                  }}
-                  onDismissOne={aiCaption.logDismissOne}
-                  onDismissAll={aiCaption.dismissAll}
-                  onRegenerate={aiCaption.regenerate}
-                />
+              {canUseAiCaption && aiCaption.variants && (
+                <Suspense fallback={<DeferredSubmissionPanelFallback />}>
+                  <AiCaptionSuggestion
+                    variants={aiCaption.variants}
+                    onApply={(caption, tone, action) => {
+                      if (!canUseAiCaption) return;
+                      updateCaption(caption);
+                      aiCaption.logApply(tone, action);
+                    }}
+                    onDismissOne={aiCaption.logDismissOne}
+                    onDismissAll={aiCaption.dismissAll}
+                    onRegenerate={aiCaption.regenerate}
+                  />
+                </Suspense>
               )}
               <div className="sub-finput-hint">
-                Captions can contain up to {CAPTION_WORD_LIMIT} characters. Include relevant tags.
+                Captions can contain up to {CAPTION_CHAR_LIMIT} characters. Include relevant tags.
               </div>
-              {canUseAiCaption && !form.fastTrack && (
-                <AiCaptionPromptDialog
-                  open={captionPromptOpen}
-                  state={aiCaption.state}
-                  hasImageAssets={hasImageAssets}
-                  existingCaption={form.caption}
-                  onClose={() => setCaptionPromptOpen(false)}
-                  onSubmit={(prompt, tone) => void handleAiCaptionPromptSubmit(prompt, tone)}
-                />
+              {canUseAiCaption && captionPromptOpen && (
+                <Suspense fallback={null}>
+                  <AiCaptionPromptDialog
+                    open={captionPromptOpen}
+                    state={aiCaption.state}
+                    hasImageAssets={hasImageAssets}
+                    existingCaption={form.caption}
+                    onClose={() => setCaptionPromptOpen(false)}
+                    onSubmit={(prompt, tone) => void handleAiCaptionPromptSubmit(prompt, tone)}
+                  />
+                </Suspense>
               )}
             </Field>
 
-            <Field label="Tags">
+            <Field
+              label="Tags"
+              revisionComment={parsedRevision.fields.tags}
+              isPulsing={tagsPulsing}
+              isDone={addressedRevisionFields.has("tags")}
+              onToggleDone={() => toggleRevisionFieldDone("tags")}
+            >
               <div className="sub-hashtag-entry">
                 <input
                   ref={tagsInputRef}
@@ -2438,7 +2676,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           </section>
 
           <section
-            className={`sub-form-section sub-step-panel ${isReadOnlySubmission || activeStep === "media" ? "active" : ""}`}
+            className={`sub-form-section sub-step-panel ${isReadOnlySubmission || activeStep === "media" ? "active" : ""} ${mediaPulsing ? "sub-field-pulse" : ""}`}
             ref={mediaSectionRef}
             hidden={!isReadOnlySubmission && activeStep !== "media"}
           >
@@ -2447,19 +2685,26 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               tone="blue"
               title="Add Media"
               subtitle="Upload files, pick from your library, or let AI suggest relevant assets."
+              revisionComment={parsedRevision.fields.media}
+              isDone={addressedRevisionFields.has("media")}
+              onToggleDone={() => toggleRevisionFieldDone("media")}
             />
-            <MediaAssetsPicker
-              items={pickerItems}
-              onItemsChange={handlePickerChange}
-              submissionId={form.id}
-              eventTitle={form.eventTitle}
-              caption={form.caption}
-              category=""
-              tags={captionHashtags.map((hashtag) => hashtag.slice(1))}
-              disabled={!isEditableSubmission}
-              onItemClick={openMediaCaption}
-              getItemCaption={(item) => form.mediaCaptions[pickerMediaKey(item)] ?? ""}
-            />
+            <Suspense fallback={<DeferredSubmissionPanelFallback />}>
+              <MediaAssetsPicker
+                items={pickerItems}
+                onItemsChange={handlePickerChange}
+                submissionId={form.id}
+                eventTitle={form.eventTitle}
+                caption={form.caption}
+                category=""
+                tags={captionHashtags.map((hashtag) => hashtag.slice(1))}
+                disabled={!isEditableSubmission}
+                onItemClick={openMediaCaption}
+                getItemCaption={(item) => form.mediaCaptions[pickerMediaKey(item)] ?? ""}
+                institutionId={selectedInstitutionId}
+                networkView={isAdminComposer}
+              />
+            </Suspense>
             {pickerItems.some((item) => item.mediaType === "image") &&
               pickerItems.some((item) => item.mediaType === "video") && (
                 <div className="sub-inline-warning" role="status">
@@ -2501,8 +2746,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     existingAlbums={existingAlbums}
                     readOnly={isReadOnlySubmission}
                     placeholder="Search, select, or create a new album"
-                    onChange={(value) => updateField("albumName", value)}
+                    onChange={handleAlbumNameChange}
                     onAutoMatch={applyAutoAlbum}
+                    matching={albumMatching}
+                    matchedBadge={albumMatchBadge}
+                    suggestions={albumMatchCandidates}
+                    noMatchNotice={albumMatchNoResult}
                 />
                 </Field>
 
@@ -2593,12 +2842,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
             {!form.fastTrack && (
               <>
-            <EngagementRecommendationsPanel
-              loading={engagementLoading}
-              recommendations={engagementRecommendations}
-              selectedAt={scheduledAt}
-              onSelect={applyEngagementSlot}
-            />
+            <Suspense fallback={<DeferredSubmissionPanelFallback />}>
+              <EngagementRecommendationsPanel
+                loading={engagementLoading}
+                recommendations={engagementRecommendations}
+                selectedAt={scheduledAt}
+                onSelect={applyEngagementSlot}
+              />
+            </Suspense>
             <div className="sub-field-row">
               <Field label="Preferred Date">
                 <CalendarDateField
@@ -2618,6 +2869,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 />
               </Field>
             </div>
+            {lookups.guardrailsEnforced && !guardRailsLoading && !guardRails?.blocked
+              && guardRails?.softWarnings[0] && (
+              <div className="sub-inline-warning" role="status">
+                <i className="ti ti-alert-triangle" aria-hidden />
+                {guardRails.softWarnings[0].message}
+              </div>
+            )}
               </>
             )}
             {!form.fastTrack && guardRailError && (
@@ -2691,14 +2949,31 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           <div className="sub-guard-actions">
             {!isReadOnlySubmission && (
               <>
+            {hasUnaddressedRevisions && (
+              <div className="sub-unaddressed-revision-notice">
+                <i className="ti ti-alert-circle" />
+                <span>
+                  Please edit all requested fields (<strong>{unaddressedRevisionLabels.join(", ")}</strong>) to submit for revision.
+                </span>
+              </div>
+            )}
             <button
               className="sub-guard-submit-btn"
               type="button"
               onClick={() => setModal("submit")}
-              disabled={busy || Boolean(hydratingId) || previewValidation.blockingErrors.length > 0}
-              title={previewValidation.blockingErrors[0]}
+              disabled={busy || Boolean(hydratingId) || previewValidation.blockingErrors.length > 0 || hasUnaddressedRevisions}
+              title={
+                hasUnaddressedRevisions
+                  ? `Please edit all requested revision fields (${unaddressedRevisionLabels.join(", ")}) before submitting.`
+                  : previewValidation.blockingErrors[0]
+              }
             >
-              {submitting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-send"></i>} Submit for Approval
+              {submitting ? (
+                <i className="ti ti-loader-2 sub-spin"></i>
+              ) : (
+                <i className="ti ti-send"></i>
+              )}
+              {isNeedsRevision ? "Submit for Revision" : "Submit for Approval"}
             </button>
             {isDirty && (
               <button
@@ -2875,16 +3150,32 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       {modal === "submit" && (
         <ConfirmModal
           icon={hasRecommendedWarnings ? "ti-alert-triangle" : "ti-send"}
-          title={hasRecommendedWarnings ? "Submit with recommended warnings?" : "Submit for Approval?"}
+          title={
+            isNeedsRevision
+              ? "Submit revision for approval?"
+              : hasRecommendedWarnings
+                ? "Submit with recommended warnings?"
+                : "Submit for Approval?"
+          }
           description={
-            hasRecommendedWarnings
-              ? `Required checks are complete, but ${recommendedWarnings.length} recommended item(s) still need attention: ${recommendedWarnings.map((item) => item.title).join(", ")}. You can still submit for approval.`
-              : `This submission will be sent for moderator approval. Readiness score: ${readiness.score} / 100.`
+            isNeedsRevision
+              ? "Your updated changes will be re-submitted to the reviewer for approval."
+              : hasRecommendedWarnings
+                ? `Required checks are complete, but ${recommendedWarnings.length} recommended item(s) still need attention: ${recommendedWarnings.map((item) => item.title).join(", ")}. You can still submit for approval.`
+                : `This submission will be sent for moderator approval. Readiness score: ${readiness.score} / 100.`
           }
           cancelLabel={hasRecommendedWarnings ? "Review Warnings" : "Go Back"}
-          confirmLabel={submitting ? "Submitting..." : hasRecommendedWarnings ? "Submit Anyway" : "Confirm Submission"}
+          confirmLabel={
+            submitting
+              ? "Submitting..."
+              : isNeedsRevision
+                ? "Submit Revision"
+                : hasRecommendedWarnings
+                  ? "Submit Anyway"
+                  : "Confirm Submission"
+          }
           loading={submitting}
-          disabled={busy}
+          disabled={busy || hasUnaddressedRevisions}
           onCancel={() => setModal(null)}
           onConfirm={() => void handleSubmit()}
         />
@@ -2980,6 +3271,22 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           onContinue={handleContinueEditing}
         />
       )}
+      <RevisionFeedbackModal
+        isOpen={revisionModalOpen}
+        onClose={() => setRevisionModalOpen(false)}
+        eventTitle={form.eventTitle}
+        remarks={
+          parsedRevision.general ||
+          (parsedRevision.hasFieldComments
+            ? "Please revise all input fields marked with a comment icon."
+            : loadedDetail?.id === form.id
+              ? loadedDetail.validatorRemarks
+              : undefined)
+        }
+        onStartEditing={() => {
+          setRevisionModalOpen(false);
+        }}
+      />
     </div>
   );
 }

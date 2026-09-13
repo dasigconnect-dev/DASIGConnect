@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   Routes,
   Route,
@@ -19,27 +19,8 @@ import {
 } from "../api/authApi";
 import type { LoginResponse, UserProfileResponse } from "../api/authApi";
 import type { User } from "../types/auth.types";
-import LoginScreen from "../features/auth/LoginScreen";
-import ForgotScreen from "../features/auth/ForgotScreen";
-import ForgotSentScreen from "../features/auth/ForgotSentScreen";
-import ResetPasswordScreen from "../features/auth/ResetPasswordScreen";
-import InviteScreen from "../features/auth/InviteScreen";
-import NoAccountScreen from "../features/auth/NoAccountScreen";
-import AccountSettingsScreen from "../features/auth/AccountSettingsScreen";
-import DashboardScreen from "../features/dashboard/DashboardScreen";
-import RecentActivityScreen from "../features/dashboard/RecentActivityScreen";
-import SubmissionScreen from "../features/submission/SubmissionScreen";
-import ValidationQueueScreen from "../features/validation/ValidationQueueScreen";
-import InstitutionManagementScreen from "../features/institution-management/InstitutionManagementScreen";
-import AdminManagementScreen from "../features/administrator-management/AdministratorManagementScreen";
-import UserManagementScreen from "../features/user-management/UserManagementScreen";
-import SystemHealthScreen from "../features/system-health/SystemHealthScreen";
-import AuditLogScreen from "../features/audit-log/AuditLogScreen";
-import CalendarScreen from "../features/calendar/CalendarScreen";
-import MediaRepositoryScreen from "../features/media-repository/MediaRepositoryScreen";
-import NotificationsScreen from "../features/notifications/NotificationsScreen";
-import AnalyticsDashboardPage from "../features/analytics/AnalyticsDashboardPage";
 import DashboardLayout from "../components/layout/DashboardLayout";
+import AdminPromotionBanner from "../components/layout/AdminPromotionBanner";
 import SessionModal from "../components/modals/SessionModal";
 import Toast from "../components/common/Toast";
 import LoginSplash from "../components/common/LoginSplash";
@@ -54,10 +35,33 @@ import {
 } from "../lib/userIdentity";
 import { firstPasswordError, getPasswordRules } from "../lib/passwordPolicy";
 import { clearAppCaches } from "../lib/appCache";
+import { clearAuthenticatedQueryCache } from "../lib/queryClient";
 
 const LOCKOUT_LIMIT = 5;
 const LOCKOUT_SECONDS = 15 * 60;
 const SESSION_WARNING_SECONDS = 5 * 60;
+const TABLER_ICONS_STYLESHEET = "https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css";
+
+const LoginScreen = lazy(() => import("../features/auth/LoginScreen"));
+const ForgotScreen = lazy(() => import("../features/auth/ForgotScreen"));
+const ForgotSentScreen = lazy(() => import("../features/auth/ForgotSentScreen"));
+const ResetPasswordScreen = lazy(() => import("../features/auth/ResetPasswordScreen"));
+const InviteScreen = lazy(() => import("../features/auth/InviteScreen"));
+const NoAccountScreen = lazy(() => import("../features/auth/NoAccountScreen"));
+const AccountSettingsScreen = lazy(() => import("../features/auth/AccountSettingsScreen"));
+const DashboardScreen = lazy(() => import("../features/dashboard/DashboardScreen"));
+const RecentActivityScreen = lazy(() => import("../features/dashboard/RecentActivityScreen"));
+const SubmissionScreen = lazy(() => import("../features/submission/SubmissionScreen"));
+const ValidationQueueScreen = lazy(() => import("../features/validation/ValidationQueueScreen"));
+const InstitutionManagementScreen = lazy(() => import("../features/institution-management/InstitutionManagementScreen"));
+const AdminManagementScreen = lazy(() => import("../features/administrator-management/AdministratorManagementScreen"));
+const UserManagementScreen = lazy(() => import("../features/user-management/UserManagementScreen"));
+const SystemHealthScreen = lazy(() => import("../features/system-health/SystemHealthScreen"));
+const AuditLogScreen = lazy(() => import("../features/audit-log/AuditLogScreen"));
+const CalendarScreen = lazy(() => import("../features/calendar/CalendarScreen"));
+const MediaRepositoryScreen = lazy(() => import("../features/media-repository/MediaRepositoryScreen"));
+const NotificationsScreen = lazy(() => import("../features/notifications/NotificationsScreen"));
+const AnalyticsDashboardPage = lazy(() => import("../features/analytics/AnalyticsDashboardPage"));
 
 function App() {
   const navigate = useNavigate();
@@ -132,6 +136,19 @@ function App() {
   const [, setSessionWarningDismissed] = useState(false);
   const bannerTimerRef = useRef<number | null>(null);
   const sessionWarningDismissedRef = useRef(false);
+
+  useEffect(() => {
+    if (document.querySelector<HTMLLinkElement>('link[data-dasig-tabler-icons="true"]')) {
+      return;
+    }
+
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = TABLER_ICONS_STYLESHEET;
+    link.crossOrigin = "anonymous";
+    link.dataset.dasigTablerIcons = "true";
+    document.head.appendChild(link);
+  }, []);
 
   const inviteRules = useMemo(() => {
     const firstName = isValidProfileName(inviteFirstName);
@@ -292,6 +309,7 @@ function App() {
     localStorage.removeItem("dasigconnect_user");
     // Drop any in-memory caches from a prior session on this tab so a new
     // account never sees the previous user's role-scoped data.
+    await clearAuthenticatedQueryCache();
     clearAppCaches();
     const email = loginEmail.trim().toLowerCase();
     try {
@@ -397,6 +415,8 @@ function App() {
         lastName,
         password: invitePassword,
       });
+      await clearAuthenticatedQueryCache();
+      clearAppCaches();
       setAuthToken(response.data.accessToken);
       const email = inviteEmail.trim().toLowerCase();
       const fallbackUser = buildUserFromLogin(
@@ -461,6 +481,7 @@ function App() {
     localStorage.removeItem("dasigconnect_token");
     localStorage.removeItem("dasigconnect_user");
     setAuthToken(null);
+    await clearAuthenticatedQueryCache();
     clearAppCaches();
     setCurrentUser(null);
     setShowDropdown(false);
@@ -480,6 +501,8 @@ function App() {
     try {
       const response = await login(email, modalPassword);
       const apiUser = response.data;
+      await clearAuthenticatedQueryCache();
+      clearAppCaches();
       setAuthToken(apiUser.accessToken);
       const fallbackUser = buildUserFromLogin(email, apiUser);
       const user = await loadCurrentUser(fallbackUser);
@@ -584,7 +607,8 @@ function App() {
     <>
       <Toast />
       <LoginSplash user={splashUser} visible={showSplash} />
-      <Routes>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
         <Route
           path="/"
           element={
@@ -739,17 +763,20 @@ function App() {
         <Route
           element={
             currentUser ? (
-              <DashboardLayout
-                user={currentUser}
-                showBanner={bannerRemaining > 0}
-                bannerTime={bannerTime}
-                showDropdown={showDropdown}
-                onToggleDropdown={() => setShowDropdown(!showDropdown)}
-                onDismissBanner={dismissSessionBanner}
-                onStayLoggedIn={handleStayLoggedIn}
-                onLogout={() => void handleLogout()}
-                logoutLoading={logoutLoading}
-              />
+              <>
+                <AdminPromotionBanner />
+                <DashboardLayout
+                  user={currentUser}
+                  showBanner={bannerRemaining > 0}
+                  bannerTime={bannerTime}
+                  showDropdown={showDropdown}
+                  onToggleDropdown={() => setShowDropdown(!showDropdown)}
+                  onDismissBanner={dismissSessionBanner}
+                  onStayLoggedIn={handleStayLoggedIn}
+                  onLogout={() => void handleLogout()}
+                  logoutLoading={logoutLoading}
+                />
+              </>
             ) : (
               <Navigate to="/login" replace />
             )
@@ -890,8 +917,9 @@ function App() {
           }
         />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
 
       <SessionModal
         open={showSessionModal}
@@ -946,6 +974,7 @@ function buildUserFromLogin(
   fallbackInstitutionName?: string,
 ): User {
   return {
+    id: null,
     email,
     pw: "",
     role: mapApiRole(apiUser.role),
@@ -966,6 +995,7 @@ function buildUserFromProfile(
   const email = (profile.email || fallbackEmail).trim().toLowerCase();
   const displayName = getUserDisplayName(profile);
   return {
+    id: profile.id,
     email,
     pw: "",
     role: mapApiRole(profile.role),
@@ -976,6 +1006,7 @@ function buildUserFromProfile(
     inst: profile.institutionName || institutionFallbackFromEmail(email),
     institutionId: profile.institutionId,
     initials: getUserInitials(profile),
+    adminOwner: profile.adminOwner,
   };
 }
 

@@ -5,6 +5,7 @@ public enum NotificationEventType {
     submission_approved,
     submission_needs_revision,
     submission_rejected,
+    submission_edited_in_review,
     submission_scheduled,
     submission_publish_failed,
     submission_missed_review,
@@ -24,5 +25,7 @@ public enum NotificationEventType {
     fast_track_submission,
     embedding_failure_digest,
     user_role_changed,
+    admin_promotion_requested,
+    admin_promotion_declined,
     generic
 }

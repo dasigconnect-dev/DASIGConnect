@@ -2,10 +2,14 @@ import type { CalendarEvent } from "../../api/calendarApi";
 import { getSubmission } from "../../api/submissionApi";
 import type { SavedMediaAsset, SubmissionSummary } from "../../api/submissionApi";
 import type { User } from "../../types/auth.types";
+import OptimizedImage, { canTransformImageType } from "../../components/media/OptimizedImage";
 import { visibleStatusColor, visibleStatusLabel } from "./calendarStatus";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useToast } from "../../context/ToastContext";
+import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
 import "../../styles/calendar.css";
 
 function formatDatetime(iso: string) {
@@ -25,6 +29,10 @@ interface CalendarEventDetailModalProps {
   onClose: () => void;
 }
 
+function userScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
+}
+
 export default function CalendarEventDetailModal({
   event,
   user,
@@ -32,9 +40,6 @@ export default function CalendarEventDetailModal({
 }: CalendarEventDetailModalProps) {
   const toast = useToast();
   const drawerBodyRef = useRef<HTMLDivElement>(null);
-  const [submissionDetail, setSubmissionDetail] = useState<SubmissionSummary | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -54,34 +59,21 @@ export default function CalendarEventDetailModal({
   const isContributor = user.role !== "moderator" && user.role !== "admin";
   const isOwnInstitution = Boolean(user.institutionId && event?.institutionId && user.institutionId === event.institutionId);
   const isCrossInstitutionIsolated = isContributor && !isOwnInstitution;
-
-  useEffect(() => {
-    if (!event || isCrossInstitutionIsolated) {
-      setSubmissionDetail(null);
-      setDetailError(false);
-      setDetailLoading(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    setSubmissionDetail(null);
-    setDetailError(false);
-    setDetailLoading(true);
-
-    getSubmission(event.id, controller.signal)
-      .then((response) => {
-        setSubmissionDetail(response.data);
-      })
-      .catch((error) => {
-        if (controller.signal.aborted || error?.name === "CanceledError") return;
-        setDetailError(true);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setDetailLoading(false);
-      });
-
-    return () => controller.abort();
-  }, [event, isCrossInstitutionIsolated]);
+  const detailQuery = useQuery<SubmissionSummary>({
+    queryKey: queryKeys.submissions.editorDetail({
+      role: user.role,
+      userId: userScope(user),
+      institutionId: event?.institutionId ?? user.institutionId ?? null,
+      submissionId: event?.id ?? "",
+    }),
+    queryFn: ({ signal }) => getSubmission(event!.id, signal).then((response) => response.data),
+    enabled: Boolean(event && !isCrossInstitutionIsolated),
+    staleTime: 60_000,
+    meta: authenticatedQueryMeta,
+  });
+  const submissionDetail = event && !isCrossInstitutionIsolated ? detailQuery.data ?? null : null;
+  const detailLoading = Boolean(event && !isCrossInstitutionIsolated && (detailQuery.isLoading || detailQuery.isFetching));
+  const detailError = Boolean(event && !isCrossInstitutionIsolated && detailQuery.isError);
 
   useLayoutEffect(() => {
     if (!event) return;
@@ -306,9 +298,14 @@ function CalendarMediaPreview({
                 aria-label={`Video attachment ${index + 1}: ${asset.fileName}`}
               />
             ) : (
-              <img
+              <OptimizedImage
                 src={asset.storageUrl}
                 alt={asset.fileName || `Media attachment ${index + 1}`}
+                width={360}
+                height={270}
+                sizes="(max-width: 768px) 100vw, 260px"
+                candidateWidths={[260, 360, 520]}
+                transform={canTransformImageType(asset.fileType)}
                 loading="lazy"
               />
             )}

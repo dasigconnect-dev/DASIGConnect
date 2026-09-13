@@ -49,6 +49,7 @@ import org.springframework.web.server.ResponseStatusException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -101,6 +102,9 @@ class SubmissionServiceTest {
     @Mock
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private GuardRailSettingsService guardRailSettings;
+
     @InjectMocks
     private SubmissionService submissionService;
 
@@ -122,7 +126,7 @@ class SubmissionServiceTest {
                 .thenReturn(List.of());
 
         ReflectionTestUtils.setField(submissionService, "entityManager", entityManager);
-        ReflectionTestUtils.setField(submissionService, "guardRailsEnforced", true);
+        when(guardRailSettings.enforced()).thenReturn(true);
     }
 
     @Test
@@ -141,6 +145,49 @@ class SubmissionServiceTest {
         assertThat(result.getScheduledAt()).isEqualTo(scheduledAt);
         verify(slotReservationService).reserve(result.getId(), institutionId, scheduledAt);
         verify(auditLogService).record(eq(contributor), eq("SUBMISSION_CREATED"), eq(null), eq(null), eq(result.getId()), any());
+    }
+
+    @Test
+    void create_withCaptionOverCharLimit_returns400() {
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        SubmissionCreateDto dto = createDto(scheduledAt);
+        dto.setCaption("x".repeat(3001));
+
+        assertThatThrownBy(() -> submissionService.create(dto, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(submissionRepository, never()).save(any(Submission.class));
+    }
+
+    @Test
+    void create_withCaptionAtCharLimit_isAccepted() {
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        SubmissionCreateDto dto = createDto(scheduledAt);
+        dto.setCaption("x".repeat(3000));
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(entityManager.getReference(Institution.class, institutionId)).thenReturn(institution);
+        when(submissionRepository.save(any(Submission.class))).thenAnswer(invocation -> assignSubmissionId(invocation.getArgument(0)));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(any())).thenReturn(List.of());
+
+        SubmissionResponseDto result = submissionService.create(dto, contributorPrincipal);
+
+        assertThat(result.getStatus()).isEqualTo("draft");
+    }
+
+    @Test
+    void submit_withCaptionOverCharLimit_returns422() {
+        UUID submissionId = UUID.randomUUID();
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
+        submission.setCaption("x".repeat(3001));
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(new GuardRailResult());
+
+        assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
     }
 
     @Test
@@ -246,6 +293,8 @@ class SubmissionServiceTest {
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+        when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId))
+                .thenReturn(List.of(mediaAsset(UUID.randomUUID(), institution)));
         when(userRepository.findByRole(UserRole.moderator))
                 .thenReturn(List.of(validator));
 
@@ -288,8 +337,23 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void submit_withoutSchedule_returns400_evenWhenGuardRailsDisabled() {
+        // The guard-rail switch governs the rules on a scheduled time, not
+        // whether one is picked — a Standard post always needs a slot.
+        when(guardRailSettings.enforced()).thenReturn(false);
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, null);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+
+        assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
     void submit_blockedGuardRail_whenEnforcementDisabled_transitionsToPending() {
-        ReflectionTestUtils.setField(submissionService, "guardRailsEnforced", false);
+        when(guardRailSettings.enforced()).thenReturn(false);
         UUID submissionId = UUID.randomUUID();
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
         Submission submission = submission(submissionId, SubmissionStatus.draft, scheduledAt);
@@ -298,6 +362,8 @@ class SubmissionServiceTest {
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+        when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId))
+                .thenReturn(List.of(mediaAsset(UUID.randomUUID(), institution)));
 
         SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
 
@@ -440,6 +506,31 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void submit_withOnlyDeletedMedia_returns422() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        MediaAsset deletedAsset = mediaAsset(UUID.randomUUID(), institution);
+        deletedAsset.setStatus(MediaAssetStatus.DELETED);
+        deletedAsset.setDeletedAt(Instant.now());
+        SubmissionMediaAsset link = mediaLink(submission, deletedAsset, 0);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult());
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId))
+                .thenReturn(List.of(link));
+        when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId))
+                .thenReturn(List.of(deletedAsset));
+
+        assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("non-deleted media attachment")
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode().value())
+                .isEqualTo(422);
+        verify(submissionRepository, never()).save(argThat(saved -> saved.getStatus() == SubmissionStatus.pending));
+    }
+
+    @Test
     void attachAsset_rejectsAssetFromOtherInstitution() {
         UUID submissionId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
@@ -454,6 +545,33 @@ class SubmissionServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void attachAsset_moderatorCanUseAssetFromOtherInstitution() {
+        UUID moderatorId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        JwtUserDetails moderatorPrincipal = principal(moderatorId, "moderator", null);
+        User moderator = user(moderatorId, "moderator@example.com", UserRole.moderator, null);
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        submission.setContributor(moderator);
+        MediaAsset asset = mediaAsset(assetId, institution(UUID.randomUUID()));
+        AttachAssetDto dto = new AttachAssetDto();
+        dto.setMediaAssetId(assetId);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(submissionMediaAssetRepository.existsBySubmissionIdAndMediaAssetId(submissionId, assetId)).thenReturn(false);
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
+        when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(asset));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+
+        submissionService.attachAsset(submissionId, dto, moderatorPrincipal);
+
+        verify(submissionMediaAssetRepository).save(any(SubmissionMediaAsset.class));
+        verify(auditLogService).record(
+                any(), eq("MEDIA_ASSET_REUSED"), eq(null), eq(null), eq(assetId), any());
     }
 
     @Test
@@ -589,8 +707,8 @@ class SubmissionServiceTest {
 
         submissionService.attachMedia(submissionId, dto, contributorPrincipal);
 
-        org.mockito.ArgumentCaptor<com.dasigconnect.backend.model.entity.AssetTag> tags =
-                org.mockito.ArgumentCaptor.forClass(com.dasigconnect.backend.model.entity.AssetTag.class);
+        org.mockito.ArgumentCaptor<com.dasigconnect.backend.model.entity.AssetTag> tags
+                = org.mockito.ArgumentCaptor.forClass(com.dasigconnect.backend.model.entity.AssetTag.class);
         verify(assetTagRepository, org.mockito.Mockito.times(2)).save(tags.capture());
         assertThat(tags.getAllValues()).extracting(com.dasigconnect.backend.model.entity.AssetTag::getLabel)
                 .containsExactly("event", "dost7");
@@ -620,6 +738,94 @@ class SubmissionServiceTest {
         verify(mediaAssetRepository).save(captor.capture());
         assertThat(captor.getValue().getInstitution()).isEqualTo(institution);
         assertThat(captor.getValue().getStatus()).isNotEqualTo(MediaAssetStatus.STAGED);
+    }
+
+    @Test
+    void attachMedia_onNeedsRevision_withAlbumName_resolvesThatAlbum() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.needs_revision, Instant.now());
+        MediaAlbum target = new MediaAlbum();
+        target.setId(UUID.randomUUID());
+        target.setInstitution(institution);
+        AttachMediaDto dto = new AttachMediaDto();
+        dto.setStorageUrl("https://storage.example/media/photo.jpg");
+        dto.setFileName("photo.jpg");
+        dto.setFileType("JPEG");
+        dto.setFileSizeBytes(1024L);
+        dto.setAlbumName("Field Photos");
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
+        when(entityManager.getReference(Institution.class, institutionId)).thenReturn(institution);
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(mediaAlbumRepository.findByParentAndNameIgnoreCase(institutionId, null, "Field Photos"))
+                .thenReturn(Optional.of(target));
+        when(mediaAssetRepository.save(any(MediaAsset.class)))
+                .thenAnswer(invocation -> assignMediaAssetId(invocation.getArgument(0)));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+
+        submissionService.attachMedia(submissionId, dto, contributorPrincipal);
+
+        org.mockito.ArgumentCaptor<MediaAsset> captor = org.mockito.ArgumentCaptor.forClass(MediaAsset.class);
+        verify(mediaAssetRepository).save(captor.capture());
+        assertThat(captor.getValue().getMediaAlbum()).isEqualTo(target);
+    }
+
+    @Test
+    void attachMedia_onNeedsRevision_withUnknownAlbumName_createsIt() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.needs_revision, Instant.now());
+        AttachMediaDto dto = new AttachMediaDto();
+        dto.setStorageUrl("https://storage.example/media/photo.jpg");
+        dto.setFileName("photo.jpg");
+        dto.setFileType("JPEG");
+        dto.setFileSizeBytes(1024L);
+        dto.setAlbumName("Brand New Album");
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
+        when(entityManager.getReference(Institution.class, institutionId)).thenReturn(institution);
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(mediaAlbumRepository.findByParentAndNameIgnoreCase(institutionId, null, "Brand New Album"))
+                .thenReturn(Optional.empty());
+        when(mediaAlbumRepository.save(any(MediaAlbum.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(mediaAssetRepository.save(any(MediaAsset.class)))
+                .thenAnswer(invocation -> assignMediaAssetId(invocation.getArgument(0)));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+
+        submissionService.attachMedia(submissionId, dto, contributorPrincipal);
+
+        org.mockito.ArgumentCaptor<MediaAlbum> album = org.mockito.ArgumentCaptor.forClass(MediaAlbum.class);
+        verify(mediaAlbumRepository).save(album.capture());
+        assertThat(album.getValue().getName()).isEqualTo("Brand New Album");
+        assertThat(album.getValue().getInstitution()).isEqualTo(institution);
+    }
+
+    @Test
+    void attachMedia_onNeedsRevision_withoutAlbumName_fallsBackToSubmissionAlbum() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.needs_revision, Instant.now());
+        MediaAlbum submissionAlbum = new MediaAlbum();
+        submissionAlbum.setId(UUID.randomUUID());
+        submissionAlbum.setInstitution(institution);
+        AttachMediaDto dto = new AttachMediaDto();
+        dto.setStorageUrl("https://storage.example/media/photo.jpg");
+        dto.setFileName("photo.jpg");
+        dto.setFileType("JPEG");
+        dto.setFileSizeBytes(1024L);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
+        when(entityManager.getReference(Institution.class, institutionId)).thenReturn(institution);
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(mediaAlbumRepository.findByParentAndNameIgnoreCase(institutionId, null, "Research Expo Album"))
+                .thenReturn(Optional.of(submissionAlbum));
+        when(mediaAssetRepository.save(any(MediaAsset.class)))
+                .thenAnswer(invocation -> assignMediaAssetId(invocation.getArgument(0)));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+
+        submissionService.attachMedia(submissionId, dto, contributorPrincipal);
+
+        org.mockito.ArgumentCaptor<MediaAsset> captor = org.mockito.ArgumentCaptor.forClass(MediaAsset.class);
+        verify(mediaAssetRepository).save(captor.capture());
+        assertThat(captor.getValue().getMediaAlbum()).isEqualTo(submissionAlbum);
     }
 
     @Test
@@ -696,7 +902,7 @@ class SubmissionServiceTest {
     }
 
     @Test
-    void update_institutionChange_keepsStagedMediaAndDetachesLibraryPicks() {
+    void update_institutionChange_keepsSelectedMediaForNetworkRole() {
         UUID submissionId = UUID.randomUUID();
         UUID newInstitutionId = UUID.randomUUID();
         Institution newInstitution = institution(newInstitutionId);
@@ -709,15 +915,10 @@ class SubmissionServiceTest {
         stagedAsset.setFileType(MediaFileType.jpeg);
         MediaAsset libraryPick = mediaAsset(UUID.randomUUID(), institution);
         libraryPick.setStatus(MediaAssetStatus.READY);
-        SubmissionMediaAsset libraryLink = mediaLink(submission, libraryPick, 1);
 
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
         when(submissionRepository.save(submission)).thenReturn(submission);
         when(institutionRepository.findById(newInstitutionId)).thenReturn(Optional.of(newInstitution));
-        when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId))
-                .thenReturn(List.of(stagedAsset, libraryPick));
-        when(submissionMediaAssetRepository.findBySubmissionIdAndMediaAssetId(submissionId, libraryPick.getId()))
-                .thenReturn(Optional.of(libraryLink));
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
 
         SubmissionUpdateDto dto = new SubmissionUpdateDto();
@@ -725,9 +926,11 @@ class SubmissionServiceTest {
 
         submissionService.update(submissionId, dto, adminPrincipal);
 
-        verify(submissionMediaAssetRepository).delete(libraryLink);
+        verify(submissionMediaAssetRepository, never()).delete(any());
         verify(submissionMediaAssetRepository, never())
                 .findBySubmissionIdAndMediaAssetId(submissionId, stagedAsset.getId());
+        verify(submissionMediaAssetRepository, never())
+                .findBySubmissionIdAndMediaAssetId(submissionId, libraryPick.getId());
         verify(slotReservationService).deleteAllForSubmission(submissionId);
         assertThat(submission.getInstitution()).isEqualTo(newInstitution);
         assertThat(submission.getScheduledAt()).isNull();

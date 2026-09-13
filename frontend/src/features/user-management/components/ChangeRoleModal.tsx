@@ -10,9 +10,9 @@ type TargetRole = 'contributor' | 'moderator' | 'admin'
 interface ChangeRoleModalProps {
   user: UserProfileResponse
   institutions: InstitutionOption[]
-  /** The acting admin is the Admin Owner — required to promote to / demote from admin. */
+  /** The acting admin is the Admin Owner — required to demote an existing admin (promoting to admin does not require this). */
   isOwner: boolean
-  /** Open admin slots (3 − active admins − pending admin invites). Promote-to-admin hidden at 0. */
+  /** Open admin slots (3 − active admins − pending admin invites − pending promotions). Promote-to-admin hidden at 0. */
   adminSlotsOpen: number
   busy: boolean
   error: string
@@ -46,7 +46,11 @@ export default function ChangeRoleModal({
 
   const roleOptions = useMemo<TargetRole[]>(() => {
     const all: TargetRole[] = ['contributor', 'moderator']
-    if (isOwner && (currentRole === 'admin' || adminSlotsOpen > 0)) {
+    // Demoting an existing admin is Owner-only. Proposing a promotion to admin
+    // is open to any active admin — the target still has to confirm, so it
+    // carries no more unilateral risk than sending an admin invitation.
+    const canOfferAdmin = currentRole === 'admin' ? isOwner : adminSlotsOpen > 0
+    if (canOfferAdmin) {
       all.push('admin')
     }
     return all.filter((r) => r !== currentRole)
@@ -125,8 +129,15 @@ export default function ChangeRoleModal({
           <div className="im-reassign-notice">
             <i className="ti ti-info-circle" aria-hidden="true"></i>
             <span>
-              This person will be signed out and must sign in again.
-              {currentRole === 'admin' && ' They will lose network-admin access.'}
+              {role === 'admin' ? (
+                'This proposes Administrator access — nothing changes until they confirm. '
+                + 'They keep their current role and access until then, and can decline instead.'
+              ) : (
+                <>
+                  This person will be signed out and must sign in again.
+                  {currentRole === 'admin' && ' They will lose network-admin access.'}
+                </>
+              )}
             </span>
           </div>
 
@@ -150,8 +161,10 @@ export default function ChangeRoleModal({
               {busy ? (
                 <>
                   <i className="ti ti-loader-2 im-spin" aria-hidden="true"></i>
-                  Applying...
+                  {role === 'admin' ? 'Sending...' : 'Applying...'}
                 </>
+              ) : role === 'admin' ? (
+                'Send promotion request'
               ) : (
                 'Change role'
               )}

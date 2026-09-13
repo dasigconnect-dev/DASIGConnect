@@ -19,8 +19,19 @@ public class PageSettings {
     private boolean watermarkEnabled;
     @Column(name = "watermark_text", length = 150)
     private String watermarkText;
+    // Legacy — never read by anything that actually publishes. The live
+    // publishing target is FacebookPageToken.pageId (bootstrapped from
+    // app.facebook.page-id, managed in System Health -> Tokens). Column kept
+    // (unused) to avoid a migration; drop in a future cleanup, same as the
+    // watermark columns above.
     @Column(name = "facebook_page_id", length = 255)
     private String facebookPageId;
+    /**
+     * Network-wide scheduling guard-rail switch. Only meaningful on the
+     * no-institution row (institution_id IS NULL); see GuardRailSettingsService.
+     */
+    @Column(name = "guardrails_enforced", nullable = false)
+    private boolean guardrailsEnforced = true;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "updated_by")
     private User updatedBy;
@@ -38,6 +49,8 @@ public class PageSettings {
     public void setWatermarkText(String value) { watermarkText = value; }
     public String getFacebookPageId() { return facebookPageId; }
     public void setFacebookPageId(String value) { facebookPageId = value; }
+    public boolean isGuardrailsEnforced() { return guardrailsEnforced; }
+    public void setGuardrailsEnforced(boolean value) { guardrailsEnforced = value; }
     public void setUpdatedBy(User value) { updatedBy = value; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

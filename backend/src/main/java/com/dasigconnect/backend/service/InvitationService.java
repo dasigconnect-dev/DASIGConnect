@@ -47,15 +47,13 @@ public class InvitationService {
     private final EmailService emailService;
     private final AuditLogService auditLogService;
     private final InstitutionService institutionService;
-
     /**
-     * Administrative policy cap: maximum active admin accounts network-wide
-     * (`app.admins.max`, default 3). Enforced when an admin invitation is
-     * created and again when it is accepted, so a stale invite can never push
-     * the network past the limit.
+     * Administrator headcount cap (`app.admins.max`, default 3). Enforced by
+     * {@link AdminCapPolicy} when an admin invitation is created and again when
+     * it is accepted, so a stale invite can never push the network past the
+     * limit.
      */
-    @org.springframework.beans.factory.annotation.Value("${app.admins.max:3}")
-    private long maxAdmins;
+    private final AdminCapPolicy adminCapPolicy;
 
     public InvitationService(
             InvitationTokenRepository invitationTokenRepository,
@@ -65,7 +63,8 @@ public class InvitationService {
             JWTService jwtService,
             EmailService emailService,
             AuditLogService auditLogService,
-            InstitutionService institutionService) {
+            InstitutionService institutionService,
+            AdminCapPolicy adminCapPolicy) {
         this.invitationTokenRepository = invitationTokenRepository;
         this.userRepository = userRepository;
         this.entityManager = entityManager;
@@ -74,6 +73,7 @@ public class InvitationService {
         this.emailService = emailService;
         this.auditLogService = auditLogService;
         this.institutionService = institutionService;
+        this.adminCapPolicy = adminCapPolicy;
     }
 
     public InvitationResponseDto createInvitation(CreateInvitationRequestDto dto) {
@@ -165,10 +165,11 @@ public class InvitationService {
         if (user.getAccountState() == UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Account is already active");
         }
-        if (token.getAssignedRole() == UserRole.admin
-                && userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active) >= maxAdmins) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Admin limit reached (" + maxAdmins + "). This invitation can no longer be accepted.");
+        if (token.getAssignedRole() == UserRole.admin) {
+            // Re-check at accept time so a stale invite can never push the
+            // network past the cap. Exclude this invite's own slot — it is
+            // converting from "pending invite" to "confirmed admin", net zero.
+            adminCapPolicy.assertHasFreeSlot(token.getRecipientEmail(), null);
         }
         user.setEmail(token.getRecipientEmail());
         user.setRole(token.getAssignedRole());
@@ -231,8 +232,11 @@ public class InvitationService {
         if (user.getAccountState() == UserStatus.active) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "An active account already exists for this email");
         }
-        if ((user.getRole() == UserRole.moderator || user.getRole() == UserRole.admin)
-                && user.getAccountState() == UserStatus.inactive) {
+        // Deactivated is deactivated, regardless of role — a fresh invitation
+        // never bypasses Reactivation (A4). Previously this only checked
+        // moderator/admin, so re-inviting an inactive Contributor silently
+        // reset their row to pending instead of 409ing.
+        if (user.getAccountState() == UserStatus.inactive) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A deactivated account must be reactivated by an admin");
         }
@@ -516,24 +520,15 @@ public class InvitationService {
     }
 
     /**
-     * Enforces the three-admin policy cap. Counts active admins plus distinct
-     * pending admin invitations (other than one already outstanding for this
-     * same recipient, which a resend would simply replace).
+     * Enforces the Administrator headcount cap for a new admin invitation:
+     * confirmed admins + distinct pending admin invites + pending promotions
+     * &lt; {@code app.admins.max}. An invite already outstanding for this same
+     * recipient is excluded (a resend simply replaces it). Delegated to
+     * {@link AdminCapPolicy} so invite, accept, promote and reactivate all
+     * count the same way.
      */
     private void assertAdminCapAllows(String recipientEmail) {
-        long activeAdmins = userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active);
-        long pendingAdminInvites = invitationTokenRepository
-                .findPendingNetworkRoleInvitations(UserRole.admin, Instant.now())
-                .stream()
-                .map(InvitationToken::getRecipientEmail)
-                .filter(email -> !email.equalsIgnoreCase(recipientEmail))
-                .distinct()
-                .count();
-        if (activeAdmins + pendingAdminInvites >= maxAdmins) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Admin limit reached (" + maxAdmins
-                            + "). Remove or transfer an existing admin before inviting another.");
-        }
+        adminCapPolicy.assertHasFreeSlot(recipientEmail, null);
     }
 
     private void validateInviterScope(CreateInvitationRequestDto dto, JwtUserDetails inviter) {

@@ -152,7 +152,7 @@ export default function WatermarkCanvasEditor({
         heightPercent: isLine ? 2 : 14,
         opacity: 0.5,
         fillColor: "rgba(15, 23, 42, 0.75)",
-        strokeColor: "#FFFFFF",
+        strokeColor: "transparent",
       };
     }
 

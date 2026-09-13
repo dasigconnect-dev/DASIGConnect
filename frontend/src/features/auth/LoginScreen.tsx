@@ -4,6 +4,7 @@ import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
 import Spinner from '../../components/common/Spinner'
 import { listPublicInstitutions, type InstitutionResponse } from '../../api/authApi'
+import dasigLogo from '../../assets/dasigconnect-logo.png'
 
 interface LoginScreenProps {
   active: boolean
@@ -76,9 +77,7 @@ export default function LoginScreen({
             </div>
             <div className="brand-lockup">
               <div className="brand-icon">
-                <svg viewBox="0 0 24 24">
-                  <path d="M12 2L22 7V17L12 22L2 17V7L12 2Z" />
-                </svg>
+                <img src={dasigLogo} alt="DASIGConnect logo" />
               </div>
               <div className="brand-text">
                 <div className="brand-name">
@@ -240,7 +239,7 @@ export default function LoginScreen({
                   type="button"
                   className="eye-btn"
                   onClick={onTogglePassword}
-                  aria-label="Show/hide password"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   <i className={showPassword ? 'ti ti-eye' : 'ti ti-eye-off'}></i>
                 </button>

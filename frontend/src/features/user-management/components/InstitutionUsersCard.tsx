@@ -20,6 +20,8 @@ interface InstitutionUsersCardProps {
   onChangeRole?: (user: UserProfileResponse) => void
   onEraseData?: (user: UserProfileResponse) => void
   onRequestSuperAdminTransfer?: (user: UserProfileResponse) => void
+  /** Owner-only: rescinds a pending Administrator promotion before the invitee has responded. */
+  onCancelAdminPromotion?: (user: UserProfileResponse) => void
   resendingUserId?: string | null
   showRoleControls?: boolean
   showInstitutionColumn?: boolean
@@ -54,6 +56,7 @@ export default function InstitutionUsersCard({
   onChangeRole,
   onEraseData,
   onRequestSuperAdminTransfer,
+  onCancelAdminPromotion,
   resendingUserId = null,
   showRoleControls = true,
   showInstitutionColumn = true,
@@ -338,6 +341,14 @@ export default function InstitutionUsersCard({
                               onClick: () => onRequestSuperAdminTransfer(managedUser),
                             }
                           : null,
+                        onCancelAdminPromotion && managedUser.adminPromotionPending
+                          ? {
+                              label: 'Cancel promotion',
+                              icon: 'ti ti-shield-x',
+                              onClick: () => onCancelAdminPromotion(managedUser),
+                              dangerous: true,
+                            }
+                          : null,
                       ].filter((item): item is NonNullable<typeof item> => item !== null)
 
                   return (
@@ -374,6 +385,11 @@ export default function InstitutionUsersCard({
                           <span className={`um-role-tag is-${managedUser.role.toLowerCase()}`}>
                             {formatRoleLabel(managedUser.role)}
                           </span>
+                          {managedUser.adminPromotionPending && (
+                            <span className="um-badge um-badge-promotion-pending" title="Awaiting the invitee's confirmation">
+                              Promotion pending
+                            </span>
+                          )}
                         </td>
                       )}
                       {showInstitutionColumn && <td>{managedUser.institutionName || '—'}</td>}

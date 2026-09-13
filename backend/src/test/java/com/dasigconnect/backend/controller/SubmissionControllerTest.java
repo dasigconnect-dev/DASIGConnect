@@ -54,13 +54,18 @@ class SubmissionControllerTest {
     @MockitoBean
     private TenantScopeService tenantScopeService;
 
+    @MockitoBean
+    private com.dasigconnect.backend.service.GuardRailSettingsService guardRailSettings;
+
     @Test
     @WithMockUser
     void lookups_authenticated_returnsReferenceData() throws Exception {
+        when(guardRailSettings.enforced()).thenReturn(true);
         mockMvc.perform(get("/api/v1/submissions/lookups"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.allowedFileTypes").isArray())
-                .andExpect(jsonPath("$.data.maxMediaAssetsPerSubmission").exists());
+                .andExpect(jsonPath("$.data.maxMediaAssetsPerSubmission").exists())
+                .andExpect(jsonPath("$.data.guardrailsEnforced").value(true));
     }
 
     @Test
@@ -180,6 +185,17 @@ class SubmissionControllerTest {
         mockMvc.perform(post("/api/v1/submissions/{id}/submit", submissionId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("pending"));
+    }
+
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
+    void withdraw_asContributor_returnsDraftSubmission() throws Exception {
+        UUID submissionId = UUID.randomUUID();
+        when(submissionService.withdraw(any(), any())).thenReturn(responseDto(submissionId, SubmissionStatus.draft));
+
+        mockMvc.perform(post("/api/v1/submissions/{id}/withdraw", submissionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("draft"));
     }
 
     @Test

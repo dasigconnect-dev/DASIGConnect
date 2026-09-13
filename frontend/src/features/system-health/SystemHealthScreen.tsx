@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  connectFacebookPage,
   downloadSystemHealthSnapshot,
   getSystemHealthSummary,
   getSystemHealthTokens,
   initSystemHealthOAuth,
   runSystemHealthJob,
+  setSystemHealthTokenManually,
   type BackgroundJobHealth,
   type ExternalServiceHealth,
   type HealthStatus,
@@ -14,7 +17,8 @@ import {
   type TokenStatus,
 } from "../../api/systemHealthApi";
 import { useToast } from "../../context/ToastContext";
-import { registerAppCacheReset } from "../../lib/appCache";
+import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
 import type { User } from "../../types/auth.types";
 import "../../styles/system-health.css";
 import "../../styles/dasig-loader.css";
@@ -31,24 +35,47 @@ function isAbortError(reason: unknown): boolean {
   return name === "CanceledError" || name === "AbortError" || code === "ERR_CANCELED";
 }
 
-const CACHE_TTL_MS = 60_000;
-let cachedSummary: SystemHealthSummary | null = null;
-let cachedTokens: TokenStatus[] = [];
-let cachedAt = 0;
-registerAppCacheReset(() => {
-  cachedSummary = null;
-  cachedTokens = [];
-  cachedAt = 0;
-});
+const SYSTEM_HEALTH_STALE_TIME_MS = 60_000;
+
+interface SystemHealthData {
+  summary: SystemHealthSummary | null;
+  tokens: TokenStatus[];
+}
+
+function getUserCacheScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
+}
+
+async function loadSystemHealth(signal?: AbortSignal): Promise<SystemHealthData> {
+  const [summaryResponse, tokenResponse] = await Promise.allSettled([
+    getSystemHealthSummary(signal),
+    getSystemHealthTokens(signal),
+  ]);
+
+  if (
+    summaryResponse.status === "rejected" &&
+    !isAbortError(summaryResponse.reason)
+  ) {
+    throw summaryResponse.reason;
+  }
+
+  return {
+    summary: summaryResponse.status === "fulfilled" ? summaryResponse.value.data : null,
+    tokens: tokenResponse.status === "fulfilled" ? tokenResponse.value.data : [],
+  };
+}
 
 export default function SystemHealthScreen({ user }: Props) {
   const toast = useToast();
-  const [summary, setSummary] = useState<SystemHealthSummary | null>(cachedSummary);
-  const [tokens, setTokens] = useState<TokenStatus[]>(cachedTokens);
-  const [loading, setLoading] = useState(!cachedSummary);
+  const queryClient = useQueryClient();
   const [exporting, setExporting] = useState(false);
   const [runningJobKey, setRunningJobKey] = useState<string | null>(null);
   const [busyTokenId, setBusyTokenId] = useState<string | null>(null);
+  const [manualEntryTokenId, setManualEntryTokenId] = useState<string | null>(null);
+  const [manualTokenValue, setManualTokenValue] = useState("");
+  const [connectPageId, setConnectPageId] = useState("");
+  const [connectAccessToken, setConnectAccessToken] = useState("");
+  const [connectingPage, setConnectingPage] = useState(false);
 
   // Active top-level tab (jobs | integrations | performance | storage)
   const [activeTab, setActiveTab] = useState<SystemHealthTab>(() => {
@@ -64,47 +91,30 @@ export default function SystemHealthScreen({ user }: Props) {
   const [jobStatusFilter, setJobStatusFilter] = useState<string>("ALL");
 
   const canReauthorize = user.role === "admin";
+  const isOwner = user.adminOwner === true;
 
-  useEffect(() => {
-    if (cachedSummary && Date.now() - cachedAt < CACHE_TTL_MS) return;
-    const controller = new AbortController();
-    void load(controller.signal, Boolean(cachedSummary));
-    return () => controller.abort();
-  }, []);
+  const healthQuery = useQuery({
+    queryKey: queryKeys.systemHealth.summary({
+      role: user.role,
+      userId: getUserCacheScope(user),
+    }),
+    queryFn: ({ signal }) => loadSystemHealth(signal),
+    staleTime: SYSTEM_HEALTH_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
+
+  const summary = healthQuery.data?.summary ?? null;
+  const tokens = healthQuery.data?.tokens ?? [];
+  const loading = healthQuery.isLoading || healthQuery.isFetching;
+  const loadError = healthQuery.error ? "Unable to load system health metrics." : "";
 
   function handleTabChange(tab: SystemHealthTab) {
     setActiveTab(tab);
     window.location.hash = tab;
   }
 
-  async function load(signal?: AbortSignal, background = false) {
-    if (!background) setLoading(true);
-
-    const [summaryResponse, tokenResponse] = await Promise.allSettled([
-      getSystemHealthSummary(signal),
-      getSystemHealthTokens(signal),
-    ]);
-
-    if (signal?.aborted) return;
-
-    if (summaryResponse.status === "fulfilled") {
-      setSummary(summaryResponse.value.data);
-      cachedSummary = summaryResponse.value.data;
-      cachedAt = Date.now();
-    }
-    if (tokenResponse.status === "fulfilled") {
-      setTokens(tokenResponse.value.data);
-      cachedTokens = tokenResponse.value.data;
-    }
-    if (
-      summaryResponse.status === "rejected" &&
-      !isAbortError(summaryResponse.reason) &&
-      !cachedSummary
-    ) {
-      toast.error("Unable to load system health metrics.");
-    }
-
-    if (!background) setLoading(false);
+  function refreshHealth() {
+    void queryClient.invalidateQueries({ queryKey: ["system-health"] });
   }
 
   async function handleExport() {
@@ -123,7 +133,7 @@ export default function SystemHealthScreen({ user }: Props) {
     setRunningJobKey(job.key);
     try {
       await runSystemHealthJob(job.key);
-      await load(undefined, true);
+      await queryClient.invalidateQueries({ queryKey: ["system-health"] });
       toast.success(`Ran ${job.jobName}.`);
     } catch {
       toast.error(`Unable to run ${job.jobName}.`);
@@ -142,6 +152,45 @@ export default function SystemHealthScreen({ user }: Props) {
       toast.error("Unable to start reauthorization.");
     } finally {
       setBusyTokenId(null);
+    }
+  }
+
+  function toggleManualEntry(tokenId: string) {
+    setManualEntryTokenId((current) => (current === tokenId ? null : tokenId));
+    setManualTokenValue("");
+  }
+
+  async function handleSetManualToken(tokenId: string) {
+    if (!manualTokenValue.trim()) return;
+    setBusyTokenId(tokenId);
+    try {
+      await setSystemHealthTokenManually(tokenId, manualTokenValue.trim());
+      await queryClient.invalidateQueries({ queryKey: queryKeys.systemHealth.summary({ role: user.role, userId: getUserCacheScope(user) }) });
+      toast.success("Facebook Page Access Token verified and updated.");
+      setManualEntryTokenId(null);
+      setManualTokenValue("");
+    } catch (err: unknown) {
+      const backendMessage = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error(backendMessage || "Unable to save the token. Make sure it's a valid Page Access Token.");
+    } finally {
+      setBusyTokenId(null);
+    }
+  }
+
+  async function handleConnectPage() {
+    if (!connectPageId.trim() || !connectAccessToken.trim()) return;
+    setConnectingPage(true);
+    try {
+      await connectFacebookPage(connectPageId.trim(), connectAccessToken.trim());
+      await queryClient.invalidateQueries({ queryKey: queryKeys.systemHealth.summary({ role: user.role, userId: getUserCacheScope(user) }) });
+      toast.success("Facebook Page connected. Publishing now targets this page.");
+      setConnectPageId("");
+      setConnectAccessToken("");
+    } catch (err: unknown) {
+      const backendMessage = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error(backendMessage || "Unable to connect this page. Make sure the Page ID and token match.");
+    } finally {
+      setConnectingPage(false);
     }
   }
 
@@ -289,7 +338,7 @@ export default function SystemHealthScreen({ user }: Props) {
             <button
               type="button"
               className="notif-btn notif-btn-ghost"
-              onClick={() => void load()}
+              onClick={refreshHealth}
               disabled={loading}
               title="Refresh system health metrics"
             >
@@ -441,8 +490,52 @@ export default function SystemHealthScreen({ user }: Props) {
                     busyTokenId={busyTokenId}
                     canReauthorize={canReauthorize}
                     onReauthorize={handleReauthorize}
+                    manualEntryTokenId={manualEntryTokenId}
+                    manualTokenValue={manualTokenValue}
+                    onToggleManualEntry={toggleManualEntry}
+                    onManualTokenValueChange={setManualTokenValue}
+                    onSetManualToken={handleSetManualToken}
                   />
                 </Section>
+
+                {/* Connect a Different Page — Admin Owner only */}
+                {isOwner && (
+                  <Section
+                    title="Connect a Different Facebook Page"
+                    icon="ti ti-replace"
+                    subtitle="Owner-only. Changes which page DASIGConnect publishes to — every other page's token is deactivated the moment this succeeds."
+                  >
+                    <div className="card-wrap sys-manual-token-row" style={{ padding: 16 }}>
+                      <input
+                        className="settings-input"
+                        placeholder="Facebook Page ID"
+                        value={connectPageId}
+                        onChange={(e) => setConnectPageId(e.target.value)}
+                        autoComplete="off"
+                      />
+                      <input
+                        type="password"
+                        className="settings-input"
+                        placeholder="Page Access Token for that page"
+                        value={connectAccessToken}
+                        onChange={(e) => setConnectAccessToken(e.target.value)}
+                        autoComplete="off"
+                      />
+                      <button
+                        type="button"
+                        className="notif-btn notif-btn-ghost notif-btn-sm"
+                        disabled={!connectPageId.trim() || !connectAccessToken.trim() || connectingPage}
+                        onClick={() => void handleConnectPage()}
+                      >
+                        <i className={connectingPage ? "ti ti-loader-2 sys-spin" : "ti ti-replace"} aria-hidden="true" />
+                        <span>Connect Page</span>
+                      </button>
+                      <span className="sys-manual-token-hint">
+                        The token is verified against this Page ID before anything changes. This cannot be undone from here — connect back to the previous page the same way if needed.
+                      </span>
+                    </div>
+                  </Section>
+                )}
 
                 {/* External API Services */}
                 <Section
@@ -510,8 +603,8 @@ export default function SystemHealthScreen({ user }: Props) {
           <div className="card-wrap sys-error-card">
             <i className="ti ti-alert-circle sys-error-icon" aria-hidden="true" />
             <h3>System Health Unavailable</h3>
-            <p>Unable to retrieve real-time system health metrics from the backend.</p>
-            <button type="button" className="notif-btn notif-btn-ghost" onClick={() => void load()}>
+            <p>{loadError || "Unable to retrieve real-time system health metrics from the backend."}</p>
+            <button type="button" className="notif-btn notif-btn-ghost" onClick={refreshHealth}>
               <i className="ti ti-refresh" aria-hidden="true" />
               <span>Retry Connection</span>
             </button>
@@ -697,12 +790,12 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
 
   if (item.key === "publish_success_rate") {
     const percent = Math.min(Math.max(item.value, 0), 100);
-    const radius = 30;
-    const circumference = 2 * Math.PI * radius;
-    const strokeDash = (percent / 100) * circumference;
     const succeeded = Math.round((percent / 100) * item.sampleSize);
     const failed = Math.max(item.sampleSize - succeeded, 0);
     const allClean = failed === 0;
+    const radius = 30;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDash = (percent / 100) * circumference;
 
     return (
       <div className="sys-hires-donut-layout">
@@ -837,7 +930,7 @@ function getMetricExplanation(item: OperationalMetric): string {
         ? "Moderator review latency is operating well within the 24-hour SLA benchmark."
         : `Average turnaround time is currently ${item.value.toFixed(1)}h (+${(item.value - 24).toFixed(1)}h above the 24h SLA target). Reviewing pending queues is advised.`;
     case "edit_approve_rate":
-      return `${item.value.toFixed(1)}% of submissions required revisions before approval. Standard direct-approval threshold is ≥85%.`;
+      return `${item.value.toFixed(1)}% of submissions required revisions before approval. Standard direct-approval threshold is ≤15%.`;
     case "manual_fallback_resolution_rate":
       return "Percentage of automated posting failures that were resolved via manual fallback.";
     case "publish_success_rate": {
@@ -856,7 +949,7 @@ function getMetricExplanation(item: OperationalMetric): string {
 
 function getMetricBenchmark(item: OperationalMetric): string {
   if (item.key === "approval_turnaround_time") return item.value <= 24 ? "Target SLA: ≤ 24h (Met)" : "Target SLA: ≤ 24h (Over)";
-  if (item.key === "publish_success_rate") return item.value >= 98 ? "Target: ≥ 98% (Met)" : "Target: ≥ 98% (Below)";
+  if (item.key === "publish_success_rate") return item.value >= 95 ? "Target: ≥ 95% (Met)" : "Target: ≥ 95% (Below)";
   if (item.key === "edit_approve_rate") return "Benchmark: ≤ 15%";
   if (item.key === "manual_fallback_resolution_rate") return "Target: 100% Resolved";
   if (item.key === "live_event_fast_track_volume") return "Expedited Window";
@@ -1001,11 +1094,21 @@ function TokenTable({
   busyTokenId,
   canReauthorize,
   onReauthorize,
+  manualEntryTokenId,
+  manualTokenValue,
+  onToggleManualEntry,
+  onManualTokenValueChange,
+  onSetManualToken,
 }: {
   tokens: TokenStatus[];
   busyTokenId: string | null;
   canReauthorize: boolean;
   onReauthorize: (token: TokenStatus) => void;
+  manualEntryTokenId: string | null;
+  manualTokenValue: string;
+  onToggleManualEntry: (tokenId: string) => void;
+  onManualTokenValueChange: (value: string) => void;
+  onSetManualToken: (tokenId: string) => void;
 }) {
   if (tokens.length === 0) {
     return (
@@ -1013,7 +1116,7 @@ function TokenTable({
         <i className="ti ti-brand-facebook" aria-hidden="true" />
         <div>
           <strong>No Facebook Page Tokens Configured</strong>
-          <p>Connect a Facebook Page in Settings to activate automated publishing and engagement sync.</p>
+          <p>Set FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN in the backend environment to connect a page — it appears here once the app restarts.</p>
         </div>
       </div>
     );
@@ -1033,29 +1136,71 @@ function TokenTable({
         </thead>
         <tbody>
           {tokens.map((token) => (
-            <tr key={token.id}>
-              <td>
-                <div className="sys-page-cell">
-                  <i className="ti ti-brand-facebook" />
-                  <strong>Page ····{token.pageId.slice(-4) || "----"}</strong>
-                </div>
-              </td>
-              <td><StatusBadge status={tokenStatusToHealth(token.tokenStatus)} /></td>
-              <td><span className="sys-date-text">{formatDate(token.expiresAt)}</span></td>
-              <td><span className="sys-date-text">{formatDate(token.lastValidatedAt)}</span></td>
-              <td style={{ textAlign: "right" }}>
-                <button
-                  type="button"
-                  className="notif-btn notif-btn-ghost notif-btn-sm"
-                  disabled={!canReauthorize || busyTokenId === token.id}
-                  onClick={() => onReauthorize(token)}
-                  title="Renew Facebook Page Access Token"
-                >
-                  <i className={busyTokenId === token.id ? "ti ti-loader-2 sys-spin" : "ti ti-refresh"} aria-hidden="true" />
-                  <span>Reauthorize</span>
-                </button>
-              </td>
-            </tr>
+            <Fragment key={token.id}>
+              <tr>
+                <td>
+                  <div className="sys-page-cell">
+                    <i className="ti ti-brand-facebook" />
+                    <strong>Page ····{token.pageId.slice(-4) || "----"}</strong>
+                  </div>
+                </td>
+                <td><StatusBadge status={tokenStatusToHealth(token.tokenStatus)} /></td>
+                <td><span className="sys-date-text">{formatDate(token.expiresAt)}</span></td>
+                <td><span className="sys-date-text">{formatDate(token.lastValidatedAt)}</span></td>
+                <td style={{ textAlign: "right" }}>
+                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                    <button
+                      type="button"
+                      className="notif-btn notif-btn-ghost notif-btn-sm"
+                      disabled={!canReauthorize || busyTokenId === token.id}
+                      onClick={() => onReauthorize(token)}
+                      title="Renew Facebook Page Access Token via Facebook OAuth"
+                    >
+                      <i className={busyTokenId === token.id && manualEntryTokenId !== token.id ? "ti ti-loader-2 sys-spin" : "ti ti-refresh"} aria-hidden="true" />
+                      <span>Reauthorize</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="notif-btn notif-btn-ghost notif-btn-sm"
+                      disabled={!canReauthorize}
+                      onClick={() => onToggleManualEntry(token.id)}
+                      title="Paste a Page Access Token directly, without the OAuth flow"
+                    >
+                      <i className="ti ti-key" aria-hidden="true" />
+                      <span>{manualEntryTokenId === token.id ? "Cancel" : "Set Manually"}</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {manualEntryTokenId === token.id && (
+                <tr>
+                  <td colSpan={5}>
+                    <div className="sys-manual-token-row">
+                      <input
+                        type="password"
+                        className="settings-input"
+                        placeholder="Paste the Page Access Token"
+                        value={manualTokenValue}
+                        onChange={(e) => onManualTokenValueChange(e.target.value)}
+                        autoComplete="off"
+                      />
+                      <button
+                        type="button"
+                        className="notif-btn notif-btn-ghost notif-btn-sm"
+                        disabled={!manualTokenValue.trim() || busyTokenId === token.id}
+                        onClick={() => onSetManualToken(token.id)}
+                      >
+                        <i className={busyTokenId === token.id ? "ti ti-loader-2 sys-spin" : "ti ti-device-floppy"} aria-hidden="true" />
+                        <span>Save</span>
+                      </button>
+                      <span className="sys-manual-token-hint">
+                        Must already be a Page Access Token for page ····{token.pageId.slice(-4) || "----"} — this cannot change which page is connected.
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -1107,13 +1252,11 @@ function overallStatusIcon(status: HealthStatus) {
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  // Decimal (1000) units so the figures line up with how Cloudflare R2 and
-  // Supabase report quota in their dashboards (10 GB, 500 MB, …).
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
   let unit = 0;
-  while (value >= 1000 && unit < units.length - 1) {
-    value /= 1000;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
     unit += 1;
   }
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;

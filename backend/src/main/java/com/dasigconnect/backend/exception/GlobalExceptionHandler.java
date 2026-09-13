@@ -48,6 +48,18 @@ public class GlobalExceptionHandler {
         this.accessDeniedAuditRecorder = accessDeniedAuditRecorder;
     }
 
+    @ExceptionHandler(MediaAssetDeletionConflictException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMediaAssetDeletionConflict(MediaAssetDeletionConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("MEDIA_ASSET_DELETE_CONFLICT", ex.getMessage(), ex.getConflicts()));
+    }
+
+    @ExceptionHandler(MediaAssetDuplicateException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMediaAssetDuplicate(MediaAssetDuplicateException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("MEDIA_ASSET_DUPLICATE", ex.getMessage(), ex.getDetails()));
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ApiResponse<Void>> handleResponseStatus(ResponseStatusException ex,
             HttpServletRequest request) {
@@ -241,14 +253,22 @@ public class GlobalExceptionHandler {
 
     private static String codeForStatus(int status) {
         return switch (status) {
-            case 400 -> "VALIDATION_ERROR";
-            case 401 -> "UNAUTHORIZED";
-            case 403 -> "ACCESS_DENIED";
-            case 404 -> "NOT_FOUND";
-            case 409 -> "CONFLICT";
-            case 422 -> "UNPROCESSABLE_ENTITY";
-            case 503 -> "SERVICE_UNAVAILABLE";
-            default -> status >= 500 ? "INTERNAL_ERROR" : "REQUEST_ERROR";
+            case 400 ->
+                "VALIDATION_ERROR";
+            case 401 ->
+                "UNAUTHORIZED";
+            case 403 ->
+                "ACCESS_DENIED";
+            case 404 ->
+                "NOT_FOUND";
+            case 409 ->
+                "CONFLICT";
+            case 422 ->
+                "UNPROCESSABLE_ENTITY";
+            case 503 ->
+                "SERVICE_UNAVAILABLE";
+            default ->
+                status >= 500 ? "INTERNAL_ERROR" : "REQUEST_ERROR";
         };
     }
 }

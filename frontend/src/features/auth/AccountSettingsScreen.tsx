@@ -1,15 +1,28 @@
 import "../../styles/dasig-loader.css";
+import "../../styles/settings.css";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
-import type { WatermarkElement } from "../../types/watermark.types";
-import { changePassword, getMe, getPageSettings, requestPasswordReset, updateAccountSettings, updatePageSettings } from "../../api/authApi";
+import type { WatermarkConfiguration, WatermarkElement } from "../../types/watermark.types";
+import {
+  changePassword,
+  getMe,
+  getPageSettings,
+  requestPasswordReset,
+  updateAccountSettings,
+  updatePageSettings,
+  type PageSettingsResponse,
+  type UserProfileResponse,
+} from "../../api/authApi";
 import { createMessengerLinkCode, disconnectMessenger, getMessengerConnectionStatus, type MessengerConnection, type MessengerLinkCode } from "../../api/messengerApi";
-import { getWatermarkConfiguration, saveWatermarkConfiguration } from "../../api/watermarkApi";
+import { saveWatermarkConfiguration } from "../../api/watermarkApi";
 import WatermarkCanvasEditor from "../settings/components/WatermarkCanvasEditor";
 import { useToast } from "../../context/ToastContext";
-import { registerAppCacheReset } from "../../lib/appCache";
+import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
 import { firstPasswordError, getPasswordRules } from "../../lib/passwordPolicy";
+import { watermarkConfigurationQueryOptions } from "../../hooks/useWatermarkConfiguration";
 
 interface Props {
   user: User;
@@ -18,24 +31,31 @@ interface Props {
 
 type SettingsTab = "account" | "password" | "page";
 
-// The profile-settings slice of GET /api/v1/me (display name + notification
-// prefs). Cached module-wide so revisiting /settings within the TTL skips the
-// round-trip. Cleared on logout via the app cache registry.
-type ProfileSettingsCache = {
+type ProfileSettingsForm = {
   name: string;
   notifyInApp: boolean;
   notifyEmail: boolean;
 };
-let cachedProfileSettings: ProfileSettingsCache | null = null;
-let cachedProfileAt = 0;
+
 const PROFILE_CACHE_TTL_MS = 60_000;
-registerAppCacheReset(() => {
-  cachedProfileSettings = null;
-  cachedProfileAt = 0;
-});
+const PAGE_SETTINGS_STALE_TIME_MS = 5 * 60_000;
+
+function getUserCacheScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
+}
+
+function getProfileSettingsForm(data: UserProfileResponse): ProfileSettingsForm {
+  const fullName = [data.firstName, data.lastName].filter(Boolean).join(" ");
+  return {
+    name: data.displayName || fullName || "",
+    notifyInApp: data.notifyInApp,
+    notifyEmail: data.notifyEmail,
+  };
+}
 
 export default function AccountSettingsScreen({ user, onProfileUpdated }: Props) {
   const toast = useToast();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -43,23 +63,18 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   // Messenger alerts are a per-account delivery channel; only moderators and
   // admins actually receive Messenger deliveries (see NotificationEventListener).
   const canUseMessenger = user.role === "moderator" || user.role === "admin";
-  const [initialLoading, setInitialLoading] = useState(cachedProfileSettings === null);
+  const userScope = getUserCacheScope(user);
 
-  // Tab State
-  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
-    const hash = window.location.hash.replace("#", "");
-    if (hash === "password") return "password";
-    if (hash === "page" && canManagePage) return "page";
-    return "account";
-  });
+  const activeTab = getActiveTabFromHash(location.hash, canManagePage);
+  const isStudioOpen = canManagePage && location.hash.replace("#", "") === "watermark-studio";
 
-  const seedName = cachedProfileSettings?.name || user.displayName || user.name;
+  const seedName = user.displayName || user.name;
   const [displayName, setDisplayName] = useState(seedName);
   const [initialDisplayName, setInitialDisplayName] = useState(seedName);
-  const [notifyInApp, setNotifyInApp] = useState(cachedProfileSettings?.notifyInApp ?? true);
-  const [initialNotifyInApp, setInitialNotifyInApp] = useState(cachedProfileSettings?.notifyInApp ?? true);
-  const [notifyEmail, setNotifyEmail] = useState(cachedProfileSettings?.notifyEmail ?? true);
-  const [initialNotifyEmail, setInitialNotifyEmail] = useState(cachedProfileSettings?.notifyEmail ?? true);
+  const [notifyInApp, setNotifyInApp] = useState(true);
+  const [initialNotifyInApp, setInitialNotifyInApp] = useState(true);
+  const [notifyEmail, setNotifyEmail] = useState(true);
+  const [initialNotifyEmail, setInitialNotifyEmail] = useState(true);
   const [currentPassword, setCurrentPassword] = useState("");
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [currentPwEditable, setCurrentPwEditable] = useState(false);
@@ -67,12 +82,11 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [resetLinkSent, setResetLinkSent] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
-  const [facebookPageId, setFacebookPageId] = useState("");
+  const [guardrailsEnforced, setGuardrailsEnforced] = useState(true);
 
   // Watermark Studio States
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
   const [watermarkElements, setWatermarkElements] = useState<WatermarkElement[]>([]);
-  const [watermarkLoading, setWatermarkLoading] = useState(false);
 
   // Messenger Integration States
   const [messengerStatus, setMessengerStatus] = useState<MessengerConnection | null>(null);
@@ -80,14 +94,75 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [copiedCode, setCopiedCode] = useState(false);
   const [messengerExpanded, setMessengerExpanded] = useState(false);
 
-  const [saving, setSaving] = useState<"account" | "password" | "page" | "watermark" | "messenger" | null>(null);
+  const [saving, setSaving] = useState<"account" | "password" | "watermark" | "messenger" | "guardrails" | null>(null);
   const pageInstitutionId = null;
+  const profileQueryKey = queryKeys.settings.profile({ userId: userScope });
+  const pageSettingsQueryKey = queryKeys.settings.page({
+    role: user.role,
+    userId: userScope,
+    institutionId: pageInstitutionId,
+  });
+  const watermarkQueryOptions = watermarkConfigurationQueryOptions({
+    user,
+    institutionId: pageInstitutionId,
+    enabled: canManagePage && activeTab === "page",
+  });
+  const watermarkQueryKey = watermarkQueryOptions.queryKey;
+  const profileHydratedRef = useRef(false);
+  const pageSettingsHydratedRef = useRef(false);
+  const watermarkHydratedRef = useRef(false);
+  const pageSettingsErrorNotifiedRef = useRef(false);
+  const watermarkErrorNotifiedRef = useRef(false);
   const newPasswordRules = getPasswordRules(newPassword, [
     user.email,
     user.name,
     user.displayName,
   ]);
   const newPasswordOk = Object.values(newPasswordRules).every(Boolean);
+
+  const profileQuery = useQuery({
+    queryKey: profileQueryKey,
+    queryFn: ({ signal }) => getMe(signal),
+    staleTime: PROFILE_CACHE_TTL_MS,
+    meta: authenticatedQueryMeta,
+  });
+
+  const pageSettingsQuery = useQuery({
+    queryKey: pageSettingsQueryKey,
+    queryFn: ({ signal }) => getPageSettings(pageInstitutionId, signal),
+    enabled: canManagePage && activeTab === "page",
+    staleTime: PAGE_SETTINGS_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
+
+  const watermarkQuery = useQuery(watermarkQueryOptions);
+
+  const initialLoading = profileQuery.isLoading;
+  const watermarkLoading = watermarkQuery.isLoading;
+
+  async function invalidateAccountSettingsDependencies() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["settings"] }),
+      queryClient.invalidateQueries({ queryKey: ["users"] }),
+      queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    ]);
+  }
+
+  async function invalidatePageSettingsDependencies() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["settings"] }),
+      queryClient.invalidateQueries({ queryKey: ["submissions"] }),
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] }),
+    ]);
+  }
+
+  async function invalidateWatermarkSettingsDependencies() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["settings"] }),
+      queryClient.invalidateQueries({ queryKey: ["submissions"] }),
+      queryClient.invalidateQueries({ queryKey: ["validation"] }),
+    ]);
+  }
 
   // Display Name Validation
   function validateDisplayName(name: string) {
@@ -109,11 +184,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     notifyInApp !== initialNotifyInApp ||
     notifyEmail !== initialNotifyEmail;
 
-  // Studio sub-view state
-  const [isStudioOpen, setIsStudioOpen] = useState(() => {
-    return window.location.hash === "#watermark-studio";
-  });
-
   const loadMessenger = () => {
     if (!canUseMessenger) return;
     getMessengerConnectionStatus()
@@ -121,130 +191,74 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       .catch(() => setMessengerStatus(null));
   };
 
-  useEffect(() => {
-    const hash = location.hash.replace("#", "");
-    if (hash === "password") {
-      setActiveTab("password");
-      setIsStudioOpen(false);
-    } else if (hash === "watermark-studio" && canManagePage) {
-      setActiveTab("page");
-      setIsStudioOpen(true);
-    } else if (hash === "page" && canManagePage) {
-      setActiveTab("page");
-      setIsStudioOpen(false);
-    } else if (hash === "account") {
-      setActiveTab("account");
-      setIsStudioOpen(false);
-    }
-  }, [location.hash, canManagePage]);
-
   function switchTab(tab: SettingsTab) {
     if (tab === "page" && !canManagePage) return;
-    setActiveTab(tab);
-    setIsStudioOpen(false);
     navigate(`/settings#${tab}`, { replace: true });
   }
 
   function openStudio() {
     if (!canManagePage) return;
-    setIsStudioOpen(true);
     navigate(`/settings#watermark-studio`, { replace: true });
   }
 
   function closeStudio() {
-    setIsStudioOpen(false);
     navigate(`/settings#${canManagePage ? "page" : "account"}`, { replace: true });
   }
 
-  // Hydrate the form from the server. Deliberately NOT keyed on `user.name`:
-  // saveAccount() bumps that prop via onProfileUpdated and must not retrigger a
-  // redundant GET /me (we already applied the change locally).
+  // Hydrate editable forms once from query data so background refetches do not
+  // replace in-progress edits.
   useEffect(() => {
     let isCurrent = true;
-    const promises: Promise<unknown>[] = [];
-
-    const profileFresh =
-      cachedProfileSettings !== null &&
-      Date.now() - cachedProfileAt < PROFILE_CACHE_TTL_MS;
-
-    if (!profileFresh) {
-      promises.push(
-        getMe()
-          .then(({ data }) => {
-            if (!isCurrent) return;
-            const fullName = [data.firstName, data.lastName].filter(Boolean).join(" ");
-            const name = data.displayName || fullName || "";
-            setDisplayName(name);
-            setInitialDisplayName(name);
-            setNotifyInApp(data.notifyInApp);
-            setInitialNotifyInApp(data.notifyInApp);
-            setNotifyEmail(data.notifyEmail);
-            setInitialNotifyEmail(data.notifyEmail);
-            cachedProfileSettings = {
-              name,
-              notifyInApp: data.notifyInApp,
-              notifyEmail: data.notifyEmail,
-            };
-            cachedProfileAt = Date.now();
-          })
-          .catch(() => {}),
-      );
+    if (profileQuery.data && !profileHydratedRef.current) {
+      const profileForm = getProfileSettingsForm(profileQuery.data.data);
+      setDisplayName(profileForm.name);
+      setInitialDisplayName(profileForm.name);
+      setNotifyInApp(profileForm.notifyInApp);
+      setInitialNotifyInApp(profileForm.notifyInApp);
+      setNotifyEmail(profileForm.notifyEmail);
+      setInitialNotifyEmail(profileForm.notifyEmail);
+      profileHydratedRef.current = true;
     }
 
     if (canUseMessenger) {
-      promises.push(
-        getMessengerConnectionStatus()
-          .then((data) => {
-            if (isCurrent) setMessengerStatus(data);
-          })
-          .catch(() => {
-            if (isCurrent) setMessengerStatus(null);
-          })
-      );
+      getMessengerConnectionStatus()
+        .then((data) => {
+          if (isCurrent) setMessengerStatus(data);
+        })
+        .catch(() => {
+          if (isCurrent) setMessengerStatus(null);
+        });
     }
 
-    Promise.allSettled(promises).finally(() => {
-      if (isCurrent) {
-        setInitialLoading(false);
-      }
-    });
-
     return () => {
       isCurrent = false;
     };
-  }, [canUseMessenger]);
+  }, [canUseMessenger, profileQuery.data]);
 
-  // Page + Watermark data — loaded once, the first time the admin opens the
-  // Page tab (not eagerly on every settings mount).
-  const pageDataLoadedRef = useRef(false);
+  // Page and watermark data load lazily through queries when admins open the
+  // Page tab.
   useEffect(() => {
-    if (!canManagePage || activeTab !== "page" || pageDataLoadedRef.current) return;
-    pageDataLoadedRef.current = true;
+    if (pageSettingsQuery.data && !pageSettingsHydratedRef.current) {
+      setGuardrailsEnforced(pageSettingsQuery.data.data.guardrailsEnforced ?? true);
+      pageSettingsHydratedRef.current = true;
+    }
 
-    let isCurrent = true;
-    void getPageSettings(pageInstitutionId)
-      .then(({ data }) => {
-        if (!isCurrent) return;
-        setFacebookPageId(data.facebookPageId || "");
-      })
-      .catch(() => toast.error("Unable to load Page Settings."));
+    if (watermarkQuery.data && !watermarkHydratedRef.current) {
+      setWatermarkEnabled(watermarkQuery.data.enabled);
+      setWatermarkElements(watermarkQuery.data.elements || []);
+      watermarkHydratedRef.current = true;
+    }
 
-    setWatermarkLoading(true);
-    void getWatermarkConfiguration()
-      .then(({ data }) => {
-        if (!isCurrent) return;
-        setWatermarkEnabled(data.enabled);
-        setWatermarkElements(data.elements || []);
-      })
-      .catch(() => toast.error("Unable to load Watermark configuration."))
-      .finally(() => {
-        if (isCurrent) setWatermarkLoading(false);
-      });
+    if (pageSettingsQuery.isError && !pageSettingsErrorNotifiedRef.current) {
+      pageSettingsErrorNotifiedRef.current = true;
+      toast.error("Unable to load Page Settings.");
+    }
 
-    return () => {
-      isCurrent = false;
-    };
-  }, [canManagePage, activeTab, pageInstitutionId]);
+    if (watermarkQuery.isError && !watermarkErrorNotifiedRef.current) {
+      watermarkErrorNotifiedRef.current = true;
+      toast.error("Unable to load Watermark configuration.");
+    }
+  }, [pageSettingsQuery.data, pageSettingsQuery.isError, toast, watermarkQuery.data, watermarkQuery.isError]);
 
   async function saveAccount() {
     const cleanName = displayName.trim().replace(/\s+/g, " ");
@@ -253,13 +267,17 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
 
     setSaving("account");
     try {
-      await updateAccountSettings({ displayName: cleanName, notifyInApp, notifyEmail });
-      setDisplayName(cleanName);
-      setInitialDisplayName(cleanName);
-      setInitialNotifyInApp(notifyInApp);
-      setInitialNotifyEmail(notifyEmail);
-      cachedProfileSettings = { name: cleanName, notifyInApp, notifyEmail };
-      cachedProfileAt = Date.now();
+      const { data } = await updateAccountSettings({ displayName: cleanName, notifyInApp, notifyEmail });
+      const profileForm = getProfileSettingsForm(data);
+      setDisplayName(profileForm.name);
+      setInitialDisplayName(profileForm.name);
+      setNotifyInApp(profileForm.notifyInApp);
+      setInitialNotifyInApp(profileForm.notifyInApp);
+      setNotifyEmail(profileForm.notifyEmail);
+      setInitialNotifyEmail(profileForm.notifyEmail);
+      queryClient.setQueryData(profileQueryKey, { data });
+      profileHydratedRef.current = true;
+      await invalidateAccountSettingsDependencies();
       await onProfileUpdated();
       toast.success("Account settings updated.");
     } catch {
@@ -314,13 +332,22 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     }
   }
 
-  async function savePage() {
-    setSaving("page");
+  async function saveGuardrails() {
+    setSaving("guardrails");
     try {
-      await updatePageSettings({ facebookPageId }, pageInstitutionId);
-      toast.success("Facebook Page ID updated.");
+      const { data } = await updatePageSettings({ guardrailsEnforced }, pageInstitutionId);
+      setGuardrailsEnforced(data.guardrailsEnforced ?? true);
+      queryClient.setQueryData(pageSettingsQueryKey, { data } satisfies { data: PageSettingsResponse });
+      pageSettingsHydratedRef.current = true;
+      pageSettingsErrorNotifiedRef.current = false;
+      await invalidatePageSettingsDependencies();
+      toast.success(
+        data.guardrailsEnforced
+          ? "Scheduling guard rails are on."
+          : "Scheduling guard rails are off — contributors can submit without a slot.",
+      );
     } catch {
-      toast.error("Unable to update Facebook Page ID.");
+      toast.error("Unable to update scheduling guard rails.");
     } finally {
       setSaving(null);
     }
@@ -336,6 +363,10 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       });
       setWatermarkEnabled(data.enabled);
       setWatermarkElements(data.elements || []);
+      queryClient.setQueryData<WatermarkConfiguration>(watermarkQueryKey, data);
+      watermarkHydratedRef.current = true;
+      watermarkErrorNotifiedRef.current = false;
+      await invalidateWatermarkSettingsDependencies();
       toast.success("Watermark settings saved.");
     } catch (err: unknown) {
       const errorMsg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -549,7 +580,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
         </nav>
 
         {/* Right Main Content Area */}
-        <main className="settings-content-area">
+        <div className="settings-content-area">
           {/* Tab 1: Account Settings */}
           {activeTab === "account" && (
             <section className="settings-card" id="account">
@@ -929,40 +960,31 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                 </footer>
               </section>
 
-              {/* Card 2: Facebook Integration */}
-              <section className="settings-card" id="facebook-card">
+              {/* Card 2: Scheduling Guard Rails */}
+              <section className="settings-card" id="guardrails-card">
                 <SettingsHeader
-                  icon="ti ti-brand-facebook"
-                  title="Facebook Integration"
-                  description="Identify the target Facebook Page used for automated publishing."
+                  icon="ti ti-shield-check"
+                  title="Scheduling Guard Rails"
+                  description="Network-wide limits on the shared publishing calendar."
                 />
                 <div className="settings-card-body">
-                  <div className="settings-field">
-                    <label htmlFor="settings-facebook-id">Facebook Page ID</label>
-                    <div className="settings-input-with-icon">
-                      <i className="ti ti-brand-facebook" />
-                      <input
-                        id="settings-facebook-id"
-                        className="settings-input"
-                        value={facebookPageId}
-                        maxLength={255}
-                        placeholder="Enter Facebook Page ID"
-                        onChange={(e) => setFacebookPageId(e.target.value)}
-                      />
-                    </div>
-                    <span className="settings-field-hint">Access tokens and credentials remain secured separately.</span>
-                  </div>
+                  <Toggle
+                    title="Enforce guard rails"
+                    description="Off lets posts be scheduled at any interval and any time of day. A scheduled time is still required."
+                    checked={guardrailsEnforced}
+                    onChange={setGuardrailsEnforced}
+                  />
                 </div>
                 <SettingsFooter
-                  label="Save Facebook ID"
+                  label="Save"
                   icon="ti ti-device-floppy"
-                  busy={saving === "page"}
-                  onClick={() => void savePage()}
+                  busy={saving === "guardrails"}
+                  onClick={() => void saveGuardrails()}
                 />
               </section>
             </div>
           )}
-        </main>
+        </div>
       </div>
     </div>
   );
@@ -1008,4 +1030,11 @@ function Toggle({ icon, title, description, checked, onChange }: { icon?: string
 
 function formatRole(role: User["role"]) {
   return role === "admin" ? "Admin" : role === "moderator" ? "Moderator" : "Contributor";
+}
+
+function getActiveTabFromHash(hashValue: string, canManagePage: boolean): SettingsTab {
+  const hash = hashValue.replace("#", "");
+  if (hash === "password") return "password";
+  if ((hash === "page" || hash === "watermark-studio") && canManagePage) return "page";
+  return "account";
 }

@@ -716,6 +716,303 @@
   color: var(--val-muted);
 }
 
+/* ── Submission details side panel (collapsible, beside the FB preview) ── */
+.val-review-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  transition: gap 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.val-review-layout > .val-fb-card {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  margin-bottom: 0;
+  transition: max-width 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+              margin 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+              flex-basis 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.val-review-layout.is-details-collapsed {
+  gap: 0;
+}
+
+.val-review-layout.is-details-collapsed > .val-fb-card {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.val-details-panel {
+  flex: 0 0 300px;
+  width: 300px;
+  min-width: 300px;
+  align-self: stretch;
+  position: sticky;
+  top: 0;
+  border-radius: var(--val-radius);
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  overflow: hidden;
+  transition: flex-basis 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+              width 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+              min-width 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+              max-width 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.25s ease,
+              transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 0.25s ease,
+              visibility 0.35s ease;
+  will-change: transform, opacity, width, flex-basis;
+}
+
+.val-details-panel-inner {
+  width: 300px;
+  min-width: 300px;
+  box-sizing: border-box;
+}
+
+.val-review-layout.is-details-collapsed .val-details-panel,
+.val-details-panel.is-collapsed {
+  flex: 0 0 0px !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  border-width: 0 !important;
+  border-color: transparent !important;
+  opacity: 0 !important;
+  transform: translateX(28px) !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.val-details-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 12px 11px 14px;
+  border-bottom: 1px solid var(--val-border);
+  background: var(--val-surface-2);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--val-text-2);
+}
+
+.val-details-head span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.val-details-hide {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  color: var(--val-muted);
+  cursor: pointer;
+  font-size: 15px;
+}
+.val-details-hide:hover {
+  color: var(--val-blue);
+  border-color: var(--val-blue-bdr);
+  background: var(--val-blue-dim);
+}
+
+.val-details-list {
+  margin: 0;
+  padding: 6px 14px 12px;
+}
+
+.val-details-list > div {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--val-border);
+}
+.val-details-list > div:last-child {
+  border-bottom: 0;
+}
+
+.val-details-list dt {
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--val-muted);
+  margin-bottom: 4px;
+}
+
+.val-details-list dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--val-text);
+  word-break: break-word;
+}
+
+.val-details-you {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--val-blue-dim);
+  color: var(--val-blue);
+  border: 1px solid var(--val-blue-bdr);
+}
+
+.val-details-muted {
+  color: var(--val-muted);
+  font-size: 12px;
+}
+
+.val-details-sub {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--val-muted);
+}
+
+.val-details-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  border: 1px solid var(--val-border);
+}
+.val-details-mode.is-scheduled {
+  background: var(--val-blue-dim);
+  color: var(--val-blue);
+  border-color: var(--val-blue-bdr);
+}
+.val-details-mode.is-live {
+  background: var(--val-red-dim);
+  color: var(--val-red);
+  border-color: var(--val-red-bdr);
+}
+.val-details-mode.is-unset {
+  background: var(--val-amber-dim);
+  color: var(--val-amber);
+  border-color: var(--val-amber-bdr);
+}
+
+.val-details-editors {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.val-details-editors li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 12.5px;
+}
+
+.val-details-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid #bfdbfe;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  color: #1877f2;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(24, 119, 242, 0.15);
+  cursor: pointer;
+  transition: opacity 0.25s ease,
+              transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+              background 0.15s ease,
+              border-color 0.15s ease,
+              box-shadow 0.15s ease;
+}
+.val-details-btn:hover {
+  background: #eff6ff;
+  border-color: #60a5fa;
+  transform: translateX(-2px);
+  box-shadow: 0 4px 14px rgba(24, 119, 242, 0.22);
+}
+.val-details-btn.is-hidden {
+  opacity: 0;
+  transform: translateX(14px) scale(0.95);
+  pointer-events: none;
+  visibility: hidden;
+}
+.val-details-btn i {
+  font-size: 14px;
+}
+
+@media (max-width: 1180px) {
+  .val-review-layout {
+    flex-direction: column;
+  }
+  .val-review-layout > .val-fb-card {
+    flex: none;
+    width: 100%;
+    max-width: 100%;
+    position: static;
+    margin: 0 auto;
+  }
+  .val-review-layout > .val-details-panel {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    position: static;
+    transition: max-height 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.25s ease,
+                transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                margin 0.35s ease,
+                visibility 0.35s ease;
+  }
+  .val-details-panel-inner {
+    width: 100%;
+    min-width: 0;
+  }
+  .val-review-layout.is-details-open > .val-details-panel {
+    max-height: 1400px;
+    opacity: 1;
+    transform: translateY(0);
+    visibility: visible;
+  }
+  .val-review-layout.is-details-collapsed > .val-details-panel {
+    flex: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 0 !important;
+    opacity: 0 !important;
+    transform: translateY(16px) !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+    margin: 0 !important;
+    border-width: 0 !important;
+  }
+}
+
 /* ── Realistic Facebook Post Preview Card (Authentic Facebook Light Feed) ── */
 .val-fb-card {
   background: #ffffff;
@@ -737,7 +1034,7 @@
 
 .val-fb-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   padding: 14px 16px 10px;
   gap: 12px;
@@ -745,10 +1042,11 @@
 
 .val-fb-author {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   min-width: 0;
-  flex: 1;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .val-fb-avatar {
@@ -762,18 +1060,22 @@
   justify-content: center;
   font-size: 22px;
   flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .val-fb-author-meta {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .val-fb-author-name {
   display: flex;
   align-items: center;
   gap: 5px;
+  min-width: 0;
 }
 
 .val-fb-author-name strong {
@@ -783,6 +1085,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  display: block;
 }
 
 .val-fb-time-row {
@@ -792,18 +1096,36 @@
   font-size: 12px;
   color: #65676b;
   font-weight: 400;
-  margin-top: 1px;
+  margin-top: 2px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   white-space: nowrap;
+}
+
+.val-fb-published-by {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.val-fb-schedule-text {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .val-fb-dot {
   font-weight: 700;
   color: #65676b;
+  flex-shrink: 0;
 }
 
 .val-fb-time-row i {
   font-size: 11px;
   color: #65676b;
+  flex-shrink: 0;
 }
 
 .val-fb-header-actions {
@@ -811,6 +1133,9 @@
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  margin-left: 8px;
+  position: relative;
+  z-index: 2;
 }
 
 .val-wm-toggle-btn {
@@ -825,13 +1150,26 @@
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: all 0.15s ease;
+}
+
+.val-wm-toggle-btn:hover {
+  background: #e4e6eb;
+  color: #050505;
 }
 
 .val-wm-toggle-btn.active {
   background: #e7f3ff;
   border-color: #1877f2;
   color: #1877f2;
+}
+
+.val-wm-toggle-btn.active:hover {
+  background: #dbeafe;
+  border-color: #094cb0;
+  color: #094cb0;
 }
 
 .val-fb-more-btn {
@@ -1451,6 +1789,7 @@
   border-radius: 20px;
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
   background: #eff6ff;
   color: #1d4ed8;
   border: 1px solid #bfdbfe;
@@ -1525,10 +1864,11 @@
   cursor: not-allowed;
 }
 
-/* Primary Button (Approve / Confirm) */
+/* Primary Button (Approve / Confirm / Send Revision Request) */
 .val-btn-primary,
 .val-btn.success,
-.val-modal-actions .success {
+.val-modal-actions .success,
+.val-modal-actions .warn {
   background: #1877f2;
   color: #ffffff;
   border: 1px solid #166fe5;
@@ -1536,14 +1876,15 @@
 }
 
 .val-btn-primary:hover:not(:disabled),
-.val-btn.success:hover:not(:disabled) {
+.val-btn.success:hover:not(:disabled),
+.val-modal-actions .success:hover:not(:disabled),
+.val-modal-actions .warn:hover:not(:disabled) {
   background: #166fe5;
   box-shadow: 0 2px 6px rgba(24, 119, 242, 0.35);
 }
 
-/* Secondary Button (Neutral Action / Request Revision) */
-.val-btn-secondary,
-.val-modal-actions .warn {
+/* Secondary Button (Neutral Action / Request Revision toolbar) */
+.val-btn-secondary {
   background: #ffffff;
   color: #334155;
   border: 1px solid #cbd5e1;
@@ -1621,7 +1962,8 @@
 }
 
 .val-edit-field input,
-.val-edit-field textarea {
+.val-edit-field textarea,
+.val-edit-field select {
   border: 1px solid var(--val-border);
   border-radius: 8px;
   padding: 9px 11px;
@@ -1634,6 +1976,7 @@
 
 .val-edit-field input:focus,
 .val-edit-field textarea:focus,
+.val-edit-field select:focus,
 .val-edit-media-caption:focus {
   outline: none;
   border-color: var(--val-accent, #2563eb);
@@ -1641,6 +1984,34 @@
 }
 
 .val-edit-field textarea { resize: vertical; }
+
+.val-edit-hashtags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.val-edit-hashtag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--val-blue-dim);
+  color: var(--val-blue);
+  border: 1px solid var(--val-blue-bdr);
+}
+.val-edit-hashtags-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--val-muted);
+}
+.val-edit-hashtags-hint code {
+  font-family: var(--ff-mono, ui-monospace, monospace);
+  background: var(--val-surface-2);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
 
 .val-log-flag {
   margin-left: 8px;
@@ -1733,6 +2104,45 @@
   animation: valModalOut 190ms ease both;
 }
 
+.val-modal-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.val-modal-header .val-modal-icon {
+  margin-bottom: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.val-modal-header-text {
+  flex: 1;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.val-modal-header-text h3 {
+  color: var(--val-text);
+  margin: 0 0 4px;
+  font-family: var(--ff-display);
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.val-modal-header-text p {
+  margin: 0;
+  color: var(--val-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .val-modal-icon {
   display: flex;
   align-items: center;
@@ -1750,8 +2160,8 @@
 }
 
 .val-modal-icon.warn {
-  background: var(--val-amber-dim);
-  color: var(--val-amber);
+  background: #eff6ff;
+  color: #1877f2;
 }
 
 .val-modal-icon.danger {
@@ -1820,6 +2230,157 @@
   background: var(--val-red-dim);
   border-color: var(--val-red-bdr);
   color: var(--val-red);
+}
+
+/* Wide Modal for Revision Details */
+.val-modal.val-modal--wide {
+  width: min(560px, 100%);
+}
+
+.val-revision-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: left;
+  margin-top: 14px;
+}
+
+.val-revision-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.val-revision-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--val-text);
+}
+
+.val-revision-hint {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--val-muted);
+}
+
+.val-revision-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+.val-revision-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface-2);
+  color: var(--val-text-2);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.val-revision-chip:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1877f2;
+}
+
+.val-revision-chip.is-active {
+  background: #eff6ff;
+  border-color: #1877f2;
+  color: #1877f2;
+}
+
+.val-revision-chip.has-comment {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.val-chip-check {
+  font-size: 11px;
+  color: #16a34a;
+  margin-left: 2px;
+}
+
+.val-chip-plus {
+  font-size: 11px;
+  color: var(--val-muted);
+  margin-left: 2px;
+}
+
+.val-revision-field-box {
+  background: #f8fafc;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.val-revision-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.val-revision-field-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #1877f2;
+}
+
+.val-revision-field-name strong {
+  font-weight: 700;
+}
+
+.val-revision-field-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.val-revision-field-clear:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.val-revision-field-input {
+  background: #ffffff;
+  min-height: 64px;
+}
+
+.val-revision-attached-summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #1877f2;
+  margin-top: 4px;
 }
 
 .val-modal-actions {
@@ -1923,25 +2484,197 @@
   }
 }
 
+/* ── Mobile Master-Detail Navigation ── */
+.val-mobile-topbar {
+  display: none;
+}
+
 @media (max-width: 860px) {
   .val-page {
-    grid-template-columns: 1fr;
-    height: auto;
-    min-height: calc(100vh - 56px);
-    overflow: visible;
+    position: relative;
+    width: 100%;
+    height: calc(100vh - 56px);
+    overflow: hidden;
+    grid-template-columns: none;
   }
-  .val-queue-panel,
-  .val-review-panel {
-    min-height: auto;
+
+  .val-collapse-btn,
+  .val-expand-btn,
+  .val-details-btn,
+  .val-details-hide {
+    display: none !important;
+  }
+
+  .val-review-layout {
+    flex-direction: column !important;
+    gap: 16px !important;
+  }
+
+  .val-review-layout > .val-fb-card {
+    flex: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+  }
+
+  .val-review-layout > .val-details-panel,
+  .val-review-layout.is-details-collapsed > .val-details-panel {
+    display: block !important;
+    flex: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    max-height: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    position: static !important;
+    margin: 0 !important;
+    border: 1px solid var(--val-border) !important;
+  }
+
+  .val-details-panel-inner {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* 1. Mobile Queue List Panel */
+  .val-queue-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    border-right: none;
+    border-bottom: none;
+    background: var(--val-bg);
+    transition: transform 0.32s cubic-bezier(0.25, 1, 0.5, 1),
+                opacity 0.28s ease,
+                visibility 0.32s ease;
+    will-change: transform, opacity;
+    z-index: 1;
   }
   .val-queue-list {
-    max-height: 360px;
+    flex: 1 1 auto;
+    max-height: none;
+    overflow-y: auto;
+    padding-bottom: 36px;
+    -webkit-overflow-scrolling: touch;
   }
+
+  /* 2. Mobile Review Detail Panel */
+  .val-review-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--val-bg);
+    transition: transform 0.32s cubic-bezier(0.25, 1, 0.5, 1),
+                opacity 0.28s ease,
+                visibility 0.32s ease;
+    will-change: transform, opacity;
+    z-index: 2;
+  }
+  .val-scroll {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 18px 16px 120px;
+  }
+
+  /* When on queue list view */
+  .val-page.val-mobile-view--queue .val-queue-panel {
+    transform: translateX(0);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .val-page.val-mobile-view--queue .val-review-panel {
+    transform: translateX(100%);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* When on review detail view */
+  .val-page.val-mobile-view--review .val-queue-panel {
+    transform: translateX(-25%);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .val-page.val-mobile-view--review .val-review-panel {
+    transform: translateX(0);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  /* Mobile Top Navigation Bar */
+  .val-mobile-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--val-surface);
+    border-bottom: 1px solid var(--val-border);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+
+  .val-mobile-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--val-blue);
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+  .val-mobile-back-btn:hover,
+  .val-mobile-back-btn:active {
+    background: transparent;
+    opacity: 0.75;
+    transform: translateX(-2px);
+  }
+  .val-mobile-back-btn:focus,
+  .val-mobile-back-btn:focus-visible {
+    outline: none;
+  }
+  .val-mobile-back-btn i {
+    font-size: 17px;
+  }
+
+  .val-mobile-queue-badge {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--val-border);
+    background: var(--val-surface-2);
+    color: var(--val-text-2);
+  }
+
   .val-scroll {
     padding: 18px 16px 120px;
   }
-  .val-review-header,
-  .val-action-bar {
+  .val-review-header {
     flex-direction: column;
     align-items: stretch;
   }
@@ -1954,6 +2687,212 @@
   }
   .val-action-bar {
     position: sticky;
+    bottom: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 18px;
+  }
+  .val-action-bar span {
+    flex-basis: auto;
+  }
+  .val-action-status {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .val-action-group {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 640px) {
+  .val-queue-header {
+    padding: 12px 14px 10px;
+  }
+  .val-title-row {
+    margin-bottom: 8px;
+  }
+  .val-title-row h1 {
+    font-size: 18px;
+  }
+  .val-tabs {
+    gap: 2px;
+    padding: 2px;
+  }
+  .val-tabs button {
+    padding: 5px 3px;
+    font-size: 11px;
+    gap: 3px;
+  }
+  .val-tabs span {
+    font-size: 10px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+  }
+  .val-queue-list {
+    padding: 8px;
+  }
+  .val-queue-item {
+    padding: 10px 12px;
+    margin-bottom: 6px;
+  }
+  .val-qi-title {
+    font-size: 13px;
+  }
+  .val-scroll {
+    padding: 14px 12px 120px;
+  }
+  .val-review-header {
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .val-review-header h2 {
+    font-size: 21px;
+    line-height: 1.15;
+  }
+  .val-slot-card {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 12px;
+  }
+  .val-slot-card strong {
+    font-size: 15px;
+  }
+  .val-fb-header {
+    padding: 10px 12px 8px;
+    gap: 8px;
+  }
+  .val-fb-author {
+    gap: 8px;
+  }
+  .val-fb-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+  }
+  .val-fb-author-name strong {
+    font-size: 14px;
+  }
+  .val-fb-time-row {
+    font-size: 11px;
+    gap: 3px;
+  }
+  .val-fb-body {
+    padding: 4px 12px 10px;
+  }
+  .val-fb-text {
+    font-size: 13.5px;
+  }
+  .val-wm-toggle-btn {
+    padding: 3px 8px;
+    font-size: 10.5px;
+  }
+  .val-action-bar {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .val-action-hint {
+    font-size: 12px;
+    line-height: 1.35;
+    gap: 6px;
+  }
+  .val-action-hint i {
+    font-size: 15px;
+  }
+  .val-action-group {
+    width: 100%;
+    gap: 6px;
+  }
+  .val-action-group .val-btn {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 110px;
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .val-action-divider {
+    display: none;
+  }
+  .val-edit-tabs button {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  .val-edit-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .val-edit-field input,
+  .val-edit-field textarea,
+  .val-edit-field select {
+    font-size: 16px;
+  }
+  .val-edit-caption-tools {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+  .val-modal-overlay {
+    padding: 12px;
+  }
+  .val-modal {
+    width: 100%;
+    border-radius: 12px;
+    padding: 18px 14px;
+  }
+  .val-modal-actions {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+  .val-modal-actions button {
+    width: 100%;
+    min-height: 38px;
+  }
+  .val-history-modal {
+    max-height: 90vh;
+    border-radius: 12px;
+  }
+  .val-history-header {
+    padding: 12px 14px;
+  }
+  .val-history-body {
+    padding: 14px;
+    gap: 12px;
+  }
+  .val-history-meta-grid {
+    grid-template-columns: 1fr;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .val-libpick-backdrop {
+    padding: 10px;
+  }
+  .val-libpick {
+    height: min(94vh, 760px);
+    border-radius: 12px;
+  }
+  .val-libpick-head {
+    padding: 12px 14px;
+  }
+  .val-libpick-body .mlt-filters {
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 -10px 10px;
+    padding: 10px;
+  }
+  .val-libpick-body .mlt-search-wrap,
+  .val-libpick-body .dc-select.mlt-select {
+    width: 100%;
+    min-width: 100%;
+  }
+  .val-libpick-body .mag-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
   }
 }
 
@@ -2135,6 +3074,44 @@
   background: #eff6ff;
   color: #1d4ed8;
   border-color: #bfdbfe;
+}
+
+/* A10 — moderator edit governance tier */
+.val-log-flag.sev-quiet {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #e2e8f0;
+}
+
+.val-log-flag.sev-flagged {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+
+.val-log-flag.sev-added-media {
+  background: #ede9fe;
+  color: #5b21b6;
+  border-color: #ddd6fe;
+}
+
+.val-edit-media-note-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 4px 0 10px;
+  font-size: 12px;
+  color: var(--val-text-2, #64748b);
+  line-height: 1.4;
+}
+
+.val-edit-media-note-hint i {
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.val-edit-field.val-edit-media-note {
+  margin-top: 12px;
 }
 
 .val-log-meta {
@@ -2386,7 +3363,8 @@
 /* ── Edit mode: form beside a scaled-down submission preview ── */
 .val-edit-layout--off { display: contents; }
 
-.val-scroll:has(.val-edit-layout) { align-items: stretch; }
+.val-scroll:has(.val-edit-layout),
+.val-scroll:has(.val-review-layout) { align-items: stretch; }
 
 .val-edit-layout {
   display: flex;
@@ -2743,4 +3721,89 @@
 @media (prefers-reduced-motion: reduce) {
   .val-libpick-backdrop,
   .val-libpick { animation: none; }
+}
+
+/* ── Submit Content authoring tools inside moderator edit mode ──────────── */
+.val-edit-caption-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Reused pickers/panels sit flush in the edit body */
+.val-edit-body .mp-root,
+.val-edit-body .sub-engagement-panel {
+  margin: 0;
+}
+
+/* Shared modal header (media-item settings) */
+.val-preview-modal-head,
+.val-media-settings-modal .val-preview-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--val-border);
+  background: var(--val-surface-2);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--val-text-2);
+}
+.val-preview-modal-head > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.val-media-settings-modal {
+  width: min(460px, 100%);
+  border-radius: 14px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  box-shadow: 0 20px 70px rgba(12, 29, 61, 0.22);
+  overflow: hidden;
+  animation: valModalIn 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.val-media-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 16px;
+}
+.val-media-settings-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--val-text);
+  word-break: break-word;
+}
+.val-media-settings-body .val-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.val-media-settings-body .val-edit-field > span {
+  color: var(--val-muted);
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.val-media-settings-body textarea {
+  border: 1px solid var(--val-border-2);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font: inherit;
+  resize: vertical;
+}
+.val-media-settings-wm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--val-text-2);
 }

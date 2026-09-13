@@ -1,11 +1,15 @@
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   getMediaAssetHistory,
   type MediaAlbum,
   type MediaAsset,
   type MediaAssetHistoryEntry,
 } from "../../../api/mediaApi";
+import { authenticatedQueryMeta } from "../../../lib/queryClient";
+import { queryKeys } from "../../../lib/queryKeys";
+import OptimizedImage, { canTransformImageType } from "../../../components/media/OptimizedImage";
 import { formatFileSize, formatUploadDate, formatResolution, formatFileTypeName, isVideoType } from "../utils";
 import { buildAlbumOptions } from "../albumTree";
 
@@ -30,6 +34,7 @@ interface AssetDetailPanelProps {
   albums?: MediaAlbum[];
   onUpdateAlbum?: (assetId: string, albumId: string | null) => void;
   onRenameAlbum?: (album: MediaAlbum) => void;
+  onRenameAsset?: (assetId: string, title: string) => void | Promise<void>;
   onAddTag?: (assetId: string, label: string) => void | Promise<void>;
   onRemoveTag?: (assetId: string, tagId: string) => void | Promise<void>;
 }
@@ -74,6 +79,7 @@ export default function AssetDetailPanel({
   onRequestBulkDelete,
   albums = [],
   onUpdateAlbum,
+  onRenameAsset,
   onAddTag,
   onRemoveTag,
 }: AssetDetailPanelProps) {
@@ -81,36 +87,45 @@ export default function AssetDetailPanel({
   const [albumSelection, setAlbumSelection] = useState("");
   const [tab, setTab] = useState<"details" | "activity">("details");
   const [newTag, setNewTag] = useState("");
-  const [history, setHistory] = useState<MediaAssetHistoryEntry[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const historyQuery = useQuery<MediaAssetHistoryEntry[]>({
+    queryKey: queryKeys.mediaAssets.history({ assetId: asset?.id ?? "" }),
+    queryFn: ({ signal }) => getMediaAssetHistory(asset!.id, signal).then((res) => res.data ?? []),
+    enabled: Boolean(asset?.id && tab === "activity" && !selectionMode),
+    staleTime: 60_000,
+    meta: authenticatedQueryMeta,
+  });
+  const history = historyQuery.data ?? [];
+  const historyLoading = historyQuery.isLoading || historyQuery.isFetching;
+  const historyError = historyQuery.isError;
   // Valid move targets: folders in the asset's own institution, plus the shared library.
   const albumOptions = buildAlbumOptions(
     asset ? albums.filter((a) => a.institutionId === asset.institutionId || a.shared) : albums,
   );
 
   useEffect(() => {
-    setAlbumSelection(asset?.albumId ?? "");
-    setTab("details");
-    setNewTag("");
-    setHistory([]);
-    setHistoryError(false);
+    queueMicrotask(() => {
+      setAlbumSelection(asset?.albumId ?? "");
+      setTab("details");
+      setNewTag("");
+      setEditingTitle(false);
+    });
   }, [asset?.albumId, asset?.id]);
 
-  useEffect(() => {
-    const id = asset?.id;
-    if (!id || tab !== "activity" || selectionMode) return;
-    const controller = new AbortController();
-    setHistoryLoading(true);
-    setHistoryError(false);
-    getMediaAssetHistory(id, controller.signal)
-      .then((res) => setHistory(res.data ?? []))
-      .catch((err) => {
-        if ((err as { code?: string })?.code !== "ERR_CANCELED") setHistoryError(true);
-      })
-      .finally(() => setHistoryLoading(false));
-    return () => controller.abort();
-  }, [asset?.id, tab, selectionMode]);
+  function startEditingTitle() {
+    if (!asset || !onRenameAsset) return;
+    setTitleDraft(asset.title);
+    setEditingTitle(true);
+  }
+
+  function commitTitleEdit() {
+    if (!asset || !onRenameAsset) return;
+    setEditingTitle(false);
+    const trimmed = titleDraft.trim();
+    if (!trimmed || trimmed === asset.title) return;
+    void Promise.resolve(onRenameAsset(asset.id, trimmed));
+  }
 
   function submitNewTag() {
     const label = newTag.trim();
@@ -157,7 +172,15 @@ export default function AssetDetailPanel({
                 >
                   <div className="med-sel-thumb">
                     {sel.storageUrl ? (
-                      <img src={sel.storageUrl} alt={sel.title} loading="lazy" />
+                      <OptimizedImage
+                        src={sel.storageUrl}
+                        alt={sel.title}
+                        width={48}
+                        height={48}
+                        sizes="48px"
+                        candidateWidths={[48, 96]}
+                        transform={canTransformImageType(sel.fileType)}
+                      />
                     ) : (
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -226,7 +249,16 @@ export default function AssetDetailPanel({
                   isVideoType(asset.fileType) ? (
                     <video src={asset.storageUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} controls muted playsInline preload="metadata" />
                   ) : (
-                    <img src={asset.storageUrl} alt={asset.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <OptimizedImage
+                      src={asset.storageUrl}
+                      alt={asset.title}
+                      width={640}
+                      height={400}
+                      sizes="(max-width: 768px) 100vw, 360px"
+                      candidateWidths={[360, 640, 960]}
+                      transform={canTransformImageType(asset.fileType)}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
                   )
                 ) : (
                   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
@@ -248,9 +280,39 @@ export default function AssetDetailPanel({
                 </svg>
                 {asset.code}
               </span>
-              <div className="med-editable-title" title={asset.title}>
-                {asset.title}
-              </div>
+              {editingTitle ? (
+                <input
+                  className="med-editable-title"
+                  value={titleDraft}
+                  autoFocus
+                  maxLength={255}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={commitTitleEdit}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitTitleEdit();
+                    else if (e.key === "Escape") setEditingTitle(false);
+                  }}
+                />
+              ) : (
+                <div
+                  className={`med-editable-title${onRenameAsset ? " editable" : ""}`}
+                  title={onRenameAsset ? "Click to rename" : asset.title}
+                  onClick={startEditingTitle}
+                  role={onRenameAsset ? "button" : undefined}
+                  tabIndex={onRenameAsset ? 0 : undefined}
+                  onKeyDown={(e) => {
+                    if (onRenameAsset && (e.key === "Enter" || e.key === " ")) startEditingTitle();
+                  }}
+                >
+                  {asset.title}
+                  {onRenameAsset && (
+                    <svg className="med-editable-title-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Metadata */}
@@ -343,7 +405,7 @@ export default function AssetDetailPanel({
                 {(asset.userTags ?? []).map((tag) => (
                   <span key={tag.id} className="med-user-tag">
                     {tag.label}
-                    {onRemoveTag && (
+                    {onRemoveTag && (asset.userTags ?? []).length > 1 && (
                       <button
                         type="button"
                         className="med-user-tag-x"
@@ -358,6 +420,11 @@ export default function AssetDetailPanel({
                     )}
                   </span>
                 ))}
+                {onRemoveTag && (asset.userTags ?? []).length === 1 && (
+                  <span className="med-tag-empty" title="At least one tag is required — add another before removing this one.">
+                    (last tag)
+                  </span>
+                )}
                 {(asset.userTags ?? []).length === 0 && (
                   <span className="med-tag-empty">No tags yet</span>
                 )}

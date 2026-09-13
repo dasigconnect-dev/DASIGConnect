@@ -75,6 +75,8 @@ class UserServiceTest {
     private ReviewLockRepository reviewLockRepository;
     @Mock
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
+    @Mock
+    private AdminCapPolicy adminCapPolicy;
 
     @InjectMocks
     private UserService userService;
@@ -99,7 +101,6 @@ class UserServiceTest {
 
         contributor = user(userId, "contributor@cit.edu.ph", UserRole.contributor, institution);
         adminPrincipal = principal(UUID.randomUUID(), "admin", null);
-        org.springframework.test.util.ReflectionTestUtils.setField(userService, "maxAdmins", 3L);
     }
 
     @Test
@@ -560,13 +561,33 @@ class UserServiceTest {
     }
 
     @Test
-    void changeRole_peerAdminCannotPromoteToAdmin() {
+    void changeRole_peerAdminCanProposeAdminPromotion() {
+        // A peer (non-owner) admin may propose a promotion — the target still
+        // has to confirm, so this carries no more unilateral risk than sending
+        // an admin invitation. Only changing an EXISTING admin's role is
+        // Owner-only.
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
         User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
         when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
         when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+        when(userRepository.save(target)).thenReturn(target);
 
-        assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.admin, null,
+        UserDto result = userService.changeRole(target.getId(), UserRole.admin, null,
+                principal(peerAdmin.getId(), "admin", null));
+
+        assertThat(result.getRole()).isEqualTo("moderator");
+        assertThat(result.isAdminPromotionPending()).isTrue();
+        assertThat(target.getAdminPromotionRequestedBy()).isEqualTo(peerAdmin.getId());
+    }
+
+    @Test
+    void changeRole_peerAdminCannotDemoteExistingAdmin() {
+        User target = user(UUID.randomUUID(), "other@dasigconnect.com", UserRole.admin, null);
+        User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+
+        assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.moderator, null,
                 principal(peerAdmin.getId(), "admin", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
@@ -580,31 +601,53 @@ class UserServiceTest {
         owner.setAdminOwner(true);
         when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
         when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
-        when(userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active)).thenReturn(3L);
+        org.mockito.Mockito.doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "cap reached"))
+                .when(adminCapPolicy).assertHasFreeSlot(null, target.getId());
 
         assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.admin, null,
                 principal(owner.getId(), "admin", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.CONFLICT);
+        assertThat(target.getRole()).isEqualTo(UserRole.moderator);
     }
 
     @Test
-    void changeRole_ownerPromoteModeratorToAdmin_succeeds() {
+    void changeRole_ownerProposeAdminPromotion_reservesSlotWithoutChangingRoleYet() {
         User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
         User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
         owner.setAdminOwner(true);
         when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
         when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
-        when(userRepository.countByRoleAndAccountState(UserRole.admin, UserStatus.active)).thenReturn(2L);
         when(userRepository.save(target)).thenReturn(target);
 
         UserDto result = userService.changeRole(target.getId(), UserRole.admin, null,
                 principal(owner.getId(), "admin", null));
 
-        assertThat(result.getRole()).isEqualTo("admin");
-        assertThat(target.isAdminOwner()).isFalse();
-        verify(jwtService).invalidateUserTokens(target.getId());
+        // Role is NOT applied yet — the target must confirm (UC-1.1).
+        assertThat(result.getRole()).isEqualTo("moderator");
+        assertThat(result.isAdminPromotionPending()).isTrue();
+        assertThat(target.getAdminPromotionRequestedBy()).isEqualTo(owner.getId());
+        assertThat(target.getAdminPromotionExpiresAt()).isAfter(java.time.Instant.now());
+        verify(jwtService, org.mockito.Mockito.never()).invalidateUserTokens(any());
+        verify(eventPublisher).publishEvent(org.mockito.ArgumentMatchers
+                .isA(com.dasigconnect.backend.event.AdminPromotionRequestedEvent.class));
+    }
+
+    @Test
+    void changeRole_promoteAlreadyPendingTarget_returns409() {
+        User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.hasLivePendingAdminPromotion(eq(target.getId()), any())).thenReturn(true);
+
+        assertThatThrownBy(() -> userService.changeRole(target.getId(), UserRole.admin, null,
+                principal(owner.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
     }
 
     @Test
@@ -920,6 +963,168 @@ class UserServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode().value())
                 .isEqualTo(400);
+    }
+
+    @Test
+    void updateStatus_reactivateAdmin_blockedAtCap() {
+        User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.admin, null);
+        targetAdmin.setAccountState(UserStatus.inactive);
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        org.mockito.Mockito.doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "cap reached"))
+                .when(adminCapPolicy).assertHasFreeSlot(null, null);
+
+        assertThatThrownBy(() -> userService.updateStatus(targetAdmin.getId(), UserStatus.active,
+                principal(owner.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+        assertThat(targetAdmin.getAccountState()).isEqualTo(UserStatus.inactive);
+    }
+
+    @Test
+    void updateStatus_reactivateAdmin_underCap_succeeds() {
+        User targetAdmin = user(UUID.randomUUID(), "target@dasigconnect.com", UserRole.admin, null);
+        targetAdmin.setAccountState(UserStatus.inactive);
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        when(userRepository.findById(targetAdmin.getId())).thenReturn(Optional.of(targetAdmin));
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.save(targetAdmin)).thenReturn(targetAdmin);
+
+        UserDto result = userService.updateStatus(targetAdmin.getId(), UserStatus.active,
+                principal(owner.getId(), "admin", null));
+
+        assertThat(result.getAccountState()).isEqualTo("active");
+    }
+
+    @Test
+    void updateStatus_reactivateContributor_doesNotCheckAdminCap() {
+        contributor.setAccountState(UserStatus.inactive);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
+        when(userRepository.save(contributor)).thenReturn(contributor);
+
+        UserDto result = userService.updateStatus(userId, UserStatus.active, adminPrincipal);
+
+        assertThat(result.getAccountState()).isEqualTo("active");
+        verify(adminCapPolicy, org.mockito.Mockito.never()).assertHasFreeSlot(any(), any());
+    }
+
+    // ── Administrator promotion confirmation (UC-1.1) ─────────────────────
+
+    @Test
+    void confirmAdminPromotion_pendingAndUnderCap_appliesAdminRole() {
+        User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        UUID ownerId = UUID.randomUUID();
+        self.setAdminPromotionRequestedBy(ownerId);
+        self.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
+        when(userRepository.save(self)).thenReturn(self);
+
+        UserDto result = userService.confirmAdminPromotion(principal(self.getId(), "moderator", null));
+
+        assertThat(result.getRole()).isEqualTo("admin");
+        assertThat(result.isAdminPromotionPending()).isFalse();
+        assertThat(self.getInstitution()).isNull();
+        assertThat(self.isAdminOwner()).isFalse();
+        verify(jwtService).invalidateUserTokens(self.getId());
+        verify(reviewLockRepository).deleteByLockedById(self.getId());
+    }
+
+    @Test
+    void confirmAdminPromotion_noPendingPromotion_throws409() {
+        User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
+
+        assertThatThrownBy(() -> userService.confirmAdminPromotion(principal(self.getId(), "moderator", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void confirmAdminPromotion_expired_clearsAndThrows410() {
+        User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        self.setAdminPromotionRequestedBy(UUID.randomUUID());
+        self.setAdminPromotionExpiresAt(java.time.Instant.now().minusSeconds(1));
+        when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
+        when(userRepository.save(self)).thenReturn(self);
+
+        assertThatThrownBy(() -> userService.confirmAdminPromotion(principal(self.getId(), "moderator", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.GONE);
+        assertThat(self.getAdminPromotionRequestedBy()).isNull();
+        assertThat(self.getRole()).isEqualTo(UserRole.moderator);
+    }
+
+    @Test
+    void confirmAdminPromotion_capFilledWhilePending_throws409AndKeepsOriginalRole() {
+        User self = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        self.setAdminPromotionRequestedBy(UUID.randomUUID());
+        self.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
+        org.mockito.Mockito.doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "cap reached"))
+                .when(adminCapPolicy).assertHasFreeSlot(null, self.getId());
+
+        assertThatThrownBy(() -> userService.confirmAdminPromotion(principal(self.getId(), "moderator", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+        assertThat(self.getRole()).isEqualTo(UserRole.moderator);
+    }
+
+    @Test
+    void declineAdminPromotion_clearsPendingSlotAndNotifiesRequester() {
+        User self = user(UUID.randomUUID(), "c@cit.edu.ph", UserRole.contributor, institution);
+        UUID ownerId = UUID.randomUUID();
+        self.setAdminPromotionRequestedBy(ownerId);
+        self.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        when(userRepository.findById(self.getId())).thenReturn(Optional.of(self));
+        when(userRepository.save(self)).thenReturn(self);
+
+        UserDto result = userService.declineAdminPromotion(principal(self.getId(), "contributor", institutionId));
+
+        assertThat(result.isAdminPromotionPending()).isFalse();
+        assertThat(self.getAdminPromotionRequestedBy()).isNull();
+        assertThat(self.getRole()).isEqualTo(UserRole.contributor);
+        verify(eventPublisher).publishEvent(org.mockito.ArgumentMatchers
+                .isA(com.dasigconnect.backend.event.AdminPromotionDeclinedEvent.class));
+        verify(jwtService, org.mockito.Mockito.never()).invalidateUserTokens(any());
+    }
+
+    @Test
+    void cancelAdminPromotion_ownerRescinds_clearsPendingSlot() {
+        User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        target.setAdminPromotionRequestedBy(UUID.randomUUID());
+        target.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        User owner = user(UUID.randomUUID(), "owner@dasigconnect.com", UserRole.admin, null);
+        owner.setAdminOwner(true);
+        when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(userRepository.findById(owner.getId())).thenReturn(Optional.of(owner));
+        when(userRepository.save(target)).thenReturn(target);
+
+        UserDto result = userService.cancelAdminPromotion(target.getId(), principal(owner.getId(), "admin", null));
+
+        assertThat(result.isAdminPromotionPending()).isFalse();
+        assertThat(target.getAdminPromotionRequestedBy()).isNull();
+    }
+
+    @Test
+    void cancelAdminPromotion_peerAdminForbidden() {
+        User target = user(UUID.randomUUID(), "m@dasigconnect.com", UserRole.moderator, null);
+        target.setAdminPromotionRequestedBy(UUID.randomUUID());
+        target.setAdminPromotionExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        User peerAdmin = user(UUID.randomUUID(), "peer@dasigconnect.com", UserRole.admin, null);
+        when(userRepository.findById(peerAdmin.getId())).thenReturn(Optional.of(peerAdmin));
+
+        assertThatThrownBy(() -> userService.cancelAdminPromotion(target.getId(),
+                principal(peerAdmin.getId(), "admin", null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     private static JwtUserDetails principal(UUID id, String role, UUID institutionId) {

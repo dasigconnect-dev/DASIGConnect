@@ -56,8 +56,8 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
      * Hard-deletes every media asset owned by an institution — including
      * soft-deleted rows that {@code existsActiveByInstitutionId} does not see —
      * so the institution and its albums can be removed without tripping the
-     * {@code media_assets.institution_id} / {@code media_album_id} foreign keys.
-     * {@code asset_tags}, {@code asset_embeddings}, and
+     * {@code media_assets.institution_id} / {@code media_album_id} foreign
+     * keys. {@code asset_tags}, {@code asset_embeddings}, and
      * {@code media_asset_embeddings} are cleared by their {@code ON DELETE
      * CASCADE} constraints.
      */
@@ -97,6 +97,10 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     List<Object[]> countActiveAssetsByAlbumAllInstitutions();
 
     boolean existsByAssetCode(String assetCode);
+
+    @Query("SELECT m FROM MediaAsset m WHERE m.institution.id = :institutionId AND m.contentHash = :contentHash AND m.deletedAt IS NULL")
+    Optional<MediaAsset> findActiveByInstitutionIdAndContentHash(@Param("institutionId") UUID institutionId,
+            @Param("contentHash") String contentHash);
 
     boolean existsByUploaderId(UUID uploaderId);
 
@@ -171,6 +175,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
           storage_url,
           media_album_id,
           file_name,
+          display_title,
           file_type,
           file_size_bytes,
           ai_category,

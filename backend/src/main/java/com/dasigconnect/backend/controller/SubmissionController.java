@@ -30,6 +30,7 @@ import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
+import com.dasigconnect.backend.service.GuardRailSettingsService;
 import com.dasigconnect.backend.service.SubmissionService;
 
 import jakarta.validation.Valid;
@@ -43,9 +44,12 @@ import jakarta.validation.Valid;
 public class SubmissionController {
 
     private final SubmissionService submissionService;
+    private final GuardRailSettingsService guardRailSettings;
 
-    public SubmissionController(SubmissionService submissionService) {
+    public SubmissionController(SubmissionService submissionService,
+            GuardRailSettingsService guardRailSettings) {
         this.submissionService = submissionService;
+        this.guardRailSettings = guardRailSettings;
     }
 
     /**
@@ -56,7 +60,9 @@ public class SubmissionController {
     @GetMapping("/lookups")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<SubmissionLookupsDto>> lookups() {
-        return ResponseEntity.ok(ApiResponse.success(new SubmissionLookupsDto()));
+        SubmissionLookupsDto dto = new SubmissionLookupsDto();
+        dto.setGuardrailsEnforced(guardRailSettings.enforced());
+        return ResponseEntity.ok(ApiResponse.success(dto));
     }
 
     /**
@@ -129,6 +135,18 @@ public class SubmissionController {
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(submissionService.submit(id, user)));
+    }
+
+    /**
+     * POST /api/v1/submissions/{id}/withdraw Transitions PENDING → DRAFT.
+     * Blocked once a ReviewLock exists for the submission (UC-1.9 A2).
+     */
+    @PostMapping("/{id}/withdraw")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> withdraw(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(submissionService.withdraw(id, user)));
     }
 
     /**

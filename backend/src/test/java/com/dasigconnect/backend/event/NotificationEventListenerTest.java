@@ -114,6 +114,41 @@ class NotificationEventListenerTest {
     }
 
     @Test
+    void onSubmissionEditedDuringReview_flagged_dispatchesInAppAndEmailToContributor() {
+        Submission s = new Submission();
+        s.setId(UUID.randomUUID());
+        s.setEventTitle("Science Fair");
+        s.setInstitution(institution);
+        s.setContributor(contributor);
+
+        listener.onSubmissionEditedDuringReview(new SubmissionEditedDuringReviewEvent(
+                s, com.dasigconnect.backend.model.entity.ReviewEditSeverity.FLAGGED, null));
+
+        verify(notificationService).createNotification(
+                eq(contributor), eq(NotificationEventType.submission_edited_in_review),
+                contains("Science Fair"), contains(s.getId().toString()));
+        verify(emailDeliveryService).send(
+                eq(contributor), eq(NotificationEventType.submission_edited_in_review.name()), any(), any());
+    }
+
+    @Test
+    void onSubmissionEditedDuringReview_quiet_isInAppOnly() {
+        Submission s = new Submission();
+        s.setId(UUID.randomUUID());
+        s.setEventTitle("Open House");
+        s.setInstitution(institution);
+        s.setContributor(contributor);
+
+        listener.onSubmissionEditedDuringReview(new SubmissionEditedDuringReviewEvent(
+                s, com.dasigconnect.backend.model.entity.ReviewEditSeverity.QUIET, null));
+
+        verify(notificationService).createNotification(
+                eq(contributor), eq(NotificationEventType.submission_edited_in_review), any(), any());
+        verify(emailDeliveryService, Mockito.never()).send(
+                any(), eq(NotificationEventType.submission_edited_in_review.name()), any(), any());
+    }
+
+    @Test
     void onSubmissionRejected_T03_dispatchesInAppAndEmailToContributor() {
         Submission s = new Submission();
         s.setId(UUID.randomUUID());

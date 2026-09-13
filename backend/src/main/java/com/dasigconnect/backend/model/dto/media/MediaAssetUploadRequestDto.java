@@ -14,6 +14,11 @@ public class MediaAssetUploadRequestDto {
     @NotBlank
     private String fileName;
 
+    @jakarta.validation.constraints.Pattern(regexp = "^[0-9a-fA-F]{64}$", message = "Content hash must be SHA-256.")
+    private String contentHash;
+
+    private boolean allowDuplicate;
+
     @NotBlank
     private String fileType;
 
@@ -31,30 +36,91 @@ public class MediaAssetUploadRequestDto {
     @Size(max = 20)
     private List<@NotBlank @Size(max = 50) String> tags;
 
-    public String getStorageUrl() { return storageUrl; }
-    public void setStorageUrl(String storageUrl) { this.storageUrl = storageUrl; }
+    public String getStorageUrl() {
+        return storageUrl;
+    }
 
-    public String getFileName() { return fileName; }
-    public void setFileName(String fileName) { this.fileName = fileName; }
+    public void setStorageUrl(String storageUrl) {
+        this.storageUrl = storageUrl;
+    }
 
-    public String getFileType() { return fileType; }
-    public void setFileType(String fileType) { this.fileType = fileType; }
+    public String getFileName() {
+        return fileName;
+    }
 
-    public Long getFileSizeBytes() { return fileSizeBytes; }
-    public void setFileSizeBytes(Long fileSizeBytes) { this.fileSizeBytes = fileSizeBytes; }
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
+    }
 
-    public UUID getInstitutionId() { return institutionId; }
-    public void setInstitutionId(UUID institutionId) { this.institutionId = institutionId; }
+    public String getContentHash() {
+        return contentHash;
+    }
 
-    public UUID getAlbumId() { return albumId; }
-    public void setAlbumId(UUID albumId) { this.albumId = albumId; }
+    public void setContentHash(String contentHash) {
+        this.contentHash = contentHash;
+    }
 
-    public String getAlbumName() { return albumName; }
-    public void setAlbumName(String albumName) { this.albumName = albumName; }
+    public boolean isAllowDuplicate() {
+        return allowDuplicate;
+    }
 
-    public boolean isAutoMatchAlbum() { return autoMatchAlbum; }
-    public void setAutoMatchAlbum(boolean autoMatchAlbum) { this.autoMatchAlbum = autoMatchAlbum; }
+    public void setAllowDuplicate(boolean allowDuplicate) {
+        this.allowDuplicate = allowDuplicate;
+    }
 
-    public List<String> getTags() { return tags; }
-    public void setTags(List<String> tags) { this.tags = tags; }
+    public String getFileType() {
+        return fileType;
+    }
+
+    public void setFileType(String fileType) {
+        this.fileType = fileType;
+    }
+
+    public Long getFileSizeBytes() {
+        return fileSizeBytes;
+    }
+
+    public void setFileSizeBytes(Long fileSizeBytes) {
+        this.fileSizeBytes = fileSizeBytes;
+    }
+
+    public UUID getInstitutionId() {
+        return institutionId;
+    }
+
+    public void setInstitutionId(UUID institutionId) {
+        this.institutionId = institutionId;
+    }
+
+    public UUID getAlbumId() {
+        return albumId;
+    }
+
+    public void setAlbumId(UUID albumId) {
+        this.albumId = albumId;
+    }
+
+    public String getAlbumName() {
+        return albumName;
+    }
+
+    public void setAlbumName(String albumName) {
+        this.albumName = albumName;
+    }
+
+    public boolean isAutoMatchAlbum() {
+        return autoMatchAlbum;
+    }
+
+    public void setAutoMatchAlbum(boolean autoMatchAlbum) {
+        this.autoMatchAlbum = autoMatchAlbum;
+    }
+
+    public List<String> getTags() {
+        return tags;
+    }
+
+    public void setTags(List<String> tags) {
+        this.tags = tags;
+    }
 }

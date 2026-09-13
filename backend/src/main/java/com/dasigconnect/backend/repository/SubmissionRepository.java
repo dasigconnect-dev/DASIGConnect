@@ -60,22 +60,27 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("windowStart") java.time.Instant windowStart,
             @Param("windowEnd") java.time.Instant windowEnd);
 
-    // UC-2.4 approval queue — network-wide PENDING + IN_REVIEW sorted by scheduledAt ASC
+    // UC-2.4 approval queue — network-wide PENDING + IN_REVIEW. Fast-Track
+    // submissions (no scheduledAt) sort first as the urgent items UC-1.9
+    // expects; everything else follows by scheduledAt ASC, then by submittedAt
+    // as a stable tiebreaker among same-priority items (oldest first).
     @Query("""
         SELECT s FROM Submission s
         WHERE s.status IN (
             com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
             com.dasigconnect.backend.model.entity.SubmissionStatus.in_review
         )
-        ORDER BY s.scheduledAt ASC NULLS LAST
+        ORDER BY s.fastTrack DESC, s.scheduledAt ASC NULLS LAST, s.submittedAt ASC
         """)
     List<Submission> findValidationQueue();
 
-    // UC-2.4 approval history — network-wide, all post-review statuses, most recently updated first
+    // UC-2.4 approval history — network-wide, all post-review statuses, most recently updated first.
+    // NEEDS_REVISION is intentionally excluded: the submission is back in the contributor's hands
+    // (auto-saving, not yet resubmitted), so it must not surface in either moderator tab. It
+    // re-enters the active queue as PENDING once resubmitted.
     @Query("""
         SELECT s FROM Submission s
         WHERE s.status IN (
-            com.dasigconnect.backend.model.entity.SubmissionStatus.needs_revision,
             com.dasigconnect.backend.model.entity.SubmissionStatus.missed_review,
             com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled,
             com.dasigconnect.backend.model.entity.SubmissionStatus.publishing,

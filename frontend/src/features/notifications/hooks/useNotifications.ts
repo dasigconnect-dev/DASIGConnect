@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  getUnreadCount,
   listNotifications,
   markAllNotificationsRead as apiMarkAllRead,
   markNotificationRead as apiMarkRead,
   openNotificationStream,
 } from "../../../api/notificationApi";
 import type { NotificationDto } from "../../../api/notificationApi";
-import { registerAppCacheReset } from "../../../lib/appCache";
+import { authenticatedQueryMeta } from "../../../lib/queryClient";
+import { queryKeys } from "../../../lib/queryKeys";
+import type { User } from "../../../types/auth.types";
 import type {
   Notification,
   NotificationCategory,
@@ -307,79 +310,70 @@ function mapDto(dto: NotificationDto): Notification {
   };
 }
 
-// Module-scoped cache so navigating in and out of /notifications doesn't refetch
-// the top-50 list every time. The list effect skips the network call while the
-// cache is younger than the TTL (an explicit Refresh always bypasses it).
-let cachedNotifications: Notification[] | null = null;
-let cachedAt = 0;
-const NOTIF_CACHE_TTL_MS = 60_000;
-registerAppCacheReset(() => {
-  cachedNotifications = null;
-  cachedAt = 0;
-});
+// Keep navigation re-entry warm through TanStack Query instead of a module cache.
+const NOTIFICATIONS_STALE_TIME_MS = 60_000;
+const UNREAD_COUNT_STALE_TIME_MS = 30_000;
 
-export function useNotifications() {
-  const [notifications, setNotifications] = useState<Notification[]>(
-    () => cachedNotifications ?? [],
-  );
-  const [loading, setLoading] = useState(() => cachedNotifications === null);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+function userScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
+}
+
+function unreadCountQueryKey(user: User) {
+  return queryKeys.notifications.unreadCount({
+    role: user.role,
+    userId: userScope(user),
+    institutionId: user.institutionId ?? null,
+  });
+}
+
+export function useNotifications(user: User) {
+  const queryClient = useQueryClient();
   const [sseStatus, setSseStatus] = useState<SseStatus>("connecting");
   const [activeFilter, setActiveFilter] = useState<NotificationFilter>("all");
-  const [refreshKey, setRefreshKey] = useState(0);
+  const role = user.role;
+  const scopedUserId = userScope(user);
+  const institutionId = user.institutionId ?? null;
+  const listQueryKey = useMemo(
+    () => queryKeys.notifications.all({ role, userId: scopedUserId, institutionId }),
+    [institutionId, role, scopedUserId],
+  );
+  const countQueryKey = useMemo(
+    () => queryKeys.notifications.unreadCount({ role, userId: scopedUserId, institutionId }),
+    [institutionId, role, scopedUserId],
+  );
 
-  useEffect(() => {
-    let isCurrent = true;
-    const controller = new AbortController();
+  const notificationsQuery = useQuery({
+    queryKey: listQueryKey,
+    queryFn: ({ signal }) => listNotifications(signal).then((res) => res.data.map(mapDto)),
+    staleTime: NOTIFICATIONS_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
 
-    if (cachedNotifications !== null) {
-      // Paint the cached list immediately — no loader flash on re-entry.
-      setNotifications(cachedNotifications);
-      setLoading(false);
-      // Fresh enough and not an explicit Refresh → skip the round-trip.
-      if (refreshKey === 0 && Date.now() - cachedAt < NOTIF_CACHE_TTL_MS) {
-        setFetchError(null);
-        return () => {
-          isCurrent = false;
-          controller.abort();
-        };
-      }
-    } else {
-      setLoading(true);
-    }
+  const notifications = useMemo(
+    () => notificationsQuery.data ?? [],
+    [notificationsQuery.data],
+  );
 
-    listNotifications(controller.signal)
-      .then((res) => {
-        if (!isCurrent) return;
-        const mapped = res.data.map(mapDto);
-        cachedNotifications = mapped;
-        cachedAt = Date.now();
-        setNotifications(mapped);
-        setFetchError(null);
-        setLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (!isCurrent) return;
-        if (axios.isCancel(err) || (err as { code?: string })?.code === "ERR_CANCELED") {
-          return;
-        }
-        setFetchError("Could not load notifications. The backend may not be available.");
-        setLoading(false);
+  const syncUnreadCountFromList = useCallback(
+    (items: Notification[]) => {
+      queryClient.setQueryData<number>(
+        countQueryKey,
+        items.filter((n) => n.unread).length,
+      );
+    },
+    [countQueryKey, queryClient],
+  );
+
+  const updateNotifications = useCallback(
+    (updater: (current: Notification[]) => Notification[]) => {
+      queryClient.setQueryData<Notification[]>(listQueryKey, (current = []) => {
+        const next = updater(current);
+        syncUnreadCountFromList(next);
+        return next;
       });
-
-    return () => {
-      isCurrent = false;
-      controller.abort();
-    };
-  }, [refreshKey]);
-
-  // Keep the module cache in sync with live SSE arrivals and optimistic read
-  // state so the next mount within the TTL window shows the latest.
-  useEffect(() => {
-    if (!loading && cachedNotifications !== null) {
-      cachedNotifications = notifications;
-    }
-  }, [notifications, loading]);
+    },
+    [listQueryKey, queryClient, syncUnreadCountFromList],
+  );
 
   useEffect(() => {
     // The server closes the SSE stream every 30 minutes (and connections drop
@@ -390,37 +384,53 @@ export function useNotifications() {
     let retryTimer: number | undefined;
     let attempts = 0;
     let connectedAt = 0;
+    let hasConnected = false;
 
     const connect = () => {
       if (stopped) return;
-      controller = new AbortController();
+      const connectionController = new AbortController();
+      controller = connectionController;
       setSseStatus("connecting");
+      let disconnected = false;
+
+      const handleDisconnect = () => {
+        if (disconnected || connectionController.signal.aborted) return;
+        disconnected = true;
+        setSseStatus("disconnected");
+        if (stopped) return;
+        // A stream that stayed open a while (e.g. the 30-min server timeout)
+        // is healthy, so reconnect quickly. Repeated early failures back off.
+        if (connectedAt && Date.now() - connectedAt > 10_000) attempts = 0;
+        connectedAt = 0;
+        const delay = Math.min(2000 * 2 ** Math.min(attempts, 4), 30_000);
+        attempts = Math.min(attempts + 1, 4);
+        retryTimer = window.setTimeout(connect, delay);
+      };
+
       openNotificationStream(
         (dto) => {
+          if (stopped || connectionController.signal.aborted) return;
           attempts = 0;
           const mapped = mapDto(dto);
           // A fetch that raced the same event can already hold this id.
-          setNotifications((prev) =>
+          updateNotifications((prev) =>
             prev.some((n) => n.id === mapped.id) ? prev : [mapped, ...prev],
           );
         },
         () => {
+          if (stopped || connectionController.signal.aborted) return;
           connectedAt = Date.now();
           setSseStatus("connected");
+          if (hasConnected) {
+            void Promise.all([
+              queryClient.invalidateQueries({ queryKey: listQueryKey, exact: true }),
+              queryClient.invalidateQueries({ queryKey: countQueryKey, exact: true }),
+            ]);
+          }
+          hasConnected = true;
         },
-        () => {
-          setSseStatus("disconnected");
-          if (stopped) return;
-          // A stream that stayed open a while (e.g. the 30-min server timeout)
-          // is healthy — reconnect fast. Only back off when it keeps failing
-          // quickly.
-          if (connectedAt && Date.now() - connectedAt > 10_000) attempts = 0;
-          connectedAt = 0;
-          const delay = Math.min(2000 * 2 ** attempts, 30_000);
-          attempts += 1;
-          retryTimer = window.setTimeout(connect, delay);
-        },
-        controller.signal,
+        handleDisconnect,
+        connectionController.signal,
       );
     };
 
@@ -431,7 +441,7 @@ export function useNotifications() {
       if (retryTimer) window.clearTimeout(retryTimer);
       controller.abort();
     };
-  }, []);
+  }, [countQueryKey, listQueryKey, queryClient, updateNotifications]);
 
   const counts = useMemo<NotificationCounts>(() => {
     const unread = notifications.filter((n) => n.unread).length;
@@ -447,33 +457,29 @@ export function useNotifications() {
   }, [notifications]);
 
   const markAllRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+    updateNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
     apiMarkAllRead().catch(() => {
       // The optimistic update is enough for the current session.
     });
-  }, []);
+  }, [updateNotifications]);
 
   const markRead = useCallback((id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, unread: false } : n)),
-    );
+    updateNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, unread: false } : n)));
     apiMarkRead(id).catch(() => {
       // The optimistic update is enough for the current session.
     });
-  }, []);
+  }, [updateNotifications]);
 
   const refreshNotifications = useCallback(() => {
-    // The list effect decides whether to show a loader: full loader when there's
-    // no cache, silent in-place refresh when there is.
-    if (cachedNotifications === null) setLoading(true);
-    setFetchError(null);
-    setRefreshKey((value) => value + 1);
-  }, []);
+    void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+  }, [queryClient]);
 
   return {
     allNotifications: notifications,
-    loading,
-    fetchError,
+    loading: notificationsQuery.isLoading,
+    fetchError: notificationsQuery.error
+      ? "Could not load notifications. The backend may not be available."
+      : null,
     sseStatus,
     activeFilter,
     setActiveFilter,
@@ -482,4 +488,16 @@ export function useNotifications() {
     markRead,
     refreshNotifications,
   };
+}
+
+export function useNotificationUnreadCount(user: User) {
+  return useQuery({
+    queryKey: unreadCountQueryKey(user),
+    queryFn: ({ signal }) => getUnreadCount(signal).then((res) => res.data.unreadCount),
+    staleTime: UNREAD_COUNT_STALE_TIME_MS,
+    refetchInterval: 3 * 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    meta: authenticatedQueryMeta,
+  });
 }

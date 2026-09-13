@@ -3,6 +3,7 @@ import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
 import { getPasswordRules } from '../../lib/passwordPolicy'
+import dasigLogo from '../../assets/dasigconnect-logo.png'
 
 interface ResetPasswordScreenProps {
   active: boolean
@@ -52,9 +53,7 @@ export default function ResetPasswordScreen({
             </div>
             <div className="brand-lockup">
               <div className="brand-icon">
-                <svg viewBox="0 0 24 24">
-                  <path d="M12 2L22 7V17L12 22L2 17V7L12 2Z" />
-                </svg>
+                <img src={dasigLogo} alt="DASIGConnect logo" />
               </div>
               <div className="brand-text">
                 <div className="brand-name">
@@ -124,7 +123,12 @@ export default function ResetPasswordScreen({
                     value={password}
                     onChange={(event) => onPasswordChange(event.target.value)}
                   />
-                  <button type="button" className="eye-btn" onClick={onTogglePassword} aria-label="Toggle">
+                  <button
+                    type="button"
+                    className="eye-btn"
+                    onClick={onTogglePassword}
+                    aria-label={showPassword ? 'Hide new password' : 'Show new password'}
+                  >
                     <i className={showPassword ? 'ti ti-eye' : 'ti ti-eye-off'}></i>
                   </button>
                 </div>
@@ -164,7 +168,12 @@ export default function ResetPasswordScreen({
                     value={confirmPassword}
                     onChange={(event) => onConfirmPasswordChange(event.target.value)}
                   />
-                  <button type="button" className="eye-btn" onClick={onToggleConfirmPassword} aria-label="Toggle">
+                  <button
+                    type="button"
+                    className="eye-btn"
+                    onClick={onToggleConfirmPassword}
+                    aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                  >
                     <i className={showConfirmPassword ? 'ti ti-eye' : 'ti ti-eye-off'}></i>
                   </button>
                 </div>

@@ -19,9 +19,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.submission.AttachAssetDto;
-import com.dasigconnect.backend.model.dto.submission.AttachMediaDto;
-import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlRequest;
-import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlResponse;
 import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
@@ -142,26 +139,10 @@ public class ValidationController {
         return ResponseEntity.noContent().build();
     }
 
-    // ── A9: media edits during review (admin only) ──────────────────────────
-
-    @PostMapping("/{id}/media/upload-url")
-    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
-    public ResponseEntity<ApiResponse<SignedUploadUrlResponse>> reviewMediaUploadUrl(
-            @PathVariable UUID id,
-            @Valid @RequestBody SignedUploadUrlRequest dto,
-            @AuthenticationPrincipal JwtUserDetails caller) {
-        return ResponseEntity.ok(ApiResponse.success(validationService.reviewMediaUploadUrl(id, dto, caller)));
-    }
-
-    @PostMapping("/{id}/media")
-    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
-    public ResponseEntity<ApiResponse<SubmissionResponseDto>> attachReviewMedia(
-            @PathVariable UUID id,
-            @Valid @RequestBody AttachMediaDto dto,
-            @AuthenticationPrincipal JwtUserDetails caller) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success(validationService.attachReviewMedia(id, dto, caller)));
-    }
+    // ── A9/A10: media edits during review ───────────────────────────────────
+    // Moderators may only attach *existing, already-vetted* Media Library assets.
+    // Uploading a fresh device file into someone else's submission during review
+    // is not allowed — new media goes back to the contributor via Request Revision.
 
     @PostMapping("/{id}/assets")
     @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
@@ -170,7 +151,8 @@ public class ValidationController {
             @Valid @RequestBody AttachAssetDto dto,
             @AuthenticationPrincipal JwtUserDetails caller) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success(validationService.attachReviewLibraryAsset(id, dto.getMediaAssetId(), caller)));
+                .body(ApiResponse.success(validationService.attachReviewLibraryAsset(
+                        id, dto.getMediaAssetId(), dto.getJustification(), caller)));
     }
 
     @DeleteMapping("/{id}/assets/{assetId}")

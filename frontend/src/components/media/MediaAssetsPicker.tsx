@@ -1,4 +1,5 @@
 import { useState } from "react";
+import "../../styles/media-picker.css";
 import type { SubmissionMediaItem } from "../../types/media";
 import { useAiMediaSuggestions } from "../../hooks/useAiMediaSuggestions";
 import SelectedMediaStrip from "./SelectedMediaStrip";
@@ -19,6 +20,20 @@ interface MediaAssetsPickerProps {
   disabled?: boolean;
   onItemClick?: (item: SubmissionMediaItem) => void;
   getItemCaption?: (item: SubmissionMediaItem) => string;
+  /**
+   * Scope the "My Library" tab to a specific institution. Needed by network-wide
+   * roles (moderator / admin) that have no own institution; contributors omit it
+   * and the library resolves to their own institution.
+   */
+  institutionId?: string;
+  /** Show the library across every institution for network-wide roles. */
+  networkView?: boolean;
+  /**
+   * Hide the Upload / My Library / AI Suggestions tab bar and its panels. The
+   * selected-media strip and the auto AI-suggestions block are still rendered —
+   * the host supplies its own add-media controls. Defaults to showing the tabs.
+   */
+  sourceTabs?: boolean;
 }
 
 export default function MediaAssetsPicker({
@@ -32,6 +47,9 @@ export default function MediaAssetsPicker({
   disabled,
   onItemClick,
   getItemCaption,
+  institutionId,
+  networkView,
+  sourceTabs = true,
 }: MediaAssetsPickerProps) {
   const [activeTab, setActiveTab] = useState<PickerTab>("upload");
 
@@ -99,6 +117,8 @@ export default function MediaAssetsPicker({
         </div>
       )}
 
+      {!sourceTabs ? null : (
+      <>
       <div className="mp-tabs" role="tablist" aria-label="Media source">
         {tabs.map((tab) => (
           <button
@@ -145,6 +165,8 @@ export default function MediaAssetsPicker({
               alreadyAddedIds={alreadyAddedIds}
               onAddItems={handleAddItems}
               disabled={disabled}
+              institutionId={institutionId}
+              networkView={networkView}
             />
           )}
         </div>
@@ -170,6 +192,8 @@ export default function MediaAssetsPicker({
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

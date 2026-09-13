@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { SavedMediaAsset } from "../../../api/submissionApi";
+import OptimizedImage, { canTransformImageType } from "../../../components/media/OptimizedImage";
 import { isImageFileType, isVideoFileType } from "../utils";
 
 export function SubmissionCardMedia({
@@ -48,16 +49,20 @@ export function SubmissionCardMedia({
         </div>
       )}
       {isImg ? (
-        <img
+        <OptimizedImage
           src={thumbnail.storageUrl}
           alt=""
           className={`sub-fb-media-img${loaded ? " is-loaded" : " is-loading"}`}
+          width={640}
+          height={360}
+          sizes="(max-width: 768px) 100vw, 360px"
+          candidateWidths={[360, 640, 960]}
+          transform={canTransformImageType(thumbnail.fileType)}
           onLoad={() => setLoaded(true)}
           onError={() => {
             setLoaded(true);
             setHasError(true);
           }}
-          loading="lazy"
         />
       ) : isVid ? (
         <video

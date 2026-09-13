@@ -1,4 +1,5 @@
 import type { ClassificationSuggestions } from "../../../api/aiApi";
+import "./AiCaptionSuggestion.css";
 
 interface Props {
   suggestions: ClassificationSuggestions;

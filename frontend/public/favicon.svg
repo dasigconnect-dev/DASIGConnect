@@ -1,6 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="DASIGConnect logo">
-  <rect width="64" height="64" rx="14" fill="#0b1d42"/>
-  <rect x="8" y="6" width="48" height="52" rx="13" fill="#1459d9"/>
-  <rect x="12" y="10" width="40" height="44" rx="10" fill="#2578f3"/>
-  <path fill="#fff" d="m32 20 12 6.4v11.2L32 44l-12-6.4V26.4z"/>
+  <defs>
+    <linearGradient id="dc-fav-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#146ce8" />
+      <stop offset="45%" stop-color="#0b5fcc" />
+      <stop offset="100%" stop-color="#0745a3" />
+    </linearGradient>
+    <linearGradient id="dc-fav-arrow" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f59e0b" />
+      <stop offset="60%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#fde047" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#dc-fav-grad)"/>
+  <g transform="scale(0.125)">
+    <!-- Letter D -->
+    <path fill="#ffffff" fill-rule="evenodd" d="M 96 142 L 186 142 C 246 142 278 190 278 256 C 278 322 246 370 186 370 L 96 370 Z M 144 188 L 180 188 C 214 188 230 216 230 256 C 230 296 214 324 180 324 L 144 324 Z" />
+    <!-- Letter C -->
+    <path fill="#ffffff" d="M 424 176 C 402 152 374 142 342 142 C 280 142 232 190 232 256 C 232 322 280 370 342 370 C 374 370 402 360 424 336 L 390 298 C 376 312 360 322 342 322 C 306 322 280 294 280 256 C 280 218 306 190 342 190 C 360 190 376 200 390 214 Z" />
+    <!-- Arrow -->
+    <path fill="url(#dc-fav-arrow)" d="M 152 340 C 190 338 230 326 266 304 L 256 284 C 224 304 190 316 152 318 Z" />
+    <path fill="url(#dc-fav-arrow)" d="M 276 294 L 300 276 L 310 290 L 286 308 Z" />
+    <path fill="url(#dc-fav-arrow)" d="M 314 264 L 338 244 L 350 258 L 326 278 Z" />
+    <path fill="url(#dc-fav-arrow)" d="M 346 220 L 416 196 L 386 266 L 374 240 Z" />
+  </g>
 </svg>

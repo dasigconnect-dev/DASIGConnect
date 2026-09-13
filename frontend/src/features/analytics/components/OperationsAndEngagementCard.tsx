@@ -3,11 +3,10 @@ import { formatNumber, formatPercent } from "../analyticsUtils";
 
 interface Props {
   summary: AnalyticsSummaryDto;
-  onOpenReport: (metric: "facebook-engagement" | "operational-health" | "ai-performance") => void;
+  onOpenReport: (metric: "operational-health" | "ai-performance") => void;
 }
 
 export default function OperationsAndEngagementCard({ summary, onOpenReport }: Props) {
-  const fb = summary.facebookEngagement;
   const op = summary.operationalHealth;
   const ai = summary.aiPerformance;
 
@@ -16,51 +15,17 @@ export default function OperationsAndEngagementCard({ summary, onOpenReport }: P
       <div className="analytics-chart-header">
         <div>
           <h3 className="analytics-chart-title">
-            {op ? "System Operations & Engagement" : "Audience Reach & Social Impact"}
+            {op ? "System Operations" : "Content Quality & Compliance"}
           </h3>
           <p className="analytics-chart-subtitle">
             {op
-              ? "Real-time reliability, Facebook reach, and AI adoption"
-              : "Social reactions, audience reach, and content completeness"}
+              ? "Real-time reliability and AI adoption"
+              : "Content standards for published posts"}
           </p>
         </div>
       </div>
 
       <div className="analytics-metrics-matrix">
-        {/* Facebook metrics */}
-        <div className="analytics-matrix-group">
-          <div className="analytics-matrix-header">
-            <span className="analytics-matrix-title">
-              <i className="ti ti-brand-facebook" /> Facebook Engagement
-            </span>
-            <button
-              type="button"
-              className="analytics-text-btn"
-              onClick={() => onOpenReport("facebook-engagement")}
-            >
-              Report <i className="ti ti-arrow-right" />
-            </button>
-          </div>
-
-          <div className="analytics-matrix-grid">
-            <div className="analytics-matrix-cell">
-              <span className="analytics-matrix-cell-label">Avg. Reach</span>
-              <strong className="analytics-matrix-cell-val">{formatNumber(Math.round(fb.averageReach))}</strong>
-            </div>
-            <div className="analytics-matrix-cell">
-              <span className="analytics-matrix-cell-label">Reactions</span>
-              <strong className="analytics-matrix-cell-val">{formatNumber(fb.totalReactions)}</strong>
-            </div>
-            <div className="analytics-matrix-cell">
-              <span className="analytics-matrix-cell-label">Comments</span>
-              <strong className="analytics-matrix-cell-val">{formatNumber(fb.totalComments)}</strong>
-            </div>
-            <div className="analytics-matrix-cell">
-              <span className="analytics-matrix-cell-label">Shares</span>
-              <strong className="analytics-matrix-cell-val">{formatNumber(fb.totalShares)}</strong>
-            </div>
-          </div>
-        </div>
 
         {/* Operational Health metrics (for Admin) OR Content Quality & Compliance (for Contributor) */}
         {op ? (
@@ -141,7 +106,7 @@ export default function OperationsAndEngagementCard({ summary, onOpenReport }: P
 
         {/* AI Adoption metrics */}
         {ai && (
-          <div className="analytics-matrix-group" style={{ gridColumn: "span 2" }}>
+          <div className="analytics-matrix-group">
             <div className="analytics-matrix-header">
               <span className="analytics-matrix-title">
                 <i className="ti ti-sparkles" /> AI Feature Adoption
@@ -155,7 +120,7 @@ export default function OperationsAndEngagementCard({ summary, onOpenReport }: P
               </button>
             </div>
 
-            <div className="analytics-matrix-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+            <div className="analytics-matrix-grid">
               <div className="analytics-matrix-cell">
                 <span className="analytics-matrix-cell-label">Caption Acceptance</span>
                 <strong className="analytics-matrix-cell-val">{formatPercent(ai.captionAcceptanceRate)}</strong>

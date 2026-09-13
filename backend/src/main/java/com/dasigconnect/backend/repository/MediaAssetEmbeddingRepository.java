@@ -71,4 +71,33 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
     @Transactional
     @Query(value = "DELETE FROM media_asset_embeddings WHERE asset_id = :assetId", nativeQuery = true)
     void deleteByAssetId(@Param("assetId") UUID assetId);
+
+    default List<Object[]> findMaxSimilarityByRootAlbum(UUID institutionId, MediaAssetEmbeddingType type,
+                                                         String queryVectorJson) {
+        return findMaxSimilarityByRootAlbum(institutionId, type.dbValue(), queryVectorJson);
+    }
+
+    /**
+     * Per-root-album best match: for every root album with at least one directly
+     * filed, embedded asset, the highest cosine similarity between the query
+     * vector and any of that album's assets. Used by album Auto-Match (UC-1.7) —
+     * "closest asset in this album" rather than a centroid, so one strong visual
+     * match is enough even in an album with otherwise-unrelated photos. Scoped to
+     * root albums (parent_album_id IS NULL) because that's the only kind the
+     * submission composer assigns.
+     */
+    @Query(value = """
+        SELECT CAST(ma.media_album_id AS text), MAX(1 - (mae.embedding <=> CAST(:queryVector AS vector))) AS score
+        FROM media_asset_embeddings mae
+        JOIN media_assets ma ON ma.id = mae.asset_id
+        JOIN media_albums al ON al.id = ma.media_album_id
+        WHERE ma.institution_id = :institutionId
+          AND al.parent_album_id IS NULL
+          AND ma.deleted_at IS NULL
+          AND mae.embedding_type = :embeddingType
+        GROUP BY ma.media_album_id
+        """, nativeQuery = true)
+    List<Object[]> findMaxSimilarityByRootAlbum(@Param("institutionId") UUID institutionId,
+                                                @Param("embeddingType") String embeddingType,
+                                                @Param("queryVector") String queryVectorJson);
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { User } from "../../types/auth.types";
 import type { MediaAsset, MediaUsage } from "../../api/mediaApi";
@@ -12,12 +13,13 @@ import {
   getMediaAsset,
   removeMediaAssetTag,
   getMediaAssetUploadUrl,
-  listMediaAlbums,
   moveMediaAlbum,
   registerMediaAsset,
   renameMediaAlbum,
   semanticSearchMediaAssets,
   updateMediaAssetAlbum,
+  renameMediaAsset,
+  logNetworkViewAccess,
   type MediaAlbum,
 } from "../../api/mediaApi";
 import { listInstitutions, getInstitutionLogoUrl, type InstitutionResponse } from "../../api/authApi";
@@ -28,8 +30,10 @@ import {
   type SubmissionSummary,
 } from "../../api/submissionApi";
 import { useToast } from "../../context/ToastContext";
+import { authenticatedQueryMeta } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
 import { usePersistentSelection } from "../../hooks/usePersistentSelection";
-import { useMediaAssets } from "./hooks/useMediaAssets";
+import { useMediaAlbums, useMediaAssets } from "./hooks/useMediaAssets";
 import type { SortOption, ViewMode, DeleteTier } from "./types";
 import AssetCard from "./components/AssetCard";
 import AssetLightbox from "./components/AssetLightbox";
@@ -47,6 +51,7 @@ interface MediaRepositoryScreenProps {
 }
 
 const MAX_UPLOAD_MB = 50;
+const MEDIA_DETAIL_STALE_TIME_MS = 60_000;
 
 function isConflict(error: unknown) {
   if (typeof error !== "object" || error === null) return false;
@@ -73,6 +78,10 @@ function getErrorText(error: unknown, fallback: string) {
 function fileTypeFromFile(file: File) {
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   return ext === "jpg" ? "jpeg" : ext;
+}
+
+function getUserCacheScope(user: User) {
+  return user.id ?? user.email.trim().toLowerCase();
 }
 
 // PUT the file straight to object storage (Cloudflare R2) using XHR so we can
@@ -108,7 +117,9 @@ function putToStorage(
 
 export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenProps) {
   const toast = useToast();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const userScope = getUserCacheScope(user);
   // Strict admin — only gates individual-asset deletion (backend does the same).
   const isAdmin = user.role === "admin";
   // Admins and moderators are both network-wide (no home institution), so both
@@ -144,11 +155,103 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   // Folder scoping is dropped while searching so matches are never hidden by the current folder.
   const listAlbumId = search.trim() ? null : currentAlbumId;
-  const { assets, setAssets, loading, error, refresh } = useMediaAssets(
+  const {
+    assets,
+    setAssets,
+    loading: assetsLoading,
+    error: assetsError,
+    refresh,
+  } = useMediaAssets(
+    user,
     networkView,
     selectedInstitutionId,
     listAlbumId,
     !skipAssetFetch,
+  );
+
+  // Which institution's albums to load. null + network browser means every institution's albums.
+  const albumScopeInstitutionId = isNetworkBrowser ? selectedInstitutionId : (user.institutionId ?? null);
+  const {
+    albums,
+    setAlbums,
+    loading: albumsLoading,
+    error: albumsError,
+    refresh: reloadAlbums,
+  } = useMediaAlbums(
+    user,
+    albumScopeInstitutionId,
+    isNetworkBrowser || Boolean(albumScopeInstitutionId),
+  );
+  const loading = assetsLoading || albumsLoading;
+  const error = assetsError || albumsError;
+  const hasCachedRepositoryData = assets.length > 0 || albums.length > 0;
+  const refreshErrorNotifiedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!error || !hasCachedRepositoryData) {
+      if (!error) refreshErrorNotifiedRef.current = null;
+      return;
+    }
+    if (refreshErrorNotifiedRef.current === error) return;
+    refreshErrorNotifiedRef.current = error;
+    toast.error(error);
+  }, [error, hasCachedRepositoryData, toast]);
+
+  const invalidateMediaMetadata = useCallback(() => {
+    return Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["media-assets"] }),
+      queryClient.invalidateQueries({ queryKey: ["media-albums"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+    ]);
+  }, [queryClient]);
+
+  const fetchMediaAssetDetail = useCallback((assetId: string) => {
+    return queryClient.fetchQuery({
+      queryKey: queryKeys.mediaAssets.detail({
+        role: user.role,
+        userId: userScope,
+        assetId,
+      }),
+      queryFn: ({ signal }) => getMediaAsset(assetId, signal).then((res) => res.data),
+      staleTime: MEDIA_DETAIL_STALE_TIME_MS,
+      meta: authenticatedQueryMeta,
+    });
+  }, [queryClient, user.role, userScope]);
+
+  const submissionsQueryKey = useMemo(
+    () =>
+      queryKeys.submissions.all({
+        role: user.role,
+        userId: userScope,
+        institutionId: user.institutionId ?? null,
+      }),
+    [user.institutionId, user.role, userScope],
+  );
+
+  const syncSubmissionCache = useCallback(
+    (submission: SubmissionSummary) => {
+      queryClient.setQueriesData<SubmissionSummary[]>(
+        { queryKey: ["submissions"] },
+        (current) =>
+          Array.isArray(current)
+            ? current.map((item) => (item.id === submission.id ? { ...item, ...submission } : item))
+            : current,
+      );
+
+      const detailParams = {
+        role: user.role,
+        userId: userScope,
+        institutionId: submission.institutionId || user.institutionId || null,
+        submissionId: submission.id,
+      };
+      queryClient.setQueryData(queryKeys.submissions.editorDetail(detailParams), submission);
+      queryClient.setQueryData(queryKeys.submissions.detail(detailParams), {
+        caption: submission.caption ?? "",
+        mediaAssets: submission.mediaAssets ?? [],
+      });
+    },
+    [queryClient, user.institutionId, user.role, userScope],
   );
 
   const [selectedAsset, setSelectedAsset] = useState<MediaAsset | null>(null);
@@ -175,10 +278,10 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     const assetId = searchParams.get("asset");
     if (!assetId) return;
     let active = true;
-    getMediaAsset(assetId)
-      .then((res) => {
+    fetchMediaAssetDetail(assetId)
+      .then((asset) => {
         if (!active) return;
-        setSelectedAsset(res.data);
+        setSelectedAsset(asset);
         setPanelOpen(true);
       })
       .catch(() => {
@@ -192,8 +295,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchMediaAssetDetail, searchParams, setSearchParams, toast]);
 
   const [addToDraftOpen, setAddToDraftOpen] = useState(false);
   const [drafts, setDrafts] = useState<SubmissionSummary[]>([]);
@@ -201,7 +303,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [busyDraftId, setBusyDraftId] = useState<string | null>(null);
 
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [albums, setAlbums] = useState<MediaAlbum[]>([]);
   const [albumModal, setAlbumModal] = useState<
     | { mode: "create"; album: null }
     | { mode: "rename"; album: MediaAlbum }
@@ -256,29 +357,20 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     };
   }, [isNetworkBrowser, toast]);
 
-  // Which institution's albums to load. null + network browser ⇒ every institution's albums.
-  const albumScopeInstitutionId = isNetworkBrowser ? selectedInstitutionId : (user.institutionId ?? null);
-
-  const reloadAlbums = useCallback(() => {
-    if (!isNetworkBrowser && !albumScopeInstitutionId) {
-      setAlbums([]);
-      return Promise.resolve();
-    }
-    return listMediaAlbums(albumScopeInstitutionId ?? undefined)
-      .then((res) => setAlbums(res.data ?? []))
-      .catch(() => toast.error("Could not load media albums."));
-  }, [isNetworkBrowser, albumScopeInstitutionId, toast]);
-
+  // UC-2.2 A2: the Network View banner tells the actor this session is being
+  // logged — make that true, once per browser session (sessionStorage survives
+  // navigating away and back, but not a fresh tab/reload of the auth session).
   useEffect(() => {
-    let active = true;
-    // microtask defer so the fetch/clear never runs synchronously in the effect body
-    queueMicrotask(() => {
-      if (active) void reloadAlbums();
-    });
-    return () => {
-      active = false;
-    };
-  }, [reloadAlbums]);
+    if (!isNetworkBrowser) return;
+    const flagKey = `dasig:network-view-logged:${user.id ?? user.email}`;
+    try {
+      if (sessionStorage.getItem(flagKey)) return;
+      sessionStorage.setItem(flagKey, "1");
+    } catch {
+      // sessionStorage unavailable (e.g. private browsing) — log anyway rather than silently skip.
+    }
+    void logNetworkViewAccess();
+  }, [isNetworkBrowser, user.id, user.email]);
 
   const currentAlbum = useMemo(
     () => albums.find((a) => a.id === currentAlbumId) ?? null,
@@ -456,8 +548,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   function openAsset(asset: MediaAsset) {
     setSelectedAsset(asset);
     setPanelOpen(true);
-    getMediaAsset(asset.id)
-      .then((res) => setSelectedAsset(res.data))
+    fetchMediaAssetDetail(asset.id)
+      .then((detail) => setSelectedAsset(detail))
       .catch(() => { /* panel stays with summary data on fetch error */ });
   }
 
@@ -525,8 +617,13 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     if (activeAssetIds().length === 0) return;
     setAddToDraftOpen(true);
     setDraftsLoading(true);
-    listSubmissions()
-      .then((res) => setDrafts(res.data.filter((item) => item.status === "draft")))
+    queryClient.fetchQuery({
+      queryKey: submissionsQueryKey,
+      queryFn: ({ signal }) => listSubmissions(signal).then((res) => res.data),
+      staleTime: 30_000,
+      meta: authenticatedQueryMeta,
+    })
+      .then((submissions) => setDrafts(submissions.filter((item) => item.status === "draft")))
       .catch(() => toast.error("Could not load your drafts."))
       .finally(() => setDraftsLoading(false));
   }
@@ -537,15 +634,21 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     setBusyDraftId(draftId);
     let added = 0;
     let alreadyThere = 0;
+    const updatedDrafts: SubmissionSummary[] = [];
     try {
       for (const assetId of ids) {
         try {
-          await attachAsset(draftId, assetId);
+          const { data } = await attachAsset(draftId, assetId);
+          updatedDrafts.push(data);
           added += 1;
         } catch (err: unknown) {
           if (isConflict(err)) alreadyThere += 1;
           else throw err;
         }
+      }
+      updatedDrafts.forEach(syncSubmissionCache);
+      if (added > 0) {
+        await queryClient.invalidateQueries({ queryKey: ["submissions"] });
       }
       setAddToDraftOpen(false);
       clearSelection();
@@ -592,6 +695,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     const { data } = await createMediaAlbum(name, institutionId, parentAlbumId);
     setAlbums((prev) => [...prev.filter((album) => album.id !== data.id), data]
       .sort((a, b) => a.name.localeCompare(b.name)));
+    void invalidateMediaMetadata();
     return data;
   }
 
@@ -635,6 +739,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         setSelectedAsset((prev) =>
           prev?.albumId === data.id ? { ...prev, albumName: data.name } : prev
         );
+        void invalidateMediaMetadata();
         toast.success("Folder renamed.");
       }
       closeAlbumModal();
@@ -665,6 +770,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         .sort((a, b) => a.name.localeCompare(b.name)));
       setMoveAlbumTarget(null);
       toast.success("Folder moved.");
+      void invalidateMediaMetadata();
       void reloadAlbums();
       void refresh();
     } catch (err: unknown) {
@@ -677,6 +783,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       await deleteMediaAlbum(album.id);
       setAlbums((prev) => prev.filter((item) => item.id !== album.id));
       toast.success("Folder deleted.");
+      void invalidateMediaMetadata();
     } catch (err: unknown) {
       toast.error(getErrorText(err, "Could not delete that folder."));
     }
@@ -694,18 +801,40 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       );
       setSelectedAsset(data);
       toast.success("Moved to folder.");
+      void invalidateMediaMetadata();
       void reloadAlbums();
     } catch {
       toast.error("Could not update the folder assignment.");
     }
   }
 
+  async function handleRenameAsset(assetId: string, title: string) {
+    try {
+      const { data } = await renameMediaAsset(assetId, title);
+      setSelectedAsset(data);
+      setAssets((prev) => prev.map((a) => (a.id === data.id ? { ...a, ...data } : a)));
+      void invalidateMediaMetadata();
+    } catch {
+      toast.error("Could not rename this asset.");
+    }
+  }
+
   async function handleAssetTag(assetId: string, action: () => Promise<unknown>) {
     try {
       await action();
-      const { data } = await getMediaAsset(assetId);
+      const data = await queryClient.fetchQuery({
+        queryKey: queryKeys.mediaAssets.detail({
+          role: user.role,
+          userId: userScope,
+          assetId,
+        }),
+        queryFn: ({ signal }) => getMediaAsset(assetId, signal).then((res) => res.data),
+        staleTime: 0,
+        meta: authenticatedQueryMeta,
+      });
       setSelectedAsset(data);
       setAssets((prev) => prev.map((a) => (a.id === data.id ? { ...a, ...data } : a)));
+      void invalidateMediaMetadata();
     } catch {
       toast.error("Could not update tags.");
     }
@@ -733,9 +862,12 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
     try {
       onProgress?.(0);
+      const contentHash = await sha256File(file);
       const { data: urlData } = await getMediaAssetUploadUrl({
         fileName: safeFileName(file.name),
         fileType: fileTypeFromFile(file),
+        contentHash,
+        allowDuplicate: metadata.allowDuplicate,
         institutionId,
       });
 
@@ -749,6 +881,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         fileName: file.name,
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
+        contentHash,
+        allowDuplicate: metadata.allowDuplicate,
         institutionId,
         albumId: metadata.albumId,
         albumName: metadata.albumName,
@@ -759,6 +893,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
       if (!opts?.silent) {
         toast.success("Asset uploaded! AI classification in progress…");
+        void invalidateMediaMetadata();
         void refresh();
         void reloadAlbums();
       }
@@ -767,6 +902,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       if (!opts?.silent) toast.error(message);
       throw err;
     }
+  }
+
+  async function sha256File(file: File) {
+    const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
   }
 
   // "Upload folder": mirror the picked directory tree into nested albums under
@@ -833,6 +973,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         `Uploaded ${done} file${done === 1 ? "" : "s"} into folders${failed > 0 ? ` · ${failed} failed` : ""}.`,
       );
       await reloadAlbums();
+      void invalidateMediaMetadata();
       void refresh();
     } catch (err: unknown) {
       toast.error(getErrorText(err, "Folder upload could not be completed."));
@@ -942,6 +1083,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       });
       if (selectedAsset && ids.includes(selectedAsset.id)) closePanel();
       setDeleteOpen(false);
+      void invalidateMediaMetadata();
       toast.success(
         ids.length > 1
           ? `${ids.length} assets deleted from the media library.`
@@ -1268,7 +1410,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
             {/* Folders + Media Grid / States */}
             {(() => {
               if (loading || (semanticBusy && semanticResults === null)) return <SkeletonGrid viewMode={viewMode} />;
-              if (error) return <ErrorState message={error} onRetry={() => void refresh()} />;
+              if (error && !hasCachedRepositoryData) return <ErrorState message={error} onRetry={() => void refresh()} />;
               if (gridAssets.length === 0 && folderCards.length === 0) {
                 return (
                   <EmptyState
@@ -1363,7 +1505,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onNewPost={handleNewPost}
         onClearSelection={clearChecked}
         onClose={closePanel}
-        canAddToDraft={user.role === "contributor"}
+        canAddToDraft
         onAddToDraft={openAddToDraft}
         onDownload={() => void handleDownload()}
         canDelete={selectedAsset ? canDeleteAsset(selectedAsset) : false}
@@ -1373,6 +1515,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         albums={albums}
         onUpdateAlbum={(assetId, albumId) => void handleUpdateAssetAlbum(assetId, albumId)}
         onRenameAlbum={(album) => void handleRenameAlbum(album)}
+        onRenameAsset={(assetId, title) => void handleRenameAsset(assetId, title)}
         onAddTag={(assetId, label) => void handleAssetTag(assetId, () => addMediaAssetTag(assetId, label))}
         onRemoveTag={(assetId, tagId) => void handleAssetTag(assetId, () => removeMediaAssetTag(assetId, tagId))}
       />
@@ -1386,6 +1529,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         institutions={isNetworkBrowser ? institutions : []}
         defaultInstitutionId={targetInstitutionId}
         onClose={() => setUploadOpen(false)}
+        onUseExistingAsset={(assetId) => {
+          const next = new URLSearchParams(searchParams);
+          next.set("asset", assetId);
+          setSearchParams(next);
+        }}
         onCreateAlbum={(name, institutionId, parentAlbumId) =>
           handleCreateAlbum(name, parentAlbumId, institutionId)
         }

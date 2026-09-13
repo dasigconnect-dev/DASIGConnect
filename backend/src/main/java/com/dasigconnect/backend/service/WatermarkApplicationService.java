@@ -222,13 +222,16 @@ public class WatermarkApplicationService {
 
         Color fillColor = colorOrDefault(element.getFillColor(), new Color(15, 23, 42, 190));
         g.setColor(fillColor);
-        int arc = Math.min(12, Math.min(width, height) / 3);
-        g.fillRoundRect(x, y, width, height, arc, arc);
+        g.fillRect(x, y, width, height);
 
-        if (element.getStrokeColor() != null && !element.getStrokeColor().isBlank()) {
-            Color strokeColor = colorOrDefault(element.getStrokeColor(), Color.WHITE);
-            g.setColor(strokeColor);
-            g.drawRoundRect(x, y, width, height, arc, arc);
+        // Do not draw white or default outline on shapes
+        String stroke = element.getStrokeColor();
+        if (stroke != null && !stroke.isBlank() && !"transparent".equalsIgnoreCase(stroke.trim()) && !"#ffffff".equalsIgnoreCase(stroke.trim())) {
+            Color strokeColor = colorOrDefault(stroke, null);
+            if (strokeColor != null) {
+                g.setColor(strokeColor);
+                g.drawRect(x, y, width, height);
+            }
         }
     }
 
@@ -260,7 +263,46 @@ public class WatermarkApplicationService {
             }
 
             if (watermark != null) {
-                g.drawImage(watermark, x, y, width, height, null);
+                int origW = watermark.getWidth();
+                int origH = watermark.getHeight();
+                if (origW <= 0 || origH <= 0) return;
+
+                // Adapt to image aspect ratio without stretching (object-fit: contain)
+                double logoAspect = (double) origW / (double) origH;
+                double boxAspect = (double) width / (double) height;
+
+                int drawW;
+                int drawH;
+                if (logoAspect > boxAspect) {
+                    drawW = width;
+                    drawH = (int) Math.round(width / logoAspect);
+                } else {
+                    drawH = height;
+                    drawW = (int) Math.round(height * logoAspect);
+                }
+
+                drawW = Math.max(1, drawW);
+                drawH = Math.max(1, drawH);
+
+                // Position within bounding box according to horizontal & vertical anchor
+                int drawX = x;
+                int drawY = y;
+
+                double xPct = element.getXPercent();
+                if (xPct > 65.0) {
+                    drawX = x + (width - drawW); // right-aligned
+                } else if (xPct > 25.0) {
+                    drawX = x + (width - drawW) / 2; // centered
+                }
+
+                double yPct = element.getYPercent();
+                if (yPct > 65.0) {
+                    drawY = y + (height - drawH); // bottom-aligned
+                } else if (yPct > 25.0) {
+                    drawY = y + (height - drawH) / 2; // centered
+                }
+
+                g.drawImage(watermark, drawX, drawY, drawW, drawH, null);
             }
         } catch (Exception ex) {
             log.warn("Skipping watermark image {}: {}", imageUrl, ex.getMessage());

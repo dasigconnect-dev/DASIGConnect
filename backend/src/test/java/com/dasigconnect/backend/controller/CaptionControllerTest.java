@@ -11,7 +11,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -106,14 +105,23 @@ class CaptionControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "MODERATOR")
-    void generateCaption_asValidator_returns403() throws Exception {
+    void generateCaption_asModeratorRole_isAllowed() throws Exception {
+        UUID submissionId = UUID.randomUUID();
+        when(captionGenerationService.generateCaptions(
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(),
+                ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+                .thenReturn(new CaptionResponseDto(submissionId, List.of(
+                        new CaptionVariantDto("professional", "Caption #DASIG")
+                )));
+
         mockMvc.perform(post("/api/v1/ai/caption")
+                .with(authentication(moderatorAuth()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"submissionId":"%s"}
-                        """.formatted(UUID.randomUUID())))
-                .andExpect(status().isForbidden());
+                        {"submissionId":"%s","existingCaption":"Draft caption"}
+                        """.formatted(submissionId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.variants[0].caption").value("Caption #DASIG"));
     }
 
     @Test
@@ -205,5 +213,12 @@ class CaptionControllerTest {
                 UUID.randomUUID(), "admin@dasig.gov.ph", "admin", null);
         return new UsernamePasswordAuthenticationToken(
                 principal, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+    }
+
+    private static UsernamePasswordAuthenticationToken moderatorAuth() {
+        JwtUserDetails principal = new JwtUserDetails(
+                UUID.randomUUID(), "moderator@dasig.gov.ph", "moderator", null);
+        return new UsernamePasswordAuthenticationToken(
+                principal, null, List.of(new SimpleGrantedAuthority("ROLE_MODERATOR")));
     }
 }

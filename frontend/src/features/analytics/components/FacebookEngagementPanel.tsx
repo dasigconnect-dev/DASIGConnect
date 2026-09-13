@@ -1,18 +1,47 @@
+import type { ReactNode } from "react";
 import type { FacebookEngagementSummaryDto } from "../../../api/analyticsApi";
 import { formatNumber } from "../analyticsUtils";
 
 interface Props {
   data: FacebookEngagementSummaryDto;
   onOpenReport: () => void;
+  /** Only admins see the reach cell — per-post reach isn't in the Graph API, so it
+   *  links out to Meta's own insights instead of showing a permanent zero. */
+  isAdmin?: boolean;
 }
 
-export default function FacebookEngagementPanel({ data, onOpenReport }: Readonly<Props>) {
-  const cells: Array<{ label: string; value: string }> = [
-    ["Avg. Reach", formatNumber(Math.round(data.averageReach))],
-    ["Reactions", formatNumber(data.totalReactions)],
-    ["Comments", formatNumber(data.totalComments)],
-    ["Shares", formatNumber(data.totalShares)],
-  ].map(([label, value]) => ({ label, value }));
+export default function FacebookEngagementPanel({ data, onOpenReport, isAdmin = false }: Readonly<Props>) {
+  const cells: Array<{ label: string; node: ReactNode }> = [];
+
+  if (isAdmin) {
+    const insightsUrl = data.pageId
+      ? `https://www.facebook.com/${data.pageId}/insights/`
+      : null;
+    cells.push({
+      label: "Avg. Reach",
+      node:
+        data.averageReach > 0 ? (
+          <span className="analytics-stat-cell-value">{formatNumber(Math.round(data.averageReach))}</span>
+        ) : insightsUrl ? (
+          <a
+            className="analytics-text-btn"
+            href={insightsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View on Meta <i className="ti ti-external-link" aria-hidden="true" />
+          </a>
+        ) : (
+          <span className="analytics-stat-cell-value" style={{ color: "var(--d-muted)" }}>n/a</span>
+        ),
+    });
+  }
+
+  cells.push(
+    { label: "Reactions", node: <span className="analytics-stat-cell-value">{formatNumber(data.totalReactions)}</span> },
+    { label: "Comments", node: <span className="analytics-stat-cell-value">{formatNumber(data.totalComments)}</span> },
+    { label: "Shares", node: <span className="analytics-stat-cell-value">{formatNumber(data.totalShares)}</span> },
+  );
 
   return (
     <>
@@ -26,7 +55,7 @@ export default function FacebookEngagementPanel({ data, onOpenReport }: Readonly
           {cells.map((cell) => (
             <div className="analytics-stat-cell" key={cell.label}>
               <span className="analytics-stat-cell-label">{cell.label}</span>
-              <span className="analytics-stat-cell-value">{cell.value}</span>
+              {cell.node}
             </div>
           ))}
         </div>

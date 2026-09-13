@@ -1,22 +1,26 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import FullCalendar from "@fullcalendar/react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import type FullCalendar from "@fullcalendar/react";
 import type { DatesSetArg } from "@fullcalendar/core";
 import { createPortal } from "react-dom";
 import type { CalendarEvent } from "../../api/calendarApi";
 import { rescheduleSubmission } from "../../api/calendarApi";
 import type { User } from "../../types/auth.types";
 import { useCalendarEvents } from "../../hooks/useCalendarEvents";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "../../context/ToastContext";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import MultiSelect from "../../components/ui/MultiSelect";
-import CalendarView, { type CalendarDropInfo } from "./CalendarView";
-import CalendarEventDetailModal from "./CalendarEventDetailModal";
-import CalendarRescheduleModal from "./CalendarRescheduleModal";
+import type { CalendarDropInfo } from "./CalendarView";
 import CalendarLegend from "./CalendarLegend";
 import CalendarToolbar, { type CalendarViewMode } from "./CalendarToolbar";
 import { CalendarErrorState } from "./CalendarStates";
 import { visibleCalendarStatus } from "./calendarStatus";
 import PageLoader from "../../components/common/PageLoader";
+import "../../styles/calendar.css";
+
+const CalendarView = lazy(() => import("./CalendarView"));
+const CalendarEventDetailModal = lazy(() => import("./CalendarEventDetailModal"));
+const CalendarRescheduleModal = lazy(() => import("./CalendarRescheduleModal"));
 
 interface CalendarScreenProps {
   user: User;
@@ -24,7 +28,7 @@ interface CalendarScreenProps {
 
 export default function CalendarScreen({ user }: CalendarScreenProps) {
   const calendarRef = useRef<FullCalendar>(null);
-  const { events, loading, error, refresh } = useCalendarEvents();
+  const queryClient = useQueryClient();
   const toast = useToast();
   const [selected, setSelected] = useState<CalendarEvent | null>(null);
   const [pendingReschedule, setPendingReschedule] = useState<CalendarDropInfo | null>(null);
@@ -32,7 +36,8 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
   const [calendarRange, setCalendarRange] = useState<{
     start: Date;
     end: Date;
-  } | null>(null);
+  }>(() => getDefaultMonthRange());
+  const { events, loading, error, refresh } = useCalendarEvents(user, calendarRange);
   const [showFullDay, setShowFullDay] = useState(false);
   const [institutionFilters, setInstitutionFilters] = useState<string[]>([]);
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
@@ -129,7 +134,12 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
       document.querySelectorAll(".fc-event-mirror").forEach((el) => el.remove());
     }, 0);
     toast.success("Post rescheduled.");
-    refresh();
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["analytics"] }),
+      queryClient.invalidateQueries({ queryKey: ["submissions"] }),
+    ]);
   }
 
   function handleRescheduleCancel() {
@@ -222,54 +232,82 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
 
   useEffect(() => {
     if (!pendingFilterNavigation) return;
-    beginCalendarTransition();
-    if (filteredEvents.length === 0) {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      beginCalendarTransition();
+      if (filteredEvents.length === 0) {
+        setPendingFilterNavigation(false);
+        endCalendarTransition();
+        return;
+      }
+      const earliest = findEarliestEventDate(filteredEvents);
+      if (earliest) {
+        setPendingNavigation({ date: earliest });
+      }
       setPendingFilterNavigation(false);
-      endCalendarTransition();
-      return;
-    }
-    const earliest = findEarliestEventDate(filteredEvents);
-    if (earliest) {
-      setPendingNavigation({ date: earliest });
-    }
-    setPendingFilterNavigation(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [filteredEvents, pendingFilterNavigation]);
 
   useEffect(() => {
     if (!pendingNavigation) return;
-    beginCalendarTransition();
-    if (pendingNavigation.highlightId && !filteredEvents.some((event) => event.id === pendingNavigation.highlightId)) {
-      endCalendarTransition();
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      beginCalendarTransition();
+      if (pendingNavigation.highlightId && !filteredEvents.some((event) => event.id === pendingNavigation.highlightId)) {
+        endCalendarTransition();
+        setPendingNavigation(null);
+        return;
+      }
+      const api = calendarRef.current?.getApi();
+      if (!api) {
+        endCalendarTransition();
+        setPendingNavigation(null);
+        return;
+      }
+      api.gotoDate(pendingNavigation.date);
+      if (pendingNavigation.highlightId) {
+        window.setTimeout(() => {
+          setHighlightedEventId(pendingNavigation.highlightId ?? null);
+          window.setTimeout(() => setHighlightedEventId(null), 2400);
+        }, 0);
+      }
       setPendingNavigation(null);
-      return;
-    }
-    const api = calendarRef.current?.getApi();
-    if (!api) {
-      endCalendarTransition();
-      setPendingNavigation(null);
-      return;
-    }
-    api.gotoDate(pendingNavigation.date);
-    if (pendingNavigation.highlightId) {
-      window.setTimeout(() => {
-        setHighlightedEventId(pendingNavigation.highlightId ?? null);
-        window.setTimeout(() => setHighlightedEventId(null), 2400);
-      }, 0);
-    }
-    setPendingNavigation(null);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [pendingNavigation, filteredEvents]);
 
   useEffect(() => {
-    beginCalendarTransition();
-    endCalendarTransition();
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      beginCalendarTransition();
+      endCalendarTransition();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [institutionFilters, statusFilters, dateFilter]);
 
   useEffect(() => {
     if (user.role !== "contributor") return;
-    setStatusFilters((prev) => {
-      const next = prev.filter((v) => v !== "attention" && v !== "failed");
-      return next.length === prev.length ? prev : next;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setStatusFilters((prev) => {
+        const next = prev.filter((v) => v !== "attention" && v !== "failed");
+        return next.length === prev.length ? prev : next;
+      });
     });
+    return () => {
+      cancelled = true;
+    };
   }, [user.role]);
 
   useEffect(() => () => {
@@ -280,7 +318,6 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
 
   const isAdmin = user.role === "moderator" || user.role === "admin";
   const rangeLabel = useMemo(() => {
-    if (!calendarRange) return "Calendar";
     const fmt = new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric" });
     if (calendarView === "dayGridMonth") {
       return new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric" }).format(calendarRange.start);
@@ -367,14 +404,14 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
 
       <section className={`cal-overview-grid cal-overview-grid-${isAdmin ? "5" : "3"}`} aria-label="Publishing metrics">
         <MetricCard metric="scheduled" icon="ti ti-calendar-time" label="Scheduled Posts" value={metrics.scheduled} tone="blue" onOpen={setActiveMetric} />
-        <MetricCard metric="published" icon="ti ti-circle-check" label="Published" value={metrics.published} tone="green" onOpen={setActiveMetric} />
+        <MetricCard metric="published" icon="ti ti-circle-check" label="Published" value={metrics.published} tone="blue" onOpen={setActiveMetric} />
         {isAdmin && (
-          <MetricCard metric="failed" icon="ti ti-alert-circle" label="Failed" value={metrics.failed} tone="red" onOpen={setActiveMetric} />
+          <MetricCard metric="failed" icon="ti ti-alert-circle" label="Failed" value={metrics.failed} tone="blue" onOpen={setActiveMetric} />
         )}
         {isAdmin && (
-          <MetricCard metric="attention" icon="ti ti-alert-triangle" label="Needs Attention" value={metrics.attention} tone="orange" onOpen={setActiveMetric} />
+          <MetricCard metric="attention" icon="ti ti-alert-triangle" label="Needs Attention" value={metrics.attention} tone="blue" onOpen={setActiveMetric} />
         )}
-        <MetricCard metric="today" icon="ti ti-sun" label="Upcoming Today" value={metrics.today} tone="purple" onOpen={setActiveMetric} />
+        <MetricCard metric="today" icon="ti ti-sun" label="Upcoming Today" value={metrics.today} tone="blue" onOpen={setActiveMetric} />
       </section>
 
       <CalendarToolbar
@@ -402,37 +439,45 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
 
       {!error && (
         <>
-          <CalendarView
-            events={filteredEvents}
-            initialView={calendarView}
-            calendarRef={calendarRef}
-            showFullDay={showFullDay}
-            highlightedEventId={highlightedEventId}
-            scrollToEventId={scrollTargetId}
-            onScrollComplete={() => setScrollTargetId(null)}
-            isBusy={isCalendarBusy}
-            user={user}
-            onEventClick={setSelected}
-            onDatesSet={handleDatesSet}
-            onEventDrop={isAdmin ? handleEventDrop : undefined}
-          />
+          <Suspense fallback={<CalendarViewFallback />}>
+            <CalendarView
+              events={filteredEvents}
+              initialView={calendarView}
+              calendarRef={calendarRef}
+              showFullDay={showFullDay}
+              highlightedEventId={highlightedEventId}
+              scrollToEventId={scrollTargetId}
+              onScrollComplete={() => setScrollTargetId(null)}
+              isBusy={isCalendarBusy}
+              user={user}
+              onEventClick={setSelected}
+              onDatesSet={handleDatesSet}
+              onEventDrop={isAdmin ? handleEventDrop : undefined}
+            />
+          </Suspense>
           <CalendarLegend />
         </>
       )}
 
-      <CalendarEventDetailModal
-        event={selected}
-        user={user}
-        onClose={() => setSelected(null)}
-      />
+      {selected && (
+        <Suspense fallback={null}>
+          <CalendarEventDetailModal
+            event={selected}
+            user={user}
+            onClose={() => setSelected(null)}
+          />
+        </Suspense>
+      )}
 
       {pendingReschedule && (
-        <CalendarRescheduleModal
-          event={pendingReschedule.event}
-          newStart={pendingReschedule.newStart}
-          onConfirm={handleRescheduleConfirm}
-          onCancel={handleRescheduleCancel}
-        />
+        <Suspense fallback={null}>
+          <CalendarRescheduleModal
+            event={pendingReschedule.event}
+            newStart={pendingReschedule.newStart}
+            onConfirm={handleRescheduleConfirm}
+            onCancel={handleRescheduleCancel}
+          />
+        </Suspense>
       )}
 
       <CalendarMetricResultsPanel
@@ -469,6 +514,14 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
 }
 
 type MetricKey = "scheduled" | "published" | "failed" | "attention" | "today";
+
+function CalendarViewFallback() {
+  return (
+    <div className="cal-loading-shell" aria-live="polite" aria-label="Loading calendar">
+      <PageLoader />
+    </div>
+  );
+}
 
 function MetricCard({
   metric,
@@ -664,4 +717,12 @@ function formatShortDate(iso: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function getDefaultMonthRange() {
+  const now = new Date();
+  return {
+    start: new Date(now.getFullYear(), now.getMonth(), 1),
+    end: new Date(now.getFullYear(), now.getMonth() + 1, 1),
+  };
 }

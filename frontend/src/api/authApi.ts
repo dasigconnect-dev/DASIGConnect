@@ -53,6 +53,11 @@ export interface UserProfileResponse {
   adminOwner: boolean;
   superAdminTransferRequestedBy: string | null;
   superAdminTransferExpiresAt: string | null;
+  /** Set while an Admin Owner has proposed promoting this account to Administrator (UC-1.1). */
+  adminPromotionRequestedBy?: string | null;
+  adminPromotionExpiresAt?: string | null;
+  /** True when adminPromotionRequestedBy/ExpiresAt describe a still-live (unexpired) promotion. */
+  adminPromotionPending?: boolean;
   institutionId: string | null;
   institutionName: string | null;
   createdAt: string;
@@ -118,8 +123,8 @@ export function resendExpiredInvitation(payload: { token?: string | null; email?
   return api.post<{ message: string }>("/invitations/resend-expired", payload);
 }
 
-export function getMe() {
-  return api.get<UserProfileResponse>("/me");
+export function getMe(signal?: AbortSignal) {
+  return api.get<UserProfileResponse>("/me", { signal });
 }
 
 export function refreshSession() {
@@ -136,18 +141,24 @@ export function changePassword(currentPassword: string, newPassword: string) {
 
 export interface PageSettingsResponse {
   institutionId: string | null;
-  facebookPageId: string | null;
+  /** Network-wide scheduling guard-rail switch. Only meaningful / editable on the no-institution row. */
+  guardrailsEnforced: boolean;
   updatedAt: string | null;
 }
 
-export function getPageSettings(institutionId?: string | null) {
-  return api.get<PageSettingsResponse>("/settings/page", { params: institutionId ? { institutionId } : {} });
+export function getPageSettings(institutionId?: string | null, signal?: AbortSignal) {
+  return api.get<PageSettingsResponse>("/settings/page", {
+    params: institutionId ? { institutionId } : {},
+    signal,
+  });
 }
 
-// Page Settings is the Facebook Page ID only. Watermark on/off + layout are
-// saved via saveWatermarkConfiguration (/settings/watermark).
+// Page Settings is the network-wide scheduling guard-rail switch only.
+// Watermark on/off + layout are saved via saveWatermarkConfiguration
+// (/settings/watermark); the Facebook Page ID/token used for publishing is
+// managed in System Health -> Tokens, not here.
 export function updatePageSettings(
-  data: { facebookPageId: string | null },
+  data: { guardrailsEnforced?: boolean },
   institutionId?: string | null,
 ) {
   return api.put<PageSettingsResponse>("/settings/page", data, { params: institutionId ? { institutionId } : {} });
@@ -213,18 +224,20 @@ export function getInstitutionLogoUrl(id: string, logoUpdatedAt: string | null) 
   });
 }
 
-export function getUserCounts(institutionId: string) {
+export function getUserCounts(institutionId: string, signal?: AbortSignal) {
   return api.get<{ contributors: number; moderators: number }>(
     "/users/counts",
     {
       params: { institutionId },
+      signal,
     },
   );
 }
 
-export function listUsers(institutionId: string) {
+export function listUsers(institutionId: string, signal?: AbortSignal) {
   return api.get<UserProfileResponse[]>("/users", {
     params: { institutionId },
+    signal,
   }).then((response) => {
     response.data = response.data.map((user) => ({
       ...user,
@@ -234,8 +247,8 @@ export function listUsers(institutionId: string) {
   });
 }
 
-export function listAdmins() {
-  return api.get<UserProfileResponse[]>("/users/admins", {}).then((response) => {
+export function listAdmins(signal?: AbortSignal) {
+  return api.get<UserProfileResponse[]>("/users/admins", { signal }).then((response) => {
     response.data = response.data.map((user) => ({
       ...user,
       avatarUrl: user.hasAvatar ? getUserAvatarUrl(user.id, user.avatarUpdatedAt) : null,
@@ -244,8 +257,8 @@ export function listAdmins() {
   });
 }
 
-export function listNetworkUsers() {
-  return api.get<UserProfileResponse[]>("/users/network", {}).then((response) => {
+export function listNetworkUsers(signal?: AbortSignal) {
+  return api.get<UserProfileResponse[]>("/users/network", { signal }).then((response) => {
     response.data = response.data.map((user) => ({
       ...user,
       avatarUrl: user.hasAvatar ? getUserAvatarUrl(user.id, user.avatarUpdatedAt) : null,
@@ -304,23 +317,25 @@ export interface PendingInvitationResponse {
   canManage: boolean;
 }
 
-export function listPendingInvitations(institutionId: string) {
+export function listPendingInvitations(institutionId: string, signal?: AbortSignal) {
   return api.get<PendingInvitationResponse[]>("/invitations/pending", {
     params: { institutionId },
+    signal,
   });
 }
 
-export function listPendingAdminInvitations() {
-  return api.get<PendingInvitationResponse[]>("/invitations/pending/admins");
+export function listPendingAdminInvitations(signal?: AbortSignal) {
+  return api.get<PendingInvitationResponse[]>("/invitations/pending/admins", { signal });
 }
 
-export function listPendingNetworkInvitations() {
-  return api.get<PendingInvitationResponse[]>("/invitations/pending/network");
+export function listPendingNetworkInvitations(signal?: AbortSignal) {
+  return api.get<PendingInvitationResponse[]>("/invitations/pending/network", { signal });
 }
 
-export function getPendingInvitationCount(institutionId: string) {
+export function getPendingInvitationCount(institutionId: string, signal?: AbortSignal) {
   return api.get<{ pendingInvitations: number }>("/invitations/pending/count", {
     params: { institutionId },
+    signal,
   });
 }
 
@@ -373,6 +388,21 @@ export function requestAdminTransfer(id: string) {
 
 export function confirmAdminTransfer() {
   return api.post<UserProfileResponse>("/users/admin-transfer/confirm");
+}
+
+/** The invitee accepts their own pending Administrator promotion (UC-1.1). */
+export function confirmAdminPromotion() {
+  return api.post<UserProfileResponse>("/users/promotion/confirm");
+}
+
+/** The invitee declines their own pending Administrator promotion, freeing the reserved slot. */
+export function declineAdminPromotion() {
+  return api.post<UserProfileResponse>("/users/promotion/decline");
+}
+
+/** Admin-Owner-only: rescinds a pending Administrator promotion before the invitee has responded. */
+export function cancelAdminPromotion(userId: string) {
+  return api.delete<UserProfileResponse>(`/users/${userId}/promotion`);
 }
 
 export interface InvitationResponse {

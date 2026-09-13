@@ -20,11 +20,11 @@ public record AnalyticsSummaryDto(
         List<ContributorBreakdownDto> contributorBreakdown,
         List<StatusBreakdownDto> statusBreakdown,
         List<ContentIssueDto> contentIssues,
-        List<CategoryPerformanceDto> topCategories,
         ContributorAnalyticsDto contributorAnalytics,
         ValidatorAnalyticsDto validatorAnalytics,
         AiPerformanceDto aiPerformance,
         AdminAnalyticsDto adminAnalytics,
         OperationalHealthDto operationalHealth,
-        FacebookEngagementSummaryDto facebookEngagement) {
+        FacebookEngagementSummaryDto facebookEngagement,
+        PagePerformanceDto pagePerformance) {
 }

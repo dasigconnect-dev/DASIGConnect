@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { FacebookPreviewMediaItem } from "../../types/facebook";
 import FacebookPreviewEmptyState from "./FacebookPreviewEmptyState";
-import { getWatermarkConfiguration } from "../../api/watermarkApi";
 import type { WatermarkConfiguration } from "../../types/watermark.types";
 import WatermarkOverlay from "../watermark/WatermarkOverlay";
+import { useWatermarkConfiguration } from "../../hooks/useWatermarkConfiguration";
 
 interface FacebookPreviewMediaCarouselProps {
   mediaItems: FacebookPreviewMediaItem[];
@@ -12,23 +12,63 @@ interface FacebookPreviewMediaCarouselProps {
   size?: "compact" | "large";
 }
 
+function FacebookPreviewImageItem({
+  item,
+  watermarkConfig,
+}: {
+  item: FacebookPreviewMediaItem;
+  watermarkConfig: WatermarkConfiguration | null;
+}) {
+  const [aspectRatio, setAspectRatio] = useState<number | null>(null);
+
+  return (
+    <div
+      className="fb-preview-img-container"
+      style={{
+        position: "relative",
+        maxWidth: "100%",
+        maxHeight: "100%",
+        aspectRatio: aspectRatio ? `${aspectRatio}` : undefined,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <img
+        src={item.url}
+        alt={item.alt}
+        onLoad={(e) => {
+          const { naturalWidth, naturalHeight } = e.currentTarget;
+          if (naturalWidth && naturalHeight) {
+            setAspectRatio(naturalWidth / naturalHeight);
+          }
+        }}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+          display: "block",
+        }}
+      />
+      {watermarkConfig?.enabled && !item.skipWatermark && (
+        <WatermarkOverlay elements={watermarkConfig.elements} />
+      )}
+    </div>
+  );
+}
+
 export default function FacebookPreviewMediaCarousel({
   mediaItems,
   activeIndex,
   onActiveIndexChange,
   size = "compact",
 }: FacebookPreviewMediaCarouselProps) {
-  const [watermarkConfig, setWatermarkConfig] = useState<WatermarkConfiguration | null>(null);
+  const watermarkQuery = useWatermarkConfiguration();
+  const watermarkConfig = watermarkQuery.data ?? null;
   const touchStartX = useRef<number | null>(null);
   const currentIndex = clampIndex(activeIndex, mediaItems.length);
   const current = mediaItems[currentIndex];
   const hasMultiple = mediaItems.length > 1;
-
-  useEffect(() => {
-    void getWatermarkConfiguration()
-      .then((res) => setWatermarkConfig(res.data))
-      .catch(() => undefined);
-  }, []);
 
   function goTo(index: number) {
     if (!onActiveIndexChange || mediaItems.length === 0) return;
@@ -73,12 +113,11 @@ export default function FacebookPreviewMediaCarousel({
           )}
           </>
         ) : current.type === "image" ? (
-          <div style={{ position: "relative", width: "100%", height: "100%" }}>
-            <img src={current.url} alt={current.alt} />
-            {watermarkConfig?.enabled && !current.skipWatermark && (
-              <WatermarkOverlay elements={watermarkConfig.elements} />
-            )}
-          </div>
+          <FacebookPreviewImageItem
+            key={current.url}
+            item={current}
+            watermarkConfig={watermarkConfig}
+          />
         ) : (
           <FacebookPreviewEmptyState />
         )}

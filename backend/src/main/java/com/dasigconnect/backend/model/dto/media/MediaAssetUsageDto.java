@@ -21,4 +21,14 @@ public record MediaAssetUsageDto(
                 s.getStatus().name(),
                 "/submissions/" + s.getId());
     }
+
+    public static MediaAssetUsageDto historical(UUID submissionId, String eventTitle,
+            Instant occurredAt, String status, boolean deleted) {
+        return new MediaAssetUsageDto(
+                submissionId,
+                deleted ? "[Submission Deleted]" : eventTitle,
+                occurredAt,
+                deleted ? "deleted" : status,
+                deleted ? null : "/submissions/" + submissionId);
+    }
 }
