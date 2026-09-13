@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   downloadAuditLogCsv,
@@ -204,8 +204,20 @@ export default function AuditLogScreen({ user }: Props) {
   const logs = auditPage?.content ?? [];
   const totalElements = auditPage?.totalElements ?? 0;
   const totalPages = auditPage?.totalPages ?? 0;
-  const loading = auditLogQuery.isLoading || auditLogQuery.isFetching;
+  const loading = auditLogQuery.isLoading;
+  const refreshing = auditLogQuery.isFetching && !auditLogQuery.isLoading;
   const loadError = auditLogQuery.error ? getAuditLoadError(auditLogQuery.error) : "";
+  const refreshErrorNotifiedRef = useRef(false);
+
+  useEffect(() => {
+    if (!loadError || logs.length === 0) {
+      if (!loadError) refreshErrorNotifiedRef.current = false;
+      return;
+    }
+    if (refreshErrorNotifiedRef.current) return;
+    refreshErrorNotifiedRef.current = true;
+    toast.error(loadError);
+  }, [loadError, logs.length, toast]);
 
   function refreshAuditLog() {
     void queryClient.invalidateQueries({ queryKey: ["audit-log"] });
@@ -278,10 +290,10 @@ export default function AuditLogScreen({ user }: Props) {
               type="button"
               className="notif-btn notif-btn-ghost"
               onClick={refreshAuditLog}
-              disabled={loading}
+              disabled={loading || refreshing}
               title="Refresh audit log"
             >
-              <i className={`ti ti-refresh${loading ? " spin" : ""}`} style={{ fontSize: 14 }} />
+              <i className={`ti ti-refresh${loading || refreshing ? " spin" : ""}`} style={{ fontSize: 14 }} />
               <span>Refresh</span>
             </button>
 
@@ -289,7 +301,7 @@ export default function AuditLogScreen({ user }: Props) {
               type="button"
               className="audit-export-btn"
               onClick={handleExport}
-              disabled={exporting || loading}
+              disabled={exporting || loading || refreshing}
               title="Download formatted CSV report for DOST Region 7 governance reporting"
             >
               {exporting ? (

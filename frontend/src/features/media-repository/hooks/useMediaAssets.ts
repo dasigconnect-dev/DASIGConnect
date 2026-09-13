@@ -83,7 +83,8 @@ export function useMediaAssets(
   return {
     assets: enabled ? query.data ?? [] : [],
     setAssets,
-    loading: query.isLoading || query.isFetching,
+    loading: query.isLoading,
+    refreshing: query.isFetching && !query.isLoading,
     error: query.error && !isCanceledError(query.error)
       ? getErrorMessage(query.error, "Unable to load media assets.")
       : "",
@@ -135,7 +136,8 @@ export function useMediaAlbums(
   return {
     albums: enabled ? query.data ?? [] : [],
     setAlbums,
-    loading: query.isLoading || query.isFetching,
+    loading: query.isLoading,
+    refreshing: query.isFetching && !query.isLoading,
     error: query.error && !isCanceledError(query.error)
       ? getErrorMessage(query.error, "Unable to load media albums.")
       : "",
