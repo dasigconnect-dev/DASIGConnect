@@ -183,6 +183,14 @@ public class AIRecommendationService {
         return rankedResults;
     }
 
+    // NOT the same feature as UploadModal.tsx's Auto-Match (UC-2.1,
+    // TEXT_MATCH_CONFIDENT/TEXT_MATCH_AMBIGUOUS = 0.6/0.3) — that one has no
+    // visual signal available (the file isn't uploaded/embedded yet at
+    // album-selection time) and scores pure tag/filename text overlap. Both
+    // happen to produce a 0-1 score and land in the same confident/ambiguous/
+    // none shape, but the numbers are calibrated independently for two
+    // different scoring formulas. Do not "sync" these thresholds with that
+    // one — a shared value would be a coincidence, not a contract.
     private static final double ALBUM_MATCH_CONFIDENT_THRESHOLD = 0.55;
     private static final double ALBUM_MATCH_AMBIGUOUS_THRESHOLD = 0.32;
     private static final double ALBUM_MATCH_EMBEDDING_WEIGHT = 0.65;
