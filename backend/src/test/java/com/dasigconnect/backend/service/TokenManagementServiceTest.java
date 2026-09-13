@@ -26,18 +26,24 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TokenManagementServiceTest {
 
-    @Mock FacebookPageTokenRepository pageTokenRepository;
-    @Mock TokenEncryptionService tokenEncryptionService;
-    @Mock AuditLogService auditLogService;
-    @Mock HttpClient httpClient;
-    @Mock HttpResponse<String> graphResponse;
+    @Mock
+    FacebookPageTokenRepository pageTokenRepository;
+    @Mock
+    TokenEncryptionService tokenEncryptionService;
+    @Mock
+    AuditLogService auditLogService;
+    @Mock
+    HttpClient httpClient;
+    @Mock
+    HttpResponse<String> graphResponse;
 
-    @InjectMocks TokenManagementService service;
+    @InjectMocks
+    TokenManagementService service;
 
-    private final JwtUserDetails admin =
-            new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null, false);
-    private final JwtUserDetails owner =
-            new JwtUserDetails(UUID.randomUUID(), "owner@example.com", "admin", null, true);
+    private final JwtUserDetails admin
+            = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null, false);
+    private final JwtUserDetails owner
+            = new JwtUserDetails(UUID.randomUUID(), "owner@example.com", "admin", null, true);
 
     @BeforeEach
     void injectMockHttpClient() {
@@ -216,8 +222,8 @@ class TokenManagementServiceTest {
         verify(auditLogService).recordSystemAction(
                 org.mockito.ArgumentMatchers.eq("TOKEN_REAUTHORIZED"),
                 org.mockito.ArgumentMatchers.eq(tokenId),
-                org.mockito.ArgumentMatchers.argThat(map ->
-                        "123456".equals(map.get("pageId")) && map.containsKey("reauthorizedAt")));
+                org.mockito.ArgumentMatchers.argThat(map
+                        -> "123456".equals(map.get("pageId")) && map.containsKey("reauthorizedAt")));
     }
 
     @Test

@@ -293,6 +293,8 @@ class SubmissionServiceTest {
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+        when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId))
+                .thenReturn(List.of(mediaAsset(UUID.randomUUID(), institution)));
         when(userRepository.findByRole(UserRole.moderator))
                 .thenReturn(List.of(validator));
 
@@ -360,6 +362,8 @@ class SubmissionServiceTest {
         when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+        when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId))
+                .thenReturn(List.of(mediaAsset(UUID.randomUUID(), institution)));
 
         SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
 
@@ -511,9 +515,12 @@ class SubmissionServiceTest {
         SubmissionMediaAsset link = mediaLink(submission, deletedAsset, 0);
 
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult());
         when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId))
                 .thenReturn(List.of(link));
+        when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId))
+                .thenReturn(List.of(deletedAsset));
 
         assertThatThrownBy(() -> submissionService.submit(submissionId, contributorPrincipal))
                 .isInstanceOf(ResponseStatusException.class)
