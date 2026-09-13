@@ -26,23 +26,41 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TokenManagementServiceTest {
 
-    @Mock FacebookPageTokenRepository pageTokenRepository;
-    @Mock TokenEncryptionService tokenEncryptionService;
-    @Mock AuditLogService auditLogService;
-    @Mock HttpClient httpClient;
-    @Mock HttpResponse<String> graphResponse;
+    @Mock
+    FacebookPageTokenRepository pageTokenRepository;
+    @Mock
+    TokenEncryptionService tokenEncryptionService;
+    @Mock
+    AuditLogService auditLogService;
+    @Mock
+    HttpClient httpClient;
+    @Mock
+    HttpResponse<String> graphResponse;
 
-    @InjectMocks TokenManagementService service;
+    @InjectMocks
+    TokenManagementService service;
 
-    private final JwtUserDetails admin =
-            new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null, false);
-    private final JwtUserDetails owner =
-            new JwtUserDetails(UUID.randomUUID(), "owner@example.com", "admin", null, true);
+    private final JwtUserDetails admin
+            = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null, false);
+    private final JwtUserDetails owner
+            = new JwtUserDetails(UUID.randomUUID(), "owner@example.com", "admin", null, true);
 
     @BeforeEach
     void injectMockHttpClient() {
         ReflectionTestUtils.setField(service, "httpClient", httpClient);
         ReflectionTestUtils.setField(service, "apiVersion", "v25.0");
+        ReflectionTestUtils.setField(service, "appId", "app-id");
+        ReflectionTestUtils.setField(service, "appSecret", "app-secret");
+        ReflectionTestUtils.setField(service, "redirectUri", "https://backend.example/api/v1/system-health/oauth-callback");
+    }
+
+    private static String extractState(String authorizationUrl) {
+        for (String param : authorizationUrl.split("[?&]")) {
+            if (param.startsWith("state=")) {
+                return java.net.URLDecoder.decode(param.substring("state=".length()), java.nio.charset.StandardCharsets.UTF_8);
+            }
+        }
+        throw new AssertionError("No state param in URL: " + authorizationUrl);
     }
 
     @Test
@@ -174,5 +192,89 @@ class TokenManagementServiceTest {
                 .hasMessageContaining("not valid for page");
         verify(pageTokenRepository, never()).save(any());
         verify(pageTokenRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void initOAuth_thenHandleCallback_statelessStateRoundTrips() throws Exception {
+        UUID tokenId = UUID.randomUUID();
+        FacebookPageToken token = new FacebookPageToken();
+        ReflectionTestUtils.setField(token, "id", tokenId);
+        token.setPageId("123456");
+
+        when(pageTokenRepository.findById(tokenId)).thenReturn(Optional.of(token));
+
+        var init = service.initOAuth(tokenId, admin);
+        String state = extractState(init.getAuthorizationUrl());
+
+        when(graphResponse.body()).thenReturn(
+                "{\"access_token\":\"short-lived\"}",
+                "{\"access_token\":\"long-lived\"}",
+                "{\"access_token\":\"page-token\"}");
+        org.mockito.Mockito.doReturn(graphResponse).when(httpClient).send(any(), any());
+        when(tokenEncryptionService.encryptToken("page-token")).thenReturn("encrypted-blob");
+        when(pageTokenRepository.save(any(FacebookPageToken.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        String result = service.handleCallback("auth-code", state);
+
+        assertThat(result).contains("reauthorized successfully");
+        assertThat(token.getEncryptedToken()).isEqualTo("encrypted-blob");
+        assertThat(token.isActive()).isTrue();
+        verify(auditLogService).recordSystemAction(
+                org.mockito.ArgumentMatchers.eq("TOKEN_REAUTHORIZED"),
+                org.mockito.ArgumentMatchers.eq(tokenId),
+                org.mockito.ArgumentMatchers.argThat(map
+                        -> "123456".equals(map.get("pageId")) && map.containsKey("reauthorizedAt")));
+    }
+
+    @Test
+    void handleCallback_survivesServiceRestart_becauseStateIsSelfContained() throws Exception {
+        // Simulates the exact bug this replaced: initOAuth on one instance,
+        // handleCallback on a "fresh" instance (e.g. after a redeploy) that
+        // never saw the original initOAuth call — no shared memory needed.
+        UUID tokenId = UUID.randomUUID();
+        FacebookPageToken token = new FacebookPageToken();
+        ReflectionTestUtils.setField(token, "id", tokenId);
+        token.setPageId("123456");
+        when(pageTokenRepository.findById(tokenId)).thenReturn(Optional.of(token));
+        var init = service.initOAuth(tokenId, admin);
+        String state = extractState(init.getAuthorizationUrl());
+
+        TokenManagementService freshInstance = new TokenManagementService(
+                pageTokenRepository, tokenEncryptionService, auditLogService,
+                "app-id", "app-secret", "v25.0", "https://backend.example/callback");
+        ReflectionTestUtils.setField(freshInstance, "httpClient", httpClient);
+
+        when(graphResponse.body()).thenReturn(
+                "{\"access_token\":\"short-lived\"}",
+                "{\"access_token\":\"long-lived\"}",
+                "{\"access_token\":\"page-token\"}");
+        org.mockito.Mockito.doReturn(graphResponse).when(httpClient).send(any(), any());
+        when(tokenEncryptionService.encryptToken("page-token")).thenReturn("encrypted-blob");
+        when(pageTokenRepository.save(any(FacebookPageToken.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        String result = freshInstance.handleCallback("auth-code", state);
+
+        assertThat(result).contains("reauthorized successfully");
+    }
+
+    @Test
+    void handleCallback_tamperedState_isRejected() {
+        assertThatThrownBy(() -> service.handleCallback("auth-code", "not-a-real-state"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Invalid or expired OAuth state");
+    }
+
+    @Test
+    void handleCallback_stateSignedWithDifferentSecret_isRejected() throws Exception {
+        UUID tokenId = UUID.randomUUID();
+        when(pageTokenRepository.findById(tokenId)).thenReturn(Optional.of(new FacebookPageToken()));
+        var init = service.initOAuth(tokenId, admin);
+        String legitimateState = extractState(init.getAuthorizationUrl());
+
+        ReflectionTestUtils.setField(service, "appSecret", "a-different-secret");
+
+        assertThatThrownBy(() -> service.handleCallback("auth-code", legitimateState))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Invalid or expired OAuth state");
     }
 }
