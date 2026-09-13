@@ -62,7 +62,8 @@ import OptimizedImage, { canTransformImageType } from "../../components/media/Op
 import WatermarkOverlay from "../../components/watermark/WatermarkOverlay";
 import { useWatermarkConfiguration } from "../../hooks/useWatermarkConfiguration";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
-import { queryKeys } from "../../lib/queryKeys";
+import { invalidateQueryRoots } from "../../lib/queryInvalidation";
+import { mutationCacheDependencies, queryKeys } from "../../lib/queryKeys";
 import {
   useValidationLog,
   useValidationQueue,
@@ -312,14 +313,7 @@ export default function ValidationQueueScreen({
   );
 
   const invalidateValidationWorkflow = useCallback(() => {
-    return Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["validation"] }),
-      queryClient.invalidateQueries({ queryKey: ["submissions"] }),
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      queryClient.invalidateQueries({ queryKey: ["calendar-events"] }),
-      queryClient.invalidateQueries({ queryKey: ["analytics"] }),
-      queryClient.invalidateQueries({ queryKey: ["notifications"] }),
-    ]);
+    return invalidateQueryRoots(queryClient, mutationCacheDependencies.validationWorkflow);
   }, [queryClient]);
 
   const {

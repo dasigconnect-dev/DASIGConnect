@@ -8,6 +8,7 @@ import {
   openNotificationStream,
 } from "../../../api/notificationApi";
 import type { NotificationDto } from "../../../api/notificationApi";
+import { useToast } from "../../../context/ToastContext";
 import { authenticatedQueryMeta } from "../../../lib/queryClient";
 import { queryKeys } from "../../../lib/queryKeys";
 import type { User } from "../../../types/auth.types";
@@ -327,6 +328,7 @@ function unreadCountQueryKey(user: User) {
 }
 
 export function useNotifications(user: User) {
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [sseStatus, setSseStatus] = useState<SseStatus>("connecting");
   const [activeFilter, setActiveFilter] = useState<NotificationFilter>("all");
@@ -373,6 +375,31 @@ export function useNotifications(user: User) {
       });
     },
     [listQueryKey, queryClient, syncUnreadCountFromList],
+  );
+
+  const snapshotNotificationCache = useCallback(() => {
+    const items = queryClient.getQueryData<Notification[]>(listQueryKey) ?? [];
+    return {
+      items,
+      unreadCount:
+        queryClient.getQueryData<number>(countQueryKey) ??
+        items.filter((notification) => notification.unread).length,
+    };
+  }, [countQueryKey, listQueryKey, queryClient]);
+
+  const reconcileNotificationCache = useCallback(() => {
+    return Promise.all([
+      queryClient.invalidateQueries({ queryKey: listQueryKey, exact: true }),
+      queryClient.invalidateQueries({ queryKey: countQueryKey, exact: true }),
+    ]);
+  }, [countQueryKey, listQueryKey, queryClient]);
+
+  const restoreNotificationCache = useCallback(
+    (snapshot: { items: Notification[]; unreadCount: number }) => {
+      queryClient.setQueryData<Notification[]>(listQueryKey, snapshot.items);
+      queryClient.setQueryData<number>(countQueryKey, snapshot.unreadCount);
+    },
+    [countQueryKey, listQueryKey, queryClient],
   );
 
   useEffect(() => {
@@ -422,10 +449,7 @@ export function useNotifications(user: User) {
           connectedAt = Date.now();
           setSseStatus("connected");
           if (hasConnected) {
-            void Promise.all([
-              queryClient.invalidateQueries({ queryKey: listQueryKey, exact: true }),
-              queryClient.invalidateQueries({ queryKey: countQueryKey, exact: true }),
-            ]);
+            void reconcileNotificationCache();
           }
           hasConnected = true;
         },
@@ -441,7 +465,7 @@ export function useNotifications(user: User) {
       if (retryTimer) window.clearTimeout(retryTimer);
       controller.abort();
     };
-  }, [countQueryKey, listQueryKey, queryClient, updateNotifications]);
+  }, [reconcileNotificationCache, updateNotifications]);
 
   const counts = useMemo<NotificationCounts>(() => {
     const unread = notifications.filter((n) => n.unread).length;
@@ -457,18 +481,24 @@ export function useNotifications(user: User) {
   }, [notifications]);
 
   const markAllRead = useCallback(() => {
+    const snapshot = snapshotNotificationCache();
     updateNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
     apiMarkAllRead().catch(() => {
-      // The optimistic update is enough for the current session.
+      restoreNotificationCache(snapshot);
+      void reconcileNotificationCache();
+      toast.error("Could not mark all notifications as read.");
     });
-  }, [updateNotifications]);
+  }, [reconcileNotificationCache, restoreNotificationCache, snapshotNotificationCache, toast, updateNotifications]);
 
   const markRead = useCallback((id: string) => {
+    const snapshot = snapshotNotificationCache();
     updateNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, unread: false } : n)));
     apiMarkRead(id).catch(() => {
-      // The optimistic update is enough for the current session.
+      restoreNotificationCache(snapshot);
+      void reconcileNotificationCache();
+      toast.error("Could not mark the notification as read.");
     });
-  }, [updateNotifications]);
+  }, [reconcileNotificationCache, restoreNotificationCache, snapshotNotificationCache, toast, updateNotifications]);
 
   const refreshNotifications = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["notifications"] });

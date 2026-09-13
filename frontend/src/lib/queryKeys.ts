@@ -130,3 +130,44 @@ export const queryKeys = {
     summary: (params: { role: string; userId?: string | null }) => scopedKey("system-health", params),
   },
 } as const;
+
+export const queryRoots = {
+  dashboard: ["dashboard"],
+  institutions: ["institutions"],
+  users: ["users"],
+  administrators: ["administrators"],
+  submissions: ["submissions"],
+  calendarEvents: ["calendar-events"],
+  validation: ["validation"],
+  notifications: ["notifications"],
+  analytics: ["analytics"],
+  resolution: ["resolution"],
+} as const;
+
+export const mutationCacheDependencies = {
+  identityManagement: [
+    queryRoots.users,
+    queryRoots.administrators,
+    queryRoots.institutions,
+    queryRoots.dashboard,
+    queryRoots.analytics,
+  ],
+  validationWorkflow: [
+    queryRoots.validation,
+    queryRoots.submissions,
+    queryRoots.dashboard,
+    queryRoots.calendarEvents,
+    queryRoots.analytics,
+    queryRoots.notifications,
+  ],
+  resolutionSession: [queryRoots.resolution],
+  resolutionOutcome: [
+    queryRoots.resolution,
+    queryRoots.submissions,
+    queryRoots.calendarEvents,
+    queryRoots.dashboard,
+    queryRoots.validation,
+    queryRoots.analytics,
+    queryRoots.notifications,
+  ],
+} as const;
