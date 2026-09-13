@@ -1,15 +1,21 @@
 import "../../styles/dasig-loader.css";
 
-export default function PageLoader() {
+interface PageLoaderProps {
+  contained?: boolean;
+}
+
+export default function PageLoader({ contained = false }: PageLoaderProps) {
   return (
     <div
       className="dc-page-loader"
       role="status"
       aria-label="Loading"
       style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 2000,
+        position: contained ? "relative" : "fixed",
+        inset: contained ? undefined : 0,
+        zIndex: contained ? undefined : 2000,
+        width: "100%",
+        minHeight: contained ? "calc(100vh - 58px)" : undefined,
         background: "#F8FAFC",
         display: "flex",
         alignItems: "center",
