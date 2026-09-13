@@ -138,6 +138,18 @@ public class SubmissionController {
     }
 
     /**
+     * POST /api/v1/submissions/{id}/withdraw Transitions PENDING → DRAFT.
+     * Blocked once a ReviewLock exists for the submission (UC-1.9 A2).
+     */
+    @PostMapping("/{id}/withdraw")
+    @PreAuthorize("hasAnyRole('CONTRIBUTOR', 'MODERATOR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<SubmissionResponseDto>> withdraw(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(submissionService.withdraw(id, user)));
+    }
+
+    /**
      * POST /api/v1/submissions/{id}/evaluate-slot Evaluates guard rails for a
      * proposed slot without creating a reservation. Called in real time by the
      * SlotPicker component.
