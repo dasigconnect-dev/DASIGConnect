@@ -1,6 +1,15 @@
 import "../../styles/dasig-loader.css";
 import "../../styles/settings.css";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  Component,
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { User } from "../../types/auth.types";
@@ -16,7 +25,6 @@ import {
 } from "../../api/authApi";
 import { createMessengerLinkCode, disconnectMessenger, getMessengerConnectionStatus, type MessengerConnection, type MessengerLinkCode } from "../../api/messengerApi";
 import { saveWatermarkConfiguration } from "../../api/watermarkApi";
-import WatermarkCanvasEditor from "../settings/components/WatermarkCanvasEditor";
 import { useToast } from "../../context/ToastContext";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { queryKeys } from "../../lib/queryKeys";
@@ -39,6 +47,42 @@ type ProfileSettingsForm = {
 
 const MESSENGER_CONNECTION_STALE_TIME_MS = 60_000;
 const PAGE_SETTINGS_STALE_TIME_MS = 5 * 60_000;
+const WatermarkCanvasEditor = lazy(() => import("../settings/components/WatermarkCanvasEditor"));
+
+interface WatermarkStudioBoundaryProps {
+  children: ReactNode;
+  onRetry: () => void;
+}
+
+class WatermarkStudioBoundary extends Component<WatermarkStudioBoundaryProps, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "12px", padding: "60px", color: "var(--d-muted)" }}>
+        <span>Watermark Studio could not be loaded.</span>
+        <button type="button" className="settings-save-button" onClick={this.props.onRetry}>
+          <i className="ti ti-refresh" aria-hidden="true" />
+          Retry
+        </button>
+      </div>
+    );
+  }
+}
+
+function WatermarkStudioLoader() {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "60px", color: "var(--d-muted)" }}>
+      <i className="ti ti-loader-2 settings-spinner" style={{ fontSize: "28px", marginRight: "10px" }} />
+      Loading Watermark Studio...
+    </div>
+  );
+}
 
 function getUserCacheScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
@@ -500,17 +544,20 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
 
           <div className="settings-studio-body">
             {watermarkLoading ? (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "60px", color: "var(--d-muted)" }}>
-                <i className="ti ti-loader-2 settings-spinner" style={{ fontSize: "28px", marginRight: "10px" }} />
-                Loading Watermark Studio...
-              </div>
+              <WatermarkStudioLoader />
             ) : (
-              <WatermarkCanvasEditor
-                elements={watermarkElements}
-                onChange={setWatermarkElements}
-                disabled={false}
-                institutionName="DASIG Central Visayas"
-              />
+              <WatermarkStudioBoundary
+                onRetry={() => window.location.reload()}
+              >
+                <Suspense fallback={<WatermarkStudioLoader />}>
+                  <WatermarkCanvasEditor
+                    elements={watermarkElements}
+                    onChange={setWatermarkElements}
+                    disabled={false}
+                    institutionName="DASIG Central Visayas"
+                  />
+                </Suspense>
+              </WatermarkStudioBoundary>
             )}
           </div>
         </section>
