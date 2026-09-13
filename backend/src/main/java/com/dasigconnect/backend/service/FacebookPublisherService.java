@@ -65,8 +65,13 @@ public class FacebookPublisherService {
     private static final int MAX_RETRIES = 3;
     private static final long[] BACKOFF_MS = {5_000L, 25_000L, 125_000L};
 
-    private final String pageAccessToken;
-    private final String pageId;
+    // Bootstrap-only values from env — used solely to seed the very first
+    // FacebookPageToken row on a brand-new deploy with an empty table. Once any
+    // row exists, these are never read again; the connected page thereafter is
+    // whichever FacebookPageToken row has isActive = true, changed only via
+    // System Health -> Tokens (Owner-only "Connect a Different Page").
+    private final String envPageAccessToken;
+    private final String envPageId;
     private final String appId;
     private final String appSecret;
     private final String apiVersion;
@@ -83,8 +88,8 @@ public class FacebookPublisherService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public FacebookPublisherService(
-            @Value("${app.facebook.page-access-token:}") String pageAccessToken,
-            @Value("${app.facebook.page-id:}") String pageId,
+            @Value("${app.facebook.page-access-token:}") String envPageAccessToken,
+            @Value("${app.facebook.page-id:}") String envPageId,
             @Value("${app.facebook.app-id:}") String appId,
             @Value("${app.facebook.app-secret:}") String appSecret,
             @Value("${app.facebook.api-version:v25.0}") String apiVersion,
@@ -95,8 +100,8 @@ public class FacebookPublisherService {
             ApplicationEventPublisher eventPublisher,
             WatermarkApplicationService watermarkApplicationService,
             AuditLogService auditLogService) {
-        this.pageAccessToken = pageAccessToken;
-        this.pageId = pageId;
+        this.envPageAccessToken = envPageAccessToken;
+        this.envPageId = envPageId;
         this.appId = appId;
         this.appSecret = appSecret;
         this.apiVersion = apiVersion;
@@ -109,18 +114,20 @@ public class FacebookPublisherService {
         this.auditLogService = auditLogService;
     }
 
+    /** True once some page is connected — the actual identity is resolved dynamically, never cached here. */
     public boolean isConfigured() {
-        return pageId != null && !pageId.isBlank()
-                && pageAccessToken != null && !pageAccessToken.isBlank();
+        return pageTokenRepository.findFirstByIsActiveTrue().isPresent();
     }
 
     /**
-     * On startup, sync the env-supplied page access token to the DB if no active
-     * token exists for this page. The DB record is the runtime source of truth.
-     * Also deactivates any other page's row still marked active — if
-     * FACEBOOK_PAGE_ID changed since last boot, the previous page's row would
-     * otherwise sit forever showing "ACTIVE" in System Health -> Tokens even
-     * though nothing publishes to it anymore.
+     * One-time bootstrap: if the {@code facebook_page_tokens} table is
+     * completely empty (a brand-new deploy), seed it from the env vars so
+     * publishing works out of the box. If ANY row already exists — including
+     * one connected entirely through System Health -> Tokens, never touched by
+     * env vars — this does nothing and env vars are ignored from then on. The
+     * DB is the sole source of truth for "which page" once a page exists;
+     * changing it is an Owner-only in-app action (Connect a Different Page),
+     * not an env var + restart.
      *
      * Note: @Transactional does not apply to @PostConstruct — Spring calls this
      * method on the raw bean before the CGLIB proxy is in place. The repository
@@ -129,63 +136,33 @@ public class FacebookPublisherService {
      * deploy) degrades to a warning rather than crashing the application context.
      */
     @PostConstruct
-    public void syncTokenFromEnv() {
-        if (!isConfigured() || !tokenEncryptionService.isConfigured()) {
-            log.warn("FacebookPublisherService: page token or encryption not configured — publishing disabled.");
-            return;
-        }
+    public void bootstrapTokenFromEnvIfEmpty() {
         try {
-            deactivateOtherActiveTokens(pageId);
-
-            // Looked up regardless of active state — page_id is unique, so a row
-            // may already exist here but deactivated (e.g. switching back to a
-            // page used before). Reactivating it avoids a duplicate-key error on
-            // insert and preserves its history instead of creating a new row.
-            FacebookPageToken row = pageTokenRepository.findByPageId(pageId).orElse(null);
-            if (row == null) {
-                FacebookPageToken token = new FacebookPageToken();
-                token.setPageId(pageId);
-                token.setEncryptedToken(tokenEncryptionService.encryptToken(pageAccessToken));
-                pageTokenRepository.save(token);
-                log.info("Facebook page token synced from env for page {}.", pageId);
+            if (pageTokenRepository.count() > 0) {
+                log.info("A Facebook page is already connected in the DB — FACEBOOK_PAGE_ID/FACEBOOK_PAGE_ACCESS_TOKEN "
+                        + "env vars are ignored. Use System Health -> Tokens to reauthorize, set a token manually, "
+                        + "or (Owner-only) connect a different page.");
                 return;
             }
-            // The env var is the source of truth at boot: if the stored token no
-            // longer matches it (env rotated, or the old one expired), replace it
-            // and clear the expiry — an env token carries no expiry info, so the
-            // Reauthorize flow is still what re-establishes proper expiry tracking.
-            String stored;
-            try {
-                stored = tokenEncryptionService.decryptToken(row.getEncryptedToken());
-            } catch (RuntimeException ex) {
-                stored = null;
-            }
-            if (row.isActive() && pageAccessToken.equals(stored)) {
-                log.info("Facebook page token already in sync with env for page {}.", pageId);
+            if (envPageId == null || envPageId.isBlank()
+                    || envPageAccessToken == null || envPageAccessToken.isBlank()) {
+                log.warn("FacebookPublisherService: no Facebook page connected yet and FACEBOOK_PAGE_ID/"
+                        + "FACEBOOK_PAGE_ACCESS_TOKEN are not set — publishing disabled until a page is connected.");
                 return;
             }
-            if (!pageAccessToken.equals(stored)) {
-                row.setEncryptedToken(tokenEncryptionService.encryptToken(pageAccessToken));
-                row.setExpiresAt(null);
-                row.setLastValidatedAt(null);
+            if (!tokenEncryptionService.isConfigured()) {
+                log.warn("FacebookPublisherService: page token or encryption not configured — publishing disabled.");
+                return;
             }
-            row.setActive(true);
-            pageTokenRepository.save(row);
-            log.info("Facebook page token for page {} synced from env.", pageId);
+            FacebookPageToken token = new FacebookPageToken();
+            token.setPageId(envPageId);
+            token.setEncryptedToken(tokenEncryptionService.encryptToken(envPageAccessToken));
+            pageTokenRepository.save(token);
+            log.info("Facebook page token bootstrapped from env for page {} (one-time seed — future changes go "
+                    + "through System Health -> Tokens, not env vars).", envPageId);
         } catch (Exception ex) {
-            log.error("FacebookPublisherService: token sync failed at startup — publishing disabled until next restart. Cause: {}", ex.getMessage());
+            log.error("FacebookPublisherService: token bootstrap failed at startup. Cause: {}", ex.getMessage());
         }
-    }
-
-    private void deactivateOtherActiveTokens(String currentPageId) {
-        List<FacebookPageToken> stale = pageTokenRepository.findByIsActiveTrueAndPageIdNot(currentPageId);
-        if (stale.isEmpty()) return;
-        for (FacebookPageToken token : stale) {
-            token.setActive(false);
-        }
-        pageTokenRepository.saveAll(stale);
-        log.info("Deactivated {} Facebook page token(s) for page(s) other than {} (FACEBOOK_PAGE_ID changed).",
-                stale.size(), currentPageId);
     }
 
     /**
@@ -246,6 +223,7 @@ public class FacebookPublisherService {
             return;
         }
         String token = tokenResolution.token().orElseThrow();
+        String pageId = tokenResolution.pageId().orElseThrow();
 
         boolean hasImages = mediaAssets.stream().anyMatch(a -> isImage(a.getFileType()));
         boolean hasVideos = mediaAssets.stream().anyMatch(a -> isVideo(a.getFileType()));
@@ -257,14 +235,15 @@ public class FacebookPublisherService {
         }
 
         if (hasVideos) {
-            publishVideoPost(submission, mediaAssets.stream().filter(a -> isVideo(a.getFileType())).findFirst().orElseThrow(), token);
+            publishVideoPost(submission, mediaAssets.stream().filter(a -> isVideo(a.getFileType())).findFirst().orElseThrow(), token, pageId);
         } else if (hasImages) {
             publishPhotoPost(
                     submission,
                     mediaAssets.stream().filter(a -> isImage(a.getFileType())).toList(),
                     mediaCaptions,
                     photoPublishUrls,
-                    token);
+                    token,
+                    pageId);
         } else {
             markFailed(submission, "Submission has no media assets to publish.");
         }
@@ -277,7 +256,8 @@ public class FacebookPublisherService {
             List<MediaAsset> images,
             Map<UUID, String> mediaCaptions,
             Map<UUID, String> photoPublishUrls,
-            String token) {
+            String token,
+            String pageId) {
         String caption = buildPostMessage(submission);
         List<String> stagedPhotoIds = new ArrayList<>();
         String lastError = null;
@@ -289,7 +269,7 @@ public class FacebookPublisherService {
                 // Step 1: Stage each photo unpublished
                 for (MediaAsset image : images) {
                     String photoUrl = photoPublishUrls.getOrDefault(image.getId(), image.getStorageUrl());
-                    String photoId = stagePhoto(photoUrl, mediaCaptions.get(image.getId()), token);
+                    String photoId = stagePhoto(photoUrl, mediaCaptions.get(image.getId()), token, pageId);
                     stagedPhotoIds.add(photoId);
                 }
 
@@ -330,7 +310,7 @@ public class FacebookPublisherService {
 
     // ── Video publish (single call) ───────────────────────────────────────────
 
-    private void publishVideoPost(Submission submission, MediaAsset video, String token) {
+    private void publishVideoPost(Submission submission, MediaAsset video, String token, String pageId) {
         String caption = buildPostMessage(submission);
         String lastError = null;
 
@@ -370,7 +350,7 @@ public class FacebookPublisherService {
 
     // ── Graph API helpers ─────────────────────────────────────────────────────
 
-    private String stagePhoto(String storageUrl, String mediaCaption, String token) throws IOException, InterruptedException {
+    private String stagePhoto(String storageUrl, String mediaCaption, String token, String pageId) throws IOException, InterruptedException {
         String body = "url=" + encode(storageUrl)
                 + "&published=false"
                 + (mediaCaption == null || mediaCaption.isBlank() ? "" : "&caption=" + encode(mediaCaption))
@@ -517,13 +497,13 @@ public class FacebookPublisherService {
     // ── Token resolution ──────────────────────────────────────────────────────
 
     private TokenResolution resolveActiveToken() {
-        return pageTokenRepository.findByPageIdAndIsActiveTrue(pageId)
+        return pageTokenRepository.findFirstByIsActiveTrue()
                 .map(t -> {
                     if (t.getExpiresAt() != null && !t.getExpiresAt().isAfter(Instant.now())) {
                         return TokenResolution.expired("Facebook Page Access Token expired at " + t.getExpiresAt() + ".");
                     }
                     try {
-                        return TokenResolution.ready(tokenEncryptionService.decryptToken(t.getEncryptedToken()));
+                        return TokenResolution.ready(tokenEncryptionService.decryptToken(t.getEncryptedToken()), t.getPageId());
                     } catch (Exception ex) {
                         log.error("Failed to decrypt Facebook page token: {}", ex.getMessage());
                         return TokenResolution.missing("Facebook Page Access Token could not be decrypted.");
@@ -613,7 +593,7 @@ public class FacebookPublisherService {
             Instant expiresAt = expiresAtEpoch > 0 ? Instant.ofEpochSecond(expiresAtEpoch) : null;
 
             // Refresh last_validated_at (and expiry, when the token actually has one).
-            pageTokenRepository.findByPageIdAndIsActiveTrue(pageId).ifPresent(t -> {
+            pageTokenRepository.findFirstByIsActiveTrue().ifPresent(t -> {
                 t.setLastValidatedAt(Instant.now());
                 if (expiresAt != null) {
                     t.setExpiresAt(expiresAt);
@@ -691,17 +671,17 @@ public class FacebookPublisherService {
         EXPIRED
     }
 
-    private record TokenResolution(TokenStatus status, Optional<String> token, String message) {
-        static TokenResolution ready(String token) {
-            return new TokenResolution(TokenStatus.READY, Optional.of(token), "");
+    private record TokenResolution(TokenStatus status, Optional<String> token, Optional<String> pageId, String message) {
+        static TokenResolution ready(String token, String pageId) {
+            return new TokenResolution(TokenStatus.READY, Optional.of(token), Optional.of(pageId), "");
         }
 
         static TokenResolution missing(String message) {
-            return new TokenResolution(TokenStatus.MISSING, Optional.empty(), message);
+            return new TokenResolution(TokenStatus.MISSING, Optional.empty(), Optional.empty(), message);
         }
 
         static TokenResolution expired(String message) {
-            return new TokenResolution(TokenStatus.EXPIRED, Optional.empty(), message);
+            return new TokenResolution(TokenStatus.EXPIRED, Optional.empty(), Optional.empty(), message);
         }
     }
 }

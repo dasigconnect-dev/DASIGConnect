@@ -1,6 +1,5 @@
 package com.dasigconnect.backend.service;
 
-import com.dasigconnect.backend.model.entity.FacebookPageToken;
 import com.dasigconnect.backend.repository.FacebookPageTokenRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -84,13 +83,13 @@ public class FacebookEngagementAnalyticsClient {
     }
 
     public List<EngagementSample> fetchRecentPostEngagement() throws IOException, InterruptedException {
-        String token = resolveToken();
-        if (pageId == null || pageId.isBlank() || token == null || token.isBlank()) {
+        ActivePage active = resolveActivePage();
+        if (active.pageId() == null || active.pageId().isBlank() || active.token() == null || active.token().isBlank()) {
             throw new IOException("Facebook engagement analytics is not configured.");
         }
         String fields = "created_time,reactions.limit(0).summary(true),comments.limit(0).summary(true),shares";
-        String url = "https://graph.facebook.com/" + apiVersion + "/" + encode(pageId)
-                + "/posts?fields=" + encode(fields) + "&limit=100&access_token=" + encode(token);
+        String url = "https://graph.facebook.com/" + apiVersion + "/" + encode(active.pageId())
+                + "/posts?fields=" + encode(fields) + "&limit=100&access_token=" + encode(active.token());
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                 .timeout(java.time.Duration.ofSeconds(8)).GET().build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -120,7 +119,7 @@ public class FacebookEngagementAnalyticsClient {
      * read_insights granted) without failing the whole fetch.
      */
     public PostEngagement fetchPostEngagement(String postId) throws IOException, InterruptedException {
-        String token = resolveToken();
+        String token = resolveActivePage().token();
         if (postId == null || postId.isBlank() || token == null || token.isBlank()) {
             throw new IOException("Facebook engagement analytics is not configured.");
         }
@@ -205,12 +204,13 @@ public class FacebookEngagementAnalyticsClient {
         if (pageInsightMetrics.isEmpty()) {
             return Map.of();
         }
-        String token = resolveToken();
-        if (pageId == null || pageId.isBlank() || token == null || token.isBlank()) {
+        ActivePage active = resolveActivePage();
+        if (active.pageId() == null || active.pageId().isBlank() || active.token() == null || active.token().isBlank()) {
             return Map.of();
         }
+        String token = active.token();
         try {
-            String url = "https://graph.facebook.com/" + apiVersion + "/" + encode(pageId)
+            String url = "https://graph.facebook.com/" + apiVersion + "/" + encode(active.pageId())
                     + "/insights?metric=" + encode(String.join(",", pageInsightMetrics))
                     + "&period=day"
                     + "&since=" + since.getEpochSecond()
@@ -256,15 +256,34 @@ public class FacebookEngagementAnalyticsClient {
 
     private record InsightResult(Long value, String error) {}
 
-    private String resolveToken() {
-        return tokenRepository.findByPageIdAndIsActiveTrue(pageId)
-                .map(FacebookPageToken::getEncryptedToken)
-                .map(value -> {
-                    try { return tokenEncryptionService.decryptToken(value); }
-                    catch (RuntimeException ignored) { return configuredToken; }
+    /**
+     * The page/token the system is actually connected to right now — resolved
+     * from whichever {@code FacebookPageToken} row is active, not from the env
+     * vars (those are bootstrap-only; see {@code FacebookPublisherService}).
+     * Falls back to the injected env values only if no row exists at all.
+     */
+    private ActivePage resolveActivePage() {
+        return tokenRepository.findFirstByIsActiveTrue()
+                .map(row -> {
+                    String decrypted;
+                    try {
+                        decrypted = tokenEncryptionService.decryptToken(row.getEncryptedToken());
+                    } catch (RuntimeException ignored) {
+                        decrypted = configuredToken;
+                    }
+                    String resolvedPageId = row.getPageId() != null && !row.getPageId().isBlank()
+                            ? row.getPageId() : pageId;
+                    return new ActivePage(resolvedPageId, decrypted);
                 })
-                .orElse(configuredToken);
+                .orElseGet(() -> new ActivePage(pageId, configuredToken));
     }
+
+    /** The page ID currently connected — used for display (e.g. analytics page links), never for auth. */
+    public String currentPageId() {
+        return resolveActivePage().pageId();
+    }
+
+    private record ActivePage(String pageId, String token) {}
 
     private static String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);

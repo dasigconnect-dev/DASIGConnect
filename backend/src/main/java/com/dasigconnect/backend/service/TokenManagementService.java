@@ -227,6 +227,65 @@ public class TokenManagementService {
         }
     }
 
+    /**
+     * Owner-only: connects a different Facebook Page. This is the ONLY in-app
+     * way to change which page the system publishes to — everything else
+     * (env vars) is a one-time bootstrap seed, never read again once any page
+     * is connected (see {@code FacebookPublisherService.bootstrapTokenFromEnvIfEmpty}).
+     * Validates the token against Graph API first (same check as
+     * {@link #setManualToken}), deactivates every other page's row, and
+     * creates or reactivates the target page's row so switching back to a
+     * previously-connected page doesn't hit the {@code page_id} unique
+     * constraint with a duplicate insert.
+     */
+    public TokenStatusDto connectPage(String pageId, String accessToken, JwtUserDetails owner) {
+        if (owner == null || !owner.adminOwner()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the Admin Owner can connect a different Facebook Page.");
+        }
+        String trimmedPageId = pageId == null ? "" : pageId.trim();
+        String trimmedToken = accessToken == null ? "" : accessToken.trim();
+        if (trimmedPageId.isEmpty() || trimmedToken.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Page ID and access token are both required.");
+        }
+
+        assertTokenBelongsToPage(trimmedPageId, trimmedToken);
+
+        String previousPageId = pageTokenRepository.findFirstByIsActiveTrue()
+                .map(FacebookPageToken::getPageId)
+                .orElse(null);
+
+        deactivateOtherActiveTokens(trimmedPageId);
+
+        FacebookPageToken token = pageTokenRepository.findByPageId(trimmedPageId).orElseGet(FacebookPageToken::new);
+        token.setPageId(trimmedPageId);
+        token.setEncryptedToken(tokenEncryptionService.encryptToken(trimmedToken));
+        token.setActive(true);
+        token.setLastValidatedAt(Instant.now());
+        token.setExpiresAt(null);
+        pageTokenRepository.save(token);
+
+        auditLogService.recordSystemAction("FACEBOOK_PAGE_CONNECTED", token.getId(), Map.of(
+                "fromPageId", previousPageId == null ? "" : previousPageId,
+                "toPageId", trimmedPageId,
+                "connectedBy", owner.userId().toString()));
+
+        log.info("Owner {} connected a different Facebook Page: {} -> {}.",
+                owner.userId(), previousPageId, trimmedPageId);
+        return TokenStatusDto.from(token);
+    }
+
+    private void deactivateOtherActiveTokens(String currentPageId) {
+        List<FacebookPageToken> stale = pageTokenRepository.findByIsActiveTrueAndPageIdNot(currentPageId);
+        if (stale.isEmpty()) return;
+        for (FacebookPageToken token : stale) {
+            token.setActive(false);
+        }
+        pageTokenRepository.saveAll(stale);
+        log.info("Deactivated {} Facebook page token(s) for page(s) other than {} (page connect).",
+                stale.size(), currentPageId);
+    }
+
     // ── OAuth helpers ─────────────────────────────────────────────────────────
 
     private String exchangeCodeForToken(String code) throws IOException, InterruptedException {

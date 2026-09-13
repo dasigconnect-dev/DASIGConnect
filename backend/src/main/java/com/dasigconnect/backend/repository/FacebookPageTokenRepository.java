@@ -17,4 +17,11 @@ public interface FacebookPageTokenRepository extends JpaRepository<FacebookPageT
 
     /** Every active row for a page other than {@code pageId} — used to retire stale rows when FACEBOOK_PAGE_ID changes. */
     List<FacebookPageToken> findByIsActiveTrueAndPageIdNot(String pageId);
+
+    /**
+     * The page the system actually publishes to right now. At most one row is
+     * ever active — enforced by {@code deactivateOtherActiveTokens} whenever a
+     * new page is connected — so "first" is really "the only one".
+     */
+    Optional<FacebookPageToken> findFirstByIsActiveTrue();
 }

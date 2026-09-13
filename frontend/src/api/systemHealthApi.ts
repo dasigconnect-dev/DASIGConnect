@@ -90,6 +90,15 @@ export function setSystemHealthTokenManually(tokenId: string, accessToken: strin
   return api.put<TokenStatus>(`/system-health/tokens/${tokenId}/manual`, { accessToken });
 }
 
+/**
+ * Owner-only: connects a different Facebook Page — the only in-app way to
+ * change which page the system publishes to. Backend enforces the Owner
+ * check regardless of what the UI shows.
+ */
+export function connectFacebookPage(pageId: string, accessToken: string) {
+  return api.put<TokenStatus>("/system-health/tokens/connect", { pageId, accessToken });
+}
+
 export async function downloadSystemHealthSnapshot() {
   const response = await api.get<string>("/system-health/export", {
     responseType: "text",

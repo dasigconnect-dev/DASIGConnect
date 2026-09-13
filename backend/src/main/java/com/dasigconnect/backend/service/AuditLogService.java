@@ -349,7 +349,7 @@ public class AuditLogService {
                 actions.addAll(List.of("SUBMISSION_RESCHEDULED", "OVERRIDE_SLOT_SUGGESTED", "TIMEOUT_DEFERRED"));
             }
             case PUBLISHING -> {
-                actions.addAll(List.of("MANUAL_PUBLISH_STARTED", "MANUAL_PUBLISH_COMPLETE", "MANUAL_PUBLISH_CANCELLED", "MANUAL_PUBLISH_ABANDONED", "MANUAL_PUBLISH_RETRY_OVERRIDE", "MANUAL_PUBLISH_RETRY_NEW_SCHEDULE", "MISSED_REVIEW_RETRY_NEW_SCHEDULE", "SUBMISSION_PUBLISHED", "PUBLISH_FAILED", "TOKEN_REAUTHORIZED", "TOKEN_MANUALLY_SET"));
+                actions.addAll(List.of("MANUAL_PUBLISH_STARTED", "MANUAL_PUBLISH_COMPLETE", "MANUAL_PUBLISH_CANCELLED", "MANUAL_PUBLISH_ABANDONED", "MANUAL_PUBLISH_RETRY_OVERRIDE", "MANUAL_PUBLISH_RETRY_NEW_SCHEDULE", "MISSED_REVIEW_RETRY_NEW_SCHEDULE", "SUBMISSION_PUBLISHED", "PUBLISH_FAILED", "TOKEN_REAUTHORIZED", "TOKEN_MANUALLY_SET", "FACEBOOK_PAGE_CONNECTED"));
             }
             case ACCOUNT_MANAGEMENT -> {
                 actions.addAll(List.of("USER_STATUS_UPDATED", "USER_AVATAR_UPDATED", "USER_ROLE_CHANGED", "USER_REMOVED", "USER_DELETED", "USER_ANONYMIZED",
@@ -368,7 +368,7 @@ public class AuditLogService {
                 actions.addAll(List.of("WATERMARK_CONFIG_UPDATED", "WATERMARK_OVERRIDE_REMOVED", "GUARD_RAIL_CONFIG_UPDATED", "PAGE_SETTINGS_UPDATED", "BACKGROUND_JOB_RUN"));
             }
             case SECURITY -> {
-                actions.addAll(List.of("TOKEN_REAUTHORIZED", "TOKEN_MANUALLY_SET", "TOKEN_EXPIRED", "TOKEN_EXPIRED_BLOCKED", "TOKEN_REVOKED", "ACCOUNT_LOCKED",
+                actions.addAll(List.of("TOKEN_REAUTHORIZED", "TOKEN_MANUALLY_SET", "FACEBOOK_PAGE_CONNECTED", "TOKEN_EXPIRED", "TOKEN_EXPIRED_BLOCKED", "TOKEN_REVOKED", "ACCOUNT_LOCKED",
                         "AUDIT_LOG_EXPORTED", "ANALYTICS_EXPORTED", "SYSTEM_HEALTH_EXPORTED"));
             }
             case OTHER -> {
@@ -647,6 +647,8 @@ public class AuditLogService {
                 "Facebook token re-authenticated";
             case "TOKEN_MANUALLY_SET" ->
                 "Facebook token manually set by an admin";
+            case "FACEBOOK_PAGE_CONNECTED" ->
+                "Facebook Page connection changed by the Admin Owner";
             case "TOKEN_REVOKED" ->
                 "Facebook token revoked";
             case "TOKEN_EXPIRED", "TOKEN_EXPIRED_BLOCKED" ->

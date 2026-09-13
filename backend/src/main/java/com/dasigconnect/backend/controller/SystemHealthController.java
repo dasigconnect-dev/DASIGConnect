@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.controller;
 
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
+import com.dasigconnect.backend.model.dto.exception.ConnectFacebookPageRequestDto;
 import com.dasigconnect.backend.model.dto.exception.OAuthInitResponseDto;
 import com.dasigconnect.backend.model.dto.exception.SetManualTokenRequestDto;
 import com.dasigconnect.backend.model.dto.exception.TokenStatusDto;
@@ -103,6 +104,20 @@ public class SystemHealthController {
             @AuthenticationPrincipal JwtUserDetails admin) {
         return ResponseEntity.ok(ApiResponse.success(
                 tokenManagementService.setManualToken(tokenId, request.accessToken(), admin)));
+    }
+
+    /**
+     * Owner-only: connects a different Facebook Page. This is the only in-app
+     * way to change which page the system publishes to — everything else here
+     * (Reauthorize, Set Manually) only updates the token for the page already
+     * connected.
+     */
+    @PutMapping("/tokens/connect")
+    public ResponseEntity<ApiResponse<TokenStatusDto>> connectPage(
+            @RequestBody @Valid ConnectFacebookPageRequestDto request,
+            @AuthenticationPrincipal JwtUserDetails owner) {
+        return ResponseEntity.ok(ApiResponse.success(
+                tokenManagementService.connectPage(request.pageId(), request.accessToken(), owner)));
     }
 
     /**

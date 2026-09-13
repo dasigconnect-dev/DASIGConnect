@@ -48,14 +48,18 @@ public class MetricsAggregatorService {
 
     private final AnalyticsRepository analyticsRepository;
     private final FacebookEngagementAnalyticsClient facebookInsightsClient;
-    private final String facebookPageId;
 
     public MetricsAggregatorService(AnalyticsRepository analyticsRepository,
-            FacebookEngagementAnalyticsClient facebookInsightsClient,
-            @org.springframework.beans.factory.annotation.Value("${app.facebook.page-id:}") String facebookPageId) {
+            FacebookEngagementAnalyticsClient facebookInsightsClient) {
         this.analyticsRepository = analyticsRepository;
         this.facebookInsightsClient = facebookInsightsClient;
-        this.facebookPageId = facebookPageId == null || facebookPageId.isBlank() ? null : facebookPageId.trim();
+    }
+
+    // Resolved dynamically per call, not cached — the connected page can change
+    // at runtime (Owner-only "Connect a Different Page"), unlike an env var.
+    private String facebookPageId() {
+        String pageId = facebookInsightsClient.currentPageId();
+        return pageId == null || pageId.isBlank() ? null : pageId.trim();
     }
 
     @Cacheable(
@@ -149,7 +153,7 @@ public class MetricsAggregatorService {
                 engagement.totalShares(),
                 engagement.sampleSize(),
                 engagement.pendingCount(),
-                facebookPageId);
+                facebookPageId());
 
         return new AnalyticsSummaryDto(
                 period.label(),
@@ -224,7 +228,7 @@ public class MetricsAggregatorService {
                 insights.getOrDefault("page_post_engagements", 0L),
                 insights.getOrDefault("page_fan_adds", 0L),
                 insights.getOrDefault("page_views_total", 0L),
-                facebookPageId,
+                facebookPageId(),
                 period.start(),
                 period.end());
     }

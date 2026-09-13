@@ -20,4 +20,6 @@ export interface User {
   inst: string
   institutionId?: string | null
   initials: string
+  /** True only for the single Admin Owner (UC-1.1). Gates Owner-only actions like Connect a Different Page. */
+  adminOwner?: boolean
 }

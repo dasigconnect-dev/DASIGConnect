@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  connectFacebookPage,
   downloadSystemHealthSnapshot,
   getSystemHealthSummary,
   getSystemHealthTokens,
@@ -72,6 +73,9 @@ export default function SystemHealthScreen({ user }: Props) {
   const [busyTokenId, setBusyTokenId] = useState<string | null>(null);
   const [manualEntryTokenId, setManualEntryTokenId] = useState<string | null>(null);
   const [manualTokenValue, setManualTokenValue] = useState("");
+  const [connectPageId, setConnectPageId] = useState("");
+  const [connectAccessToken, setConnectAccessToken] = useState("");
+  const [connectingPage, setConnectingPage] = useState(false);
 
   // Active top-level tab (jobs | integrations | performance | storage)
   const [activeTab, setActiveTab] = useState<SystemHealthTab>(() => {
@@ -87,6 +91,7 @@ export default function SystemHealthScreen({ user }: Props) {
   const [jobStatusFilter, setJobStatusFilter] = useState<string>("ALL");
 
   const canReauthorize = user.role === "admin";
+  const isOwner = user.adminOwner === true;
 
   const healthQuery = useQuery({
     queryKey: queryKeys.systemHealth.summary({
@@ -169,6 +174,23 @@ export default function SystemHealthScreen({ user }: Props) {
       toast.error(backendMessage || "Unable to save the token. Make sure it's a valid Page Access Token.");
     } finally {
       setBusyTokenId(null);
+    }
+  }
+
+  async function handleConnectPage() {
+    if (!connectPageId.trim() || !connectAccessToken.trim()) return;
+    setConnectingPage(true);
+    try {
+      await connectFacebookPage(connectPageId.trim(), connectAccessToken.trim());
+      await queryClient.invalidateQueries({ queryKey: queryKeys.systemHealth.summary({ role: user.role, userId: getUserCacheScope(user) }) });
+      toast.success("Facebook Page connected. Publishing now targets this page.");
+      setConnectPageId("");
+      setConnectAccessToken("");
+    } catch (err: unknown) {
+      const backendMessage = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error(backendMessage || "Unable to connect this page. Make sure the Page ID and token match.");
+    } finally {
+      setConnectingPage(false);
     }
   }
 
@@ -475,6 +497,45 @@ export default function SystemHealthScreen({ user }: Props) {
                     onSetManualToken={handleSetManualToken}
                   />
                 </Section>
+
+                {/* Connect a Different Page — Admin Owner only */}
+                {isOwner && (
+                  <Section
+                    title="Connect a Different Facebook Page"
+                    icon="ti ti-replace"
+                    subtitle="Owner-only. Changes which page DASIGConnect publishes to — every other page's token is deactivated the moment this succeeds."
+                  >
+                    <div className="card-wrap sys-manual-token-row" style={{ padding: 16 }}>
+                      <input
+                        className="settings-input"
+                        placeholder="Facebook Page ID"
+                        value={connectPageId}
+                        onChange={(e) => setConnectPageId(e.target.value)}
+                        autoComplete="off"
+                      />
+                      <input
+                        type="password"
+                        className="settings-input"
+                        placeholder="Page Access Token for that page"
+                        value={connectAccessToken}
+                        onChange={(e) => setConnectAccessToken(e.target.value)}
+                        autoComplete="off"
+                      />
+                      <button
+                        type="button"
+                        className="notif-btn notif-btn-ghost notif-btn-sm"
+                        disabled={!connectPageId.trim() || !connectAccessToken.trim() || connectingPage}
+                        onClick={() => void handleConnectPage()}
+                      >
+                        <i className={connectingPage ? "ti ti-loader-2 sys-spin" : "ti ti-replace"} aria-hidden="true" />
+                        <span>Connect Page</span>
+                      </button>
+                      <span className="sys-manual-token-hint">
+                        The token is verified against this Page ID before anything changes. This cannot be undone from here — connect back to the previous page the same way if needed.
+                      </span>
+                    </div>
+                  </Section>
+                )}
 
                 {/* External API Services */}
                 <Section
