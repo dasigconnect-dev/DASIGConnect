@@ -23,6 +23,7 @@ import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.model.dto.analytics.AiPerformanceDto;
 import com.dasigconnect.backend.model.dto.analytics.AdminAnalyticsDto;
 import com.dasigconnect.backend.model.dto.analytics.AnalyticsSummaryDto;
+import com.dasigconnect.backend.model.dto.analytics.AnalyticsReportDto;
 import com.dasigconnect.backend.model.dto.analytics.ContributorBreakdownDto;
 import com.dasigconnect.backend.model.dto.analytics.KpiMetricDto;
 import com.dasigconnect.backend.model.dto.analytics.OperationalHealthDto;
@@ -79,6 +80,25 @@ class AnalyticsControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type", org.hamcrest.Matchers.containsString("text/csv")))
                 .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("posting-delay.csv")));
+    }
+
+    @Test
+    @WithMockUser
+    void report_usesBoundedDefaultsAndReturnsPageMetadata() throws Exception {
+        AnalyticsReportDto report = new AnalyticsReportDto(
+                "posting-delay", "30d", Instant.parse("2026-05-01T00:00:00Z"),
+                Instant.parse("2026-05-31T00:00:00Z"), List.of(),
+                List.of(java.util.Map.of("submission_id", "abc")), 125, 1, 50);
+        when(metricsAggregatorService.report(eq("posting-delay"), eq("30d"), any(), eq(1), eq(50), any()))
+                .thenReturn(report);
+
+        mockMvc.perform(get("/api/v1/analytics/report/posting-delay"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.aggregateRows.length()").value(1))
+                .andExpect(jsonPath("$.data.totalCount").value(125))
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.pageSize").value(50))
+                .andExpect(jsonPath("$.data.submissions").doesNotExist());
     }
 
     private AnalyticsSummaryDto summaryDto() {
