@@ -318,14 +318,6 @@ function userScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
 }
 
-function notificationQueryKey(user: User) {
-  return queryKeys.notifications.all({
-    role: user.role,
-    userId: userScope(user),
-    institutionId: user.institutionId ?? null,
-  });
-}
-
 function unreadCountQueryKey(user: User) {
   return queryKeys.notifications.unreadCount({
     role: user.role,
@@ -338,8 +330,17 @@ export function useNotifications(user: User) {
   const queryClient = useQueryClient();
   const [sseStatus, setSseStatus] = useState<SseStatus>("connecting");
   const [activeFilter, setActiveFilter] = useState<NotificationFilter>("all");
-  const listQueryKey = notificationQueryKey(user);
-  const countQueryKey = unreadCountQueryKey(user);
+  const role = user.role;
+  const scopedUserId = userScope(user);
+  const institutionId = user.institutionId ?? null;
+  const listQueryKey = useMemo(
+    () => queryKeys.notifications.all({ role, userId: scopedUserId, institutionId }),
+    [institutionId, role, scopedUserId],
+  );
+  const countQueryKey = useMemo(
+    () => queryKeys.notifications.unreadCount({ role, userId: scopedUserId, institutionId }),
+    [institutionId, role, scopedUserId],
+  );
 
   const notificationsQuery = useQuery({
     queryKey: listQueryKey,
@@ -348,7 +349,10 @@ export function useNotifications(user: User) {
     meta: authenticatedQueryMeta,
   });
 
-  const notifications = notificationsQuery.data ?? [];
+  const notifications = useMemo(
+    () => notificationsQuery.data ?? [],
+    [notificationsQuery.data],
+  );
 
   const syncUnreadCountFromList = useCallback(
     (items: Notification[]) => {
@@ -380,13 +384,32 @@ export function useNotifications(user: User) {
     let retryTimer: number | undefined;
     let attempts = 0;
     let connectedAt = 0;
+    let hasConnected = false;
 
     const connect = () => {
       if (stopped) return;
-      controller = new AbortController();
+      const connectionController = new AbortController();
+      controller = connectionController;
       setSseStatus("connecting");
+      let disconnected = false;
+
+      const handleDisconnect = () => {
+        if (disconnected || connectionController.signal.aborted) return;
+        disconnected = true;
+        setSseStatus("disconnected");
+        if (stopped) return;
+        // A stream that stayed open a while (e.g. the 30-min server timeout)
+        // is healthy, so reconnect quickly. Repeated early failures back off.
+        if (connectedAt && Date.now() - connectedAt > 10_000) attempts = 0;
+        connectedAt = 0;
+        const delay = Math.min(2000 * 2 ** Math.min(attempts, 4), 30_000);
+        attempts = Math.min(attempts + 1, 4);
+        retryTimer = window.setTimeout(connect, delay);
+      };
+
       openNotificationStream(
         (dto) => {
+          if (stopped || connectionController.signal.aborted) return;
           attempts = 0;
           const mapped = mapDto(dto);
           // A fetch that raced the same event can already hold this id.
@@ -395,22 +418,19 @@ export function useNotifications(user: User) {
           );
         },
         () => {
+          if (stopped || connectionController.signal.aborted) return;
           connectedAt = Date.now();
           setSseStatus("connected");
+          if (hasConnected) {
+            void Promise.all([
+              queryClient.invalidateQueries({ queryKey: listQueryKey, exact: true }),
+              queryClient.invalidateQueries({ queryKey: countQueryKey, exact: true }),
+            ]);
+          }
+          hasConnected = true;
         },
-        () => {
-          setSseStatus("disconnected");
-          if (stopped) return;
-          // A stream that stayed open a while (e.g. the 30-min server timeout)
-          // is healthy — reconnect fast. Only back off when it keeps failing
-          // quickly.
-          if (connectedAt && Date.now() - connectedAt > 10_000) attempts = 0;
-          connectedAt = 0;
-          const delay = Math.min(2000 * 2 ** attempts, 30_000);
-          attempts += 1;
-          retryTimer = window.setTimeout(connect, delay);
-        },
-        controller.signal,
+        handleDisconnect,
+        connectionController.signal,
       );
     };
 
@@ -421,7 +441,7 @@ export function useNotifications(user: User) {
       if (retryTimer) window.clearTimeout(retryTimer);
       controller.abort();
     };
-  }, [updateNotifications]);
+  }, [countQueryKey, listQueryKey, queryClient, updateNotifications]);
 
   const counts = useMemo<NotificationCounts>(() => {
     const unread = notifications.filter((n) => n.unread).length;
@@ -477,6 +497,7 @@ export function useNotificationUnreadCount(user: User) {
     staleTime: UNREAD_COUNT_STALE_TIME_MS,
     refetchInterval: 3 * 60_000,
     refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
     meta: authenticatedQueryMeta,
   });
 }
