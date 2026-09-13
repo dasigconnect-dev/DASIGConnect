@@ -21,6 +21,8 @@ export const queryKeys = {
     all: (params: { role: string; userId?: string | null }) => scopedKey("institutions", params),
     detail: (params: { role: string; userId?: string | null; institutionId: string }) =>
       scopedKey("institutions", { ...params, view: "detail" }),
+    pendingInvitations: (params: { role: string; userId?: string | null; institutionId: string }) =>
+      scopedKey("institutions", { ...params, view: "pending-invitations" }),
     composerOptions: (params: { role: string; userId?: string | null }) =>
       scopedKey("institutions", { ...params, view: "composer-options" }),
   },
