@@ -1,8 +1,16 @@
 import axios from "axios";
+import { getRequestDeadlineMs } from "./requestPolicy";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
 
 export const api = axios.create({ baseURL: BASE_URL });
+
+api.interceptors.request.use((config) => {
+  if (!config.timeout || config.timeout <= 0) {
+    config.timeout = getRequestDeadlineMs(config);
+  }
+  return config;
+});
 
 function isEnvelope(body: unknown): body is { success: boolean; data: unknown; error: unknown } {
   return typeof body === "object" && body !== null && typeof (body as { success?: unknown }).success === "boolean";

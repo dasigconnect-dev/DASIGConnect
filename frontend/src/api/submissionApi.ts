@@ -1,4 +1,5 @@
 import { api } from "./authApi";
+import { fetchWithDeadline } from "./requestPolicy";
 
 export type SubmissionStatus =
   | "draft"
@@ -190,7 +191,7 @@ export async function uploadSubmissionMedia(id: string, files: File[]) {
         fileSizeBytes: file.size,
       },
     );
-    const upload = await fetch(signedUrl, {
+    const upload = await fetchWithDeadline(signedUrl, {
       method: "PUT",
       headers: { "Content-Type": file.type || "application/octet-stream" },
       body: file,

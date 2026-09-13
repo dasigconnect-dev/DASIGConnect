@@ -1,4 +1,5 @@
 import { api } from "./authApi";
+import { isRequestDeadlineError } from "./requestPolicy";
 
 // ─── UC-3.3 Classification, Recommendation & Media Suggestion ────────────────
 
@@ -169,17 +170,23 @@ export async function suggestCaption(
   prompt?: string,
   tone?: CaptionTone
 ): Promise<CaptionResponse> {
-  const res = await api.post<ApiEnvelope<CaptionResponse> | CaptionResponse>(
-    "/ai/caption",
-    {
-      submissionId,
-      // Only send if non-empty — backend treats null/absent as "generate from scratch"
-      ...(existingCaption?.trim() ? { existingCaption: existingCaption.trim() } : {}),
-      ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
-      ...(tone ? { tone } : {}),
-    },
-    { validateStatus: () => true }
-  );
+  let res;
+  try {
+    res = await api.post<ApiEnvelope<CaptionResponse> | CaptionResponse>(
+      "/ai/caption",
+      {
+        submissionId,
+        // Only send if non-empty — backend treats null/absent as "generate from scratch"
+        ...(existingCaption?.trim() ? { existingCaption: existingCaption.trim() } : {}),
+        ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
+        ...(tone ? { tone } : {}),
+      },
+      { validateStatus: () => true },
+    );
+  } catch (error) {
+    if (isRequestDeadlineError(error)) throw new Error("timeout", { cause: error });
+    throw error;
+  }
 
   const remaining = res.headers?.["x-ratelimit-remaining"];
   const reset = res.headers?.["x-ratelimit-reset"];
