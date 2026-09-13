@@ -46,9 +46,7 @@ export default function LoginSplash({ user, visible }: LoginSplashProps) {
     >
       <div className="dc-splash-inner">
         <div className="dc-splash-logo">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 2L22 7V17L12 22L2 17V7L12 2Z" />
-          </svg>
+          <img src="/dasigconnect-logo.png" alt="DASIGConnect logo" />
         </div>
         <div>
           <div className="dc-splash-brand">DASIG<em>Connect</em></div>

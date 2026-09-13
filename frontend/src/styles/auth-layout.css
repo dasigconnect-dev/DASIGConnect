@@ -98,11 +98,16 @@
   height: 44px;
   border-radius: 10px;
   flex-shrink: 0;
-  background: var(--blue);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.2);
+  overflow: hidden;
+}
+.brand-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 .brand-icon svg {
   width: 24px;

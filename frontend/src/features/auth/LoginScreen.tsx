@@ -76,9 +76,7 @@ export default function LoginScreen({
             </div>
             <div className="brand-lockup">
               <div className="brand-icon">
-                <svg viewBox="0 0 24 24">
-                  <path d="M12 2L22 7V17L12 22L2 17V7L12 2Z" />
-                </svg>
+                <img src="/dasigconnect-logo.png" alt="DASIGConnect logo" />
               </div>
               <div className="brand-text">
                 <div className="brand-name">
