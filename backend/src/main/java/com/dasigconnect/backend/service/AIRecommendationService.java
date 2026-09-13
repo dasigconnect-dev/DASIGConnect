@@ -1,4 +1,28 @@
 package com.dasigconnect.backend.service;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
 import com.dasigconnect.backend.external.VoyageAIClient;
 import com.dasigconnect.backend.model.dto.ai.AlbumMatchCandidateDto;
 import com.dasigconnect.backend.model.dto.ai.AlbumMatchRequestDto;
@@ -19,36 +43,14 @@ import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
-
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * Provides AI media recommendations for UC-3.3.
  *
- * Asset image understanding is generated once at upload time. Suggestion requests only
- * embed the contributor's current text context and run pgvector search, then apply
- * lightweight category/tag/recency boosts. This keeps the feature fast and avoids
- * rescanning images during content submission.
+ * Asset image understanding is generated once at upload time. Suggestion
+ * requests only embed the contributor's current text context and run pgvector
+ * search, then apply lightweight category/tag/recency boosts. This keeps the
+ * feature fast and avoids rescanning images during content submission.
  */
 @Service
 @Transactional(readOnly = true)
@@ -66,13 +68,13 @@ public class AIRecommendationService {
     private final MediaAlbumRepository mediaAlbumRepository;
 
     public AIRecommendationService(SubmissionRepository submissionRepository,
-                                   SubmissionMediaAssetRepository submissionMediaAssetRepository,
-                                   MediaAssetRepository mediaAssetRepository,
-                                   MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
-                                   AssetTagRepository assetTagRepository,
-                                   AiInteractionLogRepository aiInteractionLogRepository,
-                                   VoyageAIClient voyageAIClient,
-                                   MediaAlbumRepository mediaAlbumRepository) {
+            SubmissionMediaAssetRepository submissionMediaAssetRepository,
+            MediaAssetRepository mediaAssetRepository,
+            MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
+            AssetTagRepository assetTagRepository,
+            AiInteractionLogRepository aiInteractionLogRepository,
+            VoyageAIClient voyageAIClient,
+            MediaAlbumRepository mediaAlbumRepository) {
         this.submissionRepository = submissionRepository;
         this.submissionMediaAssetRepository = submissionMediaAssetRepository;
         this.mediaAssetRepository = mediaAssetRepository;
@@ -84,19 +86,23 @@ public class AIRecommendationService {
     }
 
     /**
-     * Finds media assets in the institution library that are similar to the first
-     * embedded asset already attached to the submission.
-     * Returns up to 5 results, excluding assets already in the submission.
+     * Finds media assets in the institution library that are similar to the
+     * first embedded asset already attached to the submission. Returns up to 5
+     * results, excluding assets already in the submission.
      */
     @Transactional
     public List<MediaAssetSummaryDto> getSimilarMedia(UUID submissionId, JwtUserDetails user) {
         Submission submission = loadAndAuthorise(submissionId, user);
         List<MediaAsset> attached = submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId);
 
-        if (attached.isEmpty()) return List.of();
+        if (attached.isEmpty()) {
+            return List.of();
+        }
 
         OptionalVector queryVector = firstAvailableEmbedding(attached);
-        if (queryVector.value() == null) return List.of();
+        if (queryVector.value() == null) {
+            return List.of();
+        }
 
         UUID institutionId = submission.getInstitution().getId();
         Set<UUID> attachedIds = attached.stream().map(MediaAsset::getId).collect(Collectors.toSet());
@@ -114,11 +120,13 @@ public class AIRecommendationService {
     }
 
     /**
-     * Suggests media assets from the institution library based on submission context.
+     * Suggests media assets from the institution library based on submission
+     * context.
      *
-     * The expensive image scan was already done when media was uploaded. At request time
-     * we embed the contributor's title/caption/category/tags once, fetch pgvector nearest
-     * neighbors, and re-rank a small candidate set with deterministic metadata boosts.
+     * The expensive image scan was already done when media was uploaded. At
+     * request time we embed the contributor's title/caption/category/tags once,
+     * fetch pgvector nearest neighbors, and re-rank a small candidate set with
+     * deterministic metadata boosts.
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<MediaSuggestResultDto> suggestMedia(UUID submissionId, MediaSuggestRequestDto dto, JwtUserDetails user) {
@@ -152,7 +160,9 @@ public class AIRecommendationService {
             candidateIds.add(id);
             semanticScores.put(id, score);
         }
-        if (candidateIds.isEmpty()) return fallbackSuggestions(institutionId, attachedIds, dto);
+        if (candidateIds.isEmpty()) {
+            return fallbackSuggestions(institutionId, attachedIds, dto);
+        }
 
         Map<UUID, MediaAsset> assetMap = mediaAssetRepository.findActiveByIds(candidateIds)
                 .stream()
@@ -163,11 +173,11 @@ public class AIRecommendationService {
                 .filter(id -> assetMap.containsKey(id))
                 .filter(id -> !attachedIds.contains(id))
                 .map(id -> rankAsset(
-                        assetMap.get(id),
-                        semanticScores.getOrDefault(id, 0.0),
-                        dto,
-                        tagMap.getOrDefault(id, List.of())
-                ))
+                assetMap.get(id),
+                semanticScores.getOrDefault(id, 0.0),
+                dto,
+                tagMap.getOrDefault(id, List.of())
+        ))
                 .filter(result -> result.score() >= 0.40)
                 .sorted(Comparator.comparingDouble(RankedAsset::score).reversed())
                 .limit(8)
@@ -200,13 +210,16 @@ public class AIRecommendationService {
      * Album Auto-Match (UC-1.7): ranks the institution's existing root albums
      * against the draft's current context — a blend of "closest existing asset"
      * visual similarity (Voyage embedding + pgvector, when available) and tag
-     * overlap. Scoring is on the same 0-1 scale as {@link #suggestMedia} but the
-     * bands mean something different here since the caller applies the result
-     * directly rather than just listing options:
+     * overlap. Scoring is on the same 0-1 scale as {@link #suggestMedia} but
+     * the bands mean something different here since the caller applies the
+     * result directly rather than just listing options:
      * <ul>
-     *   <li>{@code confident} (&ge; {@value #ALBUM_MATCH_CONFIDENT_THRESHOLD}) — top candidate only.</li>
-     *   <li>{@code ambiguous} (&ge; {@value #ALBUM_MATCH_AMBIGUOUS_THRESHOLD}) — up to 3 ranked candidates.</li>
-     *   <li>{@code none} — no root album yet, or nothing cleared the ambiguous floor.</li>
+     * <li>{@code confident} (&ge; {@value #ALBUM_MATCH_CONFIDENT_THRESHOLD}) —
+     * top candidate only.</li>
+     * <li>{@code ambiguous} (&ge; {@value #ALBUM_MATCH_AMBIGUOUS_THRESHOLD}) —
+     * up to 3 ranked candidates.</li>
+     * <li>{@code none} — no root album yet, or nothing cleared the ambiguous
+     * floor.</li>
      * </ul>
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -245,11 +258,11 @@ public class AIRecommendationService {
         Map<UUID, Double> scores = embeddingScores;
         List<AlbumMatchCandidateDto> ranked = rootAlbums.stream()
                 .map(album -> scoreAlbumMatch(
-                        album,
-                        draftTags,
-                        albumTagMap.getOrDefault(album.getId(), Set.of()),
-                        scores.getOrDefault(album.getId(), 0.0),
-                        hasEmbeddingSignal))
+                album,
+                draftTags,
+                albumTagMap.getOrDefault(album.getId(), Set.of()),
+                scores.getOrDefault(album.getId(), 0.0),
+                hasEmbeddingSignal))
                 .filter(candidate -> candidate.getScore() >= ALBUM_MATCH_AMBIGUOUS_THRESHOLD)
                 .sorted(Comparator.comparingDouble(AlbumMatchCandidateDto::getScore).reversed())
                 .limit(3)
@@ -265,7 +278,7 @@ public class AIRecommendationService {
     }
 
     private AlbumMatchCandidateDto scoreAlbumMatch(MediaAlbum album, Set<String> draftTags, Set<String> albumTags,
-                                                   double embeddingScore, boolean hasEmbeddingSignal) {
+            double embeddingScore, boolean hasEmbeddingSignal) {
         Set<String> overlap = new LinkedHashSet<>(draftTags);
         overlap.retainAll(albumTags);
         double tagScore = draftTags.isEmpty() ? 0.0 : Math.min(1.0, overlap.size() / (double) draftTags.size());
@@ -351,8 +364,8 @@ public class AIRecommendationService {
     }
 
     private static String buildQueryEmbeddingText(MediaSuggestRequestDto dto,
-                                                 List<MediaAsset> attachedAssets,
-                                                 Map<UUID, List<TagSignal>> attachedTagMap) {
+            List<MediaAsset> attachedAssets,
+            Map<UUID, List<TagSignal>> attachedTagMap) {
         StringBuilder sb = new StringBuilder();
         append(sb, "event_title", dto.getEventTitle());
         append(sb, "caption", dto.getCaption());
@@ -472,10 +485,12 @@ public class AIRecommendationService {
     private Submission loadAndAuthorise(UUID submissionId, JwtUserDetails user) {
         Submission submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found."));
-        boolean isAdmin = "admin".equalsIgnoreCase(user.role());
-        boolean sameInstitution = submission.getInstitution().getId().equals(user.institutionId());
+        boolean networkWide = "admin".equalsIgnoreCase(user.role())
+                || "moderator".equalsIgnoreCase(user.role());
+        boolean sameInstitution = user.institutionId() != null
+                && submission.getInstitution().getId().equals(user.institutionId());
         boolean ownsSubmission = submission.getContributor().getId().equals(user.userId());
-        if (!isAdmin && (!sameInstitution
+        if (!networkWide && (!sameInstitution
                 || ("contributor".equalsIgnoreCase(user.role()) && !ownsSubmission))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Submission does not belong to your institution.");
@@ -488,13 +503,17 @@ public class AIRecommendationService {
             String embedding = mediaAssetEmbeddingRepository
                     .findEmbedding(asset.getId(), MediaAssetEmbeddingType.SEMANTIC)
                     .orElseGet(() -> mediaAssetRepository.findEmbeddingById(asset.getId()).orElse(null));
-            if (embedding != null) return new OptionalVector(embedding);
+            if (embedding != null) {
+                return new OptionalVector(embedding);
+            }
         }
         return new OptionalVector(null);
     }
 
     private Map<UUID, List<TagSignal>> loadTagSignalMap(List<UUID> assetIds) {
-        if (assetIds.isEmpty()) return Map.of();
+        if (assetIds.isEmpty()) {
+            return Map.of();
+        }
         Map<UUID, List<TagSignal>> result = new HashMap<>();
         for (Object[] row : assetTagRepository.findLabelsAndSourcesByMediaAssetIds(assetIds)) {
             UUID id = toUuid(row[0]);
@@ -513,18 +532,20 @@ public class AIRecommendationService {
                 .filter(asset -> !attachedIds.contains(asset.getId()))
                 .limit(30)
                 .toList();
-        if (candidates.isEmpty()) return List.of();
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
 
         List<UUID> candidateIds = candidates.stream().map(MediaAsset::getId).toList();
         Map<UUID, List<TagSignal>> tagMap = loadTagSignalMap(candidateIds);
 
         return candidates.stream()
                 .map(asset -> rankAsset(
-                        asset,
-                        0.35,
-                        dto,
-                        tagMap.getOrDefault(asset.getId(), List.of())
-                ))
+                asset,
+                0.35,
+                dto,
+                tagMap.getOrDefault(asset.getId(), List.of())
+        ))
                 .filter(result -> result.score() >= 0.40)
                 .sorted(Comparator.comparingDouble(RankedAsset::score).reversed())
                 .limit(8)
@@ -551,12 +572,16 @@ public class AIRecommendationService {
     }
 
     private static void append(StringBuilder sb, String label, String value) {
-        if (value == null || value.isBlank()) return;
+        if (value == null || value.isBlank()) {
+            return;
+        }
         sb.append(label).append(": ").append(value.trim()).append(". ");
     }
 
     private static void appendAll(StringBuilder sb, String label, Collection<String> values) {
-        if (values == null || values.isEmpty()) return;
+        if (values == null || values.isEmpty()) {
+            return;
+        }
         List<String> cleaned = values.stream()
                 .filter(v -> v != null && !v.isBlank())
                 .map(String::trim)
@@ -568,19 +593,27 @@ public class AIRecommendationService {
     }
 
     private static void addAllTerms(Set<String> terms, Collection<String> values) {
-        if (values == null) return;
+        if (values == null) {
+            return;
+        }
         values.forEach(value -> addTerm(terms, value));
     }
 
     private static void addTerm(Set<String> terms, String value) {
         String normalized = normalize(value);
-        if (!normalized.isBlank()) terms.add(normalized);
+        if (!normalized.isBlank()) {
+            terms.add(normalized);
+        }
     }
 
     private static void addLooseWords(Set<String> terms, String value) {
-        if (value == null || value.isBlank()) return;
+        if (value == null || value.isBlank()) {
+            return;
+        }
         for (String word : value.split("[^A-Za-z0-9]+")) {
-            if (word.length() >= 3) addTerm(terms, word);
+            if (word.length() >= 3) {
+                addTerm(terms, word);
+            }
         }
     }
 
@@ -594,7 +627,9 @@ public class AIRecommendationService {
     }
 
     private static String normalizeFileName(String fileName) {
-        if (fileName == null || fileName.isBlank()) return null;
+        if (fileName == null || fileName.isBlank()) {
+            return null;
+        }
         int dot = fileName.lastIndexOf('.');
         String base = dot > 0 ? fileName.substring(0, dot) : fileName;
         return base.replace('_', ' ').replace('-', ' ').trim();
@@ -605,17 +640,24 @@ public class AIRecommendationService {
     }
 
     private static UUID toUuid(Object value) {
-        if (value instanceof UUID uuid) return uuid;
+        if (value instanceof UUID uuid) {
+            return uuid;
+        }
         return UUID.fromString(String.valueOf(value));
     }
 
-    private record OptionalVector(String value) {}
+    private record OptionalVector(String value) {
+
+    }
 
     private record TagSignal(String label, String source) {
+
         boolean manual() {
             return source == null || source.equalsIgnoreCase("manual");
         }
     }
 
-    private record RankedAsset(MediaAsset asset, double score, List<String> reasons) {}
+    private record RankedAsset(MediaAsset asset, double score, List<String> reasons) {
+
+    }
 }
