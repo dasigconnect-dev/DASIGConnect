@@ -11,6 +11,7 @@ public class MediaAssetSummaryDto {
     private String assetCode;
     private String storageUrl;
     private String fileName;
+    private String title;
     private String fileType;
     private long fileSizeBytes;
     private String aiCategory;
@@ -32,6 +33,7 @@ public class MediaAssetSummaryDto {
         dto.assetCode = asset.getAssetCode();
         dto.storageUrl = asset.getStorageUrl();
         dto.fileName = asset.getFileName();
+        dto.title = asset.getTitle();
         dto.fileType = asset.getFileType().name();
         dto.fileSizeBytes = asset.getFileSizeBytes();
         dto.aiCategory = asset.getAiCategory();
@@ -62,6 +64,7 @@ public class MediaAssetSummaryDto {
     public String getAssetCode() { return assetCode; }
     public String getStorageUrl() { return storageUrl; }
     public String getFileName() { return fileName; }
+    public String getTitle() { return title; }
     public String getFileType() { return fileType; }
     public long getFileSizeBytes() { return fileSizeBytes; }
     public String getAiCategory() { return aiCategory; }

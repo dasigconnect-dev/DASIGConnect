@@ -18,6 +18,7 @@ import {
   renameMediaAlbum,
   semanticSearchMediaAssets,
   updateMediaAssetAlbum,
+  renameMediaAsset,
   logNetworkViewAccess,
   type MediaAlbum,
 } from "../../api/mediaApi";
@@ -785,6 +786,17 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     }
   }
 
+  async function handleRenameAsset(assetId: string, title: string) {
+    try {
+      const { data } = await renameMediaAsset(assetId, title);
+      setSelectedAsset(data);
+      setAssets((prev) => prev.map((a) => (a.id === data.id ? { ...a, ...data } : a)));
+      void invalidateMediaMetadata();
+    } catch {
+      toast.error("Could not rename this asset.");
+    }
+  }
+
   async function handleAssetTag(assetId: string, action: () => Promise<unknown>) {
     try {
       await action();
@@ -1471,6 +1483,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         albums={albums}
         onUpdateAlbum={(assetId, albumId) => void handleUpdateAssetAlbum(assetId, albumId)}
         onRenameAlbum={(album) => void handleRenameAlbum(album)}
+        onRenameAsset={(assetId, title) => void handleRenameAsset(assetId, title)}
         onAddTag={(assetId, label) => void handleAssetTag(assetId, () => addMediaAssetTag(assetId, label))}
         onRemoveTag={(assetId, tagId) => void handleAssetTag(assetId, () => removeMediaAssetTag(assetId, tagId))}
       />

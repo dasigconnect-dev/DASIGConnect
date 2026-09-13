@@ -23,6 +23,7 @@ import com.dasigconnect.backend.model.dto.media.MediaAlbumDto;
 import com.dasigconnect.backend.model.dto.media.MediaAlbumRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetAddToDraftRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
@@ -204,6 +205,7 @@ public class MediaAssetService {
                 || (asset.getMediaAlbum() != null && albumId.equals(asset.getMediaAlbum().getId())))
                 .filter(asset -> trimmedQuery.isBlank()
                 || containsIgnoreCase(asset.getFileName(), trimmedQuery)
+                || containsIgnoreCase(asset.getDisplayTitle(), trimmedQuery)
                 || containsIgnoreCase(asset.getAssetCode(), trimmedQuery)
                 || (asset.getUploader() != null && containsIgnoreCase(asset.getUploader().getEmail(), trimmedQuery))
                 || tagsByAsset.getOrDefault(asset.getId(), List.of()).stream()
@@ -299,6 +301,7 @@ public class MediaAssetService {
 
     private static boolean matchesKeyword(MediaAsset a, String lower, List<String> manualTags) {
         if (containsIgnoreCase(a.getFileName(), lower)
+                || containsIgnoreCase(a.getDisplayTitle(), lower)
                 || containsIgnoreCase(a.getAssetCode(), lower)
                 || containsIgnoreCase(a.getAiDescription(), lower)
                 || containsIgnoreCase(a.getAiCategory(), lower)
@@ -875,6 +878,30 @@ public class MediaAssetService {
             moveMeta.put("toInstitutionId", targetInstitutionId.toString());
         }
         recordAssetAudit(user, "MEDIA_ASSET_MOVED", assetId, moveMeta);
+        return result;
+    }
+
+    /**
+     * UC-2.2: renames an asset's display title. Purely a display-layer change
+     * — {@link MediaAsset#getFileName()} and the R2 storage key (which is keyed
+     * by asset id, not filename or title — see {@link #createUploadUrl}) are
+     * never touched, so a rename never has to move or copy the stored object.
+     * Same visibility rule as tagging (any actor who can see the asset).
+     */
+    public MediaAssetDetailDto renameAsset(UUID assetId, MediaAssetRenameRequestDto dto, JwtUserDetails user) {
+        MediaAsset asset = loadAsset(assetId, user);
+        String title = dto.getTitle().trim();
+        if (title.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Title cannot be blank.");
+        }
+        String previousTitle = asset.getTitle();
+        // Renaming back to the original filename just clears the override,
+        // rather than storing a redundant copy of it.
+        asset.setDisplayTitle(title.equals(asset.getFileName()) ? null : title);
+        MediaAssetDetailDto result =
+                MediaAssetDetailDto.from(mediaAssetRepository.save(asset), List.of(), currentTags(assetId));
+        recordAssetAudit(user, "MEDIA_ASSET_RENAMED", assetId,
+                Map.of("fromTitle", previousTitle, "toTitle", title));
         return result;
     }
 

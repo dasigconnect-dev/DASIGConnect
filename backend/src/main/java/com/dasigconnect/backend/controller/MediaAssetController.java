@@ -24,6 +24,7 @@ import com.dasigconnect.backend.model.dto.media.MediaAlbumMoveRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAlbumPathRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAlbumRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetAddToDraftRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
@@ -200,6 +201,16 @@ public class MediaAssetController {
             @Valid @RequestBody MediaAssetAlbumRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(mediaAssetService.updateAlbum(id, dto, user)));
+    }
+
+    /** UC-2.2: renames the asset's display title. Never touches the storage object or file_name. */
+    @PostMapping("/{id}/title")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<MediaAssetDetailDto>> renameAsset(
+            @PathVariable UUID id,
+            @Valid @RequestBody MediaAssetRenameRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.renameAsset(id, dto, user)));
     }
 
     @PostMapping("/{id}/tags")

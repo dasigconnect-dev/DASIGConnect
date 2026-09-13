@@ -43,6 +43,15 @@ public class MediaAsset {
     @Column(name = "file_name", nullable = false, length = 255)
     private String fileName;
 
+    /**
+     * Optional display name, independent of {@link #fileName} and the R2
+     * storage key (which stays keyed by asset id + original filename and is
+     * never touched by a rename). Null means "use fileName" — see
+     * {@link #getDisplayTitle()}.
+     */
+    @Column(name = "display_title", length = 255)
+    private String displayTitle;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "file_type", nullable = false, length = 10)
     private MediaFileType fileType;
@@ -144,6 +153,12 @@ public class MediaAsset {
 
     public String getFileName() { return fileName; }
     public void setFileName(String fileName) { this.fileName = fileName; }
+
+    public String getDisplayTitle() { return displayTitle; }
+    public void setDisplayTitle(String displayTitle) { this.displayTitle = displayTitle; }
+
+    /** The actor-facing title — the rename if one was set, otherwise the original filename. */
+    public String getTitle() { return displayTitle != null && !displayTitle.isBlank() ? displayTitle : fileName; }
 
     public MediaFileType getFileType() { return fileType; }
     public void setFileType(MediaFileType fileType) { this.fileType = fileType; }

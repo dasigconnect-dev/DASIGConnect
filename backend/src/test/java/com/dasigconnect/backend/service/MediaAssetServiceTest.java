@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -516,6 +517,63 @@ class MediaAssetServiceTest {
         mediaAssetService.updateAlbum(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId));
 
         verify(auditLogService).record(any(), eq("MEDIA_ASSET_MOVED"), isNull(), isNull(), eq(assetId), any());
+    }
+
+    @Test
+    void renameAsset_setsDisplayTitleAndRecordsAudit() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(mediaAssetRepository.save(asset)).thenReturn(asset);
+        when(assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of());
+
+        com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto dto =
+                new com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto();
+        dto.setTitle("Opening Ceremony Highlights");
+
+        var result = mediaAssetService.renameAsset(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId));
+
+        assertEquals("Opening Ceremony Highlights", result.getTitle());
+        assertEquals("Opening Ceremony Highlights", asset.getDisplayTitle());
+        assertEquals("asset.jpg", asset.getFileName());
+        verify(auditLogService).record(any(), eq("MEDIA_ASSET_RENAMED"), isNull(), isNull(), eq(assetId), any());
+    }
+
+    @Test
+    void renameAsset_backToOriginalFilename_clearsOverride() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        asset.setDisplayTitle("Custom Title");
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(mediaAssetRepository.save(asset)).thenReturn(asset);
+        when(assetTagRepository.findByMediaAssetIdOrderByCreatedAtAsc(assetId)).thenReturn(List.of());
+
+        com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto dto =
+                new com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto();
+        dto.setTitle(asset.getFileName());
+
+        mediaAssetService.renameAsset(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId));
+
+        assertNull(asset.getDisplayTitle());
+    }
+
+    @Test
+    void renameAsset_blankTitle_isRejected() {
+        UUID institutionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, institutionId, UUID.randomUUID());
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+
+        com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto dto =
+                new com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto();
+        dto.setTitle("   ");
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.renameAsset(assetId, dto, user(UUID.randomUUID(), "moderator", institutionId)));
+        assertEquals(400, ex.getStatusCode().value());
+        verify(mediaAssetRepository, never()).save(any());
     }
 
     @Test
