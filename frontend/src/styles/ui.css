@@ -184,13 +184,20 @@
 .dc-splash-logo {
   width: 64px;
   height: 64px;
-  background: var(--d-blue, #0B5FCC);
   border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 12px 32px rgba(11, 95, 204, 0.32);
   margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.dc-splash-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .dc-splash-logo svg {

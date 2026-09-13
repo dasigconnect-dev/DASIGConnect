@@ -95,9 +95,7 @@ export default function DashboardShell({
           <div className="sidebar-brand-wrapper">
             <div className="dash-brand">
               <div className="dash-brand-icon">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 2L22 7V17L12 22L2 17V7L12 2Z" />
-                </svg>
+                <img src="/dasigconnect-logo.png" alt="DASIGConnect" />
               </div>
               <div className="dash-brand-name" style={{ marginLeft: 8 }}>
                 DASIG<em>Connect</em>
@@ -160,9 +158,7 @@ export default function DashboardShell({
               </button>
               <div className="dash-brand">
                 <div className="dash-brand-icon">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 2L22 7V17L12 22L2 17V7L12 2Z" />
-                  </svg>
+                  <img src="/dasigconnect-logo.png" alt="DASIGConnect" />
                 </div>
                 <div className="dash-brand-name">
                   DASIG<em>Connect</em>
