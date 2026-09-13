@@ -22,6 +22,7 @@ import {
   logNetworkViewAccess,
   type MediaAlbum,
 } from "../../api/mediaApi";
+import { REQUEST_DEADLINES_MS } from "../../api/requestPolicy";
 import { listInstitutions, getInstitutionLogoUrl, type InstitutionResponse } from "../../api/authApi";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import {
@@ -95,6 +96,7 @@ function putToStorage(
   return new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", signedUrl);
+    xhr.timeout = REQUEST_DEADLINES_MS.transfer;
     xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && onProgress) {
