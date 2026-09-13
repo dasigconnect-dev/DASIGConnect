@@ -338,12 +338,12 @@ export function bulkDeleteMediaAssets(assetIds: string[], force = false) {
   });
 }
 
-export function getMediaAssetUploadUrl(payload: MediaAssetUploadUrlRequest) {
-  return api.post<MediaAssetUploadUrlResponse>("/media-assets/upload-url", payload);
+export function getMediaAssetUploadUrl(payload: MediaAssetUploadUrlRequest, signal?: AbortSignal) {
+  return api.post<MediaAssetUploadUrlResponse>("/media-assets/upload-url", payload, { signal });
 }
 
-export function registerMediaAsset(payload: MediaAssetRegisterRequest) {
-  return api.post<MediaAsset>("/media-assets/upload", payload);
+export function registerMediaAsset(payload: MediaAssetRegisterRequest, signal?: AbortSignal) {
+  return api.post<MediaAsset>("/media-assets/upload", payload, { signal });
 }
 
 export function listMediaAlbums(institutionId?: string | null, signal?: AbortSignal) {
@@ -369,8 +369,9 @@ export function renameMediaAlbum(id: string, name: string, institutionId?: strin
 export function ensureMediaAlbumPath(
   institutionId: string | null | undefined,
   segments: string[],
+  signal?: AbortSignal,
 ) {
-  return api.post<MediaAlbum>("/media-assets/albums/ensure-path", { institutionId, segments });
+  return api.post<MediaAlbum>("/media-assets/albums/ensure-path", { institutionId, segments }, { signal });
 }
 
 /** Re-parent an album. `parentAlbumId` null moves it to the institution root. */
