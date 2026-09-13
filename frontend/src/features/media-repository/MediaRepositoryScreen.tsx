@@ -165,6 +165,9 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     loading: assetsLoading,
     error: assetsError,
     refresh,
+    hasNextPage,
+    loadingMore,
+    loadMore,
   } = useMediaAssets(
     user,
     networkView,
@@ -557,6 +560,19 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   // so the root shows folders only — loose asset tiles would just be noise.
   const atRootNoSearch = !currentAlbumId && !search.trim() && activeTags.size === 0;
   const visibleAssets = atRootNoSearch ? [] : filteredAssets;
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || !hasNextPage || loadingMore || semanticResults !== null) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.unobserve(target);
+      void loadMore();
+    }, { rootMargin: "240px" });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasNextPage, loadingMore, loadMore, semanticResults]);
 
   // Folder-name and tag matches for the current search term (both search modes).
   const searchTerm = search.trim().toLowerCase();
@@ -1510,6 +1526,9 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
                           />
                         ))}
                       </div>
+                      {hasNextPage && semanticResults === null && (
+                        <div ref={loadMoreRef} aria-hidden="true" style={{ height: 1 }} />
+                      )}
                     </section>
                   )}
                 </div>

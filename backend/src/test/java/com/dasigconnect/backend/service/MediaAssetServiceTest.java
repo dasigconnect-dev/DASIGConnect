@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.service;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -268,6 +269,28 @@ class MediaAssetServiceTest {
                 user(UUID.randomUUID(), "contributor", institutionId));
 
         assertEquals(1, result.getItems().size());
+    }
+
+    @Test
+    void list_secondPage_reachesRecordsBeyondFirstPageAndPreservesMetadata() {
+        UUID institutionId = UUID.randomUUID();
+        List<MediaAsset> assets = new ArrayList<>();
+        for (int index = 0; index < 26; index++) {
+            assets.add(asset(UUID.randomUUID(), institutionId, UUID.randomUUID()));
+        }
+        when(mediaAssetRepository.findActiveByInstitutionIds(org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(assets);
+        when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(any()))
+                .thenReturn(Set.of());
+
+        MediaAssetListResponseDto result = mediaAssetService.list(
+                null, null, null, null, null, null, "newest", 2, 25, null,
+                user(UUID.randomUUID(), "contributor", institutionId));
+
+        assertEquals(1, result.getItems().size());
+        assertEquals(26, result.getTotalCount());
+        assertEquals(2, result.getPage());
+        assertEquals(25, result.getPageSize());
     }
 
     @Test

@@ -1,6 +1,6 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { listMediaAlbums, listMediaAssets, type MediaAlbum, type MediaAsset } from "../../../api/mediaApi";
+import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { listMediaAlbums, listMediaAssets, type MediaAlbum, type MediaAsset, type MediaAssetPage } from "../../../api/mediaApi";
 import { authenticatedQueryMeta } from "../../../lib/queryClient";
 import { queryKeys } from "../../../lib/queryKeys";
 import type { User } from "../../../types/auth.types";
@@ -36,6 +36,7 @@ function isCanceledError(error: unknown) {
 
 const MEDIA_ASSETS_STALE_TIME_MS = 60_000;
 const MEDIA_ALBUMS_STALE_TIME_MS = 60_000;
+const MEDIA_ASSETS_PAGE_SIZE = 25;
 
 export function useMediaAssets(
   user: User,
@@ -54,12 +55,21 @@ export function useMediaAssets(
     albumId: albumId ?? null,
   });
 
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey,
-    queryFn: ({ signal }) =>
-      listMediaAssets({ networkView, institutionId, albumId }, signal).then((response) =>
-        Array.isArray(response.data) ? response.data : [],
-      ),
+    queryFn: ({ signal, pageParam }) =>
+      listMediaAssets({
+        networkView,
+        institutionId,
+        albumId,
+        page: pageParam,
+        pageSize: MEDIA_ASSETS_PAGE_SIZE,
+      }, signal),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page * lastPage.pageSize < lastPage.totalCount
+        ? lastPage.page + 1
+        : undefined,
     enabled,
     staleTime: MEDIA_ASSETS_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
@@ -67,10 +77,22 @@ export function useMediaAssets(
 
   const setAssets: Dispatch<SetStateAction<MediaAsset[]>> = useCallback(
     (value) => {
-      queryClient.setQueryData<MediaAsset[]>(queryKey, (current = []) => {
-        return typeof value === "function"
-          ? (value as (previous: MediaAsset[]) => MediaAsset[])(current)
+      queryClient.setQueryData<InfiniteData<MediaAssetPage>>(queryKey, (current) => {
+        if (!current) return current;
+        const previous = current.pages.flatMap((page) => page.items);
+        const next = typeof value === "function"
+          ? (value as (previous: MediaAsset[]) => MediaAsset[])(previous)
           : value;
+        const totalDelta = next.length - previous.length;
+        let offset = 0;
+        const pages = current.pages.map((page, index) => {
+          const isLast = index === current.pages.length - 1;
+          const itemCount = isLast ? next.length - offset : Math.min(page.items.length, next.length - offset);
+          const items = next.slice(offset, offset + Math.max(itemCount, 0));
+          offset += items.length;
+          return { ...page, items, totalCount: Math.max(0, page.totalCount + totalDelta) };
+        });
+        return { ...current, pages };
       });
     },
     [queryClient, queryKey],
@@ -81,7 +103,11 @@ export function useMediaAssets(
   }, [queryClient]);
 
   return {
-    assets: enabled ? query.data ?? [] : [],
+    assets: enabled ? query.data?.pages.flatMap((page) => page.items) ?? [] : [],
+    totalCount: query.data?.pages.at(-1)?.totalCount ?? 0,
+    hasNextPage: Boolean(query.hasNextPage),
+    loadingMore: query.isFetchingNextPage,
+    loadMore: query.fetchNextPage,
     setAssets,
     loading: query.isLoading,
     refreshing: query.isFetching && !query.isLoading,

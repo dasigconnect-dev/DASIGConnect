@@ -155,7 +155,13 @@ function rawToAsset(raw: MediaAssetPageResponse["items"][0]): MediaAsset {
 }
 
 export function listMediaAssets(
-  params?: { networkView?: boolean; institutionId?: string | null; albumId?: string | null },
+  params?: {
+    networkView?: boolean;
+    institutionId?: string | null;
+    albumId?: string | null;
+    page?: number;
+    pageSize?: number;
+  },
   signal?: AbortSignal,
 ) {
   const scope = params?.networkView ? "network" : undefined;
@@ -167,12 +173,16 @@ export function listMediaAssets(
         ...(scope ? { scope } : {}),
         ...(institutionId ? { institutionId } : {}),
         ...(albumId ? { albumId } : {}),
+        page: params?.page ?? 1,
+        pageSize: params?.pageSize ?? 25,
       },
       signal,
     })
-    .then((response) => ({
-      ...response,
-      data: (response.data.items ?? []).map(rawToAsset),
+    .then((response): MediaAssetPage => ({
+      items: (response.data.items ?? []).map(rawToAsset),
+      totalCount: response.data.totalCount ?? 0,
+      page: response.data.page ?? params?.page ?? 1,
+      pageSize: response.data.pageSize ?? params?.pageSize ?? 25,
     }));
 }
 
