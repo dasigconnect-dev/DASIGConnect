@@ -3,6 +3,7 @@ package com.dasigconnect.backend.service;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -16,6 +17,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
+import com.dasigconnect.backend.exception.MediaAssetDeletionConflictException;
+import com.dasigconnect.backend.exception.MediaAssetDuplicateException;
 
 import com.dasigconnect.backend.model.dto.media.AddAssetTagRequestDto;
 import com.dasigconnect.backend.model.dto.media.AssetTagDto;
@@ -154,7 +158,9 @@ public class MediaAssetService {
      * an audit entry for someone else's session.
      */
     public void logNetworkViewAccess(JwtUserDetails user) {
-        if (!isNetworkRole(user)) return;
+        if (!isNetworkRole(user)) {
+            return;
+        }
         recordAssetAudit(user, "MEDIA_NETWORK_VIEW_ACCESSED", null, Map.of());
     }
 
@@ -340,6 +346,22 @@ public class MediaAssetService {
                 .stream()
                 .map(MediaAssetUsageDto::from)
                 .toList();
+        Set<UUID> currentSubmissionIds = usedIn.stream()
+                .map(MediaAssetUsageDto::submissionId)
+                .collect(java.util.stream.Collectors.toCollection(HashSet::new));
+        List<MediaAssetUsageDto> historicalUsage = auditLogRepository
+                .findByResourceIdOrderByCreatedAtDesc(id)
+                .stream()
+                .filter(row -> "MEDIA_ASSET_REUSED".equals(row.getAction()))
+                .map(row -> historicalUsage(row))
+                .filter(java.util.Objects::nonNull)
+                .filter(usage -> !currentSubmissionIds.contains(usage.submissionId()))
+                .toList();
+        if (!historicalUsage.isEmpty()) {
+            List<MediaAssetUsageDto> merged = new ArrayList<>(usedIn);
+            merged.addAll(historicalUsage);
+            usedIn = merged;
+        }
         List<AssetTagDto> tags = assetTagRepository
                 .findByMediaAssetIdOrderByCreatedAtAsc(id)
                 .stream()
@@ -348,10 +370,32 @@ public class MediaAssetService {
         return MediaAssetDetailDto.from(asset, usedIn, tags);
     }
 
+    private MediaAssetUsageDto historicalUsage(AuditLog row) {
+        Map<String, Object> metadata = parseMetadata(row.getMetadata());
+        Object rawSubmissionId = metadata.get("submissionId");
+        if (rawSubmissionId == null) {
+            return null;
+        }
+        UUID submissionId;
+        try {
+            submissionId = UUID.fromString(String.valueOf(rawSubmissionId));
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+        boolean deleted = submissionRepository.findById(submissionId).isEmpty();
+        return MediaAssetUsageDto.historical(
+                submissionId,
+                String.valueOf(metadata.getOrDefault("submissionTitle", "Untitled submission")),
+                row.getCreatedAt(),
+                String.valueOf(metadata.getOrDefault("submissionStatus", "unknown")),
+                deleted);
+    }
+
     /**
-     * Activity history for one asset: the {@code audit_log} rows recorded against
-     * its id (newest first) plus a synthesized "Uploaded" entry so assets that
-     * predate audit logging are not blank. Same read scope as {@link #get}.
+     * Activity history for one asset: the {@code audit_log} rows recorded
+     * against its id (newest first) plus a synthesized "Uploaded" entry so
+     * assets that predate audit logging are not blank. Same read scope as
+     * {@link #get}.
      */
     @Transactional(readOnly = true)
     public List<MediaAssetHistoryEntryDto> history(UUID id, JwtUserDetails user) {
@@ -395,7 +439,6 @@ public class MediaAssetService {
     }
 
     // ── audit helpers ──
-
     private void recordAssetAudit(JwtUserDetails user, String action, UUID assetId, Map<String, ?> metadata) {
         try {
             auditLogService.record(
@@ -411,7 +454,8 @@ public class MediaAssetService {
             return Map.of();
         }
         try {
-            return objectMapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+            return objectMapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+            });
         } catch (Exception ex) {
             return Map.of();
         }
@@ -449,7 +493,8 @@ public class MediaAssetService {
                 Object label = meta.get("label");
                 yield label != null ? "Removed tag “" + label + "”" : "Tag removed";
             }
-            default -> action.replace("MEDIA_ASSET_", "").replace('_', ' ').toLowerCase();
+            default ->
+                action.replace("MEDIA_ASSET_", "").replace('_', ' ').toLowerCase();
         };
     }
 
@@ -534,14 +579,29 @@ public class MediaAssetService {
     private void validateDeleteReferences(UUID assetId, boolean force) {
         long blockingCount = submissionMediaAssetRepository.countBlockingSubmissionsByAssetId(assetId);
         if (blockingCount > 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Asset is referenced by active submissions and cannot be deleted.");
+            List<MediaAssetUsageDto> conflicts = submissionMediaAssetRepository
+                    .findByMediaAssetIdOrderByCreatedAtDesc(assetId)
+                    .stream()
+                    .map(MediaAssetUsageDto::from)
+                    .filter(usage -> usage.status().equals("pending")
+                    || usage.status().equals("in_review")
+                    || usage.status().equals("scheduled"))
+                    .toList();
+            throw new MediaAssetDeletionConflictException(
+                    "Asset is referenced by active submissions and cannot be deleted.", conflicts);
         }
 
         long warningCount = submissionMediaAssetRepository.countDraftSubmissionsByAssetId(assetId);
         if (warningCount > 0 && !force) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Asset is referenced by drafts. Use force=true to delete.");
+            List<MediaAssetUsageDto> warnings = submissionMediaAssetRepository
+                    .findByMediaAssetIdOrderByCreatedAtDesc(assetId)
+                    .stream()
+                    .map(MediaAssetUsageDto::from)
+                    .filter(usage -> usage.status().equals("draft")
+                    || usage.status().equals("needs_revision"))
+                    .toList();
+            throw new MediaAssetDeletionConflictException(
+                    "Asset is referenced by drafts. Use force=true to delete.", warnings);
         }
     }
 
@@ -562,6 +622,7 @@ public class MediaAssetService {
         }
 
         UUID institutionId = resolveTargetInstitutionId(dto.getInstitutionId(), user);
+        rejectDuplicate(institutionId, dto.getContentHash(), dto.isAllowDuplicate());
         MediaAlbum album = resolveAlbum(dto, institutionId, user.userId());
 
         MediaAsset asset = new MediaAsset();
@@ -571,6 +632,7 @@ public class MediaAssetService {
         asset.setAssetCode(generateAssetCode());
         asset.setStorageUrl(dto.getStorageUrl());
         asset.setFileName(dto.getFileName());
+        asset.setContentHash(normalizeHash(dto.getContentHash()));
         asset.setFileType(fileType);
         asset.setFileSizeBytes(dto.getFileSizeBytes());
         // Only images get queued for classification below — a video has nothing
@@ -687,10 +749,11 @@ public class MediaAssetService {
     }
 
     /**
-     * Re-parent an album. {@code newParentId} null moves it to a root; the target
-     * institution comes from the destination parent, else {@code requestedInstitutionId},
-     * else it stays put. Moving a folder into another institution (only the shared
-     * default for non-admins) re-homes the whole subtree and its assets.
+     * Re-parent an album. {@code newParentId} null moves it to a root; the
+     * target institution comes from the destination parent, else
+     * {@code requestedInstitutionId}, else it stays put. Moving a folder into
+     * another institution (only the shared default for non-admins) re-homes the
+     * whole subtree and its assets.
      */
     public MediaAlbumDto moveAlbum(UUID albumId, UUID newParentId, UUID requestedInstitutionId, JwtUserDetails user) {
         MediaAlbum album = loadAlbumForManage(albumId, user);
@@ -712,7 +775,7 @@ public class MediaAssetService {
 
         if (newParentId != null
                 && (newParentId.equals(albumId)
-                    || mediaAlbumRepository.findDescendantIds(albumId).contains(newParentId))) {
+                || mediaAlbumRepository.findDescendantIds(albumId).contains(newParentId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "An album cannot be moved inside itself or one of its sub-albums.");
         }
@@ -863,8 +926,8 @@ public class MediaAssetService {
             asset.setInstitution(album.getInstitution());
         }
         asset.setMediaAlbum(album);
-        MediaAssetDetailDto result =
-                MediaAssetDetailDto.from(mediaAssetRepository.save(asset), List.of(), currentTags(assetId));
+        MediaAssetDetailDto result
+                = MediaAssetDetailDto.from(mediaAssetRepository.save(asset), List.of(), currentTags(assetId));
 
         Map<String, Object> moveMeta = new LinkedHashMap<>();
         if (fromAlbum != null) {
@@ -882,8 +945,8 @@ public class MediaAssetService {
     }
 
     /**
-     * UC-2.2: renames an asset's display title. Purely a display-layer change
-     * — {@link MediaAsset#getFileName()} and the R2 storage key (which is keyed
+     * UC-2.2: renames an asset's display title. Purely a display-layer change —
+     * {@link MediaAsset#getFileName()} and the R2 storage key (which is keyed
      * by asset id, not filename or title — see {@link #createUploadUrl}) are
      * never touched, so a rename never has to move or copy the stored object.
      * Same visibility rule as tagging (any actor who can see the asset).
@@ -898,8 +961,8 @@ public class MediaAssetService {
         // Renaming back to the original filename just clears the override,
         // rather than storing a redundant copy of it.
         asset.setDisplayTitle(title.equals(asset.getFileName()) ? null : title);
-        MediaAssetDetailDto result =
-                MediaAssetDetailDto.from(mediaAssetRepository.save(asset), List.of(), currentTags(assetId));
+        MediaAssetDetailDto result
+                = MediaAssetDetailDto.from(mediaAssetRepository.save(asset), List.of(), currentTags(assetId));
         recordAssetAudit(user, "MEDIA_ASSET_RENAMED", assetId,
                 Map.of("fromTitle", previousTitle, "toTitle", title));
         return result;
@@ -949,6 +1012,7 @@ public class MediaAssetService {
 
     public MediaAssetUploadUrlResponseDto createUploadUrl(MediaAssetUploadUrlRequestDto dto, JwtUserDetails user) {
         UUID institutionId = resolveTargetInstitutionId(dto.getInstitutionId(), user);
+        rejectDuplicate(institutionId, dto.getContentHash(), dto.isAllowDuplicate());
 
         // Opaque, immutable key. The folder tree lives in the database (media_albums),
         // never in the storage key, so folder rename/move/re-home never has to touch the store.
@@ -966,20 +1030,49 @@ public class MediaAssetService {
         return new MediaAssetUploadUrlResponseDto(signedUrl, publicUrl, objectPath);
     }
 
-    /** Tenant partition for the storage key — the institution's short code, falling back to name then id. */
+    private void rejectDuplicate(UUID institutionId, String contentHash, boolean allowDuplicate) {
+        if (allowDuplicate) {
+            return;
+        }
+        String normalized = normalizeHash(contentHash);
+        if (normalized.isBlank()) {
+            return;
+        }
+        mediaAssetRepository.findActiveByInstitutionIdAndContentHash(institutionId, normalized)
+                .ifPresent(existing -> {
+                    throw new MediaAssetDuplicateException(existing.getId(), existing.getAssetCode());
+                });
+    }
+
+    private static String normalizeHash(String contentHash) {
+        return contentHash == null ? "" : contentHash.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /**
+     * Tenant partition for the storage key — the institution's short code,
+     * falling back to name then id.
+     */
     private String institutionFolderSegment(UUID institutionId) {
         return institutionRepository.findById(institutionId)
                 .map(inst -> {
-                    if (inst.getCode() != null && !inst.getCode().isBlank()) return inst.getCode();
-                    if (inst.getName() != null && !inst.getName().isBlank()) return inst.getName();
+                    if (inst.getCode() != null && !inst.getCode().isBlank()) {
+                        return inst.getCode();
+                    }
+                    if (inst.getName() != null && !inst.getName().isBlank()) {
+                        return inst.getName();
+                    }
                     return institutionId.toString();
                 })
                 .orElse(institutionId.toString());
     }
 
-    /** One path segment, safe for an S3-compatible object key. */
+    /**
+     * One path segment, safe for an S3-compatible object key.
+     */
     private String slugSegment(String raw) {
-        if (raw == null) return "";
+        if (raw == null) {
+            return "";
+        }
         String slug = raw.trim()
                 .replaceAll("[^A-Za-z0-9._-]+", "-")
                 .replaceAll("-{2,}", "-")
@@ -999,7 +1092,10 @@ public class MediaAssetService {
         return user.role() != null && user.role().toLowerCase().contains("admin");
     }
 
-    /** Moderator and Admin are both network-wide roles — neither is bound to one institution. */
+    /**
+     * Moderator and Admin are both network-wide roles — neither is bound to one
+     * institution.
+     */
     private boolean isNetworkRole(JwtUserDetails user) {
         return isAdmin(user) || (user.role() != null && "moderator".equalsIgnoreCase(user.role()));
     }
@@ -1170,10 +1266,14 @@ public class MediaAssetService {
      * must be searchable, same as an AI-generated one.
      */
     private Map<UUID, List<String>> loadAllTagLabels(List<UUID> assetIds) {
-        if (assetIds.isEmpty()) return Map.of();
+        if (assetIds.isEmpty()) {
+            return Map.of();
+        }
         Map<UUID, List<String>> result = new java.util.HashMap<>();
         List<Object[]> rows = assetTagRepository.findLabelsByMediaAssetIds(assetIds);
-        if (rows == null) return Map.of();
+        if (rows == null) {
+            return Map.of();
+        }
         for (Object[] row : rows) {
             UUID assetId = (UUID) row[0];
             String label = row[1] instanceof String s ? s : null;

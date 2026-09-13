@@ -862,9 +862,12 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
     try {
       onProgress?.(0);
+      const contentHash = await sha256File(file);
       const { data: urlData } = await getMediaAssetUploadUrl({
         fileName: safeFileName(file.name),
         fileType: fileTypeFromFile(file),
+        contentHash,
+        allowDuplicate: metadata.allowDuplicate,
         institutionId,
       });
 
@@ -878,6 +881,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         fileName: file.name,
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
+        contentHash,
+        allowDuplicate: metadata.allowDuplicate,
         institutionId,
         albumId: metadata.albumId,
         albumName: metadata.albumName,
@@ -897,6 +902,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       if (!opts?.silent) toast.error(message);
       throw err;
     }
+  }
+
+  async function sha256File(file: File) {
+    const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
   }
 
   // "Upload folder": mirror the picked directory tree into nested albums under
@@ -1519,6 +1529,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         institutions={isNetworkBrowser ? institutions : []}
         defaultInstitutionId={targetInstitutionId}
         onClose={() => setUploadOpen(false)}
+        onUseExistingAsset={(assetId) => {
+          const next = new URLSearchParams(searchParams);
+          next.set("asset", assetId);
+          setSearchParams(next);
+        }}
         onCreateAlbum={(name, institutionId, parentAlbumId) =>
           handleCreateAlbum(name, parentAlbumId, institutionId)
         }
