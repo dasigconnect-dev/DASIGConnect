@@ -155,7 +155,13 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   // Folder scoping is dropped while searching so matches are never hidden by the current folder.
   const listAlbumId = search.trim() ? null : currentAlbumId;
-  const { assets, setAssets, loading, error, refresh } = useMediaAssets(
+  const {
+    assets,
+    setAssets,
+    loading: assetsLoading,
+    error: assetsError,
+    refresh,
+  } = useMediaAssets(
     user,
     networkView,
     selectedInstitutionId,
@@ -168,12 +174,28 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const {
     albums,
     setAlbums,
+    loading: albumsLoading,
+    error: albumsError,
     refresh: reloadAlbums,
   } = useMediaAlbums(
     user,
     albumScopeInstitutionId,
     isNetworkBrowser || Boolean(albumScopeInstitutionId),
   );
+  const loading = assetsLoading || albumsLoading;
+  const error = assetsError || albumsError;
+  const hasCachedRepositoryData = assets.length > 0 || albums.length > 0;
+  const refreshErrorNotifiedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!error || !hasCachedRepositoryData) {
+      if (!error) refreshErrorNotifiedRef.current = null;
+      return;
+    }
+    if (refreshErrorNotifiedRef.current === error) return;
+    refreshErrorNotifiedRef.current = error;
+    toast.error(error);
+  }, [error, hasCachedRepositoryData, toast]);
 
   const invalidateMediaMetadata = useCallback(() => {
     return Promise.all([
@@ -1378,7 +1400,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
             {/* Folders + Media Grid / States */}
             {(() => {
               if (loading || (semanticBusy && semanticResults === null)) return <SkeletonGrid viewMode={viewMode} />;
-              if (error) return <ErrorState message={error} onRetry={() => void refresh()} />;
+              if (error && !hasCachedRepositoryData) return <ErrorState message={error} onRetry={() => void refresh()} />;
               if (gridAssets.length === 0 && folderCards.length === 0) {
                 return (
                   <EmptyState

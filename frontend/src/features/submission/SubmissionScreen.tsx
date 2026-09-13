@@ -190,7 +190,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const { submissionId: routeSubmissionId } = useParams<{ submissionId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const { submissions, setSubmissions, loading, error, refresh } =
+  const { submissions, setSubmissions, loading, refreshing, error, refresh } =
     useSubmissions(user);
   const {
     lookups,
@@ -363,6 +363,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const institutionsError = institutionsQuery.error ? "Institution list could not be loaded." : "";
   const templateErrorNotifiedRef = useRef(false);
   const albumErrorNotifiedRef = useRef<string | null>(null);
+  const submissionsRefreshErrorNotifiedRef = useRef(false);
   const [mediaUploadFailed, setMediaUploadFailed] = useState(false);
   const selectedPostingInstitution = useMemo(
     () => institutions.find((institution) => institution.id === form.institutionId) ?? null,
@@ -559,6 +560,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     templateErrorNotifiedRef.current = true;
     toast.error("Could not load saved templates.");
   }, [templatesQuery.isError, toast]);
+
+  useEffect(() => {
+    if (!error || submissions.length === 0) {
+      if (!error) submissionsRefreshErrorNotifiedRef.current = false;
+      return;
+    }
+    if (submissionsRefreshErrorNotifiedRef.current) return;
+    submissionsRefreshErrorNotifiedRef.current = true;
+    toast.error(error);
+  }, [error, submissions.length, toast]);
 
   useEffect(() => {
     if (!selectedInstitutionId || !albumNamesQuery.isError || albumErrorNotifiedRef.current === selectedInstitutionId) return;
@@ -1310,6 +1321,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setRefreshingQueue(true);
     try {
       await refresh();
+    } catch {
+      // The query error state preserves cached results and drives the existing toast feedback.
     } finally {
       setRefreshingQueue(false);
     }
@@ -1916,10 +1929,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 className="sub-btn-ghost"
                 type="button"
                 onClick={() => void refreshQueue()}
-                disabled={refreshingQueue || loading}
+                disabled={refreshingQueue || loading || refreshing}
                 title="Refresh submissions list"
               >
-                <i className={`ti ti-refresh${refreshingQueue || loading ? " spin" : ""}`} style={{ fontSize: 14 }} />
+                <i className={`ti ti-refresh${refreshingQueue || loading || refreshing ? " spin" : ""}`} style={{ fontSize: 14 }} />
                 <span>Refresh</span>
               </button>
               <button
@@ -2007,9 +2020,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           </div>
 
           <section className="sub-list-results" aria-label="My submissions">
-            {loading || refreshingQueue ? (
+            {loading ? (
               <QueueLoadingState />
-            ) : error ? (
+            ) : error && submissions.length === 0 ? (
               <QueueState
                 icon="ti-database-off"
                 title="Unable to load submissions"

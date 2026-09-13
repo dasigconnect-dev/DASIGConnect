@@ -69,7 +69,8 @@ export function useSubmissions(user: User) {
   return {
     submissions: submissionsQuery.data ?? [],
     setSubmissions,
-    loading: submissionsQuery.isLoading || submissionsQuery.isFetching,
+    loading: submissionsQuery.isLoading,
+    refreshing: submissionsQuery.isFetching && !submissionsQuery.isLoading,
     error: submissionsQuery.error ? "Unable to load submissions." : "",
     refresh,
   };
@@ -100,7 +101,8 @@ export function useSubmissionLookups(user: User) {
 
   return {
     lookups: lookupsQuery.data ?? emptyLookups,
-    loading: lookupsQuery.isLoading || lookupsQuery.isFetching,
+    loading: lookupsQuery.isLoading,
+    refreshing: lookupsQuery.isFetching && !lookupsQuery.isLoading,
     error: lookupsQuery.error ? "Unable to load submission settings." : "",
     refresh,
   };
