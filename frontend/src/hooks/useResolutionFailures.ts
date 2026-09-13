@@ -12,7 +12,8 @@ import {
 } from "../api/resolutionApi";
 import { useToast } from "../context/ToastContext";
 import { authenticatedQueryMeta } from "../lib/queryClient";
-import { queryKeys } from "../lib/queryKeys";
+import { invalidateQueryRoots } from "../lib/queryInvalidation";
+import { mutationCacheDependencies, queryKeys } from "../lib/queryKeys";
 import type { User } from "../types/auth.types";
 
 export interface UseResolutionFailuresResult {
@@ -84,8 +85,18 @@ export function useResolutionFailures(user: User): UseResolutionFailuresResult {
   }, [activeDetailId, detailQuery.isError, toast]);
 
   const refresh = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ["resolution"] });
+    void invalidateQueryRoots(queryClient, mutationCacheDependencies.resolutionSession);
   }, [queryClient]);
+
+  const invalidateResolutionSession = useCallback(
+    () => invalidateQueryRoots(queryClient, mutationCacheDependencies.resolutionSession),
+    [queryClient],
+  );
+
+  const invalidateResolutionOutcome = useCallback(
+    () => invalidateQueryRoots(queryClient, mutationCacheDependencies.resolutionOutcome),
+    [queryClient],
+  );
 
   function openWorkflowPanel(item: FailedPublication) {
     detailErrorNotifiedRef.current = null;
@@ -112,7 +123,7 @@ export function useResolutionFailures(user: User): UseResolutionFailuresResult {
           ? `"${item.eventTitle}" rescheduled and sent back to the approval queue.`
           : `"${item.eventTitle}" rescheduled and re-queued.`,
       );
-      await queryClient.invalidateQueries({ queryKey: ["resolution"] });
+      await invalidateResolutionOutcome();
     } catch (err: unknown) {
       const data = (err as { response?: { data?: unknown } })?.response?.data as
         | { message?: string; error?: string | { message?: string } }
@@ -133,7 +144,7 @@ export function useResolutionFailures(user: User): UseResolutionFailuresResult {
     try {
       await startManualPublish(item.submissionId);
       toast.success("Manual publish session started.");
-      await queryClient.invalidateQueries({ queryKey: ["resolution"] });
+      await invalidateResolutionSession();
       openWorkflowPanel({ ...item, manualPublishInProgress: true });
     } catch {
       toast.error("Could not start manual publish.");
@@ -148,7 +159,7 @@ export function useResolutionFailures(user: User): UseResolutionFailuresResult {
       await cancelManualPublish(item.submissionId);
       toast.info("Manual publish cancelled.");
       closeWorkflowPanel();
-      await queryClient.invalidateQueries({ queryKey: ["resolution"] });
+      await invalidateResolutionSession();
     } catch {
       toast.error("Could not cancel manual publish.");
     } finally {
@@ -169,7 +180,7 @@ export function useResolutionFailures(user: User): UseResolutionFailuresResult {
       });
       toast.success(`"${item.eventTitle}" marked as published.`);
       closeWorkflowPanel();
-      await queryClient.invalidateQueries({ queryKey: ["resolution"] });
+      await invalidateResolutionOutcome();
     } catch {
       toast.error("Could not complete manual publish.");
     } finally {
