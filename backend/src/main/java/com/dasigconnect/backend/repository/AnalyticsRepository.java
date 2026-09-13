@@ -452,15 +452,33 @@ public class AnalyticsRepository {
     }
 
     public List<Map<String, Object>> exportRows(String metric, Instant start, Instant end, AnalyticsScope scope) {
-        return switch (metric) {
-            case "posting-delay" -> exportPostingDelay(start, end, scope);
-            case "content-completeness" -> exportCompleteness(start, end, scope);
-            case "posts-by-institution" -> exportPostsByInstitution(start, end, scope);
-            case "ai-performance" -> exportAiPerformance(start, end, scope);
-            case "operational-health" -> exportOperationalHealth(start, end, scope);
-            case "facebook-engagement" -> exportFacebookEngagement(start, end, scope);
-            default -> throw new IllegalArgumentException("Unsupported analytics export metric: " + metric);
-        };
+        if ("operational-health".equals(metric)) {
+            return exportOperationalHealth(start, end, scope);
+        }
+        return jdbc.queryForList(reportSql(metric, scope), params(start, end, scope));
+    }
+
+    public AnalyticsRowsPage reportRows(String metric, Instant start, Instant end, AnalyticsScope scope,
+            int page, int pageSize) {
+        if ("operational-health".equals(metric)) {
+            List<Map<String, Object>> rows = exportOperationalHealth(start, end, scope);
+            int fromIndex = (int) Math.min((page - 1L) * pageSize, rows.size());
+            int toIndex = Math.min(fromIndex + pageSize, rows.size());
+            return new AnalyticsRowsPage(rows.subList(fromIndex, toIndex), rows.size(), page, pageSize);
+        }
+
+        String sql = reportSql(metric, scope);
+        MapSqlParameterSource queryParams = params(start, end, scope)
+                .addValue("pageSize", pageSize)
+                .addValue("offset", (page - 1L) * pageSize);
+        Long totalCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM (" + sql + ") analytics_report_rows",
+                queryParams,
+                Long.class);
+        List<Map<String, Object>> items = jdbc.queryForList(
+                sql + "\nLIMIT :pageSize OFFSET :offset",
+                queryParams);
+        return new AnalyticsRowsPage(items, totalCount == null ? 0 : totalCount, page, pageSize);
     }
 
     public List<DailyAnalyticsPointDto> dailyBreakdown(String metric, Instant start, Instant end, AnalyticsScope scope) {
@@ -651,8 +669,9 @@ public class AnalyticsRepository {
                         rs.getLong("secondary_value")));
     }
 
-    private List<Map<String, Object>> exportPostingDelay(Instant start, Instant end, AnalyticsScope scope) {
-        String sql = """
+    private String reportSql(String metric, AnalyticsScope scope) {
+        return switch (metric) {
+            case "posting-delay" -> """
             SELECT s.id AS submission_id, i.name AS institution_name, s.status,
                    %1$s AS first_submitted_at, s.published_at,
                    ROUND(EXTRACT(EPOCH FROM (s.published_at - %1$s)) / 86400.0, 4) AS delay_days
@@ -664,11 +683,7 @@ public class AnalyticsRepository {
               %3$s
             ORDER BY s.published_at DESC
             """.formatted(firstPendingExpression("s"), PUBLISHED_STATES, scope.scopedFilter("s"));
-        return jdbc.queryForList(sql, params(start, end, scope));
-    }
-
-    private List<Map<String, Object>> exportCompleteness(Instant start, Instant end, AnalyticsScope scope) {
-        String sql = """
+            case "content-completeness" -> """
             SELECT s.id AS submission_id, i.name AS institution_name, s.status, s.published_at,
                    CASE WHEN s.event_title IS NOT NULL THEN true ELSE false END AS has_event_title,
                    CASE WHEN s.event_date IS NOT NULL THEN true ELSE false END AS has_event_date,
@@ -682,11 +697,7 @@ public class AnalyticsRepository {
               %s
             ORDER BY s.published_at DESC
             """.formatted(PUBLISHED_STATES, scope.scopedFilter("s"));
-        return jdbc.queryForList(sql, params(start, end, scope));
-    }
-
-    private List<Map<String, Object>> exportPostsByInstitution(Instant start, Instant end, AnalyticsScope scope) {
-        String sql = """
+            case "posts-by-institution" -> """
             SELECT i.name AS institution_name, s.status, COUNT(*) AS post_count
             FROM submissions s
             JOIN institutions i ON i.id = s.institution_id
@@ -696,11 +707,7 @@ public class AnalyticsRepository {
             GROUP BY i.name, s.status
             ORDER BY i.name ASC, s.status ASC
             """.formatted(REPORTING_STATES, scope.scopedFilter("s"));
-        return jdbc.queryForList(sql, params(start, end, scope));
-    }
-
-    private List<Map<String, Object>> exportAiPerformance(Instant start, Instant end, AnalyticsScope scope) {
-        String sql = """
+            case "ai-performance" -> """
             SELECT ail.interaction_type, ail.action_taken, COUNT(*) AS event_count
             FROM ai_interaction_log ail
             JOIN submissions s ON s.id = ail.submission_id
@@ -709,11 +716,7 @@ public class AnalyticsRepository {
             GROUP BY ail.interaction_type, ail.action_taken
             ORDER BY ail.interaction_type ASC, ail.action_taken ASC
             """.formatted(scope.aiFilter("s"));
-        return jdbc.queryForList(sql, params(start, end, scope));
-    }
-
-    private List<Map<String, Object>> exportFacebookEngagement(Instant start, Instant end, AnalyticsScope scope) {
-        String sql = """
+            case "facebook-engagement" -> """
             SELECT s.id AS submission_id, s.event_title, i.name AS institution_name, s.published_at,
                    sem.reach, sem.reactions, sem.comments_count, sem.shares,
                    CASE WHEN sem.fetched_at IS NULL THEN true ELSE false END AS pending
@@ -725,7 +728,8 @@ public class AnalyticsRepository {
               %s
             ORDER BY s.published_at DESC
             """.formatted(REPORTING_STATES, scope.scopedFilter("s"));
-        return jdbc.queryForList(sql, params(start, end, scope));
+            default -> throw new IllegalArgumentException("Unsupported analytics report metric: " + metric);
+        };
     }
 
     private List<Map<String, Object>> exportOperationalHealth(Instant start, Instant end, AnalyticsScope scope) {
@@ -818,6 +822,13 @@ public class AnalyticsRepository {
         public String validationSubmissionFilter(String submissionAlias) {
             return scopedFilter(submissionAlias);
         }
+    }
+
+    public record AnalyticsRowsPage(
+            List<Map<String, Object>> items,
+            long totalCount,
+            int page,
+            int pageSize) {
     }
 
     public record PostingDelayStats(double averageDays, long sampleSize) {}

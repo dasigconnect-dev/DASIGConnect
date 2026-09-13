@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   downloadAnalyticsCsv,
   getAnalyticsReport,
@@ -89,6 +89,7 @@ const HIDDEN_COLUMNS = new Set(["submission_id", "id"]);
 type ActiveTab = "daily" | "detail";
 
 const REPORT_STALE_TIME_MS = 60_000;
+const REPORT_PAGE_SIZE = 50;
 
 function userScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
@@ -134,7 +135,8 @@ export default function FullReportModal({
   onClose,
 }: Props) {
   const [tabEntry, setTabEntry] = useState<{ forMetric: string; tab: ActiveTab } | null>(null);
-  const reportQuery = useQuery<AnalyticsReportDto>({
+  const lastDetailRowRef = useRef<HTMLTableRowElement | null>(null);
+  const reportQuery = useInfiniteQuery<AnalyticsReportDto>({
     queryKey: queryKeys.analytics.report({
       role: user.role,
       userId: userScope(user),
@@ -142,18 +144,58 @@ export default function FullReportModal({
       range,
       metric: metric ?? "none",
     }),
-    queryFn: ({ signal }) => getAnalyticsReport(metric!, range, institutionId, signal).then((res) => res.data),
+    queryFn: ({ signal, pageParam }) =>
+      getAnalyticsReport(
+        metric!,
+        range,
+        institutionId,
+        pageParam as number,
+        REPORT_PAGE_SIZE,
+        signal,
+      ).then((res) => res.data),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page * lastPage.pageSize < lastPage.totalCount
+        ? lastPage.page + 1
+        : undefined,
     enabled: Boolean(metric),
     staleTime: REPORT_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
-  const report = reportQuery.data ?? null;
+  const report = useMemo(() => {
+    const data = reportQuery.data;
+    const firstPage = data?.pages[0];
+    if (!firstPage) return null;
+    return {
+      ...firstPage,
+      aggregateRows: data.pages.flatMap((page) => page.aggregateRows),
+    };
+  }, [reportQuery.data]);
   const dailyHasData = (report?.dailyBreakdown ?? []).some(
     (p) => p.value !== 0 || (p.secondaryValue ?? 0) !== 0,
   );
   const defaultTab: ActiveTab =
     dailyHasData || !(report && report.aggregateRows.length > 0) ? "daily" : "detail";
   const activeTab: ActiveTab = tabEntry?.forMetric === metric ? tabEntry.tab : defaultTab;
+  const { fetchNextPage, hasNextPage, isFetchingNextPage } = reportQuery;
+
+  useEffect(() => {
+    const row = lastDetailRowRef.current;
+    if (activeTab !== "detail" || !row || !hasNextPage) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting && !isFetchingNextPage) {
+        void fetchNextPage();
+      }
+    }, { rootMargin: "200px" });
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [
+    activeTab,
+    report?.aggregateRows.length,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  ]);
 
   useEffect(() => {
     if (!metric) return;
@@ -266,7 +308,7 @@ export default function FullReportModal({
             >
               <i className="ti ti-table" aria-hidden="true" />
               <span>{DETAIL_TAB_LABEL[metric]}</span>
-              <span className="analytics-tab-count">{report.aggregateRows.length}</span>
+              <span className="analytics-tab-count">{report.totalCount}</span>
             </button>
           </div>
         )}
@@ -373,7 +415,10 @@ export default function FullReportModal({
                         </thead>
                         <tbody>
                           {detailRows.map((row, rowIndex) => (
-                            <tr key={String(row.submission_id ?? row.id ?? rowIndex)}>
+                            <tr
+                              key={String(row.submission_id ?? row.id ?? rowIndex)}
+                              ref={rowIndex === detailRows.length - 1 ? lastDetailRowRef : undefined}
+                            >
                               {detailColumns.map((col) => {
                                 const raw = row[col];
                                 const isState = col === "status" && typeof raw === "string";

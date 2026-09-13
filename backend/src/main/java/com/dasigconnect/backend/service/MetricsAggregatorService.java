@@ -28,6 +28,7 @@ import com.dasigconnect.backend.model.dto.analytics.OperationalHealthDto;
 import com.dasigconnect.backend.model.dto.analytics.PagePerformanceDto;
 import com.dasigconnect.backend.model.dto.analytics.ValidatorAnalyticsDto;
 import com.dasigconnect.backend.repository.AnalyticsRepository;
+import com.dasigconnect.backend.repository.AnalyticsRepository.AnalyticsRowsPage;
 import com.dasigconnect.backend.repository.AnalyticsRepository.AiStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.AnalyticsScope;
 import com.dasigconnect.backend.repository.AnalyticsRepository.CompletenessStats;
@@ -246,19 +247,28 @@ public class MetricsAggregatorService {
         return new CsvExport(csvFilename(normalizedMetric, period, scope), toCsv(rows));
     }
 
-    public AnalyticsReportDto report(String metric, String range, UUID institutionId, JwtUserDetails user) {
+    public AnalyticsReportDto report(String metric, String range, UUID institutionId,
+            int requestedPage, int requestedPageSize, JwtUserDetails user) {
         ReportingPeriod period = resolvePeriod(range);
         AnalyticsScope scope = scopeFor(user, institutionId);
         String normalizedMetric = normalizeMetric(metric);
         assertMetricAllowed(normalizedMetric, scope);
+        int page = Math.max(1, requestedPage);
+        int pageSize = Math.max(1, Math.min(requestedPageSize, 100));
+        AnalyticsRowsPage rows = analyticsRepository.reportRows(
+                normalizedMetric, period.start(), period.end(), scope, page, pageSize);
         return new AnalyticsReportDto(
                 normalizedMetric,
                 period.label(),
                 period.start(),
                 period.end(),
-                analyticsRepository.dailyBreakdown(normalizedMetric, period.start(), period.end(), scope),
-                analyticsRepository.submissionReportRows(period.start(), period.end(), scope),
-                analyticsRepository.exportRows(normalizedMetric, period.start(), period.end(), scope));
+                page == 1
+                        ? analyticsRepository.dailyBreakdown(normalizedMetric, period.start(), period.end(), scope)
+                        : List.of(),
+                rows.items(),
+                rows.totalCount(),
+                rows.page(),
+                rows.pageSize());
     }
 
     private AiPerformanceDto aiPerformance(AiStats ai) {
