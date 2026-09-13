@@ -189,6 +189,17 @@ class SubmissionControllerTest {
 
     @Test
     @WithMockUser(roles = "CONTRIBUTOR")
+    void withdraw_asContributor_returnsDraftSubmission() throws Exception {
+        UUID submissionId = UUID.randomUUID();
+        when(submissionService.withdraw(any(), any())).thenReturn(responseDto(submissionId, SubmissionStatus.draft));
+
+        mockMvc.perform(post("/api/v1/submissions/{id}/withdraw", submissionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("draft"));
+    }
+
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
     void evaluateSlot_validBody_returnsGuardRailResult() throws Exception {
         UUID submissionId = UUID.randomUUID();
         when(submissionService.evaluateSlot(any(), any(), any())).thenReturn(new GuardRailResult());
