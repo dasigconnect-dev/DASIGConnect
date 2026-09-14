@@ -1347,7 +1347,7 @@ export default function WatermarkCanvasEditor({
           {!selectedElement && (
             <div className="canva-default-topbar-group canva-anim-bar">
               <span className="canva-topbar-hint">
-                <i className="ti ti-wand" /> Select a tool on the left to build your watermark layout
+                <i className="ti ti-wand" /> Select a tool to build your watermark layout
               </span>
               <span className="canva-layer-counter-pill">
                 <i className="ti ti-layers-intersect" /> {elements.length}/3 Elements Added
