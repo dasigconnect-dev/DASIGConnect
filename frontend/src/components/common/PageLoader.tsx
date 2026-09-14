@@ -1,10 +1,20 @@
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import "../../styles/dasig-loader.css";
+import { beginLoadingInterval, endLoadingInterval } from "../../lib/performanceTelemetry";
 
 interface PageLoaderProps {
   contained?: boolean;
 }
 
 export default function PageLoader({ contained = false }: PageLoaderProps) {
+  const location = useLocation();
+
+  useEffect(() => {
+    const timer = beginLoadingInterval(location.pathname, contained ? "contained" : "page");
+    return () => endLoadingInterval(timer);
+  }, [contained, location.pathname]);
+
   return (
     <div
       className="dc-page-loader"
