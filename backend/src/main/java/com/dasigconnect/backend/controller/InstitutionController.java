@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -23,8 +24,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.institution.CreateInstitutionRequest;
+import com.dasigconnect.backend.model.dto.institution.InstitutionCountSummaryDto;
 import com.dasigconnect.backend.model.dto.institution.InstitutionDto;
 import com.dasigconnect.backend.model.dto.institution.UpdateInstitutionRequest;
+import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.InstitutionService;
 
 import jakarta.validation.Valid;
@@ -99,6 +102,12 @@ public class InstitutionController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<InstitutionDto>>> listInstitutions() {
         return ResponseEntity.ok(ApiResponse.success(institutionService.listInstitutions()));
+    }
+
+    @GetMapping("/summary-counts")
+    public ResponseEntity<ApiResponse<List<InstitutionCountSummaryDto>>> listSummaryCounts(
+            @AuthenticationPrincipal JwtUserDetails requester) {
+        return ResponseEntity.ok(ApiResponse.success(institutionService.listSummaryCounts(requester)));
     }
 
     /**
