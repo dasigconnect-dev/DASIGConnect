@@ -1,15 +1,17 @@
-import { readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { gzipSync } from "node:zlib";
 
 const root = process.cwd();
 const assetsDir = path.join(root, "dist", "assets");
 
 const budgets = {
+  // Raw per-chunk limits protect parse cost; total gzip tracks actual network delivery.
   entryJsKiB: 360,
   asyncJsKiB: 300,
   cssKiB: 110,
-  totalJsKiB: 1250,
+  totalJsGzipKiB: 400,
 };
 
 const entryJsPattern = /^index-[\w-]+\.js$/;
@@ -28,10 +30,12 @@ async function listAssets(dir) {
     names.map(async (name) => {
       const filePath = path.join(dir, name);
       const info = await stat(filePath);
+      const ext = path.extname(name);
       return {
         name,
         bytes: info.size,
-        ext: path.extname(name),
+        gzipBytes: ext === ".js" ? gzipSync(await readFile(filePath), { level: 9 }).length : null,
+        ext,
         entry: entryJsPattern.test(name),
       };
     }),
@@ -56,6 +60,7 @@ const cssAssets = assets.filter((asset) => asset.ext === ".css");
 const entryJs = jsAssets.filter((asset) => asset.entry);
 const asyncJs = jsAssets.filter((asset) => !asset.entry);
 const totalJsBytes = jsAssets.reduce((total, asset) => total + asset.bytes, 0);
+const totalJsGzipBytes = jsAssets.reduce((total, asset) => total + (asset.gzipBytes ?? 0), 0);
 
 const failures = [
   ...entryJs
@@ -67,14 +72,15 @@ const failures = [
   ...cssAssets
     .map((asset) => overBudget(`CSS ${asset.name}`, toKiB(asset.bytes), budgets.cssKiB))
     .filter(Boolean),
-  overBudget("Total JS", toKiB(totalJsBytes), budgets.totalJsKiB),
+  overBudget("Total JS (gzip)", toKiB(totalJsGzipBytes), budgets.totalJsGzipKiB),
 ].filter(Boolean);
 
 console.log("Bundle budget summary");
 console.log(`Entry JS budget: ${budgets.entryJsKiB} kB`);
 console.log(`Async JS chunk budget: ${budgets.asyncJsKiB} kB`);
 console.log(`CSS chunk budget: ${budgets.cssKiB} kB`);
-console.log(`Total JS budget: ${budgets.totalJsKiB} kB`);
+console.log(`Total JS gzip budget: ${budgets.totalJsGzipKiB} kB`);
+console.log(`Total JS: ${formatKiB(totalJsBytes)} raw / ${formatKiB(totalJsGzipBytes)} gzip`);
 console.log("");
 console.log("Largest assets:");
 assets.slice(0, 12).forEach((asset) => {
