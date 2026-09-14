@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { listInstitutions } from "../../api/authApi";
 import {
@@ -388,44 +388,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         : submissions.filter((item) => queueBucket(item.status) === filter);
     return base.filter((item) => matchesQueueSearch(item, queueSearch));
   }, [filter, queueSearch, submissions]);
-  const queuedPreviewItems = useMemo(
-    () =>
-      queued.filter(
-        (item) =>
-          (item.mediaCount ?? 0) > 0 && !item.mediaAssets?.length,
-      ),
-    [queued],
-  );
-  // The list DTO already includes the complete caption. The remaining detail
-  // fallback exists only because it does not yet expose a compact first-media
-  // preview (id, storageUrl, fileName, fileType, fileSizeBytes).
-  const previewDetailQueries = useQueries({
-    queries: queuedPreviewItems.map((item) => ({
-      queryKey: queryKeys.submissions.detail({
-        role: user.role,
-        userId: currentUserScope,
-        institutionId: item.institutionId || user.institutionId || null,
-        submissionId: item.id,
-      }),
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        getSubmission(item.id, signal).then((response) => ({
-          caption: response.data.caption ?? "",
-          mediaAssets: response.data.mediaAssets ?? [],
-        })),
-      enabled: isMySubmissionsPage,
-      staleTime: COMPOSER_REF_TTL_MS,
-      meta: authenticatedQueryMeta,
-    })),
-  });
-  const previewDetails = useMemo(() => {
-    const entries: Record<string, { caption: string; mediaAssets: SavedMediaAsset[] }> = {};
-    previewDetailQueries.forEach((query, index) => {
-      const id = queuedPreviewItems[index]?.id;
-      if (id && query.data) entries[id] = query.data;
-    });
-    return entries;
-  }, [previewDetailQueries, queuedPreviewItems]);
-
   // One pass over the list for every tab count.
   const counts = useMemo(() => {
     const acc: Record<QueueBucket, number> = {
@@ -2105,11 +2067,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               />
             ) : (
               queued.map((item) => {
-                const detail = previewDetails[item.id];
-                const mediaAssets =
-                  item.mediaAssets?.length ? item.mediaAssets : detail?.mediaAssets ?? [];
-                const thumbnail = mediaAssets[0];
-                const captionPreview = item.caption || detail?.caption || "";
+                const thumbnail = item.mediaAssets?.[0] ?? item.previewMediaAsset ?? undefined;
+                const captionPreview = item.caption || "";
                 return (
                   <article
                     className="sub-fb-post-card"
@@ -2161,7 +2120,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     <SubmissionCardMedia
                       thumbnail={thumbnail}
                       mediaCount={item.mediaCount}
-                      detailsLoaded={Boolean(previewDetails[item.id])}
+                      detailsLoaded={
+                        item.previewMediaAsset !== undefined || item.mediaAssets !== undefined
+                      }
                     />
 
                     {/* Reactions & Engagement Row */}
