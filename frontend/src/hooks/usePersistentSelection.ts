@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 /**
  * Reusable multi-select state that survives navigation and reloads within the
  * same browser tab by persisting selected IDs to sessionStorage. Pass a unique
- * storageKey per selection context (e.g. "dasigconnect:media-selection").
+ * principal-scoped storageKey per selection context.
  */
 export interface PersistentSelection {
   selected: Set<string>;
@@ -36,27 +36,30 @@ function writeSelection(key: string, ids: Set<string>) {
 }
 
 export function usePersistentSelection(storageKey: string): PersistentSelection {
-  const [selected, setSelected] = useState<Set<string>>(() => readSelection(storageKey));
+  const [selectionState, setSelectionState] = useState(() => ({
+    storageKey,
+    selected: readSelection(storageKey),
+  }));
+  const selected = selectionState.storageKey === storageKey
+    ? selectionState.selected
+    : readSelection(storageKey);
 
   const commit = useCallback(
     (next: Set<string>) => {
       writeSelection(storageKey, next);
-      setSelected(next);
+      setSelectionState({ storageKey, selected: next });
     },
     [storageKey],
   );
 
   const toggle = useCallback(
     (id: string) => {
-      setSelected((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        writeSelection(storageKey, next);
-        return next;
-      });
+      const next = new Set(selected);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      commit(next);
     },
-    [storageKey],
+    [commit, selected],
   );
 
   const clear = useCallback(() => commit(new Set()), [commit]);
