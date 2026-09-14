@@ -9,8 +9,22 @@ export interface NotificationDto {
   createdAt: string;
 }
 
-export function listNotifications(signal?: AbortSignal) {
-  return api.get<NotificationDto[]>("/notifications", { signal });
+export interface NotificationPageDto {
+  items: NotificationDto[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export function listNotificationHistory(
+  page: number,
+  pageSize: number,
+  signal?: AbortSignal,
+) {
+  return api.get<NotificationPageDto>("/notifications/history", {
+    params: { page, pageSize },
+    signal,
+  });
 }
 
 export function getUnreadCount(signal?: AbortSignal) {
