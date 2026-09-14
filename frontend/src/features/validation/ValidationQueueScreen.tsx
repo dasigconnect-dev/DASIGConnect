@@ -1220,6 +1220,13 @@ export default function ValidationQueueScreen({
                         </span>
                       )}
                     </div>
+                    <div className="val-qi-mobile-action">
+                      <span className="val-qi-mobile-btn">
+                        <i className="ti ti-refresh" />
+                        <span>Inspect &amp; Recover</span>
+                        <i className="ti ti-chevron-right" />
+                      </span>
+                    </div>
                   </button>
                 ))}
             </>
@@ -1295,6 +1302,13 @@ export default function ValidationQueueScreen({
 
                       <span className="val-media-count" title={`${item.mediaCount ?? 0} media files`}>
                         <i className="ti ti-photo"></i> {item.mediaCount ?? 0}
+                      </span>
+                    </div>
+                    <div className="val-qi-mobile-action">
+                      <span className="val-qi-mobile-btn">
+                        <i className="ti ti-lock" />
+                        <span>Start Review</span>
+                        <i className="ti ti-chevron-right" />
                       </span>
                     </div>
                   </button>

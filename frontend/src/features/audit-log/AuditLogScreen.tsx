@@ -288,7 +288,7 @@ export default function AuditLogScreen({ user }: Props) {
           <div className="audit-header-actions">
             <button
               type="button"
-              className="notif-btn notif-btn-ghost"
+              className="audit-refresh-btn"
               onClick={refreshAuditLog}
               disabled={loading || refreshing}
               title="Refresh audit log"
@@ -396,10 +396,10 @@ export default function AuditLogScreen({ user }: Props) {
             </div>
 
             {/* Right Search Box */}
-            <div className="im-search-wrap" style={{ margin: 0 }}>
-              <i className="ti ti-search im-search-icon" aria-hidden="true" />
+            <div className="audit-search-wrap">
+              <i className="ti ti-search audit-search-icon" aria-hidden="true" />
               <input
-                className="im-search-input"
+                className="audit-search-input"
                 type="search"
                 placeholder="Search actor or action..."
                 value={search}
@@ -412,13 +412,13 @@ export default function AuditLogScreen({ user }: Props) {
               {search && (
                 <button
                   type="button"
-                  className="im-search-clear"
+                  className="audit-search-clear"
                   onClick={() => {
                     setSearch("");
                     setPage(0);
                   }}
                   aria-label="Clear search"
-                  style={{ position: "absolute", right: 8, background: "none", border: "none", cursor: "pointer", color: "var(--d-muted)" }}
+                  title="Clear search"
                 >
                   <i className="ti ti-x" />
                 </button>

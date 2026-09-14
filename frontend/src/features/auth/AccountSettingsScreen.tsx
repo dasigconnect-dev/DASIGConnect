@@ -564,7 +564,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
           </div>
 
           {canManagePage && (
-            <div className="sidebar-nav-group" style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid var(--d-border)" }}>
+            <div className="sidebar-nav-group settings-nav-group-ops">
               <div className="sidebar-nav-label">Operations</div>
               <button
                 type="button"
