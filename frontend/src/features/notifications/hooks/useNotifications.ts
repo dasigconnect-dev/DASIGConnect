@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
 import {
   getUnreadCount,
-  listNotifications,
+  listNotificationHistory,
   markAllNotificationsRead as apiMarkAllRead,
   markNotificationRead as apiMarkRead,
   openNotificationStream,
@@ -314,6 +319,14 @@ function mapDto(dto: NotificationDto): Notification {
 // Keep navigation re-entry warm through TanStack Query instead of a module cache.
 const NOTIFICATIONS_STALE_TIME_MS = 60_000;
 const UNREAD_COUNT_STALE_TIME_MS = 30_000;
+const NOTIFICATIONS_PAGE_SIZE = 50;
+
+interface NotificationPage {
+  items: Notification[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
 
 function userScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
@@ -344,46 +357,83 @@ export function useNotifications(user: User) {
     [institutionId, role, scopedUserId],
   );
 
-  const notificationsQuery = useQuery({
+  const notificationsQuery = useInfiniteQuery({
     queryKey: listQueryKey,
-    queryFn: ({ signal }) => listNotifications(signal).then((res) => res.data.map(mapDto)),
+    queryFn: ({ signal, pageParam }) =>
+      listNotificationHistory(pageParam, NOTIFICATIONS_PAGE_SIZE, signal).then((res) => ({
+        ...res.data,
+        items: res.data.items.map(mapDto),
+      })),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      (lastPage.page + 1) * lastPage.pageSize < lastPage.totalCount
+        ? lastPage.page + 1
+        : undefined,
     staleTime: NOTIFICATIONS_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
 
-  const notifications = useMemo(
-    () => notificationsQuery.data ?? [],
-    [notificationsQuery.data],
-  );
-
-  const syncUnreadCountFromList = useCallback(
-    (items: Notification[]) => {
-      queryClient.setQueryData<number>(
-        countQueryKey,
-        items.filter((n) => n.unread).length,
-      );
-    },
-    [countQueryKey, queryClient],
-  );
+  const notifications = useMemo(() => {
+    const seen = new Set<string>();
+    return (notificationsQuery.data?.pages ?? []).flatMap((page) =>
+      page.items.filter((notification) => {
+        if (seen.has(notification.id)) return false;
+        seen.add(notification.id);
+        return true;
+      }),
+    );
+  }, [notificationsQuery.data]);
 
   const updateNotifications = useCallback(
     (updater: (current: Notification[]) => Notification[]) => {
-      queryClient.setQueryData<Notification[]>(listQueryKey, (current = []) => {
-        const next = updater(current);
-        syncUnreadCountFromList(next);
-        return next;
+      queryClient.setQueryData<InfiniteData<NotificationPage, number>>(listQueryKey, (current) => {
+        if (!current) return current;
+        const pages = current.pages.map((page) => ({
+          ...page,
+          items: updater(page.items),
+        }));
+        return { ...current, pages };
       });
     },
-    [listQueryKey, queryClient, syncUnreadCountFromList],
+    [listQueryKey, queryClient],
+  );
+
+  const prependNotification = useCallback(
+    (notification: Notification) => {
+      const current = queryClient.getQueryData<InfiniteData<NotificationPage, number>>(listQueryKey);
+      if (!current || current.pages.length === 0) return;
+      if (current.pages.some((page) => page.items.some((item) => item.id === notification.id))) {
+        return;
+      }
+      const [firstPage, ...remainingPages] = current.pages;
+      queryClient.setQueryData<InfiniteData<NotificationPage, number>>(listQueryKey, {
+        ...current,
+        pages: [
+          {
+            ...firstPage,
+            items: [notification, ...firstPage.items],
+            totalCount: firstPage.totalCount + 1,
+          },
+          ...remainingPages.map((page) => ({ ...page, totalCount: page.totalCount + 1 })),
+        ],
+      });
+      if (notification.unread) {
+        const unreadCount = queryClient.getQueryData<number>(countQueryKey);
+        if (unreadCount === undefined) {
+          void queryClient.invalidateQueries({ queryKey: countQueryKey, exact: true });
+        } else {
+          queryClient.setQueryData<number>(countQueryKey, unreadCount + 1);
+        }
+      }
+    },
+    [countQueryKey, listQueryKey, queryClient],
   );
 
   const snapshotNotificationCache = useCallback(() => {
-    const items = queryClient.getQueryData<Notification[]>(listQueryKey) ?? [];
+    const data = queryClient.getQueryData<InfiniteData<NotificationPage, number>>(listQueryKey);
     return {
-      items,
-      unreadCount:
-        queryClient.getQueryData<number>(countQueryKey) ??
-        items.filter((notification) => notification.unread).length,
+      data,
+      unreadCount: queryClient.getQueryData<number>(countQueryKey),
     };
   }, [countQueryKey, listQueryKey, queryClient]);
 
@@ -395,8 +445,11 @@ export function useNotifications(user: User) {
   }, [countQueryKey, listQueryKey, queryClient]);
 
   const restoreNotificationCache = useCallback(
-    (snapshot: { items: Notification[]; unreadCount: number }) => {
-      queryClient.setQueryData<Notification[]>(listQueryKey, snapshot.items);
+    (snapshot: {
+      data: InfiniteData<NotificationPage, number> | undefined;
+      unreadCount: number | undefined;
+    }) => {
+      queryClient.setQueryData<InfiniteData<NotificationPage, number>>(listQueryKey, snapshot.data);
       queryClient.setQueryData<number>(countQueryKey, snapshot.unreadCount);
     },
     [countQueryKey, listQueryKey, queryClient],
@@ -440,9 +493,7 @@ export function useNotifications(user: User) {
           attempts = 0;
           const mapped = mapDto(dto);
           // A fetch that raced the same event can already hold this id.
-          updateNotifications((prev) =>
-            prev.some((n) => n.id === mapped.id) ? prev : [mapped, ...prev],
-          );
+          prependNotification(mapped);
         },
         () => {
           if (stopped || connectionController.signal.aborted) return;
@@ -465,7 +516,7 @@ export function useNotifications(user: User) {
       if (retryTimer) window.clearTimeout(retryTimer);
       controller.abort();
     };
-  }, [reconcileNotificationCache, updateNotifications]);
+  }, [prependNotification, reconcileNotificationCache]);
 
   const counts = useMemo<NotificationCounts>(() => {
     const unread = notifications.filter((n) => n.unread).length;
@@ -483,22 +534,32 @@ export function useNotifications(user: User) {
   const markAllRead = useCallback(() => {
     const snapshot = snapshotNotificationCache();
     updateNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+    queryClient.setQueryData<number>(countQueryKey, 0);
     apiMarkAllRead().catch(() => {
       restoreNotificationCache(snapshot);
       void reconcileNotificationCache();
       toast.error("Could not mark all notifications as read.");
     });
-  }, [reconcileNotificationCache, restoreNotificationCache, snapshotNotificationCache, toast, updateNotifications]);
+  }, [countQueryKey, queryClient, reconcileNotificationCache, restoreNotificationCache, snapshotNotificationCache, toast, updateNotifications]);
 
   const markRead = useCallback((id: string) => {
     const snapshot = snapshotNotificationCache();
+    const wasUnread = notifications.some((notification) => notification.id === id && notification.unread);
     updateNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, unread: false } : n)));
+    if (wasUnread) {
+      const unreadCount = queryClient.getQueryData<number>(countQueryKey);
+      if (unreadCount === undefined) {
+        void queryClient.invalidateQueries({ queryKey: countQueryKey, exact: true });
+      } else {
+        queryClient.setQueryData<number>(countQueryKey, Math.max(0, unreadCount - 1));
+      }
+    }
     apiMarkRead(id).catch(() => {
       restoreNotificationCache(snapshot);
       void reconcileNotificationCache();
       toast.error("Could not mark the notification as read.");
     });
-  }, [reconcileNotificationCache, restoreNotificationCache, snapshotNotificationCache, toast, updateNotifications]);
+  }, [countQueryKey, notifications, queryClient, reconcileNotificationCache, restoreNotificationCache, snapshotNotificationCache, toast, updateNotifications]);
 
   const refreshNotifications = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["notifications"] });
@@ -506,8 +567,12 @@ export function useNotifications(user: User) {
 
   return {
     allNotifications: notifications,
+    hasNextPage: Boolean(notificationsQuery.hasNextPage),
+    loadingMore: notificationsQuery.isFetchingNextPage,
+    loadMoreFailed: notificationsQuery.isFetchNextPageError,
+    loadMore: notificationsQuery.fetchNextPage,
     loading: notificationsQuery.isLoading,
-    fetchError: notificationsQuery.error
+    fetchError: notificationsQuery.isError && !notificationsQuery.data
       ? "Could not load notifications. The backend may not be available."
       : null,
     sseStatus,
