@@ -80,6 +80,7 @@ export function useSubmissionLookups(user: User, enabled = true) {
   const queryClient = useQueryClient();
   const queryKey = queryKeys.submissions.lookups({
     role: user.role,
+    userId: userScope(user),
     institutionId: user.institutionId ?? null,
   });
 

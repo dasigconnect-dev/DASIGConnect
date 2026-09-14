@@ -9,11 +9,13 @@ import {
 } from "../../../api/mediaApi";
 import { authenticatedQueryMeta } from "../../../lib/queryClient";
 import { queryKeys } from "../../../lib/queryKeys";
+import type { User } from "../../../types/auth.types";
 import OptimizedImage, { canTransformImageType } from "../../../components/media/OptimizedImage";
 import { formatFileSize, formatUploadDate, formatResolution, formatFileTypeName, isVideoType } from "../utils";
 import { buildAlbumOptions } from "../albumTree";
 
 interface AssetDetailPanelProps {
+  user: User;
   asset: MediaAsset | null;
   open: boolean;
   selectionMode?: boolean;
@@ -60,6 +62,7 @@ const submissionStatusBadge: Record<string, string> = {
 };
 
 export default function AssetDetailPanel({
+  user,
   asset,
   open,
   selectionMode = false,
@@ -83,6 +86,7 @@ export default function AssetDetailPanel({
   onAddTag,
   onRemoveTag,
 }: AssetDetailPanelProps) {
+  const userScope = user.id ?? user.email.trim().toLowerCase();
   const newPostCount = selectionMode ? selectedAssets.length : asset ? 1 : 0;
   const [albumSelection, setAlbumSelection] = useState("");
   const [tab, setTab] = useState<"details" | "activity">("details");
@@ -90,7 +94,11 @@ export default function AssetDetailPanel({
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const historyQuery = useQuery<MediaAssetHistoryEntry[]>({
-    queryKey: queryKeys.mediaAssets.history({ assetId: asset?.id ?? "" }),
+    queryKey: queryKeys.mediaAssets.history({
+      role: user.role,
+      userId: userScope,
+      assetId: asset?.id ?? "",
+    }),
     queryFn: ({ signal }) => getMediaAssetHistory(asset!.id, signal).then((res) => res.data ?? []),
     enabled: Boolean(asset?.id && tab === "activity" && !selectionMode),
     staleTime: 60_000,

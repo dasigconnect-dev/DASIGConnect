@@ -291,15 +291,14 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     selected: checkedIds,
     toggle: toggleCheck,
     clear: clearSelection,
-  } = usePersistentSelection("dasigconnect:media-selection");
+  } = usePersistentSelection(`dasigconnect:media-selection:${encodeURIComponent(userScope)}`);
 
   // Always start with an empty selection when the page mounts.
   // IDs are already captured in the ?assetIds= URL before navigating away,
   // so there is no reason to restore a stale sessionStorage selection.
   useEffect(() => {
     clearSelection();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [clearSelection]);
 
   // Deep link: ?asset=<id> opens that asset's detail panel (e.g. from a
   // read-only submission's "View in library" link). Consume the param after.
@@ -1593,6 +1592,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
       {/* Detail Panel (portal) */}
       <AssetDetailPanel
+        user={user}
         asset={selectedAsset}
         open={panelOpen}
         selectionMode={selectionMode}
