@@ -32,6 +32,14 @@ export interface SavedMediaAsset {
   albumName?: string | null;
 }
 
+export interface SubmissionMediaPreview {
+  id: string;
+  storageUrl?: string | null;
+  fileName: string;
+  fileType: string;
+  fileSizeBytes: number;
+}
+
 export interface SubmissionSummary {
   id: string;
   institutionId: string;
@@ -48,6 +56,7 @@ export interface SubmissionSummary {
   createdAt?: string;
   updatedAt?: string;
   mediaCount?: number;
+  previewMediaAsset?: SubmissionMediaPreview | null;
   category?: string;
   templateId?: string | null;
   fastTrack?: boolean;
