@@ -184,6 +184,13 @@ export interface InstitutionResponse {
   protected?: boolean;
 }
 
+export interface InstitutionCountSummaryResponse {
+  institutionId: string;
+  contributors: number;
+  moderators: number;
+  pendingInvitations: number;
+}
+
 export function createInstitution(
   name: string,
   institutionCode: string,
@@ -198,6 +205,10 @@ export function createInstitution(
 
 export function listInstitutions(signal?: AbortSignal) {
   return api.get<InstitutionResponse[]>("/institutions", { signal });
+}
+
+export function listInstitutionCountSummaries(signal?: AbortSignal) {
+  return api.get<InstitutionCountSummaryResponse[]>("/institutions/summary-counts", { signal });
 }
 
 export function listPublicInstitutions(signal?: AbortSignal) {

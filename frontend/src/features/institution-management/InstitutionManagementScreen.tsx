@@ -28,6 +28,7 @@ import { SkeletonBlock } from '../user-management/components/LoadingPrimitives'
 import type { InviteResults, InviteRole } from '../user-management/types'
 import { useToast } from '../../context/ToastContext'
 import {
+  useInstitutionCountSummaryData,
   useInstitutionDetailData,
   useInstitutionRegistryData,
   useInvalidateInstitutionManagementData,
@@ -134,6 +135,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const [reassignError, setReassignError] = useState<string>('')
 
   const institutionRegistryQuery = useInstitutionRegistryData(user)
+  const institutionCountSummaryQuery = useInstitutionCountSummaryData(user)
   const institutions = institutionRegistryQuery.data ?? EMPTY_INSTITUTIONS
   const listLoading = institutionRegistryQuery.isLoading
   const listError = institutionRegistryQuery.error
@@ -142,6 +144,9 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
   const selectedInstitution = selectedInstitutionId
     ? institutions.find((institution) => institution.id === selectedInstitutionId) ?? null
     : null
+  const selectedInstitutionSummary = selectedInstitutionId
+    ? institutionCountSummaryQuery.data?.find((summary) => summary.institutionId === selectedInstitutionId)
+    : undefined
   const institutionDetailQuery = useInstitutionDetailData(user, selectedInstitution?.id ?? null)
   const institutionDetailData = institutionDetailQuery.data
   const managedUsers = institutionDetailData.managedUsers
@@ -230,6 +235,12 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
     ).length,
     [managedUsers],
   )
+  const displayedContributorCount = institutionDetailQuery.usersQuery.data
+    ? activeContributorsCount
+    : selectedInstitutionSummary?.contributors
+  const displayedPendingInvitationCount = institutionDetailQuery.pendingInvitationsQuery.data
+    ? pendingInvitations.length
+    : selectedInstitutionSummary?.pendingInvitations
 
   const trimmedAddName = addForm.name.trim()
   const normalizedAddDomain = normalizeDomain(addForm.domain)
@@ -1268,26 +1279,26 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
             <div className="im-detail-stats">
               <div className="im-detail-stat">
                 <span className="im-detail-stat-val">
-                  {institutionDetailQuery.usersQuery.isLoading ? (
+                  {displayedContributorCount !== undefined ? (
+                    displayedContributorCount
+                  ) : institutionDetailQuery.usersQuery.isLoading || institutionCountSummaryQuery.isLoading ? (
                     <SkeletonBlock className="um-skeleton-number" />
-                  ) : institutionDetailQuery.usersQuery.error && !institutionDetailQuery.usersQuery.data ? (
-                    <span title="Contributor count unavailable">—</span>
                   ) : (
-                    activeContributorsCount
+                    <span title="Contributor count unavailable">—</span>
                   )}
                 </span>
                 <span className="im-detail-stat-lbl">Contributors</span>
               </div>
               <div className="im-detail-stat">
                 <span
-                  className={`im-detail-stat-val${pendingInvitations.length > 0 ? ' is-warn' : ''}`}
+                  className={`im-detail-stat-val${(displayedPendingInvitationCount ?? 0) > 0 ? ' is-warn' : ''}`}
                 >
-                  {institutionDetailQuery.pendingInvitationsQuery.isLoading ? (
+                  {displayedPendingInvitationCount !== undefined ? (
+                    displayedPendingInvitationCount
+                  ) : institutionDetailQuery.pendingInvitationsQuery.isLoading || institutionCountSummaryQuery.isLoading ? (
                     <SkeletonBlock className="um-skeleton-number" />
-                  ) : institutionDetailQuery.pendingInvitationsQuery.error && !institutionDetailQuery.pendingInvitationsQuery.data ? (
-                    <span title="Pending invitation count unavailable">—</span>
                   ) : (
-                    pendingInvitations.length
+                    <span title="Pending invitation count unavailable">—</span>
                   )}
                 </span>
                 <span className="im-detail-stat-lbl">Pending Invites</span>

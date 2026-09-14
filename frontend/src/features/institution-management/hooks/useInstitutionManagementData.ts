@@ -1,6 +1,7 @@
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getInstitutionLogoUrl,
+  listInstitutionCountSummaries,
   listInstitutions,
   listPendingInvitations,
   listUsers,
@@ -31,6 +32,21 @@ const INSTITUTION_DETAIL_STALE_TIME_MS = 60_000;
 
 export function useInstitutionRegistryData(user: User) {
   return useQuery(institutionRegistryQueryOptions(user));
+}
+
+export function useInstitutionCountSummaryData(user: User) {
+  const userScope = user.id ?? user.email.trim().toLowerCase();
+
+  return useQuery({
+    queryKey: queryKeys.institutions.summaryCounts({
+      role: user.role,
+      userId: userScope,
+    }),
+    queryFn: ({ signal }) => listInstitutionCountSummaries(signal).then((response) => response.data),
+    enabled: user.role === "admin" || user.role === "moderator",
+    staleTime: INSTITUTION_REGISTRY_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
 }
 
 export function institutionRegistryQueryOptions(user: User) {
