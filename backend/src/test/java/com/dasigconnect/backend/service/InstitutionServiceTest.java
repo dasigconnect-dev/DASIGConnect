@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.service;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,10 +26,12 @@ import org.springframework.mock.web.MockMultipartFile;
 
 import com.dasigconnect.backend.exception.InstitutionNotFoundException;
 import com.dasigconnect.backend.model.dto.institution.CreateInstitutionRequest;
+import com.dasigconnect.backend.model.dto.institution.InstitutionCountSummaryDto;
 import com.dasigconnect.backend.model.dto.institution.InstitutionDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
 import com.dasigconnect.backend.model.entity.UserRole;
+import com.dasigconnect.backend.model.entity.UserStatus;
 import com.dasigconnect.backend.repository.InstitutionRepository;
 import com.dasigconnect.backend.repository.InvitationTokenRepository;
 import com.dasigconnect.backend.repository.MediaAlbumRepository;
@@ -38,6 +41,7 @@ import com.dasigconnect.backend.repository.SlotReservationRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.repository.WatermarkConfigurationRepository;
+import com.dasigconnect.backend.security.JwtUserDetails;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
@@ -224,6 +228,52 @@ class InstitutionServiceTest {
 
             assertThatThrownBy(() -> institutionService.getInstitution(UUID.randomUUID()))
                     .isInstanceOf(InstitutionNotFoundException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("listSummaryCounts()")
+    class ListSummaryCountsTests {
+
+        @Test
+        @DisplayName("should aggregate active users and pending invitations in bounded queries")
+        void shouldAggregateInstitutionCounts() {
+            UUID secondInstitutionId = UUID.randomUUID();
+            when(institutionRepository.findAllIds()).thenReturn(List.of(institutionId, secondInstitutionId));
+            when(userRepository.countByInstitutionAndRole(
+                    java.util.EnumSet.of(UserRole.contributor, UserRole.moderator),
+                    UserStatus.active)).thenReturn(List.<Object[]>of(
+                            new Object[]{institutionId, UserRole.contributor, 3L},
+                            new Object[]{institutionId, UserRole.moderator, 1L},
+                            new Object[]{secondInstitutionId, UserRole.moderator, 2L}));
+            when(invitationTokenRepository.countPendingByInstitution(any()))
+                    .thenReturn(List.<Object[]>of(new Object[]{secondInstitutionId, 4L}));
+
+            List<InstitutionCountSummaryDto> result = institutionService.listSummaryCounts(
+                    new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", null));
+
+            assertThat(result).containsExactly(
+                    new InstitutionCountSummaryDto(institutionId, 3L, 1L, 0L),
+                    new InstitutionCountSummaryDto(secondInstitutionId, 0L, 2L, 4L));
+            verify(userRepository, times(1)).countByInstitutionAndRole(any(), eq(UserStatus.active));
+            verify(invitationTokenRepository, times(1)).countPendingByInstitution(any());
+            verify(institutionRepository, times(1)).findAllIds();
+        }
+
+        @Test
+        @DisplayName("should reject principals outside administrator and moderator roles")
+        void shouldRejectUnauthorizedPrincipal() {
+            JwtUserDetails contributor = new JwtUserDetails(
+                    UUID.randomUUID(), "contributor@example.com", "contributor", institutionId);
+
+            assertThatThrownBy(() -> institutionService.listSummaryCounts(contributor))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .extracting(ex -> ((ResponseStatusException) ex).getStatusCode().value())
+                    .isEqualTo(403);
+
+            verify(institutionRepository, never()).findAllIds();
+            verify(userRepository, never()).countByInstitutionAndRole(any(), any());
+            verify(invitationTokenRepository, never()).countPendingByInstitution(any());
         }
     }
 

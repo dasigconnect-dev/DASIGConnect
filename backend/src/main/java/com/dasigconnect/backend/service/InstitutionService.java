@@ -2,6 +2,8 @@ package com.dasigconnect.backend.service;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -18,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.exception.InstitutionNotFoundException;
 import com.dasigconnect.backend.model.dto.institution.CreateInstitutionRequest;
+import com.dasigconnect.backend.model.dto.institution.InstitutionCountSummaryDto;
 import com.dasigconnect.backend.model.dto.institution.InstitutionDto;
 import com.dasigconnect.backend.model.dto.institution.UpdateInstitutionRequest;
 import com.dasigconnect.backend.model.entity.Institution;
@@ -33,6 +36,7 @@ import com.dasigconnect.backend.repository.SlotReservationRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.repository.UserRepository;
 import com.dasigconnect.backend.repository.WatermarkConfigurationRepository;
+import com.dasigconnect.backend.security.JwtUserDetails;
 
 /**
  * Manages the institution lifecycle.
@@ -133,6 +137,52 @@ public class InstitutionService {
         return institutionRepository.findAll().stream()
                 .map(InstitutionDto::from)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<InstitutionCountSummaryDto> listSummaryCounts(JwtUserDetails requester) {
+        if (requester == null
+                || (!"admin".equalsIgnoreCase(requester.role())
+                        && !"moderator".equalsIgnoreCase(requester.role()))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only admins and moderators can access institution counts.");
+        }
+
+        Map<UUID, RoleCounts> userCounts = new HashMap<>();
+        userRepository.countByInstitutionAndRole(
+                EnumSet.of(UserRole.contributor, UserRole.moderator),
+                UserStatus.active).forEach(row -> {
+                    UUID institutionId = (UUID) row[0];
+                    UserRole role = (UserRole) row[1];
+                    long count = (Long) row[2];
+                    RoleCounts counts = userCounts.computeIfAbsent(institutionId, ignored -> new RoleCounts());
+                    if (role == UserRole.contributor) {
+                        counts.contributors = count;
+                    } else if (role == UserRole.moderator) {
+                        counts.moderators = count;
+                    }
+                });
+
+        Map<UUID, Long> pendingInvitationCounts = new HashMap<>();
+        invitationTokenRepository.countPendingByInstitution(Instant.now())
+                .forEach(row -> pendingInvitationCounts.put((UUID) row[0], (Long) row[1]));
+
+        return institutionRepository.findAllIds().stream()
+                .map(institutionId -> {
+                    RoleCounts counts = userCounts.getOrDefault(institutionId, RoleCounts.EMPTY);
+                    return new InstitutionCountSummaryDto(
+                            institutionId,
+                            counts.contributors,
+                            counts.moderators,
+                            pendingInvitationCounts.getOrDefault(institutionId, 0L));
+                })
+                .toList();
+    }
+
+    private static final class RoleCounts {
+        private static final RoleCounts EMPTY = new RoleCounts();
+        private long contributors;
+        private long moderators;
     }
 
     @Transactional(readOnly = true)

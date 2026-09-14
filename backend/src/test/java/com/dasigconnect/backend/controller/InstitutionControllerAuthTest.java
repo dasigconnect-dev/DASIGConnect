@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.dasigconnect.backend.config.SecurityConfig;
+import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.InstitutionService;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.TenantScopeService;
@@ -44,6 +45,23 @@ class InstitutionControllerAuthTest {
     void moderator_canListInstitutions() throws Exception {
         when(institutionService.listInstitutions()).thenReturn(List.of());
         mockMvc.perform(get("/api/v1/institutions")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void moderator_canListInstitutionSummaryCounts() throws Exception {
+        when(institutionService.listSummaryCounts(
+                org.mockito.ArgumentMatchers.nullable(JwtUserDetails.class))).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/institutions/summary-counts"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
+    void contributor_cannotListInstitutionSummaryCounts() throws Exception {
+        mockMvc.perform(get("/api/v1/institutions/summary-counts"))
+                .andExpect(status().isForbidden());
     }
 
     @Test

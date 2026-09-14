@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.InstitutionStatus;
@@ -29,6 +30,9 @@ public interface InstitutionRepository extends JpaRepository<Institution, UUID> 
     boolean existsByEmailDomainAndIdNot(String emailDomain, UUID id);
 
     List<Institution> findAllByStatus(InstitutionStatus status);
+
+    @Query("select institution.id from Institution institution")
+    List<UUID> findAllIds();
 
     /** The shared default institution ("DASIG Central Visayas") — visible to every institution. */
     Optional<Institution> findFirstByIsProtectedTrueOrderByCreatedAtAsc();
