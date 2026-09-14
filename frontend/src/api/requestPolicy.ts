@@ -1,4 +1,5 @@
 import type { AxiosRequestConfig } from "axios";
+import { beginExternalTransfer, finishApiRequest } from "../lib/performanceTelemetry";
 
 export const REQUEST_DEADLINES_MS = {
   session: 12_000,
@@ -52,27 +53,32 @@ export async function fetchWithDeadline(
   init: RequestInit,
   deadlineMs = REQUEST_DEADLINES_MS.transfer,
 ): Promise<Response> {
+  const requestTimer = beginExternalTransfer(init.method);
   const controller = new AbortController();
   const parentSignal = init.signal;
   let deadlineReached = false;
   const abortFromParent = () => controller.abort();
   if (parentSignal?.aborted) controller.abort();
   parentSignal?.addEventListener("abort", abortFromParent, { once: true });
-  const timer = window.setTimeout(() => {
+  const deadlineTimer = window.setTimeout(() => {
     deadlineReached = true;
     controller.abort();
   }, deadlineMs);
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    finishApiRequest(requestTimer, response.ok ? "success" : "error", response.status);
+    return response;
   } catch (error) {
     if (deadlineReached) {
+      finishApiRequest(requestTimer, "timeout");
       const timeoutError = new Error("Request timed out.") as Error & { code: string };
       timeoutError.code = "ETIMEDOUT";
       throw timeoutError;
     }
+    finishApiRequest(requestTimer, controller.signal.aborted ? "cancel" : "error");
     throw error;
   } finally {
-    window.clearTimeout(timer);
+    window.clearTimeout(deadlineTimer);
     parentSignal?.removeEventListener("abort", abortFromParent);
   }
 }
