@@ -19,6 +19,8 @@ export const queryKeys = {
   },
   institutions: {
     all: (params: { role: string; userId?: string | null }) => scopedKey("institutions", params),
+    summaryCounts: (params: { role: string; userId?: string | null }) =>
+      scopedKey("institutions", { ...params, view: "summary-counts" }),
     detail: (params: { role: string; userId?: string | null; institutionId: string }) =>
       scopedKey("institutions", { ...params, view: "detail" }),
     pendingInvitations: (params: { role: string; userId?: string | null; institutionId: string }) =>
