@@ -35,6 +35,15 @@ public interface SubmissionMediaAssetRepository extends JpaRepository<Submission
 
     long countBySubmissionId(UUID submissionId);
 
+    @Query("""
+        SELECT sma FROM SubmissionMediaAsset sma
+        JOIN FETCH sma.mediaAsset
+        WHERE sma.submission.id IN :submissionIds
+        ORDER BY sma.submission.id ASC, sma.displayOrder ASC, sma.createdAt ASC
+        """)
+    List<SubmissionMediaAsset> findListPreviewMediaBySubmissionIds(
+            @Param("submissionIds") Collection<UUID> submissionIds);
+
     void deleteBySubmissionId(UUID submissionId);
 
     List<SubmissionMediaAsset> findByMediaAssetIdOrderByCreatedAtDesc(UUID mediaAssetId);

@@ -4,6 +4,7 @@ import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.exception.GuardRailViolationException;
 import com.dasigconnect.backend.model.dto.guardrail.GuardRailResult;
 import com.dasigconnect.backend.model.dto.guardrail.GuardRailViolation;
+import com.dasigconnect.backend.model.dto.submission.SubmissionMediaPreviewDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.entity.Institution;
@@ -76,7 +77,10 @@ class SubmissionControllerTest {
         mockMvc.perform(get("/api/v1/submissions"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].eventTitle").value("Research Expo"))
-                .andExpect(jsonPath("$.data[0].mediaCount").value(2));
+                .andExpect(jsonPath("$.data[0].mediaCount").value(2))
+                .andExpect(jsonPath("$.data[0].previewMediaAsset.storageUrl")
+                        .value("https://storage.example/preview.jpg"))
+                .andExpect(jsonPath("$.data[0].previewMediaAsset.fileType").value("jpeg"));
     }
 
     @Test
@@ -261,7 +265,15 @@ class SubmissionControllerTest {
     }
 
     private static SubmissionSummaryDto summaryDto(UUID id) {
-        return SubmissionSummaryDto.from(submission(id, SubmissionStatus.draft), 2L);
+        return SubmissionSummaryDto.from(
+                submission(id, SubmissionStatus.draft),
+                2L,
+                new SubmissionMediaPreviewDto(
+                        UUID.randomUUID(),
+                        "https://storage.example/preview.jpg",
+                        "preview.jpg",
+                        "jpeg",
+                        1024L));
     }
 
     private static Submission submission(UUID id, SubmissionStatus status) {
