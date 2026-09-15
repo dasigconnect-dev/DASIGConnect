@@ -150,6 +150,8 @@ public class TokenManagementService {
             token.setEncryptedToken(tokenEncryptionService.encryptToken(pageAccessToken));
             token.setActive(true);
             token.setLastValidatedAt(Instant.now());
+            token.setValidationFailedAt(null);
+            token.setValidationFailureReason(null);
             pageTokenRepository.save(token);
 
             auditLogService.recordSystemAction("TOKEN_REAUTHORIZED", token.getId(),
@@ -198,6 +200,8 @@ public class TokenManagementService {
         token.setActive(true);
         token.setLastValidatedAt(Instant.now());
         token.setExpiresAt(null);
+        token.setValidationFailedAt(null);
+        token.setValidationFailureReason(null);
         pageTokenRepository.save(token);
 
         auditLogService.recordSystemAction("TOKEN_MANUALLY_SET", token.getId(),
@@ -273,6 +277,8 @@ public class TokenManagementService {
         token.setActive(true);
         token.setLastValidatedAt(Instant.now());
         token.setExpiresAt(null);
+        token.setValidationFailedAt(null);
+        token.setValidationFailureReason(null);
         pageTokenRepository.save(token);
 
         auditLogService.recordSystemAction("FACEBOOK_PAGE_CONNECTED", token.getId(), Map.of(

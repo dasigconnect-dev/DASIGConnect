@@ -1137,7 +1137,9 @@ function TokenTable({
                     <strong>Page ····{token.pageId.slice(-4) || "----"}</strong>
                   </div>
                 </td>
-                <td><StatusBadge status={tokenStatusToHealth(token.tokenStatus)} /></td>
+                <td title={token.validationFailureReason ?? undefined}>
+                  <StatusBadge status={tokenStatusToHealth(token.tokenStatus)} />
+                </td>
                 <td><span className="sys-date-text">{formatDate(token.expiresAt)}</span></td>
                 <td><span className="sys-date-text">{formatDate(token.lastValidatedAt)}</span></td>
                 <td style={{ textAlign: "right" }}>
