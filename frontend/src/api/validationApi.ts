@@ -40,6 +40,11 @@ export interface EditSubmissionPayload {
   scheduledAt?: string;
   /** Admin only: reason for bypassing a hard guard rail on the new slot (audited). */
   overrideReason?: string;
+  /**
+   * Admin-only publishing-mode override. Omit unless an Admin explicitly toggled
+   * it — the backend rejects this field from a Moderator with a 403.
+   */
+  fastTrack?: boolean;
 }
 
 export interface RejectionPayload {

@@ -177,6 +177,15 @@ public class ValidationService {
         assertReviewableStatus(submission);
         reviewLockService.assertCallerHoldsLock(submissionId, caller);
 
+        // Publishing mode (Live/Fast-Track vs Scheduled) is fixed during review by
+        // default — a Moderator editing other fields must never silently flip it.
+        // Only an Administrator may deliberately override it (frontend surfaces
+        // this as a locked toggle that only unlocks for Admins).
+        if (dto.getFastTrack() != null && !"admin".equals(caller.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only an Administrator can change the publishing mode during review.");
+        }
+
         Map<String, Object> before = snapshotEditableFields(submission);
         submission = submissionService.applySubmissionEdits(submission, dto, caller);
         submissionService.assertContentComplete(submission);

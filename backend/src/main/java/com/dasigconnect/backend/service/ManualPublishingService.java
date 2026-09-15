@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.event.PostPublishedManualEvent;
+import com.dasigconnect.backend.event.SubmissionFastTrackRetryEvent;
 import com.dasigconnect.backend.event.SubmissionRescheduledEvent;
 import com.dasigconnect.backend.exception.GuardRailViolationException;
 import com.dasigconnect.backend.exception.SubmissionNotFoundException;
@@ -143,6 +144,14 @@ public class ManualPublishingService {
         log.info("Admin {} cancelled manual publish for submission {}.", admin.userId(), submissionId);
     }
 
+    /**
+     * Retries a PUBLISH_FAILED submission exactly as it was — no mode change.
+     * For a Standard submission this just re-enters PublishingSchedulerJob's
+     * window (its scheduledAt is unchanged). Fast-Track submissions never have
+     * a scheduledAt, so that cron would never pick them up on its own —
+     * SubmissionFastTrackRetryEvent triggers the same immediate-publish path
+     * Fast-Track approval normally uses instead.
+     */
     public void retry(UUID submissionId, JwtUserDetails admin) {
         Submission s = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new SubmissionNotFoundException(submissionId));
@@ -155,6 +164,54 @@ public class ManualPublishingService {
         s.setManualPublishStartedAt(null);
         submissionRepository.save(s);
         log.info("Admin {} queued retry for submission {}.", admin.userId(), submissionId);
+
+        if (s.isFastTrack()) {
+            eventPublisher.publishEvent(new SubmissionFastTrackRetryEvent(s));
+        }
+    }
+
+    /**
+     * Admin-only: overrides a PUBLISH_FAILED submission that was Scheduled into
+     * Live Event and retries it immediately — the reverse of the mode change
+     * {@link #retryWithNewSchedule} makes. A Moderator can only retry a failed
+     * publish in its original mode ({@link #retry}) or fall back to Manual
+     * Publish; changing the mode either direction is Admin-only.
+     */
+    public void retryAsLiveOverride(UUID submissionId, JwtUserDetails admin) {
+        if (!"admin".equalsIgnoreCase(admin.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only an Administrator can change a Scheduled submission to Live Event.");
+        }
+        Submission s = submissionRepository.findById(submissionId)
+                .orElseThrow(() -> new SubmissionNotFoundException(submissionId));
+        if (s.getStatus() != SubmissionStatus.publish_failed) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only PUBLISH_FAILED submissions can be retried.");
+        }
+        if (s.isFastTrack()) {
+            // Already Live — nothing to override; the caller should use retry() instead.
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This submission is already a Live Event.");
+        }
+
+        Instant originalSlot = s.getScheduledAt();
+        s.setFastTrack(true);
+        s.setScheduledAt(null);
+        slotReservationService.release(submissionId);
+        s.setStatus(SubmissionStatus.scheduled);
+        s.setRetryCount(0);
+        s.setManualPublishStartedAt(null);
+        submissionRepository.save(s);
+
+        auditLogService.record(
+                entityManager.getReference(User.class, admin.userId()),
+                "PUBLISH_FAILED_RETRY_MODE_OVERRIDE_TO_LIVE",
+                null, null,
+                submissionId,
+                Map.of("originalSlot", originalSlot != null ? originalSlot.toString() : ""));
+
+        log.info("Admin {} overrode submission {} to Live Event on retry.", admin.userId(), submissionId);
+        eventPublisher.publishEvent(new SubmissionFastTrackRetryEvent(s));
     }
 
     /**
@@ -176,6 +233,18 @@ public class ManualPublishingService {
         if (s.getStatus() != SubmissionStatus.publish_failed && !missedReview) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only PUBLISH_FAILED or MISSED_REVIEW submissions can be retried with a new schedule.");
+        }
+
+        // Giving a submission a specific future time is inherently incompatible
+        // with "Live/immediate" — this always converts it to Scheduled. That's a
+        // deliberate publishing-mode override, so only an Admin may do it here too
+        // (same rule as the Review Queue inline-edit override) — a Moderator can
+        // still freely reschedule an already-Scheduled submission with no mode
+        // change happening.
+        boolean wasFastTrack = s.isFastTrack();
+        if (wasFastTrack && !"admin".equalsIgnoreCase(admin.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only an Administrator can change a Live Event submission to a scheduled time.");
         }
 
         Instant originalSlot = s.getScheduledAt();
@@ -214,6 +283,12 @@ public class ManualPublishingService {
             s.setStatus(SubmissionStatus.scheduled);
         }
         s.setScheduledAt(newSlot);
+        // A schedule and Live/Fast-Track are mutually exclusive (see
+        // SubmissionService.applySubmissionEdits) — giving this a time means it
+        // is no longer Live, regardless of what it was before.
+        if (wasFastTrack) {
+            s.setFastTrack(false);
+        }
         s.setRetryCount(0);
         s.setManualPublishStartedAt(null);
         submissionRepository.save(s);
@@ -225,7 +300,8 @@ public class ManualPublishingService {
                 submissionId,
                 Map.of(
                     "originalSlot", originalSlot != null ? originalSlot.toString() : "",
-                    "newSlot", newSlot.toString()
+                    "newSlot", newSlot.toString(),
+                    "publishingModeChanged", String.valueOf(wasFastTrack)
                 )
         );
 

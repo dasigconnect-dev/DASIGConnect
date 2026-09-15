@@ -5,6 +5,8 @@ import {
   completeManualPublish,
   getResolutionDetail,
   getResolutionFailures,
+  retryPublication,
+  retryPublicationAsLive,
   retryPublicationWithNewSchedule,
   startManualPublish,
   type FailedPublication,
@@ -29,6 +31,10 @@ export interface UseResolutionFailuresResult {
     scheduledAt: string,
     overrideReason?: string,
   ) => Promise<void>;
+  /** Retries exactly as it was — no schedule, no mode change. */
+  handleRetry: (item: FailedPublication) => Promise<void>;
+  /** Admin-only: overrides a Scheduled failed publish to Live Event and retries immediately. */
+  handleRetryAsLive: (item: FailedPublication) => Promise<void>;
   handleStartManual: (item: FailedPublication) => Promise<void>;
   handleCancelManual: (item: FailedPublication) => Promise<void>;
   handleCompleteManual: (
@@ -143,6 +149,48 @@ export function useResolutionFailures(
     }
   }
 
+  async function handleRetry(item: FailedPublication) {
+    setBusy(item.submissionId);
+    try {
+      await retryPublication(item.submissionId);
+      toast.success(`"${item.eventTitle}" re-queued for publishing.`);
+      await invalidateResolutionOutcome();
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: unknown } })?.response?.data as
+        | { message?: string; error?: string | { message?: string } }
+        | undefined;
+      const message =
+        (typeof data?.error === "object" ? data?.error?.message : data?.error) ||
+        data?.message ||
+        "Could not retry this submission.";
+      toast.error(message);
+      throw err;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRetryAsLive(item: FailedPublication) {
+    setBusy(item.submissionId);
+    try {
+      await retryPublicationAsLive(item.submissionId);
+      toast.success(`"${item.eventTitle}" switched to Live Event and re-queued.`);
+      await invalidateResolutionOutcome();
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: unknown } })?.response?.data as
+        | { message?: string; error?: string | { message?: string } }
+        | undefined;
+      const message =
+        (typeof data?.error === "object" ? data?.error?.message : data?.error) ||
+        data?.message ||
+        "Could not switch this submission to Live Event.";
+      toast.error(message);
+      throw err;
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleStartManual(item: FailedPublication) {
     setBusy(item.submissionId);
     try {
@@ -201,6 +249,8 @@ export function useResolutionFailures(
     detailLoading: detailQuery.isLoading,
     refresh,
     handleRetryWithNewSchedule,
+    handleRetry,
+    handleRetryAsLive,
     handleStartManual,
     handleCancelManual,
     handleCompleteManual,
