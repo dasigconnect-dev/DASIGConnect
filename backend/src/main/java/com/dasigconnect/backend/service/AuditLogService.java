@@ -349,7 +349,7 @@ public class AuditLogService {
                 actions.addAll(List.of("SUBMISSION_RESCHEDULED", "OVERRIDE_SLOT_SUGGESTED", "TIMEOUT_DEFERRED"));
             }
             case PUBLISHING -> {
-                actions.addAll(List.of("MANUAL_PUBLISH_STARTED", "MANUAL_PUBLISH_COMPLETE", "MANUAL_PUBLISH_CANCELLED", "MANUAL_PUBLISH_ABANDONED", "MANUAL_PUBLISH_RETRY_OVERRIDE", "MANUAL_PUBLISH_RETRY_NEW_SCHEDULE", "MISSED_REVIEW_RETRY_NEW_SCHEDULE", "SUBMISSION_PUBLISHED", "PUBLISH_FAILED", "TOKEN_REAUTHORIZED", "TOKEN_MANUALLY_SET", "FACEBOOK_PAGE_CONNECTED"));
+                actions.addAll(List.of("MANUAL_PUBLISH_STARTED", "MANUAL_PUBLISH_COMPLETE", "MANUAL_PUBLISH_CANCELLED", "MANUAL_PUBLISH_ABANDONED", "MANUAL_PUBLISH_RETRY_OVERRIDE", "MANUAL_PUBLISH_RETRY_NEW_SCHEDULE", "MISSED_REVIEW_RETRY_NEW_SCHEDULE", "PUBLISH_FAILED_RETRY_MODE_OVERRIDE_TO_LIVE", "SUBMISSION_PUBLISHED", "PUBLISH_FAILED", "TOKEN_REAUTHORIZED", "TOKEN_MANUALLY_SET", "FACEBOOK_PAGE_CONNECTED"));
             }
             case ACCOUNT_MANAGEMENT -> {
                 actions.addAll(List.of("USER_STATUS_UPDATED", "USER_AVATAR_UPDATED", "USER_ROLE_CHANGED", "USER_REMOVED", "USER_DELETED", "USER_ANONYMIZED",
@@ -547,6 +547,8 @@ public class AuditLogService {
                 "Failed post re-queued on a new slot";
             case "MISSED_REVIEW_RETRY_NEW_SCHEDULE" ->
                 "Missed-review post sent back for approval";
+            case "PUBLISH_FAILED_RETRY_MODE_OVERRIDE_TO_LIVE" ->
+                "Failed post overridden to Live Event on retry";
             // ── Accounts & access ──
             case "LOGIN_SUCCESS" ->
                 "Signed in";

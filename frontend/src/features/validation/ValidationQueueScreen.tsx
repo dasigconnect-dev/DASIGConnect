@@ -118,6 +118,13 @@ interface EditFormState {
   removedAssetIds: string[];
   /** A10: optional moderator note when attaching Library media not originally submitted. */
   mediaAddNote: string;
+  /**
+   * Publishing mode snapshot. Fixed during review by default — only an Admin
+   * unlocking the override toggle may change this away from what the
+   * submission already was (see the Publishing Mode control in the Schedule
+   * tab). Never sent back to the server unless it actually changed.
+   */
+  fastTrack: boolean;
 }
 
 function emptyEditForm(): EditFormState {
@@ -131,6 +138,7 @@ function emptyEditForm(): EditFormState {
     media: [],
     removedAssetIds: [],
     mediaAddNote: "",
+    fastTrack: false,
   };
 }
 
@@ -160,6 +168,7 @@ function toEditForm(summary: SubmissionSummary): EditFormState {
     media: (summary.mediaAssets ?? []).map(savedAssetToMediaItem),
     removedAssetIds: [],
     mediaAddNote: "",
+    fastTrack: Boolean(summary.fastTrack),
   };
 }
 
@@ -330,6 +339,8 @@ export default function ValidationQueueScreen({
     activeDetail: manualPublishDetail,
     detailLoading: manualPublishDetailLoading,
     handleRetryWithNewSchedule: handleFailureRetryWithNewSchedule,
+    handleRetry: handleFailureRetry,
+    handleRetryAsLive: handleFailureRetryAsLive,
     handleStartManual,
     handleCancelManual,
     handleCompleteManual,
@@ -798,6 +809,20 @@ export default function ValidationQueueScreen({
     setGuardRails(null);
   }
 
+  // Publishing mode is fixed during review by default (see ValidationService.edit's
+  // admin-only server-side guard); this Admin-only override mirrors Content
+  // Submission's Schedule/Live Event toggle. Switching to Live drops any
+  // in-progress schedule; switching to Scheduled just clears the flag so the
+  // date/time fields below become editable again.
+  function updateEditFastTrack(value: boolean) {
+    setEditForm((f) => ({
+      ...f,
+      fastTrack: value,
+      scheduledDate: value ? "" : f.scheduledDate,
+      scheduledTime: value ? "" : f.scheduledTime,
+    }));
+  }
+
   const editScheduledAtIso = useMemo(() => {
     if (!editForm.scheduledDate || !editForm.scheduledTime) return "";
     const d = new Date(`${editForm.scheduledDate}T${editForm.scheduledTime}`);
@@ -807,7 +832,8 @@ export default function ValidationQueueScreen({
   const originalScheduledIso = selected?.scheduledAt
     ? new Date(selected.scheduledAt).toISOString()
     : "";
-  const scheduleChanged = editScheduledAtIso !== originalScheduledIso;
+  const scheduleChanged = !editForm.fastTrack && editScheduledAtIso !== originalScheduledIso;
+  const fastTrackChanged = editForm.fastTrack !== Boolean(selected?.fastTrack);
 
   useEffect(() => {
     let active = true;
@@ -1020,6 +1046,10 @@ export default function ValidationQueueScreen({
           isAdmin && hardBlocked && overrideReason.trim() ? overrideReason.trim() : undefined,
         // Tags live only in the caption's #hashtags, matching Submit Content.
         tags: [],
+        // Publishing mode is fixed unless an Admin used the override toggle —
+        // omit the field entirely otherwise so the backend never even considers
+        // changing it (also enforced server-side, admin-only).
+        fastTrack: isAdmin && fastTrackChanged ? editForm.fastTrack : undefined,
         scheduledAt: scheduleChanged && editScheduledAtIso ? editScheduledAtIso : undefined,
       });
 
@@ -1548,7 +1578,15 @@ export default function ValidationQueueScreen({
                       className="val-btn val-btn-secondary"
                       type="button"
                       disabled={failureBusy === selectedFailure.submissionId}
-                      onClick={() => setRetryItem(selectedFailure)}
+                      onClick={() =>
+                        // A Moderator retrying an already-Live submission has no
+                        // mode decision to make — retry it as-is, no modal. Any
+                        // other case (Scheduled needs a new time; an Admin may
+                        // also want to change the mode) opens the picker.
+                        !isAdmin && selectedFailure.fastTrack
+                          ? void handleFailureRetry(selectedFailure)
+                          : setRetryItem(selectedFailure)
+                      }
                     >
                       <i className="ti ti-refresh" />
                       <span>Retry</span>
@@ -1810,6 +1848,54 @@ export default function ValidationQueueScreen({
 
                       {editTab === "schedule" && (
                         <div className="val-edit-body">
+                          <div className="val-edit-mode-row">
+                            <div className="val-edit-mode-label">
+                              Publishing Mode
+                              <i
+                                className="ti ti-info-circle"
+                                title={
+                                  isAdmin
+                                    ? "Fixed during review by default. Use this toggle to deliberately override it."
+                                    : "Fixed during review — only an Administrator can change the publishing mode."
+                                }
+                              />
+                            </div>
+                            {isAdmin ? (
+                              <div className="sub-mode-toggle" role="group" aria-label="Publishing mode">
+                                <button
+                                  type="button"
+                                  className={!editForm.fastTrack ? "active" : ""}
+                                  onClick={() => updateEditFastTrack(false)}
+                                  aria-pressed={!editForm.fastTrack}
+                                >
+                                  <i className="ti ti-calendar" />
+                                  <span>Schedule</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className={editForm.fastTrack ? "active" : ""}
+                                  onClick={() => updateEditFastTrack(true)}
+                                  aria-pressed={editForm.fastTrack}
+                                >
+                                  <i className="ti ti-bolt" />
+                                  <span>Live Event</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className={`val-details-mode ${editForm.fastTrack ? "is-live" : "is-scheduled"}`}>
+                                <i className={`ti ${editForm.fastTrack ? "ti-bolt" : "ti-calendar-clock"}`} />
+                                {editForm.fastTrack ? "Live Event" : "Scheduled"}
+                              </span>
+                            )}
+                          </div>
+
+                          {editForm.fastTrack ? (
+                            <div className="val-edit-mode-note">
+                              <i className="ti ti-info-circle" /> This is a Live Event submission — it publishes
+                              immediately on approval and has no scheduled slot.
+                            </div>
+                          ) : (
+                            <>
                           <Suspense fallback={null}>
                             <EngagementRecommendationsPanel
                               loading={engagementLoading}
@@ -1875,6 +1961,8 @@ export default function ValidationQueueScreen({
                                 placeholder="Explain why this slot is necessary…"
                               />
                             </label>
+                          )}
+                            </>
                           )}
                         </div>
                       )}
@@ -2202,6 +2290,20 @@ export default function ValidationQueueScreen({
         onConfirmWithNewSchedule={(scheduledAt, overrideReason) => {
           if (retryItem) {
             void handleFailureRetryWithNewSchedule(retryItem, scheduledAt, overrideReason)
+              .then(() => setRetryItem(null))
+              .catch(() => undefined);
+          }
+        }}
+        onConfirmKeepLive={() => {
+          if (retryItem) {
+            void handleFailureRetry(retryItem)
+              .then(() => setRetryItem(null))
+              .catch(() => undefined);
+          }
+        }}
+        onConfirmForceLive={() => {
+          if (retryItem) {
+            void handleFailureRetryAsLive(retryItem)
               .then(() => setRetryItem(null))
               .catch(() => undefined);
           }

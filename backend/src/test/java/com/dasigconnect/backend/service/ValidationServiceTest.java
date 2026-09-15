@@ -87,6 +87,10 @@ class ValidationServiceTest {
         return new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
     }
 
+    private JwtUserDetails admin() {
+        return new JwtUserDetails(adminId, "admin@dasigconnect.local", "admin", null);
+    }
+
     private void stubInReview(Submission submission) {
         User adminUser = new User();
         adminUser.setId(adminId);
@@ -116,6 +120,53 @@ class ValidationServiceTest {
         validationService.edit(submission.getId(), dto, moderator());
 
         assertThat(savedLog().getEditSeverity()).isEqualTo("quiet");
+    }
+
+    @Test
+    void edit_fastTrackChangeAsModerator_throwsForbidden() {
+        Submission submission = inReviewSubmission();
+        stubInReview(submission);
+        SubmissionUpdateDto dto = new SubmissionUpdateDto();
+        dto.setFastTrack(false);
+
+        assertThatThrownBy(() -> validationService.edit(submission.getId(), dto, moderator()))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .satisfies(e -> assertThat(
+                        ((org.springframework.web.server.ResponseStatusException) e).getStatusCode())
+                        .isEqualTo(org.springframework.http.HttpStatus.FORBIDDEN));
+
+        verify(submissionService, never()).applySubmissionEdits(any(), any(), any());
+    }
+
+    @Test
+    void edit_fastTrackChangeAsAdmin_isAllowed() {
+        Submission submission = inReviewSubmission();
+        stubInReview(submission);
+        when(submissionService.applySubmissionEdits(any(), any(), any())).thenAnswer(i -> i.getArgument(0));
+        SubmissionUpdateDto dto = new SubmissionUpdateDto();
+        dto.setFastTrack(false);
+
+        validationService.edit(submission.getId(), dto, admin());
+
+        verify(submissionService).applySubmissionEdits(any(), any(), any());
+    }
+
+    @Test
+    void edit_withoutFastTrackField_moderatorIsUnaffectedByTheGuard() {
+        Submission submission = inReviewSubmission();
+        submission.setEventTitle("Original");
+        stubInReview(submission);
+        when(submissionService.applySubmissionEdits(any(), any(), any())).thenAnswer(i -> {
+            Submission s = i.getArgument(0);
+            s.setEventTitle("Fixed");
+            return s;
+        });
+        SubmissionUpdateDto dto = new SubmissionUpdateDto();
+        dto.setEventTitle("Fixed");
+
+        validationService.edit(submission.getId(), dto, moderator());
+
+        verify(submissionService).applySubmissionEdits(any(), any(), any());
     }
 
     @Test

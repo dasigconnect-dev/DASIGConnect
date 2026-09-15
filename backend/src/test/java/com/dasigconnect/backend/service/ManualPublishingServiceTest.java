@@ -18,6 +18,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.dasigconnect.backend.event.PostPublishedManualEvent;
+import com.dasigconnect.backend.event.SubmissionFastTrackRetryEvent;
 import com.dasigconnect.backend.event.SubmissionRescheduledEvent;
 import com.dasigconnect.backend.exception.GuardRailViolationException;
 import com.dasigconnect.backend.exception.SubmissionNotFoundException;
@@ -59,12 +60,14 @@ class ManualPublishingServiceTest {
     private UUID submissionId;
     private UUID adminId;
     private JwtUserDetails admin;
+    private JwtUserDetails moderator;
 
     @BeforeEach
     void setUp() {
         submissionId = UUID.randomUUID();
         adminId = UUID.randomUUID();
         admin = new JwtUserDetails(adminId, "admin@dasig.gov.ph", "admin", null);
+        moderator = new JwtUserDetails(UUID.randomUUID(), "moderator@dasig.gov.ph", "moderator", null);
 
         // @PersistenceContext is not injected by @InjectMocks — inject manually
         ReflectionTestUtils.setField(service, "entityManager", entityManager);
@@ -238,6 +241,31 @@ class ManualPublishingServiceTest {
                         .isEqualTo(HttpStatus.CONFLICT));
     }
 
+    @Test
+    void retry_fastTrack_firesImmediatePublishEvent_becauseTheCronNeverPicksItUp() {
+        Submission s = submission(submissionId, SubmissionStatus.publish_failed);
+        s.setFastTrack(true);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.retry(submissionId, moderator);
+
+        assertThat(s.getStatus()).isEqualTo(SubmissionStatus.scheduled);
+        assertThat(s.isFastTrack()).isTrue();
+        verify(eventPublisher).publishEvent(any(SubmissionFastTrackRetryEvent.class));
+    }
+
+    @Test
+    void retry_notFastTrack_doesNotFireImmediatePublishEvent() {
+        Submission s = submission(submissionId, SubmissionStatus.publish_failed);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.retry(submissionId, moderator);
+
+        verify(eventPublisher, never()).publishEvent(any(SubmissionFastTrackRetryEvent.class));
+    }
+
     // ── retryWithNewSchedule() ─────────────────────────────────────────────────────
 
     @Test
@@ -327,6 +355,108 @@ class ManualPublishingServiceTest {
                 .isInstanceOf(GuardRailViolationException.class);
 
         verify(submissionRepository, never()).save(any());
+    }
+
+    @Test
+    void retryWithNewSchedule_fastTrackAsAdmin_clearsFastTrackAndSucceeds() {
+        Submission s = submission(submissionId, SubmissionStatus.publish_failed);
+        s.setFastTrack(true);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult());
+
+        RescheduleRequestDto dto = new RescheduleRequestDto();
+        Instant newSlot = Instant.now().plusSeconds(7200);
+        dto.setScheduledAt(newSlot);
+
+        service.retryWithNewSchedule(submissionId, dto, admin);
+
+        assertThat(s.isFastTrack()).isFalse();
+        assertThat(s.getScheduledAt()).isEqualTo(newSlot);
+    }
+
+    @Test
+    void retryWithNewSchedule_fastTrackAsModerator_throwsForbidden() {
+        Submission s = submission(submissionId, SubmissionStatus.publish_failed);
+        s.setFastTrack(true);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+
+        RescheduleRequestDto dto = new RescheduleRequestDto();
+        dto.setScheduledAt(Instant.now().plusSeconds(7200));
+
+        assertThatThrownBy(() -> service.retryWithNewSchedule(submissionId, dto, moderator))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                        .isEqualTo(HttpStatus.FORBIDDEN));
+        verify(submissionRepository, never()).save(any());
+    }
+
+    @Test
+    void retryWithNewSchedule_notFastTrackAsModerator_isAllowed() {
+        // No mode change happening here, so a Moderator can still freely reschedule.
+        Submission s = submission(submissionId, SubmissionStatus.publish_failed);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult());
+
+        RescheduleRequestDto dto = new RescheduleRequestDto();
+        Instant newSlot = Instant.now().plusSeconds(7200);
+        dto.setScheduledAt(newSlot);
+
+        service.retryWithNewSchedule(submissionId, dto, moderator);
+
+        assertThat(s.getScheduledAt()).isEqualTo(newSlot);
+    }
+
+    // ── retryAsLiveOverride() ────────────────────────────────────────────────────
+
+    @Test
+    void retryAsLiveOverride_asAdmin_convertsToLiveAndFiresEvent() {
+        Submission s = submission(submissionId, SubmissionStatus.publish_failed);
+        s.setScheduledAt(Instant.now().plusSeconds(3600));
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.retryAsLiveOverride(submissionId, admin);
+
+        assertThat(s.isFastTrack()).isTrue();
+        assertThat(s.getScheduledAt()).isNull();
+        assertThat(s.getStatus()).isEqualTo(SubmissionStatus.scheduled);
+        verify(slotReservationService).release(submissionId);
+        verify(auditLogService).record(any(), eq("PUBLISH_FAILED_RETRY_MODE_OVERRIDE_TO_LIVE"), any(), any(), eq(submissionId), any());
+        verify(eventPublisher).publishEvent(any(SubmissionFastTrackRetryEvent.class));
+    }
+
+    @Test
+    void retryAsLiveOverride_asModerator_throwsForbidden() {
+        assertThatThrownBy(() -> service.retryAsLiveOverride(submissionId, moderator))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                        .isEqualTo(HttpStatus.FORBIDDEN));
+        verify(submissionRepository, never()).save(any());
+    }
+
+    @Test
+    void retryAsLiveOverride_alreadyFastTrack_throwsConflict() {
+        Submission s = submission(submissionId, SubmissionStatus.publish_failed);
+        s.setFastTrack(true);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+
+        assertThatThrownBy(() -> service.retryAsLiveOverride(submissionId, admin))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                        .isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    @Test
+    void retryAsLiveOverride_nonPublishFailed_throwsConflict() {
+        Submission s = submission(submissionId, SubmissionStatus.scheduled);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+
+        assertThatThrownBy(() -> service.retryAsLiveOverride(submissionId, admin))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                        .isEqualTo(HttpStatus.CONFLICT));
     }
 
     // ── clearAbandoned() ─────────────────────────────────────────────────────────

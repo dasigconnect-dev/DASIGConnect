@@ -108,6 +108,15 @@ public class ResolutionController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Admin-only: overrides a Scheduled failed publish to Live Event and retries immediately. */
+    @PostMapping("/{id}/retry-as-live")
+    public ResponseEntity<Void> retryAsLive(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails admin) {
+        manualPublishingService.retryAsLiveOverride(id, admin);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{id}/manual-publish/start")
     public ResponseEntity<Void> startManualPublish(
             @PathVariable UUID id,
