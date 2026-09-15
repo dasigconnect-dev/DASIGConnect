@@ -2630,6 +2630,113 @@
     will-change: transform, opacity;
     z-index: 2;
   }
+
+  /* 2. Mobile Review Detail Panel */
+  .val-review-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--val-bg);
+    transition: transform 0.32s cubic-bezier(0.25, 1, 0.5, 1),
+                opacity 0.28s ease,
+                visibility 0.32s ease;
+    will-change: transform, opacity;
+    z-index: 2;
+  }
+  .val-scroll {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 18px 16px 120px;
+  }
+
+  /* When on queue list view */
+  .val-page.val-mobile-view--queue .val-queue-panel {
+    transform: translateX(0);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .val-page.val-mobile-view--queue .val-review-panel {
+    transform: translateX(100%);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* When on review detail view */
+  .val-page.val-mobile-view--review .val-queue-panel {
+    transform: translateX(-25%);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .val-page.val-mobile-view--review .val-review-panel {
+    transform: translateX(0);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  /* Mobile Top Navigation Bar */
+  .val-mobile-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--val-surface);
+    border-bottom: 1px solid var(--val-border);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+
+  .val-mobile-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--val-blue);
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+  .val-mobile-back-btn:hover,
+  .val-mobile-back-btn:active {
+    background: transparent;
+    opacity: 0.75;
+    transform: translateX(-2px);
+  }
+  .val-mobile-back-btn:focus,
+  .val-mobile-back-btn:focus-visible {
+    outline: none;
+  }
+  .val-mobile-back-btn i {
+    font-size: 17px;
+  }
+
+  .val-mobile-queue-badge {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--val-border);
+    background: var(--val-surface-2);
+    color: var(--val-text-2);
+  }
+
   .val-scroll {
     flex: 1 1 auto;
     min-height: 0;
