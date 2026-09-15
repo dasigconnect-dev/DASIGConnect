@@ -48,6 +48,13 @@ import AlbumCombobox from "../../components/ui/AlbumCombobox";
 import { RevisionFeedbackModal } from "./components/RevisionFeedbackModal";
 import { RevisionFeedbackBanner } from "./components/RevisionFeedbackBanner";
 import { parseRevisionRemarks, REVISION_SUPPORTED_FIELDS } from "./utils/revisionComments";
+import SpotlightTour from "../onboarding/components/SpotlightTour";
+import { useScreenTour } from "../onboarding/hooks/useScreenTour";
+import {
+  submissionListTourSteps,
+  submissionComposerTourSteps,
+  saveDraftTourSteps,
+} from "../onboarding/tours/submissionTour";
 import "../../styles/dasig-loader.css";
 import "../../styles/submission.css";
 
@@ -204,6 +211,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     loading: lookupsLoading,
   } = useSubmissionLookups(user, isComposerRoute);
   const toast = useToast();
+
+  const {
+    startTour: startSubmissionTour,
+    tourProps: submissionTourProps,
+  } = useScreenTour({
+    screenId: "submissions-list",
+    steps: submissionListTourSteps,
+    autoStartDelayMs: 700,
+    canStart: isMySubmissionsPage && !loading,
+  });
   const detailsSectionRef = useRef<HTMLElement | null>(null);
   const mediaSectionRef = useRef<HTMLElement | null>(null);
   const scheduleSectionRef = useRef<HTMLElement | null>(null);
@@ -449,6 +466,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const isReadOnlySubmission = !isEditableSubmission;
   const canUseAiCaption = !isReadOnlySubmission;
   const hasMedia = form.files.length > 0 || form.savedAssets.length > 0;
+
+  const {
+    startTour: startComposerTour,
+    tourProps: composerTourProps,
+  } = useScreenTour({
+    screenId: "submission-composer",
+    steps: submissionComposerTourSteps,
+    autoStartDelayMs: 800,
+    canStart: isComposerRoute && !loading && !lookupsLoading && !hydratingId && !isReadOnlySubmission,
+  });
   const isDirty = useMemo(
     () =>
       !isReadOnlySubmission &&
@@ -459,6 +486,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const shouldPromptBeforeLeave = isDirty;
   const busy =
     saveState === "saving" || submitting || withdrawing || deleting || reorderingMedia;
+
+  const {
+    tourProps: saveDraftTourProps,
+  } = useScreenTour({
+    screenId: "save-draft-prompt",
+    steps: saveDraftTourSteps,
+    autoStartDelayMs: 400,
+    canStart: isComposerRoute && isDirty && !busy && !isReadOnlySubmission && !composerTourProps.isOpen,
+  });
   const shouldLoadEngagementRecommendations =
     activeStep === "schedule" &&
     !form.fastTrack &&
@@ -1959,6 +1995,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               <button
                 className="sub-btn-ghost"
                 type="button"
+                onClick={() => startSubmissionTour(true)}
+                title="Show interactive feature guide"
+                aria-label="Show feature guide"
+              >
+                <i className="ti ti-help-circle" style={{ fontSize: 14 }} />
+                <span>Guide</span>
+              </button>
+              <button
+                className="sub-btn-ghost"
+                type="button"
                 onClick={() => void refreshQueue()}
                 disabled={refreshingQueue || loading || refreshing}
                 title="Refresh submissions list"
@@ -2165,6 +2211,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
           </section>
         </main>
+        <SpotlightTour {...submissionTourProps} />
       </div>
     );
   }
@@ -2234,6 +2281,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   : "Unsaved draft"}
             </div>
           )}
+          <button
+            type="button"
+            className="sub-btn-ghost"
+            style={{ padding: "4px 10px", fontSize: "12px", height: "30px", display: "inline-flex", alignItems: "center", gap: "5px" }}
+            onClick={() => startComposerTour(true)}
+            title="How to use the composer"
+            aria-label="How to use the composer"
+          >
+            <i className="ti ti-help-circle" style={{ fontSize: 14 }} />
+            <span>Guide</span>
+          </button>
           <div className="sub-nav-chip">{formatRole(user.role)}</div>
           <div className="sub-nav-avatar">{user.initials}</div>
         </div>
@@ -2405,6 +2463,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               )}
               {isDirty && (
                 <button
+                  id="btn-save-draft"
                   className="sub-btn-ghost save"
                   type="button"
                   onClick={() => void handleSave()}
@@ -2685,6 +2744,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   Add
                 </button>
               </div>
+              <div className="sub-finput-hint">
+                Type a tag (without &apos;#&apos;) and press Enter or click Add to append it to your caption. Click a tag below to remove it.
+              </div>
               <div className="sub-tag-row">
                 {captionHashtags.length > 0 ? (
                   captionHashtags.map((hashtag) => (
@@ -2810,6 +2872,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 >
                   <i className="ti ti-plus" aria-hidden /> Add
                 </button>
+              </div>
+              <div className="sub-finput-hint">
+                Add relevant keywords to help categorize and search for this media content later.
               </div>
               <div className="sub-tag-row">
                 {effectiveMediaTags(form).length > 0 ? (
@@ -3317,6 +3382,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           setRevisionModalOpen(false);
         }}
       />
+      <SpotlightTour {...composerTourProps} />
+      <SpotlightTour {...saveDraftTourProps} />
     </div>
   );
 }

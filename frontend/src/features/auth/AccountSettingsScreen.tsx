@@ -31,6 +31,12 @@ import { queryKeys } from "../../lib/queryKeys";
 import { firstPasswordError, getPasswordRules } from "../../lib/passwordPolicy";
 import { watermarkConfigurationQueryOptions } from "../../hooks/useWatermarkConfiguration";
 import { currentProfileQueryOptions } from "../../hooks/useCurrentProfile";
+import {
+  getTourPreferences,
+  toggleToursEnabled,
+  resetAllTours,
+  subscribeTourPreferences,
+} from "../onboarding/tourStorage";
 
 interface Props {
   user: User;
@@ -136,6 +142,27 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [linkCode, setLinkCode] = useState<MessengerLinkCode | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [messengerExpanded, setMessengerExpanded] = useState(false);
+
+  // Onboarding / Feature Guides State
+  const [toursEnabled, setToursEnabled] = useState(() => getTourPreferences().enabled);
+
+  useEffect(() => {
+    return subscribeTourPreferences((prefs) => {
+      setToursEnabled(prefs.enabled);
+    });
+  }, []);
+
+  function handleToggleTours(enabled: boolean) {
+    toggleToursEnabled(enabled);
+    setToursEnabled(enabled);
+    toast.success(enabled ? "Interactive feature guides enabled." : "Interactive feature guides disabled.");
+  }
+
+  function handleResetTours() {
+    resetAllTours();
+    setToursEnabled(true);
+    toast.success("All screen guides have been reset.");
+  }
 
   const [saving, setSaving] = useState<"account" | "password" | "watermark" | "messenger" | "guardrails" | null>(null);
   const pageInstitutionId = null;
@@ -811,6 +838,35 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                         )}
                       </>
                     )}
+                  </div>
+                </div>
+
+                <div className="settings-field" style={{ marginTop: "24px" }}>
+                  <span className="settings-label">Interface & Guidance</span>
+                  <div className="settings-toggle-list">
+                    <Toggle
+                      icon="ti ti-sparkles"
+                      title="Interactive feature guides"
+                      description="Show spotlight walkthroughs and tips when visiting screens for the first time."
+                      checked={toursEnabled}
+                      onChange={handleToggleTours}
+                    />
+                    <div className="settings-toggle-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                      <span className="settings-toggle-icon"><i className="ti ti-rotate-clockwise-2" /></span>
+                      <span className="settings-toggle-copy">
+                        <strong>Reset all screen guides</strong>
+                        <span>Re-enable feature walkthroughs across all screens so they appear again as you navigate.</span>
+                      </span>
+                      <button
+                        type="button"
+                        className="sub-btn-ghost"
+                        style={{ padding: "6px 14px", fontSize: "12px", height: "auto", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                        onClick={handleResetTours}
+                      >
+                        <i className="ti ti-rotate" />
+                        <span>Reset Guides</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
