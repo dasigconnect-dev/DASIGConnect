@@ -1576,6 +1576,8 @@
   gap: 14px;
 }
 .val-edit-label-row {
+  position: relative;
+  z-index: 3;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1979,9 +1981,11 @@
 }
 
 .val-edit-field {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow: visible;
 }
 
 .val-edit-field.full {
@@ -2018,7 +2022,21 @@
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
-.val-edit-field textarea { resize: vertical; }
+.val-edit-field textarea {
+  position: relative;
+  z-index: 1;
+  resize: vertical;
+}
+
+.val-edit-caption-tools {
+  position: relative;
+  z-index: 4;
+}
+
+.val-edit-caption-tools .fancy-text-panel {
+  left: 0;
+  right: auto;
+}
 
 .val-edit-hashtags {
   display: flex;

@@ -228,7 +228,7 @@ export default function FancyTextTool({
   }
 
   return (
-    <div className="fancy-text-tool">
+    <div className={`fancy-text-tool${open ? " is-open" : ""}`}>
       <button
         type="button"
         className="fancy-text-trigger"
