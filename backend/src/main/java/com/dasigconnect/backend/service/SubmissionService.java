@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.service;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,6 +38,7 @@ import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlResponse;
 import com.dasigconnect.backend.model.dto.submission.SlotEvaluateRequestDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionCreateDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionMediaPreviewDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
@@ -608,8 +610,27 @@ public class SubmissionService {
     public List<SubmissionSummaryDto> list(JwtUserDetails user) {
         List<Submission> submissions = submissionRepository.findByContributorIdOrderByCreatedAtDesc(user.userId());
 
+        if (submissions.isEmpty()) {
+            return List.of();
+        }
+
+        Map<UUID, Long> mediaCounts = new HashMap<>();
+        Map<UUID, SubmissionMediaPreviewDto> previews = new HashMap<>();
+        List<UUID> submissionIds = submissions.stream().map(Submission::getId).toList();
+        for (SubmissionMediaAsset link
+                : submissionMediaAssetRepository.findListPreviewMediaBySubmissionIds(submissionIds)) {
+            UUID submissionId = link.getSubmission().getId();
+            mediaCounts.merge(submissionId, 1L, Long::sum);
+            previews.putIfAbsent(
+                    submissionId,
+                    SubmissionMediaPreviewDto.from(link.getMediaAsset()));
+        }
+
         return submissions.stream()
-                .map(s -> SubmissionSummaryDto.from(s, submissionMediaAssetRepository.countBySubmissionId(s.getId())))
+                .map(s -> SubmissionSummaryDto.from(
+                        s,
+                        mediaCounts.getOrDefault(s.getId(), 0L),
+                        previews.get(s.getId())))
                 .toList();
     }
 

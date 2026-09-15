@@ -47,7 +47,7 @@ function userScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
 }
 
-export function useValidationQueue(user: User, history = false) {
+export function useValidationQueue(user: User, history = false, enabled = true) {
   const queryClient = useQueryClient();
   const queryKey = queryKeys.validation.queue({
     role: user.role,
@@ -63,6 +63,7 @@ export function useValidationQueue(user: User, history = false) {
         Array.isArray(response.data) ? response.data : [],
       ),
     staleTime: VALIDATION_QUEUE_STALE_TIME_MS,
+    enabled,
     meta: authenticatedQueryMeta,
   });
 

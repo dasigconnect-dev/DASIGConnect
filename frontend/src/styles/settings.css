@@ -51,7 +51,7 @@
 @media (max-width: 960px) {
   .settings-layout {
     grid-template-columns: 1fr;
-    gap: 20px;
+    gap: 16px;
   }
 }
 
@@ -63,21 +63,17 @@
   gap: 4px;
 }
 
-@media (max-width: 960px) {
-  .settings-nav-sidebar {
-    position: static;
-    flex-direction: row;
-    overflow-x: auto;
-    gap: 8px;
-    padding-bottom: 8px;
-  }
-}
-
 .settings-nav-sidebar .sidebar-nav-group {
   display: flex;
   flex-direction: column;
   gap: 4px;
   width: 100%;
+}
+
+.settings-nav-group-ops {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--d-border);
 }
 
 .settings-nav-sidebar .sidebar-nav-label {
@@ -118,7 +114,59 @@
 .settings-nav-sidebar .sidebar-link.active {
   background: #eef3ff;
   color: var(--d-blue, #1877f2);
+  border-color: #bfdbfe;
   font-weight: 650;
+}
+
+@media (max-width: 960px) {
+  .settings-nav-sidebar {
+    position: static;
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 8px;
+    padding-bottom: 6px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .settings-nav-sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .settings-nav-sidebar .sidebar-nav-group {
+    display: contents !important;
+  }
+
+  .settings-nav-sidebar .settings-nav-group-ops {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    border-top: none !important;
+  }
+
+  .settings-nav-sidebar .sidebar-nav-label {
+    display: none !important;
+  }
+
+  .settings-nav-sidebar .sidebar-link {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+    height: 36px !important;
+    padding: 0 14px !important;
+    border-radius: 999px !important;
+    border: 1px solid var(--d-border) !important;
+    background: var(--d-surface) !important;
+    font-size: 12.5px !important;
+  }
+
+  .settings-nav-sidebar .sidebar-link.active {
+    background: #eff6ff !important;
+    color: var(--d-blue, #1877f2) !important;
+    border-color: #bfdbfe !important;
+    font-weight: 700 !important;
+  }
 }
 
 .settings-nav-sidebar .sidebar-link i {
@@ -273,7 +321,8 @@
   margin-top: 2px;
 }
 
-.settings-field label,
+.settings-field > label,
+.settings-field > div > label,
 .settings-label,
 .settings-scope-copy label {
   color: #334155;
@@ -281,6 +330,13 @@
   font-weight: 650;
   letter-spacing: 0.065em;
   text-transform: uppercase;
+}
+
+.settings-toggle-row,
+.settings-toggle-copy strong,
+.settings-toggle-copy span {
+  text-transform: none !important;
+  letter-spacing: normal !important;
 }
 
 .settings-input,
@@ -531,7 +587,8 @@
   background: #fbfcff;
 }
 
-.settings-save-button {
+.settings-save-button,
+.settings-launch-studio-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -551,22 +608,26 @@
   box-sizing: border-box;
 }
 
-.settings-save-button:hover:not(:disabled) {
+.settings-save-button:hover:not(:disabled),
+.settings-launch-studio-btn:hover {
   background: #1460cc;
   box-shadow: 0 4px 14px rgba(24, 119, 242, 0.35);
   transform: translateY(-0.5px);
 }
 
-.settings-save-button:active:not(:disabled) {
+.settings-save-button:active:not(:disabled),
+.settings-launch-studio-btn:active {
   transform: scale(0.98);
 }
 
-.settings-save-button:focus-visible {
+.settings-save-button:focus-visible,
+.settings-launch-studio-btn:focus-visible {
   outline: 3px solid rgba(24, 119, 242, 0.22);
   outline-offset: 2px;
 }
 
-.settings-save-button:disabled {
+.settings-save-button:disabled,
+.settings-launch-studio-btn:disabled {
   background: #cbd5e1;
   color: #94a3b8;
   box-shadow: none;
@@ -702,43 +763,6 @@
 
 .settings-summary-stat-badge.is-inactive {
   color: #64748b;
-}
-
-.settings-launch-studio-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  height: 38px;
-  padding: 0 16px;
-  background: var(--d-blue, #1877f2);
-  border: 1px solid var(--d-blue, #1877f2);
-  border-radius: 8px;
-  color: #ffffff;
-  font-family: var(--ff-body);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.16s ease;
-  box-shadow: 0 1px 3px rgba(24, 119, 242, 0.2);
-  margin-top: auto;
-}
-
-.settings-launch-studio-btn i {
-  font-size: 16px;
-  color: #ffffff;
-}
-
-.settings-launch-studio-btn:hover {
-  background: #166fe5;
-  border-color: #166fe5;
-  box-shadow: 0 3px 8px rgba(24, 119, 242, 0.25);
-  transform: translateY(-1px);
-}
-
-.settings-launch-studio-btn:active {
-  transform: translateY(1px);
 }
 
 /* Dedicated Watermark Studio Card */
@@ -1120,10 +1144,68 @@
   }
 }
 
+@media (max-width: 768px) {
+  .settings-page .dash-greeting {
+    font-size: 22px;
+  }
+
+  .settings-page-subtitle {
+    font-size: 13px;
+  }
+
+  .settings-card-heading h2 {
+    font-size: 15.5px;
+  }
+
+  .settings-card-body {
+    padding: 16px 14px;
+  }
+
+  .settings-card-header {
+    padding: 14px 14px 12px;
+  }
+
+  .settings-studio-summary-box {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+  }
+
+  .settings-card-footer {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .settings-launch-studio-btn,
+  .settings-save-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .settings-messenger-code-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .settings-messenger-copy-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .settings-messenger-code-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
 @media (max-width: 560px) {
   .settings-page-header {
     align-items: flex-start;
     flex-direction: column;
+    gap: 10px;
   }
 
   .settings-card-header {
@@ -1136,12 +1218,12 @@
 
   .settings-card-body,
   .settings-card-header {
-    padding-left: 16px;
-    padding-right: 16px;
+    padding-left: 14px;
+    padding-right: 14px;
   }
 
   .settings-card-footer {
-    padding: 12px 16px;
+    padding: 12px 14px;
   }
 
   .settings-save-button {

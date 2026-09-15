@@ -44,9 +44,9 @@ interface ActivityItem {
 
 export default function DashboardScreen({ user }: DashboardScreenProps) {
   const navigate = useNavigate();
-  const dashboardQuery = useDashboardData(user);
-  const institutions = dashboardQuery.data?.institutions ?? [];
-  const dashboardStats = dashboardQuery.data?.stats ?? emptyDashboardStats;
+  const dashboardData = useDashboardData(user);
+  const institutions = dashboardData.institutions;
+  const dashboardStats = dashboardData.stats ?? emptyDashboardStats;
 
 
   const actionRoutes: Record<string, string> = {
@@ -72,10 +72,11 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
   // feed. Moderators and admins see the network review stream (queue + history).
   const isNetworkView = user?.role === "moderator" || user?.role === "admin";
   const activitySource = isNetworkView
-    ? dashboardStats.reviewRecent
-    : dashboardStats.submissions;
+    ? dashboardStats.reviewRecent ?? []
+    : dashboardStats.submissions ?? [];
   const activityRows = activityForRole(user, activitySource, institutions);
-  const activityLoading = dashboardQuery.isLoading;
+  const activityLoading = dashboardData.activity.loading;
+  const activityError = dashboardData.activity.error;
 
   return (
     <div id="screen-dashboard" style={{ background: "var(--d-bg)" }}>
@@ -97,7 +98,13 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
 
 
         <div className="stat-grid" id="stat-grid">
-          {statsForRole(user, dashboardStats, institutions.length).map(
+          {statsForRole(
+            user,
+            dashboardStats,
+            dashboardData.resources.institutions.loading || dashboardData.resources.institutions.error
+              ? null
+              : institutions.length,
+          ).map(
             (stat) => (
               <div className="stat-card" key={stat.label}>
                 <div className="stat-icon" style={{ color: stat.color }}>
@@ -142,7 +149,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
           <div className="section-title" style={{ margin: 0 }}>
             <i className="ti ti-history"></i> Recent Activity
           </div>
-          {user?.role === "contributor" && dashboardStats.submissions.length > 0 && (
+          {user?.role === "contributor" && (dashboardStats.submissions?.length ?? 0) > 0 && (
             <button
               type="button"
               className="section-link-btn"
@@ -194,6 +201,17 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
                     </td>
                   </tr>
                 ))
+              ) : activityError ? (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: "center", padding: "36px 20px" }}>
+                    <div style={{ color: "var(--d-muted)", fontSize: 13, marginBottom: 10 }}>
+                      Unable to load recent activity.
+                    </div>
+                    <button type="button" className="btn-ghost" onClick={() => void dashboardData.activity.retry()}>
+                      Retry
+                    </button>
+                  </td>
+                </tr>
               ) : activityRows.length === 0 ? (
                 <tr>
                   <td
@@ -314,7 +332,7 @@ function notice(user: User | null, stats: DashboardStats) {
     const waiting = stats.reviewQueuePending;
     const rate = stats.publishingSuccessRate;
     const parts: string[] = [];
-    if (waiting > 0) {
+    if (waiting !== null && waiting > 0) {
       parts.push(
         `<strong>${waiting} submission${waiting === 1 ? "" : "s"}</strong> ${waiting === 1 ? "is" : "are"} waiting in the review queue`,
       );
@@ -324,6 +342,8 @@ function notice(user: User | null, stats: DashboardStats) {
     }
     const tail = parts.length
       ? ` Right now, ${parts.join(" and ")}.`
+      : waiting === null || stats.publishedLast30d === null
+        ? " Current dashboard metrics are temporarily unavailable."
       : " Everything across the network is on track.";
     return {
       icon: "ti ti-shield-check",
@@ -332,7 +352,9 @@ function notice(user: User | null, stats: DashboardStats) {
   }
   if (user.role === "moderator") {
     const pending = stats.reviewQueuePending;
-    const pendingText = pending > 0
+    const pendingText = pending === null
+      ? `Review queue metrics are temporarily unavailable.`
+      : pending > 0
       ? `You have <strong>${pending} submission${pending === 1 ? "" : "s"} awaiting review</strong> from contributors across the network.`
       : `The review queue is clear — no submissions are waiting for review.`;
     return {
@@ -341,6 +363,12 @@ function notice(user: User | null, stats: DashboardStats) {
     };
   }
   const instName = getInstitutionName(user);
+  if (stats.submissions === null) {
+    return {
+      icon: "ti ti-photo-up",
+      html: `<strong>Contributor workspace.</strong> Submission activity is temporarily unavailable.`,
+    };
+  }
   const needsRevision = stats.submissions.filter(
     (s) => s.status === "needs_revision",
   ).length;
@@ -368,11 +396,11 @@ function notice(user: User | null, stats: DashboardStats) {
 function statsForRole(
   user: User | null,
   stats: DashboardStats,
-  institutionCount: number,
+  institutionCount: number | null,
 ): StatItem[] {
   if (!user) return [];
   const accessibleBlue = "var(--d-blue, #1877f2)";
-  const submissions = stats.submissions;
+  const submissions = stats.submissions ?? [];
   const publishedCount = submissions.filter(
     (item) =>
       item.status === "published" ||
@@ -394,38 +422,38 @@ function statsForRole(
         icon: "ti ti-building",
         color: accessibleBlue,
         label: "Member Institutions",
-        value: String(institutionCount),
+        value: metricValue(institutionCount),
       },
       {
         icon: "ti ti-users",
         color: accessibleBlue,
         label: "Active Members",
-        value: String(stats.activeMembers),
+        value: metricValue(stats.activeMembers),
       },
       {
         icon: "ti ti-clock-pause",
         color: accessibleBlue,
         label: "Pending Invites",
-        value: String(stats.pendingInvitations),
+        value: metricValue(stats.pendingInvitations),
       },
       {
         icon: "ti ti-file-time",
         color: accessibleBlue,
         label: "Awaiting Review",
-        value: String(stats.reviewQueuePending),
-        highlight: stats.reviewQueuePending > 0,
+        value: metricValue(stats.reviewQueuePending),
+        highlight: (stats.reviewQueuePending ?? 0) > 0,
       },
       {
         icon: "ti ti-calendar-event",
         color: accessibleBlue,
         label: "Scheduled Posts",
-        value: String(stats.scheduledNetwork),
+        value: metricValue(stats.scheduledNetwork),
       },
       {
         icon: "ti ti-photo-check",
         color: accessibleBlue,
         label: "Published (30 days)",
-        value: String(stats.publishedLast30d),
+        value: metricValue(stats.publishedLast30d),
       },
     ];
   }
@@ -435,26 +463,26 @@ function statsForRole(
         icon: "ti ti-file-time",
         color: accessibleBlue,
         label: "Pending Review",
-        value: String(stats.reviewQueuePending),
-        highlight: stats.reviewQueuePending > 0,
+        value: metricValue(stats.reviewQueuePending),
+        highlight: (stats.reviewQueuePending ?? 0) > 0,
       },
       {
         icon: "ti ti-circle-check",
         color: accessibleBlue,
         label: "Approved This Month",
-        value: String(stats.reviewedApprovedThisMonth),
+        value: metricValue(stats.reviewedApprovedThisMonth),
       },
       {
         icon: "ti ti-circle-x",
         color: accessibleBlue,
         label: "Rejected This Month",
-        value: String(stats.reviewedRejectedThisMonth),
+        value: metricValue(stats.reviewedRejectedThisMonth),
       },
       {
         icon: "ti ti-users",
         color: accessibleBlue,
         label: "Recent Contributors",
-        value: String(stats.contributors),
+        value: metricValue(stats.contributors),
       },
     ];
   }
@@ -463,32 +491,32 @@ function statsForRole(
       icon: "ti ti-photo-up",
       color: accessibleBlue,
       label: "My Submissions",
-      value: String(submissions.length),
+      value: stats.submissions === null ? "—" : String(submissions.length),
     },
     {
       icon: "ti ti-circle-check",
       color: accessibleBlue,
       label: "Approved",
-      value: String(scheduledCount + publishedCount),
+      value: stats.submissions === null ? "—" : String(scheduledCount + publishedCount),
     },
     {
       icon: "ti ti-clock",
       color: accessibleBlue,
       label: "Under Review",
-      value: String(reviewCount),
+      value: stats.submissions === null ? "—" : String(reviewCount),
     },
     {
       icon: "ti ti-pencil-minus",
       color: accessibleBlue,
       label: "Needs Revision",
-      value: String(needsRevisionCount),
+      value: stats.submissions === null ? "—" : String(needsRevisionCount),
       highlight: needsRevisionCount > 0,
     },
     {
       icon: "ti ti-brand-facebook",
       color: accessibleBlue,
       label: "Published",
-      value: String(publishedCount),
+      value: stats.submissions === null ? "—" : String(publishedCount),
     },
   ];
 }
@@ -625,5 +653,9 @@ function statusDisplay(status: SubmissionSummary["status"]): ActivityItem["statu
 
 function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function metricValue(value: number | null) {
+  return value !== null ? String(value) : "—";
 }
 

@@ -1,8 +1,23 @@
 import axios from "axios";
+import { getRequestDeadlineMs } from "./requestPolicy";
+import {
+  beginApiRequest,
+  finishApiRequest,
+  type PerformanceTimer,
+} from "../lib/performanceTelemetry";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
 
 export const api = axios.create({ baseURL: BASE_URL });
+const requestTimers = new WeakMap<object, PerformanceTimer>();
+
+api.interceptors.request.use((config) => {
+  if (!config.timeout || config.timeout <= 0) {
+    config.timeout = getRequestDeadlineMs(config);
+  }
+  requestTimers.set(config, beginApiRequest(config.url, config.method));
+  return config;
+});
 
 function isEnvelope(body: unknown): body is { success: boolean; data: unknown; error: unknown } {
   return typeof body === "object" && body !== null && typeof (body as { success?: unknown }).success === "boolean";
@@ -10,12 +25,22 @@ function isEnvelope(body: unknown): body is { success: boolean; data: unknown; e
 
 api.interceptors.response.use(
   (response) => {
+    finishApiRequest(requestTimers.get(response.config), "success", response.status);
+    requestTimers.delete(response.config);
     if (isEnvelope(response.data) && response.data.success) {
       response.data = response.data.data;
     }
     return response;
   },
   (error) => {
+    const config = error?.config as object | undefined;
+    const outcome = axios.isCancel(error)
+      ? "cancel"
+      : error?.code === "ECONNABORTED" || error?.code === "ETIMEDOUT"
+        ? "timeout"
+        : "error";
+    finishApiRequest(config ? requestTimers.get(config) : undefined, outcome, error?.response?.status);
+    if (config) requestTimers.delete(config);
     const url = String(error?.config?.url || "");
     if (error?.response?.status === 401 && !url.includes("/auth/login") && !url.includes("/auth/forgot-password")) {
       window.dispatchEvent(new CustomEvent("dasigconnect:session-expired"));
@@ -176,6 +201,13 @@ export interface InstitutionResponse {
   protected?: boolean;
 }
 
+export interface InstitutionCountSummaryResponse {
+  institutionId: string;
+  contributors: number;
+  moderators: number;
+  pendingInvitations: number;
+}
+
 export function createInstitution(
   name: string,
   institutionCode: string,
@@ -190,6 +222,10 @@ export function createInstitution(
 
 export function listInstitutions(signal?: AbortSignal) {
   return api.get<InstitutionResponse[]>("/institutions", { signal });
+}
+
+export function listInstitutionCountSummaries(signal?: AbortSignal) {
+  return api.get<InstitutionCountSummaryResponse[]>("/institutions/summary-counts", { signal });
 }
 
 export function listPublicInstitutions(signal?: AbortSignal) {
@@ -222,16 +258,6 @@ export function getInstitutionLogoUrl(id: string, logoUpdatedAt: string | null) 
     url: `/institutions/${id}/logo`,
     params: logoUpdatedAt ? { v: logoUpdatedAt } : undefined,
   });
-}
-
-export function getUserCounts(institutionId: string, signal?: AbortSignal) {
-  return api.get<{ contributors: number; moderators: number }>(
-    "/users/counts",
-    {
-      params: { institutionId },
-      signal,
-    },
-  );
 }
 
 export function listUsers(institutionId: string, signal?: AbortSignal) {
@@ -330,13 +356,6 @@ export function listPendingAdminInvitations(signal?: AbortSignal) {
 
 export function listPendingNetworkInvitations(signal?: AbortSignal) {
   return api.get<PendingInvitationResponse[]>("/invitations/pending/network", { signal });
-}
-
-export function getPendingInvitationCount(institutionId: string, signal?: AbortSignal) {
-  return api.get<{ pendingInvitations: number }>("/invitations/pending/count", {
-    params: { institutionId },
-    signal,
-  });
 }
 
 export function resendInvitation(id: string) {

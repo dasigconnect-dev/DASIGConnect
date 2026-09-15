@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   downloadAuditLogCsv,
   formatActorRole,
@@ -119,6 +119,7 @@ const DEFAULT_ENTITY_TYPES = [
 
 const AUDIT_LOG_STALE_TIME_MS = 15_000;
 const AUDIT_METADATA_STALE_TIME_MS = 5 * 60_000;
+const AUDIT_SEARCH_DEBOUNCE_MS = 400;
 
 function getUserCacheScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
@@ -152,6 +153,7 @@ export default function AuditLogScreen({ user }: Props) {
   const [category, setCategory] = useState<AuditLogCategory | "">("");
   const [entityType, setEntityType] = useState<AuditEntityType | "">("");
   const [search, setSearch] = useState("");
+  const [committedSearch, setCommittedSearch] = useState("");
   const [page, setPage] = useState(0);
   const pageSize = 20;
 
@@ -160,17 +162,27 @@ export default function AuditLogScreen({ user }: Props) {
   // Selected Log for Modal
   const [selectedEntry, setSelectedEntry] = useState<AuditLogEntry | null>(null);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const nextSearch = search.trim();
+      if (nextSearch === committedSearch) return;
+      setCommittedSearch(nextSearch);
+      setPage(0);
+    }, AUDIT_SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [committedSearch, search]);
+
   const filterParams: AuditLogFilterParams = useMemo(() => {
     return {
       startDate: startDate ? `${startDate}T00:00:00Z` : undefined,
       endDate: endDate ? `${endDate}T23:59:59Z` : undefined,
       category: category || undefined,
       entityType: entityType || undefined,
-      search: search.trim() || undefined,
+      search: committedSearch || undefined,
       page,
       size: pageSize,
     };
-  }, [startDate, endDate, category, entityType, search, page]);
+  }, [startDate, endDate, category, entityType, committedSearch, page]);
 
   const metadataQuery = useQuery({
     queryKey: queryKeys.auditLog.metadata({
@@ -195,6 +207,7 @@ export default function AuditLogScreen({ user }: Props) {
       search: filterParams.search,
     }),
     queryFn: ({ signal }) => getAuditLogs(filterParams, signal),
+    placeholderData: keepPreviousData,
     staleTime: AUDIT_LOG_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
@@ -240,6 +253,7 @@ export default function AuditLogScreen({ user }: Props) {
     setCategory("");
     setEntityType("");
     setSearch("");
+    setCommittedSearch("");
     setPage(0);
   }
 
@@ -251,7 +265,10 @@ export default function AuditLogScreen({ user }: Props) {
   async function handleExport() {
     setExporting(true);
     try {
-      await downloadAuditLogCsv(filterParams);
+      await downloadAuditLogCsv({
+        ...filterParams,
+        search: search.trim() || undefined,
+      });
       toast.success("DOST Region 7 Audit Log exported successfully.");
     } catch {
       toast.error("Failed to export audit log CSV.");
@@ -288,7 +305,7 @@ export default function AuditLogScreen({ user }: Props) {
           <div className="audit-header-actions">
             <button
               type="button"
-              className="notif-btn notif-btn-ghost"
+              className="audit-refresh-btn"
               onClick={refreshAuditLog}
               disabled={loading || refreshing}
               title="Refresh audit log"
@@ -396,29 +413,29 @@ export default function AuditLogScreen({ user }: Props) {
             </div>
 
             {/* Right Search Box */}
-            <div className="im-search-wrap" style={{ margin: 0 }}>
-              <i className="ti ti-search im-search-icon" aria-hidden="true" />
+            <div className="audit-search-wrap">
+              <i className="ti ti-search audit-search-icon" aria-hidden="true" />
               <input
-                className="im-search-input"
+                className="audit-search-input"
                 type="search"
                 placeholder="Search actor or action..."
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
-                  setPage(0);
                 }}
                 aria-label="Search audit log"
               />
               {search && (
                 <button
                   type="button"
-                  className="im-search-clear"
+                  className="audit-search-clear"
                   onClick={() => {
                     setSearch("");
+                    setCommittedSearch("");
                     setPage(0);
                   }}
                   aria-label="Clear search"
-                  style={{ position: "absolute", right: 8, background: "none", border: "none", cursor: "pointer", color: "var(--d-muted)" }}
+                  title="Clear search"
                 >
                   <i className="ti ti-x" />
                 </button>

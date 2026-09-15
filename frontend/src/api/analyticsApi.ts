@@ -171,8 +171,10 @@ export interface AnalyticsReportDto {
   periodStart: string;
   periodEnd: string;
   dailyBreakdown: DailyAnalyticsPointDto[];
-  submissions: SubmissionAnalyticsRowDto[];
   aggregateRows: Array<Record<string, string | number | boolean | null>>;
+  totalCount: number;
+  page: number;
+  pageSize: number;
 }
 
 export type AnalyticsExportMetric =
@@ -198,10 +200,12 @@ export function getAnalyticsReport(
   metric: AnalyticsExportMetric,
   range: AnalyticsRange,
   institutionId?: string | null,
+  page = 1,
+  pageSize = 50,
   signal?: AbortSignal,
 ) {
   return api.get<AnalyticsReportDto>(`/analytics/report/${metric}`, {
-    params: { range, ...(institutionId ? { institutionId } : {}) },
+    params: { range, page, pageSize, ...(institutionId ? { institutionId } : {}) },
     signal,
   });
 }

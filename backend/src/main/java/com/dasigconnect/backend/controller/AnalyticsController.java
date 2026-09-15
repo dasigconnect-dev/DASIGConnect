@@ -70,7 +70,10 @@ public class AnalyticsController {
             @PathVariable String metric,
             @RequestParam(defaultValue = "30d") String range,
             @RequestParam(required = false) UUID institutionId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int pageSize,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(metricsAggregatorService.report(metric, range, institutionId, user)));
+        return ResponseEntity.ok(ApiResponse.success(
+                metricsAggregatorService.report(metric, range, institutionId, page, pageSize, user)));
     }
 }

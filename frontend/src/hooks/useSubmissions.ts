@@ -76,16 +76,18 @@ export function useSubmissions(user: User) {
   };
 }
 
-export function useSubmissionLookups(user: User) {
+export function useSubmissionLookups(user: User, enabled = true) {
   const queryClient = useQueryClient();
   const queryKey = queryKeys.submissions.lookups({
     role: user.role,
+    userId: userScope(user),
     institutionId: user.institutionId ?? null,
   });
 
   const lookupsQuery = useQuery({
     queryKey,
     queryFn: ({ signal }) => getSubmissionLookups(signal).then((response) => response.data),
+    enabled,
     staleTime: LOOKUPS_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });

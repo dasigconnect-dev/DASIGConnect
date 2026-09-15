@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { SavedMediaAsset } from "../../../api/submissionApi";
+import type { SubmissionMediaPreview } from "../../../api/submissionApi";
 import OptimizedImage, { canTransformImageType } from "../../../components/media/OptimizedImage";
 import { isImageFileType, isVideoFileType } from "../utils";
 
@@ -8,7 +8,7 @@ export function SubmissionCardMedia({
   mediaCount = 0,
   detailsLoaded = false,
 }: {
-  thumbnail?: SavedMediaAsset;
+  thumbnail?: Pick<SubmissionMediaPreview, "storageUrl" | "fileType">;
   mediaCount?: number;
   detailsLoaded?: boolean;
 }) {

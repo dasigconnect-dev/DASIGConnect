@@ -32,6 +32,16 @@ public interface InvitationTokenRepository extends JpaRepository<InvitationToken
             UUID institutionId, UserRole assignedRole, Instant now);
 
     @Query("""
+            select token.institution.id, count(token)
+            from InvitationToken token
+            where token.institution is not null
+              and token.usedAt is null
+              and token.expiresAt > :now
+            group by token.institution.id
+            """)
+    List<Object[]> countPendingByInstitution(@Param("now") Instant now);
+
+    @Query("""
             select token
             from InvitationToken token
             where token.assignedRole = :assignedRole

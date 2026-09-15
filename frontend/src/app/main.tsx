@@ -6,12 +6,17 @@ import "../styles/index.css";
 import "../styles/ui.css";
 import { ToastProvider } from "../context/ToastContext";
 import { appQueryClient } from "../lib/queryClient";
+import { installNavigationStartInstrumentation } from "../lib/performanceTelemetry";
+import PerformanceRouteObserver from "../components/common/PerformanceRouteObserver";
 import App from "./App.tsx";
+
+installNavigationStartInstrumentation();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={appQueryClient}>
       <BrowserRouter>
+        <PerformanceRouteObserver />
         <ToastProvider>
           <App />
         </ToastProvider>

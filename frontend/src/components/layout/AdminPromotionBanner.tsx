@@ -1,33 +1,22 @@
-import { useEffect, useState } from 'react'
-import { confirmAdminPromotion, declineAdminPromotion, getMe } from '../../api/authApi'
-import type { UserProfileResponse } from '../../api/authApi'
+import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { confirmAdminPromotion, declineAdminPromotion } from '../../api/authApi'
+import { currentProfileQueryOptions, useCurrentProfile } from '../../hooks/useCurrentProfile'
+import type { User } from '../../types/auth.types'
 
 /**
- * UC-1.1 — "the promoted person must accept". A Contributor or Moderator with
+ * UC-1.1 - "the promoted person must accept". A Contributor or Moderator with
  * a live pending Administrator promotion sees this on every screen until they
- * confirm or decline. Self-contained: fetches its own profile snapshot rather
- * than threading the promotion fields through the app-wide `User` type.
+ * confirm or decline. It reuses the verified current-profile cache so mounting
+ * the protected layout does not trigger another /me request.
  */
-export default function AdminPromotionBanner() {
-  const [profile, setProfile] = useState<UserProfileResponse | null>(null)
+export default function AdminPromotionBanner({ user }: { user: User }) {
+  const queryClient = useQueryClient()
+  const profileQueryOptions = currentProfileQueryOptions(user)
+  const profile = useCurrentProfile(user).data
   const [busy, setBusy] = useState<'confirm' | 'decline' | null>(null)
   const [dismissed, setDismissed] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
-
-  useEffect(() => {
-    let active = true
-    getMe()
-      .then((res) => {
-        if (active) setProfile(res.data)
-      })
-      .catch(() => {
-        // Silent — a fetch failure here just means no banner; other UI already
-        // surfaces auth/network problems.
-      })
-    return () => {
-      active = false
-    }
-  }, [])
 
   if (!profile?.adminPromotionPending || dismissed) return null
 
@@ -36,9 +25,8 @@ export default function AdminPromotionBanner() {
     try {
       await confirmAdminPromotion()
       setConfirmed(true)
-      // The backend invalidated this account's session tokens on confirm — the
-      // next authenticated request will 401 and the app's own session-expired
-      // handling takes over, so a manual redirect isn't needed here.
+      // The backend invalidated this account's session tokens on confirm. The
+      // next authenticated request will 401 and session-expired handling takes over.
     } catch {
       setBusy(null)
     }
@@ -47,7 +35,8 @@ export default function AdminPromotionBanner() {
   async function handleDecline() {
     setBusy('decline')
     try {
-      await declineAdminPromotion()
+      const response = await declineAdminPromotion()
+      queryClient.setQueryData(profileQueryOptions.queryKey, response.data)
       setDismissed(true)
     } catch {
       setBusy(null)

@@ -22,6 +22,7 @@ import {
   logNetworkViewAccess,
   type MediaAlbum,
 } from "../../api/mediaApi";
+import { REQUEST_DEADLINES_MS } from "../../api/requestPolicy";
 import { listInstitutions, getInstitutionLogoUrl, type InstitutionResponse } from "../../api/authApi";
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import {
@@ -32,6 +33,7 @@ import {
 import { useToast } from "../../context/ToastContext";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { queryKeys } from "../../lib/queryKeys";
+import { mapSettledWithConcurrency } from "../../lib/boundedConcurrency";
 import { usePersistentSelection } from "../../hooks/usePersistentSelection";
 import { useMediaAlbums, useMediaAssets } from "./hooks/useMediaAssets";
 import type { SortOption, ViewMode, DeleteTier } from "./types";
@@ -91,10 +93,19 @@ function putToStorage(
   signedUrl: string,
   file: File,
   onProgress?: (pct: number) => void,
+  signal?: AbortSignal,
 ) {
   return new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    const cleanup = () => signal?.removeEventListener("abort", abortUpload);
+    const abortUpload = () => xhr.abort();
+    if (signal?.aborted) {
+      reject(new DOMException("Upload canceled.", "AbortError"));
+      return;
+    }
+    signal?.addEventListener("abort", abortUpload, { once: true });
     xhr.open("PUT", signedUrl);
+    xhr.timeout = REQUEST_DEADLINES_MS.transfer;
     xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && onProgress) {
@@ -103,14 +114,26 @@ function putToStorage(
     };
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
+        cleanup();
         resolve();
       } else {
         const detail = xhr.responseText ? `: ${xhr.responseText.slice(0, 160)}` : "";
+        cleanup();
         reject(new Error(`Storage rejected the upload (${xhr.status})${detail}`));
       }
     };
-    xhr.onerror = () => reject(new Error("Network error during upload."));
-    xhr.ontimeout = () => reject(new Error("Upload timed out."));
+    xhr.onerror = () => {
+      cleanup();
+      reject(new Error("Network error during upload."));
+    };
+    xhr.ontimeout = () => {
+      cleanup();
+      reject(new Error("Upload timed out."));
+    };
+    xhr.onabort = () => {
+      cleanup();
+      reject(new DOMException("Upload canceled.", "AbortError"));
+    };
     xhr.send(file);
   });
 }
@@ -145,6 +168,9 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [semanticResults, setSemanticResults] = useState<MediaAsset[] | null>(null);
   const [semanticQuery, setSemanticQuery] = useState("");
   const [semanticBusy, setSemanticBusy] = useState(false);
+  const semanticRequestRef = useRef<{ id: number; controller: AbortController } | null>(null);
+  const semanticRequestIdRef = useRef(0);
+  const folderUploadControllerRef = useRef<AbortController | null>(null);
 
   // Admin with no institution filter: the repository shows every institution's
   // top-level albums together, each card badged with its institution.
@@ -161,6 +187,9 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     loading: assetsLoading,
     error: assetsError,
     refresh,
+    hasNextPage,
+    loadingMore,
+    loadMore,
   } = useMediaAssets(
     user,
     networkView,
@@ -262,15 +291,14 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     selected: checkedIds,
     toggle: toggleCheck,
     clear: clearSelection,
-  } = usePersistentSelection("dasigconnect:media-selection");
+  } = usePersistentSelection(`dasigconnect:media-selection:${encodeURIComponent(userScope)}`);
 
   // Always start with an empty selection when the page mounts.
   // IDs are already captured in the ?assetIds= URL before navigating away,
   // so there is no reason to restore a stale sessionStorage selection.
   useEffect(() => {
     clearSelection();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [clearSelection]);
 
   // Deep link: ?asset=<id> opens that asset's detail panel (e.g. from a
   // read-only submission's "View in library" link). Consume the param after.
@@ -408,6 +436,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   }, [albums, currentAlbum]);
 
   function navigateToAlbum(albumId: string | null) {
+    cancelSemanticRequest();
     const next = new URLSearchParams(searchParams);
     if (albumId) next.set("album", albumId);
     else next.delete("album");
@@ -419,21 +448,55 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     setContentTypeFilter("all");
   }
 
+  function cancelSemanticRequest() {
+    semanticRequestIdRef.current += 1;
+    semanticRequestRef.current?.controller.abort();
+    semanticRequestRef.current = null;
+    setSemanticBusy(false);
+  }
+
+  useEffect(() => {
+    return () => {
+      semanticRequestIdRef.current += 1;
+      semanticRequestRef.current?.controller.abort();
+      semanticRequestRef.current = null;
+      folderUploadControllerRef.current?.abort();
+      folderUploadControllerRef.current = null;
+    };
+  }, []);
+
   async function runSemanticSearch() {
     const q = search.trim();
     if (q.length < 2) {
+      cancelSemanticRequest();
       setSemanticResults(null);
       return;
     }
+    semanticRequestRef.current?.controller.abort();
+    const request = {
+      id: ++semanticRequestIdRef.current,
+      controller: new AbortController(),
+    };
+    semanticRequestRef.current = request;
     setSemanticBusy(true);
     try {
-      const results = await semanticSearchMediaAssets(q, selectedInstitutionId);
+      const results = await semanticSearchMediaAssets(
+        q,
+        selectedInstitutionId,
+        request.controller.signal,
+      );
+      if (semanticRequestRef.current?.id !== request.id) return;
       setSemanticResults(results);
       setSemanticQuery(q);
     } catch (err: unknown) {
-      toast.error(getErrorText(err, "Semantic search failed. Try again."));
+      if (semanticRequestRef.current?.id === request.id && !request.controller.signal.aborted) {
+        toast.error(getErrorText(err, "Semantic search failed. Try again."));
+      }
     } finally {
-      setSemanticBusy(false);
+      if (semanticRequestRef.current?.id === request.id) {
+        semanticRequestRef.current = null;
+        setSemanticBusy(false);
+      }
     }
   }
 
@@ -520,6 +583,19 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   // so the root shows folders only — loose asset tiles would just be noise.
   const atRootNoSearch = !currentAlbumId && !search.trim() && activeTags.size === 0;
   const visibleAssets = atRootNoSearch ? [] : filteredAssets;
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || !hasNextPage || loadingMore || semanticResults !== null) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.unobserve(target);
+      void loadMore();
+    }, { rootMargin: "240px" });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasNextPage, loadingMore, loadMore, semanticResults]);
 
   // Folder-name and tag matches for the current search term (both search modes).
   const searchTerm = search.trim().toLowerCase();
@@ -844,6 +920,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     file: File,
     metadata: UploadMetadata,
     onProgress?: (pct: number) => void,
+    signal?: AbortSignal,
     opts?: { silent?: boolean },
   ) {
     // The upload modal resolves the institution from its own picker / the chosen
@@ -869,11 +946,14 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         contentHash,
         allowDuplicate: metadata.allowDuplicate,
         institutionId,
-      });
+      }, signal);
 
       // Reserve the last 10% for the metadata-register call below.
-      await putToStorage(urlData.signedUrl, file, (pct) =>
-        onProgress?.(Math.round(pct * 0.9)),
+      await putToStorage(
+        urlData.signedUrl,
+        file,
+        (pct) => onProgress?.(Math.round(pct * 0.9)),
+        signal,
       );
 
       await registerMediaAsset({
@@ -888,7 +968,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         albumName: metadata.albumName,
         autoMatchAlbum: metadata.autoMatchAlbum,
         tags: metadata.tags,
-      });
+      }, signal);
       onProgress?.(100);
 
       if (!opts?.silent) {
@@ -926,49 +1006,52 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       return;
     }
 
+    folderUploadControllerRef.current?.abort();
+    const controller = new AbortController();
+    folderUploadControllerRef.current = controller;
     setFolderUploadBusy(true);
     const basePath = breadcrumbTrail.map((a) => a.name);
-    const leafCache = new Map<string, { id: string; name: string }>();
-    let done = 0;
-    let failed = 0;
+    const leafCache = new Map<string, Promise<{ id: string; name: string }>>();
 
     try {
-      for (const file of files) {
+      const results = await mapSettledWithConcurrency(files, 3, async (file) => {
+        if (controller.signal.aborted) {
+          throw new DOMException("Folder upload canceled.", "AbortError");
+        }
         const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
         const dirSegments = rel.split("/").slice(0, -1).filter(Boolean);
         const key = dirSegments.join("/") || "__root__";
 
-        let leaf = leafCache.get(key);
-        if (!leaf) {
+        let leafPromise = leafCache.get(key);
+        if (!leafPromise) {
           const segments = [...basePath, ...dirSegments];
           if (segments.length === 0) {
-            failed += 1;
-            continue;
+            throw new Error("A destination folder is required.");
           }
-          const { data } = await ensureMediaAlbumPath(targetInstitutionId, segments);
-          leaf = { id: data.id, name: data.name };
-          leafCache.set(key, leaf);
+          leafPromise = ensureMediaAlbumPath(targetInstitutionId, segments, controller.signal)
+            .then(({ data }) => ({ id: data.id, name: data.name }));
+          leafCache.set(key, leafPromise);
         }
+        const leaf = await leafPromise;
 
         const folderTag = dirSegments[dirSegments.length - 1] || leaf.name;
-        try {
-          await handleUpload(
-            file,
-            {
-              albumId: leaf.id,
-              albumName: leaf.name,
-              autoMatchAlbum: false,
-              tags: [folderTag],
-              institutionId: targetInstitutionId,
-            },
-            undefined,
-            { silent: true },
-          );
-          done += 1;
-        } catch {
-          failed += 1;
-        }
-      }
+        await handleUpload(
+          file,
+          {
+            albumId: leaf.id,
+            albumName: leaf.name,
+            autoMatchAlbum: false,
+            tags: [folderTag],
+            institutionId: targetInstitutionId,
+          },
+          undefined,
+          controller.signal,
+          { silent: true },
+        );
+      });
+      if (controller.signal.aborted) return;
+      const done = results.filter((result) => result.status === "fulfilled").length;
+      const failed = results.length - done;
       toast.success(
         `Uploaded ${done} file${done === 1 ? "" : "s"} into folders${failed > 0 ? ` · ${failed} failed` : ""}.`,
       );
@@ -976,9 +1059,14 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       void invalidateMediaMetadata();
       void refresh();
     } catch (err: unknown) {
-      toast.error(getErrorText(err, "Folder upload could not be completed."));
+      if (!controller.signal.aborted) {
+        toast.error(getErrorText(err, "Folder upload could not be completed."));
+      }
     } finally {
-      setFolderUploadBusy(false);
+      if (folderUploadControllerRef.current === controller) {
+        folderUploadControllerRef.current = null;
+        setFolderUploadBusy(false);
+      }
     }
   }
 
@@ -1218,11 +1306,13 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onInstitutionChange={(id) => (id ? openInstitution(id) : goToAllInstitutions())}
         search={search}
         onSearchChange={(v) => {
+          cancelSemanticRequest();
           setSearch(v);
           if (!v.trim()) setSemanticResults(null);
         }}
         semantic={semantic}
         onSemanticToggle={() => {
+          cancelSemanticRequest();
           setSemantic((on) => {
             if (on) setSemanticResults(null);
             return !on;
@@ -1293,7 +1383,15 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
             <strong>{semanticResults.length}</strong> meaning-based {semanticResults.length === 1 ? "match" : "matches"} for
             {" "}<em>“{semanticQuery}”</em>
           </span>
-          <button type="button" onClick={() => setSemanticResults(null)}>Clear</button>
+          <button
+            type="button"
+            onClick={() => {
+              cancelSemanticRequest();
+              setSemanticResults(null);
+            }}
+          >
+            Clear
+          </button>
         </div>
       )}
 
@@ -1463,6 +1561,9 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
                           />
                         ))}
                       </div>
+                      {hasNextPage && semanticResults === null && (
+                        <div ref={loadMoreRef} aria-hidden="true" style={{ height: 1 }} />
+                      )}
                     </section>
                   )}
                 </div>
@@ -1491,6 +1592,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
       {/* Detail Panel (portal) */}
       <AssetDetailPanel
+        user={user}
         asset={selectedAsset}
         open={panelOpen}
         selectionMode={selectionMode}

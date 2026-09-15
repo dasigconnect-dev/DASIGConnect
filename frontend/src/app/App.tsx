@@ -17,7 +17,8 @@ import {
   setAuthToken,
   validateInvitation,
 } from "../api/authApi";
-import type { LoginResponse, UserProfileResponse } from "../api/authApi";
+import type { UserProfileResponse } from "../api/authApi";
+import { isRequestDeadlineError } from "../api/requestPolicy";
 import type { User } from "../types/auth.types";
 import DashboardLayout from "../components/layout/DashboardLayout";
 import AdminPromotionBanner from "../components/layout/AdminPromotionBanner";
@@ -28,18 +29,18 @@ import PageLoader from "../components/common/PageLoader";
 import ProtectedRoute from "../components/common/ProtectedRoute";
 import { useToast } from "../context/ToastContext";
 import {
-  fallbackDisplayNameFromEmail,
   getUserDisplayName,
   getUserInitials,
-  initialsFromEmail,
 } from "../lib/userIdentity";
 import { firstPasswordError, getPasswordRules } from "../lib/passwordPolicy";
 import { clearAppCaches } from "../lib/appCache";
-import { clearAuthenticatedQueryCache } from "../lib/queryClient";
+import { appQueryClient, clearAuthenticatedQueryCache } from "../lib/queryClient";
+import { seedCurrentProfile } from "../hooks/useCurrentProfile";
 
 const LOCKOUT_LIMIT = 5;
 const LOCKOUT_SECONDS = 15 * 60;
 const SESSION_WARNING_SECONDS = 5 * 60;
+const LOGIN_SPLASH_VISIBLE_MS = 500;
 const TABLER_ICONS_STYLESHEET = "https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css";
 
 const LoginScreen = lazy(() => import("../features/auth/LoginScreen"));
@@ -90,12 +91,6 @@ function App() {
   const [modalLoginLoading, setModalLoginLoading] = useState(false);
   const [showModalPassword, setShowModalPassword] = useState(false);
 
-  async function refreshCurrentUserProfile() {
-    if (!currentUser) return;
-    const user = await loadCurrentUser(currentUser);
-    setCurrentUser(user);
-  }
-
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSentEmail, setForgotSentEmail] = useState("");
   const [resetToken, setResetToken] = useState<string | null>(null);
@@ -130,6 +125,62 @@ function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [showSessionModal, setShowSessionModal] = useState(false);
+  const profileRequestRef = useRef<{ id: number; controller: AbortController } | null>(null);
+  const profileRequestIdRef = useRef(0);
+  const authenticationFlowIdRef = useRef(0);
+  const splashTimerRef = useRef<number | null>(null);
+
+  function cancelPendingProfileRequest() {
+    profileRequestIdRef.current += 1;
+    profileRequestRef.current?.controller.abort();
+    profileRequestRef.current = null;
+  }
+
+  async function clearLocalAuthentication() {
+    cancelPendingProfileRequest();
+    localStorage.removeItem("dasigconnect_token");
+    localStorage.removeItem("dasigconnect_user");
+    setAuthToken(null);
+    setCurrentUser(null);
+    await clearAuthenticatedQueryCache();
+    clearAppCaches();
+  }
+
+  async function loadVerifiedCurrentUser(email: string) {
+    cancelPendingProfileRequest();
+    const request = {
+      id: profileRequestIdRef.current,
+      controller: new AbortController(),
+    };
+    profileRequestRef.current = request;
+    try {
+      const result = await loadCurrentUser(email, request.controller.signal);
+      if (profileRequestRef.current?.id !== request.id) {
+        throw new DOMException("Superseded profile request.", "AbortError");
+      }
+      seedCurrentProfile(appQueryClient, result.profile);
+      return result.user;
+    } finally {
+      if (profileRequestRef.current?.id === request.id) {
+        profileRequestRef.current = null;
+      }
+    }
+  }
+
+  async function refreshCurrentUserProfile() {
+    if (!currentUser) return;
+    const user = await loadVerifiedCurrentUser(currentUser.email);
+    setCurrentUser(user);
+  }
+
+  useEffect(() => {
+    return () => {
+      profileRequestIdRef.current += 1;
+      profileRequestRef.current?.controller.abort();
+      profileRequestRef.current = null;
+      if (splashTimerRef.current) window.clearTimeout(splashTimerRef.current);
+    };
+  }, []);
 
   const [bannerRemaining, setBannerRemaining] = useState(0);
   const [bannerTimerId, setBannerTimerId] = useState<number | null>(null);
@@ -172,6 +223,7 @@ function App() {
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     const savedToken = localStorage.getItem("dasigconnect_token");
     const savedUser = localStorage.getItem("dasigconnect_user");
 
@@ -179,6 +231,7 @@ function App() {
       setAuthReady(true);
       return () => {
         active = false;
+        controller.abort();
       };
     }
 
@@ -187,8 +240,10 @@ function App() {
       void (async () => {
         try {
           const parsedUser = JSON.parse(savedUser) as User;
-          const user = await loadCurrentUser(parsedUser);
+          const result = await loadCurrentUser(parsedUser.email, controller.signal);
           if (!active) return;
+          seedCurrentProfile(appQueryClient, result.profile);
+          const user = result.user;
           localStorage.setItem("dasigconnect_user", JSON.stringify(user));
           setCurrentUser(user);
           startSessionCountdown(savedToken);
@@ -205,6 +260,7 @@ function App() {
 
     return () => {
       active = false;
+      controller.abort();
     };
   }, []);
 
@@ -300,34 +356,59 @@ function App() {
     }
   }
 
+  function showLoginSplash(user: User) {
+    if (splashTimerRef.current) window.clearTimeout(splashTimerRef.current);
+    setSplashUser(user);
+    setShowSplash(true);
+    splashTimerRef.current = window.setTimeout(() => {
+      setShowSplash(false);
+      splashTimerRef.current = null;
+    }, LOGIN_SPLASH_VISIBLE_MS);
+  }
+
+  function stopLoginSplash() {
+    if (splashTimerRef.current) window.clearTimeout(splashTimerRef.current);
+    splashTimerRef.current = null;
+    setShowSplash(false);
+  }
+
   async function handleLogin() {
     if (lockRemaining > 0) return;
+    const flowId = ++authenticationFlowIdRef.current;
     setLoginLoading(true);
     setLoginError("");
-    setAuthToken(null);
-    localStorage.removeItem("dasigconnect_token");
-    localStorage.removeItem("dasigconnect_user");
     // Drop any in-memory caches from a prior session on this tab so a new
     // account never sees the previous user's role-scoped data.
-    await clearAuthenticatedQueryCache();
-    clearAppCaches();
+    await clearLocalAuthentication();
+    if (authenticationFlowIdRef.current !== flowId) return;
     const email = loginEmail.trim().toLowerCase();
+    let loginCompleted = false;
     try {
       const response = await login(email, loginPassword);
+      if (authenticationFlowIdRef.current !== flowId) return;
       const apiUser = response.data;
-      const fallbackUser = buildUserFromLogin(email, apiUser);
+      loginCompleted = true;
       setAuthToken(apiUser.accessToken);
-      const user = await loadCurrentUser(fallbackUser);
+      const user = await loadVerifiedCurrentUser(email);
+      if (authenticationFlowIdRef.current !== flowId) return;
       localStorage.setItem("dasigconnect_token", apiUser.accessToken);
       localStorage.setItem("dasigconnect_user", JSON.stringify(user));
       setCurrentUser(user);
       startSessionCountdown(apiUser.accessToken);
-      setSplashUser(user);
-      setShowSplash(true);
-      window.setTimeout(() => setShowSplash(false), 1900);
+      showLoginSplash(user);
       navigate("/dashboard");
       resetLoginState();
     } catch (err: unknown) {
+      if (authenticationFlowIdRef.current !== flowId) return;
+      if (loginCompleted) {
+        await clearLocalAuthentication();
+        setLoginError(
+          isRequestDeadlineError(err)
+            ? "Session verification timed out. Please sign in again."
+            : "Sign-in succeeded, but the session could not be verified. Please try again.",
+        );
+        return;
+      }
       const nextAttempts = attempts + 1;
       setAttempts(nextAttempts);
       if (nextAttempts >= LOCKOUT_LIMIT) {
@@ -339,7 +420,7 @@ function App() {
         );
       }
     } finally {
-      setLoginLoading(false);
+      if (authenticationFlowIdRef.current === flowId) setLoginLoading(false);
     }
   }
 
@@ -408,6 +489,8 @@ function App() {
       return;
     }
     setInviteLoading(true);
+    const flowId = ++authenticationFlowIdRef.current;
+    let activationCompleted = false;
     try {
       const response = await acceptInvitation({
         token: inviteToken,
@@ -415,16 +498,13 @@ function App() {
         lastName,
         password: invitePassword,
       });
-      await clearAuthenticatedQueryCache();
-      clearAppCaches();
+      if (authenticationFlowIdRef.current !== flowId) return;
+      activationCompleted = true;
+      await clearLocalAuthentication();
       setAuthToken(response.data.accessToken);
       const email = inviteEmail.trim().toLowerCase();
-      const fallbackUser = buildUserFromLogin(
-        email,
-        response.data,
-        inviteInstitution,
-      );
-      const user = await loadCurrentUser(fallbackUser);
+      const user = await loadVerifiedCurrentUser(email);
+      if (authenticationFlowIdRef.current !== flowId) return;
       localStorage.setItem("dasigconnect_token", response.data.accessToken);
       localStorage.setItem("dasigconnect_user", JSON.stringify(user));
       setCurrentUser(user);
@@ -433,6 +513,14 @@ function App() {
       setInviteState("success");
       navigate("/dashboard");
     } catch (err: unknown) {
+      if (authenticationFlowIdRef.current !== flowId) return;
+      if (activationCompleted) {
+        await clearLocalAuthentication();
+        setInviteState("success");
+        navigate("/login");
+        toast.error("Account activated, but session verification failed. Please sign in.");
+        return;
+      }
       const message = getApiErrorMessage(
         err,
         "We could not activate this invitation. Please try again.",
@@ -444,7 +532,7 @@ function App() {
         setInviteState("expired");
       }
     } finally {
-      setInviteLoading(false);
+      if (authenticationFlowIdRef.current === flowId) setInviteLoading(false);
     }
   }
 
@@ -472,40 +560,47 @@ function App() {
 
   async function handleLogout() {
     if (logoutLoading) return;
+    authenticationFlowIdRef.current += 1;
     setLogoutLoading(true);
     try {
-      await logoutRequest();
-    } catch {
-      // Best-effort logout.
+      try {
+        await logoutRequest();
+      } catch {
+        // Server revocation is best-effort; the request has a short deadline.
+      } finally {
+        await clearLocalAuthentication();
+      }
+      setShowDropdown(false);
+      setShowSessionModal(false);
+      stopLoginSplash();
+      stopSessionCountdown();
+      resetLoginState();
+      setLoginLoading(false);
+      setModalLoginLoading(false);
+      setInviteLoading(false);
+      navigate("/login");
+      toast.info("You have been signed out.");
+    } finally {
+      setLogoutLoading(false);
     }
-    localStorage.removeItem("dasigconnect_token");
-    localStorage.removeItem("dasigconnect_user");
-    setAuthToken(null);
-    await clearAuthenticatedQueryCache();
-    clearAppCaches();
-    setCurrentUser(null);
-    setShowDropdown(false);
-    setShowSessionModal(false);
-    stopSessionCountdown();
-    resetLoginState();
-    navigate("/login");
-    toast.info("You have been signed out.");
-    setLogoutLoading(false);
   }
 
   async function handleModalLogin() {
     if (modalLoginLoading || logoutLoading) return;
     setModalLoginLoading(true);
     setModalError(null);
+    const flowId = ++authenticationFlowIdRef.current;
     const email = modalEmail.trim().toLowerCase();
+    let loginCompleted = false;
     try {
       const response = await login(email, modalPassword);
+      if (authenticationFlowIdRef.current !== flowId) return;
       const apiUser = response.data;
-      await clearAuthenticatedQueryCache();
-      clearAppCaches();
+      loginCompleted = true;
+      await clearLocalAuthentication();
       setAuthToken(apiUser.accessToken);
-      const fallbackUser = buildUserFromLogin(email, apiUser);
-      const user = await loadCurrentUser(fallbackUser);
+      const user = await loadVerifiedCurrentUser(email);
+      if (authenticationFlowIdRef.current !== flowId) return;
       localStorage.setItem("dasigconnect_token", apiUser.accessToken);
       localStorage.setItem("dasigconnect_user", JSON.stringify(user));
       setCurrentUser(user);
@@ -514,9 +609,17 @@ function App() {
       setModalError(null);
       setModalPassword("");
     } catch (err: unknown) {
+      if (authenticationFlowIdRef.current !== flowId) return;
+      if (loginCompleted) {
+        await clearLocalAuthentication();
+        setShowSessionModal(false);
+        navigate("/login");
+        toast.error("Session verification failed. Please sign in again.");
+        return;
+      }
       setModalError(getApiErrorMessage(err, "Invalid credentials. Please try again."));
     } finally {
-      setModalLoginLoading(false);
+      if (authenticationFlowIdRef.current === flowId) setModalLoginLoading(false);
     }
   }
 
@@ -764,7 +867,7 @@ function App() {
           element={
             currentUser ? (
               <>
-                <AdminPromotionBanner />
+                <AdminPromotionBanner user={currentUser} />
                 <DashboardLayout
                   user={currentUser}
                   showBanner={bannerRemaining > 0}
@@ -959,32 +1062,11 @@ function mapApiRole(role: string): User["role"] {
   return "contributor";
 }
 
-async function loadCurrentUser(fallbackUser: User) {
-  try {
-    const response = await getMe();
-    return buildUserFromProfile(response.data, fallbackUser.email);
-  } catch {
-    return fallbackUser;
-  }
-}
-
-function buildUserFromLogin(
-  email: string,
-  apiUser: LoginResponse,
-  fallbackInstitutionName?: string,
-): User {
+async function loadCurrentUser(email: string, signal?: AbortSignal) {
+  const response = await getMe(signal);
   return {
-    id: null,
-    email,
-    pw: "",
-    role: mapApiRole(apiUser.role),
-    name: fallbackDisplayNameFromEmail(email),
-    firstName: null,
-    lastName: null,
-    displayName: null,
-    inst: fallbackInstitutionName || institutionFallbackFromEmail(email),
-    institutionId: apiUser.institutionId,
-    initials: initialsFromEmail(email),
+    profile: response.data,
+    user: buildUserFromProfile(response.data, email),
   };
 }
 

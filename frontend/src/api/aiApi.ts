@@ -1,4 +1,5 @@
 import { api } from "./authApi";
+import { isRequestDeadlineError } from "./requestPolicy";
 
 // ─── UC-3.3 Classification, Recommendation & Media Suggestion ────────────────
 
@@ -68,12 +69,13 @@ export interface MediaSuggestRequest {
 
 export async function suggestMedia(
   submissionId: string,
-  params: MediaSuggestRequest
+  params: MediaSuggestRequest,
+  signal?: AbortSignal,
 ): Promise<MediaSuggestResult[]> {
   const res = await api.post<MediaSuggestResult[]>(
     `/ai/submissions/${submissionId}/suggest-media`,
     params,
-    { validateStatus: () => true }
+    { signal, validateStatus: () => true }
   );
   if (res.status !== 200) return [];
   return res.data ?? [];
@@ -167,19 +169,26 @@ export async function suggestCaption(
   submissionId: string,
   existingCaption?: string,
   prompt?: string,
-  tone?: CaptionTone
+  tone?: CaptionTone,
+  signal?: AbortSignal,
 ): Promise<CaptionResponse> {
-  const res = await api.post<ApiEnvelope<CaptionResponse> | CaptionResponse>(
-    "/ai/caption",
-    {
-      submissionId,
-      // Only send if non-empty — backend treats null/absent as "generate from scratch"
-      ...(existingCaption?.trim() ? { existingCaption: existingCaption.trim() } : {}),
-      ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
-      ...(tone ? { tone } : {}),
-    },
-    { validateStatus: () => true }
-  );
+  let res;
+  try {
+    res = await api.post<ApiEnvelope<CaptionResponse> | CaptionResponse>(
+      "/ai/caption",
+      {
+        submissionId,
+        // Only send if non-empty — backend treats null/absent as "generate from scratch"
+        ...(existingCaption?.trim() ? { existingCaption: existingCaption.trim() } : {}),
+        ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
+        ...(tone ? { tone } : {}),
+      },
+      { signal, validateStatus: () => true },
+    );
+  } catch (error) {
+    if (isRequestDeadlineError(error)) throw new Error("timeout", { cause: error });
+    throw error;
+  }
 
   const remaining = res.headers?.["x-ratelimit-remaining"];
   const reset = res.headers?.["x-ratelimit-reset"];

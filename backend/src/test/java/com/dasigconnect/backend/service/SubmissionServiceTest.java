@@ -406,17 +406,39 @@ class SubmissionServiceTest {
     }
 
     @Test
-    void list_scopesToCallerAsAuthorAndAddsMediaCount() {
+    void list_scopesToCallerAndBuildsCountsAndPreviewWithOneBatchQuery() {
         Submission submission = submission(UUID.randomUUID(), SubmissionStatus.draft, Instant.now());
+        Submission withoutMedia = submission(UUID.randomUUID(), SubmissionStatus.draft, Instant.now());
+        MediaAsset firstAsset = mediaAsset(UUID.randomUUID(), institution);
+        MediaAsset secondAsset = mediaAsset(UUID.randomUUID(), institution);
+        SubmissionMediaAsset firstLink = mediaLink(submission, firstAsset, 0);
+        SubmissionMediaAsset secondLink = mediaLink(submission, secondAsset, 1);
         when(submissionRepository.findByContributorIdOrderByCreatedAtDesc(contributorId))
-                .thenReturn(List.of(submission));
-        when(submissionMediaAssetRepository.countBySubmissionId(submission.getId())).thenReturn(3L);
+                .thenReturn(List.of(submission, withoutMedia));
+        when(submissionMediaAssetRepository.findListPreviewMediaBySubmissionIds(
+                List.of(submission.getId(), withoutMedia.getId())))
+                .thenReturn(List.of(firstLink, secondLink));
 
         List<SubmissionSummaryDto> result = submissionService.list(contributorPrincipal);
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getMediaCount()).isEqualTo(3L);
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).getMediaCount()).isEqualTo(2L);
+        assertThat(result.get(0).getPreviewMediaAsset().id()).isEqualTo(firstAsset.getId());
+        assertThat(result.get(0).getPreviewMediaAsset().storageUrl()).isEqualTo(firstAsset.getStorageUrl());
+        assertThat(result.get(1).getMediaCount()).isZero();
+        assertThat(result.get(1).getPreviewMediaAsset()).isNull();
         verify(submissionRepository).findByContributorIdOrderByCreatedAtDesc(contributorId);
+        verify(submissionMediaAssetRepository, never()).countBySubmissionId(any());
+    }
+
+    @Test
+    void list_withNoSubmissionsSkipsMediaBatchQuery() {
+        when(submissionRepository.findByContributorIdOrderByCreatedAtDesc(contributorId))
+                .thenReturn(List.of());
+
+        assertThat(submissionService.list(contributorPrincipal)).isEmpty();
+
+        verify(submissionMediaAssetRepository, never()).findListPreviewMediaBySubmissionIds(any());
     }
 
     @Test

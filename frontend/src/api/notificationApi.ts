@@ -1,4 +1,5 @@
 import { api } from "./authApi";
+import { beginApiRequest, finishApiRequest } from "../lib/performanceTelemetry";
 
 export interface NotificationDto {
   id: string;
@@ -9,8 +10,22 @@ export interface NotificationDto {
   createdAt: string;
 }
 
-export function listNotifications(signal?: AbortSignal) {
-  return api.get<NotificationDto[]>("/notifications", { signal });
+export interface NotificationPageDto {
+  items: NotificationDto[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export function listNotificationHistory(
+  page: number,
+  pageSize: number,
+  signal?: AbortSignal,
+) {
+  return api.get<NotificationPageDto>("/notifications/history", {
+    params: { page, pageSize },
+    signal,
+  });
 }
 
 export function getUnreadCount(signal?: AbortSignal) {
@@ -91,12 +106,24 @@ export function openNotificationStream(
     return;
   }
 
+  const requestTimer = beginApiRequest("/notifications/stream", "get");
+  let requestFinished = false;
+  const finishRequest = (
+    outcome: "success" | "error" | "cancel",
+    status?: number,
+  ) => {
+    if (requestFinished) return;
+    requestFinished = true;
+    finishApiRequest(requestTimer, outcome, status);
+  };
+
   fetch(`${BASE_URL}/notifications/stream`, {
     headers: { Authorization: authHeader, Accept: "text/event-stream" },
     signal,
   })
     .then((res) => {
       if (!res.ok || !res.body) {
+        finishRequest("error", res.status);
         onDisconnect();
         return;
       }
@@ -110,6 +137,7 @@ export function openNotificationStream(
           if (done) {
             const finalChunk = decoder.decode();
             if (finalChunk) parser.push(finalChunk);
+            finishRequest("success", res.status);
             onDisconnect();
             return;
           }
@@ -120,6 +148,8 @@ export function openNotificationStream(
       return pump();
     })
     .catch((err: { name?: string }) => {
-      if (err?.name !== "AbortError") onDisconnect();
+      const canceled = err?.name === "AbortError";
+      finishRequest(canceled ? "cancel" : "error");
+      if (!canceled) onDisconnect();
     });
 }

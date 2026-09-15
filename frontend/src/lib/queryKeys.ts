@@ -5,14 +5,26 @@ function scopedKey<TParams extends ScopedQueryParams>(root: string, params: TPar
 }
 
 export const queryKeys = {
+  principal: {
+    profile: (params: { userId: string }) =>
+      scopedKey("principal", { ...params, view: "profile" }),
+  },
+  messenger: {
+    connection: (params: { userId: string }) =>
+      scopedKey("messenger", { ...params, view: "connection" }),
+  },
   dashboard: {
-    summary: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
+    resource: (params: { role: string; userId?: string | null; institutionId?: string | null; resource: string }) =>
       scopedKey("dashboard", params),
   },
   institutions: {
     all: (params: { role: string; userId?: string | null }) => scopedKey("institutions", params),
+    summaryCounts: (params: { role: string; userId?: string | null }) =>
+      scopedKey("institutions", { ...params, view: "summary-counts" }),
     detail: (params: { role: string; userId?: string | null; institutionId: string }) =>
       scopedKey("institutions", { ...params, view: "detail" }),
+    pendingInvitations: (params: { role: string; userId?: string | null; institutionId: string }) =>
+      scopedKey("institutions", { ...params, view: "pending-invitations" }),
     composerOptions: (params: { role: string; userId?: string | null }) =>
       scopedKey("institutions", { ...params, view: "composer-options" }),
   },
@@ -41,7 +53,7 @@ export const queryKeys = {
       scopedKey("submissions", { ...params, view: "detail" }),
     editorDetail: (params: { role: string; userId?: string | null; institutionId?: string | null; submissionId: string }) =>
       scopedKey("submissions", { ...params, view: "editor-detail" }),
-    lookups: (params: { role: string; institutionId?: string | null }) =>
+    lookups: (params: { role: string; userId: string; institutionId?: string | null }) =>
       scopedKey("submissions", { ...params, view: "lookups" }),
     templates: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
       scopedKey("submissions", { ...params, view: "templates" }),
@@ -51,7 +63,7 @@ export const queryKeys = {
       scopedKey("submissions", { ...params, view: "engagement-recommendations" }),
   },
   calendarEvents: {
-    range: (params: { role: string; userId?: string | null; institutionId?: string | null; startDate: string; endDate: string }) =>
+    all: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
       scopedKey("calendar-events", params),
   },
   mediaAssets: {
@@ -69,7 +81,7 @@ export const queryKeys = {
     }) => scopedKey("media-assets", params),
     detail: (params: { role: string; userId?: string | null; assetId: string }) =>
       scopedKey("media-assets", { ...params, view: "detail" }),
-    history: (params: { assetId: string }) =>
+    history: (params: { role: string; userId: string; assetId: string }) =>
       scopedKey("media-assets", { ...params, view: "history" }),
   },
   mediaAlbums: {
@@ -99,7 +111,6 @@ export const queryKeys = {
       scopedKey("ai", { ...params, view: "similar-media" }),
   },
   settings: {
-    profile: (params: { userId?: string | null }) => scopedKey("settings", { ...params, view: "profile" }),
     page: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
       scopedKey("settings", { ...params, view: "page" }),
     watermark: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
@@ -128,10 +139,14 @@ export const queryKeys = {
   },
   systemHealth: {
     summary: (params: { role: string; userId?: string | null }) => scopedKey("system-health", params),
+    tokens: (params: { role: string; userId?: string | null }) =>
+      scopedKey("system-health", { ...params, view: "tokens" }),
   },
 } as const;
 
 export const queryRoots = {
+  principal: ["principal"],
+  messenger: ["messenger"],
   dashboard: ["dashboard"],
   institutions: ["institutions"],
   users: ["users"],

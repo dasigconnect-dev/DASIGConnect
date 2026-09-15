@@ -241,18 +241,24 @@ export default function ValidationQueueScreen({
   const toast = useToast();
   const queryClient = useQueryClient();
   const currentUserScope = getUserCacheScope(user);
+  const [filter, setFilter] = useState<QueueFilter>("all");
+  const isAllMode = filter === "all";
+  const isFailedMode = filter === "failed";
   const { queue: activeQueue, loading: activeLoading, error: activeError } = useValidationQueue(user);
-  const { queue: allQueue, loading: allLoading, error: allError, refresh: refreshAllQueue } = useValidationQueue(user, true);
+  const { queue: allQueue, loading: allLoading, error: allError, refresh: refreshAllQueue } = useValidationQueue(user, true, isAllMode);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<SubmissionSummary | null>(null);
   const [selectedLoading, setSelectedLoading] = useState(false);
   const [locks, setLocks] = useState<Record<string, ReviewLock>>({});
   const [lockNotice, setLockNotice] = useState("");
   const [lockBusy, setLockBusy] = useState(false);
+  const [lockVerification, setLockVerification] = useState<{
+    submissionId: string;
+    status: "checking" | "verified" | "error";
+  } | null>(null);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [mobileView, setMobileView] = useState<"queue" | "review">("queue");
   const [showDetails, setShowDetails] = useState(true);
-  const [filter, setFilter] = useState<QueueFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("submitted");
   const [search, setSearch] = useState("");
   const [mediaIndex, setMediaIndex] = useState(0);
@@ -329,7 +335,7 @@ export default function ValidationQueueScreen({
     handleCompleteManual,
     openWorkflowPanel,
     closeWorkflowPanel,
-  } = useResolutionFailures(user);
+  } = useResolutionFailures(user, isFailedMode);
   const [retryItem, setRetryItem] = useState<FailedPublication | null>(null);
   const [selectedFailureId, setSelectedFailureId] = useState<string | null>(null);
   const [failureContent, setFailureContent] = useState<SubmissionSummary | null>(null);
@@ -337,8 +343,6 @@ export default function ValidationQueueScreen({
   const [failureMediaIndex, setFailureMediaIndex] = useState(0);
   const { log: failureLog, loading: failureLogLoading } = useValidationLog(user, selectedFailureId);
 
-  const isAllMode = filter === "all";
-  const isFailedMode = filter === "failed";
   const filteredFailures = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return failures;
@@ -409,7 +413,13 @@ export default function ValidationQueueScreen({
     (item) => normalizeStatus(item.status) === "in_review",
   ).length;
 
-  const activeLock = selected ? locks[selected.id] ?? null : null;
+  const selectedLockVerification = selected && lockVerification?.submissionId === selected.id
+    ? lockVerification.status
+    : null;
+  const lockVerificationChecking = selectedLockVerification === "checking";
+  const activeLock = selected && selectedLockVerification === "verified"
+    ? locks[selected.id] ?? null
+    : null;
 
   const mediaAssets = selected?.mediaAssets ?? [];
   const isSelfReview =
@@ -419,7 +429,10 @@ export default function ValidationQueueScreen({
     selected && !REVIEWABLE_STATUSES.has(normalizeStatus(selected.status ?? "")),
   );
 
-  const watermarkQuery = useWatermarkConfiguration({ user });
+  const watermarkQuery = useWatermarkConfiguration({
+    user,
+    enabled: Boolean(selectedId || selectedFailureId),
+  });
   const watermarkConfig = watermarkQuery.data ?? null;
   const [showWatermarkPreview, setShowWatermarkPreview] = useState<boolean>(true);
   const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
@@ -469,6 +482,7 @@ export default function ValidationQueueScreen({
     setSelectedId(null);
     setSelected(null);
     setSelectedLoading(false);
+    setLockVerification(null);
     setLockNotice("");
     setEditMode(false);
     setShowHistoryModal(false);
@@ -515,46 +529,75 @@ export default function ValidationQueueScreen({
 
     // Opening a different submission does not release any lock already held —
     // locks persist per-submission until explicitly unlocked, decided, or expired.
+    const detailQueryKey = submissionDetailQueryKey(summary.id, summary.institutionId);
+    const cachedDetail = queryClient.getQueryData<SubmissionSummary>(detailQueryKey);
+    const requiresLockVerification = REVIEWABLE_STATUSES.has(normalizeStatus(summary.status));
+
     setSelectedId(summary.id);
-    setSelected(summary);
-    setSelectedLoading(true);
+    setSelected(cachedDetail ?? summary);
+    setSelectedLoading(!cachedDetail);
     setMediaIndex(0);
     setLockNotice("");
+    setLockVerification(
+      requiresLockVerification
+        ? { submissionId: summary.id, status: "checking" }
+        : null,
+    );
     setEditMode(false);
     setEditedThisSession(false);
 
-    try {
-      const detailQueryKey = submissionDetailQueryKey(summary.id, summary.institutionId);
-      const cachedDetail = queryClient.getQueryData<SubmissionSummary>(detailQueryKey);
-      if (cachedDetail) {
-        setSelected(cachedDetail);
-        setSelectedLoading(false);
-      }
-
-      const detail = await fetchSubmissionDetail(summary.id, summary.institutionId);
-      if (requestId !== openRequestRef.current) return;
-      setSelected(detail);
-
-      // Restore lock UI state (e.g. after a page refresh) without acquiring
-      // anything — a read-only check against the backend's current lock.
-      if (REVIEWABLE_STATUSES.has(normalizeStatus(detail.status))) {
-        const lockStatus = await getReviewLockStatus(summary.id);
-        if (requestId !== openRequestRef.current) return;
-        const lock = lockStatus.data;
-        if (lock) {
-          if (lock.lockedByEmail.toLowerCase() === user.email.toLowerCase()) {
-            setLocks((prev) => ({ ...prev, [summary.id]: lock }));
-          } else {
-            setLockNotice(`This submission is currently being reviewed by Moderator ${lock.lockedByEmail}.`);
-          }
+    const detailRequest = fetchSubmissionDetail(summary.id, summary.institutionId)
+      .then((detail) => {
+        if (requestId === openRequestRef.current) setSelected(detail);
+      })
+      .catch((err: unknown) => {
+        if (requestId === openRequestRef.current) {
+          toast.error(readApiError(err, "Unable to open this submission."));
         }
-      }
-    } catch (err: unknown) {
-      if (requestId !== openRequestRef.current) return;
-      toast.error(readApiError(err, "Unable to open this submission."));
-    } finally {
-      if (requestId === openRequestRef.current) setSelectedLoading(false);
-    }
+      })
+      .finally(() => {
+        if (requestId === openRequestRef.current) setSelectedLoading(false);
+      });
+
+    // Lock state is deliberately not query-cached as permission. Its live check
+    // runs independently so readable content does not wait for authorization UI.
+    const lockRequest = requiresLockVerification
+      ? getReviewLockStatus(summary.id)
+          .then((lockStatus) => {
+            if (requestId !== openRequestRef.current) return;
+            const lock = lockStatus.data;
+            if (lock?.lockedByEmail.toLowerCase() === user.email.toLowerCase()) {
+              setLocks((prev) => ({ ...prev, [summary.id]: lock }));
+              setLockNotice("");
+            } else {
+              setLocks((prev) => {
+                if (!(summary.id in prev)) return prev;
+                const next = { ...prev };
+                delete next[summary.id];
+                return next;
+              });
+              setLockNotice(
+                lock
+                  ? `This submission is currently being reviewed by Moderator ${lock.lockedByEmail}.`
+                  : "",
+              );
+            }
+            setLockVerification({ submissionId: summary.id, status: "verified" });
+          })
+          .catch(() => {
+            if (requestId !== openRequestRef.current) return;
+            setLocks((prev) => {
+              if (!(summary.id in prev)) return prev;
+              const next = { ...prev };
+              delete next[summary.id];
+              return next;
+            });
+            setLockVerification({ submissionId: summary.id, status: "error" });
+            setLockNotice("Unable to verify the current review lock. Start Review will retry securely.");
+          })
+      : Promise.resolve();
+
+    await Promise.allSettled([detailRequest, lockRequest]);
   }, [fetchSubmissionDetail, queryClient, selectedId, submissionDetailQueryKey, toast, user.email]);
 
   useEffect(() => {
@@ -577,6 +620,7 @@ export default function ValidationQueueScreen({
         setSelectedId(null);
         setSelected(null);
         setSelectedLoading(false);
+        setLockVerification(null);
       });
     }
   }, [isFailedMode, loading, filteredQueue, selectedId, selected, openSubmission]);
@@ -604,6 +648,7 @@ export default function ValidationQueueScreen({
     try {
       const lock = await acquireReviewLock(selected.id);
       setLockFor(selected.id, lock.data);
+      setLockVerification({ submissionId: selected.id, status: "verified" });
       setLockNotice("");
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
@@ -765,19 +810,41 @@ export default function ValidationQueueScreen({
   const scheduleChanged = editScheduledAtIso !== originalScheduledIso;
 
   useEffect(() => {
+    let active = true;
     if (!editMode || !scheduleChanged || !editScheduledAtIso || !selected) {
-      queueMicrotask(() => setGuardRails(null));
-      return;
+      queueMicrotask(() => {
+        if (!active) return;
+        setGuardRails(null);
+        setGuardRailsLoading(false);
+      });
+      return () => {
+        active = false;
+      };
     }
     const controller = new AbortController();
     queueMicrotask(() => {
+      if (!active) return;
       setGuardRailsLoading(true);
-      validateGuardRails(editScheduledAtIso, selected.institutionId, selected.id)
-        .then((res) => setGuardRails(res.data))
-        .catch(() => setGuardRails(null))
-        .finally(() => setGuardRailsLoading(false));
+      validateGuardRails(
+        editScheduledAtIso,
+        selected.institutionId,
+        selected.id,
+        controller.signal,
+      )
+        .then((res) => {
+          if (active) setGuardRails(res.data);
+        })
+        .catch(() => {
+          if (active && !controller.signal.aborted) setGuardRails(null);
+        })
+        .finally(() => {
+          if (active) setGuardRailsLoading(false);
+        });
     });
-    return () => controller.abort();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [editMode, scheduleChanged, editScheduledAtIso, selected]);
 
   const hardBlocked = (guardRails?.hardBlocks?.length ?? 0) > 0;
@@ -826,16 +893,27 @@ export default function ValidationQueueScreen({
       return;
     }
     const controller = new AbortController();
+    let active = true;
     queueMicrotask(() => {
+      if (!active) return;
       setEngagementLoading(true);
       getEngagementRecommendations(selected.institutionId, controller.signal)
-        .then((res) => setEngagementRecs(res.data.available ? res.data : null))
-        .catch((err: unknown) => {
-          if ((err as { name?: string })?.name !== "CanceledError") setEngagementRecs(null);
+        .then((res) => {
+          if (active) setEngagementRecs(res.data.available ? res.data : null);
         })
-        .finally(() => setEngagementLoading(false));
+        .catch((err: unknown) => {
+          if (active && (err as { name?: string })?.name !== "CanceledError") {
+            setEngagementRecs(null);
+          }
+        })
+        .finally(() => {
+          if (active) setEngagementLoading(false);
+        });
     });
-    return () => controller.abort();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [editMode, editTab, selected]);
 
   function applyRecommendedSlot(scheduledAt: string) {
@@ -1214,6 +1292,13 @@ export default function ValidationQueueScreen({
                         </span>
                       )}
                     </div>
+                    <div className="val-qi-mobile-action">
+                      <span className="val-qi-mobile-btn">
+                        <i className="ti ti-refresh" />
+                        <span>Inspect &amp; Recover</span>
+                        <i className="ti ti-chevron-right" />
+                      </span>
+                    </div>
                   </button>
                 ))}
             </>
@@ -1289,6 +1374,13 @@ export default function ValidationQueueScreen({
 
                       <span className="val-media-count" title={`${item.mediaCount ?? 0} media files`}>
                         <i className="ti ti-photo"></i> {item.mediaCount ?? 0}
+                      </span>
+                    </div>
+                    <div className="val-qi-mobile-action">
+                      <span className="val-qi-mobile-btn">
+                        <i className="ti ti-lock" />
+                        <span>Start Review</span>
+                        <i className="ti ti-chevron-right" />
                       </span>
                     </div>
                   </button>
@@ -1911,7 +2003,7 @@ export default function ValidationQueueScreen({
                   <button
                     className="val-btn val-btn-primary"
                     type="button"
-                    disabled={lockBusy || isSelfReview}
+                    disabled={lockBusy || lockVerificationChecking || isSelfReview}
                     title={isSelfReview ? "Another Moderator must review this submission." : undefined}
                     onClick={() => void handleAcquireLock()}
                   >

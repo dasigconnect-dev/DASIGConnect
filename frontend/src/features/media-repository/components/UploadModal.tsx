@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { MediaAlbum } from "../../../api/mediaApi";
 import type { InstitutionResponse } from "../../../api/authApi";
 import AlbumCombobox from "../../../components/ui/AlbumCombobox";
@@ -35,7 +35,12 @@ interface UploadModalProps {
   /** Institution to scope album selection/creation to when no folder is open. */
   defaultInstitutionId?: string | null;
   onCreateAlbum: (name: string, institutionId: string, parentAlbumId: string | null) => Promise<MediaAlbum>;
-  onUpload: (file: File, metadata: UploadMetadata, onProgress?: (pct: number) => void) => Promise<void>;
+  onUpload: (
+    file: File,
+    metadata: UploadMetadata,
+    onProgress?: (pct: number) => void,
+    signal?: AbortSignal,
+  ) => Promise<void>;
 }
 
 const ACCEPTED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm"]);
@@ -122,6 +127,9 @@ export default function UploadModal({
   const [inlineError, setInlineError] = useState("");
   const [duplicatePrompt, setDuplicatePrompt] = useState<DuplicateUploadPrompt | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const uploadControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => uploadControllerRef.current?.abort(), []);
 
   const tags = useMemo(
     () => tagsInput.split(",").map((tag) => tag.trim()).filter(Boolean),
@@ -211,6 +219,8 @@ export default function UploadModal({
   }
 
   function resetForm() {
+    uploadControllerRef.current?.abort();
+    uploadControllerRef.current = null;
     setDragOver(false);
     setSelectedFiles([]);
     setProgress(0);
@@ -276,7 +286,12 @@ export default function UploadModal({
     return { assetId: details.assetId, assetCode: details.assetCode };
   }
 
-  async function uploadFromIndex(startIndex: number, metadata: UploadMetadata, allowDuplicateIndex = -1) {
+  async function uploadFromIndex(
+    startIndex: number,
+    metadata: UploadMetadata,
+    signal: AbortSignal,
+    allowDuplicateIndex = -1,
+  ) {
     const total = selectedFiles.length;
     for (let index = startIndex; index < total; index += 1) {
       const file = selectedFiles[index];
@@ -286,6 +301,7 @@ export default function UploadModal({
           file,
           { ...metadata, allowDuplicate: index === allowDuplicateIndex },
           (pct) => setProgress(Math.round(completedBase + pct / total)),
+          signal,
         );
       } catch (err) {
         const duplicate = duplicateDetails(err);
@@ -306,6 +322,9 @@ export default function UploadModal({
     }
     setUploading(true);
     setProgress(0);
+    uploadControllerRef.current?.abort();
+    const controller = new AbortController();
+    uploadControllerRef.current = controller;
     try {
       let albumId: string | null | undefined;
       let albumName: string;
@@ -336,7 +355,7 @@ export default function UploadModal({
       }
 
       const metadata: UploadMetadata = { albumId, albumName, autoMatchAlbum, tags, institutionId };
-      const finished = await uploadFromIndex(0, metadata);
+      const finished = await uploadFromIndex(0, metadata, controller.signal);
       if (!finished) return;
       setProgress(100);
       setTimeout(() => {
@@ -357,8 +376,10 @@ export default function UploadModal({
     const prompt = duplicatePrompt;
     setDuplicatePrompt(null);
     setUploading(true);
+    const controller = uploadControllerRef.current ?? new AbortController();
+    uploadControllerRef.current = controller;
     try {
-      const finished = await uploadFromIndex(prompt.index, prompt.metadata, prompt.index);
+      const finished = await uploadFromIndex(prompt.index, prompt.metadata, controller.signal, prompt.index);
       if (!finished) return;
       setProgress(100);
       setTimeout(() => {
@@ -378,8 +399,10 @@ export default function UploadModal({
     const metadata = duplicatePrompt.metadata;
     setDuplicatePrompt(null);
     setUploading(true);
+    const controller = uploadControllerRef.current ?? new AbortController();
+    uploadControllerRef.current = controller;
     try {
-      const finished = await uploadFromIndex(nextIndex, metadata);
+      const finished = await uploadFromIndex(nextIndex, metadata, controller.signal);
       if (!finished) return;
       setProgress(100);
       setTimeout(() => {
