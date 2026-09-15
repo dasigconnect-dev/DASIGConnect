@@ -267,6 +267,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
           specific_subjects,
           visual_style,
           dominant_colors,
+          content_hash,
           possible_use_cases,
           ai_tags,
           excluded_categories,
