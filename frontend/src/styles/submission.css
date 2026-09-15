@@ -5184,6 +5184,10 @@ textarea.sub-finput {
   display: inline-flex;
 }
 
+.fancy-text-tool.is-open {
+  z-index: 1000;
+}
+
 .fancy-text-trigger {
   display: inline-flex;
   align-items: center;
@@ -5236,7 +5240,7 @@ textarea.sub-finput {
   border-radius: var(--sub-r-sm);
   background: var(--sub-surface);
   box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
-  z-index: 420;
+  z-index: 1001;
   overflow: hidden;
   letter-spacing: 0;
   text-transform: none;
