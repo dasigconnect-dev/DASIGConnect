@@ -13,11 +13,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
@@ -35,13 +38,26 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
  * depend only on this type.
  *
  * <p>The browser uploads file bytes directly to a short-lived presigned PUT URL
- * ({@link #createSignedUploadUrl}); the URL stored in the database and used for
- * {@code <img>} tags, Claude Vision input, and downloads is the public read URL
- * ({@link #getPublicUrl}), served from the bucket's public development URL or a
- * connected custom domain.
+ * ({@link #createSignedUploadUrl}). The URL stored in the database and used for
+ * {@code <img>} tags, Claude Vision input, and downloads is {@link #getPublicUrl}
+ * — deliberately NOT a direct R2 URL. R2's "Public Development URL" (the
+ * {@code pub-*.r2.dev} host {@code app.r2.public-base-url} used to point at)
+ * is documented by Cloudflare as unfit for production and can be disabled or
+ * silently rotated to a new hash at any time; when that happened here, every
+ * previously-stored asset URL died at once (DNS stopped resolving for the old
+ * host) and every media preview in the app broke simultaneously. Instead,
+ * {@code getPublicUrl} now returns an address on this app's own backend
+ * ({@code app.backend.public-base-url} + {@code /api/v1/media-files/<key>}),
+ * served by {@code MediaProxyController} which streams the bytes from R2
+ * server-side via {@link #downloadObject}. The tradeoff is that every media
+ * request now round-trips through this backend instead of being served
+ * directly from Cloudflare's edge — acceptable at this project's scale, and
+ * immune to the R2 dev-URL failure mode entirely.
  *
  * <p>Configured via {@code app.r2.*} (kept as the stable config key namespace so
- * existing {@code R2_*} environment variables keep working).
+ * existing {@code R2_*} environment variables keep working). {@code app.r2.public-base-url}
+ * itself is now used only to recognize pre-existing stored URLs from before this
+ * change, for {@link #deletePublicObject} to still resolve them back to an object key.
  */
 @Service
 public class MediaStorageService {
@@ -60,8 +76,12 @@ public class MediaStorageService {
      */
     public record StorageUsage(long totalBytes, long objectCount, boolean partial, Instant scannedAt) {}
 
+    /** Path prefix under this app's own backend that {@link MediaProxyController} serves. */
+    public static final String MEDIA_PROXY_PATH = "/api/v1/media-files/";
+
     private final String bucket;
     private final String publicBaseUrl;
+    private final String backendPublicBaseUrl;
     private final S3Client s3Client;
     private final S3Presigner presigner;
     private final boolean configured;
@@ -73,10 +93,12 @@ public class MediaStorageService {
             @Value("${app.r2.access-key-id:}") String accessKeyId,
             @Value("${app.r2.secret-access-key:}") String secretAccessKey,
             @Value("${app.r2.bucket:dasigconnect-media}") String bucket,
-            @Value("${app.r2.public-base-url:}") String publicBaseUrl) {
+            @Value("${app.r2.public-base-url:}") String publicBaseUrl,
+            @Value("${app.backend.public-base-url:http://localhost:8080}") String backendPublicBaseUrl) {
 
         this.bucket = bucket;
         this.publicBaseUrl = publicBaseUrl.replaceAll("/$", "");
+        this.backendPublicBaseUrl = backendPublicBaseUrl.replaceAll("/$", "");
 
         String resolvedEndpoint = endpoint.isBlank() && !accountId.isBlank()
                 ? "https://" + accountId + ".r2.cloudflarestorage.com"
@@ -152,8 +174,47 @@ public class MediaStorageService {
         }
     }
 
+    /**
+     * The URL the browser/AI clients actually fetch — served by
+     * {@code MediaProxyController} on this backend, not directly from R2. See
+     * the class-level javadoc for why (R2's dev URL is not stable).
+     */
     public String getPublicUrl(String objectPath) {
-        return publicBaseUrl + "/" + objectPath;
+        return backendPublicBaseUrl + MEDIA_PROXY_PATH + objectPath;
+    }
+
+    /** Downloaded object bytes plus the content type/length R2 reported for it. */
+    public record StoredObject(byte[] content, String contentType, Long contentLength) {}
+
+    public static class MediaObjectNotFoundException extends RuntimeException {
+        public MediaObjectNotFoundException(String objectPath) {
+            super("Media object not found: " + objectPath);
+        }
+    }
+
+    /**
+     * Fetches an object's bytes from R2 server-side, for {@code MediaProxyController}
+     * to stream back to the browser. Loads the whole object into memory (acceptable
+     * at this project's upload size cap — 50 MB — and traffic scale; a true
+     * streaming response would be the next step if that stops being true).
+     */
+    public StoredObject downloadObject(String objectPath) {
+        requireConfigured();
+        try {
+            ResponseBytes<GetObjectResponse> object = s3Client.getObjectAsBytes(GetObjectRequest.builder()
+                    .bucket(bucket)
+                    .key(objectPath)
+                    .build());
+            String contentType = object.response().contentType();
+            return new StoredObject(
+                    object.asByteArray(),
+                    contentType != null && !contentType.isBlank() ? contentType : "application/octet-stream",
+                    object.response().contentLength());
+        } catch (NoSuchKeyException ex) {
+            throw new MediaObjectNotFoundException(objectPath);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to download object from media storage: " + ex.getMessage(), ex);
+        }
     }
 
     public String uploadPublicObject(String objectPath, byte[] content, String contentType) {
@@ -266,11 +327,21 @@ public class MediaStorageService {
         if (publicUrl == null || publicUrl.isBlank()) {
             return null;
         }
-        String prefix = publicBaseUrl + "/";
-        if (publicUrl.startsWith(prefix)) {
-            return publicUrl.substring(prefix.length());
+        // Current format: this backend's proxy URL.
+        int proxyIdx = publicUrl.indexOf(MEDIA_PROXY_PATH);
+        if (proxyIdx >= 0) {
+            return publicUrl.substring(proxyIdx + MEDIA_PROXY_PATH.length());
         }
-        // Fallback: strip scheme + host, keep the path (covers legacy/custom-domain URLs).
+        // Legacy: a direct R2 public-base-url URL, from before the proxy switch
+        // (either not yet backfilled, or app.r2.public-base-url was set when
+        // this asset's row was written).
+        if (!publicBaseUrl.isBlank()) {
+            String prefix = publicBaseUrl + "/";
+            if (publicUrl.startsWith(prefix)) {
+                return publicUrl.substring(prefix.length());
+            }
+        }
+        // Fallback: strip scheme + host, keep the path (covers any other legacy/custom-domain URL).
         int schemeIdx = publicUrl.indexOf("://");
         if (schemeIdx < 0) {
             return null;
