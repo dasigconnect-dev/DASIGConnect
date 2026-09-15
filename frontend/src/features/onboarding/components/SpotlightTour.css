@@ -1,0 +1,243 @@
+/* Spotlight Tour Backdrop & Blur */
+.spotlight-tour-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99990;
+  pointer-events: auto;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.spotlight-tour-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  transition: clip-path 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+
+/* Glowing Highlight Ring over the active element */
+.spotlight-target-highlight {
+  position: fixed;
+  pointer-events: none;
+  border-radius: 10px;
+  box-shadow: 0 0 0 3px #3b82f6, 0 0 25px rgba(59, 130, 246, 0.5), inset 0 0 15px rgba(59, 130, 246, 0.2);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 99991;
+  animation: spotlight-pulse 2.2s infinite ease-in-out;
+}
+
+@keyframes spotlight-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 3px #3b82f6, 0 0 20px rgba(59, 130, 246, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 5px #60a5fa, 0 0 32px rgba(96, 165, 250, 0.7);
+  }
+}
+
+/* Floating Agentic Guide Card (Crisp White Theme) */
+.spotlight-card {
+  position: fixed;
+  z-index: 99992;
+  width: min(390px, calc(100vw - 32px));
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  color: #0f172a;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+  animation: spotlight-card-enter 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes spotlight-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Header */
+.spotlight-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.spotlight-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.spotlight-badge i {
+  font-size: 13px;
+  color: #2563eb;
+}
+
+.spotlight-step-count {
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.spotlight-close-btn {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.spotlight-close-btn:hover {
+  color: #0f172a;
+  background-color: #f1f5f9;
+}
+
+/* Body */
+.spotlight-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.spotlight-card-title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #0f172a;
+  margin: 0;
+}
+
+.spotlight-card-desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #475569;
+  margin: 0;
+}
+
+/* Progress indicator bar */
+.spotlight-progress-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.spotlight-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: #e2e8f0;
+  transition: all 0.2s ease;
+}
+
+.spotlight-dot.active {
+  width: 20px;
+  background-color: #2563eb;
+}
+
+/* Footer / Actions */
+.spotlight-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.spotlight-btn-skip {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.spotlight-btn-skip:hover {
+  color: #0f172a;
+  background-color: #f1f5f9;
+}
+
+.spotlight-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spotlight-btn-back {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.spotlight-btn-back:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.spotlight-btn-back:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.spotlight-btn-next {
+  background: #2563eb;
+  border: 1px solid #1d4ed8;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 14px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+  transition: all 0.15s ease;
+}
+
+.spotlight-btn-next:hover {
+  background: #1d4ed8;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.45);
+}
+

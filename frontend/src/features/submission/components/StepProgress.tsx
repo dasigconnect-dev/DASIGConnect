@@ -36,7 +36,7 @@ export function StepProgress({
   }
 
   return (
-    <div className="sub-step-nav" aria-label="Submission progress">
+    <div id="composer-step-nav" className="sub-step-nav" aria-label="Submission progress">
       {steps.map((step, index) => {
         const active = activeStep === step.id;
         const locked = isLocked(step.id);
