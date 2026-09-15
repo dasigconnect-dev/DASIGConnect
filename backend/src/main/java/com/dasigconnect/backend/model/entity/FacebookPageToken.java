@@ -32,6 +32,20 @@ public class FacebookPageToken {
     @Column(name = "last_validated_at")
     private Instant lastValidatedAt;
 
+    /**
+     * Set when Facebook's {@code debug_token} endpoint reports this token as
+     * invalid (revoked, permissions changed, page unpublished, etc.) — cleared
+     * the moment a fresh token is set (reauth, manual paste, page connect) or a
+     * later validation succeeds. Distinct from {@link #isActive}, which marks
+     * "the page currently connected," not token validity: a rejected token can
+     * still be the active one until an admin replaces it.
+     */
+    @Column(name = "validation_failed_at")
+    private Instant validationFailedAt;
+
+    @Column(name = "validation_failure_reason", columnDefinition = "text")
+    private String validationFailureReason;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -70,6 +84,12 @@ public class FacebookPageToken {
 
     public Instant getLastValidatedAt() { return lastValidatedAt; }
     public void setLastValidatedAt(Instant lastValidatedAt) { this.lastValidatedAt = lastValidatedAt; }
+
+    public Instant getValidationFailedAt() { return validationFailedAt; }
+    public void setValidationFailedAt(Instant validationFailedAt) { this.validationFailedAt = validationFailedAt; }
+
+    public String getValidationFailureReason() { return validationFailureReason; }
+    public void setValidationFailureReason(String validationFailureReason) { this.validationFailureReason = validationFailureReason; }
 
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

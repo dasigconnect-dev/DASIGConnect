@@ -586,18 +586,30 @@ public class FacebookPublisherService {
                 String reason = data.path("error").path("message")
                         .asText("Graph API reports the page token as invalid or expired.");
                 log.warn("Facebook page token failed validation: {}", reason);
+                // Persist the rejection so the System Health table's status column
+                // reflects it — isActive alone means "the connected page," not
+                // "still valid," and a rejected token stays isActive until an
+                // admin replaces it.
+                pageTokenRepository.findFirstByIsActiveTrue().ifPresent(t -> {
+                    t.setValidationFailedAt(Instant.now());
+                    t.setValidationFailureReason(reason);
+                    pageTokenRepository.save(t);
+                });
                 return new TokenValidation(TokenValidationOutcome.REJECTED, null, reason);
             }
 
             long expiresAtEpoch = data.path("expires_at").asLong(0L);
             Instant expiresAt = expiresAtEpoch > 0 ? Instant.ofEpochSecond(expiresAtEpoch) : null;
 
-            // Refresh last_validated_at (and expiry, when the token actually has one).
+            // Refresh last_validated_at (and expiry, when the token actually has one),
+            // and clear any earlier rejection now that Facebook confirms it's valid again.
             pageTokenRepository.findFirstByIsActiveTrue().ifPresent(t -> {
                 t.setLastValidatedAt(Instant.now());
                 if (expiresAt != null) {
                     t.setExpiresAt(expiresAt);
                 }
+                t.setValidationFailedAt(null);
+                t.setValidationFailureReason(null);
                 pageTokenRepository.save(t);
             });
 
