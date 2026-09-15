@@ -3,6 +3,8 @@ package com.dasigconnect.backend.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -23,6 +25,7 @@ import com.dasigconnect.backend.model.dto.analytics.ContributorBreakdownDto;
 import com.dasigconnect.backend.repository.AnalyticsRepository;
 import com.dasigconnect.backend.repository.AnalyticsRepository.AiStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.AnalyticsScope;
+import com.dasigconnect.backend.repository.AnalyticsRepository.AnalyticsRowsPage;
 import com.dasigconnect.backend.repository.AnalyticsRepository.CompletenessStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.PostingDelayStats;
 import com.dasigconnect.backend.repository.AnalyticsRepository.PublishedPostStats;
@@ -214,6 +217,24 @@ class MetricsAggregatorServiceTest {
         assertThat(export.filename()).contains("DASIGConnect_Analytics_Admin_Network_operational_health_7D").endsWith(".csv");
         assertThat(export.content()).contains("\"metric\",\"value\"");
         assertThat(export.content()).contains("\"publication_attempts\",\"5\"");
+    }
+
+    @Test
+    void report_capsPageSizeAndReturnsOnlyPagedRows() {
+        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "admin", null);
+        when(analyticsRepository.reportRows(any(), any(), any(), any(), anyInt(), anyInt()))
+                .thenReturn(new AnalyticsRowsPage(List.of(Map.of("submission_id", "abc")), 250, 2, 100));
+
+        var report = service.report("posting-delay", "30d", null, 2, 500, admin);
+
+        assertThat(report.aggregateRows()).hasSize(1);
+        assertThat(report.totalCount()).isEqualTo(250);
+        assertThat(report.page()).isEqualTo(2);
+        assertThat(report.pageSize()).isEqualTo(100);
+        org.mockito.Mockito.verify(analyticsRepository)
+                .reportRows(any(), any(), any(), any(), eq(2), eq(100));
+        org.mockito.Mockito.verify(analyticsRepository, org.mockito.Mockito.never())
+                .dailyBreakdown(any(), any(), any(), any());
     }
 
     @Test

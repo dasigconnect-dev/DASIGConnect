@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../../styles/notifications.css";
 import "../../styles/institution-management.css";
@@ -222,6 +222,10 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
   const navigate = useNavigate();
   const {
     allNotifications,
+    hasNextPage,
+    loadingMore,
+    loadMoreFailed,
+    loadMore,
     loading,
     fetchError,
     activeFilter,
@@ -234,6 +238,7 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
+  const loadMoreRef = useRef<HTMLTableRowElement | null>(null);
 
   const isContributor = user.role === "contributor";
   const isModerator = user.role === "moderator";
@@ -311,6 +316,18 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
     if (showAll) return filteredNotifications;
     return filteredNotifications.slice(0, PAGE_SIZE);
   }, [filteredNotifications, showAll]);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!showAll || !target || !hasNextPage || loadingMore || loadMoreFailed) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.unobserve(target);
+      void loadMore();
+    }, { rootMargin: "240px" });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasNextPage, loadMore, loadingMore, loadMoreFailed, showAll]);
 
   function handleFilterChange(filter: NotificationFilter) {
     setActiveFilter(filter);
@@ -577,11 +594,12 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
                       </td>
                     </tr>
                   ) : (
-                    displayedNotifications.map((n) => {
+                    displayedNotifications.map((n, index) => {
                       const statusBadge = getEventStatusBadge(n.eventType);
                       return (
                         <tr
                           key={n.id}
+                          ref={showAll && index === displayedNotifications.length - 1 ? loadMoreRef : undefined}
                           onClick={() => handleRowClick(n)}
                           style={{ cursor: "pointer" }}
                           title={n.link ? `Click to view: ${n.linkLabel}` : undefined}

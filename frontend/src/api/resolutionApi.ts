@@ -16,6 +16,8 @@ export interface FailedPublication {
   lastError: string | null;
   manualPublishInProgress: boolean;
   lastManualPublishAbandonedAt: string | null;
+  /** True if this was a Live Event submission — gates the Publishing Mode toggle on retry. */
+  fastTrack: boolean;
 }
 
 export interface ManualPublishMediaItem {
@@ -63,6 +65,16 @@ export function getResolutionDetail(id: string, signal?: AbortSignal) {
 
 export function retryPublicationWithNewSchedule(id: string, payload: RetryWithNewSchedulePayload) {
   return api.post<void>(`/resolution/${id}/retry-with-new-schedule`, payload);
+}
+
+/** Retries a failed publish exactly as it was — no schedule, no mode change. */
+export function retryPublication(id: string) {
+  return api.post<void>(`/resolution/${id}/retry`);
+}
+
+/** Admin-only: overrides a Scheduled failed publish to Live Event and retries immediately. */
+export function retryPublicationAsLive(id: string) {
+  return api.post<void>(`/resolution/${id}/retry-as-live`);
 }
 
 export function startManualPublish(id: string) {

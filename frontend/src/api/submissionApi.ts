@@ -1,4 +1,5 @@
 import { api } from "./authApi";
+import { fetchWithDeadline } from "./requestPolicy";
 
 export type SubmissionStatus =
   | "draft"
@@ -31,6 +32,14 @@ export interface SavedMediaAsset {
   albumName?: string | null;
 }
 
+export interface SubmissionMediaPreview {
+  id: string;
+  storageUrl?: string | null;
+  fileName: string;
+  fileType: string;
+  fileSizeBytes: number;
+}
+
 export interface SubmissionSummary {
   id: string;
   institutionId: string;
@@ -47,6 +56,7 @@ export interface SubmissionSummary {
   createdAt?: string;
   updatedAt?: string;
   mediaCount?: number;
+  previewMediaAsset?: SubmissionMediaPreview | null;
   category?: string;
   templateId?: string | null;
   fastTrack?: boolean;
@@ -177,7 +187,7 @@ export function detachAsset(id: string, mediaAssetId: string) {
   return api.delete(`/submissions/${id}/assets/${mediaAssetId}`);
 }
 
-export async function uploadSubmissionMedia(id: string, files: File[]) {
+export async function uploadSubmissionMedia(id: string, files: File[], signal?: AbortSignal) {
   const responses = [];
   for (const file of files) {
     const {
@@ -189,11 +199,13 @@ export async function uploadSubmissionMedia(id: string, files: File[]) {
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
       },
+      { signal },
     );
-    const upload = await fetch(signedUrl, {
+    const upload = await fetchWithDeadline(signedUrl, {
       method: "PUT",
       headers: { "Content-Type": file.type || "application/octet-stream" },
       body: file,
+      signal,
     });
     if (!upload.ok) {
       const msg = await upload.text().catch(() => "");
@@ -205,7 +217,7 @@ export async function uploadSubmissionMedia(id: string, files: File[]) {
         fileName: file.name,
         fileType: fileTypeFromFile(file),
         fileSizeBytes: file.size,
-      }),
+      }, { signal }),
     );
   }
   return responses.at(-1);

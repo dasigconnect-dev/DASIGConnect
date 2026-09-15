@@ -11,8 +11,8 @@ export interface MessengerLinkCode {
   expiresAt: string;
 }
 
-export async function getMessengerConnectionStatus(): Promise<MessengerConnection> {
-  const res = await api.get<MessengerConnection>("/integrations/messenger/connection");
+export async function getMessengerConnectionStatus(signal?: AbortSignal): Promise<MessengerConnection> {
+  const res = await api.get<MessengerConnection>("/integrations/messenger/connection", { signal });
   return res.data;
 }
 

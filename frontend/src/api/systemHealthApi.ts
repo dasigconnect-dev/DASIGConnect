@@ -62,6 +62,8 @@ export interface TokenStatus {
   tokenStatus: "ACTIVE" | "EXPIRING" | "EXPIRED" | "INVALID";
   expiresAt: string | null;
   lastValidatedAt: string | null;
+  /** Why Facebook's debug_token check rejected this token, when that's the reason it's INVALID. */
+  validationFailureReason: string | null;
 }
 
 export function getSystemHealthSummary(signal?: AbortSignal) {

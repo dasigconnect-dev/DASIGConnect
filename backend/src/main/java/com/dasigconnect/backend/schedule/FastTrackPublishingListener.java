@@ -11,6 +11,7 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import com.dasigconnect.backend.event.SubmissionApprovedEvent;
+import com.dasigconnect.backend.event.SubmissionFastTrackRetryEvent;
 import com.dasigconnect.backend.model.entity.Submission;
 import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.service.FacebookPublisherService;
@@ -18,7 +19,11 @@ import com.dasigconnect.backend.service.PublishingQueryService;
 
 /**
  * UC-3.2 A5: Fast-Track submissions skip the scheduler window and publish
- * immediately after approval commits.
+ * immediately after approval commits. Also handles a failed Fast-Track
+ * publish being retried without a mode change (SubmissionFastTrackRetryEvent)
+ * — PublishingSchedulerJob's cron never picks these up on its own, since its
+ * query requires a non-null scheduledAt and Fast-Track submissions never have
+ * one.
  */
 @Component
 public class FastTrackPublishingListener {
@@ -38,7 +43,16 @@ public class FastTrackPublishingListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onSubmissionApproved(SubmissionApprovedEvent event) {
-        Submission submission = event.submission();
+        publishIfFastTrack(event.submission());
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onFastTrackRetry(SubmissionFastTrackRetryEvent event) {
+        publishIfFastTrack(event.submission());
+    }
+
+    private void publishIfFastTrack(Submission submission) {
         if (!submission.isFastTrack() || !facebookPublisherService.isConfigured()) {
             return;
         }

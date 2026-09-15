@@ -19,6 +19,7 @@ public class FailedPublicationDto {
     private String lastError;
     private boolean manualPublishInProgress;
     private Instant lastManualPublishAbandonedAt;
+    private boolean fastTrack;
 
     public static FailedPublicationDto from(Submission s, PublicationAttempt lastAttempt) {
         FailedPublicationDto dto = new FailedPublicationDto();
@@ -29,6 +30,7 @@ public class FailedPublicationDto {
         dto.institutionName = s.getInstitution().getName();
         dto.scheduledAt = s.getScheduledAt();
         dto.retryCount = s.getRetryCount();
+        dto.fastTrack = s.isFastTrack();
         dto.manualPublishInProgress = s.getManualPublishStartedAt() != null;
         dto.lastManualPublishAbandonedAt = s.getLastManualPublishAbandonedAt();
         if (lastAttempt != null) {
@@ -49,4 +51,5 @@ public class FailedPublicationDto {
     public String getLastError() { return lastError; }
     public boolean isManualPublishInProgress() { return manualPublishInProgress; }
     public Instant getLastManualPublishAbandonedAt() { return lastManualPublishAbandonedAt; }
+    public boolean isFastTrack() { return fastTrack; }
 }

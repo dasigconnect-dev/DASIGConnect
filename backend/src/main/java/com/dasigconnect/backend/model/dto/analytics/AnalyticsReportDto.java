@@ -10,6 +10,8 @@ public record AnalyticsReportDto(
         Instant periodStart,
         Instant periodEnd,
         List<DailyAnalyticsPointDto> dailyBreakdown,
-        List<SubmissionAnalyticsRowDto> submissions,
-        List<Map<String, Object>> aggregateRows) {
+        List<Map<String, Object>> aggregateRows,
+        long totalCount,
+        int page,
+        int pageSize) {
 }

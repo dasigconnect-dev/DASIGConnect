@@ -5,6 +5,8 @@ import {
   completeManualPublish,
   getResolutionDetail,
   getResolutionFailures,
+  retryPublication,
+  retryPublicationAsLive,
   retryPublicationWithNewSchedule,
   startManualPublish,
   type FailedPublication,
@@ -12,7 +14,8 @@ import {
 } from "../api/resolutionApi";
 import { useToast } from "../context/ToastContext";
 import { authenticatedQueryMeta } from "../lib/queryClient";
-import { queryKeys } from "../lib/queryKeys";
+import { invalidateQueryRoots } from "../lib/queryInvalidation";
+import { mutationCacheDependencies, queryKeys } from "../lib/queryKeys";
 import type { User } from "../types/auth.types";
 
 export interface UseResolutionFailuresResult {
@@ -28,6 +31,10 @@ export interface UseResolutionFailuresResult {
     scheduledAt: string,
     overrideReason?: string,
   ) => Promise<void>;
+  /** Retries exactly as it was — no schedule, no mode change. */
+  handleRetry: (item: FailedPublication) => Promise<void>;
+  /** Admin-only: overrides a Scheduled failed publish to Live Event and retries immediately. */
+  handleRetryAsLive: (item: FailedPublication) => Promise<void>;
   handleStartManual: (item: FailedPublication) => Promise<void>;
   handleCancelManual: (item: FailedPublication) => Promise<void>;
   handleCompleteManual: (
@@ -46,7 +53,10 @@ function userScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
 }
 
-export function useResolutionFailures(user: User): UseResolutionFailuresResult {
+export function useResolutionFailures(
+  user: User,
+  enabled = true,
+): UseResolutionFailuresResult {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
@@ -63,6 +73,7 @@ export function useResolutionFailures(user: User): UseResolutionFailuresResult {
     queryKey: queryKeys.resolution.failures(resolutionScope),
     queryFn: ({ signal }) => getResolutionFailures(signal).then((response) => response.data),
     staleTime: RESOLUTION_FAILURES_STALE_TIME_MS,
+    enabled,
     meta: authenticatedQueryMeta,
   });
 
@@ -84,8 +95,18 @@ export function useResolutionFailures(user: User): UseResolutionFailuresResult {
   }, [activeDetailId, detailQuery.isError, toast]);
 
   const refresh = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ["resolution"] });
+    void invalidateQueryRoots(queryClient, mutationCacheDependencies.resolutionSession);
   }, [queryClient]);
+
+  const invalidateResolutionSession = useCallback(
+    () => invalidateQueryRoots(queryClient, mutationCacheDependencies.resolutionSession),
+    [queryClient],
+  );
+
+  const invalidateResolutionOutcome = useCallback(
+    () => invalidateQueryRoots(queryClient, mutationCacheDependencies.resolutionOutcome),
+    [queryClient],
+  );
 
   function openWorkflowPanel(item: FailedPublication) {
     detailErrorNotifiedRef.current = null;
@@ -112,7 +133,7 @@ export function useResolutionFailures(user: User): UseResolutionFailuresResult {
           ? `"${item.eventTitle}" rescheduled and sent back to the approval queue.`
           : `"${item.eventTitle}" rescheduled and re-queued.`,
       );
-      await queryClient.invalidateQueries({ queryKey: ["resolution"] });
+      await invalidateResolutionOutcome();
     } catch (err: unknown) {
       const data = (err as { response?: { data?: unknown } })?.response?.data as
         | { message?: string; error?: string | { message?: string } }
@@ -128,12 +149,54 @@ export function useResolutionFailures(user: User): UseResolutionFailuresResult {
     }
   }
 
+  async function handleRetry(item: FailedPublication) {
+    setBusy(item.submissionId);
+    try {
+      await retryPublication(item.submissionId);
+      toast.success(`"${item.eventTitle}" re-queued for publishing.`);
+      await invalidateResolutionOutcome();
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: unknown } })?.response?.data as
+        | { message?: string; error?: string | { message?: string } }
+        | undefined;
+      const message =
+        (typeof data?.error === "object" ? data?.error?.message : data?.error) ||
+        data?.message ||
+        "Could not retry this submission.";
+      toast.error(message);
+      throw err;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRetryAsLive(item: FailedPublication) {
+    setBusy(item.submissionId);
+    try {
+      await retryPublicationAsLive(item.submissionId);
+      toast.success(`"${item.eventTitle}" switched to Live Event and re-queued.`);
+      await invalidateResolutionOutcome();
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: unknown } })?.response?.data as
+        | { message?: string; error?: string | { message?: string } }
+        | undefined;
+      const message =
+        (typeof data?.error === "object" ? data?.error?.message : data?.error) ||
+        data?.message ||
+        "Could not switch this submission to Live Event.";
+      toast.error(message);
+      throw err;
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleStartManual(item: FailedPublication) {
     setBusy(item.submissionId);
     try {
       await startManualPublish(item.submissionId);
       toast.success("Manual publish session started.");
-      await queryClient.invalidateQueries({ queryKey: ["resolution"] });
+      await invalidateResolutionSession();
       openWorkflowPanel({ ...item, manualPublishInProgress: true });
     } catch {
       toast.error("Could not start manual publish.");
@@ -148,7 +211,7 @@ export function useResolutionFailures(user: User): UseResolutionFailuresResult {
       await cancelManualPublish(item.submissionId);
       toast.info("Manual publish cancelled.");
       closeWorkflowPanel();
-      await queryClient.invalidateQueries({ queryKey: ["resolution"] });
+      await invalidateResolutionSession();
     } catch {
       toast.error("Could not cancel manual publish.");
     } finally {
@@ -169,7 +232,7 @@ export function useResolutionFailures(user: User): UseResolutionFailuresResult {
       });
       toast.success(`"${item.eventTitle}" marked as published.`);
       closeWorkflowPanel();
-      await queryClient.invalidateQueries({ queryKey: ["resolution"] });
+      await invalidateResolutionOutcome();
     } catch {
       toast.error("Could not complete manual publish.");
     } finally {
@@ -179,13 +242,15 @@ export function useResolutionFailures(user: User): UseResolutionFailuresResult {
 
   return {
     failures: failuresQuery.data ?? [],
-    loading: failuresQuery.isLoading || failuresQuery.isFetching,
+    loading: failuresQuery.isLoading,
     error: failuresQuery.error ? "Could not load failed publications. Please try again." : "",
     busy,
     activeDetail: detailQuery.data ?? null,
-    detailLoading: detailQuery.isLoading || detailQuery.isFetching,
+    detailLoading: detailQuery.isLoading,
     refresh,
     handleRetryWithNewSchedule,
+    handleRetry,
+    handleRetryAsLive,
     handleStartManual,
     handleCancelManual,
     handleCompleteManual,

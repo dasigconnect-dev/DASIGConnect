@@ -1,16 +1,21 @@
 package com.dasigconnect.backend.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.dasigconnect.backend.model.entity.MediaAsset;
+import com.dasigconnect.backend.model.entity.MediaFileType;
 
 public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
@@ -25,6 +30,82 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     @Query("SELECT m FROM MediaAsset m WHERE m.institution.id IN :institutionIds AND m.deletedAt IS NULL ORDER BY m.createdAt DESC")
     List<MediaAsset> findActiveByInstitutionIds(@Param("institutionIds") java.util.Collection<UUID> institutionIds);
+
+    @EntityGraph(attributePaths = {"institution", "uploader", "mediaAlbum"})
+    @Query(value = """
+        SELECT m FROM MediaAsset m
+        WHERE m.deletedAt IS NULL
+          AND m.status <> com.dasigconnect.backend.model.entity.MediaAssetStatus.STAGED
+          AND (:networkWide = true OR m.institution.id IN :institutionIds)
+          AND (
+              NOT EXISTS (
+                  SELECT sma.id FROM SubmissionMediaAsset sma
+                  WHERE sma.mediaAsset = m
+              )
+              OR EXISTS (
+                  SELECT publishedLink.id FROM SubmissionMediaAsset publishedLink
+                  WHERE publishedLink.mediaAsset = m
+                    AND publishedLink.submission.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+              )
+          )
+          AND (:albumId IS NULL OR m.mediaAlbum.id = :albumId)
+          AND (
+              :searchTerm = ''
+              OR LOWER(m.fileName) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(COALESCE(m.displayTitle, '')) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(m.assetCode) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(m.uploader.email) LIKE CONCAT('%', :searchTerm, '%')
+              OR EXISTS (
+                  SELECT tag.id FROM AssetTag tag
+                  WHERE tag.mediaAsset = m
+                    AND LOWER(tag.label) LIKE CONCAT('%', :searchTerm, '%')
+              )
+          )
+          AND (:aiCategory = '' OR LOWER(m.aiCategory) = :aiCategory)
+          AND m.fileType IN :mediaTypes
+          AND (:uploaderId IS NULL OR m.uploader.id = :uploaderId)
+        """, countQuery = """
+        SELECT COUNT(m) FROM MediaAsset m
+        WHERE m.deletedAt IS NULL
+          AND m.status <> com.dasigconnect.backend.model.entity.MediaAssetStatus.STAGED
+          AND (:networkWide = true OR m.institution.id IN :institutionIds)
+          AND (
+              NOT EXISTS (
+                  SELECT sma.id FROM SubmissionMediaAsset sma
+                  WHERE sma.mediaAsset = m
+              )
+              OR EXISTS (
+                  SELECT publishedLink.id FROM SubmissionMediaAsset publishedLink
+                  WHERE publishedLink.mediaAsset = m
+                    AND publishedLink.submission.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+              )
+          )
+          AND (:albumId IS NULL OR m.mediaAlbum.id = :albumId)
+          AND (
+              :searchTerm = ''
+              OR LOWER(m.fileName) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(COALESCE(m.displayTitle, '')) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(m.assetCode) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(m.uploader.email) LIKE CONCAT('%', :searchTerm, '%')
+              OR EXISTS (
+                  SELECT tag.id FROM AssetTag tag
+                  WHERE tag.mediaAsset = m
+                    AND LOWER(tag.label) LIKE CONCAT('%', :searchTerm, '%')
+              )
+          )
+          AND (:aiCategory = '' OR LOWER(m.aiCategory) = :aiCategory)
+          AND m.fileType IN :mediaTypes
+          AND (:uploaderId IS NULL OR m.uploader.id = :uploaderId)
+        """)
+    Page<MediaAsset> findRepositoryPage(
+            @Param("networkWide") boolean networkWide,
+            @Param("institutionIds") Collection<UUID> institutionIds,
+            @Param("albumId") UUID albumId,
+            @Param("searchTerm") String searchTerm,
+            @Param("aiCategory") String aiCategory,
+            @Param("mediaTypes") Collection<MediaFileType> mediaTypes,
+            @Param("uploaderId") UUID uploaderId,
+            Pageable pageable);
 
     // JPQL (not SELECT *) so Hibernate emits an explicit column list and never
     // pulls the unmapped embedding VECTOR(1024) column across the wire.
@@ -186,6 +267,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
           specific_subjects,
           visual_style,
           dominant_colors,
+          content_hash,
           possible_use_cases,
           ai_tags,
           excluded_categories,

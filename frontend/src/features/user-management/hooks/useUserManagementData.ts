@@ -8,7 +8,8 @@ import {
   type UserProfileResponse,
 } from "../../../api/authApi";
 import { authenticatedQueryMeta } from "../../../lib/queryClient";
-import { queryKeys } from "../../../lib/queryKeys";
+import { invalidateQueryRoots } from "../../../lib/queryInvalidation";
+import { mutationCacheDependencies, queryKeys } from "../../../lib/queryKeys";
 import type { User } from "../../../types/auth.types";
 import type { InstitutionOption } from "../types";
 import { toInstitutionOption } from "../types";
@@ -58,12 +59,7 @@ export function useInvalidateUserManagementData() {
   const queryClient = useQueryClient();
 
   return async function invalidateUserManagementData() {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["users"] }),
-      queryClient.invalidateQueries({ queryKey: ["administrators"] }),
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      queryClient.invalidateQueries({ queryKey: ["analytics"] }),
-    ]);
+    await invalidateQueryRoots(queryClient, mutationCacheDependencies.identityManagement);
   };
 }
 

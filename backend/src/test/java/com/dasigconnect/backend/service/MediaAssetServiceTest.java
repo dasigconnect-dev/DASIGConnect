@@ -1,6 +1,7 @@
 package com.dasigconnect.backend.service;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -15,13 +16,20 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.nullable;
 import org.mockito.Mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -236,11 +244,7 @@ class MediaAssetServiceTest {
         UUID institutionId = UUID.randomUUID();
         UUID uploaderId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
-        MediaAsset asset = asset(assetId, institutionId, uploaderId);
-        when(mediaAssetRepository.findActiveByInstitutionIds(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(asset));
-        when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(List.of(assetId)))
-                .thenReturn(Set.of(assetId));
-        when(submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(List.of(assetId))).thenReturn(Set.of());
+        stubRepositoryPage(List.of(), 0, 1, 20);
 
         MediaAssetListResponseDto resultForUploader = mediaAssetService.list(
                 null, null, null, null, null, null, null, 1, 20, null,
@@ -259,9 +263,7 @@ class MediaAssetServiceTest {
         UUID uploaderId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = asset(assetId, institutionId, uploaderId);
-        when(mediaAssetRepository.findActiveByInstitutionIds(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(asset));
-        when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(List.of(assetId)))
-                .thenReturn(Set.of());
+        stubRepositoryPage(List.of(asset), 1, 1, 20);
 
         MediaAssetListResponseDto result = mediaAssetService.list(
                 null, null, null, null, null, null, null, 1, 20, null,
@@ -271,15 +273,33 @@ class MediaAssetServiceTest {
     }
 
     @Test
+    void list_secondPage_reachesRecordsBeyondFirstPageAndPreservesMetadata() {
+        UUID institutionId = UUID.randomUUID();
+        MediaAsset lastAsset = asset(UUID.randomUUID(), institutionId, UUID.randomUUID());
+        stubRepositoryPage(List.of(lastAsset), 26, 2, 25);
+
+        MediaAssetListResponseDto result = mediaAssetService.list(
+                null, null, null, null, null, null, "newest", 2, 25, null,
+                user(UUID.randomUUID(), "contributor", institutionId));
+
+        assertEquals(1, result.getItems().size());
+        assertEquals(26, result.getTotalCount());
+        assertEquals(2, result.getPage());
+        assertEquals(25, result.getPageSize());
+        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+        verify(mediaAssetRepository).findRepositoryPage(
+                eq(false), anyCollection(), isNull(), eq(""), eq(""), anyCollection(), isNull(), pageable.capture());
+        assertEquals(1, pageable.getValue().getPageNumber());
+        assertEquals(25, pageable.getValue().getPageSize());
+    }
+
+    @Test
     void list_showsAssetUsedBeyondDraftToOtherUsers() {
         UUID institutionId = UUID.randomUUID();
         UUID uploaderId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = asset(assetId, institutionId, uploaderId);
-        when(mediaAssetRepository.findActiveByInstitutionIds(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(asset));
-        when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(List.of(assetId)))
-                .thenReturn(Set.of(assetId));
-        when(submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(List.of(assetId))).thenReturn(Set.of(assetId));
+        stubRepositoryPage(List.of(asset), 1, 1, 20);
 
         MediaAssetListResponseDto result = mediaAssetService.list(
                 null, null, null, null, null, null, null, 1, 20, null,
@@ -295,16 +315,17 @@ class MediaAssetServiceTest {
         UUID uploaderId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = asset(assetId, institutionId, uploaderId);
-        when(mediaAssetRepository.findActiveByInstitutionIds(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(asset));
-        when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(List.of(assetId))).thenReturn(Set.of());
-        when(assetTagRepository.findLabelsByMediaAssetIds(List.of(assetId)))
-                .thenReturn(List.<Object[]>of(new Object[]{assetId, "Hackathon"}));
+        stubRepositoryPage(List.of(asset), 1, 1, 20);
 
         MediaAssetListResponseDto result = mediaAssetService.list(
                 "hackathon", null, null, null, null, null, null, 1, 20, null,
                 user(UUID.randomUUID(), "contributor", institutionId));
 
         assertEquals(1, result.getItems().size());
+        verify(mediaAssetRepository, never()).findActiveByInstitutionIds(anyCollection());
+        verify(submissionMediaAssetRepository, never()).findAssetIdsWithAnySubmissionLink(anyCollection());
+        verify(mediaAssetRepository).findRepositoryPage(
+                eq(false), anyCollection(), isNull(), eq("hackathon"), eq(""), anyCollection(), isNull(), any(Pageable.class));
     }
 
     @Test
@@ -312,17 +333,43 @@ class MediaAssetServiceTest {
         UUID institutionId = UUID.randomUUID();
         UUID uploaderId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
-        MediaAsset asset = asset(assetId, institutionId, uploaderId);
-        when(mediaAssetRepository.findActiveByInstitutionIds(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(asset));
-        when(submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(List.of(assetId))).thenReturn(Set.of());
-        when(assetTagRepository.findLabelsByMediaAssetIds(List.of(assetId)))
-                .thenReturn(List.<Object[]>of(new Object[]{assetId, "Hackathon"}));
+        stubRepositoryPage(List.of(), 0, 1, 20);
 
         MediaAssetListResponseDto result = mediaAssetService.list(
                 "graduation", null, null, null, null, null, null, 1, 20, null,
                 user(UUID.randomUUID(), "contributor", institutionId));
 
         assertTrue(result.getItems().isEmpty());
+    }
+
+    @Test
+    void list_withoutVisibleInstitution_returnsEmptyWithoutRepositoryQuery() {
+        MediaAssetListResponseDto result = mediaAssetService.list(
+                null, null, null, null, null, null, null, 1, 25, null,
+                user(UUID.randomUUID(), "contributor", null));
+
+        assertTrue(result.getItems().isEmpty());
+        assertEquals(0, result.getTotalCount());
+        verify(mediaAssetRepository, never()).findRepositoryPage(
+                anyBoolean(), anyCollection(), nullable(UUID.class), anyString(), anyString(),
+                anyCollection(), nullable(UUID.class), any(Pageable.class));
+    }
+
+    private void stubRepositoryPage(
+            List<MediaAsset> items,
+            long totalCount,
+            int page,
+            int pageSize) {
+        when(mediaAssetRepository.findRepositoryPage(
+                anyBoolean(),
+                anyCollection(),
+                nullable(UUID.class),
+                anyString(),
+                anyString(),
+                anyCollection(),
+                nullable(UUID.class),
+                any(Pageable.class)))
+                .thenReturn(new PageImpl<>(items, PageRequest.of(page - 1, pageSize), totalCount));
     }
 
     @Test

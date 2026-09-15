@@ -1,15 +1,31 @@
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import "../../styles/dasig-loader.css";
+import { beginLoadingInterval, endLoadingInterval } from "../../lib/performanceTelemetry";
 
-export default function PageLoader() {
+interface PageLoaderProps {
+  contained?: boolean;
+}
+
+export default function PageLoader({ contained = false }: PageLoaderProps) {
+  const location = useLocation();
+
+  useEffect(() => {
+    const timer = beginLoadingInterval(location.pathname, contained ? "contained" : "page");
+    return () => endLoadingInterval(timer);
+  }, [contained, location.pathname]);
+
   return (
     <div
       className="dc-page-loader"
       role="status"
       aria-label="Loading"
       style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 2000,
+        position: contained ? "relative" : "fixed",
+        inset: contained ? undefined : 0,
+        zIndex: contained ? undefined : 2000,
+        width: "100%",
+        minHeight: contained ? "calc(100vh - 58px)" : undefined,
         background: "#F8FAFC",
         display: "flex",
         alignItems: "center",

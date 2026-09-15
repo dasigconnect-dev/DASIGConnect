@@ -13,7 +13,6 @@ import {
   type HealthStatus,
   type OperationalMetric,
   type StorageMetric,
-  type SystemHealthSummary,
   type TokenStatus,
 } from "../../api/systemHealthApi";
 import { useToast } from "../../context/ToastContext";
@@ -29,40 +28,11 @@ interface Props {
 
 type SystemHealthTab = "jobs" | "integrations" | "performance" | "storage";
 
-function isAbortError(reason: unknown): boolean {
-  const name = (reason as { name?: string; code?: string } | null)?.name;
-  const code = (reason as { code?: string } | null)?.code;
-  return name === "CanceledError" || name === "AbortError" || code === "ERR_CANCELED";
-}
-
 const SYSTEM_HEALTH_STALE_TIME_MS = 60_000;
-
-interface SystemHealthData {
-  summary: SystemHealthSummary | null;
-  tokens: TokenStatus[];
-}
+const EMPTY_TOKENS: TokenStatus[] = [];
 
 function getUserCacheScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
-}
-
-async function loadSystemHealth(signal?: AbortSignal): Promise<SystemHealthData> {
-  const [summaryResponse, tokenResponse] = await Promise.allSettled([
-    getSystemHealthSummary(signal),
-    getSystemHealthTokens(signal),
-  ]);
-
-  if (
-    summaryResponse.status === "rejected" &&
-    !isAbortError(summaryResponse.reason)
-  ) {
-    throw summaryResponse.reason;
-  }
-
-  return {
-    summary: summaryResponse.status === "fulfilled" ? summaryResponse.value.data : null,
-    tokens: tokenResponse.status === "fulfilled" ? tokenResponse.value.data : [],
-  };
 }
 
 export default function SystemHealthScreen({ user }: Props) {
@@ -93,18 +63,26 @@ export default function SystemHealthScreen({ user }: Props) {
   const canReauthorize = user.role === "admin";
   const isOwner = user.adminOwner === true;
 
+  const healthScope = {
+    role: user.role,
+    userId: getUserCacheScope(user),
+  };
   const healthQuery = useQuery({
-    queryKey: queryKeys.systemHealth.summary({
-      role: user.role,
-      userId: getUserCacheScope(user),
-    }),
-    queryFn: ({ signal }) => loadSystemHealth(signal),
+    queryKey: queryKeys.systemHealth.summary(healthScope),
+    queryFn: ({ signal }) => getSystemHealthSummary(signal).then((response) => response.data),
+    staleTime: SYSTEM_HEALTH_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const tokensQuery = useQuery({
+    queryKey: queryKeys.systemHealth.tokens(healthScope),
+    queryFn: ({ signal }) => getSystemHealthTokens(signal).then((response) => response.data),
+    enabled: activeTab === "integrations",
     staleTime: SYSTEM_HEALTH_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
 
-  const summary = healthQuery.data?.summary ?? null;
-  const tokens = healthQuery.data?.tokens ?? [];
+  const summary = healthQuery.data ?? null;
+  const tokens = tokensQuery.data ?? EMPTY_TOKENS;
   const loading = healthQuery.isLoading || healthQuery.isFetching;
   const loadError = healthQuery.error ? "Unable to load system health metrics." : "";
 
@@ -165,7 +143,7 @@ export default function SystemHealthScreen({ user }: Props) {
     setBusyTokenId(tokenId);
     try {
       await setSystemHealthTokenManually(tokenId, manualTokenValue.trim());
-      await queryClient.invalidateQueries({ queryKey: queryKeys.systemHealth.summary({ role: user.role, userId: getUserCacheScope(user) }) });
+      await queryClient.invalidateQueries({ queryKey: ["system-health"] });
       toast.success("Facebook Page Access Token verified and updated.");
       setManualEntryTokenId(null);
       setManualTokenValue("");
@@ -182,7 +160,7 @@ export default function SystemHealthScreen({ user }: Props) {
     setConnectingPage(true);
     try {
       await connectFacebookPage(connectPageId.trim(), connectAccessToken.trim());
-      await queryClient.invalidateQueries({ queryKey: queryKeys.systemHealth.summary({ role: user.role, userId: getUserCacheScope(user) }) });
+      await queryClient.invalidateQueries({ queryKey: ["system-health"] });
       toast.success("Facebook Page connected. Publishing now targets this page.");
       setConnectPageId("");
       setConnectAccessToken("");
@@ -485,17 +463,32 @@ export default function SystemHealthScreen({ user }: Props) {
                   icon="ti ti-brand-facebook"
                   subtitle="OAuth page access tokens used for automatic publication dispatch and social engagement telemetry"
                 >
-                  <TokenTable
-                    tokens={tokens}
-                    busyTokenId={busyTokenId}
-                    canReauthorize={canReauthorize}
-                    onReauthorize={handleReauthorize}
-                    manualEntryTokenId={manualEntryTokenId}
-                    manualTokenValue={manualTokenValue}
-                    onToggleManualEntry={toggleManualEntry}
-                    onManualTokenValueChange={setManualTokenValue}
-                    onSetManualToken={handleSetManualToken}
-                  />
+                  {tokensQuery.isLoading ? (
+                    <div className="sys-cardless-loader" aria-live="polite">
+                      <div className="dc-dot-triangle-container">
+                        <div className="loader-dots" />
+                      </div>
+                    </div>
+                  ) : tokensQuery.isError && !tokensQuery.data ? (
+                    <div className="alert alert-err" role="alert">
+                      <span>Unable to load Facebook access tokens.</span>
+                      <button type="button" className="btn-ghost" onClick={() => void tokensQuery.refetch()}>
+                        Retry
+                      </button>
+                    </div>
+                  ) : (
+                    <TokenTable
+                      tokens={tokens}
+                      busyTokenId={busyTokenId}
+                      canReauthorize={canReauthorize}
+                      onReauthorize={handleReauthorize}
+                      manualEntryTokenId={manualEntryTokenId}
+                      manualTokenValue={manualTokenValue}
+                      onToggleManualEntry={toggleManualEntry}
+                      onManualTokenValueChange={setManualTokenValue}
+                      onSetManualToken={handleSetManualToken}
+                    />
+                  )}
                 </Section>
 
                 {/* Connect a Different Page — Admin Owner only */}
@@ -1144,7 +1137,9 @@ function TokenTable({
                     <strong>Page ····{token.pageId.slice(-4) || "----"}</strong>
                   </div>
                 </td>
-                <td><StatusBadge status={tokenStatusToHealth(token.tokenStatus)} /></td>
+                <td title={token.validationFailureReason ?? undefined}>
+                  <StatusBadge status={tokenStatusToHealth(token.tokenStatus)} />
+                </td>
                 <td><span className="sys-date-text">{formatDate(token.expiresAt)}</span></td>
                 <td><span className="sys-date-text">{formatDate(token.lastValidatedAt)}</span></td>
                 <td style={{ textAlign: "right" }}>

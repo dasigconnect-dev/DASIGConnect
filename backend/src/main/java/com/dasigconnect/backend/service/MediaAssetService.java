@@ -14,6 +14,9 @@ import java.util.UUID;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -69,6 +72,7 @@ import jakarta.persistence.PersistenceContext;
 public class MediaAssetService {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MediaAssetService.class);
+    private static final UUID EMPTY_SCOPE_ID = new UUID(0L, 0L);
 
     private final MediaAssetRepository mediaAssetRepository;
     private final SubmissionRepository submissionRepository;
@@ -184,55 +188,41 @@ public class MediaAssetService {
         String trimmedMediaType = mediaType == null ? "" : mediaType.trim().toLowerCase();
 
         boolean moderator = isNetworkRole(user);
-        boolean networkScope = moderator && "network".equalsIgnoreCase(scope);
-        List<MediaAsset> source;
+        boolean networkWide = moderator && institutionId == null;
+        Set<UUID> institutionScope;
         if (moderator && institutionId != null) {
-            source = mediaAssetRepository.findActiveByInstitution(institutionId);
-        } else if (moderator || networkScope) {
-            source = mediaAssetRepository.findAllActive();
+            institutionScope = Set.of(institutionId);
+        } else if (networkWide) {
+            // Keep the IN parameter non-empty; networkWide bypasses it in the query.
+            institutionScope = Set.of(EMPTY_SCOPE_ID);
         } else {
-            // Own institution + the shared default institution.
-            source = mediaAssetRepository.findActiveByInstitutionIds(visibleInstitutionIds(user));
+            institutionScope = visibleInstitutionIds(user);
         }
 
-        List<UUID> sourceIds = source.stream().map(MediaAsset::getId).toList();
-        Set<UUID> attachedAssetIds = submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(sourceIds);
-        Set<UUID> assetIdsUsedBeyondDraft = submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(sourceIds);
-        // Every tag (manual or AI-generated) per asset, so a custom tag added
-        // after upload (UC-2.2 A3) is searchable here, not just the AI ones.
-        Map<UUID, List<String>> tagsByAsset = loadAllTagLabels(sourceIds);
+        if (!networkWide && institutionScope.isEmpty()) {
+            return new MediaAssetListResponseDto(List.of(), 0, safePage, safePageSize);
+        }
 
-        List<MediaAsset> filtered = source
-                .stream()
-                .filter(asset -> isPublishedToRepository(asset, attachedAssetIds, assetIdsUsedBeyondDraft))
-                // Folder scoping is ignored while searching so matches are never hidden by the current folder.
-                .filter(asset -> !trimmedQuery.isBlank()
-                || albumId == null
-                || (asset.getMediaAlbum() != null && albumId.equals(asset.getMediaAlbum().getId())))
-                .filter(asset -> trimmedQuery.isBlank()
-                || containsIgnoreCase(asset.getFileName(), trimmedQuery)
-                || containsIgnoreCase(asset.getDisplayTitle(), trimmedQuery)
-                || containsIgnoreCase(asset.getAssetCode(), trimmedQuery)
-                || (asset.getUploader() != null && containsIgnoreCase(asset.getUploader().getEmail(), trimmedQuery))
-                || tagsByAsset.getOrDefault(asset.getId(), List.of()).stream()
-                        .anyMatch(label -> containsIgnoreCase(label, trimmedQuery)))
-                .filter(asset -> trimmedCategory.isBlank()
-                || (asset.getAiCategory() != null && asset.getAiCategory().equalsIgnoreCase(trimmedCategory)))
-                .filter(asset -> trimmedMediaType.isBlank()
-                || ("image".equals(trimmedMediaType) ? asset.getFileType().isImage() : asset.getFileType().isVideo()))
-                .filter(asset -> uploaderId == null
-                || (asset.getUploader() != null && uploaderId.equals(asset.getUploader().getId())))
-                .sorted(resolveSort(sort))
-                .toList();
-
-        int totalCount = filtered.size();
-        int fromIndex = Math.min((safePage - 1) * safePageSize, totalCount);
-        int toIndex = Math.min(fromIndex + safePageSize, totalCount);
-        List<MediaAssetSummaryDto> items = filtered.subList(fromIndex, toIndex)
+        UUID effectiveAlbumId = trimmedQuery.isBlank() ? albumId : null;
+        PageRequest pageRequest = PageRequest.of(
+                safePage - 1,
+                safePageSize,
+                resolveRepositorySort(sort));
+        Page<MediaAsset> result = mediaAssetRepository.findRepositoryPage(
+                networkWide,
+                institutionScope,
+                effectiveAlbumId,
+                trimmedQuery,
+                trimmedCategory.toLowerCase(),
+                resolveMediaTypes(trimmedMediaType),
+                uploaderId,
+                pageRequest);
+        List<MediaAssetSummaryDto> items = result.getContent()
                 .stream()
                 .map(MediaAssetSummaryDto::from)
                 .toList();
 
+        int totalCount = (int) Math.min(result.getTotalElements(), Integer.MAX_VALUE);
         return new MediaAssetListResponseDto(items, totalCount, safePage, safePageSize);
     }
 
@@ -1284,6 +1274,22 @@ public class MediaAssetService {
         return result;
     }
 
+    private static Sort resolveRepositorySort(String sort) {
+        if (sort == null || sort.isBlank() || sort.equalsIgnoreCase("newest")) {
+            return Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+        }
+        if (sort.equalsIgnoreCase("oldest")) {
+            return Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"));
+        }
+        if (sort.equalsIgnoreCase("name")) {
+            return Sort.by(Sort.Order.asc("fileName").ignoreCase(), Sort.Order.asc("id"));
+        }
+        if (sort.equalsIgnoreCase("size")) {
+            return Sort.by(Sort.Order.desc("fileSizeBytes"), Sort.Order.desc("id"));
+        }
+        return Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+    }
+
     private static Comparator<MediaAsset> resolveSort(String sort) {
         if (sort == null || sort.isBlank() || sort.equalsIgnoreCase("newest")) {
             return Comparator.comparing(MediaAsset::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
@@ -1300,5 +1306,15 @@ public class MediaAssetService {
         }
         return Comparator.comparing(MediaAsset::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
                 .reversed();
+    }
+
+    private static List<MediaFileType> resolveMediaTypes(String mediaType) {
+        if (mediaType == null || mediaType.isBlank()) {
+            return List.of(MediaFileType.values());
+        }
+        if ("image".equals(mediaType)) {
+            return List.of(MediaFileType.jpeg, MediaFileType.png, MediaFileType.webp, MediaFileType.gif);
+        }
+        return List.of(MediaFileType.mp4, MediaFileType.mov, MediaFileType.webm);
     }
 }

@@ -23,6 +23,7 @@ public class SubmissionSummaryDto {
     private String institutionName;
     private String contributorEmail;
     private long mediaCount;
+    private SubmissionMediaPreviewDto previewMediaAsset;
     private String category;
     private String templateId;
     private boolean fastTrack;
@@ -32,6 +33,13 @@ public class SubmissionSummaryDto {
     private List<String> mediaTags;
 
     public static SubmissionSummaryDto from(Submission s, long mediaCount) {
+        return from(s, mediaCount, null);
+    }
+
+    public static SubmissionSummaryDto from(
+            Submission s,
+            long mediaCount,
+            SubmissionMediaPreviewDto previewMediaAsset) {
         SubmissionSummaryDto dto = new SubmissionSummaryDto();
         dto.id = s.getId();
         dto.eventTitle = s.getEventTitle();
@@ -46,6 +54,7 @@ public class SubmissionSummaryDto {
         dto.institutionName = s.getInstitution().getName();
         dto.contributorEmail = s.getContributor().getEmail();
         dto.mediaCount = mediaCount;
+        dto.previewMediaAsset = previewMediaAsset;
         dto.category = s.getCategory();
         dto.templateId = s.getTemplateId();
         dto.fastTrack = s.isFastTrack();
@@ -110,6 +119,10 @@ public class SubmissionSummaryDto {
 
     public long getMediaCount() {
         return mediaCount;
+    }
+
+    public SubmissionMediaPreviewDto getPreviewMediaAsset() {
+        return previewMediaAsset;
     }
 
     public String getCategory() {

@@ -173,6 +173,20 @@ export default defineConfig(() => {
     preview: {
       headers: prodSecurityHeaders,
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (
+              id.endsWith("/src/lib/performanceTelemetry.ts") ||
+              id.endsWith("/src/lib/queryPerformanceTelemetry.ts")
+            ) {
+              return "performance-telemetry";
+            }
+          },
+        },
+      },
+    },
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),

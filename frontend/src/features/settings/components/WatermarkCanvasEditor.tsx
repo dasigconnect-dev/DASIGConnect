@@ -38,6 +38,9 @@ const FONT_OPTIONS = [
   { label: "Impact / Display", value: "Impact, 'Arial Black', sans-serif" },
 ];
 
+const OPTIONAL_FONT_STYLESHEET =
+  "https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=JetBrains+Mono:wght@700&family=Montserrat:wght@700&family=Outfit:wght@700&family=Playfair+Display:ital,wght@0,700;1,700&display=swap";
+
 export default function WatermarkCanvasEditor({
   elements,
   onChange,
@@ -86,6 +89,15 @@ export default function WatermarkCanvasEditor({
   });
 
   const selectedElement = elements.find((el) => el.id === selectedId) ?? null;
+
+  useEffect(() => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = OPTIONAL_FONT_STYLESHEET;
+    link.dataset.watermarkEditorFonts = "true";
+    document.head.appendChild(link);
+    return () => link.remove();
+  }, []);
 
   // Auto-close popovers on outside click
   useEffect(() => {
@@ -1335,7 +1347,7 @@ export default function WatermarkCanvasEditor({
           {!selectedElement && (
             <div className="canva-default-topbar-group canva-anim-bar">
               <span className="canva-topbar-hint">
-                <i className="ti ti-wand" /> Select a tool on the left to build your watermark layout
+                <i className="ti ti-wand" /> Select a tool to build your watermark layout
               </span>
               <span className="canva-layer-counter-pill">
                 <i className="ti ti-layers-intersect" /> {elements.length}/3 Elements Added

@@ -62,7 +62,8 @@ import OptimizedImage, { canTransformImageType } from "../../components/media/Op
 import WatermarkOverlay from "../../components/watermark/WatermarkOverlay";
 import { useWatermarkConfiguration } from "../../hooks/useWatermarkConfiguration";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
-import { queryKeys } from "../../lib/queryKeys";
+import { invalidateQueryRoots } from "../../lib/queryInvalidation";
+import { mutationCacheDependencies, queryKeys } from "../../lib/queryKeys";
 import {
   useValidationLog,
   useValidationQueue,
@@ -117,6 +118,13 @@ interface EditFormState {
   removedAssetIds: string[];
   /** A10: optional moderator note when attaching Library media not originally submitted. */
   mediaAddNote: string;
+  /**
+   * Publishing mode snapshot. Fixed during review by default — only an Admin
+   * unlocking the override toggle may change this away from what the
+   * submission already was (see the Publishing Mode control in the Schedule
+   * tab). Never sent back to the server unless it actually changed.
+   */
+  fastTrack: boolean;
 }
 
 function emptyEditForm(): EditFormState {
@@ -130,6 +138,7 @@ function emptyEditForm(): EditFormState {
     media: [],
     removedAssetIds: [],
     mediaAddNote: "",
+    fastTrack: false,
   };
 }
 
@@ -159,6 +168,7 @@ function toEditForm(summary: SubmissionSummary): EditFormState {
     media: (summary.mediaAssets ?? []).map(savedAssetToMediaItem),
     removedAssetIds: [],
     mediaAddNote: "",
+    fastTrack: Boolean(summary.fastTrack),
   };
 }
 
@@ -240,18 +250,24 @@ export default function ValidationQueueScreen({
   const toast = useToast();
   const queryClient = useQueryClient();
   const currentUserScope = getUserCacheScope(user);
+  const [filter, setFilter] = useState<QueueFilter>("all");
+  const isAllMode = filter === "all";
+  const isFailedMode = filter === "failed";
   const { queue: activeQueue, loading: activeLoading, error: activeError } = useValidationQueue(user);
-  const { queue: allQueue, loading: allLoading, error: allError, refresh: refreshAllQueue } = useValidationQueue(user, true);
+  const { queue: allQueue, loading: allLoading, error: allError, refresh: refreshAllQueue } = useValidationQueue(user, true, isAllMode);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<SubmissionSummary | null>(null);
   const [selectedLoading, setSelectedLoading] = useState(false);
   const [locks, setLocks] = useState<Record<string, ReviewLock>>({});
   const [lockNotice, setLockNotice] = useState("");
   const [lockBusy, setLockBusy] = useState(false);
+  const [lockVerification, setLockVerification] = useState<{
+    submissionId: string;
+    status: "checking" | "verified" | "error";
+  } | null>(null);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [mobileView, setMobileView] = useState<"queue" | "review">("queue");
   const [showDetails, setShowDetails] = useState(true);
-  const [filter, setFilter] = useState<QueueFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("submitted");
   const [search, setSearch] = useState("");
   const [mediaIndex, setMediaIndex] = useState(0);
@@ -312,14 +328,7 @@ export default function ValidationQueueScreen({
   );
 
   const invalidateValidationWorkflow = useCallback(() => {
-    return Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["validation"] }),
-      queryClient.invalidateQueries({ queryKey: ["submissions"] }),
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      queryClient.invalidateQueries({ queryKey: ["calendar-events"] }),
-      queryClient.invalidateQueries({ queryKey: ["analytics"] }),
-      queryClient.invalidateQueries({ queryKey: ["notifications"] }),
-    ]);
+    return invalidateQueryRoots(queryClient, mutationCacheDependencies.validationWorkflow);
   }, [queryClient]);
 
   const {
@@ -330,12 +339,14 @@ export default function ValidationQueueScreen({
     activeDetail: manualPublishDetail,
     detailLoading: manualPublishDetailLoading,
     handleRetryWithNewSchedule: handleFailureRetryWithNewSchedule,
+    handleRetry: handleFailureRetry,
+    handleRetryAsLive: handleFailureRetryAsLive,
     handleStartManual,
     handleCancelManual,
     handleCompleteManual,
     openWorkflowPanel,
     closeWorkflowPanel,
-  } = useResolutionFailures(user);
+  } = useResolutionFailures(user, isFailedMode);
   const [retryItem, setRetryItem] = useState<FailedPublication | null>(null);
   const [selectedFailureId, setSelectedFailureId] = useState<string | null>(null);
   const [failureContent, setFailureContent] = useState<SubmissionSummary | null>(null);
@@ -343,8 +354,6 @@ export default function ValidationQueueScreen({
   const [failureMediaIndex, setFailureMediaIndex] = useState(0);
   const { log: failureLog, loading: failureLogLoading } = useValidationLog(user, selectedFailureId);
 
-  const isAllMode = filter === "all";
-  const isFailedMode = filter === "failed";
   const filteredFailures = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return failures;
@@ -415,7 +424,13 @@ export default function ValidationQueueScreen({
     (item) => normalizeStatus(item.status) === "in_review",
   ).length;
 
-  const activeLock = selected ? locks[selected.id] ?? null : null;
+  const selectedLockVerification = selected && lockVerification?.submissionId === selected.id
+    ? lockVerification.status
+    : null;
+  const lockVerificationChecking = selectedLockVerification === "checking";
+  const activeLock = selected && selectedLockVerification === "verified"
+    ? locks[selected.id] ?? null
+    : null;
 
   const mediaAssets = selected?.mediaAssets ?? [];
   const isSelfReview =
@@ -425,7 +440,10 @@ export default function ValidationQueueScreen({
     selected && !REVIEWABLE_STATUSES.has(normalizeStatus(selected.status ?? "")),
   );
 
-  const watermarkQuery = useWatermarkConfiguration({ user });
+  const watermarkQuery = useWatermarkConfiguration({
+    user,
+    enabled: Boolean(selectedId || selectedFailureId),
+  });
   const watermarkConfig = watermarkQuery.data ?? null;
   const [showWatermarkPreview, setShowWatermarkPreview] = useState<boolean>(true);
   const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
@@ -475,6 +493,7 @@ export default function ValidationQueueScreen({
     setSelectedId(null);
     setSelected(null);
     setSelectedLoading(false);
+    setLockVerification(null);
     setLockNotice("");
     setEditMode(false);
     setShowHistoryModal(false);
@@ -521,46 +540,75 @@ export default function ValidationQueueScreen({
 
     // Opening a different submission does not release any lock already held —
     // locks persist per-submission until explicitly unlocked, decided, or expired.
+    const detailQueryKey = submissionDetailQueryKey(summary.id, summary.institutionId);
+    const cachedDetail = queryClient.getQueryData<SubmissionSummary>(detailQueryKey);
+    const requiresLockVerification = REVIEWABLE_STATUSES.has(normalizeStatus(summary.status));
+
     setSelectedId(summary.id);
-    setSelected(summary);
-    setSelectedLoading(true);
+    setSelected(cachedDetail ?? summary);
+    setSelectedLoading(!cachedDetail);
     setMediaIndex(0);
     setLockNotice("");
+    setLockVerification(
+      requiresLockVerification
+        ? { submissionId: summary.id, status: "checking" }
+        : null,
+    );
     setEditMode(false);
     setEditedThisSession(false);
 
-    try {
-      const detailQueryKey = submissionDetailQueryKey(summary.id, summary.institutionId);
-      const cachedDetail = queryClient.getQueryData<SubmissionSummary>(detailQueryKey);
-      if (cachedDetail) {
-        setSelected(cachedDetail);
-        setSelectedLoading(false);
-      }
-
-      const detail = await fetchSubmissionDetail(summary.id, summary.institutionId);
-      if (requestId !== openRequestRef.current) return;
-      setSelected(detail);
-
-      // Restore lock UI state (e.g. after a page refresh) without acquiring
-      // anything — a read-only check against the backend's current lock.
-      if (REVIEWABLE_STATUSES.has(normalizeStatus(detail.status))) {
-        const lockStatus = await getReviewLockStatus(summary.id);
-        if (requestId !== openRequestRef.current) return;
-        const lock = lockStatus.data;
-        if (lock) {
-          if (lock.lockedByEmail.toLowerCase() === user.email.toLowerCase()) {
-            setLocks((prev) => ({ ...prev, [summary.id]: lock }));
-          } else {
-            setLockNotice(`This submission is currently being reviewed by Moderator ${lock.lockedByEmail}.`);
-          }
+    const detailRequest = fetchSubmissionDetail(summary.id, summary.institutionId)
+      .then((detail) => {
+        if (requestId === openRequestRef.current) setSelected(detail);
+      })
+      .catch((err: unknown) => {
+        if (requestId === openRequestRef.current) {
+          toast.error(readApiError(err, "Unable to open this submission."));
         }
-      }
-    } catch (err: unknown) {
-      if (requestId !== openRequestRef.current) return;
-      toast.error(readApiError(err, "Unable to open this submission."));
-    } finally {
-      if (requestId === openRequestRef.current) setSelectedLoading(false);
-    }
+      })
+      .finally(() => {
+        if (requestId === openRequestRef.current) setSelectedLoading(false);
+      });
+
+    // Lock state is deliberately not query-cached as permission. Its live check
+    // runs independently so readable content does not wait for authorization UI.
+    const lockRequest = requiresLockVerification
+      ? getReviewLockStatus(summary.id)
+          .then((lockStatus) => {
+            if (requestId !== openRequestRef.current) return;
+            const lock = lockStatus.data;
+            if (lock?.lockedByEmail.toLowerCase() === user.email.toLowerCase()) {
+              setLocks((prev) => ({ ...prev, [summary.id]: lock }));
+              setLockNotice("");
+            } else {
+              setLocks((prev) => {
+                if (!(summary.id in prev)) return prev;
+                const next = { ...prev };
+                delete next[summary.id];
+                return next;
+              });
+              setLockNotice(
+                lock
+                  ? `This submission is currently being reviewed by Moderator ${lock.lockedByEmail}.`
+                  : "",
+              );
+            }
+            setLockVerification({ submissionId: summary.id, status: "verified" });
+          })
+          .catch(() => {
+            if (requestId !== openRequestRef.current) return;
+            setLocks((prev) => {
+              if (!(summary.id in prev)) return prev;
+              const next = { ...prev };
+              delete next[summary.id];
+              return next;
+            });
+            setLockVerification({ submissionId: summary.id, status: "error" });
+            setLockNotice("Unable to verify the current review lock. Start Review will retry securely.");
+          })
+      : Promise.resolve();
+
+    await Promise.allSettled([detailRequest, lockRequest]);
   }, [fetchSubmissionDetail, queryClient, selectedId, submissionDetailQueryKey, toast, user.email]);
 
   useEffect(() => {
@@ -583,6 +631,7 @@ export default function ValidationQueueScreen({
         setSelectedId(null);
         setSelected(null);
         setSelectedLoading(false);
+        setLockVerification(null);
       });
     }
   }, [isFailedMode, loading, filteredQueue, selectedId, selected, openSubmission]);
@@ -610,6 +659,7 @@ export default function ValidationQueueScreen({
     try {
       const lock = await acquireReviewLock(selected.id);
       setLockFor(selected.id, lock.data);
+      setLockVerification({ submissionId: selected.id, status: "verified" });
       setLockNotice("");
       await invalidateValidationWorkflow();
     } catch (err: unknown) {
@@ -759,6 +809,20 @@ export default function ValidationQueueScreen({
     setGuardRails(null);
   }
 
+  // Publishing mode is fixed during review by default (see ValidationService.edit's
+  // admin-only server-side guard); this Admin-only override mirrors Content
+  // Submission's Schedule/Live Event toggle. Switching to Live drops any
+  // in-progress schedule; switching to Scheduled just clears the flag so the
+  // date/time fields below become editable again.
+  function updateEditFastTrack(value: boolean) {
+    setEditForm((f) => ({
+      ...f,
+      fastTrack: value,
+      scheduledDate: value ? "" : f.scheduledDate,
+      scheduledTime: value ? "" : f.scheduledTime,
+    }));
+  }
+
   const editScheduledAtIso = useMemo(() => {
     if (!editForm.scheduledDate || !editForm.scheduledTime) return "";
     const d = new Date(`${editForm.scheduledDate}T${editForm.scheduledTime}`);
@@ -768,22 +832,45 @@ export default function ValidationQueueScreen({
   const originalScheduledIso = selected?.scheduledAt
     ? new Date(selected.scheduledAt).toISOString()
     : "";
-  const scheduleChanged = editScheduledAtIso !== originalScheduledIso;
+  const scheduleChanged = !editForm.fastTrack && editScheduledAtIso !== originalScheduledIso;
+  const fastTrackChanged = editForm.fastTrack !== Boolean(selected?.fastTrack);
 
   useEffect(() => {
+    let active = true;
     if (!editMode || !scheduleChanged || !editScheduledAtIso || !selected) {
-      queueMicrotask(() => setGuardRails(null));
-      return;
+      queueMicrotask(() => {
+        if (!active) return;
+        setGuardRails(null);
+        setGuardRailsLoading(false);
+      });
+      return () => {
+        active = false;
+      };
     }
     const controller = new AbortController();
     queueMicrotask(() => {
+      if (!active) return;
       setGuardRailsLoading(true);
-      validateGuardRails(editScheduledAtIso, selected.institutionId, selected.id)
-        .then((res) => setGuardRails(res.data))
-        .catch(() => setGuardRails(null))
-        .finally(() => setGuardRailsLoading(false));
+      validateGuardRails(
+        editScheduledAtIso,
+        selected.institutionId,
+        selected.id,
+        controller.signal,
+      )
+        .then((res) => {
+          if (active) setGuardRails(res.data);
+        })
+        .catch(() => {
+          if (active && !controller.signal.aborted) setGuardRails(null);
+        })
+        .finally(() => {
+          if (active) setGuardRailsLoading(false);
+        });
     });
-    return () => controller.abort();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [editMode, scheduleChanged, editScheduledAtIso, selected]);
 
   const hardBlocked = (guardRails?.hardBlocks?.length ?? 0) > 0;
@@ -832,16 +919,27 @@ export default function ValidationQueueScreen({
       return;
     }
     const controller = new AbortController();
+    let active = true;
     queueMicrotask(() => {
+      if (!active) return;
       setEngagementLoading(true);
       getEngagementRecommendations(selected.institutionId, controller.signal)
-        .then((res) => setEngagementRecs(res.data.available ? res.data : null))
-        .catch((err: unknown) => {
-          if ((err as { name?: string })?.name !== "CanceledError") setEngagementRecs(null);
+        .then((res) => {
+          if (active) setEngagementRecs(res.data.available ? res.data : null);
         })
-        .finally(() => setEngagementLoading(false));
+        .catch((err: unknown) => {
+          if (active && (err as { name?: string })?.name !== "CanceledError") {
+            setEngagementRecs(null);
+          }
+        })
+        .finally(() => {
+          if (active) setEngagementLoading(false);
+        });
     });
-    return () => controller.abort();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [editMode, editTab, selected]);
 
   function applyRecommendedSlot(scheduledAt: string) {
@@ -948,6 +1046,10 @@ export default function ValidationQueueScreen({
           isAdmin && hardBlocked && overrideReason.trim() ? overrideReason.trim() : undefined,
         // Tags live only in the caption's #hashtags, matching Submit Content.
         tags: [],
+        // Publishing mode is fixed unless an Admin used the override toggle —
+        // omit the field entirely otherwise so the backend never even considers
+        // changing it (also enforced server-side, admin-only).
+        fastTrack: isAdmin && fastTrackChanged ? editForm.fastTrack : undefined,
         scheduledAt: scheduleChanged && editScheduledAtIso ? editScheduledAtIso : undefined,
       });
 
@@ -1220,6 +1322,13 @@ export default function ValidationQueueScreen({
                         </span>
                       )}
                     </div>
+                    <div className="val-qi-mobile-action">
+                      <span className="val-qi-mobile-btn">
+                        <i className="ti ti-refresh" />
+                        <span>Inspect &amp; Recover</span>
+                        <i className="ti ti-chevron-right" />
+                      </span>
+                    </div>
                   </button>
                 ))}
             </>
@@ -1295,6 +1404,13 @@ export default function ValidationQueueScreen({
 
                       <span className="val-media-count" title={`${item.mediaCount ?? 0} media files`}>
                         <i className="ti ti-photo"></i> {item.mediaCount ?? 0}
+                      </span>
+                    </div>
+                    <div className="val-qi-mobile-action">
+                      <span className="val-qi-mobile-btn">
+                        <i className="ti ti-lock" />
+                        <span>Start Review</span>
+                        <i className="ti ti-chevron-right" />
                       </span>
                     </div>
                   </button>
@@ -1462,7 +1578,15 @@ export default function ValidationQueueScreen({
                       className="val-btn val-btn-secondary"
                       type="button"
                       disabled={failureBusy === selectedFailure.submissionId}
-                      onClick={() => setRetryItem(selectedFailure)}
+                      onClick={() =>
+                        // A Moderator retrying an already-Live submission has no
+                        // mode decision to make — retry it as-is, no modal. Any
+                        // other case (Scheduled needs a new time; an Admin may
+                        // also want to change the mode) opens the picker.
+                        !isAdmin && selectedFailure.fastTrack
+                          ? void handleFailureRetry(selectedFailure)
+                          : setRetryItem(selectedFailure)
+                      }
                     >
                       <i className="ti ti-refresh" />
                       <span>Retry</span>
@@ -1724,6 +1848,54 @@ export default function ValidationQueueScreen({
 
                       {editTab === "schedule" && (
                         <div className="val-edit-body">
+                          <div className="val-edit-mode-row">
+                            <div className="val-edit-mode-label">
+                              Publishing Mode
+                              <i
+                                className="ti ti-info-circle"
+                                title={
+                                  isAdmin
+                                    ? "Fixed during review by default. Use this toggle to deliberately override it."
+                                    : "Fixed during review — only an Administrator can change the publishing mode."
+                                }
+                              />
+                            </div>
+                            {isAdmin ? (
+                              <div className="sub-mode-toggle" role="group" aria-label="Publishing mode">
+                                <button
+                                  type="button"
+                                  className={!editForm.fastTrack ? "active" : ""}
+                                  onClick={() => updateEditFastTrack(false)}
+                                  aria-pressed={!editForm.fastTrack}
+                                >
+                                  <i className="ti ti-calendar" />
+                                  <span>Schedule</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className={editForm.fastTrack ? "active" : ""}
+                                  onClick={() => updateEditFastTrack(true)}
+                                  aria-pressed={editForm.fastTrack}
+                                >
+                                  <i className="ti ti-bolt" />
+                                  <span>Live Event</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className={`val-details-mode ${editForm.fastTrack ? "is-live" : "is-scheduled"}`}>
+                                <i className={`ti ${editForm.fastTrack ? "ti-bolt" : "ti-calendar-clock"}`} />
+                                {editForm.fastTrack ? "Live Event" : "Scheduled"}
+                              </span>
+                            )}
+                          </div>
+
+                          {editForm.fastTrack ? (
+                            <div className="val-edit-mode-note">
+                              <i className="ti ti-info-circle" /> This is a Live Event submission — it publishes
+                              immediately on approval and has no scheduled slot.
+                            </div>
+                          ) : (
+                            <>
                           <Suspense fallback={null}>
                             <EngagementRecommendationsPanel
                               loading={engagementLoading}
@@ -1789,6 +1961,8 @@ export default function ValidationQueueScreen({
                                 placeholder="Explain why this slot is necessary…"
                               />
                             </label>
+                          )}
+                            </>
                           )}
                         </div>
                       )}
@@ -1917,7 +2091,7 @@ export default function ValidationQueueScreen({
                   <button
                     className="val-btn val-btn-primary"
                     type="button"
-                    disabled={lockBusy || isSelfReview}
+                    disabled={lockBusy || lockVerificationChecking || isSelfReview}
                     title={isSelfReview ? "Another Moderator must review this submission." : undefined}
                     onClick={() => void handleAcquireLock()}
                   >
@@ -2116,6 +2290,20 @@ export default function ValidationQueueScreen({
         onConfirmWithNewSchedule={(scheduledAt, overrideReason) => {
           if (retryItem) {
             void handleFailureRetryWithNewSchedule(retryItem, scheduledAt, overrideReason)
+              .then(() => setRetryItem(null))
+              .catch(() => undefined);
+          }
+        }}
+        onConfirmKeepLive={() => {
+          if (retryItem) {
+            void handleFailureRetry(retryItem)
+              .then(() => setRetryItem(null))
+              .catch(() => undefined);
+          }
+        }}
+        onConfirmForceLive={() => {
+          if (retryItem) {
+            void handleFailureRetryAsLive(retryItem)
               .then(() => setRetryItem(null))
               .catch(() => undefined);
           }

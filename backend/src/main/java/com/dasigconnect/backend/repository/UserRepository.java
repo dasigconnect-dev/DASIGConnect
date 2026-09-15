@@ -33,6 +33,18 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     long countByInstitutionIdAndRoleAndAccountState(UUID institutionId, UserRole role, UserStatus accountState);
 
+    @Query("""
+            select user.institution.id, user.role, count(user)
+            from User user
+            where user.institution is not null
+              and user.role in :roles
+              and user.accountState = :accountState
+            group by user.institution.id, user.role
+            """)
+    List<Object[]> countByInstitutionAndRole(
+            @Param("roles") Collection<UserRole> roles,
+            @Param("accountState") UserStatus accountState);
+
     /** Network-wide count for a role in a given account state (e.g. active admins). */
     long countByRoleAndAccountState(UserRole role, UserStatus accountState);
 

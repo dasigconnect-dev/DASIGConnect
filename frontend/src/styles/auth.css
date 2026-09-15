@@ -2689,6 +2689,46 @@ body {
 
 /* Tablets / Large Phones (<= 768px) */
 @media (max-width: 768px) {
+  .dash-nav {
+    height: 50px;
+    padding: 0 12px;
+  }
+
+  .dash-body {
+    padding: 16px 12px 60px;
+  }
+
+  .dash-menu-toggle {
+    width: 34px;
+    height: 34px;
+    font-size: 18px;
+  }
+
+  .dash-brand-icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .dash-brand-name {
+    font-size: 15px;
+  }
+
+  .role-chip {
+    font-size: 9.5px;
+    padding: 2px 7px;
+  }
+
+  .dash-avatar {
+    min-width: 44px;
+    height: 32px;
+    padding: 0 6px 0 8px;
+    font-size: 12px;
+  }
+
+  .dash-avatar-caret {
+    font-size: 11px;
+  }
+
   .dash-modal-card {
     padding: 22px 20px;
   }

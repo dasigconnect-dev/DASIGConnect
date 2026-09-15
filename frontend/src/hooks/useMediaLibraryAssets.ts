@@ -42,6 +42,8 @@ export function useMediaLibraryAssets(
   const [error, setError] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
   const pageRef = useRef<number>(1);
+  const requestRef = useRef<{ id: number; controller: AbortController } | null>(null);
+  const requestIdRef = useRef(0);
 
   const [search, setSearch] = useState("");
   const [aiCategory, setAiCategory] = useState("");
@@ -67,6 +69,12 @@ export function useMediaLibraryAssets(
       pageNum: number,
       append: boolean,
     ) => {
+      requestRef.current?.controller.abort();
+      const request = {
+        id: ++requestIdRef.current,
+        controller: new AbortController(),
+      };
+      requestRef.current = request;
       pageRef.current = pageNum;
       setLoading(true);
       setError(false);
@@ -79,13 +87,23 @@ export function useMediaLibraryAssets(
         networkView,
         page: pageNum,
         pageSize: PAGE_SIZE,
-      })
+      }, request.controller.signal)
         .then((result) => {
+          if (requestRef.current?.id !== request.id) return;
           setAssets((prev) => (append ? [...prev, ...result.items] : result.items));
           setTotalCount(result.totalCount);
         })
-        .catch(() => setError(true))
-        .finally(() => setLoading(false));
+        .catch(() => {
+          if (requestRef.current?.id === request.id && !request.controller.signal.aborted) {
+            setError(true);
+          }
+        })
+        .finally(() => {
+          if (requestRef.current?.id === request.id) {
+            requestRef.current = null;
+            setLoading(false);
+          }
+        });
     },
     [institutionId, networkView]
   );
@@ -97,6 +115,14 @@ export function useMediaLibraryAssets(
     });
     return () => { controller.aborted = true; };
   }, [debouncedSearch, aiCategory, mediaType, albumId, doFetch]);
+
+  useEffect(() => {
+    return () => {
+      requestIdRef.current += 1;
+      requestRef.current?.controller.abort();
+      requestRef.current = null;
+    };
+  }, []);
 
   function loadMore() {
     void doFetch(debouncedSearch, aiCategory, mediaType, albumId, pageRef.current + 1, true);

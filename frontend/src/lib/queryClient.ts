@@ -1,4 +1,5 @@
 import { QueryClient, type Query } from "@tanstack/react-query";
+import { installQueryPerformanceInstrumentation } from "./queryPerformanceTelemetry";
 
 const DEFAULT_GC_TIME_MS = 5 * 60_000;
 
@@ -21,6 +22,8 @@ export const appQueryClient = new QueryClient({
     },
   },
 });
+
+installQueryPerformanceInstrumentation(appQueryClient);
 
 export async function clearAuthenticatedQueryCache(): Promise<void> {
   await appQueryClient.cancelQueries({ predicate: isAuthenticatedQuery });
