@@ -1362,6 +1362,24 @@
   font-size: 48px;
 }
 
+/* A7: broken/unreachable media asset — retry affordance, doesn't block review */
+.val-fb-image-error {
+  flex-direction: column;
+  gap: 10px;
+  padding: 48px 16px;
+  color: #65676b;
+}
+
+.val-fb-image-error i {
+  font-size: 40px;
+  color: var(--val-red, #dc3545);
+}
+
+.val-fb-image-error span {
+  font-size: 13.5px;
+  text-align: center;
+}
+
 .val-fb-arrow {
   position: absolute;
   top: 50%;

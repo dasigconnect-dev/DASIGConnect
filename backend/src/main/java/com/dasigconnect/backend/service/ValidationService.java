@@ -266,7 +266,11 @@ public class ValidationService {
     /**
      * Requests revision: transitions to NEEDS_REVISION, releases slot and lock.
      * BR-VAL-02: remarks must be 10–1000 characters.
-     * A5: self-review is allowed but distinctly flagged in the audit log.
+     * A5: self-review is unconditionally blocked — {@code reviewLockService.assertCallerHoldsLock}
+     * above can never succeed for the submission's own contributor, since
+     * {@code ReviewLockService.acquire()} refuses to grant them a lock in the
+     * first place. {@code selfReview} is still computed for the audit row, but
+     * cannot be true in practice.
      */
     public void requestRevision(UUID submissionId, String remarks, JwtUserDetails caller) {
         validateRemarks(remarks);
@@ -300,7 +304,8 @@ public class ValidationService {
     /**
      * Rejects a submission: transitions to REJECTED, releases slot and lock.
      * BR-VAL-03: valid reason code required; OTHER requires written notes.
-     * A5: self-review is allowed but distinctly flagged in the audit log.
+     * A5: self-review is unconditionally blocked — see {@link #requestRevision}'s
+     * javadoc; the same reasoning applies here.
      */
     public void reject(UUID submissionId, String reasonCode, String notes, JwtUserDetails caller) {
         validateRejectionCode(reasonCode, notes);
@@ -434,16 +439,30 @@ public class ValidationService {
      * The validation-log rows recorded since the most recent {@code lock_acquired}
      * — i.e. everything the current review session has done so far.
      */
+    private static final Set<ValidationAction> TERMINAL_REVIEW_ACTIONS =
+            Set.of(ValidationAction.approved, ValidationAction.needs_revision, ValidationAction.rejected);
+
+    /**
+     * Every log entry since this review cycle began — i.e. since the last
+     * terminal action (approve/revise/reject), or the start of history if this
+     * submission has never had one. Deliberately NOT scoped to the most recent
+     * {@code lock_acquired}: a Moderator who edits, releases or loses the lock
+     * (interrupted, TTL expiry), then later reacquires it to finish the review,
+     * must still have that earlier edit counted — otherwise `combinedSessionEditDiff`/
+     * `combinedSessionSeverity` silently drop it, the terminal action records
+     * `edited=false`, and the contributor never learns their submission was
+     * edited even though it was (bug fixed 2026-09-17).
+     */
     private List<ValidationLog> logsSinceLock(UUID submissionId) {
         List<ValidationLog> logs = validationLogRepository
                 .findBySubmissionIdOrderByCreatedAtAsc(submissionId);
-        int lastLockIndex = -1;
+        int lastTerminalIndex = -1;
         for (int i = 0; i < logs.size(); i++) {
-            if (logs.get(i).getAction() == ValidationAction.lock_acquired) {
-                lastLockIndex = i;
+            if (TERMINAL_REVIEW_ACTIONS.contains(logs.get(i).getAction())) {
+                lastTerminalIndex = i;
             }
         }
-        return logs.subList(lastLockIndex + 1, logs.size());
+        return logs.subList(lastTerminalIndex + 1, logs.size());
     }
 
     /**
@@ -527,7 +546,7 @@ public class ValidationService {
 
     /**
      * A10: aggregates the before/after diffs of every standalone {@code edited}
-     * action taken since the current review lock was acquired into one combined
+     * action taken this review cycle (see {@link #logsSinceLock}) into one combined
      * diff, so a terminal action (approve/revise/reject) records the full picture
      * of what the Moderator changed. Returns null when no edit happened this
      * session.
