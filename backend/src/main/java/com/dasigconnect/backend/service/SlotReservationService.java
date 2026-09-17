@@ -30,10 +30,15 @@ import com.dasigconnect.backend.repository.SubmissionRepository;
  * (permanent) released — slot is free again (rejection / revision / stale draft
  * expiry)
  *
- * Atomicity: The DB has a partial unique index on (scheduled_at,
- * institution_id) WHERE status != 'released'. On concurrent reservation of the
- * same slot, one transaction gets a DataIntegrityViolationException which we
- * catch and rethrow as SlotAlreadyTakenException → HTTP 409.
+ * Atomicity (2026-09-17): the DB enforces GR-H1's network-wide ±30-minute
+ * buffer directly via a GiST exclusion constraint on (scheduled_at, +30min)
+ * with status != 'released' (V95 migration) — this replaced a plain,
+ * non-unique index that a stale comment here used to (incorrectly) describe
+ * as a uniqueness guarantee; it never was one, so nothing previously stopped
+ * two concurrent requests from both passing GuardRailService's pre-write read
+ * check and landing a real conflict. On a concurrent reservation the DB now
+ * raises a DataIntegrityViolationException, which we catch and rethrow as
+ * SlotAlreadyTakenException → HTTP 409.
  *
  * Called by: - M5's SubmissionController (reserve on slot selection, release on
  * rejection/revision) - GR-T2 cron job (release stale draft holds after 7 days

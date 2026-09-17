@@ -139,6 +139,11 @@ public class ValidationService {
         boolean edited = sessionEditDiff != null || sessionSeverity != null;
 
         submission.setStatus(SubmissionStatus.scheduled);
+        if (!submission.isFastTrack()) {
+            // Anchor for the Moderator reschedule cap (SubmissionService.reschedule) —
+            // captured once, here, never touched by a later reschedule itself.
+            submission.setOriginalScheduledAt(submission.getScheduledAt());
+        }
         submissionRepository.save(submission);
 
         if (!submission.isFastTrack()) {
