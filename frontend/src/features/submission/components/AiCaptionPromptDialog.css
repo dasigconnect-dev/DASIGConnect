@@ -98,6 +98,31 @@
   line-height: 1.5;
 }
 
+.ai-prompt-save-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--sub-r-sm, 8px);
+  color: #1e3a8a;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.ai-prompt-save-notice i {
+  font-size: 16px;
+  color: #2563eb;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.ai-prompt-save-notice strong {
+  color: #1d4ed8;
+}
+
 .ai-prompt-tone-group {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

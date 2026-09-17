@@ -175,24 +175,13 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
           <div className="section-title" style={{ margin: 0 }}>
             <i className="ti ti-history"></i> Recent Activity
           </div>
-          {user?.role === "contributor" && (dashboardStats.submissions?.length ?? 0) > 0 && (
+          {(activityRows.length > 0 || (dashboardStats.submissions?.length ?? 0) > 0) && (
             <button
               type="button"
               className="section-link-btn"
               onClick={() => navigate("/dashboard/recent-activity")}
             >
-              View All <i className="ti ti-arrow-right" style={{ fontSize: 13 }}></i>
-            </button>
-          )}
-          {isNetworkView && activityRows.length > 0 && (
-            <button
-              type="button"
-              className="section-link-btn"
-              onClick={() =>
-                navigate(user?.role === "admin" ? "/analytics" : "/validation/queue")
-              }
-            >
-              {user?.role === "admin" ? "Open Analytics" : "Open Review Queue"}{" "}
+              Visit All Recent Activity{" "}
               <i className="ti ti-arrow-right" style={{ fontSize: 13 }}></i>
             </button>
           )}

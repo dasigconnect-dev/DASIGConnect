@@ -66,7 +66,7 @@ export default function AiCaptionButton({
             ? "AI caption service is unavailable."
             : isTimeout
               ? "AI request timed out. Click to retry."
-              : "Generate a suggested caption based on selected media and event details."
+              : "Generate a suggested caption based on selected media and event details (auto-saves draft if needed)."
         }
       >
         {isLoading ? (

@@ -227,6 +227,7 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
     loadMoreFailed,
     loadMore,
     loading,
+    refreshing,
     fetchError,
     activeFilter,
     setActiveFilter,
@@ -424,11 +425,15 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
             <button
               type="button"
               className="notif-btn notif-btn-ghost notif-btn-icon"
-              onClick={refreshNotifications}
-              title="Refresh"
-              aria-label="Refresh"
+              onClick={() => void refreshNotifications()}
+              disabled={loading || refreshing}
+              title={refreshing ? "Refreshing notifications..." : "Refresh notifications"}
+              aria-label={refreshing ? "Refreshing notifications..." : "Refresh notifications"}
             >
-              <i className="ti ti-refresh" style={{ fontSize: 14 }} />
+              <i
+                className={`ti ti-refresh${loading || refreshing ? " spin" : ""}`}
+                style={{ fontSize: 14 }}
+              />
             </button>
           </div>
         </div>
@@ -537,9 +542,10 @@ export default function NotificationsScreen({ user }: NotificationsScreenProps) 
                         <button
                           type="button"
                           className="notif-btn notif-btn-ghost"
-                          onClick={refreshNotifications}
+                          onClick={() => void refreshNotifications()}
+                          disabled={loading || refreshing}
                         >
-                          <i className="ti ti-refresh" /> Retry
+                          <i className={`ti ti-refresh${loading || refreshing ? " spin" : ""}`} /> Retry
                         </button>
                       </td>
                     </tr>

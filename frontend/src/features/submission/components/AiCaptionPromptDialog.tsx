@@ -10,6 +10,7 @@ interface Props {
   state: AiCaptionState;
   hasImageAssets: boolean;
   existingCaption: string;
+  isUnsaved?: boolean;
   onClose: () => void;
   onSubmit: (prompt: string, tone: CaptionTone) => void;
 }
@@ -48,6 +49,7 @@ export default function AiCaptionPromptDialog({
   state,
   hasImageAssets,
   existingCaption,
+  isUnsaved = false,
   onClose,
   onSubmit,
 }: Props) {
@@ -134,6 +136,15 @@ export default function AiCaptionPromptDialog({
 
         <p className="ai-prompt-context">{contextLabel}</p>
 
+        {isUnsaved && (
+          <div className="ai-prompt-save-notice" role="note">
+            <i className="ti ti-info-circle" aria-hidden="true" />
+            <div>
+              <strong>Behind the scenes:</strong> Generating this caption will automatically save your draft and upload your event photos first so the vision AI model can inspect the image details and event context.
+            </div>
+          </div>
+        )}
+
         <div className="ai-prompt-tone-group" role="radiogroup" aria-label="Caption variant">
           {TONE_OPTIONS.map((option) => (
             <button
@@ -203,12 +214,12 @@ export default function AiCaptionPromptDialog({
             {isLoading ? (
               <>
                 <span className="ai-caption-spinner" aria-hidden />
-                Generating...
+                {isUnsaved ? "Saving & Generating..." : "Generating..."}
               </>
             ) : (
               <>
-                <i className="ti ti-sparkles" aria-hidden />
-                Generate
+                <i className={isUnsaved ? "ti ti-device-floppy" : "ti ti-sparkles"} aria-hidden />
+                {isUnsaved ? "Save Draft & Generate Caption" : "Generate"}
               </>
             )}
           </button>
