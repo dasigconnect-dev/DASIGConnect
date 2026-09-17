@@ -56,6 +56,7 @@ public class SystemHealthService {
         EXPECTED_JOBS.put("EmbeddingReconciliationJob", Duration.ofMinutes(5));
         EXPECTED_JOBS.put("SocialEngagementSyncJob", Duration.ofMinutes(15));
         EXPECTED_JOBS.put("MediaAssetRetentionPurgeJob", Duration.ofDays(1));
+        EXPECTED_JOBS.put("GeneratedWatermarkPurgeJob", Duration.ofDays(1));
         EXPECTED_JOBS.put("StaleDraftSlotReleaseJob", Duration.ofDays(1));
         EXPECTED_JOBS.put("TokenHealthCheckJob", Duration.ofDays(1));
         EXPECTED_JOBS.put("ScheduledJobRunRetentionJob", Duration.ofDays(1));
@@ -583,6 +584,8 @@ public class SystemHealthService {
                 "Embedding Reconciliation";
             case "MediaAssetRetentionPurgeJob" ->
                 "Media Asset Retention Purge";
+            case "GeneratedWatermarkPurgeJob" ->
+                "Generated Watermark Purge";
             case "StaleDraftSlotReleaseJob" ->
                 "Stale Draft Slot Release";
             case "TokenHealthCheckJob" ->

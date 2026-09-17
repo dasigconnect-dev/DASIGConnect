@@ -233,8 +233,58 @@ public class MediaStorageService {
         }
     }
 
+    private static final String GENERATED_WATERMARK_PREFIX = "generated/watermarked/";
+
     public String generatedWatermarkPath(UUID submissionId, UUID mediaAssetId, String extension) {
-        return "generated/watermarked/" + submissionId + "/" + mediaAssetId + "-" + System.currentTimeMillis() + "." + extension;
+        return GENERATED_WATERMARK_PREFIX + submissionId + "/" + mediaAssetId + "-" + System.currentTimeMillis() + "." + extension;
+    }
+
+    /**
+     * Sweeps the {@code generated/watermarked/} prefix and deletes every object
+     * older than {@code retention}. These are transient publish-time derivatives
+     * (see {@link WatermarkApplicationService#resolvePublishUrl}) — Facebook only
+     * ever fetches the URL once, at publish time — that live entirely outside the
+     * {@code media_assets} retention/purge lifecycle, so nothing else ever cleans
+     * them up; left alone they accumulate forever. Best-effort: one object's
+     * delete failure is logged and skipped rather than aborting the whole sweep.
+     */
+    public int purgeExpiredGeneratedWatermarks(Duration retention) {
+        if (!configured) {
+            return 0;
+        }
+        Instant cutoff = Instant.now().minus(retention);
+        int purged = 0;
+        try {
+            String continuationToken = null;
+            do {
+                ListObjectsV2Response page = s3Client.listObjectsV2(ListObjectsV2Request.builder()
+                        .bucket(bucket)
+                        .prefix(GENERATED_WATERMARK_PREFIX)
+                        .maxKeys(1000)
+                        .continuationToken(continuationToken)
+                        .build());
+                for (S3Object object : page.contents()) {
+                    if (object.lastModified() != null && object.lastModified().isBefore(cutoff)
+                            && deleteObjectByKey(object.key())) {
+                        purged++;
+                    }
+                }
+                continuationToken = Boolean.TRUE.equals(page.isTruncated()) ? page.nextContinuationToken() : null;
+            } while (continuationToken != null);
+        } catch (Exception ex) {
+            log.warn("Generated watermark purge sweep failed: {}", ex.getMessage());
+        }
+        return purged;
+    }
+
+    private boolean deleteObjectByKey(String key) {
+        try {
+            s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
+            return true;
+        } catch (Exception ex) {
+            log.warn("Failed to delete generated watermark object {}: {}", key, ex.getMessage());
+            return false;
+        }
     }
 
     /**
