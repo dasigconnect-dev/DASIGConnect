@@ -2555,15 +2555,46 @@ function FacebookPostImage({
   skipWatermark?: boolean;
 }) {
   const [isVeryTall, setIsVeryTall] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
-    queueMicrotask(() => setIsVeryTall(false));
+    queueMicrotask(() => {
+      setIsVeryTall(false);
+      setLoadFailed(false);
+      setRetryToken(0);
+    });
   }, [src]);
+
+  // A7: a broken/unreachable media asset must not block review — the reviewer
+  // can retry the load (e.g. a transient R2/network hiccup) or acknowledge it
+  // and proceed straight to Request Revision/Reject with the rest of the
+  // submission's content still visible.
+  if (loadFailed) {
+    return (
+      <div className="val-fb-image-wrapper val-fb-image-error">
+        <i className="ti ti-photo-off" aria-hidden="true" />
+        <span>This media asset failed to load.</span>
+        <button
+          type="button"
+          className="val-btn val-btn-secondary"
+          onClick={() => {
+            setLoadFailed(false);
+            setRetryToken((n) => n + 1);
+          }}
+        >
+          <i className="ti ti-refresh" aria-hidden="true" />
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className={`val-fb-image-wrapper ${isVeryTall ? "is-very-tall" : ""}`}>
       <img
-        src={src}
+        key={retryToken}
+        src={retryToken > 0 ? `${src}${src.includes("?") ? "&" : "?"}retry=${retryToken}` : src}
         alt={alt}
         className={isVeryTall ? "val-fb-img-cover" : "val-fb-img-natural"}
         onLoad={(e) => {
@@ -2576,6 +2607,7 @@ function FacebookPostImage({
             setIsVeryTall(ratio < 0.8);
           }
         }}
+        onError={() => setLoadFailed(true)}
       />
       {showWatermark && watermarkConfig?.enabled && !skipWatermark && (
         <WatermarkOverlay elements={watermarkConfig.elements} />
