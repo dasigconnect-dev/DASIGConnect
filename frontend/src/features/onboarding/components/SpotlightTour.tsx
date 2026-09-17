@@ -22,6 +22,11 @@ interface TargetRect {
   right: number;
 }
 
+interface ArrowPosition {
+  direction: "up" | "down" | "none";
+  left: number;
+}
+
 const PADDING = 8;
 const CARD_MARGIN = 14;
 const CARD_WIDTH = 380;
@@ -69,8 +74,10 @@ export default function SpotlightTour({
 }: SpotlightTourProps) {
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
   const [cardPosition, setCardPosition] = useState<{ top: number; left: number }>({ top: 100, left: 100 });
+  const [arrowPosition, setArrowPosition] = useState<ArrowPosition | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const retryTimeoutRef = useRef<number | null>(null);
+  const rafIdRef = useRef<number | null>(null);
 
   const currentStep = steps[currentStepIndex];
   const isLastStep = currentStepIndex === steps.length - 1;
@@ -89,51 +96,70 @@ export default function SpotlightTour({
         top: Math.max(16, (vh - cardHeight) / 2),
         left: Math.max(margin, (vw - effectiveCardWidth) / 2),
       });
+      setArrowPosition(null);
       return;
     }
 
     let calculatedTop = padded.bottom + CARD_MARGIN;
     let calculatedLeft = padded.left + (padded.width / 2) - (effectiveCardWidth / 2);
+    let arrowDir: "up" | "down" | "none" = "up";
 
     if (isMobile) {
-      // Mobile positioning:
-      // Always horizontally center across viewport with safe gutters
+      // Mobile positioning: center horizontally across screen
       calculatedLeft = (vw - effectiveCardWidth) / 2;
 
       const elementCenterY = (padded.top + padded.bottom) / 2;
-      const spaceAbove = padded.top;
-      const spaceBelow = vh - padded.bottom;
+
+      // Check proximity: can card fit directly below?
+      const fitsBelow = (padded.bottom + 12 + cardHeight) <= (vh - 12);
+      const fitsAbove = (padded.top - 12 - cardHeight) >= 60;
 
       if (elementCenterY <= vh * 0.52) {
-        // Element is in upper viewport area
-        if (spaceBelow >= cardHeight + 20) {
-          calculatedTop = padded.bottom + 10;
+        if (fitsBelow) {
+          calculatedTop = padded.bottom + 12;
+          arrowDir = "up";
+        } else if (fitsAbove) {
+          calculatedTop = padded.top - cardHeight - 12;
+          arrowDir = "down";
         } else {
-          // Dock at bottom sheet position to maximize top spotlight visibility
+          // Dock at bottom to maximize upper target visibility
           calculatedTop = vh - cardHeight - 12;
+          arrowDir = "up";
         }
       } else {
-        // Element is in lower viewport area
-        if (spaceAbove >= cardHeight + 20) {
-          calculatedTop = padded.top - cardHeight - 10;
+        if (fitsAbove) {
+          calculatedTop = padded.top - cardHeight - 12;
+          arrowDir = "down";
+        } else if (fitsBelow) {
+          calculatedTop = padded.bottom + 12;
+          arrowDir = "up";
         } else {
-          // Dock at top position to leave lower spotlight element visible
-          calculatedTop = 12;
+          // Dock at top to maximize lower target visibility
+          calculatedTop = 64;
+          arrowDir = "down";
         }
       }
     } else {
+      // Desktop positioning: preserve exact desktop placements and alignments
       const placement = placementPref || "auto";
 
       if (placement === "top" || (placement === "auto" && calculatedTop + cardHeight > vh - 16)) {
         if (padded.top - CARD_MARGIN - cardHeight > 16) {
           calculatedTop = padded.top - CARD_MARGIN - cardHeight;
+          arrowDir = "down";
+        } else {
+          arrowDir = "up";
         }
       } else if (placement === "left") {
         calculatedLeft = padded.left - effectiveCardWidth - CARD_MARGIN;
         calculatedTop = padded.top + (padded.height / 2) - (cardHeight / 2);
+        arrowDir = "none";
       } else if (placement === "right") {
         calculatedLeft = padded.right + CARD_MARGIN;
         calculatedTop = padded.top + (padded.height / 2) - (cardHeight / 2);
+        arrowDir = "none";
+      } else {
+        arrowDir = "up";
       }
     }
 
@@ -149,6 +175,17 @@ export default function SpotlightTour({
     );
 
     setCardPosition({ top: clampedTop, left: clampedLeft });
+
+    // Calculate pointer arrow horizontal position pointing directly at element center
+    if (arrowDir !== "none") {
+      const targetCenterX = padded.left + (padded.width / 2);
+      const rawArrowX = targetCenterX - clampedLeft;
+      // Clamp arrow so it never overflows rounded corners (16px radius)
+      const clampedArrowX = Math.max(24, Math.min(rawArrowX, effectiveCardWidth - 24));
+      setArrowPosition({ direction: arrowDir, left: clampedArrowX });
+    } else {
+      setArrowPosition(null);
+    }
   }, []);
 
   const fallbackCenterCard = useCallback(() => {
@@ -162,7 +199,6 @@ export default function SpotlightTour({
 
     const el = document.querySelector(currentStep.target);
     if (!isElementRenderedAndVisible(el)) {
-      // Retry once after 150ms in case element is rendering or animating
       if (retryTimeoutRef.current) window.clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = window.setTimeout(() => {
         const retryEl = document.querySelector(currentStep.target);
@@ -205,12 +241,13 @@ export default function SpotlightTour({
     const vh = window.innerHeight;
     const isMobile = vw < 640;
 
+    // Desktop: standard center scroll (preserves desktop experience 100%)
     if (!isMobile) {
       el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
       return;
     }
 
-    // On mobile devices, check if target is already visible without overlapping card
+    // Mobile: check if target is already visible without overlapping card
     const rect = el.getBoundingClientRect();
     const cardHeight = cardRef.current?.offsetHeight || ESTIMATED_CARD_HEIGHT;
     const isAlreadyFullyVisible = rect.top >= 64 && rect.bottom <= (vh - cardHeight - 16);
@@ -239,6 +276,23 @@ export default function SpotlightTour({
     }
   }, []);
 
+  // Continuous RAF tracking loop: guarantees spotlight & card track the element at 60fps while scrolling
+  const startTrackingLoop = useCallback((durationMs = 900) => {
+    if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+    const start = performance.now();
+
+    const loop = (now: number) => {
+      updatePositions();
+      if (now - start < durationMs) {
+        rafIdRef.current = requestAnimationFrame(loop);
+      } else {
+        rafIdRef.current = null;
+      }
+    };
+
+    rafIdRef.current = requestAnimationFrame(loop);
+  }, [updatePositions]);
+
   // Scroll into view & update rect on step change
   useEffect(() => {
     if (!isOpen || !currentStep) return;
@@ -248,19 +302,14 @@ export default function SpotlightTour({
       scrollTargetIntoView(el);
     }
 
-    // Repeated updates as smooth scrolling and CSS transitions settle
-    const timers = [
-      setTimeout(updatePositions, 60),
-      setTimeout(updatePositions, 150),
-      setTimeout(updatePositions, 300),
-      setTimeout(updatePositions, 500),
-    ];
+    // Run high-precision tracking loop as smooth scroll settles
+    startTrackingLoop(900);
 
     return () => {
-      timers.forEach(clearTimeout);
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
       if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
     };
-  }, [isOpen, currentStepIndex, currentStep, scrollTargetIntoView, updatePositions]);
+  }, [isOpen, currentStepIndex, currentStep, scrollTargetIntoView, startTrackingLoop]);
 
   // Resize and scroll tracking
   useEffect(() => {
@@ -272,10 +321,13 @@ export default function SpotlightTour({
 
     window.addEventListener("resize", handleResizeOrScroll, { passive: true });
     window.addEventListener("scroll", handleResizeOrScroll, { passive: true, capture: true });
+    window.addEventListener("scrollend", handleResizeOrScroll, { passive: true, capture: true });
 
     return () => {
       window.removeEventListener("resize", handleResizeOrScroll);
       window.removeEventListener("scroll", handleResizeOrScroll, true);
+      window.removeEventListener("scrollend", handleResizeOrScroll, true);
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     };
   }, [isOpen, updatePositions]);
 
@@ -385,6 +437,15 @@ export default function SpotlightTour({
         }}
         role="dialog"
       >
+        {/* Directional pointer arrow pointing directly to the spotlighted element */}
+        {targetRect && arrowPosition && arrowPosition.direction !== "none" && (
+          <div
+            className={`spotlight-card-arrow spotlight-card-arrow-${arrowPosition.direction}`}
+            style={{ left: `${arrowPosition.left}px` }}
+            aria-hidden="true"
+          />
+        )}
+
         <div className="spotlight-card-header">
           <div className="spotlight-badge">
             <i className={currentStep.icon || "ti ti-sparkles"} aria-hidden="true" />

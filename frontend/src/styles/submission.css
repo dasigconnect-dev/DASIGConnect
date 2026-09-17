@@ -163,19 +163,45 @@
   border: 2px solid var(--sub-blue-bdr);
 }
 .sub-nav-save-status {
-  gap: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 4px 10px;
   font-family: var(--sub-body);
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--sub-muted);
-  padding: 5px 12px;
-  border-radius: 20px;
-  background: var(--sub-surface-2);
-  border: 1px solid var(--sub-border);
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+.sub-nav-save-status i {
+  font-size: 13.5px;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+.sub-nav-save-status.saving {
+  color: #2563eb;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+.sub-nav-save-status.saving i {
+  color: #2563eb;
 }
 .sub-nav-save-status.saved {
-  color: var(--sub-green);
-  font-weight: 700;
+  color: #15803d;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  font-weight: 500;
+}
+.sub-nav-save-status.saved i {
+  color: #16a34a;
 }
 .sub-spin {
   animation: sub-spin 0.7s linear infinite;
@@ -4938,7 +4964,9 @@ textarea.sub-finput {
   }
   .sub-nav-save-status {
     font-size: 11px;
-    padding: 4px 8px;
+    height: 28px;
+    padding: 3px 8px;
+    white-space: nowrap;
   }
   .sub-form-canvas {
     padding: 14px 10px 48px;

@@ -2299,7 +2299,20 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         <div className="sub-nav-right">
           {(isDirty || saveState === "saving" || saveState === "saved") && (
             <div
-              className={`sub-nav-save-status ${saveState === "saved" && !isDirty ? "saved" : ""}`}
+              className={`sub-nav-save-status ${
+                saveState === "saving"
+                  ? "saving"
+                  : saveState === "saved" && !isDirty
+                    ? "saved"
+                    : ""
+              }`}
+              title={
+                saveState === "saving"
+                  ? "Saving draft changes..."
+                  : saveState === "saved" && !isDirty
+                    ? "All draft changes saved"
+                    : "You have unsaved changes"
+              }
             >
               <i
                 className={
@@ -2309,12 +2322,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                       ? "ti ti-cloud-check"
                       : "ti ti-cloud"
                 }
+                aria-hidden="true"
               ></i>
-              {saveState === "saving"
-                ? "Saving..."
-                : saveState === "saved" && !isDirty
-                  ? "Draft saved"
-                  : "Unsaved draft"}
+              <span>
+                {saveState === "saving"
+                  ? "Saving..."
+                  : saveState === "saved" && !isDirty
+                    ? "Draft saved"
+                    : "Unsaved draft"}
+              </span>
             </div>
           )}
           <button
