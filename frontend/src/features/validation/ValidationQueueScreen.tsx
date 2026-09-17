@@ -466,12 +466,13 @@ export default function ValidationQueueScreen({
   });
 
   const {
+    startTour: startReviewTour,
     tourProps: reviewTourProps,
   } = useScreenTour({
     screenId: "validation-review",
     steps: validationReviewTourSteps,
     autoStartDelayMs: 600,
-    canStart: false,
+    canStart: Boolean(selected) && !editMode && !queueTourProps.isOpen,
   });
 
   const {
@@ -1206,6 +1207,8 @@ export default function ValidationQueueScreen({
                 onClick={() => {
                   if (editMode) {
                     startEditTour(true);
+                  } else if (selected) {
+                    startReviewTour(true);
                   } else {
                     startQueueTour(true);
                   }
@@ -1485,21 +1488,61 @@ export default function ValidationQueueScreen({
             <i className="ti ti-arrow-left" />
             <span>Back to Queue</span>
           </button>
-          <span className="val-mobile-queue-badge">
-            {isFailedMode ? "Failed" : filter === "all" ? "All Queue" : statusLabel[filter] || filter}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <button
+              type="button"
+              className="val-guide-btn"
+              onClick={() => {
+                if (editMode) {
+                  startEditTour(true);
+                } else if (selected) {
+                  startReviewTour(true);
+                } else {
+                  startQueueTour(true);
+                }
+              }}
+              title="Show interactive feature guide"
+              aria-label="Show feature guide"
+            >
+              <i className="ti ti-help-circle" />
+              <span>Guide</span>
+            </button>
+            <span className="val-mobile-queue-badge">
+              {isFailedMode ? "Failed" : filter === "all" ? "All Queue" : statusLabel[filter] || filter}
+            </span>
+          </div>
         </div>
         {isPanelCollapsed && (
-          <button
-            type="button"
-            className="val-expand-btn"
-            onClick={() => setIsPanelCollapsed(false)}
-            title="Expand queue panel (>>)"
-            aria-label="Expand queue list"
-          >
-            <i className="ti ti-chevrons-right" />
-            <span>Show Queue</span>
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <button
+              type="button"
+              className="val-expand-btn"
+              onClick={() => setIsPanelCollapsed(false)}
+              title="Expand queue panel (>>)"
+              aria-label="Expand queue list"
+            >
+              <i className="ti ti-chevrons-right" />
+              <span>Show Queue</span>
+            </button>
+            <button
+              type="button"
+              className="val-guide-btn"
+              onClick={() => {
+                if (editMode) {
+                  startEditTour(true);
+                } else if (selected) {
+                  startReviewTour(true);
+                } else {
+                  startQueueTour(true);
+                }
+              }}
+              title="Show interactive feature guide"
+              aria-label="Show feature guide"
+            >
+              <i className="ti ti-help-circle" />
+              <span>Guide</span>
+            </button>
+          </div>
         )}
         {!isFailedMode && selected && !editMode && !selectedLoading && (
           <button
