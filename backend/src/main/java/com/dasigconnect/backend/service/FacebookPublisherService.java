@@ -83,6 +83,7 @@ public class FacebookPublisherService {
     private final ApplicationEventPublisher eventPublisher;
     private final WatermarkApplicationService watermarkApplicationService;
     private final AuditLogService auditLogService;
+    private final SlotReservationService slotReservationService;
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -99,7 +100,8 @@ public class FacebookPublisherService {
             SubmissionRepository submissionRepository,
             ApplicationEventPublisher eventPublisher,
             WatermarkApplicationService watermarkApplicationService,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            SlotReservationService slotReservationService) {
         this.envPageAccessToken = envPageAccessToken;
         this.envPageId = envPageId;
         this.appId = appId;
@@ -112,6 +114,7 @@ public class FacebookPublisherService {
         this.eventPublisher = eventPublisher;
         this.watermarkApplicationService = watermarkApplicationService;
         this.auditLogService = auditLogService;
+        this.slotReservationService = slotReservationService;
     }
 
     /** True once some page is connected — the actual identity is resolved dynamically, never cached here. */
@@ -419,6 +422,12 @@ public class FacebookPublisherService {
         s.setPublishedAt(Instant.now());
         clearTokenSuspension(s);
         submissionRepository.save(s);
+        // The slot is spoken for the instant the post actually goes out — a
+        // locked SlotReservation serving no further purpose that lingers
+        // forever is what let two already-published submissions' reservations
+        // quietly violate GR-H1's ±30-minute network-wide rule (found 2026-09-17
+        // while closing the reschedule-count race; see V95 migration).
+        slotReservationService.release(s.getId());
         String postUrl = "https://www.facebook.com/" + postId.replace("_", "/posts/");
         // `direct_post_*` is a legacy lifecycle (the admin Direct Post UI was
         // removed); any remaining such rows still publish and are marked

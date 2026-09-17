@@ -108,6 +108,10 @@ public class ManualPublishingService {
         s.setPublishedManualNotes(dto.getNotes());
         s.setManualPublishStartedAt(null);
         submissionRepository.save(s);
+        // The locked slot no longer serves any purpose once the post is
+        // actually out — leaving it forever is what let already-published
+        // submissions' reservations silently violate GR-H1 (see V95 migration).
+        slotReservationService.release(submissionId);
 
         auditLogService.record(
                 entityManager.getReference(User.class, admin.userId()),

@@ -145,6 +145,9 @@ class ManualPublishingServiceTest {
         assertThat(s.getManualPublishStartedAt()).isNull();
         verify(auditLogService).record(any(), eq("MANUAL_PUBLISH_COMPLETE"), any(), any(), eq(submissionId), any());
         verify(eventPublisher).publishEvent(any(PostPublishedManualEvent.class));
+        // A locked SlotReservation serves no further purpose once the post is
+        // actually out (see V95 migration / GR-H1 network-wide race fix, 2026-09-17).
+        verify(slotReservationService).release(submissionId);
     }
 
     @Test
