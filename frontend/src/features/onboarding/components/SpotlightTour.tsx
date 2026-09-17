@@ -47,26 +47,49 @@ export default function SpotlightTour({
   const positionCard = useCallback((padded: TargetRect, placementPref = "auto") => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const placement = placementPref || "auto";
+    const isMobile = vw < 640;
+    const effectiveCardWidth = Math.min(CARD_WIDTH, vw - (isMobile ? 24 : 32));
 
     let calculatedTop = padded.bottom + CARD_MARGIN;
-    let calculatedLeft = padded.left + (padded.width / 2) - (CARD_WIDTH / 2);
+    let calculatedLeft = padded.left + (padded.width / 2) - (effectiveCardWidth / 2);
 
-    if (placement === "top" || (placement === "auto" && calculatedTop + ESTIMATED_CARD_HEIGHT > vh - 16)) {
-      if (padded.top - CARD_MARGIN - ESTIMATED_CARD_HEIGHT > 16) {
+    if (isMobile) {
+      // On mobile phones, always horizontally center the card across the screen
+      calculatedLeft = (vw - effectiveCardWidth) / 2;
+
+      // Check space above vs below
+      const spaceBelow = vh - padded.bottom;
+      const spaceAbove = padded.top;
+
+      if (spaceBelow >= ESTIMATED_CARD_HEIGHT + CARD_MARGIN + 16) {
+        calculatedTop = padded.bottom + CARD_MARGIN;
+      } else if (spaceAbove >= ESTIMATED_CARD_HEIGHT + CARD_MARGIN + 16) {
         calculatedTop = padded.top - CARD_MARGIN - ESTIMATED_CARD_HEIGHT;
+      } else {
+        calculatedTop = spaceBelow > spaceAbove
+          ? Math.min(padded.bottom + CARD_MARGIN, vh - ESTIMATED_CARD_HEIGHT - 12)
+          : Math.max(12, padded.top - CARD_MARGIN - ESTIMATED_CARD_HEIGHT);
       }
-    } else if (placement === "left") {
-      calculatedLeft = padded.left - CARD_WIDTH - CARD_MARGIN;
-      calculatedTop = padded.top + (padded.height / 2) - (ESTIMATED_CARD_HEIGHT / 2);
-    } else if (placement === "right") {
-      calculatedLeft = padded.right + CARD_MARGIN;
-      calculatedTop = padded.top + (padded.height / 2) - (ESTIMATED_CARD_HEIGHT / 2);
+    } else {
+      const placement = placementPref || "auto";
+
+      if (placement === "top" || (placement === "auto" && calculatedTop + ESTIMATED_CARD_HEIGHT > vh - 16)) {
+        if (padded.top - CARD_MARGIN - ESTIMATED_CARD_HEIGHT > 16) {
+          calculatedTop = padded.top - CARD_MARGIN - ESTIMATED_CARD_HEIGHT;
+        }
+      } else if (placement === "left") {
+        calculatedLeft = padded.left - effectiveCardWidth - CARD_MARGIN;
+        calculatedTop = padded.top + (padded.height / 2) - (ESTIMATED_CARD_HEIGHT / 2);
+      } else if (placement === "right") {
+        calculatedLeft = padded.right + CARD_MARGIN;
+        calculatedTop = padded.top + (padded.height / 2) - (ESTIMATED_CARD_HEIGHT / 2);
+      }
     }
 
     // Clamp inside viewport boundaries
-    const clampedLeft = Math.min(Math.max(16, calculatedLeft), vw - CARD_WIDTH - 16);
-    const clampedTop = Math.min(Math.max(16, calculatedTop), vh - ESTIMATED_CARD_HEIGHT - 16);
+    const margin = isMobile ? 12 : 16;
+    const clampedLeft = Math.min(Math.max(margin, calculatedLeft), Math.max(margin, vw - effectiveCardWidth - margin));
+    const clampedTop = Math.min(Math.max(12, calculatedTop), vh - ESTIMATED_CARD_HEIGHT - 12);
 
     setCardPosition({ top: clampedTop, left: clampedLeft });
   }, []);
@@ -74,10 +97,13 @@ export default function SpotlightTour({
   const fallbackCenterCard = useCallback(() => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    const isMobile = vw < 640;
+    const effectiveCardWidth = Math.min(CARD_WIDTH, vw - (isMobile ? 24 : 32));
+    const margin = isMobile ? 12 : 16;
     setTargetRect(null);
     setCardPosition({
-      top: Math.max(20, (vh - ESTIMATED_CARD_HEIGHT) / 2),
-      left: Math.max(16, (vw - CARD_WIDTH) / 2),
+      top: Math.max(16, (vh - ESTIMATED_CARD_HEIGHT) / 2),
+      left: Math.max(margin, (vw - effectiveCardWidth) / 2),
     });
   }, []);
 
