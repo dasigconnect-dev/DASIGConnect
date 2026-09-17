@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -86,6 +87,11 @@ public class SubmissionService {
     private static final long MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024;
     // Matches the frontend composer's CAPTION_CHAR_LIMIT (code-point count).
     private static final int MAX_CAPTION_CHARS = 3000;
+
+    // UC-3.1: a Moderator's calendar reschedule power is deliberately bounded —
+    // Admin is exempt from both limits (final override authority already).
+    private static final int MODERATOR_MAX_RESCHEDULES = 2;
+    private static final Duration MODERATOR_RESCHEDULE_WINDOW = Duration.ofDays(1);
 
     private final SubmissionRepository submissionRepository;
     private final InstitutionRepository institutionRepository;
@@ -982,6 +988,18 @@ public class SubmissionService {
      *
      * Guard rails are re-evaluated. Hard violations block the move unless the
      * admin supplies an overrideReason, which is then written to the audit log.
+     *
+     * A Moderator (not Admin — unrestricted, final override authority already)
+     * is additionally capped: at most {@link #MODERATOR_MAX_RESCHEDULES} moves
+     * per submission — not per Moderator, it doesn't matter how many different
+     * ones did it — and never further than {@link #MODERATOR_RESCHEDULE_WINDOW}
+     * from the slot the submission was originally approved at
+     * ({@code originalScheduledAt}, snapshotted once in
+     * {@code ValidationService.approve()}), not from wherever it most recently
+     * landed — otherwise repeated small moves could drift it arbitrarily far
+     * from what was actually reviewed. Hitting either limit is a hard stop for
+     * a Moderator, with no override path of its own: they ask an Admin, who
+     * can just reschedule directly since Admin isn't capped.
      */
     public SubmissionResponseDto reschedule(UUID submissionId, RescheduleRequestDto dto, JwtUserDetails user) {
         Submission submission = submissionRepository.findById(submissionId)
@@ -994,13 +1012,30 @@ public class SubmissionService {
 
         Instant originalSlot = submission.getScheduledAt();
         Instant newSlot = dto.getScheduledAt();
+        boolean callerIsAdmin = isAdmin(user);
+
+        if (!callerIsAdmin) {
+            if (submission.getModeratorRescheduleCount() >= MODERATOR_MAX_RESCHEDULES) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "This post has already been rescheduled " + MODERATOR_MAX_RESCHEDULES
+                                + " times by a Moderator. Ask an Administrator to reschedule it further.");
+            }
+            Instant anchor = submission.getOriginalScheduledAt() != null
+                    ? submission.getOriginalScheduledAt() : originalSlot;
+            Duration drift = Duration.between(anchor, newSlot).abs();
+            if (drift.compareTo(MODERATOR_RESCHEDULE_WINDOW) > 0) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Moderators may only reschedule within " + MODERATOR_RESCHEDULE_WINDOW.toDays()
+                                + " day of the originally approved time. Ask an Administrator for a larger change.");
+            }
+        }
 
         GuardRailResult guardRailResult = guardRailService.validate(submission.getInstitution().getId(), newSlot, submissionId);
         if (guardRailResult.isBlocked()) {
             if (dto.getOverrideReason() == null || dto.getOverrideReason().isBlank()) {
                 throw new GuardRailViolationException(guardRailResult.getHardBlocks());
             }
-            if (!isAdmin(user)) {
+            if (!callerIsAdmin) {
                 // Moderators cannot bypass a guard rail — they raise an override
                 // request for an administrator to decide.
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -1022,6 +1057,9 @@ public class SubmissionService {
 
         slotReservationService.reserveLockedSlot(submissionId, submission.getInstitution().getId(), newSlot);
         submission.setScheduledAt(newSlot);
+        if (!callerIsAdmin) {
+            submission.setModeratorRescheduleCount(submission.getModeratorRescheduleCount() + 1);
+        }
         submissionRepository.save(submission);
 
         log.info("Admin {} rescheduled submission {} from {} to {}", user.userId(), submissionId, originalSlot, newSlot);

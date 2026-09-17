@@ -958,6 +958,136 @@ class SubmissionServiceTest {
         assertThat(submission.getScheduledAt()).isNull();
     }
 
+    // ── UC-3.1 reschedule / Moderator cap ────────────────────────────────────
+
+    private com.dasigconnect.backend.model.dto.submission.RescheduleRequestDto rescheduleDto(Instant newSlot) {
+        var dto = new com.dasigconnect.backend.model.dto.submission.RescheduleRequestDto();
+        dto.setScheduledAt(newSlot);
+        return dto;
+    }
+
+    @Test
+    void reschedule_byAdmin_hasNoCapOrWindowRestriction() {
+        Instant original = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(UUID.randomUUID(), SubmissionStatus.scheduled, original);
+        submission.setOriginalScheduledAt(original);
+        submission.setModeratorRescheduleCount(2); // already at the moderator cap -- irrelevant for admin
+        UUID adminId = UUID.randomUUID();
+        JwtUserDetails admin = principal(adminId, "admin", null);
+        Instant farNewSlot = original.plus(java.time.Duration.ofDays(10)); // far outside the moderator window
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(submissionRepository.save(submission)).thenReturn(submission);
+        when(guardRailService.validate(institutionId, farNewSlot, submission.getId())).thenReturn(new GuardRailResult());
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submission.getId())).thenReturn(List.of());
+
+        submissionService.reschedule(submission.getId(), rescheduleDto(farNewSlot), admin);
+
+        assertThat(submission.getScheduledAt()).isEqualTo(farNewSlot);
+        assertThat(submission.getModeratorRescheduleCount()).isEqualTo(2); // unchanged -- admin isn't counted
+    }
+
+    @Test
+    void reschedule_byModerator_withinCapAndWindow_succeedsAndIncrementsCount() {
+        Instant original = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(UUID.randomUUID(), SubmissionStatus.scheduled, original);
+        submission.setOriginalScheduledAt(original);
+        JwtUserDetails moderator = principal(UUID.randomUUID(), "moderator", null);
+        Instant newSlot = original.plus(java.time.Duration.ofHours(12)); // within 1 day
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(submissionRepository.save(submission)).thenReturn(submission);
+        when(guardRailService.validate(institutionId, newSlot, submission.getId())).thenReturn(new GuardRailResult());
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submission.getId())).thenReturn(List.of());
+
+        submissionService.reschedule(submission.getId(), rescheduleDto(newSlot), moderator);
+
+        assertThat(submission.getScheduledAt()).isEqualTo(newSlot);
+        assertThat(submission.getModeratorRescheduleCount()).isEqualTo(1);
+    }
+
+    @Test
+    void reschedule_byModerator_atCap_isBlocked() {
+        Instant original = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(UUID.randomUUID(), SubmissionStatus.scheduled, original);
+        submission.setOriginalScheduledAt(original);
+        submission.setModeratorRescheduleCount(2);
+        JwtUserDetails moderator = principal(UUID.randomUUID(), "moderator", null);
+        Instant newSlot = original.plus(java.time.Duration.ofHours(1));
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+
+        assertThatThrownBy(() -> submissionService.reschedule(submission.getId(), rescheduleDto(newSlot), moderator))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        verify(submissionRepository, never()).save(any(Submission.class));
+    }
+
+    @Test
+    void reschedule_byModerator_outsideOneDayOfOriginalSlot_isBlocked() {
+        Instant original = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(UUID.randomUUID(), SubmissionStatus.scheduled, original);
+        submission.setOriginalScheduledAt(original);
+        JwtUserDetails moderator = principal(UUID.randomUUID(), "moderator", null);
+        Instant newSlot = original.plus(java.time.Duration.ofDays(2));
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+
+        assertThatThrownBy(() -> submissionService.reschedule(submission.getId(), rescheduleDto(newSlot), moderator))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        verify(submissionRepository, never()).save(any(Submission.class));
+    }
+
+    @Test
+    void reschedule_byModerator_windowAnchorsToOriginalSlotNotMostRecentOne() {
+        // Regression: the 1-day window must anchor to originalScheduledAt (set once
+        // at approval), not to the submission's current scheduledAt -- otherwise
+        // repeated small moves could drift the post arbitrarily far from what was
+        // actually approved.
+        Instant original = Instant.parse("2026-06-01T08:00:00Z");
+        Instant currentSlot = original.plus(java.time.Duration.ofHours(20)); // a prior move, still within 1 day of original
+        Submission submission = submission(UUID.randomUUID(), SubmissionStatus.scheduled, currentSlot);
+        submission.setOriginalScheduledAt(original);
+        submission.setModeratorRescheduleCount(1);
+        JwtUserDetails moderator = principal(UUID.randomUUID(), "moderator", null);
+        // 30h from original (blocked) but only 10h from the current slot (would pass
+        // if the window incorrectly anchored to the current slot instead).
+        Instant newSlot = original.plus(java.time.Duration.ofHours(30));
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+
+        assertThatThrownBy(() -> submissionService.reschedule(submission.getId(), rescheduleDto(newSlot), moderator))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void reschedule_byModerator_guardRailHardBlock_cannotOverrideEvenWithinCap() {
+        Instant original = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(UUID.randomUUID(), SubmissionStatus.scheduled, original);
+        submission.setOriginalScheduledAt(original);
+        JwtUserDetails moderator = principal(UUID.randomUUID(), "moderator", null);
+        Instant newSlot = original.plus(java.time.Duration.ofHours(1));
+        var dto = rescheduleDto(newSlot);
+        dto.setOverrideReason("please let me override");
+
+        GuardRailResult blocked = new GuardRailResult(
+                List.of(new GuardRailViolation("GR-H1", "Too close to another post")), List.of());
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(institutionId, newSlot, submission.getId())).thenReturn(blocked);
+
+        assertThatThrownBy(() -> submissionService.reschedule(submission.getId(), dto, moderator))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        verify(submissionRepository, never()).save(any(Submission.class));
+    }
+
     private SubmissionCreateDto createDto(Instant scheduledAt) {
         SubmissionCreateDto dto = new SubmissionCreateDto();
         dto.setEventTitle("Research Expo");

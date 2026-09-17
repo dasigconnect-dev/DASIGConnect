@@ -43,8 +43,11 @@ export default function CalendarRescheduleModal({
     try {
       await onConfirm(reasonTrimmed);
     } catch (err: unknown) {
+      // The axios response interceptor (authApi.ts) collapses the backend's
+      // { error: { code, message } } envelope down to a plain string at
+      // response.data.error -- there is no response.data.message.
       const message =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
       setApiError(
         message || "Reschedule failed — the slot may be taken or this post can't be moved.",
       );

@@ -399,6 +399,38 @@ class ValidationServiceTest {
     }
 
     @Test
+    void approve_standardSubmission_snapshotsOriginalScheduledAt() {
+        // UC-3.1: the Moderator reschedule cap anchors its 1-day window to
+        // originalScheduledAt, captured once here and never touched again.
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
+
+        Submission submission = new Submission();
+        submission.setId(UUID.randomUUID());
+        submission.setStatus(SubmissionStatus.pending);
+        submission.setFastTrack(false);
+        java.time.Instant slot = java.time.Instant.parse("2026-06-01T08:00:00Z");
+        submission.setScheduledAt(slot);
+
+        Institution institution = new Institution();
+        institution.setId(submissionInstitutionId);
+        submission.setInstitution(institution);
+
+        User contributor = new User();
+        contributor.setId(contributorId);
+        submission.setContributor(contributor);
+
+        User adminUser = new User();
+        adminUser.setId(adminId);
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(adminUser));
+
+        validationService.approve(submission.getId(), admin);
+
+        assertThat(submission.getOriginalScheduledAt()).isEqualTo(slot);
+    }
+
+    @Test
     void edit_keepsSubmissionInReviewAndLogsStandaloneEditedAction() {
         // A9: a standalone edit records its diff but does NOT transition the
         // submission out of IN_REVIEW and never confirms a slot or fires approval.
