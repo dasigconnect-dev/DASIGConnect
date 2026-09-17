@@ -25,10 +25,30 @@ WHERE sr.submission_id = s.id
 -- each other, no matter how the requests race. Mirrors the existing
 -- GuardRailService.existsActiveWithin30Minutes query's inclusive semantics
 -- (BETWEEN slot-30min AND slot+30min) via a closed-closed range overlap.
--- No institution_id term -- GR-H1 is deliberately network-wide -- so this
--- needs only the built-in range GiST opclass, not the btree_gist extension.
+-- No institution_id term -- GR-H1 is deliberately network-wide.
+--
+-- Can't build the range directly on `scheduled_at + interval '30 minutes'`:
+-- Postgres marks timestamptz + interval as STABLE, not IMMUTABLE (it can, in
+-- general, depend on the session timezone), and an index/exclusion
+-- expression must be IMMUTABLE. A timestamptz's Unix epoch value is,
+-- unlike that general operator, genuinely timezone-independent -- so wrap
+-- EXTRACT(EPOCH ...) in our own function and assert IMMUTABLE ourselves,
+-- then build the range on whole seconds (int8range) instead of tstzrange.
+CREATE OR REPLACE FUNCTION epoch_seconds_immutable(ts timestamptz)
+RETURNS bigint
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+    SELECT (EXTRACT(EPOCH FROM ts))::bigint;
+$$;
+
 ALTER TABLE slot_reservations
 ADD CONSTRAINT excl_slot_reservations_network_buffer
 EXCLUDE USING gist (
-    tstzrange(scheduled_at, scheduled_at + interval '30 minutes', '[]') WITH &&
+    int8range(
+        epoch_seconds_immutable(scheduled_at),
+        epoch_seconds_immutable(scheduled_at) + 1800,
+        '[]'
+    ) WITH &&
 ) WHERE (status <> 'released');
