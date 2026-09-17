@@ -1013,6 +1013,10 @@ public class SubmissionService {
         Instant originalSlot = submission.getScheduledAt();
         Instant newSlot = dto.getScheduledAt();
         boolean callerIsAdmin = isAdmin(user);
+        // Captured now, while submission is still attached -- the atomic claim
+        // below clears the persistence context, so submission.getInstitution()
+        // (a lazy proxy) is not safe to dereference again after that point.
+        UUID institutionId = submission.getInstitution().getId();
 
         if (!callerIsAdmin) {
             if (submission.getModeratorRescheduleCount() >= MODERATOR_MAX_RESCHEDULES) {
@@ -1030,7 +1034,7 @@ public class SubmissionService {
             }
         }
 
-        GuardRailResult guardRailResult = guardRailService.validate(submission.getInstitution().getId(), newSlot, submissionId);
+        GuardRailResult guardRailResult = guardRailService.validate(institutionId, newSlot, submissionId);
         if (guardRailResult.isBlocked()) {
             if (dto.getOverrideReason() == null || dto.getOverrideReason().isBlank()) {
                 throw new GuardRailViolationException(guardRailResult.getHardBlocks());
@@ -1055,17 +1059,36 @@ public class SubmissionService {
             );
         }
 
-        slotReservationService.reserveLockedSlot(submissionId, submission.getInstitution().getId(), newSlot);
-        submission.setScheduledAt(newSlot);
-        if (!callerIsAdmin) {
-            submission.setModeratorRescheduleCount(submission.getModeratorRescheduleCount() + 1);
+        // Atomic claim (see SubmissionRepository.claimModeratorReschedule/claimAdminReschedule):
+        // the earlier cap/window check above is a normal entity read, which is fine
+        // for fast, cheap rejection, but Submission has no @Version/optimistic
+        // locking, so that read-check-write pattern alone would let two concurrent
+        // reschedule requests for the same submission both pass the check before
+        // either writes. The actual write is a single conditional UPDATE guarded by
+        // the same WHERE clause, mirroring PublishingQueryService.claimForPublishing's
+        // idiom for exactly this class of race. A 0-row result here means someone
+        // else's request won the race (or changed the submission's status) between
+        // our read above and now — never silently proceed in that case.
+        int claimed = callerIsAdmin
+                ? submissionRepository.claimAdminReschedule(submissionId, newSlot)
+                : submissionRepository.claimModeratorReschedule(submissionId, newSlot, MODERATOR_MAX_RESCHEDULES);
+        if (claimed != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This post was just changed by someone else. Please refresh and try again.");
         }
-        submissionRepository.save(submission);
+
+        slotReservationService.reserveLockedSlot(submissionId, institutionId, newSlot);
+
+        // The claim above was a bulk update (clearAutomatically = true), which
+        // detaches whatever was loaded earlier in this persistence context — reload
+        // fresh rather than risk building the response off now-stale in-memory state.
+        Submission updated = submissionRepository.findById(submissionId)
+                .orElseThrow(() -> new SubmissionNotFoundException(submissionId));
 
         log.info("Admin {} rescheduled submission {} from {} to {}", user.userId(), submissionId, originalSlot, newSlot);
-        eventPublisher.publishEvent(new SubmissionRescheduledEvent(submission, originalSlot, newSlot));
+        eventPublisher.publishEvent(new SubmissionRescheduledEvent(updated, originalSlot, newSlot));
 
-        return buildResponse(submission);
+        return buildResponse(updated);
     }
 
     // ── Private Helpers ──────────────────────────────────────────────────────

@@ -49,6 +49,7 @@ import org.springframework.web.server.ResponseStatusException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -977,14 +978,18 @@ class SubmissionServiceTest {
         Instant farNewSlot = original.plus(java.time.Duration.ofDays(10)); // far outside the moderator window
 
         when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
-        when(submissionRepository.save(submission)).thenReturn(submission);
         when(guardRailService.validate(institutionId, farNewSlot, submission.getId())).thenReturn(new GuardRailResult());
+        when(submissionRepository.claimAdminReschedule(submission.getId(), farNewSlot)).thenAnswer(inv -> {
+            submission.setScheduledAt(farNewSlot);
+            return 1;
+        });
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submission.getId())).thenReturn(List.of());
 
         submissionService.reschedule(submission.getId(), rescheduleDto(farNewSlot), admin);
 
         assertThat(submission.getScheduledAt()).isEqualTo(farNewSlot);
         assertThat(submission.getModeratorRescheduleCount()).isEqualTo(2); // unchanged -- admin isn't counted
+        verify(submissionRepository, never()).claimModeratorReschedule(any(), any(), anyInt());
     }
 
     @Test
@@ -996,14 +1001,42 @@ class SubmissionServiceTest {
         Instant newSlot = original.plus(java.time.Duration.ofHours(12)); // within 1 day
 
         when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
-        when(submissionRepository.save(submission)).thenReturn(submission);
         when(guardRailService.validate(institutionId, newSlot, submission.getId())).thenReturn(new GuardRailResult());
+        when(submissionRepository.claimModeratorReschedule(submission.getId(), newSlot, 2)).thenAnswer(inv -> {
+            submission.setScheduledAt(newSlot);
+            submission.setModeratorRescheduleCount(submission.getModeratorRescheduleCount() + 1);
+            return 1;
+        });
         when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submission.getId())).thenReturn(List.of());
 
         submissionService.reschedule(submission.getId(), rescheduleDto(newSlot), moderator);
 
         assertThat(submission.getScheduledAt()).isEqualTo(newSlot);
         assertThat(submission.getModeratorRescheduleCount()).isEqualTo(1);
+        verify(submissionRepository, never()).claimAdminReschedule(any(), any());
+    }
+
+    @Test
+    void reschedule_concurrentClaimLostAfterPassingTheCheapReadCheck_returnsConflictNotSilentSuccess() {
+        // Regression: Submission has no @Version/optimistic locking, so the initial
+        // cap/window check above is a plain entity read -- a concurrent request could
+        // win the atomic claim first. The claim returning 0 rows (not 1) must surface
+        // as a clear conflict, never be treated as success.
+        Instant original = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(UUID.randomUUID(), SubmissionStatus.scheduled, original);
+        submission.setOriginalScheduledAt(original);
+        JwtUserDetails moderator = principal(UUID.randomUUID(), "moderator", null);
+        Instant newSlot = original.plus(java.time.Duration.ofHours(1));
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(institutionId, newSlot, submission.getId())).thenReturn(new GuardRailResult());
+        when(submissionRepository.claimModeratorReschedule(submission.getId(), newSlot, 2)).thenReturn(0);
+
+        assertThatThrownBy(() -> submissionService.reschedule(submission.getId(), rescheduleDto(newSlot), moderator))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+        verify(slotReservationService, never()).reserveLockedSlot(any(), any(), any());
     }
 
     @Test
@@ -1021,7 +1054,7 @@ class SubmissionServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
-        verify(submissionRepository, never()).save(any(Submission.class));
+        verify(submissionRepository, never()).claimModeratorReschedule(any(), any(), anyInt());
     }
 
     @Test
@@ -1038,7 +1071,7 @@ class SubmissionServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
-        verify(submissionRepository, never()).save(any(Submission.class));
+        verify(submissionRepository, never()).claimModeratorReschedule(any(), any(), anyInt());
     }
 
     @Test
@@ -1085,7 +1118,8 @@ class SubmissionServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
-        verify(submissionRepository, never()).save(any(Submission.class));
+        verify(submissionRepository, never()).claimModeratorReschedule(any(), any(), anyInt());
+        verify(submissionRepository, never()).claimAdminReschedule(any(), any());
     }
 
     private SubmissionCreateDto createDto(Instant scheduledAt) {

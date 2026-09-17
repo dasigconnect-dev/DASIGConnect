@@ -125,6 +125,48 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("expectedStatus") SubmissionStatus expectedStatus,
             @Param("claimedStatus") SubmissionStatus claimedStatus);
 
+    /**
+     * UC-3.1: atomic reschedule for a Moderator, capped. {@code Submission} has
+     * no {@code @Version}/optimistic locking, so a plain read-check-write on
+     * {@code moderatorRescheduleCount} (as {@code SubmissionService.reschedule}
+     * used to do) lets two concurrent requests for the same submission both pass
+     * the cap check before either writes. Same idiom as
+     * {@link #claimForPublishing} — the {@code WHERE} clause is the guard, and
+     * the affected-row count tells the caller whether it actually won the claim.
+     * Returns 0 (not 1) when the count was already at {@code maxCount} or the
+     * status changed out from under the caller; either way, the caller should
+     * treat that as "someone else changed this first," not silently proceed.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+        UPDATE Submission s
+        SET s.scheduledAt = :newSlot,
+            s.moderatorRescheduleCount = s.moderatorRescheduleCount + 1
+        WHERE s.id = :submissionId
+          AND s.status = com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled
+          AND s.moderatorRescheduleCount < :maxCount
+        """)
+    int claimModeratorReschedule(
+            @Param("submissionId") UUID submissionId,
+            @Param("newSlot") Instant newSlot,
+            @Param("maxCount") int maxCount);
+
+    /**
+     * UC-3.1: atomic reschedule for an Admin — no cap, but still guarded on
+     * {@code status = scheduled} so a concurrent status change (e.g. the post
+     * started publishing) is caught rather than silently overwritten.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+        UPDATE Submission s
+        SET s.scheduledAt = :newSlot
+        WHERE s.id = :submissionId
+          AND s.status = com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled
+        """)
+    int claimAdminReschedule(
+            @Param("submissionId") UUID submissionId,
+            @Param("newSlot") Instant newSlot);
+
     /** StaleSubmissionDetectorJob (GR-T9): SCHEDULED / DIRECT_POST_SCHEDULED submissions whose slot has passed. */
     @Query("""
         SELECT s FROM Submission s
