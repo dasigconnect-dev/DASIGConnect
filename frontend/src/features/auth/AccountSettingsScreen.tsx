@@ -176,7 +176,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   });
   const watermarkQueryOptions = watermarkConfigurationQueryOptions({
     user,
-    institutionId: pageInstitutionId,
     enabled: canManagePage && activeTab === "page",
   });
   const watermarkQueryKey = watermarkQueryOptions.queryKey;
@@ -417,7 +416,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     setSaving("watermark");
     try {
       const { data } = await saveWatermarkConfiguration({
-        institutionId: null,
         enabled: watermarkEnabled,
         elements: watermarkElements,
       });

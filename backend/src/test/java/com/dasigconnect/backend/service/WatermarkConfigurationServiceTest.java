@@ -52,7 +52,7 @@ class WatermarkConfigurationServiceTest {
         var actor = new JwtUserDetails(UUID.randomUUID(), "contrib@example.com", "contributor", UUID.randomUUID());
         when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
 
-        WatermarkConfigurationDto dto = service.get(null, actor);
+        WatermarkConfigurationDto dto = service.get(actor);
 
         assertThat(dto).isNotNull();
         assertThat(dto.elements()).isNotEmpty();
@@ -60,7 +60,7 @@ class WatermarkConfigurationServiceTest {
 
     @Test
     void unauthenticatedCannotReadWatermark() {
-        assertThatThrownBy(() -> service.get(null, null))
+        assertThatThrownBy(() -> service.get(null))
                 .isInstanceOf(ResponseStatusException.class);
         verifyNoInteractions(repository);
     }
@@ -68,7 +68,7 @@ class WatermarkConfigurationServiceTest {
     @Test
     void contributorCannotSaveWatermark() {
         var actor = new JwtUserDetails(UUID.randomUUID(), "contrib@example.com", "contributor", UUID.randomUUID());
-        var request = new WatermarkConfigurationRequestDto(null, true, new ArrayList<>());
+        var request = new WatermarkConfigurationRequestDto(true, new ArrayList<>());
         assertThatThrownBy(() -> service.save(request, actor))
                 .isInstanceOf(ResponseStatusException.class);
         verifyNoInteractions(repository);
@@ -79,18 +79,17 @@ class WatermarkConfigurationServiceTest {
         var actor = new JwtUserDetails(UUID.randomUUID(), "super@example.com", "admin", null);
         when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
 
-        WatermarkConfigurationDto dto = service.get(null, actor);
+        WatermarkConfigurationDto dto = service.get(actor);
 
         assertThat(dto).isNotNull();
-        assertThat(dto.institutionId()).isNull();
-        assertThat(dto.isOverride()).isFalse();
         assertThat(dto.elements()).isNotEmpty();
     }
 
     @Test
-    void institutionRequestUsesGlobalWatermark() {
-        UUID instId = UUID.randomUUID();
-        var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", instId);
+    void adminFromAnyInstitutionGetsTheSameGlobalWatermark() {
+        // The watermark is a single network-wide configuration — the caller's
+        // own institution has no bearing on what's returned.
+        var actor = new JwtUserDetails(UUID.randomUUID(), "admin@example.com", "admin", UUID.randomUUID());
 
         WatermarkConfiguration defaultConfig = new WatermarkConfiguration();
         defaultConfig.setId(UUID.randomUUID());
@@ -98,12 +97,9 @@ class WatermarkConfigurationServiceTest {
         defaultConfig.setElementsJson("[{\"id\":\"logo\",\"type\":\"image\",\"xPercent\":80,\"yPercent\":80,\"widthPercent\":15,\"heightPercent\":15}]");
         when(repository.findByInstitutionIsNull()).thenReturn(Optional.of(defaultConfig));
 
-        WatermarkConfigurationDto dto = service.get(instId, actor);
+        WatermarkConfigurationDto dto = service.get(actor);
 
         assertThat(dto).isNotNull();
-        assertThat(dto.institutionId()).isNull();
-        assertThat(dto.institutionName()).isEqualTo("DASIG Central Visayas (Global)");
-        assertThat(dto.isOverride()).isFalse();
         assertThat(dto.elements()).hasSize(1);
         verify(repository).findByInstitutionIsNull();
     }
@@ -122,7 +118,7 @@ class WatermarkConfigurationServiceTest {
         el1.setHeightPercent(15.0);
         elements.add(el1);
 
-        WatermarkConfigurationRequestDto request = new WatermarkConfigurationRequestDto(null, true, elements);
+        WatermarkConfigurationRequestDto request = new WatermarkConfigurationRequestDto(true, elements);
 
         when(repository.findByInstitutionIsNull()).thenReturn(Optional.empty());
         when(repository.save(any(WatermarkConfiguration.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -145,7 +141,7 @@ class WatermarkConfigurationServiceTest {
             elements.add(el);
         }
 
-        WatermarkConfigurationRequestDto request = new WatermarkConfigurationRequestDto(null, true, elements);
+        WatermarkConfigurationRequestDto request = new WatermarkConfigurationRequestDto(true, elements);
 
         assertThatThrownBy(() -> service.save(request, actor))
                 .isInstanceOf(ResponseStatusException.class);

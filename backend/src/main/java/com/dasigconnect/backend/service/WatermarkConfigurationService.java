@@ -42,12 +42,11 @@ public class WatermarkConfigurationService {
     }
 
     @Transactional(readOnly = true)
-    public WatermarkConfigurationDto get(UUID institutionId, JwtUserDetails actor) {
+    public WatermarkConfigurationDto get(JwtUserDetails actor) {
         authorizeRead(actor);
 
         Optional<WatermarkConfiguration> defaultConfig = repository.findByInstitutionIsNull();
-        return defaultConfig.map(cfg -> mapToDto(cfg, false, "DASIG Central Visayas (Global)"))
-                .orElseGet(() -> createDefaultDto(null, "DASIG Central Visayas (Global)", false));
+        return defaultConfig.map(this::mapToDto).orElseGet(this::createDefaultDto);
     }
 
     @Transactional
@@ -66,19 +65,17 @@ public class WatermarkConfigurationService {
         config.setUpdatedBy(actor.email());
 
         WatermarkConfiguration saved = repository.save(config);
-        String instName = "DASIG Central Visayas (Global)";
 
         try {
             User user = actor != null && actor.userId() != null ? userRepository.findById(actor.userId()).orElse(null) : null;
             Map<String, Object> meta = Map.of(
-                    "institutionName", instName,
                     "enabled", saved.isEnabled(),
                     "elementsCount", request.elements() != null ? request.elements().size() : 0
             );
             auditLogService.record(user, "WATERMARK_CONFIG_UPDATED", null, null, saved.getId(), meta);
         } catch (Exception ignored) {}
 
-        return mapToDto(saved, false, instName);
+        return mapToDto(saved);
     }
 
     private void authorizeRead(JwtUserDetails actor) {
@@ -93,20 +90,17 @@ public class WatermarkConfigurationService {
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Watermark configuration write access denied");
     }
 
-    private WatermarkConfigurationDto mapToDto(WatermarkConfiguration entity, boolean isOverride, String institutionName) {
+    private WatermarkConfigurationDto mapToDto(WatermarkConfiguration entity) {
         return new WatermarkConfigurationDto(
                 entity.getId(),
-                entity.getInstitution() != null ? entity.getInstitution().getId() : null,
-                institutionName,
                 entity.isEnabled(),
-                isOverride,
                 parseElements(entity.getElementsJson()),
                 entity.getUpdatedAt(),
                 entity.getUpdatedBy()
         );
     }
 
-    private WatermarkConfigurationDto createDefaultDto(UUID institutionId, String institutionName, boolean isOverride) {
+    private WatermarkConfigurationDto createDefaultDto() {
         List<WatermarkElementDto> defaultElements = new ArrayList<>();
 
         WatermarkElementDto logo = new WatermarkElementDto();
@@ -136,10 +130,7 @@ public class WatermarkConfigurationService {
 
         return new WatermarkConfigurationDto(
                 null,
-                institutionId,
-                institutionName,
                 true,
-                isOverride,
                 defaultElements,
                 null,
                 null
