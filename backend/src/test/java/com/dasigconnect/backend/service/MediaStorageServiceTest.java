@@ -1,5 +1,8 @@
 package com.dasigconnect.backend.service;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -10,11 +13,16 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -72,6 +80,62 @@ class MediaStorageServiceTest {
         assertThat(result).isTrue();
         verify(s3Client).deleteObject((DeleteObjectRequest) org.mockito.ArgumentMatchers.argThat(req ->
                 ((DeleteObjectRequest) req).key().equals("media/inst-1/asset-1/photo.jpg")));
+    }
+
+    @Test
+    void purgeExpiredGeneratedWatermarks_deletesOnlyObjectsOlderThanRetention() {
+        MediaStorageService service = build("", "https://api.dasigconnect.com");
+        Instant now = Instant.now();
+        S3Object stale = S3Object.builder()
+                .key("generated/watermarked/sub-1/asset-1-1000.jpg")
+                .lastModified(now.minus(Duration.ofDays(10)))
+                .build();
+        S3Object fresh = S3Object.builder()
+                .key("generated/watermarked/sub-2/asset-2-2000.jpg")
+                .lastModified(now.minus(Duration.ofHours(1)))
+                .build();
+        when(s3Client.listObjectsV2(any(ListObjectsV2Request.class))).thenReturn(
+                ListObjectsV2Response.builder().contents(List.of(stale, fresh)).isTruncated(false).build());
+
+        int purged = service.purgeExpiredGeneratedWatermarks(Duration.ofDays(3));
+
+        assertThat(purged).isEqualTo(1);
+        verify(s3Client).deleteObject((DeleteObjectRequest) org.mockito.ArgumentMatchers.argThat(req ->
+                ((DeleteObjectRequest) req).key().equals("generated/watermarked/sub-1/asset-1-1000.jpg")));
+        verify(s3Client, never()).deleteObject((DeleteObjectRequest) org.mockito.ArgumentMatchers.argThat(req ->
+                ((DeleteObjectRequest) req).key().equals("generated/watermarked/sub-2/asset-2-2000.jpg")));
+    }
+
+    @Test
+    void purgeExpiredGeneratedWatermarks_onlySweepsTheGeneratedWatermarkPrefix() {
+        MediaStorageService service = build("", "https://api.dasigconnect.com");
+        when(s3Client.listObjectsV2(any(ListObjectsV2Request.class))).thenReturn(
+                ListObjectsV2Response.builder().contents(List.of()).isTruncated(false).build());
+
+        service.purgeExpiredGeneratedWatermarks(Duration.ofDays(3));
+
+        verify(s3Client).listObjectsV2((ListObjectsV2Request) org.mockito.ArgumentMatchers.argThat(req ->
+                ((ListObjectsV2Request) req).prefix().equals("generated/watermarked/")));
+    }
+
+    @Test
+    void purgeExpiredGeneratedWatermarks_oneObjectDeleteFailure_doesNotAbortTheSweep() {
+        MediaStorageService service = build("", "https://api.dasigconnect.com");
+        Instant now = Instant.now();
+        S3Object first = S3Object.builder().key("generated/watermarked/a/1.jpg")
+                .lastModified(now.minus(Duration.ofDays(10))).build();
+        S3Object second = S3Object.builder().key("generated/watermarked/b/2.jpg")
+                .lastModified(now.minus(Duration.ofDays(10))).build();
+        when(s3Client.listObjectsV2(any(ListObjectsV2Request.class))).thenReturn(
+                ListObjectsV2Response.builder().contents(List.of(first, second)).isTruncated(false).build());
+        when(s3Client.deleteObject((DeleteObjectRequest) org.mockito.ArgumentMatchers.argThat(req ->
+                ((DeleteObjectRequest) req).key().equals("generated/watermarked/a/1.jpg"))))
+                .thenThrow(RuntimeException.class);
+
+        int purged = service.purgeExpiredGeneratedWatermarks(Duration.ofDays(3));
+
+        assertThat(purged).isEqualTo(1);
+        verify(s3Client, times(2)).deleteObject(any(DeleteObjectRequest.class));
     }
 
     @Test

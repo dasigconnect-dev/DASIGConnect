@@ -113,7 +113,7 @@ export const queryKeys = {
   settings: {
     page: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
       scopedKey("settings", { ...params, view: "page" }),
-    watermark: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
+    watermark: (params: { role: string; userId?: string | null }) =>
       scopedKey("settings", { ...params, view: "watermark" }),
   },
   resolution: {

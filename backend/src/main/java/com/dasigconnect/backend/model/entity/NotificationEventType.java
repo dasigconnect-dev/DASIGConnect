@@ -27,5 +27,6 @@ public enum NotificationEventType {
     user_role_changed,
     admin_promotion_requested,
     admin_promotion_declined,
+    watermark_apply_failed,
     generic
 }

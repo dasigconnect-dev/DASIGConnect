@@ -4,6 +4,7 @@ import com.dasigconnect.backend.schedule.AbandonmentDetectorJob;
 import com.dasigconnect.backend.schedule.EmbeddingFailureDigestJob;
 import com.dasigconnect.backend.schedule.EmbeddingReconciliationJob;
 import com.dasigconnect.backend.schedule.EmptyScheduleWarningJob;
+import com.dasigconnect.backend.schedule.GeneratedWatermarkPurgeJob;
 import com.dasigconnect.backend.schedule.MediaAssetRetentionPurgeJob;
 import com.dasigconnect.backend.schedule.PublishingSchedulerJob;
 import com.dasigconnect.backend.schedule.ReviewLockCleanupJob;
@@ -50,7 +51,8 @@ public class ManualJobRunner {
             TokenHealthCheckJob tokenHealthCheck,
             ScheduledJobRunRetentionJob scheduledJobRunRetention,
             EmbeddingFailureDigestJob embeddingFailureDigest,
-            EmptyScheduleWarningJob emptyScheduleWarning) {
+            EmptyScheduleWarningJob emptyScheduleWarning,
+            GeneratedWatermarkPurgeJob generatedWatermarkPurge) {
         jobs.put("PublishingSchedulerJob", publishingScheduler::run);
         jobs.put("ReviewLockCleanupJob", reviewLockCleanup::releaseExpiredLocks);
         jobs.put("StaleSubmissionDetectorJob", staleSubmissionDetector::run);
@@ -65,6 +67,7 @@ public class ManualJobRunner {
         jobs.put("ScheduledJobRunRetentionJob", scheduledJobRunRetention::pruneOldRuns);
         jobs.put("EmbeddingFailureDigestJob", embeddingFailureDigest::scanFailedEmbeddings);
         jobs.put("EmptyScheduleWarningJob", emptyScheduleWarning::scanEmptySchedules);
+        jobs.put("GeneratedWatermarkPurgeJob", generatedWatermarkPurge::purgeExpiredGeneratedWatermarks);
     }
 
     public Set<String> runnableJobKeys() {
