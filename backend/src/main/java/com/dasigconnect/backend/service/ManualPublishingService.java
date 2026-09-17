@@ -274,13 +274,23 @@ public class ManualPublishingService {
         }
 
         if (missedReview) {
-            // Re-enter the Approval Workflow rather than the publishing flow.
+            // Re-enter the Approval Workflow rather than the publishing flow —
+            // originalScheduledAt/moderatorRescheduleCount get re-baselined the
+            // normal way when this is approved again (ValidationService.approve).
             slotReservationService.reserve(submissionId, s.getInstitution().getId(), newSlot);
             s.setStatus(SubmissionStatus.pending);
             s.setSubmittedAt(Instant.now());
         } else {
             slotReservationService.reserveLockedSlot(submissionId, s.getInstitution().getId(), newSlot);
             s.setStatus(SubmissionStatus.scheduled);
+            // This retry establishes a fresh baseline for UC-3.1's Moderator
+            // reschedule cap — without resetting these, a submission that had
+            // already used up its 2 calendar reschedules (or drifted far from its
+            // original slot) before failing to publish would come back from a
+            // successful retry still capped out or immediately outside the
+            // 1-day window of a now-irrelevant old slot.
+            s.setOriginalScheduledAt(newSlot);
+            s.setModeratorRescheduleCount(0);
         }
         s.setScheduledAt(newSlot);
         // A schedule and Live/Fast-Track are mutually exclusive (see

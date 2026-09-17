@@ -290,6 +290,30 @@ class ManualPublishingServiceTest {
     }
 
     @Test
+    void retryWithNewSchedule_resetsModeratorRescheduleCapBaseline() {
+        // Regression: a submission that had already used up its Moderator
+        // reschedule cap (UC-3.1) before failing to publish must not come back
+        // from a successful retry still capped out, or anchored to a now-stale
+        // original slot far from the new one.
+        Submission s = submission(submissionId, SubmissionStatus.publish_failed);
+        Instant staleOriginal = Instant.now().minusSeconds(30 * 24 * 3600);
+        s.setOriginalScheduledAt(staleOriginal);
+        s.setModeratorRescheduleCount(2);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult());
+
+        RescheduleRequestDto dto = new RescheduleRequestDto();
+        Instant newSlot = Instant.now().plusSeconds(7200);
+        dto.setScheduledAt(newSlot);
+
+        service.retryWithNewSchedule(submissionId, dto, admin);
+
+        assertThat(s.getOriginalScheduledAt()).isEqualTo(newSlot);
+        assertThat(s.getModeratorRescheduleCount()).isZero();
+    }
+
+    @Test
     void retryWithNewSchedule_nonPublishFailed_throwsConflict() {
         Submission s = submission(submissionId, SubmissionStatus.scheduled);
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
