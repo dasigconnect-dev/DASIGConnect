@@ -27,6 +27,37 @@ const CARD_MARGIN = 14;
 const CARD_WIDTH = 380;
 const ESTIMATED_CARD_HEIGHT = 220;
 
+function isElementRenderedAndVisible(el: Element | null): el is HTMLElement {
+  if (!el || !(el instanceof HTMLElement)) return false;
+  const style = window.getComputedStyle(el);
+  if (
+    style.display === "none" ||
+    style.visibility === "hidden" ||
+    style.opacity === "0"
+  ) {
+    return false;
+  }
+  const rect = el.getBoundingClientRect();
+  return rect.width > 2 && rect.height > 2;
+}
+
+function getScrollParent(node: HTMLElement | null): HTMLElement | Window {
+  if (!node) return window;
+  let parent: HTMLElement | null = node.parentElement;
+  while (parent && parent !== document.body && parent !== document.documentElement) {
+    const style = window.getComputedStyle(parent);
+    const overflowY = style.overflowY;
+    if (
+      (overflowY === "auto" || overflowY === "scroll") &&
+      parent.scrollHeight > parent.clientHeight
+    ) {
+      return parent;
+    }
+    parent = parent.parentElement;
+  }
+  return window;
+}
+
 export default function SpotlightTour({
   steps,
   currentStepIndex,
@@ -44,80 +75,98 @@ export default function SpotlightTour({
   const currentStep = steps[currentStepIndex];
   const isLastStep = currentStepIndex === steps.length - 1;
 
-  const positionCard = useCallback((padded: TargetRect, placementPref = "auto") => {
+  const positionCard = useCallback((padded: TargetRect | null, placementPref = "auto") => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const isMobile = vw < 640;
     const effectiveCardWidth = Math.min(CARD_WIDTH, vw - (isMobile ? 24 : 32));
+    const cardHeight = cardRef.current ? cardRef.current.offsetHeight : ESTIMATED_CARD_HEIGHT;
+
+    if (!padded) {
+      // Centered modal card fallback
+      const margin = isMobile ? 12 : 16;
+      setCardPosition({
+        top: Math.max(16, (vh - cardHeight) / 2),
+        left: Math.max(margin, (vw - effectiveCardWidth) / 2),
+      });
+      return;
+    }
 
     let calculatedTop = padded.bottom + CARD_MARGIN;
     let calculatedLeft = padded.left + (padded.width / 2) - (effectiveCardWidth / 2);
 
     if (isMobile) {
-      // On mobile phones, always horizontally center the card across the screen
+      // Mobile positioning:
+      // Always horizontally center across viewport with safe gutters
       calculatedLeft = (vw - effectiveCardWidth) / 2;
 
-      // Check space above vs below
-      const spaceBelow = vh - padded.bottom;
+      const elementCenterY = (padded.top + padded.bottom) / 2;
       const spaceAbove = padded.top;
+      const spaceBelow = vh - padded.bottom;
 
-      if (spaceBelow >= ESTIMATED_CARD_HEIGHT + CARD_MARGIN + 16) {
-        calculatedTop = padded.bottom + CARD_MARGIN;
-      } else if (spaceAbove >= ESTIMATED_CARD_HEIGHT + CARD_MARGIN + 16) {
-        calculatedTop = padded.top - CARD_MARGIN - ESTIMATED_CARD_HEIGHT;
+      if (elementCenterY <= vh * 0.52) {
+        // Element is in upper viewport area
+        if (spaceBelow >= cardHeight + 20) {
+          calculatedTop = padded.bottom + 10;
+        } else {
+          // Dock at bottom sheet position to maximize top spotlight visibility
+          calculatedTop = vh - cardHeight - 12;
+        }
       } else {
-        calculatedTop = spaceBelow > spaceAbove
-          ? Math.min(padded.bottom + CARD_MARGIN, vh - ESTIMATED_CARD_HEIGHT - 12)
-          : Math.max(12, padded.top - CARD_MARGIN - ESTIMATED_CARD_HEIGHT);
+        // Element is in lower viewport area
+        if (spaceAbove >= cardHeight + 20) {
+          calculatedTop = padded.top - cardHeight - 10;
+        } else {
+          // Dock at top position to leave lower spotlight element visible
+          calculatedTop = 12;
+        }
       }
     } else {
       const placement = placementPref || "auto";
 
-      if (placement === "top" || (placement === "auto" && calculatedTop + ESTIMATED_CARD_HEIGHT > vh - 16)) {
-        if (padded.top - CARD_MARGIN - ESTIMATED_CARD_HEIGHT > 16) {
-          calculatedTop = padded.top - CARD_MARGIN - ESTIMATED_CARD_HEIGHT;
+      if (placement === "top" || (placement === "auto" && calculatedTop + cardHeight > vh - 16)) {
+        if (padded.top - CARD_MARGIN - cardHeight > 16) {
+          calculatedTop = padded.top - CARD_MARGIN - cardHeight;
         }
       } else if (placement === "left") {
         calculatedLeft = padded.left - effectiveCardWidth - CARD_MARGIN;
-        calculatedTop = padded.top + (padded.height / 2) - (ESTIMATED_CARD_HEIGHT / 2);
+        calculatedTop = padded.top + (padded.height / 2) - (cardHeight / 2);
       } else if (placement === "right") {
         calculatedLeft = padded.right + CARD_MARGIN;
-        calculatedTop = padded.top + (padded.height / 2) - (ESTIMATED_CARD_HEIGHT / 2);
+        calculatedTop = padded.top + (padded.height / 2) - (cardHeight / 2);
       }
     }
 
     // Clamp inside viewport boundaries
     const margin = isMobile ? 12 : 16;
-    const clampedLeft = Math.min(Math.max(margin, calculatedLeft), Math.max(margin, vw - effectiveCardWidth - margin));
-    const clampedTop = Math.min(Math.max(12, calculatedTop), vh - ESTIMATED_CARD_HEIGHT - 12);
+    const clampedLeft = Math.min(
+      Math.max(margin, calculatedLeft),
+      Math.max(margin, vw - effectiveCardWidth - margin)
+    );
+    const clampedTop = Math.min(
+      Math.max(12, calculatedTop),
+      Math.max(12, vh - cardHeight - 12)
+    );
 
     setCardPosition({ top: clampedTop, left: clampedLeft });
   }, []);
 
   const fallbackCenterCard = useCallback(() => {
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const isMobile = vw < 640;
-    const effectiveCardWidth = Math.min(CARD_WIDTH, vw - (isMobile ? 24 : 32));
-    const margin = isMobile ? 12 : 16;
     setTargetRect(null);
-    setCardPosition({
-      top: Math.max(16, (vh - ESTIMATED_CARD_HEIGHT) / 2),
-      left: Math.max(margin, (vw - effectiveCardWidth) / 2),
-    });
-  }, []);
+    positionCard(null);
+  }, [positionCard]);
 
   // Calculate target element dimensions and card positioning
   const updatePositions = useCallback(() => {
     if (!currentStep) return;
 
     const el = document.querySelector(currentStep.target);
-    if (!el) {
+    if (!isElementRenderedAndVisible(el)) {
       // Retry once after 150ms in case element is rendering or animating
       if (retryTimeoutRef.current) window.clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = window.setTimeout(() => {
         const retryEl = document.querySelector(currentStep.target);
-        if (retryEl) {
+        if (isElementRenderedAndVisible(retryEl)) {
           const rect = retryEl.getBoundingClientRect();
           const padded: TargetRect = {
             top: Math.max(0, rect.top - PADDING),
@@ -150,27 +199,56 @@ export default function SpotlightTour({
     positionCard(padded, currentStep.placement);
   }, [currentStep, positionCard, fallbackCenterCard]);
 
+  // Smooth mobile/desktop scroll target into view
+  const scrollTargetIntoView = useCallback((el: HTMLElement) => {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const isMobile = vw < 640;
+
+    if (!isMobile) {
+      el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      return;
+    }
+
+    // On mobile devices, check if target is already visible without overlapping card
+    const rect = el.getBoundingClientRect();
+    const cardHeight = cardRef.current?.offsetHeight || ESTIMATED_CARD_HEIGHT;
+    const isAlreadyFullyVisible = rect.top >= 64 && rect.bottom <= (vh - cardHeight - 16);
+
+    if (isAlreadyFullyVisible) {
+      return;
+    }
+
+    const scrollParent = getScrollParent(el);
+    if (scrollParent === window || scrollParent === document.documentElement || scrollParent === document.body) {
+      const targetScrollY = window.scrollY + rect.top - 72;
+      window.scrollTo({
+        top: Math.max(0, targetScrollY),
+        behavior: "smooth",
+      });
+    } else if (scrollParent instanceof HTMLElement) {
+      const parentRect = scrollParent.getBoundingClientRect();
+      const currentScrollTop = scrollParent.scrollTop;
+      const targetScrollTop = currentScrollTop + (rect.top - parentRect.top) - 16;
+      scrollParent.scrollTo({
+        top: Math.max(0, targetScrollTop),
+        behavior: "smooth",
+      });
+    } else {
+      el.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+    }
+  }, []);
+
   // Scroll into view & update rect on step change
   useEffect(() => {
     if (!isOpen || !currentStep) return;
 
     const el = document.querySelector(currentStep.target);
-    if (el) {
-      // Check if inside a custom scrollable container like .sub-form-canvas
-      const scrollParent = el.closest(".sub-form-canvas") || el.closest(".dash-body") || el.parentElement;
-      if (scrollParent && scrollParent.scrollHeight > scrollParent.clientHeight) {
-        const parentRect = scrollParent.getBoundingClientRect();
-        const elRect = el.getBoundingClientRect();
-        // If element is behind sticky navbar (within top 70px) or below fold, center it
-        if (elRect.top < parentRect.top + 70 || elRect.bottom > parentRect.bottom - 40) {
-          el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-        }
-      } else {
-        el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-      }
+    if (el instanceof HTMLElement && isElementRenderedAndVisible(el)) {
+      scrollTargetIntoView(el);
     }
 
-    // Repeated updates as smooth scrolling moves the element into its final settled spot
+    // Repeated updates as smooth scrolling and CSS transitions settle
     const timers = [
       setTimeout(updatePositions, 60),
       setTimeout(updatePositions, 150),
@@ -182,8 +260,7 @@ export default function SpotlightTour({
       timers.forEach(clearTimeout);
       if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
     };
-  }, [isOpen, currentStepIndex, currentStep, updatePositions]);
-
+  }, [isOpen, currentStepIndex, currentStep, scrollTargetIntoView, updatePositions]);
 
   // Resize and scroll tracking
   useEffect(() => {
@@ -201,6 +278,23 @@ export default function SpotlightTour({
       window.removeEventListener("scroll", handleResizeOrScroll, true);
     };
   }, [isOpen, updatePositions]);
+
+  // Dynamic card resize observation (e.g. step text length changes or orientation change)
+  useEffect(() => {
+    if (!isOpen || !cardRef.current) return;
+    if (typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      if (targetRect) {
+        positionCard(targetRect, currentStep?.placement);
+      } else {
+        fallbackCenterCard();
+      }
+    });
+
+    observer.observe(cardRef.current);
+    return () => observer.disconnect();
+  }, [isOpen, targetRect, currentStep?.placement, positionCard, fallbackCenterCard]);
 
   // Keyboard navigation (Esc to skip, Arrows to navigate)
   useEffect(() => {
@@ -226,37 +320,42 @@ export default function SpotlightTour({
 
   if (!isOpen || !currentStep) return null;
 
-  // Compute clip-path cutout polygon with evenodd winding rule
-  const clipPathStyle = targetRect
-    ? {
-        clipPath: `polygon(
-          evenodd,
-          0 0,
-          100% 0,
-          100% 100%,
-          0 100%,
-          0 0,
-          ${targetRect.left}px ${targetRect.top}px,
-          ${targetRect.right}px ${targetRect.top}px,
-          ${targetRect.right}px ${targetRect.bottom}px,
-          ${targetRect.left}px ${targetRect.bottom}px,
-          ${targetRect.left}px ${targetRect.top}px
-        )`,
-        WebkitClipPath: `polygon(
-          evenodd,
-          0 0,
-          100% 0,
-          100% 100%,
-          0 100%,
-          0 0,
-          ${targetRect.left}px ${targetRect.top}px,
-          ${targetRect.right}px ${targetRect.top}px,
-          ${targetRect.right}px ${targetRect.bottom}px,
-          ${targetRect.left}px ${targetRect.bottom}px,
-          ${targetRect.left}px ${targetRect.top}px
-        )`,
-      }
-    : undefined;
+  // Clamped cutout polygon calculation with evenodd winding rule
+  const getClipPathStyle = () => {
+    if (!targetRect) return undefined;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    const left = Math.max(0, Math.min(targetRect.left, vw));
+    const top = Math.max(0, Math.min(targetRect.top, vh));
+    const right = Math.max(0, Math.min(targetRect.right, vw));
+    const bottom = Math.max(0, Math.min(targetRect.bottom, vh));
+
+    if (right - left <= 4 || bottom - top <= 4) {
+      return undefined;
+    }
+
+    const polygon = `polygon(
+      evenodd,
+      0 0,
+      100% 0,
+      100% 100%,
+      0 100%,
+      0 0,
+      ${left}px ${top}px,
+      ${right}px ${top}px,
+      ${right}px ${bottom}px,
+      ${left}px ${bottom}px,
+      ${left}px ${top}px
+    )`;
+
+    return {
+      clipPath: polygon,
+      WebkitClipPath: polygon,
+    };
+  };
+
+  const clipPathStyle = getClipPathStyle();
 
   return createPortal(
     <aside className="spotlight-tour-overlay" aria-label="Feature Walkthrough" aria-modal="true">
