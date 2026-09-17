@@ -427,7 +427,10 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       await invalidateWatermarkSettingsDependencies();
       toast.success("Watermark settings saved.");
     } catch (err: unknown) {
-      const errorMsg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      // The axios response interceptor (authApi.ts) collapses the backend's
+      // { error: { code, message } } envelope down to a plain string at
+      // response.data.error -- there is no response.data.message.
+      const errorMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
       toast.error(errorMsg || "Unable to save watermark configuration.");
     } finally {
       setSaving(null);

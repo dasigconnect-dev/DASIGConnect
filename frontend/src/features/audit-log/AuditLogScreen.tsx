@@ -135,10 +135,11 @@ function isCanceledError(err: unknown) {
 
 function getAuditLoadError(err: unknown) {
   if (isCanceledError(err)) return "";
-  return (
-    (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-    "Unable to connect to the audit service. Please retry."
-  );
+  // The axios response interceptor (authApi.ts) collapses the backend's
+  // { error: { code, message } } envelope down to a plain string at
+  // response.data.error -- there is no response.data.message.
+  const data = (err as { response?: { data?: { error?: string } } })?.response?.data;
+  return data?.error || "Unable to connect to the audit service. Please retry.";
 }
 
 export default function AuditLogScreen({ user }: Props) {
