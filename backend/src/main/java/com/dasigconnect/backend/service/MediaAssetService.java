@@ -28,7 +28,6 @@ import com.dasigconnect.backend.model.dto.media.AddAssetTagRequestDto;
 import com.dasigconnect.backend.model.dto.media.AssetTagDto;
 import com.dasigconnect.backend.model.dto.media.MediaAlbumDto;
 import com.dasigconnect.backend.model.dto.media.MediaAlbumRequestDto;
-import com.dasigconnect.backend.model.dto.media.MediaAssetAddToDraftRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
@@ -41,10 +40,6 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUsageDto;
-import com.dasigconnect.backend.model.dto.media.MediaAssetUseInNewPostRequestDto;
-import com.dasigconnect.backend.model.dto.submission.AttachAssetDto;
-import com.dasigconnect.backend.model.dto.submission.SubmissionCreateDto;
-import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.entity.AssetTag;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAlbum;
@@ -81,7 +76,6 @@ public class MediaAssetService {
     private final MediaAlbumRepository mediaAlbumRepository;
     private final MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository;
     private final InstitutionRepository institutionRepository;
-    private final SubmissionService submissionService;
     private final MediaStorageService mediaStorage;
     private final AIClassificationService aiClassificationService;
     private final com.dasigconnect.backend.external.VoyageAIClient voyageAIClient;
@@ -101,7 +95,6 @@ public class MediaAssetService {
             MediaAlbumRepository mediaAlbumRepository,
             MediaAssetEmbeddingRepository mediaAssetEmbeddingRepository,
             InstitutionRepository institutionRepository,
-            SubmissionService submissionService,
             MediaStorageService mediaStorage,
             AIClassificationService aiClassificationService,
             com.dasigconnect.backend.external.VoyageAIClient voyageAIClient,
@@ -116,7 +109,6 @@ public class MediaAssetService {
         this.mediaAlbumRepository = mediaAlbumRepository;
         this.mediaAssetEmbeddingRepository = mediaAssetEmbeddingRepository;
         this.institutionRepository = institutionRepository;
-        this.submissionService = submissionService;
         this.mediaStorage = mediaStorage;
         this.aiClassificationService = aiClassificationService;
         this.voyageAIClient = voyageAIClient;
@@ -486,34 +478,6 @@ public class MediaAssetService {
             default ->
                 action.replace("MEDIA_ASSET_", "").replace('_', ' ').toLowerCase();
         };
-    }
-
-    public SubmissionResponseDto useInNewPost(UUID assetId, MediaAssetUseInNewPostRequestDto dto, JwtUserDetails user) {
-        MediaAsset asset = loadAsset(assetId, user);
-        SubmissionCreateDto createDto = new SubmissionCreateDto();
-        createDto.setEventTitle(dto.getEventTitle());
-        createDto.setEventDate(dto.getEventDate());
-        createDto.setCaption(dto.getCaption());
-        createDto.setDescription(dto.getDescription());
-        createDto.setCategory(dto.getCategory());
-        createDto.setTags(dto.getTags());
-
-        SubmissionResponseDto response = submissionService.create(createDto, user);
-
-        AttachAssetDto attachDto = new AttachAssetDto();
-        attachDto.setMediaAssetId(asset.getId());
-        return submissionService.attachAsset(response.getId(), attachDto, user);
-    }
-
-    public SubmissionResponseDto addToDraft(UUID assetId, MediaAssetAddToDraftRequestDto dto, JwtUserDetails user) {
-        MediaAsset asset = loadAsset(assetId, user);
-        if (!submissionRepository.existsByIdAndContributorId(dto.getSubmissionId(), user.userId())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found.");
-        }
-
-        AttachAssetDto attachDto = new AttachAssetDto();
-        attachDto.setMediaAssetId(asset.getId());
-        return submissionService.attachAsset(dto.getSubmissionId(), attachDto, user);
     }
 
     public void delete(UUID assetId, boolean force, JwtUserDetails user) {

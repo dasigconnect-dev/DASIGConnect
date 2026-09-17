@@ -1,7 +1,6 @@
 package com.dasigconnect.backend.controller;
 
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -19,12 +18,9 @@ import com.dasigconnect.backend.model.dto.media.AssetTagDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
-import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
-import com.dasigconnect.backend.model.entity.Submission;
-import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.MediaAssetService;
@@ -111,38 +107,6 @@ class MediaAssetControllerTest {
                 eq(10),
                 any(),
                 any());
-    }
-
-    @Test
-    @WithMockUser(roles = "CONTRIBUTOR")
-    void useInNewPost_asContributor_returnsSubmission() throws Exception {
-        UUID assetId = UUID.randomUUID();
-        SubmissionResponseDto response = submissionResponse(UUID.randomUUID());
-        when(mediaAssetService.useInNewPost(eq(assetId), any(), any())).thenReturn(response);
-
-        mockMvc.perform(post("/api/v1/media-assets/{id}/use-in-new-post", assetId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                        {"eventTitle":"Research Expo","eventDate":"2026-06-01"}
-                        """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.id").value(response.getId().toString()));
-    }
-
-    @Test
-    @WithMockUser(roles = "CONTRIBUTOR")
-    void addToDraft_asContributor_returnsSubmission() throws Exception {
-        UUID assetId = UUID.randomUUID();
-        SubmissionResponseDto response = submissionResponse(UUID.randomUUID());
-        when(mediaAssetService.addToDraft(eq(assetId), any(), any())).thenReturn(response);
-
-        mockMvc.perform(post("/api/v1/media-assets/{id}/add-to-draft", assetId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                        {"submissionId":"%s"}
-                        """.formatted(UUID.randomUUID())))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.id").value(response.getId().toString()));
     }
 
     @Test
@@ -248,20 +212,6 @@ class MediaAssetControllerTest {
         asset.setInstitution(institution(UUID.randomUUID()));
         asset.setUploader(user(UUID.randomUUID()));
         return asset;
-    }
-
-    private static SubmissionResponseDto submissionResponse(UUID submissionId) {
-        Submission submission = new Submission();
-        submission.setId(submissionId);
-        submission.setStatus(SubmissionStatus.draft);
-        submission.setEventTitle("Research Expo");
-        submission.setEventDate(LocalDate.of(2026, 6, 1));
-        submission.setCaption("Caption");
-        submission.setDescription("Description");
-        submission.setContributor(user(UUID.randomUUID()));
-        submission.setInstitution(institution(UUID.randomUUID()));
-        submission.setSubmittedAt(Instant.now());
-        return SubmissionResponseDto.from(submission, List.of());
     }
 
     private static Institution institution(UUID id) {
