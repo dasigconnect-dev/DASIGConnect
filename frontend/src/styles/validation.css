@@ -71,6 +71,68 @@
   font-size: 18px;
 }
 
+.val-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.val-guide-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface-2);
+  color: var(--val-text-2);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.val-guide-btn:hover {
+  background: var(--val-blue-dim);
+  border-color: var(--val-blue-bdr);
+  color: var(--val-blue);
+}
+
+.val-guide-btn i {
+  font-size: 14px;
+  color: var(--val-blue);
+}
+
+.val-guide-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface);
+  color: var(--val-text-2);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: 8px;
+  line-height: 1;
+}
+
+.val-guide-pill-btn:hover {
+  background: var(--val-blue-dim);
+  border-color: var(--val-blue-bdr);
+  color: var(--val-blue);
+}
+
+.val-guide-pill-btn i {
+  font-size: 12px;
+  color: var(--val-blue);
+}
+
 .val-expand-btn {
   position: absolute;
   top: 14px;

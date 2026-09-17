@@ -241,3 +241,41 @@
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.45);
 }
 
+/* Mobile Responsiveness for Small Screens (< 640px) */
+@media (max-width: 640px) {
+  .spotlight-card {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+    padding: 16px 14px;
+    border-radius: 14px;
+    gap: 10px;
+  }
+
+  .spotlight-card-title {
+    font-size: 15px;
+    line-height: 1.25;
+  }
+
+  .spotlight-card-desc {
+    font-size: 12.5px;
+    line-height: 1.4;
+  }
+
+  .spotlight-card-footer {
+    padding-top: 10px;
+    margin-top: 2px;
+  }
+
+  .spotlight-btn-skip {
+    font-size: 11px;
+    padding: 5px 8px;
+  }
+
+  .spotlight-btn-back,
+  .spotlight-btn-next {
+    font-size: 11.5px;
+    padding: 6px 11px;
+  }
+}
+
+

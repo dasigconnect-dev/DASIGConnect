@@ -78,6 +78,13 @@ import "../../styles/validation.css";
 // Reused Submit Content authoring components (AI caption button, engagement
 // panel) rely on the `--sub-*` tokens and `.ai-caption-*` rules defined here.
 import "../../styles/submission.css";
+import SpotlightTour from "../onboarding/components/SpotlightTour";
+import { useScreenTour } from "../onboarding/hooks/useScreenTour";
+import {
+  validationQueueTourSteps,
+  validationReviewTourSteps,
+  validationEditTourSteps,
+} from "../onboarding/tours/validationTour";
 
 interface ValidationQueueScreenProps {
   user: User;
@@ -447,6 +454,35 @@ export default function ValidationQueueScreen({
   const watermarkConfig = watermarkQuery.data ?? null;
   const [showWatermarkPreview, setShowWatermarkPreview] = useState<boolean>(true);
   const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
+
+  const {
+    startTour: startQueueTour,
+    tourProps: queueTourProps,
+  } = useScreenTour({
+    screenId: "validation-queue",
+    steps: validationQueueTourSteps,
+    autoStartDelayMs: 700,
+    canStart: !loading && !selectedId && !isFailedMode,
+  });
+
+  const {
+    tourProps: reviewTourProps,
+  } = useScreenTour({
+    screenId: "validation-review",
+    steps: validationReviewTourSteps,
+    autoStartDelayMs: 600,
+    canStart: false,
+  });
+
+  const {
+    startTour: startEditTour,
+    tourProps: editTourProps,
+  } = useScreenTour({
+    screenId: "validation-edit",
+    steps: validationEditTourSteps,
+    autoStartDelayMs: 500,
+    canStart: Boolean(selected) && editMode && !reviewTourProps.isOpen && !queueTourProps.isOpen,
+  });
 
   useEffect(() => {
     if (!isFailedMode || failuresLoading) return;
@@ -1163,15 +1199,33 @@ export default function ValidationQueueScreen({
               <h1>Review Queue</h1>
               <p>Review, refine, and release network content.</p>
             </div>
-            <button
-              type="button"
-              className="val-collapse-btn"
-              onClick={() => setIsPanelCollapsed(true)}
-              title="Collapse queue panel (<<)"
-              aria-label="Collapse queue list"
-            >
-              <i className="ti ti-chevrons-left" />
-            </button>
+            <div className="val-title-actions">
+              <button
+                type="button"
+                className="val-guide-btn"
+                onClick={() => {
+                  if (editMode) {
+                    startEditTour(true);
+                  } else {
+                    startQueueTour(true);
+                  }
+                }}
+                title="Show interactive feature guide"
+                aria-label="Show feature guide"
+              >
+                <i className="ti ti-help-circle" />
+                <span>Guide</span>
+              </button>
+              <button
+                type="button"
+                className="val-collapse-btn"
+                onClick={() => setIsPanelCollapsed(true)}
+                title="Collapse queue panel (<<)"
+                aria-label="Collapse queue list"
+              >
+                <i className="ti ti-chevrons-left" />
+              </button>
+            </div>
           </div>
 
           <div className="val-tabs" role="tablist" aria-label="Queue filters">
@@ -1710,7 +1764,7 @@ export default function ValidationQueueScreen({
                             </label>
                           </div>
 
-                          <div className="val-edit-field">
+                          <div className="val-edit-field" id="val-edit-caption-group">
                             <div className="val-edit-label-row">
                               <span>Caption</span>
                               <div className="val-edit-caption-tools">
@@ -1983,7 +2037,7 @@ export default function ValidationQueueScreen({
             )}
 
             {isTerminalStatus ? (
-              <footer className="val-action-bar val-action-bar--readonly">
+              <footer className="val-action-bar val-action-bar--readonly" id="val-review-actions">
                 <div className="val-action-status">
                   <span className="val-action-hint">
                     <i className="ti ti-eye" />
@@ -1992,7 +2046,7 @@ export default function ValidationQueueScreen({
                 </div>
               </footer>
             ) : editMode ? (
-              <footer className="val-action-bar">
+              <footer className="val-action-bar" id="val-edit-actions">
                 <div className="val-action-status">
                   <span className="val-action-edit-pill">
                     <i className="ti ti-pencil" />
@@ -2009,6 +2063,7 @@ export default function ValidationQueueScreen({
                     Cancel
                   </button>
                   <button
+                    id="val-btn-save-edit"
                     className="val-btn val-btn-primary"
                     type="button"
                     disabled={!canSaveEdit}
@@ -2020,14 +2075,14 @@ export default function ValidationQueueScreen({
                 </div>
               </footer>
             ) : activeLock ? (
-              <footer className="val-action-bar">
+              <footer className="val-action-bar" id="val-review-actions">
                 <div className="val-action-status">
                   <span className="val-action-lock-pill">
                     <i className="ti ti-lock-check" />
                     Review in progress by you until {formatDateTime(activeLock.expiresAt)}
                   </span>
                 </div>
-                <div className="val-action-group">
+                <div className="val-action-group" id="val-review-decision-group">
                   <button
                     className="val-btn val-btn-subtle"
                     type="button"
@@ -2042,6 +2097,7 @@ export default function ValidationQueueScreen({
                   <div className="val-action-divider" />
 
                   <button
+                    id="val-btn-reject"
                     className="val-btn val-btn-danger-outline"
                     type="button"
                     onClick={() => openDecisionModal("reject")}
@@ -2050,6 +2106,7 @@ export default function ValidationQueueScreen({
                     <span>Reject</span>
                   </button>
                   <button
+                    id="val-btn-revise"
                     className="val-btn val-btn-secondary"
                     type="button"
                     onClick={() => openDecisionModal("revise")}
@@ -2058,6 +2115,7 @@ export default function ValidationQueueScreen({
                     <span>Request Revision</span>
                   </button>
                   <button
+                    id="val-btn-edit"
                     className="val-btn val-btn-blue-outline"
                     type="button"
                     onClick={handleStartEdit}
@@ -2066,6 +2124,7 @@ export default function ValidationQueueScreen({
                     <span>Edit</span>
                   </button>
                   <button
+                    id="val-btn-approve"
                     className="val-btn val-btn-primary"
                     type="button"
                     disabled={isSelfReview}
@@ -2078,7 +2137,7 @@ export default function ValidationQueueScreen({
                 </div>
               </footer>
             ) : (
-              <footer className="val-action-bar">
+              <footer className="val-action-bar" id="val-review-actions">
                 <div className="val-action-status">
                   <span className="val-action-hint">
                     <i className="ti ti-info-circle" />
@@ -2089,6 +2148,7 @@ export default function ValidationQueueScreen({
                 </div>
                 <div className="val-action-group">
                   <button
+                    id="val-btn-start-review"
                     className="val-btn val-btn-primary"
                     type="button"
                     disabled={lockBusy || lockVerificationChecking || isSelfReview}
@@ -2362,6 +2422,9 @@ export default function ValidationQueueScreen({
         );
       })()}
 
+      <SpotlightTour {...queueTourProps} />
+      <SpotlightTour {...reviewTourProps} />
+      <SpotlightTour {...editTourProps} />
     </div>
   );
 }
