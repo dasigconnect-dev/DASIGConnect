@@ -15,7 +15,7 @@ import {
 import type { NotificationDto } from "../../../api/notificationApi";
 import { useToast } from "../../../context/ToastContext";
 import { authenticatedQueryMeta } from "../../../lib/queryClient";
-import { queryKeys } from "../../../lib/queryKeys";
+import { queryKeys, queryRoots } from "../../../lib/queryKeys";
 import type { User } from "../../../types/auth.types";
 import type {
   Notification,
@@ -561,9 +561,25 @@ export function useNotifications(user: User) {
     });
   }, [countQueryKey, notifications, queryClient, reconcileNotificationCache, restoreNotificationCache, snapshotNotificationCache, toast, updateNotifications]);
 
-  const refreshNotifications = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ["notifications"] });
-  }, [queryClient]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refreshNotifications = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const [refetchResult] = await Promise.all([
+        notificationsQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: queryRoots.notifications }),
+      ]);
+      if (refetchResult.isError) {
+        toast.error("Could not refresh notifications.");
+      }
+    } catch {
+      toast.error("Could not refresh notifications.");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [notificationsQuery, queryClient, refreshing, toast]);
 
   return {
     allNotifications: notifications,
@@ -572,6 +588,7 @@ export function useNotifications(user: User) {
     loadMoreFailed: notificationsQuery.isFetchNextPageError,
     loadMore: notificationsQuery.fetchNextPage,
     loading: notificationsQuery.isLoading,
+    refreshing: refreshing || notificationsQuery.isRefetching,
     fetchError: notificationsQuery.isError && !notificationsQuery.data
       ? "Could not load notifications. The backend may not be available."
       : null,

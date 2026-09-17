@@ -81,13 +81,19 @@
   box-sizing: border-box;
 }
 .notif-btn:active { transform: scale(0.97); }
+.notif-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none !important;
+}
 .notif-btn-ghost {
   background: #ffffff;
   border: 1px solid var(--notif-border, #e2e8f0);
   color: var(--notif-text-secondary, #475569);
   box-shadow: 0 1px 3px rgba(10, 22, 40, 0.04);
 }
-.notif-btn-ghost:hover {
+.notif-btn-ghost:hover:not(:disabled) {
   background: #eff6ff;
   border-color: #bfdbfe;
   color: var(--d-blue, #1877f2);

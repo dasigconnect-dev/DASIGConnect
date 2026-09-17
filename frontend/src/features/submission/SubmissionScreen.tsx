@@ -1017,8 +1017,44 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   async function handleAiCaptionPromptSubmit(prompt: string, tone: CaptionTone) {
-    const generated = await aiCaption.suggest(prompt, tone, undefined, form.caption);
-    if (generated) setCaptionPromptOpen(false);
+    let currentId = form.id;
+    if (!currentId) {
+      if (!form.eventTitle.trim()) {
+        toast.warning("Please enter an Event Title first so AI knows what event this is for.");
+        setCaptionPromptOpen(false);
+        setActiveStep("details");
+        setTimeout(() => eventTitleRef.current?.focus(), 150);
+        return;
+      }
+      if (!form.eventDate) {
+        toast.warning("Please select an Event Date first.");
+        setCaptionPromptOpen(false);
+        setActiveStep("details");
+        return;
+      }
+      if (isAdminComposer && !form.institutionId) {
+        toast.warning("Please select an Institution scope first.");
+        setCaptionPromptOpen(false);
+        setActiveStep("details");
+        return;
+      }
+
+      toast.info("Auto-saving draft and uploading media so AI can analyze your event...");
+      const savedId = await saveDraft({ silent: true });
+      if (!savedId) {
+        toast.error("Could not auto-save draft. Please check your submission fields.");
+        return;
+      }
+      currentId = savedId;
+    } else if (isDirty) {
+      await saveDraft({ silent: true });
+    }
+
+    const generated = await aiCaption.suggest(prompt, tone, currentId, form.caption);
+    if (generated) {
+      setCaptionPromptOpen(false);
+      toast.success(form.id ? "AI caption generated!" : "Draft saved & AI caption generated!");
+    }
   }
 
   function updateFastTrack(value: boolean) {
@@ -1437,7 +1473,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
   }
 
-  async function saveDraft(options: { silent?: boolean } = {}) {
+  async function saveDraft(options: { silent?: boolean } = {}): Promise<string | false> {
     if (isReadOnlySubmission) return false;
     if (busy) return false;
     if (isAdminComposer && !form.institutionId) {
@@ -1516,7 +1552,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setMediaUploadFailed(false);
       cleanSignatureRef.current = getDirtySignature(nextForm);
       if (!options.silent) toast.success("Draft saved.");
-      return true;
+      return finalResponse.data.id;
     } catch (err: unknown) {
       setSaveState("idle");
       if (form.files.length > 0) setMediaUploadFailed(true);
@@ -2650,7 +2686,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     {canUseAiCaption && (
                       <AiCaptionButton
                         state={aiCaption.state}
-                        canSuggest={aiCaption.canSuggest}
+                        canSuggest={canUseAiCaption}
                         rateLimitReset={aiCaption.rateLimitReset}
                         notice={aiCaption.notice}
                         onSuggest={() => setCaptionPromptOpen(true)}
@@ -2705,6 +2741,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     state={aiCaption.state}
                     hasImageAssets={hasImageAssets}
                     existingCaption={form.caption}
+                    isUnsaved={!form.id}
                     onClose={() => setCaptionPromptOpen(false)}
                     onSubmit={(prompt, tone) => void handleAiCaptionPromptSubmit(prompt, tone)}
                   />
