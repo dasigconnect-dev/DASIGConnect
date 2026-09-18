@@ -461,8 +461,20 @@ export function useNotifications(user: User) {
   // the API again (it already happened wherever the push came from).
   const applyRemoteRead = useCallback(
     (id: string) => {
-      const wasUnread = notifications.some((notification) => notification.id === id && notification.unread);
-      updateNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, unread: false } : n)));
+      // Determined inside the updater (which always sees the live list at
+      // call time) rather than from the outer `notifications` closure —
+      // depending on `notifications` here would make this callback's
+      // identity change on every list mutation, and since it's a dependency
+      // of the SSE-connect effect below, that would tear down and reopen the
+      // stream on every single incoming notification.
+      let wasUnread = false;
+      updateNotifications((prev) =>
+        prev.map((n) => {
+          if (n.id !== id) return n;
+          if (n.unread) wasUnread = true;
+          return { ...n, unread: false };
+        }),
+      );
       if (wasUnread) {
         const unreadCount = queryClient.getQueryData<number>(countQueryKey);
         if (unreadCount !== undefined) {
@@ -470,7 +482,7 @@ export function useNotifications(user: User) {
         }
       }
     },
-    [countQueryKey, notifications, queryClient, updateNotifications],
+    [countQueryKey, queryClient, updateNotifications],
   );
 
   const applyRemoteReadAll = useCallback(() => {
