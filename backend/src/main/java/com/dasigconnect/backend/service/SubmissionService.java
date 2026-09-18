@@ -1035,6 +1035,7 @@ public class SubmissionService {
         }
 
         GuardRailResult guardRailResult = guardRailService.validate(institutionId, newSlot, submissionId);
+        boolean adminOverride = false;
         if (guardRailResult.isBlocked()) {
             if (dto.getOverrideReason() == null || dto.getOverrideReason().isBlank()) {
                 throw new GuardRailViolationException(guardRailResult.getHardBlocks());
@@ -1057,6 +1058,10 @@ public class SubmissionService {
                             "violations", guardRailResult.getHardBlocks().toString()
                     )
             );
+            // Marks the reservation exempt from the V95/V96 network-wide
+            // exclusion constraint below -- otherwise the DB would reject the
+            // very slot the Administrator just chose to override into.
+            adminOverride = true;
         }
 
         // Atomic claim (see SubmissionRepository.claimModeratorReschedule/claimAdminReschedule):
@@ -1077,7 +1082,7 @@ public class SubmissionService {
                     "This post was just changed by someone else. Please refresh and try again.");
         }
 
-        slotReservationService.reserveLockedSlot(submissionId, institutionId, newSlot);
+        slotReservationService.reserveLockedSlot(submissionId, institutionId, newSlot, adminOverride);
 
         // The claim above was a bulk update (clearAutomatically = true), which
         // detaches whatever was loaded earlier in this persistence context — reload

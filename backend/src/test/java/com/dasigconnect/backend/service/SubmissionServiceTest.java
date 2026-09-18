@@ -49,6 +49,7 @@ import org.springframework.web.server.ResponseStatusException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -993,6 +994,38 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void reschedule_byAdmin_overridingHardGuardRailBlock_marksReservationAsAdminOverride() {
+        // Regression: the V95 network-wide GR-H1 exclusion constraint is
+        // unconditional at the DB layer -- without marking an overridden
+        // reservation as such (V96), an Administrator's explicit override
+        // would be silently rejected by the very constraint meant to close a
+        // different race, defeating a pre-existing, intentional capability.
+        Instant original = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(UUID.randomUUID(), SubmissionStatus.scheduled, original);
+        submission.setOriginalScheduledAt(original);
+        JwtUserDetails admin = principal(UUID.randomUUID(), "admin", null);
+        Instant newSlot = original.plus(java.time.Duration.ofHours(1));
+        var dto = rescheduleDto(newSlot);
+        dto.setOverrideReason("Deliberately scheduling close together for a coordinated campaign.");
+
+        GuardRailResult blocked = new GuardRailResult(
+                List.of(new GuardRailViolation("GR-H1", "Too close to another post")), List.of());
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(institutionId, newSlot, submission.getId())).thenReturn(blocked);
+        when(submissionRepository.claimAdminReschedule(submission.getId(), newSlot)).thenAnswer(inv -> {
+            submission.setScheduledAt(newSlot);
+            return 1;
+        });
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submission.getId())).thenReturn(List.of());
+
+        submissionService.reschedule(submission.getId(), dto, admin);
+
+        verify(auditLogService).record(any(), eq("ADMIN_RESCHEDULE_OVERRIDE"), any(), any(), eq(submission.getId()), any());
+        verify(slotReservationService).reserveLockedSlot(submission.getId(), institutionId, newSlot, true);
+    }
+
+    @Test
     void reschedule_byModerator_withinCapAndWindow_succeedsAndIncrementsCount() {
         Instant original = Instant.parse("2026-06-01T08:00:00Z");
         Submission submission = submission(UUID.randomUUID(), SubmissionStatus.scheduled, original);
@@ -1036,7 +1069,7 @@ class SubmissionServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.CONFLICT);
-        verify(slotReservationService, never()).reserveLockedSlot(any(), any(), any());
+        verify(slotReservationService, never()).reserveLockedSlot(any(), any(), any(), anyBoolean());
     }
 
     @Test
