@@ -30,6 +30,10 @@ type SystemHealthTab = "jobs" | "integrations" | "performance" | "storage";
 
 const SYSTEM_HEALTH_STALE_TIME_MS = 60_000;
 const EMPTY_TOKENS: TokenStatus[] = [];
+// Mirrors ManualJobRunner.ASYNC_JOB_KEYS on the backend -- these two make live,
+// retrying Facebook API calls and now run in the background instead of
+// blocking the request, so the response won't yet reflect the new run.
+const ASYNC_JOB_KEYS = new Set(["PublishingSchedulerJob", "TokenPublishingEscalationJob"]);
 
 function getUserCacheScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
@@ -109,12 +113,17 @@ export default function SystemHealthScreen({ user }: Props) {
 
   async function handleRunJob(job: BackgroundJobHealth) {
     setRunningJobKey(job.key);
+    const async = ASYNC_JOB_KEYS.has(job.key);
     try {
       await runSystemHealthJob(job.key);
       await queryClient.invalidateQueries({ queryKey: ["system-health"] });
-      toast.success(`Ran ${job.jobName}.`);
+      toast.success(
+        async
+          ? `Started ${job.jobName} in the background — it can take a few minutes; refresh to see its result.`
+          : `Ran ${job.jobName}.`,
+      );
     } catch {
-      toast.error(`Unable to run ${job.jobName}.`);
+      toast.error(`Unable to ${async ? "start" : "run"} ${job.jobName}.`);
     } finally {
       setRunningJobKey(null);
     }
