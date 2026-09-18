@@ -893,6 +893,63 @@ function HighResMetricGraph({ item }: { item: OperationalMetric }) {
     );
   }
 
+  if (item.key === "missed_review_rate") {
+    const percent = Math.min(Math.max(item.value, 0), 100);
+    const missed = Math.round((percent / 100) * item.sampleSize);
+    const reviewedInTime = Math.max(item.sampleSize - missed, 0);
+    const allClean = missed === 0;
+    const radius = 30;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDash = (percent / 100) * circumference;
+
+    return (
+      <div className="sys-hires-donut-layout">
+        <div className="sys-hires-donut-chart">
+          <svg viewBox="0 0 76 76" className="sys-hires-svg-donut">
+            <circle cx="38" cy="38" r={radius} fill="none" stroke="#f1f5f9" strokeWidth="7" />
+            <circle
+              cx="38"
+              cy="38"
+              r={radius}
+              fill="none"
+              stroke={allClean ? "#10b981" : "#ef4444"}
+              strokeWidth="7"
+              strokeDasharray={`${strokeDash} ${circumference}`}
+              strokeDashoffset="0"
+              strokeLinecap="round"
+              transform="rotate(-90 38 38)"
+            />
+          </svg>
+          <div className="sys-donut-center-stat">
+            {allClean && <i className="ti ti-check sys-check-green" />}
+            <strong>{percent.toFixed(0)}%</strong>
+          </div>
+        </div>
+
+        <div className="sys-hires-donut-legend">
+          <div className="sys-legend-item">
+            <span className="sys-legend-dot sys-dot-slate" />
+            <div>
+              <strong>{reviewedInTime} Reviewed On Time</strong>
+              <span>Approved or rejected before the scheduled deadline</span>
+            </div>
+          </div>
+          <div className="sys-legend-item">
+            <span className="sys-legend-dot sys-dot-emerald" />
+            <div>
+              <strong>{missed} Missed Deadline{missed === 1 ? "" : "s"}</strong>
+              <span>
+                {allClean
+                  ? "No submissions missed their review window"
+                  : "Never reviewed before the scheduled post time — see the Review Queue's history"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (item.key === "live_event_fast_track_volume") {
     const count = item.value;
     return (
@@ -944,6 +1001,8 @@ function getMetricExplanation(item: OperationalMetric): string {
     }
     case "live_event_fast_track_volume":
       return "High-priority live event posts routed through expedited moderator workflows.";
+    case "missed_review_rate":
+      return `${item.value.toFixed(1)}% of submissions that reached a review outcome missed their scheduled review deadline entirely, rather than being approved or rejected in time.`;
     default:
       return item.detail || "Operational health telemetry for the last 30 days.";
   }
@@ -955,6 +1014,7 @@ function getMetricBenchmark(item: OperationalMetric): string {
   if (item.key === "edit_approve_rate") return "Benchmark: ≤ 15%";
   if (item.key === "manual_fallback_resolution_rate") return "Target: 100% Resolved";
   if (item.key === "live_event_fast_track_volume") return "Expedited Window";
+  if (item.key === "missed_review_rate") return item.value <= 10 ? "Target: ≤ 10% (Met)" : "Target: ≤ 10% (Over)";
   return "Operational Benchmark";
 }
 
@@ -1295,6 +1355,8 @@ function metricIcon(key: string) {
       return "ti ti-circle-check";
     case "live_event_fast_track_volume":
       return "ti ti-bolt";
+    case "missed_review_rate":
+      return "ti ti-calendar-x";
     default:
       return "ti ti-chart-bar";
   }
