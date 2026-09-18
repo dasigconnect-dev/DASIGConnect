@@ -2431,7 +2431,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                       )}
                     </span>
                     <span className="sub-sidebar-template-preview">
-                      {template.caption}
+                      {template.caption
+                        .split("\n")
+                        .map((s) => s.trim())
+                        .filter(Boolean)
+                        .join("\n")}
                     </span>
                     <span className="sub-sidebar-template-tags">
                       {template.tags.slice(0, 3).map((tag) => (

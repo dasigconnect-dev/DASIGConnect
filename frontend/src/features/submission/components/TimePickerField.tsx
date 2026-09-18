@@ -42,7 +42,7 @@ export function TimePickerField({
 }) {
   const [open, setOpen] = useState(false);
   const { rootRef, popoverRef, placement, maxHeight } =
-    usePopoverCollision(open);
+    usePopoverCollision(open, 290);
   const [draft, setDraft] = useState(() => parseTimeValue(value));
   const displayValue = value ? formatTimeDisplay(value) : "";
 

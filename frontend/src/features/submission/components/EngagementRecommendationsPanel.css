@@ -50,36 +50,36 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 2px;
-  padding: 8px 18px;
+  gap: 3px;
+  padding: 11px 14px;
   text-align: left;
   border: 1px solid #e2e8f0;
-  border-radius: 999px;
+  border-radius: 12px;
   background: #ffffff;
   color: #1e293b;
   cursor: pointer;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 1px 3px rgba(10, 22, 40, 0.03);
+  box-shadow: 0 1px 3px rgba(10, 22, 40, 0.04);
 }
 
 .sub-engagement-slots button strong {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 700;
   color: #0c1d3d;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .sub-engagement-slots button:hover {
   border-color: #bfdbfe;
-  background: #eff6ff;
-  transform: translateY(-0.5px);
+  background: #f0f7ff;
+  transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(24, 119, 242, 0.08);
 }
 
 .sub-engagement-slots button.selected {
   background: #eff6ff;
   border: 1.5px solid var(--d-blue, #1877f2);
-  box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.15);
+  box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.15), 0 2px 8px rgba(24, 119, 242, 0.08);
 }
 
 .sub-engagement-slots button.selected strong {
@@ -88,15 +88,28 @@
 
 .sub-engagement-slots span {
   color: #64748b;
-  font-size: 10.5px;
+  font-size: 11px;
   font-style: normal;
-  line-height: 1.2;
+  line-height: 1.35;
 }
 
 .sub-engagement-slots em {
-  color: #d97706;
-  font-size: 10.5px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
   font-style: normal;
+  line-height: 1.35;
+  margin-top: 4px;
+  display: block;
+}
+
+.sub-engagement-slots button.selected em {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
 }
 
 .sub-engagement-loading {
