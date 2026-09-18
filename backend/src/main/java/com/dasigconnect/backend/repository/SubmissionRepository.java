@@ -113,16 +113,26 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("from") Instant from,
             @Param("to") Instant to);
 
+    /**
+     * Also bumps updatedAt -- a bulk JPQL UPDATE bypasses the entity's
+     * @PreUpdate lifecycle callback, so without this the column would stay
+     * at whatever it was before the claim (e.g. approval time), making it
+     * useless for StaleSubmissionDetectorJob to detect a submission stuck in
+     * `publishing` after a crash. This matters most for Fast-Track
+     * submissions, which have no scheduledAt to check a cutoff against.
+     */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
         UPDATE Submission s
-        SET s.status = :claimedStatus
+        SET s.status = :claimedStatus,
+            s.updatedAt = :now
         WHERE s.id = :submissionId
           AND s.status = :expectedStatus
         """)
     int claimForPublishing(
             @Param("submissionId") UUID submissionId,
             @Param("expectedStatus") SubmissionStatus expectedStatus,
+            @Param("now") Instant now,
             @Param("claimedStatus") SubmissionStatus claimedStatus);
 
     /**
@@ -180,6 +190,27 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         ORDER BY s.scheduledAt ASC
         """)
     List<Submission> findMissedScheduledSubmissions(@Param("cutoff") Instant cutoff);
+
+    /**
+     * StaleSubmissionDetectorJob (GR-T9, added 2026-09-18): a Fast-Track
+     * submission stuck in `publishing`/`direct_post_publishing` after a crash
+     * mid-publish (FastTrackPublishingListener claimed it, then the app died
+     * before markPublished/markFailed ran) has no scheduledAt to check
+     * against a cutoff -- findMissedScheduledSubmissions above can never
+     * match it. updatedAt is bumped by claimForPublishing's UPDATE at the
+     * moment of the claim, so it's used here instead.
+     */
+    @Query("""
+        SELECT s FROM Submission s
+        WHERE s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.publishing,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_publishing
+        )
+        AND s.scheduledAt IS NULL
+        AND s.updatedAt < :cutoff
+        ORDER BY s.updatedAt ASC
+        """)
+    List<Submission> findStuckFastTrackPublishing(@Param("cutoff") Instant cutoff);
 
     /**
      * StaleSubmissionDetectorJob (GR-T9 / UC-2.4 A6): PENDING / IN_REVIEW submissions

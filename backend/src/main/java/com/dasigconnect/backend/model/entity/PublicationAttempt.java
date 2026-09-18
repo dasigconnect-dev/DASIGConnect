@@ -38,6 +38,15 @@ public class PublicationAttempt {
     @Column(name = "photo_ids_staged", columnDefinition = "text")
     private String photoIdsStaged;
 
+    /**
+     * JSON array of the subset of {@link #photoIdsStaged} whose DELETE call
+     * to the Graph API failed or threw during cleanup -- these are the ones
+     * actually left orphaned on the Facebook Page, distinct from the full
+     * staged set above. Null when cleanup wasn't needed or fully succeeded.
+     */
+    @Column(name = "photo_ids_cleanup_failed", columnDefinition = "text")
+    private String photoIdsCleanupFailed;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -71,6 +80,9 @@ public class PublicationAttempt {
 
     public String getPhotoIdsStaged() { return photoIdsStaged; }
     public void setPhotoIdsStaged(String photoIdsStaged) { this.photoIdsStaged = photoIdsStaged; }
+
+    public String getPhotoIdsCleanupFailed() { return photoIdsCleanupFailed; }
+    public void setPhotoIdsCleanupFailed(String photoIdsCleanupFailed) { this.photoIdsCleanupFailed = photoIdsCleanupFailed; }
 
     public Instant getCreatedAt() { return createdAt; }
 }

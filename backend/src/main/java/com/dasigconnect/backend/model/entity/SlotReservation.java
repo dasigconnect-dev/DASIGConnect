@@ -39,6 +39,18 @@ public class SlotReservation {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    /**
+     * True only when this reservation was created via an Administrator's
+     * explicit guard-rail override (GR-H1 hard block, reschedule or manual
+     * publish retry). Exempts the row from the V96 network-wide ±30-minute
+     * exclusion constraint's WHERE clause -- without this, the constraint
+     * added in V95 to close a real GR-H1 race silently defeated the Admin's
+     * pre-existing, intentional override capability, since the DB rejected
+     * the insert unconditionally regardless of the override reason.
+     */
+    @Column(name = "admin_override", nullable = false)
+    private boolean adminOverride = false;
+
     @PrePersist
     void onCreate() {
         if (id == null) {
@@ -89,5 +101,13 @@ public class SlotReservation {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public boolean isAdminOverride() {
+        return adminOverride;
+    }
+
+    public void setAdminOverride(boolean adminOverride) {
+        this.adminOverride = adminOverride;
     }
 }

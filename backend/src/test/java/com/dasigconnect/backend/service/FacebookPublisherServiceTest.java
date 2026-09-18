@@ -111,4 +111,25 @@ class FacebookPublisherServiceTest {
 
         verify(slotReservationService).release(submissionId);
     }
+
+    @Test
+    void recordAttempt_withCleanupFailedPhotoIds_persistsThemSeparatelyFromStagedIds() {
+        // UC-3.2 A1: photoIdsStaged records every photo staged for the attempt,
+        // but an Administrator needs to know specifically which ones failed to
+        // delete during cleanup -- those, and only those, are what's actually
+        // left orphaned on the Facebook Page (fixed 2026-09-18, see V97 migration).
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = new Submission();
+        submission.setId(submissionId);
+        when(submissionRepository.getReferenceById(submissionId)).thenReturn(submission);
+
+        build("", "").recordAttempt(submission, 2, "failed", "boom",
+                "[\"111\",\"222\"]", "[\"222\"]");
+
+        var captor = org.mockito.ArgumentCaptor.forClass(
+                com.dasigconnect.backend.model.entity.PublicationAttempt.class);
+        verify(publicationAttemptRepository).save(captor.capture());
+        assertThat(captor.getValue().getPhotoIdsStaged()).isEqualTo("[\"111\",\"222\"]");
+        assertThat(captor.getValue().getPhotoIdsCleanupFailed()).isEqualTo("[\"222\"]");
+    }
 }

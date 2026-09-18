@@ -192,6 +192,24 @@ public class SlotReservationService {
      */
     @Transactional
     public SlotReservation reserveLockedSlot(UUID submissionId, UUID institutionId, Instant newSlot) {
+        return reserveLockedSlot(submissionId, institutionId, newSlot, false);
+    }
+
+    /**
+     * Same as {@link #reserveLockedSlot(UUID, UUID, Instant)}, but marks the
+     * reservation as an Administrator's explicit GR-H1 override (see
+     * {@link SlotReservation#isAdminOverride()}) — exempting it from the
+     * network-wide ±30-minute exclusion constraint (V95/V96), since that
+     * constraint would otherwise unconditionally reject the very slot the
+     * Administrator just chose to override into.
+     *
+     * @param adminOverride true only when the caller already validated that a
+     *                      hard guard rail (e.g. GR-H1) was blocked and an
+     *                      Administrator explicitly chose to override it
+     */
+    @Transactional
+    public SlotReservation reserveLockedSlot(UUID submissionId, UUID institutionId, Instant newSlot,
+            boolean adminOverride) {
         Submission submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new IllegalArgumentException("Submission not found: " + submissionId));
         Institution institution = institutionRepository.findById(institutionId)
@@ -204,6 +222,7 @@ public class SlotReservationService {
         reservation.setInstitution(institution);
         reservation.setScheduledAt(newSlot);
         reservation.setStatus(SlotReservationStatus.locked);
+        reservation.setAdminOverride(adminOverride);
 
         try {
             return slotReservationRepository.save(reservation);

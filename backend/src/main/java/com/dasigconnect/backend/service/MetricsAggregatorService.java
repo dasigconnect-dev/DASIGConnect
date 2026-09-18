@@ -46,6 +46,11 @@ public class MetricsAggregatorService {
 
     private static final double COMPLETENESS_TARGET = 95.0;
     private static final double POSTS_PER_MONTH_TARGET = 4.0;
+    // UC-3.2's postcondition: "the +-5-minute publish accuracy target is met
+    // in >=95% of scheduled publications." The +-5-minute window itself is
+    // already baked into operationalHealth()'s on_time_count SQL; this is
+    // just the target this rate is measured against.
+    private static final double ON_TIME_PUBLICATION_TARGET = 95.0;
 
     private final AnalyticsRepository analyticsRepository;
     private final FacebookEngagementAnalyticsClient facebookInsightsClient;
@@ -126,6 +131,7 @@ public class MetricsAggregatorService {
             OperationalStats operational = analyticsRepository.operationalHealth(
                     period.start(), period.end(), Instant.now(), scope);
             double publishingSuccessRate = percent(operational.successCount(), operational.attemptCount());
+            double onTimePublicationRate = round(percent(operational.onTimeCount(), operational.successCount()));
             operationalHealth = new OperationalHealthDto(
                     operational.workflowCount(),
                     operational.deadlineRiskCount(),
@@ -136,7 +142,9 @@ public class MetricsAggregatorService {
                     operational.successCount(),
                     round(publishingSuccessRate),
                     operational.onTimeCount(),
-                    round(percent(operational.onTimeCount(), operational.successCount())),
+                    onTimePublicationRate,
+                    ON_TIME_PUBLICATION_TARGET,
+                    onTimePublicationRate >= ON_TIME_PUBLICATION_TARGET,
                     operational.adminActionCount());
             adminAnalytics = new AdminAnalyticsDto(
                     Math.max(0, operational.attemptCount() - operational.successCount()),

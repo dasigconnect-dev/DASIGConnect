@@ -1610,6 +1610,23 @@ export default function ValidationQueueScreen({
                         {selectedFailure.lastError}
                       </DetailCard>
                     )}
+                    {selectedFailure.unresolvedPhotoIds && (
+                      <DetailCard icon="ti-photo-off" label="Orphaned Facebook Photos" full muted>
+                        <p style={{ margin: "0 0 4px" }}>
+                          These photos were staged but could not be deleted after the post failed to publish —
+                          they may still exist unpublished on the Facebook Page and need manual removal.
+                        </p>
+                        <code style={{ fontSize: "0.85em", wordBreak: "break-all" }}>
+                          {(() => {
+                            try {
+                              return (JSON.parse(selectedFailure.unresolvedPhotoIds) as string[]).join(", ");
+                            } catch {
+                              return selectedFailure.unresolvedPhotoIds;
+                            }
+                          })()}
+                        </code>
+                      </DetailCard>
+                    )}
                   </section>
                 </>
               ) : null}

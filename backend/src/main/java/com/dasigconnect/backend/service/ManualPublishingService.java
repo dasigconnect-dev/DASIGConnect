@@ -255,6 +255,7 @@ public class ManualPublishingService {
         Instant newSlot = dto.getScheduledAt();
 
         GuardRailResult guardRailResult = guardRailService.validate(s.getInstitution().getId(), newSlot, s.getId());
+        boolean adminOverride = false;
         if (guardRailResult.isBlocked()) {
             if (!"admin".equalsIgnoreCase(admin.role())) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -275,6 +276,10 @@ public class ManualPublishingService {
                         "violations", guardRailResult.getHardBlocks().toString()
                     )
             );
+            // Marks the reservation exempt from the V95/V96 network-wide
+            // exclusion constraint below -- otherwise the DB would reject the
+            // very slot the Administrator just chose to override into.
+            adminOverride = true;
         }
 
         if (missedReview) {
@@ -285,7 +290,7 @@ public class ManualPublishingService {
             s.setStatus(SubmissionStatus.pending);
             s.setSubmittedAt(Instant.now());
         } else {
-            slotReservationService.reserveLockedSlot(submissionId, s.getInstitution().getId(), newSlot);
+            slotReservationService.reserveLockedSlot(submissionId, s.getInstitution().getId(), newSlot, adminOverride);
             s.setStatus(SubmissionStatus.scheduled);
             // This retry establishes a fresh baseline for UC-3.1's Moderator
             // reschedule cap — without resetting these, a submission that had

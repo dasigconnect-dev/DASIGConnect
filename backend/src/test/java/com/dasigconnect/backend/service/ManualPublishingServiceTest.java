@@ -288,7 +288,7 @@ class ManualPublishingServiceTest {
         assertThat(s.getStatus()).isEqualTo(SubmissionStatus.scheduled);
         assertThat(s.getScheduledAt()).isEqualTo(newSlot);
         assertThat(s.getRetryCount()).isZero();
-        verify(slotReservationService).reserveLockedSlot(submissionId, s.getInstitution().getId(), newSlot);
+        verify(slotReservationService).reserveLockedSlot(submissionId, s.getInstitution().getId(), newSlot, false);
         verify(eventPublisher).publishEvent(any(SubmissionRescheduledEvent.class));
     }
 

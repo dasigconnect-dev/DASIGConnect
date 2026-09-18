@@ -5,8 +5,6 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -24,6 +22,19 @@ import com.dasigconnect.backend.service.PublishingQueryService;
  * — PublishingSchedulerJob's cron never picks these up on its own, since its
  * query requires a non-null scheduledAt and Fast-Track submissions never have
  * one.
+ *
+ * Transaction boundary (2026-09-18 fix): {@code publishIfFastTrack} is
+ * deliberately NOT wrapped in a transaction at this level, mirroring
+ * PublishingSchedulerJob's own documented rule -- FacebookPublisherService
+ * must never be called while holding an open DB transaction/connection. Each
+ * PublishingQueryService call still gets its own short, separately-committed
+ * transaction via the Spring proxy (a different bean, so no self-invocation
+ * issue). Before this fix, both listener methods carried a
+ * {@code @Transactional(REQUIRES_NEW)} spanning the claim AND the live Graph
+ * API call (including up to 155s of cumulative retry backoff), holding a
+ * connection out of the deliberately tiny 5-connection HikariCP pool for the
+ * entire duration -- a real resource-exhaustion risk under concurrent
+ * Fast-Track traffic that the scheduler path was specifically built to avoid.
  */
 @Component
 public class FastTrackPublishingListener {
@@ -41,13 +52,11 @@ public class FastTrackPublishingListener {
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onSubmissionApproved(SubmissionApprovedEvent event) {
         publishIfFastTrack(event.submission());
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onFastTrackRetry(SubmissionFastTrackRetryEvent event) {
         publishIfFastTrack(event.submission());
     }
@@ -65,6 +74,7 @@ public class FastTrackPublishingListener {
             }
             List<SubmissionMediaAsset> mediaLinks =
                     publishingQueryService.loadMediaLinksForSubmission(claimed.getId());
+            // Called outside any transaction — Facebook API must not hold a DB connection
             facebookPublisherService.publishMediaLinks(claimed, mediaLinks);
         } catch (Exception ex) {
             log.error("Fast-Track publishing failed for submission {}: {}",
