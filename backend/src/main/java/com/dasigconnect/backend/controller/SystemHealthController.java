@@ -125,14 +125,20 @@ public class SystemHealthController {
      * own cron / fixed-delay schedule) and returns the refreshed job list so the
      * caller sees the new status immediately. {@code jobKey} is the job's simple
      * class name, as shown in {@code BackgroundJobHealthDto.key}. 404 if unknown.
+     *
+     * A couple of jobs (see {@link ManualJobRunner#runsAsynchronously}) run in
+     * the background instead of on this request thread -- the returned list
+     * for those still reflects the *previous* run, since the new one hasn't
+     * finished yet; the frontend is expected to poll/refresh again shortly.
      */
     @PostMapping("/jobs/{jobKey}/run")
     public ResponseEntity<ApiResponse<List<BackgroundJobHealthDto>>> runJob(
             @PathVariable String jobKey,
             @AuthenticationPrincipal JwtUserDetails admin) {
+        boolean async = manualJobRunner.runsAsynchronously(jobKey);
         manualJobRunner.run(jobKey);
         auditLogService.recordByActorId(admin != null ? admin.userId() : null,
-                "BACKGROUND_JOB_RUN", null, null, null, Map.of("jobKey", jobKey));
+                "BACKGROUND_JOB_RUN", null, null, null, Map.of("jobKey", jobKey, "async", async));
         return ResponseEntity.ok(ApiResponse.success(systemHealthService.backgroundJobs()));
     }
 
