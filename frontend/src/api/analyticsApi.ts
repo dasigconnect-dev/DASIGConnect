@@ -49,6 +49,8 @@ export interface OperationalHealthDto {
   publishingSuccessRate: number;
   onTimePublications: number;
   onTimePublicationRate: number;
+  onTimePublicationTarget: number;
+  meetsOnTimePublicationTarget: boolean;
   moderatorActions: number;
 }
 

@@ -11,5 +11,7 @@ public record OperationalHealthDto(
         double publishingSuccessRate,
         long onTimePublications,
         double onTimePublicationRate,
+        double onTimePublicationTarget,
+        boolean meetsOnTimePublicationTarget,
         long moderatorActions) {
 }
