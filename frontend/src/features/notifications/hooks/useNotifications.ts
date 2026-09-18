@@ -455,6 +455,29 @@ export function useNotifications(user: User) {
     [countQueryKey, listQueryKey, queryClient],
   );
 
+  // Cross-session read-state sync: applies a "read"/"read-all" pushed by
+  // another of this user's open tabs/devices to this tab's own cache, the
+  // same way markRead/markAllRead update it locally — just without calling
+  // the API again (it already happened wherever the push came from).
+  const applyRemoteRead = useCallback(
+    (id: string) => {
+      const wasUnread = notifications.some((notification) => notification.id === id && notification.unread);
+      updateNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, unread: false } : n)));
+      if (wasUnread) {
+        const unreadCount = queryClient.getQueryData<number>(countQueryKey);
+        if (unreadCount !== undefined) {
+          queryClient.setQueryData<number>(countQueryKey, Math.max(0, unreadCount - 1));
+        }
+      }
+    },
+    [countQueryKey, notifications, queryClient, updateNotifications],
+  );
+
+  const applyRemoteReadAll = useCallback(() => {
+    updateNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+    queryClient.setQueryData<number>(countQueryKey, 0);
+  }, [countQueryKey, queryClient, updateNotifications]);
+
   useEffect(() => {
     // The server closes the SSE stream every 30 minutes (and connections drop
     // on flaky networks), so reconnect with capped exponential backoff instead
@@ -488,12 +511,22 @@ export function useNotifications(user: User) {
       };
 
       openNotificationStream(
-        (dto) => {
-          if (stopped || connectionController.signal.aborted) return;
-          attempts = 0;
-          const mapped = mapDto(dto);
-          // A fetch that raced the same event can already hold this id.
-          prependNotification(mapped);
+        {
+          onNotification: (dto) => {
+            if (stopped || connectionController.signal.aborted) return;
+            attempts = 0;
+            const mapped = mapDto(dto);
+            // A fetch that raced the same event can already hold this id.
+            prependNotification(mapped);
+          },
+          onRead: (id) => {
+            if (stopped || connectionController.signal.aborted) return;
+            applyRemoteRead(id);
+          },
+          onReadAll: () => {
+            if (stopped || connectionController.signal.aborted) return;
+            applyRemoteReadAll();
+          },
         },
         () => {
           if (stopped || connectionController.signal.aborted) return;
@@ -516,7 +549,7 @@ export function useNotifications(user: User) {
       if (retryTimer) window.clearTimeout(retryTimer);
       controller.abort();
     };
-  }, [prependNotification, reconcileNotificationCache]);
+  }, [applyRemoteRead, applyRemoteReadAll, prependNotification, reconcileNotificationCache]);
 
   const counts = useMemo<NotificationCounts>(() => {
     const unread = notifications.filter((n) => n.unread).length;
@@ -603,13 +636,92 @@ export function useNotifications(user: User) {
 }
 
 export function useNotificationUnreadCount(user: User) {
-  return useQuery({
-    queryKey: unreadCountQueryKey(user),
+  const queryClient = useQueryClient();
+  const queryKey = useMemo(() => unreadCountQueryKey(user), [user]);
+
+  const query = useQuery({
+    queryKey,
     queryFn: ({ signal }) => getUnreadCount(signal).then((res) => res.data.unreadCount),
     staleTime: UNREAD_COUNT_STALE_TIME_MS,
+    // SSE below keeps this live; polling is just a safety net for a dropped
+    // stream the reconnect loop hasn't caught up with yet.
     refetchInterval: 3 * 60_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     meta: authenticatedQueryMeta,
   });
+
+  // The ambient navbar badge (unlike the full Notifications screen) used to
+  // rely solely on the 3-minute poll above, so a new notification or a read
+  // marked elsewhere could take up to 3 minutes to show here — even though
+  // the backend already pushes both over SSE instantly. Subscribe here too.
+  useEffect(() => {
+    let stopped = false;
+    let controller = new AbortController();
+    let retryTimer: number | undefined;
+    let attempts = 0;
+    let connectedAt = 0;
+
+    // Refetches the true count from the server rather than adding/subtracting
+    // locally -- this hook and useNotifications (on the Notifications screen)
+    // can both be mounted at once, each with its own SSE connection, so the
+    // same server-side event reaches this tab twice; arithmetic deltas would
+    // double-count, but re-asking the server for the authoritative number is
+    // safe no matter how many times it's triggered.
+    const refetchCount = () => {
+      void queryClient.invalidateQueries({ queryKey, exact: true });
+    };
+
+    const connect = () => {
+      if (stopped) return;
+      const connectionController = new AbortController();
+      controller = connectionController;
+      let disconnected = false;
+
+      const handleDisconnect = () => {
+        if (disconnected || connectionController.signal.aborted) return;
+        disconnected = true;
+        if (stopped) return;
+        if (connectedAt && Date.now() - connectedAt > 10_000) attempts = 0;
+        connectedAt = 0;
+        const delay = Math.min(2000 * 2 ** Math.min(attempts, 4), 30_000);
+        attempts = Math.min(attempts + 1, 4);
+        retryTimer = window.setTimeout(connect, delay);
+      };
+
+      openNotificationStream(
+        {
+          onNotification: () => {
+            if (stopped || connectionController.signal.aborted) return;
+            attempts = 0;
+            refetchCount();
+          },
+          onRead: () => {
+            if (stopped || connectionController.signal.aborted) return;
+            refetchCount();
+          },
+          onReadAll: () => {
+            if (stopped || connectionController.signal.aborted) return;
+            refetchCount();
+          },
+        },
+        () => {
+          if (stopped || connectionController.signal.aborted) return;
+          connectedAt = Date.now();
+        },
+        handleDisconnect,
+        connectionController.signal,
+      );
+    };
+
+    connect();
+
+    return () => {
+      stopped = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+      controller.abort();
+    };
+  }, [queryClient, queryKey]);
+
+  return query;
 }
