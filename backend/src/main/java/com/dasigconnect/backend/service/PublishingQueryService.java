@@ -67,6 +67,7 @@ public class PublishingQueryService {
         int updated = submissionRepository.claimForPublishing(
                 dueSubmission.getId(),
                 current,
+                Instant.now(),
                 claimed);
         if (updated != 1) {
             return Optional.empty();
