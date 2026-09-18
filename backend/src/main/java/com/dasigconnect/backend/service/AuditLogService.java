@@ -924,11 +924,23 @@ public class AuditLogService {
         }
     }
 
+    // Formula-trigger characters recognized by Excel/Sheets/LibreOffice when a
+    // cell's leading character (after parsing, regardless of CSV quoting) is
+    // one of these -- CSV/Formula Injection, CWE-1236. Export rows include
+    // free-text, user-controlled fields (actor name/email, entity labels such
+    // as a submission's event title, generated summaries embedding free-text
+    // reasons) with no sanitization at write time, so this must be
+    // neutralized at export time instead.
+    private static final String CSV_FORMULA_TRIGGER_CHARS = "=+-@\t\r";
+
     private String escapeCsv(String val) {
-        if (val == null) {
-            return "\"\"";
+        String raw = val == null ? "" : val;
+        if (!raw.isEmpty() && CSV_FORMULA_TRIGGER_CHARS.indexOf(raw.charAt(0)) >= 0) {
+            // A leading apostrophe forces spreadsheet apps to treat the cell as
+            // literal text instead of evaluating it as a formula.
+            raw = "'" + raw;
         }
-        String escaped = val.replace("\"", "\"\"");
+        String escaped = raw.replace("\"", "\"\"");
         return "\"" + escaped + "\"";
     }
 }
