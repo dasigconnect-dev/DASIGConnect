@@ -135,6 +135,7 @@ export default function FullReportModal({
   onClose,
 }: Props) {
   const [tabEntry, setTabEntry] = useState<{ forMetric: string; tab: ActiveTab } | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const lastDetailRowRef = useRef<HTMLTableRowElement | null>(null);
   const reportQuery = useInfiniteQuery<AnalyticsReportDto>({
     queryKey: queryKeys.analytics.report({
@@ -198,6 +199,12 @@ export default function FullReportModal({
   ]);
 
   useEffect(() => {
+    // A stale error from a previous export shouldn't linger once the user
+    // switches to a different report.
+    setDownloadError(null);
+  }, [metric]);
+
+  useEffect(() => {
     if (!metric) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -233,9 +240,12 @@ export default function FullReportModal({
 
   async function handleDownload() {
     if (!metric) return;
+    setDownloadError(null);
     onBusyChange(true);
     try {
       await downloadAnalyticsCsv(metric, range, institutionId);
+    } catch {
+      setDownloadError("Could not download the CSV export.");
     } finally {
       onBusyChange(false);
     }
@@ -448,6 +458,12 @@ export default function FullReportModal({
 
         {/* ── Footer Actions ── */}
         <div className="analytics-modal-actions">
+          {downloadError && (
+            <span style={{ color: "#ef4444", fontSize: "13px", marginRight: "auto" }}>
+              <i className="ti ti-alert-circle" aria-hidden="true" style={{ marginRight: "4px" }} />
+              {downloadError}
+            </span>
+          )}
           <button type="button" className="notif-btn notif-btn-ghost notif-btn-sm" onClick={onClose}>
             <span>Close</span>
           </button>
@@ -457,8 +473,8 @@ export default function FullReportModal({
             onClick={() => void handleDownload()}
             disabled={busy || loading}
           >
-            <i className="ti ti-download" aria-hidden="true" />
-            <span>{busy ? "Preparing Export…" : "Download CSV Report"}</span>
+            <i className={`ti ${downloadError ? "ti-refresh" : "ti-download"}`} aria-hidden="true" />
+            <span>{busy ? "Preparing Export…" : downloadError ? "Retry Download" : "Download CSV Report"}</span>
           </button>
         </div>
       </div>
