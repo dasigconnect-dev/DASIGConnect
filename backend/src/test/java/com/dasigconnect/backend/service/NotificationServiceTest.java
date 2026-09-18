@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -113,6 +114,34 @@ class NotificationServiceTest {
     void markAllRead_marksAllForUser() {
         notificationService.markAllRead(userPrincipal);
 
+        verify(notificationRepository).markAllRead(eq(userId), any(Instant.class));
+    }
+
+    @Test
+    void markRead_withSubscribedEmitter_dispatchesReadEventWithoutError() {
+        // Cross-session sync (2026-09-18): a second open tab/device needs to
+        // learn this was read immediately, not on its own next poll. Exercises
+        // the dispatchRead() path against a live (if unwired to a real HTTP
+        // response) emitter to confirm it doesn't throw.
+        Notification notification = new Notification();
+        notification.setId(UUID.randomUUID());
+        notification.setRecipient(recipient);
+        notification.setEventType(NotificationEventType.generic);
+        when(notificationRepository.findById(notification.getId())).thenReturn(Optional.of(notification));
+
+        notificationService.subscribe(userPrincipal);
+
+        assertThatCode(() -> notificationService.markRead(notification.getId(), userPrincipal))
+                .doesNotThrowAnyException();
+        assertThat(notification.getReadAt()).isNotNull();
+    }
+
+    @Test
+    void markAllRead_withSubscribedEmitter_dispatchesReadAllEventWithoutError() {
+        notificationService.subscribe(userPrincipal);
+
+        assertThatCode(() -> notificationService.markAllRead(userPrincipal))
+                .doesNotThrowAnyException();
         verify(notificationRepository).markAllRead(eq(userId), any(Instant.class));
     }
 
