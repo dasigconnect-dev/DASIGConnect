@@ -20,6 +20,8 @@ public class FailedPublicationDto {
     private boolean manualPublishInProgress;
     private Instant lastManualPublishAbandonedAt;
     private boolean fastTrack;
+    /** Facebook photo IDs staged during the last attempt that couldn't be deleted after a failure -- orphaned on the Page, need manual cleanup. Null when none. */
+    private String unresolvedPhotoIds;
 
     public static FailedPublicationDto from(Submission s, PublicationAttempt lastAttempt) {
         FailedPublicationDto dto = new FailedPublicationDto();
@@ -36,6 +38,7 @@ public class FailedPublicationDto {
         if (lastAttempt != null) {
             dto.lastAttemptAt = lastAttempt.getAttemptedAt();
             dto.lastError = lastAttempt.getErrorDetail();
+            dto.unresolvedPhotoIds = lastAttempt.getPhotoIdsCleanupFailed();
         }
         return dto;
     }
@@ -52,4 +55,5 @@ public class FailedPublicationDto {
     public boolean isManualPublishInProgress() { return manualPublishInProgress; }
     public Instant getLastManualPublishAbandonedAt() { return lastManualPublishAbandonedAt; }
     public boolean isFastTrack() { return fastTrack; }
+    public String getUnresolvedPhotoIds() { return unresolvedPhotoIds; }
 }

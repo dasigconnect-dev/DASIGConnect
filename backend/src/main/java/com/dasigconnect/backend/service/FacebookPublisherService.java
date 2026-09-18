@@ -299,8 +299,8 @@ public class FacebookPublisherService {
                 lastError = ex.getMessage();
                 log.warn("Photo publish attempt {}/{} failed for submission {}: {}",
                         attempt, MAX_RETRIES, submission.getId(), lastError);
-                recordAttempt(submission, attempt, "failed", lastError, toJson(stagedPhotoIds));
-                cleanupStagedPhotos(stagedPhotoIds, token);
+                List<String> unresolvedPhotoIds = cleanupStagedPhotos(stagedPhotoIds, token);
+                recordAttempt(submission, attempt, "failed", lastError, toJson(stagedPhotoIds), toJson(unresolvedPhotoIds));
 
                 if (attempt < MAX_RETRIES) {
                     sleep(BACKOFF_MS[attempt - 1]);
@@ -367,7 +367,14 @@ public class FacebookPublisherService {
         return photoId;
     }
 
-    private void cleanupStagedPhotos(List<String> photoIds, String token) {
+    /**
+     * Attempts to delete every staged photo, returning the subset that
+     * couldn't be deleted (HTTP failure or exception) -- these are the ones
+     * actually left orphaned on the Facebook Page, and get recorded on the
+     * PublicationAttempt for an Administrator to see and manually resolve.
+     */
+    private List<String> cleanupStagedPhotos(List<String> photoIds, String token) {
+        List<String> unresolved = new ArrayList<>();
         for (String photoId : photoIds) {
             try {
                 String url = "https://graph.facebook.com/" + apiVersion + "/" + photoId
@@ -379,11 +386,14 @@ public class FacebookPublisherService {
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
                 if (response.statusCode() != 200) {
                     log.warn("Failed to delete staged photo {}: HTTP {}", photoId, response.statusCode());
+                    unresolved.add(photoId);
                 }
             } catch (Exception ex) {
                 log.warn("Exception deleting staged photo {}: {}", photoId, ex.getMessage());
+                unresolved.add(photoId);
             }
         }
+        return unresolved;
     }
 
     private JsonNode postForm(String url, String body) throws IOException, InterruptedException {
@@ -494,12 +504,19 @@ public class FacebookPublisherService {
 
     @Transactional
     public void recordAttempt(Submission submission, int attemptNumber, String result, String error, String photoIds) {
+        recordAttempt(submission, attemptNumber, result, error, photoIds, null);
+    }
+
+    @Transactional
+    public void recordAttempt(Submission submission, int attemptNumber, String result, String error, String photoIds,
+            String cleanupFailedPhotoIds) {
         PublicationAttempt attempt = new PublicationAttempt();
         attempt.setSubmission(submissionRepository.getReferenceById(submission.getId()));
         attempt.setAttemptNumber(attemptNumber);
         attempt.setResult(result);
         attempt.setErrorDetail(error);
         attempt.setPhotoIdsStaged(photoIds);
+        attempt.setPhotoIdsCleanupFailed(cleanupFailedPhotoIds);
         publicationAttemptRepository.save(attempt);
     }
 

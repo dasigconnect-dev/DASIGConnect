@@ -18,6 +18,8 @@ export interface FailedPublication {
   lastManualPublishAbandonedAt: string | null;
   /** True if this was a Live Event submission — gates the Publishing Mode toggle on retry. */
   fastTrack: boolean;
+  /** JSON array string of Facebook photo IDs staged during the last attempt that couldn't be deleted after a failure — orphaned on the Page, need manual cleanup. Null when none. */
+  unresolvedPhotoIds: string | null;
 }
 
 export interface ManualPublishMediaItem {
