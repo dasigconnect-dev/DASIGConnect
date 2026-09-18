@@ -17,7 +17,7 @@ export function CalendarDateField({
 }) {
   const [open, setOpen] = useState(false);
   const { rootRef, popoverRef, placement, maxHeight } =
-    usePopoverCollision(open);
+    usePopoverCollision(open, 375);
   const selectedDate = useMemo(() => parseInputDate(value), [value]);
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const base = selectedDate || new Date();

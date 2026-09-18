@@ -273,16 +273,18 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  min-height: 40px;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 800;
+  min-height: 42px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 700;
   cursor: pointer;
   transition:
     background 0.15s,
     border-color 0.15s,
     color 0.15s,
+    box-shadow 0.15s,
+    transform 0.15s,
     opacity 0.15s;
 }
 
@@ -290,21 +292,26 @@
   border: 1px solid var(--sub-blue);
   background: var(--sub-blue);
   color: #fff;
+  box-shadow: 0 4px 12px rgba(24, 119, 242, 0.22);
 }
 
 .ai-prompt-primary:hover:not(:disabled) {
   background: #1667d9;
+  box-shadow: 0 6px 16px rgba(24, 119, 242, 0.32);
+  transform: translateY(-1px);
 }
 
 .ai-prompt-secondary {
   border: 1px solid var(--sub-border);
-  background: transparent;
-  color: var(--sub-muted);
+  background: #fff;
+  color: var(--sub-text-2, #475569);
 }
 
 .ai-prompt-secondary:hover:not(:disabled) {
   background: var(--sub-surface-2);
+  border-color: #cbd5e1;
   color: var(--sub-text);
+  transform: translateY(-1px);
 }
 
 .ai-prompt-primary:disabled,
