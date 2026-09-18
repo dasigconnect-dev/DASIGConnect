@@ -226,6 +226,24 @@ class MetricsAggregatorServiceTest {
     }
 
     @Test
+    void export_neutralizesCsvFormulaInjectionInFreeTextFields() {
+        // CWE-1236: exported rows include user-controlled free text (event
+        // titles, contributor names) with no sanitization at write time.
+        // Quoting alone doesn't stop Excel/Sheets from evaluating a cell
+        // starting with =/+/-/@ as a formula when the CSV is opened later.
+        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "admin", null);
+        when(analyticsRepository.exportRows(any(), any(), any(), any()))
+                .thenReturn(List.of(Map.of(
+                        "event_title", "=HYPERLINK(\"http://evil.example\",\"Click me\")",
+                        "contributor_name", "+1;DDE")));
+
+        var export = service.export("posts-by-institution", "7d", null, admin);
+
+        assertThat(export.content()).contains("\"'=HYPERLINK(\"\"http://evil.example\"\",\"\"Click me\"\")\"");
+        assertThat(export.content()).contains("\"'+1;DDE\"");
+    }
+
+    @Test
     void report_capsPageSizeAndReturnsOnlyPagedRows() {
         JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "admin", null);
         when(analyticsRepository.reportRows(any(), any(), any(), any(), anyInt(), anyInt()))
