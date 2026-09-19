@@ -238,8 +238,23 @@ function App() {
     setAuthToken(savedToken);
     queueMicrotask(() => {
       void (async () => {
+        let parsedUser: User | null;
         try {
-          const parsedUser = JSON.parse(savedUser) as User;
+          parsedUser = JSON.parse(savedUser) as User;
+        } catch {
+          parsedUser = null;
+        }
+        if (!parsedUser) {
+          localStorage.removeItem("dasigconnect_token");
+          localStorage.removeItem("dasigconnect_user");
+          setAuthToken(null);
+          if (active) {
+            setCurrentUser(null);
+            setAuthReady(true);
+          }
+          return;
+        }
+        try {
           const result = await loadCurrentUser(parsedUser.email, controller.signal);
           if (!active) return;
           seedCurrentProfile(appQueryClient, result.profile);
@@ -247,11 +262,25 @@ function App() {
           localStorage.setItem("dasigconnect_user", JSON.stringify(user));
           setCurrentUser(user);
           startSessionCountdown(savedToken);
-        } catch {
-          localStorage.removeItem("dasigconnect_token");
-          localStorage.removeItem("dasigconnect_user");
-          setAuthToken(null);
-          if (active) setCurrentUser(null);
+        } catch (err: unknown) {
+          if (!active) return;
+          const status = (err as { response?: { status?: number } })?.response?.status;
+          if (status === 401) {
+            // The server explicitly rejected the token — genuinely invalid/expired.
+            localStorage.removeItem("dasigconnect_token");
+            localStorage.removeItem("dasigconnect_user");
+            setAuthToken(null);
+            setCurrentUser(null);
+          } else {
+            // Couldn't verify (network blip, timeout, backend cold start, a
+            // dropped CORS preflight, etc.) — the token itself may still be
+            // valid, so don't force a logout just because this one request
+            // failed. Fall back to the cached profile; a genuine 401 on any
+            // later request still triggers the normal session-expired flow
+            // via the axios interceptor in authApi.ts.
+            setCurrentUser(parsedUser);
+            startSessionCountdown(savedToken);
+          }
         } finally {
           if (active) setAuthReady(true);
         }
