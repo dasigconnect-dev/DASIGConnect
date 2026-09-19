@@ -94,16 +94,32 @@ public class ValidationService {
     }
 
     /**
-     * Returns the network-wide approval queue: PENDING + IN_REVIEW submissions
-     * sorted by scheduledAt ASC (UC-2.4 Main Flow step 2). Moderator and
-     * Admin accounts are both network-wide roles.
+     * Returns the network-wide approval queue: PENDING + IN_REVIEW + NEEDS_REVISION
+     * submissions sorted by scheduledAt ASC (UC-2.4 Main Flow step 2). Moderator and
+     * Admin accounts are both network-wide roles. A NEEDS_REVISION row is rendered
+     * from its frozen {@code review_snapshot} rather than the submission's live
+     * columns, since the contributor may be actively editing/autosaving it — the
+     * queue must keep showing what was actually last submitted for review, not
+     * an in-progress draft, until an actual resubmission overwrites the snapshot.
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> getQueue(JwtUserDetails caller) {
         return submissionRepository.findValidationQueue().stream()
-                .map(s -> SubmissionSummaryDto.from(s,
-                        submissionMediaAssetRepository.countBySubmissionId(s.getId())))
+                .map(this::toQueueSummary)
                 .toList();
+    }
+
+    private SubmissionSummaryDto toQueueSummary(Submission s) {
+        if (s.getStatus() == SubmissionStatus.needs_revision && s.getReviewSnapshot() != null) {
+            try {
+                return SubmissionSummaryDto.fromSnapshot(s,
+                        objectMapper.readValue(s.getReviewSnapshot(),
+                                com.dasigconnect.backend.model.dto.submission.SubmissionReviewSnapshot.class));
+            } catch (Exception e) {
+                log.warn("Failed to parse review_snapshot for submission {}, falling back to live fields", s.getId(), e);
+            }
+        }
+        return SubmissionSummaryDto.from(s, submissionMediaAssetRepository.countBySubmissionId(s.getId()));
     }
 
     /**
@@ -286,6 +302,24 @@ public class ValidationService {
 
         String sessionEditDiff = combinedSessionEditDiff(submissionId);
         ReviewEditSeverity sessionSeverity = combinedSessionSeverity(submissionId);
+
+        // Freeze the reviewable display fields exactly as they stand right now —
+        // including any edit the moderator themselves just made via /edit before
+        // calling this — so the Review Queue keeps showing this state, not
+        // whatever the contributor's autosave changes it to next, until an
+        // actual resubmission overwrites this snapshot.
+        List<com.dasigconnect.backend.model.entity.MediaAsset> orderedAssets = submissionMediaAssetRepository
+                .findBySubmissionIdOrderByDisplayOrderAsc(submissionId)
+                .stream()
+                .map(com.dasigconnect.backend.model.entity.SubmissionMediaAsset::getMediaAsset)
+                .toList();
+        try {
+            submission.setReviewSnapshot(objectMapper.writeValueAsString(
+                    com.dasigconnect.backend.model.dto.submission.SubmissionReviewSnapshot
+                            .capture(submission, orderedAssets)));
+        } catch (Exception e) {
+            log.warn("Failed to serialize review_snapshot for submission {}", submissionId, e);
+        }
 
         submission.setStatus(SubmissionStatus.needs_revision);
         submission.setValidatorRemarks(remarks);
