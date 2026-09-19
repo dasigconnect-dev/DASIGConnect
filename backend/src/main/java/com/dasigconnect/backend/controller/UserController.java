@@ -67,6 +67,19 @@ public class UserController {
     }
 
     /**
+     * PATCH /api/v1/me/tour-preferences — full-replace update of which
+     * onboarding-guide screens the caller has dismissed, tracked per account
+     * rather than per browser.
+     */
+    @PatchMapping("/me/tour-preferences")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<UserDto>> updateMyTourPreferences(
+            @RequestBody com.dasigconnect.backend.model.dto.user.UpdateTourPreferencesRequestDto request,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(userService.updateTourPreferences(user, request)));
+    }
+
+    /**
      * GET /api/v1/users?institutionId={uuid} Lists all users for a given
      * institution. Admins and moderators may query institution users.
      */
