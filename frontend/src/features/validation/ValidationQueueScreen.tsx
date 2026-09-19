@@ -400,7 +400,7 @@ export default function ValidationQueueScreen({
     handleCompleteManual,
     openWorkflowPanel,
     closeWorkflowPanel,
-  } = useResolutionFailures(user, isFailedMode);
+  } = useResolutionFailures(user);
   const [retryItem, setRetryItem] = useState<FailedPublication | null>(null);
 
   const filteredFailures = useMemo(() => {

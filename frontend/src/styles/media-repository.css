@@ -1920,7 +1920,8 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   align-items: center;
   justify-content: center;
 }
-.med-sel-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.med-sel-thumb img,
+.med-sel-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .med-sel-info { flex: 1; min-width: 0; }
 .med-sel-name {
   font: 600 13px var(--med-ff-body);
