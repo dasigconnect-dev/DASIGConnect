@@ -134,10 +134,9 @@
 }
 
 .val-expand-btn {
-  position: absolute;
-  top: 14px;
-  left: 14px;
-  z-index: 30;
+  /* Normal flow now — it always lives inside .val-review-toolbar, which
+     positions it, rather than floating it itself over whatever content
+     happens to be underneath. */
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -240,6 +239,9 @@
 
 .val-tabs button {
   border: 0;
+  /* Equal-share, like the original 4-tab row — the icon-only .val-tabs-more-btn
+     is fixed-width instead of also sharing this, which is what makes room
+     for it without squeezing these back to needing to shrink/scroll. */
   flex: 1;
   border-radius: 6px;
   padding: 6px 4px;
@@ -269,8 +271,9 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
-.val-tabs span {
+.val-tab-count {
   display: inline-flex;
+  flex-shrink: 0;
   min-width: 16px;
   height: 16px;
   align-items: center;
@@ -283,9 +286,156 @@
   font-weight: 700;
 }
 
-.val-tabs .active span {
+.val-tabs .active .val-tab-count {
   background: #eff6ff;
   color: #1877f2;
+}
+
+/* Full status row shown in the desktop expanded (no-selection) queue view */
+.val-tabs--expanded {
+  flex-wrap: wrap;
+}
+
+.val-tabs--expanded button {
+  flex: 1 1 112px;
+}
+
+/* Overflow "More" dropdown shown once the sidebar narrows (a selection is
+   active, or on mobile) — pinned tabs stay inline, the rest live here. */
+.val-tabs-more {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.val-tabs-more-btn {
+  /* Icon-only (a chevron, no label) — overrides the `.val-tabs button { flex: 1; }`
+     base rule so it stays a small fixed square instead of sharing the row
+     equally with the pinned tabs, which is what was squeezing/cutting it off
+     in a narrow (sidebar-width) tab row. */
+  flex: 0 0 auto;
+  min-width: 0;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  /* Without this, some browsers still paint native button chrome (a subtle
+     background/border/shadow) on top of the transparent background above,
+     making this look like a separate floating chip instead of blending into
+     the same tab-pill row as the other tabs. */
+  appearance: none;
+  -webkit-appearance: none;
+  box-shadow: none;
+  outline: none;
+}
+
+.val-tabs-more-btn:hover {
+  color: #1e293b;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.val-tabs-more-btn:focus-visible {
+  outline: 2px solid var(--val-blue, #1877f2);
+  outline-offset: 1px;
+}
+
+.val-tabs-more-btn.active {
+  background: #ffffff;
+  color: #1877f2;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.val-tabs-more-btn i {
+  font-size: 13px;
+}
+
+.val-tabs-menu {
+  /* Portaled to <body> (ValidationQueueScreen) so it escapes .val-queue-panel's
+     overflow:hidden instead of being clipped by it; top/left are set inline
+     from the trigger button's measured position. Because it renders outside
+     .val-page's subtree, it can't see that scope's --val-* custom properties
+     (CSS variables cascade through the DOM tree, not the React tree) — every
+     var() below needs an explicit fallback or it resolves to nothing. */
+  position: fixed;
+  z-index: 1000;
+  min-width: 200px;
+  background: var(--val-surface, #ffffff);
+  border: 1px solid var(--val-border, #dde3ee);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(12, 29, 61, 0.12);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.val-tabs-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--val-text-2, #334e6b);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.val-tabs-menu button:hover {
+  background: var(--val-surface-2, #f7f9fd);
+}
+
+.val-tabs-menu button.active {
+  background: var(--val-blue-dim, #eff6ff);
+  color: var(--val-blue, #1877f2);
+}
+
+.val-tabs-menu-count {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 10px;
+  background: #e2e8f0;
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.val-tabs-menu button.active .val-tabs-menu-count {
+  background: #eff6ff;
+  color: #1877f2;
+}
+
+/* Base styling for the queue-badge pill (mobile topbar; breakpoint-specific
+   overrides for it live further below). */
+.val-mobile-queue-badge {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--val-border);
+  background: var(--val-surface-2);
+  color: var(--val-text-2);
 }
 
 .val-search {
@@ -604,6 +754,20 @@
   overflow: hidden;
 }
 
+/* Desktop-only utility strip (Show Queue / Content Guide) at the top of the
+   review panel — gives those buttons an actual bar to sit in instead of
+   floating loose over whatever content happens to render beneath them. */
+.val-review-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 24px;
+  border-bottom: 1px solid var(--val-border);
+  background: var(--val-surface);
+  flex-shrink: 0;
+}
+
 .val-empty {
   margin: auto;
   max-width: 360px;
@@ -670,7 +834,6 @@
   align-items: center;
 }
 
-.val-notice,
 .val-fb-card,
 .val-edit-grid-panel,
 .val-detail-grid {
@@ -680,9 +843,17 @@
 }
 
 .val-page.is-queue-collapsed .val-fb-card,
-.val-page.is-queue-collapsed .val-edit-grid-panel,
-.val-page.is-queue-collapsed .val-notice {
+.val-page.is-queue-collapsed .val-edit-grid-panel {
   max-width: 820px;
+}
+
+/* Matches .val-review-layout's own max-width (fb-card + details panel
+   combined) rather than a single card's, so it spans the same width as the
+   content beneath it instead of stopping well short on the right. */
+.val-notice {
+  width: 100%;
+  max-width: 1240px;
+  box-sizing: border-box;
 }
 
 .val-review-header {
@@ -816,7 +987,11 @@
   flex: 0 0 300px;
   width: 300px;
   min-width: 300px;
-  align-self: stretch;
+  /* flex-start, not stretch — this panel's content (a handful of short
+     fields) is much shorter than the FB preview card beside it; stretching
+     it to match that card's height just left a large empty gap under the
+     content instead of sizing to it. */
+  align-self: flex-start;
   position: sticky;
   top: 0;
   border-radius: var(--val-radius);
@@ -2614,6 +2789,38 @@
   }
   .val-action-bar span {
     flex-basis: 100%;
+  }
+}
+
+/* ── Desktop/tablet full-width queue (nothing selected) ──
+   Above the mobile master-detail breakpoint below, the queue normally shows
+   as the narrow 300–340px sidebar beside the review panel. With nothing
+   selected, it instead expands to fill the whole width (all status tabs
+   directly visible) so browsing doesn't waste most of the screen on an
+   empty review panel. Selecting a submission reverts to the split layout
+   above — see ValidationQueueScreen's `isQueueExpanded` / `useIsDesktop`. */
+@media (min-width: 861px) {
+  .val-page.is-queue-expanded {
+    grid-template-columns: 1fr;
+  }
+  .val-page.is-queue-expanded .val-queue-panel {
+    border-right: none;
+  }
+  .val-page.is-queue-expanded .val-queue-header {
+    padding-left: max(24px, calc(50% - 490px));
+    padding-right: max(24px, calc(50% - 490px));
+  }
+  .val-page.is-queue-expanded .val-sort-row {
+    padding-left: max(24px, calc(50% - 490px));
+    padding-right: max(24px, calc(50% - 490px));
+  }
+  .val-page.is-queue-expanded .val-queue-list {
+    max-width: 980px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .val-page.is-queue-expanded .val-review-panel {
+    display: none;
   }
 }
 

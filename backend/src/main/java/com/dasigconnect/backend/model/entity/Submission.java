@@ -136,6 +136,21 @@ public class Submission {
     @Column(name = "token_final_failed_at")
     private Instant tokenFinalFailedAt;
 
+    /**
+     * JSON snapshot of the reviewable display fields (title, date, caption,
+     * category, tags, album, scheduled time, media list) captured at the
+     * moment this submission was last submitted or resubmitted for review
+     * (see {@code SubmissionService.submit()}). While the submission sits in
+     * {@code needs_revision}, the contributor's ongoing edits/autosaves
+     * mutate the live columns above directly — this snapshot is what the
+     * Review Queue displays instead, so those in-progress edits don't leak
+     * into the moderator's view until an actual resubmission overwrites it.
+     * Null for submissions that have never been submitted, or that reached
+     * needs_revision before this column existed.
+     */
+    @Column(name = "review_snapshot", columnDefinition = "jsonb")
+    private String reviewSnapshot;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -376,6 +391,14 @@ public class Submission {
 
     public void setTokenFinalFailedAt(Instant tokenFinalFailedAt) {
         this.tokenFinalFailedAt = tokenFinalFailedAt;
+    }
+
+    public String getReviewSnapshot() {
+        return reviewSnapshot;
+    }
+
+    public void setReviewSnapshot(String reviewSnapshot) {
+        this.reviewSnapshot = reviewSnapshot;
     }
 
     public Instant getCreatedAt() {

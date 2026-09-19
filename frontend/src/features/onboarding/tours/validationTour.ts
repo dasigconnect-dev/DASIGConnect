@@ -62,6 +62,30 @@ export const validationReviewTourSteps: TourStep[] = [
   },
 ];
 
+export const validationFailedTourSteps: TourStep[] = [
+  {
+    target: ".val-fb-card",
+    title: "What Was Supposed to Publish",
+    description: "The exact post that failed to go out automatically — nothing here has changed since the last attempt.",
+    icon: "ti ti-brand-facebook",
+    placement: "right",
+  },
+  {
+    target: ".val-details-panel",
+    title: "Retry History",
+    description: "Retry attempts and the last attempt time appear here alongside the usual submission details, so you can see how many times this has already failed.",
+    icon: "ti ti-file-text",
+    placement: "left",
+  },
+  {
+    target: ".val-action-bar",
+    title: "Retry or Publish Manually",
+    description: "Retry sends it back through automated publishing (optionally with a new schedule). If it keeps failing, Start Manual Publish walks you through posting it to Facebook yourself and marking it complete.",
+    icon: "ti ti-refresh",
+    placement: "top",
+  },
+];
+
 export const validationEditTourSteps: TourStep[] = [
   {
     target: ".val-edit-tabs",

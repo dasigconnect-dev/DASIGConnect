@@ -60,24 +60,33 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("windowStart") java.time.Instant windowStart,
             @Param("windowEnd") java.time.Instant windowEnd);
 
-    // UC-2.4 approval queue — network-wide PENDING + IN_REVIEW. Fast-Track
-    // submissions (no scheduledAt) sort first as the urgent items UC-1.9
-    // expects; everything else follows by scheduledAt ASC, then by submittedAt
-    // as a stable tiebreaker among same-priority items (oldest first).
+    // UC-2.4 approval queue — network-wide PENDING + IN_REVIEW + NEEDS_REVISION.
+    // Fast-Track submissions (no scheduledAt) sort first as the urgent items
+    // UC-1.9 expects; everything else follows by scheduledAt ASC, then by
+    // submittedAt as a stable tiebreaker among same-priority items (oldest
+    // first). NEEDS_REVISION rows sort after every actionable row regardless
+    // of schedule/fast-track — they are back in the contributor's hands and
+    // not something a moderator can act on right now, just something they
+    // should still be able to see. The service layer renders these rows from
+    // Submission.reviewSnapshot (frozen at the last submit()/resubmit()), not
+    // the live columns, since the contributor may be actively editing/autosaving them.
     @Query("""
         SELECT s FROM Submission s
         WHERE s.status IN (
             com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review
+            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.needs_revision
         )
-        ORDER BY s.fastTrack DESC, s.scheduledAt ASC NULLS LAST, s.submittedAt ASC
+        ORDER BY
+            CASE WHEN s.status = com.dasigconnect.backend.model.entity.SubmissionStatus.needs_revision THEN 1 ELSE 0 END ASC,
+            s.fastTrack DESC, s.scheduledAt ASC NULLS LAST, s.submittedAt ASC
         """)
     List<Submission> findValidationQueue();
 
     // UC-2.4 approval history — network-wide, all post-review statuses, most recently updated first.
-    // NEEDS_REVISION is intentionally excluded: the submission is back in the contributor's hands
-    // (auto-saving, not yet resubmitted), so it must not surface in either moderator tab. It
-    // re-enters the active queue as PENDING once resubmitted.
+    // NEEDS_REVISION is intentionally excluded here: it now lives in findValidationQueue() above
+    // (rendered from its frozen snapshot) so it stays visible in the active queue rather than only
+    // the "All" history tab. It re-enters as a fully live PENDING row once resubmitted.
     @Query("""
         SELECT s FROM Submission s
         WHERE s.status IN (
