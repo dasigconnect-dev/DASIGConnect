@@ -1083,7 +1083,23 @@ export default function ValidationQueueScreen({
 
   async function handleAiCaptionPromptSubmit(prompt: string, tone: CaptionTone) {
     const generated = await aiCaption.suggest(prompt, tone, undefined, editForm.caption);
-    if (generated) setCaptionPromptOpen(false);
+    if (generated) {
+      toast.success("AI caption generated! Review and refine, or click Approve.");
+      return generated;
+    } else if (aiCaption.notice) {
+      toast.error(aiCaption.notice);
+      return null;
+    } else {
+      toast.error("AI caption could not be generated. Please try again.");
+      return null;
+    }
+  }
+
+  function handleAiCaptionApprove(caption: string, tone: CaptionTone) {
+    applyEditCaption(caption);
+    aiCaption.logApply(tone, "use");
+    setCaptionPromptOpen(false);
+    toast.success("AI caption approved and placed in your caption box!");
   }
 
   // ── Recommended publish times (Schedule tab) ─────────────────────────────
@@ -2603,7 +2619,8 @@ export default function ValidationQueueScreen({
             hasImageAssets={editHasImage}
             existingCaption={editForm.caption}
             onClose={() => setCaptionPromptOpen(false)}
-            onSubmit={(prompt, tone) => void handleAiCaptionPromptSubmit(prompt, tone)}
+            onSubmit={(prompt, tone) => handleAiCaptionPromptSubmit(prompt, tone)}
+            onApprove={handleAiCaptionApprove}
           />
         </Suspense>
       )}
