@@ -507,6 +507,16 @@
   transform: translateY(-1px);
 }
 
+.ai-prompt-approve-btn:disabled {
+  background: #a7f3d0 !important;
+  border-color: #a7f3d0 !important;
+  color: #ffffff !important;
+  opacity: 0.75 !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
 .ai-prompt-primary:disabled,
 .ai-prompt-secondary:disabled,
 .ai-prompt-icon-btn:disabled {
