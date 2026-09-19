@@ -305,36 +305,16 @@ export default function AiCaptionPromptDialog({
             Cancel
           </button>
 
-          {captionResult ? (
-            <button
-              type="button"
-              className="ai-prompt-primary ai-prompt-approve-btn"
-              onClick={handleApprove}
-              disabled={isLoading || !captionResult.trim()}
-            >
-              <i className="ti ti-circle-check" aria-hidden="true" />
-              Approve Caption
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="ai-prompt-primary"
-              onClick={() => void handleGenerate(prompt)}
-              disabled={isLoading || isOverLimit}
-            >
-              {isLoading ? (
-                <>
-                  <span className="ai-caption-spinner" aria-hidden="true" />
-                  {isUnsaved ? "Saving & Generating..." : "Generating..."}
-                </>
-              ) : (
-                <>
-                  <i className={isUnsaved ? "ti ti-device-floppy" : "ti ti-sparkles"} aria-hidden="true" />
-                  {isUnsaved ? "Save Draft & Generate Caption" : "Generate Caption"}
-                </>
-              )}
-            </button>
-          )}
+          <button
+            type="button"
+            className="ai-prompt-primary ai-prompt-approve-btn"
+            onClick={handleApprove}
+            disabled={isLoading || !captionResult.trim()}
+            title={!captionResult.trim() ? "Generate a caption first using the chat bar above" : "Approve and apply this caption"}
+          >
+            <i className="ti ti-circle-check" aria-hidden="true" />
+            Approve Caption
+          </button>
         </div>
       </section>
     </div>,
