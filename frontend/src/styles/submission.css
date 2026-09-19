@@ -4489,7 +4489,7 @@ textarea.sub-finput {
   position: fixed;
   right: 18px;
   bottom: 18px;
-  z-index: 1300;
+  z-index: 100005;
   padding: 12px 14px;
   border-radius: var(--sub-r-sm);
   background: var(--sub-text);
@@ -5351,6 +5351,19 @@ textarea.sub-finput {
   overflow: hidden;
   letter-spacing: 0;
   text-transform: none;
+  transform-origin: top right;
+  animation: fancy-text-dropdown-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes fancy-text-dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .fancy-text-panel-head {
@@ -5388,6 +5401,25 @@ textarea.sub-finput {
 .fancy-text-close:hover {
   background: var(--sub-surface);
   color: var(--sub-text);
+}
+
+.fancy-text-guide {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 8px 11px;
+  background: rgba(24, 119, 242, 0.05);
+  border-bottom: 1px solid var(--sub-border);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--sub-text-2, #3a506b);
+}
+
+.fancy-text-guide i {
+  font-size: 13px;
+  color: var(--sub-blue, #1877f2);
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .fancy-text-empty {
