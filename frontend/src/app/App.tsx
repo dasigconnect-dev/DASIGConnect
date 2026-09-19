@@ -36,6 +36,7 @@ import { firstPasswordError, getPasswordRules } from "../lib/passwordPolicy";
 import { clearAppCaches } from "../lib/appCache";
 import { appQueryClient, clearAuthenticatedQueryCache } from "../lib/queryClient";
 import { seedCurrentProfile } from "../hooks/useCurrentProfile";
+import { hydrateTourPreferences, resetTourPreferencesCache } from "../features/onboarding/tourStorage";
 
 const LOCKOUT_LIMIT = 5;
 const LOCKOUT_SECONDS = 15 * 60;
@@ -142,6 +143,7 @@ function App() {
     localStorage.removeItem("dasigconnect_user");
     setAuthToken(null);
     setCurrentUser(null);
+    resetTourPreferencesCache();
     await clearAuthenticatedQueryCache();
     clearAppCaches();
   }
@@ -159,6 +161,7 @@ function App() {
         throw new DOMException("Superseded profile request.", "AbortError");
       }
       seedCurrentProfile(appQueryClient, result.profile);
+      hydrateTourPreferences(result.profile);
       return result.user;
     } finally {
       if (profileRequestRef.current?.id === request.id) {
@@ -258,6 +261,7 @@ function App() {
           const result = await loadCurrentUser(parsedUser.email, controller.signal);
           if (!active) return;
           seedCurrentProfile(appQueryClient, result.profile);
+          hydrateTourPreferences(result.profile);
           const user = result.user;
           localStorage.setItem("dasigconnect_user", JSON.stringify(user));
           setCurrentUser(user);

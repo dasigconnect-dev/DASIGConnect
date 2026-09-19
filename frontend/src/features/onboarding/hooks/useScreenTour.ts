@@ -3,6 +3,7 @@ import type { TourStep } from "../types";
 import {
   hasSeenTour,
   isTourEnabled,
+  isTourPreferencesLoaded,
   markTourAsSeen,
   subscribeTourPreferences,
 } from "../tourStorage";
@@ -23,12 +24,15 @@ export function useScreenTour({
   const [isActive, setIsActive] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isGloballyEnabled, setIsGloballyEnabled] = useState(isTourEnabled());
+  const [preferencesLoaded, setPreferencesLoaded] = useState(isTourPreferencesLoaded());
   const timerRef = useRef<number | null>(null);
 
-  // Synchronize with global preferences updates
+  // Synchronize with global preferences updates (hydration from the account
+  // profile, a mutation, or a logout reset).
   useEffect(() => {
     return subscribeTourPreferences((prefs) => {
       setIsGloballyEnabled(prefs.enabled);
+      setPreferencesLoaded(isTourPreferencesLoaded());
       if (!prefs.enabled) {
         setIsActive(false);
       }
@@ -64,9 +68,12 @@ export function useScreenTour({
     setCurrentStepIndex((prev) => Math.max(prev - 1, 0));
   }, []);
 
-  // Automatic trigger on first visit
+  // Automatic trigger on first visit. Gated on preferencesLoaded so this
+  // can't fire before the account's real "seen" state has loaded — without
+  // it, a guide the account already dismissed would flash on every login
+  // while the profile fetch is still in flight.
   useEffect(() => {
-    if (!canStart || !isGloballyEnabled || hasSeenTour(screenId) || steps.length === 0) {
+    if (!canStart || !preferencesLoaded || !isGloballyEnabled || hasSeenTour(screenId) || steps.length === 0) {
       return;
     }
 
@@ -79,7 +86,7 @@ export function useScreenTour({
         window.clearTimeout(timerRef.current);
       }
     };
-  }, [screenId, isGloballyEnabled, canStart, steps.length, autoStartDelayMs, startTour]);
+  }, [screenId, isGloballyEnabled, preferencesLoaded, canStart, steps.length, autoStartDelayMs, startTour]);
 
   return {
     isActive,

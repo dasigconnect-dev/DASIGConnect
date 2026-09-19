@@ -7,8 +7,12 @@ import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
 import com.dasigconnect.backend.model.entity.UserStatus;
 import com.dasigconnect.backend.security.JwtUserDetails;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class UserDto {
+
+    private static final ObjectMapper TOUR_SCREENS_MAPPER = new ObjectMapper();
 
     private UUID id;
     private String email;
@@ -28,6 +32,8 @@ public class UserDto {
     private Instant createdAt;
     private boolean notifyInApp;
     private boolean notifyEmail;
+    private java.util.List<String> tourSeenScreens;
+    private boolean toursEnabled;
     private boolean hasAvatar;
     private Instant avatarUpdatedAt;
     private Instant purgedAt;
@@ -57,6 +63,8 @@ public class UserDto {
         dto.createdAt = user.getCreatedAt();
         dto.notifyInApp = user.isNotifyInApp();
         dto.notifyEmail = user.isNotifyEmail();
+        dto.tourSeenScreens = parseTourSeenScreens(user.getTourSeenScreens());
+        dto.toursEnabled = user.isToursEnabled();
         dto.hasAvatar = user.getAvatarData() != null && user.getAvatarData().length > 0;
         dto.avatarUpdatedAt = user.getAvatarUpdatedAt();
         dto.purgedAt = user.getPurgedAt();
@@ -173,4 +181,16 @@ public class UserDto {
         String fullName = (first + " " + last).trim();
         return fullName.isBlank() ? null : fullName;
     }
+
+    private static java.util.List<String> parseTourSeenScreens(String json) {
+        if (json == null || json.isBlank()) return java.util.List.of();
+        try {
+            return TOUR_SCREENS_MAPPER.readValue(json, new TypeReference<java.util.List<String>>() {});
+        } catch (Exception e) {
+            return java.util.List.of();
+        }
+    }
+
+    public java.util.List<String> getTourSeenScreens() { return tourSeenScreens; }
+    public boolean isToursEnabled() { return toursEnabled; }
 }

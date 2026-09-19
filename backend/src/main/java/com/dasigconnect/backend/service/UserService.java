@@ -62,6 +62,7 @@ public class UserService {
     private final ApplicationEventPublisher eventPublisher;
     /** Administrator headcount cap (`app.admins.max`, default 3) — see {@link AdminCapPolicy}. */
     private final AdminCapPolicy adminCapPolicy;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     public UserService(
             UserRepository userRepository,
@@ -79,7 +80,8 @@ public class UserService {
             InvitationTokenRepository invitationTokenRepository,
             AuditLogService auditLogService,
             ApplicationEventPublisher eventPublisher,
-            AdminCapPolicy adminCapPolicy) {
+            AdminCapPolicy adminCapPolicy,
+            com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
         this.userRepository = userRepository;
         this.notificationRepository = notificationRepository;
         this.emailDeliveryLogRepository = emailDeliveryLogRepository;
@@ -96,6 +98,7 @@ public class UserService {
         this.auditLogService = auditLogService;
         this.eventPublisher = eventPublisher;
         this.adminCapPolicy = adminCapPolicy;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -126,6 +129,28 @@ public class UserService {
                 Map.of(
                         "notifyInApp", saved.isNotifyInApp(),
                         "notifyEmail", saved.isNotifyEmail()));
+        return UserDto.from(saved);
+    }
+
+    /**
+     * Full-replace update of the caller's onboarding-guide preferences —
+     * tracked per account (not per browser/localStorage) so a guide seen once
+     * never reappears regardless of device or cleared browser storage.
+     */
+    @Transactional
+    public UserDto updateTourPreferences(
+            JwtUserDetails principal,
+            com.dasigconnect.backend.model.dto.user.UpdateTourPreferencesRequestDto request) {
+        var user = userRepository.findById(principal.userId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        try {
+            user.setTourSeenScreens(objectMapper.writeValueAsString(
+                    request.seenScreens() == null ? List.of() : request.seenScreens()));
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid tour preferences.");
+        }
+        user.setToursEnabled(request.enabled());
+        var saved = userRepository.save(user);
         return UserDto.from(saved);
     }
 

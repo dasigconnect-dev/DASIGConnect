@@ -88,6 +88,9 @@ export interface UserProfileResponse {
   createdAt: string;
   notifyInApp: boolean;
   notifyEmail: boolean;
+  /** Onboarding-guide "seen" screenIds, tracked per account (not per browser). */
+  tourSeenScreens?: string[];
+  toursEnabled?: boolean;
   hasAvatar: boolean;
   avatarUpdatedAt: string | null;
   avatarUrl?: string | null;
@@ -158,6 +161,11 @@ export function refreshSession() {
 
 export function updateAccountSettings(data: { displayName: string; notifyInApp: boolean; notifyEmail: boolean }) {
   return api.patch<UserProfileResponse>("/me/settings", data);
+}
+
+/** Full-replace update of the caller's onboarding-guide preferences (per account, not per browser). */
+export function updateTourPreferences(data: { enabled: boolean; seenScreens: string[] }) {
+  return api.patch<UserProfileResponse>("/me/tour-preferences", data);
 }
 
 export function changePassword(currentPassword: string, newPassword: string) {
