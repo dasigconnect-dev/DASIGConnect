@@ -1052,9 +1052,22 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
     const generated = await aiCaption.suggest(prompt, tone, currentId, form.caption);
     if (generated) {
-      setCaptionPromptOpen(false);
-      toast.success(form.id ? "AI caption generated!" : "Draft saved & AI caption generated!");
+      toast.success("AI caption generated! Review and refine, or click Approve.");
+      return generated;
+    } else if (aiCaption.notice) {
+      toast.error(aiCaption.notice);
+      return null;
+    } else {
+      toast.error("AI caption could not be generated. Please try again or write one manually.");
+      return null;
     }
+  }
+
+  function handleAiCaptionApprove(caption: string, tone: CaptionTone) {
+    updateCaption(caption);
+    aiCaption.logApply(tone, "use");
+    setCaptionPromptOpen(false);
+    toast.success("AI caption approved and placed in your caption box!");
   }
 
   function updateFastTrack(value: boolean) {
@@ -2759,7 +2772,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     existingCaption={form.caption}
                     isUnsaved={!form.id}
                     onClose={() => setCaptionPromptOpen(false)}
-                    onSubmit={(prompt, tone) => void handleAiCaptionPromptSubmit(prompt, tone)}
+                    onSubmit={(prompt, tone) => handleAiCaptionPromptSubmit(prompt, tone)}
+                    onApprove={handleAiCaptionApprove}
                   />
                 </Suspense>
               )}

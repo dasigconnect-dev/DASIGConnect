@@ -293,6 +293,17 @@ export default function FancyTextTool({
             </button>
           </div>
 
+          <div className="fancy-text-guide">
+            <i className="ti ti-info-circle" aria-hidden />
+            <span>
+              {hasExplicitSelection
+                ? "Styling highlighted text. Choose a font below to apply."
+                : activeCaption.length > 0
+                  ? "Highlight the text you want to style, or select a font below to style the entire caption."
+                  : "Type a caption and highlight the text you want to style."}
+            </span>
+          </div>
+
           {!selectedText && (
             <div className="fancy-text-empty" aria-live="polite">
               No caption text selected.

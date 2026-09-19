@@ -53,18 +53,51 @@ export function useAiCaptionAssist(
   const requestRef = useRef<{ id: number; controller: AbortController } | null>(null);
   const requestIdRef = useRef(0);
 
-  const canSuggest = !!submissionId;
-  const contextMatches = responseContext === submissionId;
+  const inFlightSubmissionIdRef = useRef<string | null>(null);
+  const previousSubmissionIdRef = useRef<string | null>(submissionId);
 
+  const canSuggest = !!submissionId;
+  const contextMatches =
+    responseContext === submissionId ||
+    (!submissionId && !!inFlightSubmissionIdRef.current && responseContext === inFlightSubmissionIdRef.current);
+
+  useEffect(() => {
+    const prevId = previousSubmissionIdRef.current;
+    previousSubmissionIdRef.current = submissionId;
+
+    // If submissionId changed from null/empty to the target ID of an in-flight request,
+    // do NOT abort the in-flight request — it's the draft that was just created and saved for this generation!
+    if (!prevId && submissionId && submissionId === inFlightSubmissionIdRef.current) {
+      setResponseContext(submissionId);
+      return;
+    }
+
+    // If submissionId actually changed to a different submission, clean up previous state
+    if (prevId !== submissionId) {
+      requestIdRef.current += 1;
+      requestRef.current?.controller.abort();
+      requestRef.current = null;
+      inFlightSubmissionIdRef.current = null;
+      if (cooldownRef.current) clearTimeout(cooldownRef.current);
+      cooldownRef.current = null;
+      setState("idle");
+      setVariants(null);
+      setNotice(null);
+      setResponseContext(submissionId);
+    }
+  }, [submissionId]);
+
+  // Clean up on component unmount
   useEffect(() => {
     return () => {
       requestIdRef.current += 1;
       requestRef.current?.controller.abort();
       requestRef.current = null;
+      inFlightSubmissionIdRef.current = null;
       if (cooldownRef.current) clearTimeout(cooldownRef.current);
       cooldownRef.current = null;
     };
-  }, [submissionId]);
+  }, []);
 
   async function suggest(
     prompt = "",
@@ -84,6 +117,7 @@ export function useAiCaptionAssist(
       controller: new AbortController(),
     };
     requestRef.current = request;
+    inFlightSubmissionIdRef.current = targetSubmissionId;
     const normalizedPrompt = prompt.trim();
     setLastPrompt(normalizedPrompt);
     setLastTone(tone);
@@ -99,13 +133,17 @@ export function useAiCaptionAssist(
         tone,
         request.controller.signal,
       );
-      if (requestRef.current?.id !== request.id) return null;
+      if (requestRef.current?.id !== request.id) {
+        setState("idle");
+        return null;
+      }
       const generatedVariant = response.variants[0] ?? null;
       setVariants(response.variants.length > 0 ? response.variants : null);
       setState("idle");
       return generatedVariant;
     } catch (err) {
       if (requestRef.current?.id !== request.id || request.controller.signal.aborted) {
+        setState("idle");
         return null;
       }
       if (isRateLimitError(err)) {
@@ -126,7 +164,10 @@ export function useAiCaptionAssist(
       }, 5000);
       return null;
     } finally {
-      if (requestRef.current?.id === request.id) requestRef.current = null;
+      if (requestRef.current?.id === request.id) {
+        requestRef.current = null;
+        inFlightSubmissionIdRef.current = null;
+      }
     }
   }
 
