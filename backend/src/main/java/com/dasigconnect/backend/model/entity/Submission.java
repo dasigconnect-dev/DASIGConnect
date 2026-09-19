@@ -14,6 +14,8 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "submissions")
@@ -149,6 +151,7 @@ public class Submission {
      * needs_revision before this column existed.
      */
     @Column(name = "review_snapshot", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
     private String reviewSnapshot;
 
     @Column(name = "created_at", nullable = false, updatable = false)
