@@ -81,7 +81,7 @@ export default function AssetCard({
               src={asset.storageUrl}
               muted
               playsInline
-              preload="none"
+              preload="metadata"
               aria-label={asset.title}
             />
           ) : (
