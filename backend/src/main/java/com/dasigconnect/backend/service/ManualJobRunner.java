@@ -4,6 +4,7 @@ import com.dasigconnect.backend.schedule.AbandonmentDetectorJob;
 import com.dasigconnect.backend.schedule.EmbeddingFailureDigestJob;
 import com.dasigconnect.backend.schedule.EmbeddingReconciliationJob;
 import com.dasigconnect.backend.schedule.EmptyScheduleWarningJob;
+import com.dasigconnect.backend.schedule.GeneratedWatermarkPurgeJob;
 import com.dasigconnect.backend.schedule.MediaAssetRetentionPurgeJob;
 import com.dasigconnect.backend.schedule.PublishingSchedulerJob;
 import com.dasigconnect.backend.schedule.ReviewLockCleanupJob;
@@ -17,6 +18,7 @@ import com.dasigconnect.backend.schedule.ValidationDeadlineNotificationJob;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -50,7 +52,8 @@ public class ManualJobRunner {
             TokenHealthCheckJob tokenHealthCheck,
             ScheduledJobRunRetentionJob scheduledJobRunRetention,
             EmbeddingFailureDigestJob embeddingFailureDigest,
-            EmptyScheduleWarningJob emptyScheduleWarning) {
+            EmptyScheduleWarningJob emptyScheduleWarning,
+            GeneratedWatermarkPurgeJob generatedWatermarkPurge) {
         jobs.put("PublishingSchedulerJob", publishingScheduler::run);
         jobs.put("ReviewLockCleanupJob", reviewLockCleanup::releaseExpiredLocks);
         jobs.put("StaleSubmissionDetectorJob", staleSubmissionDetector::run);
@@ -65,7 +68,20 @@ public class ManualJobRunner {
         jobs.put("ScheduledJobRunRetentionJob", scheduledJobRunRetention::pruneOldRuns);
         jobs.put("EmbeddingFailureDigestJob", embeddingFailureDigest::scanFailedEmbeddings);
         jobs.put("EmptyScheduleWarningJob", emptyScheduleWarning::scanEmptySchedules);
+        jobs.put("GeneratedWatermarkPurgeJob", generatedWatermarkPurge::purgeExpiredGeneratedWatermarks);
     }
+
+    /**
+     * These two jobs call FacebookPublisherService.publishMediaLinks per
+     * submission, which retries up to 3 times with 5s/25s/125s backoff sleeps
+     * each -- running them synchronously on the HTTP request thread (as every
+     * other job here safely can) risked minutes-long requests, with a client
+     * or gateway timeout showing the admin a false failure while the job kept
+     * running regardless (found 2026-09-18, alongside the identical-shaped
+     * transaction-boundary issue in FastTrackPublishingListener).
+     */
+    private static final Set<String> ASYNC_JOB_KEYS = Set.of(
+            "PublishingSchedulerJob", "TokenPublishingEscalationJob");
 
     public Set<String> runnableJobKeys() {
         return jobs.keySet();
@@ -75,13 +91,31 @@ public class ManualJobRunner {
         return jobs.containsKey(jobKey);
     }
 
-    /** Runs the job synchronously on the caller's thread. Throws 404 for an unknown key. */
+    public boolean runsAsynchronously(String jobKey) {
+        return ASYNC_JOB_KEYS.contains(jobKey);
+    }
+
+    /**
+     * Runs the job. Most jobs run synchronously on the caller's thread, so the
+     * response already reflects the completed run -- see {@link #ASYNC_JOB_KEYS}
+     * for the two that don't. Throws 404 for an unknown key.
+     */
     public void run(String jobKey) {
         Runnable job = jobs.get(jobKey);
         if (job == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown background job: " + jobKey);
         }
         log.info("Manual run requested for {}", jobKey);
+        if (ASYNC_JOB_KEYS.contains(jobKey)) {
+            CompletableFuture.runAsync(() -> {
+                try {
+                    job.run();
+                } catch (Exception ex) {
+                    log.error("Manual async run of {} failed: {}", jobKey, ex.getMessage(), ex);
+                }
+            });
+            return;
+        }
         job.run();
     }
 }

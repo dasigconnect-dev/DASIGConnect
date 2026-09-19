@@ -94,16 +94,32 @@ public class ValidationService {
     }
 
     /**
-     * Returns the network-wide approval queue: PENDING + IN_REVIEW submissions
-     * sorted by scheduledAt ASC (UC-2.4 Main Flow step 2). Moderator and
-     * Admin accounts are both network-wide roles.
+     * Returns the network-wide approval queue: PENDING + IN_REVIEW + NEEDS_REVISION
+     * submissions sorted by scheduledAt ASC (UC-2.4 Main Flow step 2). Moderator and
+     * Admin accounts are both network-wide roles. A NEEDS_REVISION row is rendered
+     * from its frozen {@code review_snapshot} rather than the submission's live
+     * columns, since the contributor may be actively editing/autosaving it — the
+     * queue must keep showing what was actually last submitted for review, not
+     * an in-progress draft, until an actual resubmission overwrites the snapshot.
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> getQueue(JwtUserDetails caller) {
         return submissionRepository.findValidationQueue().stream()
-                .map(s -> SubmissionSummaryDto.from(s,
-                        submissionMediaAssetRepository.countBySubmissionId(s.getId())))
+                .map(this::toQueueSummary)
                 .toList();
+    }
+
+    private SubmissionSummaryDto toQueueSummary(Submission s) {
+        if (s.getStatus() == SubmissionStatus.needs_revision && s.getReviewSnapshot() != null) {
+            try {
+                return SubmissionSummaryDto.fromSnapshot(s,
+                        objectMapper.readValue(s.getReviewSnapshot(),
+                                com.dasigconnect.backend.model.dto.submission.SubmissionReviewSnapshot.class));
+            } catch (Exception e) {
+                log.warn("Failed to parse review_snapshot for submission {}, falling back to live fields", s.getId(), e);
+            }
+        }
+        return SubmissionSummaryDto.from(s, submissionMediaAssetRepository.countBySubmissionId(s.getId()));
     }
 
     /**
@@ -139,6 +155,11 @@ public class ValidationService {
         boolean edited = sessionEditDiff != null || sessionSeverity != null;
 
         submission.setStatus(SubmissionStatus.scheduled);
+        if (!submission.isFastTrack()) {
+            // Anchor for the Moderator reschedule cap (SubmissionService.reschedule) —
+            // captured once, here, never touched by a later reschedule itself.
+            submission.setOriginalScheduledAt(submission.getScheduledAt());
+        }
         submissionRepository.save(submission);
 
         if (!submission.isFastTrack()) {
@@ -266,7 +287,11 @@ public class ValidationService {
     /**
      * Requests revision: transitions to NEEDS_REVISION, releases slot and lock.
      * BR-VAL-02: remarks must be 10–1000 characters.
-     * A5: self-review is allowed but distinctly flagged in the audit log.
+     * A5: self-review is unconditionally blocked — {@code reviewLockService.assertCallerHoldsLock}
+     * above can never succeed for the submission's own contributor, since
+     * {@code ReviewLockService.acquire()} refuses to grant them a lock in the
+     * first place. {@code selfReview} is still computed for the audit row, but
+     * cannot be true in practice.
      */
     public void requestRevision(UUID submissionId, String remarks, JwtUserDetails caller) {
         validateRemarks(remarks);
@@ -277,6 +302,24 @@ public class ValidationService {
 
         String sessionEditDiff = combinedSessionEditDiff(submissionId);
         ReviewEditSeverity sessionSeverity = combinedSessionSeverity(submissionId);
+
+        // Freeze the reviewable display fields exactly as they stand right now —
+        // including any edit the moderator themselves just made via /edit before
+        // calling this — so the Review Queue keeps showing this state, not
+        // whatever the contributor's autosave changes it to next, until an
+        // actual resubmission overwrites this snapshot.
+        List<com.dasigconnect.backend.model.entity.MediaAsset> orderedAssets = submissionMediaAssetRepository
+                .findBySubmissionIdOrderByDisplayOrderAsc(submissionId)
+                .stream()
+                .map(com.dasigconnect.backend.model.entity.SubmissionMediaAsset::getMediaAsset)
+                .toList();
+        try {
+            submission.setReviewSnapshot(objectMapper.writeValueAsString(
+                    com.dasigconnect.backend.model.dto.submission.SubmissionReviewSnapshot
+                            .capture(submission, orderedAssets)));
+        } catch (Exception e) {
+            log.warn("Failed to serialize review_snapshot for submission {}", submissionId, e);
+        }
 
         submission.setStatus(SubmissionStatus.needs_revision);
         submission.setValidatorRemarks(remarks);
@@ -300,7 +343,8 @@ public class ValidationService {
     /**
      * Rejects a submission: transitions to REJECTED, releases slot and lock.
      * BR-VAL-03: valid reason code required; OTHER requires written notes.
-     * A5: self-review is allowed but distinctly flagged in the audit log.
+     * A5: self-review is unconditionally blocked — see {@link #requestRevision}'s
+     * javadoc; the same reasoning applies here.
      */
     public void reject(UUID submissionId, String reasonCode, String notes, JwtUserDetails caller) {
         validateRejectionCode(reasonCode, notes);
@@ -434,16 +478,30 @@ public class ValidationService {
      * The validation-log rows recorded since the most recent {@code lock_acquired}
      * — i.e. everything the current review session has done so far.
      */
+    private static final Set<ValidationAction> TERMINAL_REVIEW_ACTIONS =
+            Set.of(ValidationAction.approved, ValidationAction.needs_revision, ValidationAction.rejected);
+
+    /**
+     * Every log entry since this review cycle began — i.e. since the last
+     * terminal action (approve/revise/reject), or the start of history if this
+     * submission has never had one. Deliberately NOT scoped to the most recent
+     * {@code lock_acquired}: a Moderator who edits, releases or loses the lock
+     * (interrupted, TTL expiry), then later reacquires it to finish the review,
+     * must still have that earlier edit counted — otherwise `combinedSessionEditDiff`/
+     * `combinedSessionSeverity` silently drop it, the terminal action records
+     * `edited=false`, and the contributor never learns their submission was
+     * edited even though it was (bug fixed 2026-09-17).
+     */
     private List<ValidationLog> logsSinceLock(UUID submissionId) {
         List<ValidationLog> logs = validationLogRepository
                 .findBySubmissionIdOrderByCreatedAtAsc(submissionId);
-        int lastLockIndex = -1;
+        int lastTerminalIndex = -1;
         for (int i = 0; i < logs.size(); i++) {
-            if (logs.get(i).getAction() == ValidationAction.lock_acquired) {
-                lastLockIndex = i;
+            if (TERMINAL_REVIEW_ACTIONS.contains(logs.get(i).getAction())) {
+                lastTerminalIndex = i;
             }
         }
-        return logs.subList(lastLockIndex + 1, logs.size());
+        return logs.subList(lastTerminalIndex + 1, logs.size());
     }
 
     /**
@@ -527,7 +585,7 @@ public class ValidationService {
 
     /**
      * A10: aggregates the before/after diffs of every standalone {@code edited}
-     * action taken since the current review lock was acquired into one combined
+     * action taken this review cycle (see {@link #logsSinceLock}) into one combined
      * diff, so a terminal action (approve/revise/reject) records the full picture
      * of what the Moderator changed. Returns null when no edit happened this
      * session.

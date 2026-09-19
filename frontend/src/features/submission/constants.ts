@@ -32,6 +32,7 @@ export const statusLabels: Record<SubmissionStatus, string> = {
   pending: "Pending Approval",
   in_review: "Under Review",
   needs_revision: "Needs Revision",
+  missed_review: "Missed Review",
   scheduled: "Scheduled",
   publishing: "Publishing",
   publish_failed: "Publish Failed",

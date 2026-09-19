@@ -496,13 +496,16 @@ export function getReadinessChecklist(
     {
       title: "File requirements",
       target: "fileRequirements",
-      pass: form.files.length > 0 && filesWithinLimit && acceptedFormats,
-      idle: form.files.length === 0,
-      sub: form.files.length === 0
-        ? `${lookups.maxFileSizeMb} MB max; ${lookups.allowedFileTypes.join(", ") || "accepted media only"}`
-        : filesWithinLimit && acceptedFormats
-          ? "Size and format accepted"
-          : `${lookups.maxFileSizeMb} MB max; ${lookups.allowedFileTypes.join(", ") || "accepted media only"}`,
+      pass:
+        fileCount > 0 &&
+        (form.files.length === 0 || (filesWithinLimit && acceptedFormats)),
+      idle: fileCount === 0,
+      sub:
+        fileCount === 0
+          ? `${lookups.maxFileSizeMb} MB max; ${lookups.allowedFileTypes.join(", ") || "accepted media only"}`
+          : (form.files.length === 0 || (filesWithinLimit && acceptedFormats))
+            ? "Size and format accepted"
+            : `${lookups.maxFileSizeMb} MB max; ${lookups.allowedFileTypes.join(", ") || "accepted media only"}`,
     },
     {
       title: "Album assignment",

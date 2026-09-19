@@ -46,6 +46,11 @@ public class MetricsAggregatorService {
 
     private static final double COMPLETENESS_TARGET = 95.0;
     private static final double POSTS_PER_MONTH_TARGET = 4.0;
+    // UC-3.2's postcondition: "the +-5-minute publish accuracy target is met
+    // in >=95% of scheduled publications." The +-5-minute window itself is
+    // already baked into operationalHealth()'s on_time_count SQL; this is
+    // just the target this rate is measured against.
+    private static final double ON_TIME_PUBLICATION_TARGET = 95.0;
 
     private final AnalyticsRepository analyticsRepository;
     private final FacebookEngagementAnalyticsClient facebookInsightsClient;
@@ -126,6 +131,7 @@ public class MetricsAggregatorService {
             OperationalStats operational = analyticsRepository.operationalHealth(
                     period.start(), period.end(), Instant.now(), scope);
             double publishingSuccessRate = percent(operational.successCount(), operational.attemptCount());
+            double onTimePublicationRate = round(percent(operational.onTimeCount(), operational.successCount()));
             operationalHealth = new OperationalHealthDto(
                     operational.workflowCount(),
                     operational.deadlineRiskCount(),
@@ -136,7 +142,9 @@ public class MetricsAggregatorService {
                     operational.successCount(),
                     round(publishingSuccessRate),
                     operational.onTimeCount(),
-                    round(percent(operational.onTimeCount(), operational.successCount())),
+                    onTimePublicationRate,
+                    ON_TIME_PUBLICATION_TARGET,
+                    onTimePublicationRate >= ON_TIME_PUBLICATION_TARGET,
                     operational.adminActionCount());
             adminAnalytics = new AdminAnalyticsDto(
                     Math.max(0, operational.attemptCount() - operational.successCount()),
@@ -381,8 +389,22 @@ public class MetricsAggregatorService {
         return csv.toString();
     }
 
+    // Formula-trigger characters recognized by Excel/Sheets/LibreOffice when a
+    // cell's leading character (after parsing, regardless of CSV quoting) is
+    // one of these -- CSV/Formula Injection, CWE-1236. Export rows include
+    // free-text, user-controlled fields (submission event titles, contributor
+    // display names) with no sanitization at write time, so this must be
+    // neutralized at export time instead.
+    private static final String CSV_FORMULA_TRIGGER_CHARS = "=+-@\t\r";
+
     private String escapeCsv(String value) {
-        String escaped = value == null ? "" : value.replace("\"", "\"\"");
+        String raw = value == null ? "" : value;
+        if (!raw.isEmpty() && CSV_FORMULA_TRIGGER_CHARS.indexOf(raw.charAt(0)) >= 0) {
+            // A leading apostrophe forces spreadsheet apps to treat the cell as
+            // literal text instead of evaluating it as a formula.
+            raw = "'" + raw;
+        }
+        String escaped = raw.replace("\"", "\"\"");
         return "\"" + escaped + "\"";
     }
 

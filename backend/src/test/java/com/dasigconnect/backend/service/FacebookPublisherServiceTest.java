@@ -1,9 +1,13 @@
 package com.dasigconnect.backend.service;
 
 import com.dasigconnect.backend.model.entity.FacebookPageToken;
+import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.repository.FacebookPageTokenRepository;
 import com.dasigconnect.backend.repository.PublicationAttemptRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -31,12 +35,14 @@ class FacebookPublisherServiceTest {
     @Mock ApplicationEventPublisher eventPublisher;
     @Mock WatermarkApplicationService watermarkApplicationService;
     @Mock AuditLogService auditLogService;
+    @Mock SlotReservationService slotReservationService;
 
     private FacebookPublisherService build(String envPageAccessToken, String envPageId) {
         return new FacebookPublisherService(
                 envPageAccessToken, envPageId, "app-id", "app-secret", "v25.0",
                 tokenEncryptionService, pageTokenRepository, publicationAttemptRepository,
-                submissionRepository, eventPublisher, watermarkApplicationService, auditLogService);
+                submissionRepository, eventPublisher, watermarkApplicationService, auditLogService,
+                slotReservationService);
     }
 
     @Test
@@ -87,5 +93,43 @@ class FacebookPublisherServiceTest {
                 .thenReturn(java.util.Optional.of(new FacebookPageToken()));
 
         assertThat(build("", "").isConfigured()).isTrue();
+    }
+
+    @Test
+    void markPublished_releasesTheSlotReservation() {
+        // A locked SlotReservation serves no further purpose once the post is
+        // actually out -- leaving it locked forever is what let already-published
+        // submissions silently violate GR-H1's network-wide ±30-minute rule
+        // (found and fixed 2026-09-17, see V95 migration).
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = new Submission();
+        submission.setId(submissionId);
+        submission.setStatus(SubmissionStatus.publishing);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+
+        build("", "").markPublished(submission, "1234_5678");
+
+        verify(slotReservationService).release(submissionId);
+    }
+
+    @Test
+    void recordAttempt_withCleanupFailedPhotoIds_persistsThemSeparatelyFromStagedIds() {
+        // UC-3.2 A1: photoIdsStaged records every photo staged for the attempt,
+        // but an Administrator needs to know specifically which ones failed to
+        // delete during cleanup -- those, and only those, are what's actually
+        // left orphaned on the Facebook Page (fixed 2026-09-18, see V97 migration).
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = new Submission();
+        submission.setId(submissionId);
+        when(submissionRepository.getReferenceById(submissionId)).thenReturn(submission);
+
+        build("", "").recordAttempt(submission, 2, "failed", "boom",
+                "[\"111\",\"222\"]", "[\"222\"]");
+
+        var captor = org.mockito.ArgumentCaptor.forClass(
+                com.dasigconnect.backend.model.entity.PublicationAttempt.class);
+        verify(publicationAttemptRepository).save(captor.capture());
+        assertThat(captor.getValue().getPhotoIdsStaged()).isEqualTo("[\"111\",\"222\"]");
+        assertThat(captor.getValue().getPhotoIdsCleanupFailed()).isEqualTo("[\"222\"]");
     }
 }

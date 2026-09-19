@@ -25,7 +25,6 @@ import com.dasigconnect.backend.model.dto.media.MediaAlbumPathRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAlbumRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto;
-import com.dasigconnect.backend.model.dto.media.MediaAssetAddToDraftRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
@@ -34,8 +33,6 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlResponseDto;
-import com.dasigconnect.backend.model.dto.media.MediaAssetUseInNewPostRequestDto;
-import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.MediaAssetService;
 
@@ -105,24 +102,6 @@ public class MediaAssetController {
             @PathVariable UUID id,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(mediaAssetService.history(id, user)));
-    }
-
-    @PostMapping("/{id}/use-in-new-post")
-    @PreAuthorize("hasRole('CONTRIBUTOR')")
-    public ResponseEntity<ApiResponse<SubmissionResponseDto>> useInNewPost(
-            @PathVariable UUID id,
-            @Valid @RequestBody MediaAssetUseInNewPostRequestDto dto,
-            @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.useInNewPost(id, dto, user)));
-    }
-
-    @PostMapping("/{id}/add-to-draft")
-    @PreAuthorize("hasRole('CONTRIBUTOR')")
-    public ResponseEntity<ApiResponse<SubmissionResponseDto>> addToDraft(
-            @PathVariable UUID id,
-            @Valid @RequestBody MediaAssetAddToDraftRequestDto dto,
-            @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.addToDraft(id, dto, user)));
     }
 
     @PostMapping("/upload-url")

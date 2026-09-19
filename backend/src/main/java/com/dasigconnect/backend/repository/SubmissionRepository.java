@@ -60,24 +60,33 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("windowStart") java.time.Instant windowStart,
             @Param("windowEnd") java.time.Instant windowEnd);
 
-    // UC-2.4 approval queue — network-wide PENDING + IN_REVIEW. Fast-Track
-    // submissions (no scheduledAt) sort first as the urgent items UC-1.9
-    // expects; everything else follows by scheduledAt ASC, then by submittedAt
-    // as a stable tiebreaker among same-priority items (oldest first).
+    // UC-2.4 approval queue — network-wide PENDING + IN_REVIEW + NEEDS_REVISION.
+    // Fast-Track submissions (no scheduledAt) sort first as the urgent items
+    // UC-1.9 expects; everything else follows by scheduledAt ASC, then by
+    // submittedAt as a stable tiebreaker among same-priority items (oldest
+    // first). NEEDS_REVISION rows sort after every actionable row regardless
+    // of schedule/fast-track — they are back in the contributor's hands and
+    // not something a moderator can act on right now, just something they
+    // should still be able to see. The service layer renders these rows from
+    // Submission.reviewSnapshot (frozen at the last submit()/resubmit()), not
+    // the live columns, since the contributor may be actively editing/autosaving them.
     @Query("""
         SELECT s FROM Submission s
         WHERE s.status IN (
             com.dasigconnect.backend.model.entity.SubmissionStatus.pending,
-            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review
+            com.dasigconnect.backend.model.entity.SubmissionStatus.in_review,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.needs_revision
         )
-        ORDER BY s.fastTrack DESC, s.scheduledAt ASC NULLS LAST, s.submittedAt ASC
+        ORDER BY
+            CASE WHEN s.status = com.dasigconnect.backend.model.entity.SubmissionStatus.needs_revision THEN 1 ELSE 0 END ASC,
+            s.fastTrack DESC, s.scheduledAt ASC NULLS LAST, s.submittedAt ASC
         """)
     List<Submission> findValidationQueue();
 
     // UC-2.4 approval history — network-wide, all post-review statuses, most recently updated first.
-    // NEEDS_REVISION is intentionally excluded: the submission is back in the contributor's hands
-    // (auto-saving, not yet resubmitted), so it must not surface in either moderator tab. It
-    // re-enters the active queue as PENDING once resubmitted.
+    // NEEDS_REVISION is intentionally excluded here: it now lives in findValidationQueue() above
+    // (rendered from its frozen snapshot) so it stays visible in the active queue rather than only
+    // the "All" history tab. It re-enters as a fully live PENDING row once resubmitted.
     @Query("""
         SELECT s FROM Submission s
         WHERE s.status IN (
@@ -113,17 +122,69 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
             @Param("from") Instant from,
             @Param("to") Instant to);
 
+    /**
+     * Also bumps updatedAt -- a bulk JPQL UPDATE bypasses the entity's
+     * @PreUpdate lifecycle callback, so without this the column would stay
+     * at whatever it was before the claim (e.g. approval time), making it
+     * useless for StaleSubmissionDetectorJob to detect a submission stuck in
+     * `publishing` after a crash. This matters most for Fast-Track
+     * submissions, which have no scheduledAt to check a cutoff against.
+     */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
         UPDATE Submission s
-        SET s.status = :claimedStatus
+        SET s.status = :claimedStatus,
+            s.updatedAt = :now
         WHERE s.id = :submissionId
           AND s.status = :expectedStatus
         """)
     int claimForPublishing(
             @Param("submissionId") UUID submissionId,
             @Param("expectedStatus") SubmissionStatus expectedStatus,
+            @Param("now") Instant now,
             @Param("claimedStatus") SubmissionStatus claimedStatus);
+
+    /**
+     * UC-3.1: atomic reschedule for a Moderator, capped. {@code Submission} has
+     * no {@code @Version}/optimistic locking, so a plain read-check-write on
+     * {@code moderatorRescheduleCount} (as {@code SubmissionService.reschedule}
+     * used to do) lets two concurrent requests for the same submission both pass
+     * the cap check before either writes. Same idiom as
+     * {@link #claimForPublishing} — the {@code WHERE} clause is the guard, and
+     * the affected-row count tells the caller whether it actually won the claim.
+     * Returns 0 (not 1) when the count was already at {@code maxCount} or the
+     * status changed out from under the caller; either way, the caller should
+     * treat that as "someone else changed this first," not silently proceed.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+        UPDATE Submission s
+        SET s.scheduledAt = :newSlot,
+            s.moderatorRescheduleCount = s.moderatorRescheduleCount + 1
+        WHERE s.id = :submissionId
+          AND s.status = com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled
+          AND s.moderatorRescheduleCount < :maxCount
+        """)
+    int claimModeratorReschedule(
+            @Param("submissionId") UUID submissionId,
+            @Param("newSlot") Instant newSlot,
+            @Param("maxCount") int maxCount);
+
+    /**
+     * UC-3.1: atomic reschedule for an Admin — no cap, but still guarded on
+     * {@code status = scheduled} so a concurrent status change (e.g. the post
+     * started publishing) is caught rather than silently overwritten.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+        UPDATE Submission s
+        SET s.scheduledAt = :newSlot
+        WHERE s.id = :submissionId
+          AND s.status = com.dasigconnect.backend.model.entity.SubmissionStatus.scheduled
+        """)
+    int claimAdminReschedule(
+            @Param("submissionId") UUID submissionId,
+            @Param("newSlot") Instant newSlot);
 
     /** StaleSubmissionDetectorJob (GR-T9): SCHEDULED / DIRECT_POST_SCHEDULED submissions whose slot has passed. */
     @Query("""
@@ -138,6 +199,27 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         ORDER BY s.scheduledAt ASC
         """)
     List<Submission> findMissedScheduledSubmissions(@Param("cutoff") Instant cutoff);
+
+    /**
+     * StaleSubmissionDetectorJob (GR-T9, added 2026-09-18): a Fast-Track
+     * submission stuck in `publishing`/`direct_post_publishing` after a crash
+     * mid-publish (FastTrackPublishingListener claimed it, then the app died
+     * before markPublished/markFailed ran) has no scheduledAt to check
+     * against a cutoff -- findMissedScheduledSubmissions above can never
+     * match it. updatedAt is bumped by claimForPublishing's UPDATE at the
+     * moment of the claim, so it's used here instead.
+     */
+    @Query("""
+        SELECT s FROM Submission s
+        WHERE s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.publishing,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_publishing
+        )
+        AND s.scheduledAt IS NULL
+        AND s.updatedAt < :cutoff
+        ORDER BY s.updatedAt ASC
+        """)
+    List<Submission> findStuckFastTrackPublishing(@Param("cutoff") Instant cutoff);
 
     /**
      * StaleSubmissionDetectorJob (GR-T9 / UC-2.4 A6): PENDING / IN_REVIEW submissions

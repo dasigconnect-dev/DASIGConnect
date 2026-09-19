@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.dasigconnect.backend.event.WatermarkApplicationFailedEvent;
 import com.dasigconnect.backend.model.entity.Institution;
 import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaFileType;
@@ -29,8 +30,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class WatermarkApplicationServiceTest {
@@ -44,9 +47,16 @@ class WatermarkApplicationServiceTest {
     @Mock
     private MediaStorageService storageService;
 
+    @Mock
+    private AuditLogService auditLogService;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private WatermarkApplicationService service;
     private HttpServer imageServer;
     private String imageUrl;
+    private String corruptImageUrl;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -54,7 +64,9 @@ class WatermarkApplicationServiceTest {
                 configurationRepository,
                 institutionRepository,
                 storageService,
-                new ObjectMapper());
+                new ObjectMapper(),
+                auditLogService,
+                eventPublisher);
 
         imageServer = HttpServer.create(new InetSocketAddress(0), 0);
         byte[] imageBytes = sampleImage();
@@ -64,8 +76,16 @@ class WatermarkApplicationServiceTest {
             exchange.getResponseBody().write(imageBytes);
             exchange.close();
         });
+        byte[] corruptBytes = "not actually an image".getBytes();
+        imageServer.createContext("/corrupt.jpg", exchange -> {
+            exchange.getResponseHeaders().add("Content-Type", "image/jpeg");
+            exchange.sendResponseHeaders(200, corruptBytes.length);
+            exchange.getResponseBody().write(corruptBytes);
+            exchange.close();
+        });
         imageServer.start();
         imageUrl = "http://localhost:" + imageServer.getAddress().getPort() + "/image.jpg";
+        corruptImageUrl = "http://localhost:" + imageServer.getAddress().getPort() + "/corrupt.jpg";
     }
 
     @AfterEach
@@ -144,6 +164,34 @@ class WatermarkApplicationServiceTest {
     }
 
     @Test
+    void resolvePublishUrl_undecodableImage_fallsBackAndRecordsFailure() {
+        // A4: watermarking failures are non-blocking (the post still publishes
+        // with the original image) but must not go unnoticed — an audit entry
+        // is recorded and an admin notification event is fired.
+        Submission submission = submission(UUID.randomUUID());
+        SubmissionMediaAsset link = mediaLink(corruptImageUrl, false);
+        WatermarkConfiguration config = new WatermarkConfiguration();
+        config.setEnabled(true);
+        config.setElementsJson("""
+                [{"id":"txt","type":"text","text":"@DASIG","xPercent":10,"yPercent":70,
+                "widthPercent":60,"heightPercent":20,"opacity":0.9,"textColor":"#FFFFFF","fontSizePercent":3.2}]
+                """);
+        when(configurationRepository.findByInstitutionIsNull()).thenReturn(Optional.of(config));
+
+        String result = service.resolvePublishUrl(submission, link);
+
+        assertThat(result).isEqualTo(corruptImageUrl);
+        verify(storageService, never()).uploadPublicObject(any(), any(), any());
+        verify(auditLogService).recordSystemAction(eq("PUBLISH_WATERMARK_FAILED"), eq(submission.getId()), any());
+
+        ArgumentCaptor<WatermarkApplicationFailedEvent> eventCaptor =
+                ArgumentCaptor.forClass(WatermarkApplicationFailedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().submission()).isEqualTo(submission);
+        assertThat(eventCaptor.getValue().mediaAssetId()).isEqualTo(link.getMediaAsset().getId());
+    }
+
+    @Test
     void resolvePublishUrl_usesOriginalImageWhenAssetSkipsWatermark() {
         Submission submission = submission(UUID.randomUUID());
         SubmissionMediaAsset link = mediaLink(imageUrl, true);
@@ -151,7 +199,7 @@ class WatermarkApplicationServiceTest {
         String result = service.resolvePublishUrl(submission, link);
 
         assertThat(result).isEqualTo(imageUrl);
-        verify(configurationRepository, never()).findByInstitutionId(any());
+        verify(configurationRepository, never()).findByInstitutionIsNull();
         verify(storageService, never()).uploadPublicObject(any(), any(), any());
     }
 

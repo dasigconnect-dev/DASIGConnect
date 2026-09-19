@@ -30,17 +30,13 @@ export interface WatermarkElement {
 
 export interface WatermarkConfiguration {
   id: string | null;
-  institutionId: string | null;
-  institutionName: string;
   enabled: boolean;
-  isOverride: boolean;
   elements: WatermarkElement[];
   updatedAt: string | null;
   updatedBy: string | null;
 }
 
 export interface WatermarkConfigurationRequest {
-  institutionId?: string | null;
   enabled: boolean;
   elements: WatermarkElement[];
 }

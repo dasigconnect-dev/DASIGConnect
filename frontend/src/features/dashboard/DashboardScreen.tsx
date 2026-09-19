@@ -8,6 +8,9 @@ import {
   useDashboardData,
   type DashboardStats,
 } from "./hooks/useDashboardData";
+import SpotlightTour from "../onboarding/components/SpotlightTour";
+import { useScreenTour } from "../onboarding/hooks/useScreenTour";
+import { dashboardTourSteps } from "../onboarding/tours/dashboardTour";
 
 interface DashboardScreenProps {
   user: User;
@@ -48,6 +51,16 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
   const institutions = dashboardData.institutions;
   const dashboardStats = dashboardData.stats ?? emptyDashboardStats;
 
+  const {
+    startTour: startDashboardTour,
+    tourProps: dashboardTourProps,
+  } = useScreenTour({
+    screenId: "dashboard",
+    steps: dashboardTourSteps,
+    autoStartDelayMs: 700,
+    canStart: !dashboardData.resources.institutions.loading,
+  });
+
 
   const actionRoutes: Record<string, string> = {
     "Submit Event Content": "/submissions/new",
@@ -81,13 +94,26 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
   return (
     <div id="screen-dashboard" style={{ background: "var(--d-bg)" }}>
       <div className="dash-body">
-        <div className="dash-page-header">
-          <div className="dash-greeting" id="dash-greeting">
-            {greeting(user)}
+        <div className="dash-page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px" }}>
+          <div>
+            <div className="dash-greeting" id="dash-greeting">
+              {greeting(user)}
+            </div>
+            <div className="dash-subline" id="dash-subline">
+              {subline(user)}
+            </div>
           </div>
-          <div className="dash-subline" id="dash-subline">
-            {subline(user)}
-          </div>
+          <button
+            type="button"
+            className="sub-btn-ghost"
+            onClick={() => startDashboardTour(true)}
+            title="Show interactive dashboard guide"
+            aria-label="Show interactive dashboard guide"
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+          >
+            <i className="ti ti-help-circle" style={{ fontSize: 14 }} />
+            <span>Guide</span>
+          </button>
         </div>
 
         <div className="first-login-notice" id="first-login-notice">
@@ -149,24 +175,13 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
           <div className="section-title" style={{ margin: 0 }}>
             <i className="ti ti-history"></i> Recent Activity
           </div>
-          {user?.role === "contributor" && (dashboardStats.submissions?.length ?? 0) > 0 && (
+          {(activityRows.length > 0 || (dashboardStats.submissions?.length ?? 0) > 0) && (
             <button
               type="button"
               className="section-link-btn"
               onClick={() => navigate("/dashboard/recent-activity")}
             >
-              View All <i className="ti ti-arrow-right" style={{ fontSize: 13 }}></i>
-            </button>
-          )}
-          {isNetworkView && activityRows.length > 0 && (
-            <button
-              type="button"
-              className="section-link-btn"
-              onClick={() =>
-                navigate(user?.role === "admin" ? "/analytics" : "/validation/queue")
-              }
-            >
-              {user?.role === "admin" ? "Open Analytics" : "Open Review Queue"}{" "}
+              Visit All Recent Activity{" "}
               <i className="ti ti-arrow-right" style={{ fontSize: 13 }}></i>
             </button>
           )}
@@ -287,6 +302,7 @@ export default function DashboardScreen({ user }: DashboardScreenProps) {
           </table>
         </div>
 
+        <SpotlightTour {...dashboardTourProps} />
       </div>
     </div>
   );

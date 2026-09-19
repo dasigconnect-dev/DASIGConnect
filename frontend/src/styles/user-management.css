@@ -165,9 +165,17 @@
   flex-shrink: 0;
 }
 
+.alert-info > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .alert-info .btn-primary {
   margin-left: auto;
-  flex-shrink: 0;
+  width: auto;
+  min-width: 180px;
+  flex: 0 0 auto;
+  justify-content: center;
 }
 
 /* ---- Tab navigation ---- */

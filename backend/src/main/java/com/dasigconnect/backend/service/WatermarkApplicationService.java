@@ -24,10 +24,10 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -35,7 +35,10 @@ import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+
+import com.dasigconnect.backend.event.WatermarkApplicationFailedEvent;
 
 @Service
 public class WatermarkApplicationService {
@@ -53,17 +56,23 @@ public class WatermarkApplicationService {
     private final InstitutionRepository institutionRepository;
     private final MediaStorageService storageService;
     private final ObjectMapper objectMapper;
+    private final AuditLogService auditLogService;
+    private final ApplicationEventPublisher eventPublisher;
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
     public WatermarkApplicationService(
             WatermarkConfigurationRepository configurationRepository,
             InstitutionRepository institutionRepository,
             MediaStorageService storageService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            AuditLogService auditLogService,
+            ApplicationEventPublisher eventPublisher) {
         this.configurationRepository = configurationRepository;
         this.institutionRepository = institutionRepository;
         this.storageService = storageService;
         this.objectMapper = objectMapper;
+        this.auditLogService = auditLogService;
+        this.eventPublisher = eventPublisher;
     }
 
     public String resolvePublishUrl(Submission submission, SubmissionMediaAsset link) {
@@ -72,7 +81,7 @@ public class WatermarkApplicationService {
             return asset.getStorageUrl();
         }
 
-        WatermarkConfiguration config = resolveConfiguration(submission).orElseGet(this::createDefaultFallbackConfig);
+        WatermarkConfiguration config = resolveConfiguration().orElseGet(this::createDefaultFallbackConfig);
         if (config == null || !config.isEnabled()) {
             return asset.getStorageUrl();
         }
@@ -86,7 +95,9 @@ public class WatermarkApplicationService {
             byte[] originalBytes = download(asset.getStorageUrl());
             BufferedImage original = ImageIO.read(new ByteArrayInputStream(originalBytes));
             if (original == null) {
-                log.warn("Could not read image for watermarking; publishing original asset {}.", asset.getId());
+                String detail = "Could not decode the image for watermarking (unreadable/unsupported format).";
+                log.warn("{} Publishing original asset {}.", detail, asset.getId());
+                recordWatermarkFailure(submission, asset.getId(), detail);
                 return asset.getStorageUrl();
             }
 
@@ -114,12 +125,32 @@ public class WatermarkApplicationService {
         } catch (Exception ex) {
             log.warn("Watermarking failed for asset {}; publishing original image. Cause: {}",
                     asset.getId(), ex.getMessage(), ex);
+            recordWatermarkFailure(submission, asset.getId(),
+                    ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName());
             return asset.getStorageUrl();
         }
     }
 
-    private Optional<WatermarkConfiguration> resolveConfiguration(Submission submission) {
+    private Optional<WatermarkConfiguration> resolveConfiguration() {
         return configurationRepository.findByInstitutionIsNull();
+    }
+
+    /**
+     * UC-2.5 A4: watermarking is intentionally non-blocking — the post still
+     * publishes with the unwatermarked original — but that must not mean the
+     * failure goes unnoticed. Records it to the immutable audit log and
+     * notifies Admins, same as any other publish-time failure in this
+     * codebase (e.g. FacebookPublisherService's PUBLISH_FAILED).
+     */
+    private void recordWatermarkFailure(Submission submission, UUID mediaAssetId, String detail) {
+        try {
+            auditLogService.recordSystemAction("PUBLISH_WATERMARK_FAILED", submission.getId(), Map.of(
+                    "mediaAssetId", mediaAssetId.toString(),
+                    "error", detail));
+        } catch (Exception ignored) {
+            // Audit logging must never block or fail the publish path.
+        }
+        eventPublisher.publishEvent(new WatermarkApplicationFailedEvent(submission, mediaAssetId, detail));
     }
 
     private WatermarkConfiguration createDefaultFallbackConfig() {

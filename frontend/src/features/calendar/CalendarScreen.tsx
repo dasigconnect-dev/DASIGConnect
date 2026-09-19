@@ -3,7 +3,11 @@ import type FullCalendar from "@fullcalendar/react";
 import type { DatesSetArg } from "@fullcalendar/core";
 import { createPortal } from "react-dom";
 import type { CalendarEvent } from "../../api/calendarApi";
-import { rescheduleSubmission } from "../../api/calendarApi";
+import {
+  rescheduleSubmission,
+  MODERATOR_MAX_RESCHEDULES,
+  MODERATOR_RESCHEDULE_WINDOW_MS,
+} from "../../api/calendarApi";
 import type { User } from "../../types/auth.types";
 import { useCalendarEvents } from "../../hooks/useCalendarEvents";
 import { useQueryClient } from "@tanstack/react-query";
@@ -116,6 +120,38 @@ export default function CalendarScreen({ user }: CalendarScreenProps) {
       );
       return;
     }
+
+    // UC-3.1: mirrors the backend's Moderator reschedule cap so the drag fails
+    // fast with a clear reason instead of round-tripping a 403 through the
+    // confirm modal. Admin is unrestricted -- this block only applies to
+    // Moderator. The 1-day window anchors to originalScheduledAt (the slot as
+    // of approval), not wherever the post most recently landed.
+    if (user.role === "moderator") {
+      const revertWithMessage = (message: string) => {
+        info.revert();
+        setTimeout(() => {
+          document.querySelectorAll(".fc-event-mirror").forEach((el) => el.remove());
+        }, 0);
+        toast.error(message);
+      };
+
+      if (info.event.moderatorRescheduleCount >= MODERATOR_MAX_RESCHEDULES) {
+        revertWithMessage(
+          `This post has already been rescheduled ${MODERATOR_MAX_RESCHEDULES} times by a Moderator. Ask an Administrator to reschedule it further.`,
+        );
+        return;
+      }
+      const anchor = info.event.originalScheduledAt
+        ? new Date(info.event.originalScheduledAt)
+        : originalDate;
+      if (Math.abs(info.newStart.getTime() - anchor.getTime()) > MODERATOR_RESCHEDULE_WINDOW_MS) {
+        revertWithMessage(
+          "Moderators may only reschedule within 1 day of the originally approved time. Ask an Administrator for a larger change.",
+        );
+        return;
+      }
+    }
+
     setPendingReschedule(info);
   }
 

@@ -69,7 +69,8 @@ class SystemHealthServiceTest {
         when(jdbcTemplate.queryForMap(anyString(), any()))
                 .thenReturn(Map.of("value", 0, "sample_size", 0))
                 .thenReturn(Map.of("approvals", 0, "edited", 0))
-                .thenReturn(Map.of("started", 0, "completed", 0));
+                .thenReturn(Map.of("started", 0, "completed", 0))
+                .thenReturn(Map.of("missed", 0, "reviewed_in_time", 0));
         when(jdbcTemplate.queryForObject(anyString(), eq(Long.class), any()))
                 .thenReturn(0L);
         when(publishSuccessRateRepository.networkWide(any(), any()))
@@ -77,7 +78,7 @@ class SystemHealthServiceTest {
 
         List<OperationalMetricDto> metrics = service.operationalMetrics();
 
-        assertThat(metrics).hasSize(5);
+        assertThat(metrics).hasSize(6);
         assertThat(metrics)
                 .filteredOn(metric -> !"live_event_fast_track_volume".equals(metric.key()))
                 .allSatisfy(metric -> {
@@ -92,7 +93,8 @@ class SystemHealthServiceTest {
                         "edit_approve_rate",
                         "manual_fallback_resolution_rate",
                         "publish_success_rate",
-                        "live_event_fast_track_volume");
+                        "live_event_fast_track_volume",
+                        "missed_review_rate");
     }
 
     @Test
@@ -100,7 +102,8 @@ class SystemHealthServiceTest {
         when(jdbcTemplate.queryForMap(anyString(), any()))
                 .thenThrow(new IllegalStateException("validation_logs is missing"))
                 .thenReturn(Map.of("approvals", 4, "edited", 1))
-                .thenReturn(Map.of("started", 2, "completed", 2));
+                .thenReturn(Map.of("started", 2, "completed", 2))
+                .thenReturn(Map.of("missed", 0, "reviewed_in_time", 5));
         when(jdbcTemplate.queryForObject(anyString(), eq(Long.class), any()))
                 .thenReturn(1L);
         when(publishSuccessRateRepository.networkWide(any(), any()))
@@ -113,6 +116,28 @@ class SystemHealthServiceTest {
         assertThat(metrics.get(0).detail()).isEqualTo("Metric could not be retrieved.");
         assertThat(metrics.subList(1, metrics.size()))
                 .allSatisfy(metric -> assertThat(metric.status()).isEqualTo(HealthStatus.HEALTHY));
+    }
+
+    @Test
+    void missedReviewRate_computesShareOfReviewOutcomesThatWereMissed() {
+        when(jdbcTemplate.queryForMap(anyString(), any()))
+                .thenReturn(Map.of("value", 0, "sample_size", 0))
+                .thenReturn(Map.of("approvals", 0, "edited", 0))
+                .thenReturn(Map.of("started", 0, "completed", 0))
+                .thenReturn(Map.of("missed", 2, "reviewed_in_time", 18));
+        when(jdbcTemplate.queryForObject(anyString(), eq(Long.class), any()))
+                .thenReturn(0L);
+        when(publishSuccessRateRepository.networkWide(any(), any()))
+                .thenReturn(new PublishSuccessRateRepository.Stats(0, 0));
+
+        OperationalMetricDto metric = service.operationalMetrics().stream()
+                .filter(m -> "missed_review_rate".equals(m.key()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(metric.value()).isEqualTo(10.0); // 2 of 20 review outcomes missed
+        assertThat(metric.sampleSize()).isEqualTo(20);
+        assertThat(metric.status()).isEqualTo(HealthStatus.HEALTHY); // exactly at the 10% line, not over it
     }
 
     @Test
@@ -143,10 +168,11 @@ class SystemHealthServiceTest {
 
         List<BackgroundJobHealthDto> jobs = service.backgroundJobs();
 
-        assertThat(jobs).hasSize(14);
+        assertThat(jobs).hasSize(15);
         assertThat(jobs).extracting(BackgroundJobHealthDto::jobName)
                 .contains("Review Lock Cleanup", "Validation Deadline Notification",
-                        "Embedding Failure Digest", "Empty Schedule Warning", "Job Run Retention");
+                        "Embedding Failure Digest", "Empty Schedule Warning", "Job Run Retention",
+                        "Generated Watermark Purge");
         assertThat(jobs).allSatisfy(j
                 -> assertThat(j.status()).isIn(HealthStatus.UNAVAILABLE, HealthStatus.SCHEDULED));
     }

@@ -10,12 +10,11 @@ interface Props {
   state: AiCaptionState;
   hasImageAssets: boolean;
   existingCaption: string;
+  isUnsaved?: boolean;
   onClose: () => void;
-  onSubmit: (prompt: string, tone: CaptionTone) => void;
+  onSubmit: (prompt: string, tone: CaptionTone) => Promise<any> | any;
+  onApprove: (caption: string, tone: CaptionTone) => void;
 }
-
-const DEFAULT_PROMPT_PLACEHOLDER =
-  "Example: Make it warm and concise, focus on student participation, include DOST Region 7.";
 
 const TONE_OPTIONS: Array<{
   tone: CaptionTone;
@@ -48,20 +47,20 @@ export default function AiCaptionPromptDialog({
   state,
   hasImageAssets,
   existingCaption,
+  isUnsaved = false,
   onClose,
   onSubmit,
+  onApprove,
 }: Props) {
-  const [selectedTone, setSelectedTone] = useState<CaptionTone>("professional");
+  const [selectedTone, setSelectedTone] = useState<CaptionTone | null>(null);
   const [prompt, setPrompt] = useState("");
+  const [captionResult, setCaptionResult] = useState("");
+  const [copied, setCopied] = useState(false);
   const titleId = useId();
-  const promptId = useId();
-  const errorId = useId();
 
   const isLoading = state === "loading";
   const promptLength = prompt.length;
   const isOverLimit = promptLength > AI_CAPTION_PROMPT_MAX_LENGTH;
-  const hasContext =
-    hasImageAssets || existingCaption.trim().length > 0 || prompt.trim().length > 0;
 
   const contextLabel = useMemo(() => {
     if (hasImageAssets && existingCaption.trim().length > 0) {
@@ -79,7 +78,9 @@ export default function AiCaptionPromptDialog({
   useEffect(() => {
     if (!open) {
       setPrompt("");
-      setSelectedTone("professional");
+      setCaptionResult("");
+      setSelectedTone(null);
+      setCopied(false);
       return;
     }
 
@@ -99,6 +100,35 @@ export default function AiCaptionPromptDialog({
     };
   }, [isLoading, onClose, open]);
 
+  const handleGenerate = async (instructionPrompt: string) => {
+    if (isOverLimit || isLoading) return;
+    const toneToUse: CaptionTone = selectedTone || "professional";
+    const res = await onSubmit(instructionPrompt.trim(), toneToUse);
+    if (res && typeof res === "object" && "caption" in res && typeof res.caption === "string") {
+      setCaptionResult(res.caption);
+      setPrompt("");
+    } else if (typeof res === "string") {
+      setCaptionResult(res);
+      setPrompt("");
+    }
+  };
+
+  const handleCopyCaption = async () => {
+    if (!captionResult) return;
+    try {
+      await navigator.clipboard.writeText(captionResult);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback if clipboard API unavailable
+    }
+  };
+
+  const handleApprove = () => {
+    if (!captionResult.trim() || isLoading) return;
+    onApprove(captionResult.trim(), selectedTone || "professional");
+  };
+
   if (!open) return null;
 
   return createPortal(
@@ -114,11 +144,10 @@ export default function AiCaptionPromptDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        aria-describedby={isOverLimit ? errorId : undefined}
       >
         <div className="ai-prompt-head">
           <div>
-            <span className="ai-prompt-kicker">AI Caption</span>
+            <span className="ai-prompt-kicker">AI Caption Assistant</span>
             <h2 id={titleId}>Suggest Caption</h2>
           </div>
           <button
@@ -134,54 +163,138 @@ export default function AiCaptionPromptDialog({
 
         <p className="ai-prompt-context">{contextLabel}</p>
 
-        <div className="ai-prompt-tone-group" role="radiogroup" aria-label="Caption variant">
-          {TONE_OPTIONS.map((option) => (
-            <button
-              key={option.tone}
-              type="button"
-              className={`ai-prompt-tone-option${selectedTone === option.tone ? " active" : ""}`}
-              role="radio"
-              aria-checked={selectedTone === option.tone}
-              onClick={() => setSelectedTone(option.tone)}
-              disabled={isLoading}
-            >
-              <i className={`ti ${option.icon}`} aria-hidden />
-              <span>
-                <strong>{option.label}</strong>
-                <small>{option.description}</small>
+        {isUnsaved && !captionResult && (
+          <div className="ai-prompt-save-notice" role="note">
+            <i className="ti ti-info-circle" aria-hidden="true" />
+            <div>
+              <strong>Behind the scenes:</strong> Generating this caption will automatically save your draft and upload your event photos first so the vision AI model can inspect the image details and event context.
+            </div>
+          </div>
+        )}
+
+        {/* Tone Selector - Not auto-selected */}
+        <div className="ai-prompt-tone-group" role="radiogroup" aria-label="Caption tone">
+          {TONE_OPTIONS.map((option) => {
+            const isSelected = selectedTone === option.tone;
+            return (
+              <button
+                key={option.tone}
+                type="button"
+                className={`ai-prompt-tone-option${isSelected ? " active" : ""}`}
+                role="radio"
+                aria-checked={isSelected}
+                onClick={() => setSelectedTone((curr) => (curr === option.tone ? null : option.tone))}
+                disabled={isLoading}
+              >
+                <i className={`ti ${option.icon}`} aria-hidden />
+                <span>
+                  <strong>{option.label}</strong>
+                  <small>{option.description}</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Auto-generated Caption Box - Not clickable or editable */}
+        <div className="ai-caption-result-container">
+          <div className="ai-caption-result-header">
+            <span className="ai-caption-result-label">
+              <i className="ti ti-sparkles" aria-hidden="true" />
+              <span>Auto-generated Caption</span>
+            </span>
+            {captionResult && (
+              <div className="ai-caption-result-meta-tags">
+                {selectedTone && <span className="ai-caption-tone-pill">{selectedTone}</span>}
+                <button
+                  type="button"
+                  className="ai-caption-copy-btn"
+                  onClick={handleCopyCaption}
+                  title="Copy caption to clipboard"
+                >
+                  <i className={copied ? "ti ti-check" : "ti ti-copy"} aria-hidden="true" />
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="ai-caption-result-box-wrapper">
+            {isLoading && (
+              <div className="ai-caption-generating-overlay">
+                <span className="ai-caption-spinner-lg" aria-hidden="true" />
+                <p>AI is generating your caption...</p>
+              </div>
+            )}
+            <div className="ai-caption-result-display" role="region" aria-label="Generated caption preview">
+              {captionResult ? (
+                <div className="ai-caption-result-text">{captionResult}</div>
+              ) : (
+                <div className="ai-caption-result-placeholder">
+                  Your auto-generated caption will appear here once you send a prompt below...
+                </div>
+              )}
+            </div>
+            <div className="ai-caption-result-footer">
+              <span className="ai-caption-result-hint">
+                {captionResult
+                  ? "Prompt AI in the chat box below to refine, or click Approve Caption."
+                  : "Optionally pick a tone above, then type instructions in the chat box below."}
               </span>
-            </button>
-          ))}
+              <span className="ai-caption-result-count">
+                {captionResult.length} / 3000
+              </span>
+            </div>
+          </div>
         </div>
 
-        <label className="ai-prompt-label" htmlFor={promptId}>
-          Prompt instructions <span>optional</span>
-        </label>
-        <textarea
-          id={promptId}
-          className={`ai-prompt-input${isOverLimit ? " ai-prompt-input--error" : ""}`}
-          value={prompt}
-          maxLength={AI_CAPTION_PROMPT_MAX_LENGTH + 40}
-          onChange={(event) => setPrompt(event.target.value)}
-          placeholder={DEFAULT_PROMPT_PLACEHOLDER}
-          rows={5}
-          autoFocus
-        />
-        <div className="ai-prompt-meta">
-          <span id={errorId} className={isOverLimit ? "ai-prompt-error" : ""}>
-            {isOverLimit
-              ? `Keep instructions within ${AI_CAPTION_PROMPT_MAX_LENGTH} characters.`
-              : hasContext
-                ? "Leave blank for a default caption in the selected variant."
-                : "No media is required; text-only suggestions are supported."}
-          </span>
-          <span
-            className={isOverLimit ? "ai-prompt-count ai-prompt-count--error" : "ai-prompt-count"}
+        {/* Oval-shaped prompt chat bar */}
+        <div className="ai-prompt-chat-section">
+          <form
+            className="ai-prompt-chat-bar"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleGenerate(prompt);
+            }}
           >
-            {prompt.length} / {AI_CAPTION_PROMPT_MAX_LENGTH}
-          </span>
+            <i className="ti ti-message-circle-sparkle ai-prompt-chat-icon" aria-hidden="true" />
+            <input
+              type="text"
+              className="ai-prompt-chat-input"
+              value={prompt}
+              maxLength={AI_CAPTION_PROMPT_MAX_LENGTH}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder={
+                captionResult
+                  ? "Prompt again to refine (e.g. make it punchy, add tags, shorter)..."
+                  : "Enter instructions (e.g. focus on youth participation) or leave blank..."
+              }
+              disabled={isLoading}
+            />
+            <button
+              type="submit"
+              className="ai-prompt-chat-send-btn"
+              disabled={isLoading || isOverLimit}
+              title={captionResult ? "Prompt again" : "Generate caption"}
+            >
+              {isLoading ? (
+                <span className="ai-caption-spinner" aria-hidden="true" />
+              ) : captionResult ? (
+                <>
+                  <i className="ti ti-refresh" aria-hidden="true" />
+                  <span>Prompt Again</span>
+                </>
+              ) : (
+                <>
+                  <i className="ti ti-sparkles" aria-hidden="true" />
+                  <span>Generate</span>
+                </>
+              )}
+            </button>
+          </form>
         </div>
 
+        {/* Modal Actions */}
         <div className="ai-prompt-actions">
           <button
             type="button"
@@ -191,26 +304,16 @@ export default function AiCaptionPromptDialog({
           >
             Cancel
           </button>
+
           <button
             type="button"
-            className="ai-prompt-primary"
-            onClick={() => {
-              if (isOverLimit || isLoading) return;
-              onSubmit(prompt.trim(), selectedTone);
-            }}
-            disabled={isOverLimit || isLoading}
+            className="ai-prompt-primary ai-prompt-approve-btn"
+            onClick={handleApprove}
+            disabled={isLoading || !captionResult.trim()}
+            title={!captionResult.trim() ? "Generate a caption first using the chat bar above" : "Approve and apply this caption"}
           >
-            {isLoading ? (
-              <>
-                <span className="ai-caption-spinner" aria-hidden />
-                Generating...
-              </>
-            ) : (
-              <>
-                <i className="ti ti-sparkles" aria-hidden />
-                Generate
-              </>
-            )}
+            <i className="ti ti-circle-check" aria-hidden="true" />
+            Approve Caption
           </button>
         </div>
       </section>

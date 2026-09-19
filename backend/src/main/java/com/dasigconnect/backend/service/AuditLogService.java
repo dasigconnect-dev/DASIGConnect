@@ -349,7 +349,7 @@ public class AuditLogService {
                 actions.addAll(List.of("SUBMISSION_RESCHEDULED", "OVERRIDE_SLOT_SUGGESTED", "TIMEOUT_DEFERRED"));
             }
             case PUBLISHING -> {
-                actions.addAll(List.of("MANUAL_PUBLISH_STARTED", "MANUAL_PUBLISH_COMPLETE", "MANUAL_PUBLISH_CANCELLED", "MANUAL_PUBLISH_ABANDONED", "MANUAL_PUBLISH_RETRY_OVERRIDE", "MANUAL_PUBLISH_RETRY_NEW_SCHEDULE", "MISSED_REVIEW_RETRY_NEW_SCHEDULE", "PUBLISH_FAILED_RETRY_MODE_OVERRIDE_TO_LIVE", "SUBMISSION_PUBLISHED", "PUBLISH_FAILED", "TOKEN_REAUTHORIZED", "TOKEN_MANUALLY_SET", "FACEBOOK_PAGE_CONNECTED"));
+                actions.addAll(List.of("MANUAL_PUBLISH_STARTED", "MANUAL_PUBLISH_COMPLETE", "MANUAL_PUBLISH_CANCELLED", "MANUAL_PUBLISH_ABANDONED", "MANUAL_PUBLISH_RETRY_OVERRIDE", "MANUAL_PUBLISH_RETRY_NEW_SCHEDULE", "MISSED_REVIEW_RETRY_NEW_SCHEDULE", "PUBLISH_FAILED_RETRY_MODE_OVERRIDE_TO_LIVE", "SUBMISSION_PUBLISHED", "PUBLISH_FAILED", "PUBLISH_WATERMARK_FAILED", "TOKEN_REAUTHORIZED", "TOKEN_MANUALLY_SET", "FACEBOOK_PAGE_CONNECTED"));
             }
             case ACCOUNT_MANAGEMENT -> {
                 actions.addAll(List.of("USER_STATUS_UPDATED", "USER_AVATAR_UPDATED", "USER_ROLE_CHANGED", "USER_REMOVED", "USER_DELETED", "USER_ANONYMIZED",
@@ -365,7 +365,7 @@ public class AuditLogService {
                 actions.addAll(List.of("MEDIA_ASSET_UPLOADED", "MEDIA_ASSET_REUSED", "MEDIA_ASSET_MOVED", "MEDIA_ASSET_RENAMED", "MEDIA_ASSET_DELETED", "MEDIA_ASSET_PURGED", "MEDIA_ASSET_TAG_ADDED", "MEDIA_ASSET_TAG_REMOVED", "MEDIA_ALBUM_CREATED", "MEDIA_ALBUM_UPDATED", "MEDIA_ALBUM_DELETED"));
             }
             case CONFIGURATION -> {
-                actions.addAll(List.of("WATERMARK_CONFIG_UPDATED", "WATERMARK_OVERRIDE_REMOVED", "GUARD_RAIL_CONFIG_UPDATED", "PAGE_SETTINGS_UPDATED", "BACKGROUND_JOB_RUN"));
+                actions.addAll(List.of("WATERMARK_CONFIG_UPDATED", "GUARD_RAIL_CONFIG_UPDATED", "PAGE_SETTINGS_UPDATED", "BACKGROUND_JOB_RUN"));
             }
             case SECURITY -> {
                 actions.addAll(List.of("TOKEN_REAUTHORIZED", "TOKEN_MANUALLY_SET", "FACEBOOK_PAGE_CONNECTED", "TOKEN_EXPIRED", "TOKEN_EXPIRED_BLOCKED", "TOKEN_REVOKED", "ACCOUNT_LOCKED",
@@ -525,6 +525,8 @@ public class AuditLogService {
                 "Published to Facebook";
             case "PUBLISH_FAILED" ->
                 "Publishing failed";
+            case "PUBLISH_WATERMARK_FAILED" ->
+                "Watermark failed to apply — published unwatermarked";
             // ── Guard-rail overrides ──
             case "SCHEDULE_GUARDRAIL_OVERRIDE" ->
                 "Guard rail overridden (schedule edit)";
@@ -643,8 +645,6 @@ public class AuditLogService {
                 "Facebook Page settings changed";
             case "WATERMARK_CONFIG_UPDATED" ->
                 "Watermark settings changed";
-            case "WATERMARK_OVERRIDE_REMOVED" ->
-                "Per-institution watermark removed";
             case "TOKEN_REAUTHORIZED" ->
                 "Facebook token re-authenticated";
             case "TOKEN_MANUALLY_SET" ->
@@ -924,11 +924,23 @@ public class AuditLogService {
         }
     }
 
+    // Formula-trigger characters recognized by Excel/Sheets/LibreOffice when a
+    // cell's leading character (after parsing, regardless of CSV quoting) is
+    // one of these -- CSV/Formula Injection, CWE-1236. Export rows include
+    // free-text, user-controlled fields (actor name/email, entity labels such
+    // as a submission's event title, generated summaries embedding free-text
+    // reasons) with no sanitization at write time, so this must be
+    // neutralized at export time instead.
+    private static final String CSV_FORMULA_TRIGGER_CHARS = "=+-@\t\r";
+
     private String escapeCsv(String val) {
-        if (val == null) {
-            return "\"\"";
+        String raw = val == null ? "" : val;
+        if (!raw.isEmpty() && CSV_FORMULA_TRIGGER_CHARS.indexOf(raw.charAt(0)) >= 0) {
+            // A leading apostrophe forces spreadsheet apps to treat the cell as
+            // literal text instead of evaluating it as a formula.
+            raw = "'" + raw;
         }
-        String escaped = val.replace("\"", "\"\"");
+        String escaped = raw.replace("\"", "\"\"");
         return "\"" + escaped + "\"";
     }
 }

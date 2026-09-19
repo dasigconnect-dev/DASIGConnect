@@ -108,6 +108,10 @@ public class ManualPublishingService {
         s.setPublishedManualNotes(dto.getNotes());
         s.setManualPublishStartedAt(null);
         submissionRepository.save(s);
+        // The locked slot no longer serves any purpose once the post is
+        // actually out — leaving it forever is what let already-published
+        // submissions' reservations silently violate GR-H1 (see V95 migration).
+        slotReservationService.release(submissionId);
 
         auditLogService.record(
                 entityManager.getReference(User.class, admin.userId()),
@@ -251,6 +255,7 @@ public class ManualPublishingService {
         Instant newSlot = dto.getScheduledAt();
 
         GuardRailResult guardRailResult = guardRailService.validate(s.getInstitution().getId(), newSlot, s.getId());
+        boolean adminOverride = false;
         if (guardRailResult.isBlocked()) {
             if (!"admin".equalsIgnoreCase(admin.role())) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -271,16 +276,30 @@ public class ManualPublishingService {
                         "violations", guardRailResult.getHardBlocks().toString()
                     )
             );
+            // Marks the reservation exempt from the V95/V96 network-wide
+            // exclusion constraint below -- otherwise the DB would reject the
+            // very slot the Administrator just chose to override into.
+            adminOverride = true;
         }
 
         if (missedReview) {
-            // Re-enter the Approval Workflow rather than the publishing flow.
+            // Re-enter the Approval Workflow rather than the publishing flow —
+            // originalScheduledAt/moderatorRescheduleCount get re-baselined the
+            // normal way when this is approved again (ValidationService.approve).
             slotReservationService.reserve(submissionId, s.getInstitution().getId(), newSlot);
             s.setStatus(SubmissionStatus.pending);
             s.setSubmittedAt(Instant.now());
         } else {
-            slotReservationService.reserveLockedSlot(submissionId, s.getInstitution().getId(), newSlot);
+            slotReservationService.reserveLockedSlot(submissionId, s.getInstitution().getId(), newSlot, adminOverride);
             s.setStatus(SubmissionStatus.scheduled);
+            // This retry establishes a fresh baseline for UC-3.1's Moderator
+            // reschedule cap — without resetting these, a submission that had
+            // already used up its 2 calendar reschedules (or drifted far from its
+            // original slot) before failing to publish would come back from a
+            // successful retry still capped out or immediately outside the
+            // 1-day window of a now-irrelevant old slot.
+            s.setOriginalScheduledAt(newSlot);
+            s.setModeratorRescheduleCount(0);
         }
         s.setScheduledAt(newSlot);
         // A schedule and Live/Fast-Track are mutually exclusive (see

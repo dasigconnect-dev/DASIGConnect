@@ -83,6 +83,12 @@ class MetricsAggregatorServiceTest {
         assertThat(summary.adminView()).isTrue();
         assertThat(summary.aiPerformance()).isNotNull();
         assertThat(summary.operationalHealth()).isNotNull();
+        // UC-3.2 postcondition: on-time publication rate (already the actual
+        // ±5-minute window, baked into operationalHealth()'s SQL) is now also
+        // checked against a 95% target, same pattern as content completeness.
+        assertThat(summary.operationalHealth().onTimePublicationTarget()).isEqualTo(95.0);
+        assertThat(summary.operationalHealth().onTimePublicationRate()).isEqualTo(66.67); // 2 of 3 successes on time
+        assertThat(summary.operationalHealth().meetsOnTimePublicationTarget()).isFalse();
         assertThat(summary.contributorBreakdown()).isEmpty();
         assertThat(summary.validatorAnalytics()).isNull();
 
@@ -217,6 +223,24 @@ class MetricsAggregatorServiceTest {
         assertThat(export.filename()).contains("DASIGConnect_Analytics_Admin_Network_operational_health_7D").endsWith(".csv");
         assertThat(export.content()).contains("\"metric\",\"value\"");
         assertThat(export.content()).contains("\"publication_attempts\",\"5\"");
+    }
+
+    @Test
+    void export_neutralizesCsvFormulaInjectionInFreeTextFields() {
+        // CWE-1236: exported rows include user-controlled free text (event
+        // titles, contributor names) with no sanitization at write time.
+        // Quoting alone doesn't stop Excel/Sheets from evaluating a cell
+        // starting with =/+/-/@ as a formula when the CSV is opened later.
+        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "admin", null);
+        when(analyticsRepository.exportRows(any(), any(), any(), any()))
+                .thenReturn(List.of(Map.of(
+                        "event_title", "=HYPERLINK(\"http://evil.example\",\"Click me\")",
+                        "contributor_name", "+1;DDE")));
+
+        var export = service.export("posts-by-institution", "7d", null, admin);
+
+        assertThat(export.content()).contains("\"'=HYPERLINK(\"\"http://evil.example\"\",\"\"Click me\"\")\"");
+        assertThat(export.content()).contains("\"'+1;DDE\"");
     }
 
     @Test

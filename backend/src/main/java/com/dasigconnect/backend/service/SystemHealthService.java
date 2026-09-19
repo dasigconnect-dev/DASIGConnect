@@ -56,6 +56,7 @@ public class SystemHealthService {
         EXPECTED_JOBS.put("EmbeddingReconciliationJob", Duration.ofMinutes(5));
         EXPECTED_JOBS.put("SocialEngagementSyncJob", Duration.ofMinutes(15));
         EXPECTED_JOBS.put("MediaAssetRetentionPurgeJob", Duration.ofDays(1));
+        EXPECTED_JOBS.put("GeneratedWatermarkPurgeJob", Duration.ofDays(1));
         EXPECTED_JOBS.put("StaleDraftSlotReleaseJob", Duration.ofDays(1));
         EXPECTED_JOBS.put("TokenHealthCheckJob", Duration.ofDays(1));
         EXPECTED_JOBS.put("ScheduledJobRunRetentionJob", Duration.ofDays(1));
@@ -228,7 +229,8 @@ public class SystemHealthService {
                 editAndApproveRate(start),
                 manualFallbackResolutionRate(start),
                 publishSuccessRate(start),
-                liveEventFastTrackVolume(start));
+                liveEventFastTrackVolume(start),
+                missedReviewRate(start));
     }
 
     public String exportSnapshotCsv() {
@@ -524,6 +526,46 @@ public class SystemHealthService {
         }
     }
 
+    /**
+     * Share of submissions that reached a review outcome in the window (approved,
+     * rejected, or missed) whose outcome was actually "missed" -- their scheduled
+     * review deadline passed while still unreviewed (StaleSubmissionDetectorJob's
+     * findAndMarkMissedReview sweep). A submission only ever reaches MISSED_REVIEW
+     * via that sweep, and saveAll() there bumps updated_at, so filtering the
+     * submissions table on status + updated_at correctly captures "went missed
+     * within this window" without needing its own audit trail.
+     */
+    private OperationalMetricDto missedReviewRate(Instant start) {
+        try {
+            // A single CTE-bound cutoff, reused by both subqueries, rather than
+            // repeating the ? placeholder -- keeps this a one-argument call like
+            // every other metric here.
+            Map<String, Object> row = jdbcTemplate.queryForMap("""
+                    WITH bounds AS (SELECT ?::timestamptz AS cutoff)
+                    SELECT
+                        (SELECT COUNT(*) FROM submissions, bounds
+                         WHERE status = 'missed_review' AND updated_at >= bounds.cutoff) AS missed,
+                        (SELECT COUNT(*) FROM validation_logs, bounds
+                         WHERE created_at >= bounds.cutoff
+                           AND action IN ('approved', 'edited_and_approved', 'rejected')) AS reviewed_in_time
+                    """, Timestamp.from(start));
+            long missed = longNumber(row.get("missed"));
+            long reviewedInTime = longNumber(row.get("reviewed_in_time"));
+            long total = missed + reviewedInTime;
+            if (total == 0) {
+                return noSampleMetric("missed_review_rate", "Missed-review rate", "percent",
+                        "No submissions reached a review outcome in the last 30 days.");
+            }
+            double rate = round(missed * 100.0 / total);
+            return metric("missed_review_rate", "Missed-review rate", rate, "percent", total,
+                    rate > 10 ? HealthStatus.WARNING : HealthStatus.HEALTHY,
+                    "Submissions whose scheduled review deadline passed unreviewed, divided by all submissions "
+                            + "that reached a review outcome (approved, rejected, or missed), in the last 30 days.");
+        } catch (Exception ex) {
+            return unavailableMetric("missed_review_rate", "Missed-review rate", "percent", ex);
+        }
+    }
+
     private ExternalServiceHealthDto service(String service, HealthStatus status, String detail, Instant expiresAt, Long secondsUntilExpiry) {
         return new ExternalServiceHealthDto(service, status, detail, Instant.now(), expiresAt, secondsUntilExpiry);
     }
@@ -583,6 +625,8 @@ public class SystemHealthService {
                 "Embedding Reconciliation";
             case "MediaAssetRetentionPurgeJob" ->
                 "Media Asset Retention Purge";
+            case "GeneratedWatermarkPurgeJob" ->
+                "Generated Watermark Purge";
             case "StaleDraftSlotReleaseJob" ->
                 "Stale Draft Slot Release";
             case "TokenHealthCheckJob" ->

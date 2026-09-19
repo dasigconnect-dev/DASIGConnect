@@ -228,7 +228,7 @@ export default function FancyTextTool({
   }
 
   return (
-    <div className="fancy-text-tool">
+    <div className={`fancy-text-tool${open ? " is-open" : ""}`}>
       <button
         type="button"
         className="fancy-text-trigger"
@@ -291,6 +291,17 @@ export default function FancyTextTool({
             >
               <i className="ti ti-x" aria-hidden />
             </button>
+          </div>
+
+          <div className="fancy-text-guide">
+            <i className="ti ti-info-circle" aria-hidden />
+            <span>
+              {hasExplicitSelection
+                ? "Styling highlighted text. Choose a font below to apply."
+                : activeCaption.length > 0
+                  ? "Highlight the text you want to style, or select a font below to style the entire caption."
+                  : "Type a caption and highlight the text you want to style."}
+            </span>
           </div>
 
           {!selectedText && (

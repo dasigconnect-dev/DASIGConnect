@@ -27,6 +27,11 @@ import org.springframework.context.ApplicationEventPublisher;
  *       minutes without being picked up by the PublishingSchedulerJob (e.g. the
  *       server was down during the window), transitions them to PUBLISH_FAILED,
  *       and emits {@link PublishFailedEvent}.</li>
+ *   <li>Finds a Fast-Track submission stuck in PUBLISHING for more than 5 minutes
+ *       (claimed by FastTrackPublishingListener, then the app crashed before
+ *       markPublished/markFailed ran) -- these have no scheduledAt for the sweep
+ *       above to match, so they'd otherwise stay stuck forever with no recovery
+ *       path. Transitions them to PUBLISH_FAILED too, added 2026-09-18.</li>
  *   <li>Finds PENDING / IN_REVIEW submissions whose scheduled publication time
  *       has passed while still unreviewed (UC-2.4 A6), transitions them to
  *       MISSED_REVIEW, releases the reserved slot, and emits
@@ -77,6 +82,21 @@ public class StaleSubmissionDetectorJob {
         }
 
         try {
+            List<Submission> stuckFastTrack = findAndMarkStuckFastTrackFailed(cutoff);
+            if (!stuckFastTrack.isEmpty()) {
+                log.warn("StaleSubmissionDetectorJob: {} stuck Fast-Track submission(s) transitioned to PUBLISH_FAILED.", stuckFastTrack.size());
+                for (Submission s : stuckFastTrack) {
+                    eventPublisher.publishEvent(new PublishFailedEvent(s, "Publishing got stuck (likely a server restart mid-publish) and was not resolved within 5 minutes."));
+                }
+            }
+        } catch (Exception ex) {
+            log.error("StaleSubmissionDetectorJob (stuck Fast-Track sweep) failed: {}", ex.getMessage(), ex);
+            if (failure == null) {
+                failure = ex;
+            }
+        }
+
+        try {
             List<Submission> missedReview = findAndMarkMissedReview(cutoff);
             if (!missedReview.isEmpty()) {
                 log.warn("StaleSubmissionDetectorJob: {} unreviewed submission(s) transitioned to MISSED_REVIEW.", missedReview.size());
@@ -109,6 +129,28 @@ public class StaleSubmissionDetectorJob {
         }
         submissionRepository.saveAll(missed);
         return missed;
+    }
+
+    /**
+     * A Fast-Track submission claimed by FastTrackPublishingListener but never
+     * resolved (app crash between the claim and markPublished/markFailed) has
+     * no scheduledAt for findAndMarkFailed's query to match -- this catches it
+     * via updatedAt (bumped by claimForPublishing's UPDATE) instead. A token
+     * expiry mid-publish is excluded the same way findAndMarkFailed excludes
+     * it, since that case reverts to scheduled/direct_post_scheduled (not
+     * left in publishing) and is handled separately by
+     * TokenPublishingEscalationJob regardless of scheduledAt.
+     */
+    @Transactional
+    public List<Submission> findAndMarkStuckFastTrackFailed(Instant cutoff) {
+        List<Submission> stuck = submissionRepository.findStuckFastTrackPublishing(cutoff);
+        stuck.removeIf(s -> s.getTokenBlockedAt() != null);
+        for (Submission s : stuck) {
+            s.setStatus(s.getStatus() == SubmissionStatus.direct_post_publishing
+                    ? SubmissionStatus.direct_post_failed : SubmissionStatus.publish_failed);
+        }
+        submissionRepository.saveAll(stuck);
+        return stuck;
     }
 
     /**

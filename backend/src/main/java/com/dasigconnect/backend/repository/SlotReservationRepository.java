@@ -19,10 +19,12 @@ import com.dasigconnect.backend.model.entity.SlotReservation;
  * M1 created the base JpaRepository stub. M4 owns the custom query methods
  * needed by GuardRailService and SlotReservationService.
  *
- * NOTE: SlotReservation has NO pageId — uniqueness is enforced at the DB level
- * by the unique index on (scheduled_at, institution_id) WHERE status !=
- * 'released'. Guard rail GR-H1 checks across ALL institutions (network-wide
- * slot conflict), not just the same institution.
+ * NOTE: SlotReservation has NO pageId. Guard rail GR-H1 checks across ALL
+ * institutions (network-wide slot conflict), not just the same institution,
+ * and (as of the V95 migration) this is also enforced at the DB level by a
+ * GiST exclusion constraint on (scheduled_at, scheduled_at + 30min) WHERE
+ * status != 'released' — deliberately not scoped to institution_id, matching
+ * GR-H1's network-wide semantics exactly.
  */
 public interface SlotReservationRepository extends JpaRepository<SlotReservation, UUID> {
 

@@ -399,6 +399,38 @@ class ValidationServiceTest {
     }
 
     @Test
+    void approve_standardSubmission_snapshotsOriginalScheduledAt() {
+        // UC-3.1: the Moderator reschedule cap anchors its 1-day window to
+        // originalScheduledAt, captured once here and never touched again.
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
+
+        Submission submission = new Submission();
+        submission.setId(UUID.randomUUID());
+        submission.setStatus(SubmissionStatus.pending);
+        submission.setFastTrack(false);
+        java.time.Instant slot = java.time.Instant.parse("2026-06-01T08:00:00Z");
+        submission.setScheduledAt(slot);
+
+        Institution institution = new Institution();
+        institution.setId(submissionInstitutionId);
+        submission.setInstitution(institution);
+
+        User contributor = new User();
+        contributor.setId(contributorId);
+        submission.setContributor(contributor);
+
+        User adminUser = new User();
+        adminUser.setId(adminId);
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(adminUser));
+
+        validationService.approve(submission.getId(), admin);
+
+        assertThat(submission.getOriginalScheduledAt()).isEqualTo(slot);
+    }
+
+    @Test
     void edit_keepsSubmissionInReviewAndLogsStandaloneEditedAction() {
         // A9: a standalone edit records its diff but does NOT transition the
         // submission out of IN_REVIEW and never confirms a slot or fires approval.
@@ -543,5 +575,111 @@ class ValidationServiceTest {
 
         assertThat(eventCaptor.getAllValues())
                 .anyMatch(e -> e instanceof com.dasigconnect.backend.event.SubmissionEditedDuringReviewEvent);
+    }
+
+    @Test
+    void approve_editMadeInAnEarlierLockSession_stillCountsAsEdited() {
+        // Regression: a Moderator edits, then releases/loses the lock (interrupted,
+        // TTL expiry) before approving, and later reacquires it to finish the
+        // review with no further edits. The earlier edit — and its diff — must
+        // still be reflected in the approval, because `logsSinceLock` scopes to
+        // the whole review cycle (since the last terminal action), not just the
+        // most recent `lock_acquired` row. Previously this silently dropped the
+        // edit: `edited` came back false and the contributor was never told.
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
+
+        Submission submission = new Submission();
+        submission.setId(UUID.randomUUID());
+        submission.setStatus(SubmissionStatus.in_review);
+
+        Institution institution = new Institution();
+        institution.setId(submissionInstitutionId);
+        submission.setInstitution(institution);
+
+        User contributor = new User();
+        contributor.setId(contributorId);
+        submission.setContributor(contributor);
+
+        User adminUser = new User();
+        adminUser.setId(adminId);
+
+        ValidationLog firstLock = new ValidationLog();
+        firstLock.setAction(ValidationAction.lock_acquired);
+        ValidationLog editLog = new ValidationLog();
+        editLog.setAction(ValidationAction.edited);
+        editLog.setEditDiff("{\"caption\":{\"from\":\"old\",\"to\":\"new\"}}");
+        ValidationLog released = new ValidationLog();
+        released.setAction(ValidationAction.lock_released);
+        ValidationLog secondLock = new ValidationLog();
+        secondLock.setAction(ValidationAction.lock_acquired);
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(adminUser));
+        when(validationLogRepository.findBySubmissionIdOrderByCreatedAtAsc(submission.getId()))
+                .thenReturn(List.of(firstLock, editLog, released, secondLock));
+
+        validationService.approve(submission.getId(), admin);
+
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, org.mockito.Mockito.atLeastOnce()).publishEvent(eventCaptor.capture());
+
+        com.dasigconnect.backend.event.SubmissionApprovedEvent approvedEvent = eventCaptor.getAllValues().stream()
+                .filter(e -> e instanceof com.dasigconnect.backend.event.SubmissionApprovedEvent)
+                .map(e -> (com.dasigconnect.backend.event.SubmissionApprovedEvent) e)
+                .findFirst().orElseThrow();
+        assertThat(approvedEvent.edited()).isTrue();
+
+        ArgumentCaptor<ValidationLog> logCaptor = ArgumentCaptor.forClass(ValidationLog.class);
+        verify(validationLogRepository).save(logCaptor.capture());
+        assertThat(logCaptor.getValue().getEditDiff()).contains("caption").contains("old").contains("new");
+    }
+
+    @Test
+    void approve_editFromAPriorCompletedReviewCycle_isNotCountedAgain() {
+        // The flip side: once a review cycle ends in a terminal action, an edit
+        // from before that boundary must NOT bleed into a later cycle's diff
+        // (e.g. after Request Revision -> contributor resubmits -> re-reviewed).
+        JwtUserDetails admin = new JwtUserDetails(adminId, "admin@dasigconnect.local", "moderator", null);
+
+        Submission submission = new Submission();
+        submission.setId(UUID.randomUUID());
+        submission.setStatus(SubmissionStatus.in_review);
+
+        Institution institution = new Institution();
+        institution.setId(submissionInstitutionId);
+        submission.setInstitution(institution);
+
+        User contributor = new User();
+        contributor.setId(contributorId);
+        submission.setContributor(contributor);
+
+        User adminUser = new User();
+        adminUser.setId(adminId);
+
+        ValidationLog oldLock = new ValidationLog();
+        oldLock.setAction(ValidationAction.lock_acquired);
+        ValidationLog oldEdit = new ValidationLog();
+        oldEdit.setAction(ValidationAction.edited);
+        oldEdit.setEditDiff("{\"caption\":{\"from\":\"a\",\"to\":\"b\"}}");
+        ValidationLog priorRevision = new ValidationLog();
+        priorRevision.setAction(ValidationAction.needs_revision);
+        ValidationLog newLock = new ValidationLog();
+        newLock.setAction(ValidationAction.lock_acquired);
+
+        when(submissionRepository.findById(submission.getId())).thenReturn(Optional.of(submission));
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(adminUser));
+        when(validationLogRepository.findBySubmissionIdOrderByCreatedAtAsc(submission.getId()))
+                .thenReturn(List.of(oldLock, oldEdit, priorRevision, newLock));
+
+        validationService.approve(submission.getId(), admin);
+
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, org.mockito.Mockito.atLeastOnce()).publishEvent(eventCaptor.capture());
+
+        com.dasigconnect.backend.event.SubmissionApprovedEvent approvedEvent = eventCaptor.getAllValues().stream()
+                .filter(e -> e instanceof com.dasigconnect.backend.event.SubmissionApprovedEvent)
+                .map(e -> (com.dasigconnect.backend.event.SubmissionApprovedEvent) e)
+                .findFirst().orElseThrow();
+        assertThat(approvedEvent.edited()).isFalse();
     }
 }

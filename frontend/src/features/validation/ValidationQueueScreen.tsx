@@ -17,6 +17,7 @@ import {
   type EngagementRecommendations,
   type GuardRailResult,
   type SavedMediaAsset,
+  type SubmissionStatus,
   type SubmissionSummary,
 } from "../../api/submissionApi";
 import {
@@ -78,12 +79,42 @@ import "../../styles/validation.css";
 // Reused Submit Content authoring components (AI caption button, engagement
 // panel) rely on the `--sub-*` tokens and `.ai-caption-*` rules defined here.
 import "../../styles/submission.css";
+import SpotlightTour from "../onboarding/components/SpotlightTour";
+import { useScreenTour } from "../onboarding/hooks/useScreenTour";
+import {
+  validationQueueTourSteps,
+  validationReviewTourSteps,
+  validationFailedTourSteps,
+  validationEditTourSteps,
+} from "../onboarding/tours/validationTour";
 
 interface ValidationQueueScreenProps {
   user: User;
 }
 
-type QueueFilter = "pending" | "in_review" | "all" | "failed";
+type QueueFilter =
+  | "pending"
+  | "in_review"
+  | "needs_revision"
+  | "scheduled"
+  | "published"
+  | "rejected"
+  | "all"
+  | "failed";
+/** Tabs whose submissions only exist in the history query, not the active queue. */
+const HISTORY_ONLY_STATUSES = new Set<QueueFilter>(["scheduled", "published", "rejected"]);
+/** Tabs shown directly in the narrow sidebar once a submission is selected; the rest move into the overflow dropdown. */
+const PINNED_TABS: QueueFilter[] = ["all", "pending", "in_review", "failed"];
+const TAB_ORDER: Array<{ key: QueueFilter; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "pending", label: "Pending" },
+  { key: "in_review", label: "In Review" },
+  { key: "needs_revision", label: "Needs Revision" },
+  { key: "scheduled", label: "Scheduled" },
+  { key: "published", label: "Published" },
+  { key: "rejected", label: "Rejected" },
+  { key: "failed", label: "Failed" },
+];
 type SortKey = "publish_slot" | "submitted";
 type DecisionModal = "approve" | "revise" | "reject" | null;
 const MODAL_EXIT_MS = 190;
@@ -244,6 +275,23 @@ function getUserCacheScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
 }
 
+/** Matches the existing mobile master-detail breakpoint in validation.css (`@media (max-width: 860px)`). */
+const DESKTOP_MEDIA_QUERY = "(min-width: 861px)";
+
+/** True above the mobile master-detail breakpoint — gates the full-width queue (no selection) vs. split (selection) layout, which only applies at desktop/tablet widths. Below it, the existing mobile queue/review toggle is unchanged. */
+function useIsDesktop(): boolean {
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(DESKTOP_MEDIA_QUERY).matches,
+  );
+  useEffect(() => {
+    const mql = window.matchMedia(DESKTOP_MEDIA_QUERY);
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
+  return isDesktop;
+}
+
 export default function ValidationQueueScreen({
   user,
 }: ValidationQueueScreenProps) {
@@ -253,8 +301,10 @@ export default function ValidationQueueScreen({
   const [filter, setFilter] = useState<QueueFilter>("all");
   const isAllMode = filter === "all";
   const isFailedMode = filter === "failed";
+  const needsHistory = isAllMode || HISTORY_ONLY_STATUSES.has(filter);
+  const isDesktop = useIsDesktop();
   const { queue: activeQueue, loading: activeLoading, error: activeError } = useValidationQueue(user);
-  const { queue: allQueue, loading: allLoading, error: allError, refresh: refreshAllQueue } = useValidationQueue(user, true, isAllMode);
+  const { queue: allQueue, loading: allLoading, error: allError, refresh: refreshAllQueue } = useValidationQueue(user, true, needsHistory);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<SubmissionSummary | null>(null);
   const [selectedLoading, setSelectedLoading] = useState(false);
@@ -267,6 +317,10 @@ export default function ValidationQueueScreen({
   } | null>(null);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [mobileView, setMobileView] = useState<"queue" | "review">("queue");
+  const [tabMenuOpen, setTabMenuOpen] = useState(false);
+  const [tabMenuPos, setTabMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const tabMenuTriggerRef = useRef<HTMLDivElement | null>(null);
+  const tabMenuPanelRef = useRef<HTMLDivElement | null>(null);
   const [showDetails, setShowDetails] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("submitted");
   const [search, setSearch] = useState("");
@@ -346,13 +400,8 @@ export default function ValidationQueueScreen({
     handleCompleteManual,
     openWorkflowPanel,
     closeWorkflowPanel,
-  } = useResolutionFailures(user, isFailedMode);
+  } = useResolutionFailures(user);
   const [retryItem, setRetryItem] = useState<FailedPublication | null>(null);
-  const [selectedFailureId, setSelectedFailureId] = useState<string | null>(null);
-  const [failureContent, setFailureContent] = useState<SubmissionSummary | null>(null);
-  const [failureContentLoading, setFailureContentLoading] = useState(false);
-  const [failureMediaIndex, setFailureMediaIndex] = useState(0);
-  const { log: failureLog, loading: failureLogLoading } = useValidationLog(user, selectedFailureId);
 
   const filteredFailures = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -363,17 +412,23 @@ export default function ValidationQueueScreen({
         .some((value) => String(value).toLowerCase().includes(term)),
     );
   }, [failures, search]);
-  const selectedFailure = selectedFailureId
-    ? filteredFailures.find((f) => f.submissionId === selectedFailureId) ?? null
-    : null;
+  // Failed items are just submissions whose status is publish_failed/missed_review —
+  // opening one goes through the exact same openSubmission()/selectedId path as any
+  // other tab (see below); this just adds the retry-specific extras (retry count,
+  // last error, etc.) on top of the one shared selection, instead of a second
+  // parallel selection system with its own content-area panel.
+  const failureInfo = useMemo(
+    () => failures.find((f) => f.submissionId === selectedId) ?? null,
+    [failures, selectedId],
+  );
   const combinedQueue = useMemo(() => {
     const submissions = new Map<string, SubmissionSummary>();
     [...activeQueue, ...allQueue].forEach((item) => submissions.set(item.id, item));
     return Array.from(submissions.values());
   }, [activeQueue, allQueue]);
-  const queue = isAllMode ? combinedQueue : activeQueue;
-  const loading = isAllMode ? activeLoading || allLoading : activeLoading;
-  const error = isAllMode ? activeError || allError : activeError;
+  const queue = needsHistory ? combinedQueue : activeQueue;
+  const loading = needsHistory ? activeLoading || allLoading : activeLoading;
+  const error = needsHistory ? activeError || allError : activeError;
 
   const filteredQueue = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -396,9 +451,9 @@ export default function ValidationQueueScreen({
       })
       .sort((a, b) => {
         // Fast-Track (Live Event) submissions are urgent — they sort to the
-        // top of the active queue (UC-1.9 A5). Not applied in the "All"
-        // history tab, where already-resolved items are just browsed by date.
-        if (!isAllMode) {
+        // top of the active queue (UC-1.9 A5). Not applied in history-backed
+        // tabs, where already-resolved items are just browsed by date.
+        if (!needsHistory) {
           const fastTrackDiff = Number(Boolean(b.fastTrack)) - Number(Boolean(a.fastTrack));
           if (fastTrackDiff !== 0) return fastTrackDiff;
         }
@@ -413,9 +468,9 @@ export default function ValidationQueueScreen({
             ? b.scheduledAt || b.publishedAt || ""
             : b.submittedAt || b.createdAt || "";
         const cmp = left.localeCompare(right);
-        return isAllMode ? -cmp : cmp;
+        return needsHistory ? -cmp : cmp;
       });
-  }, [filter, isAllMode, queue, search, sortKey]);
+  }, [filter, needsHistory, queue, search, sortKey]);
 
   const pendingCount = activeQueue.filter(
     (item) => normalizeStatus(item.status) === "pending",
@@ -423,6 +478,31 @@ export default function ValidationQueueScreen({
   const reviewCount = activeQueue.filter(
     (item) => normalizeStatus(item.status) === "in_review",
   ).length;
+  const needsRevisionCount = activeQueue.filter(
+    (item) => normalizeStatus(item.status) === "needs_revision",
+  ).length;
+  const scheduledCount = combinedQueue.filter(
+    (item) => normalizeStatus(item.status) === "scheduled",
+  ).length;
+  const publishedCount = combinedQueue.filter(
+    (item) => normalizeStatus(item.status) === "published",
+  ).length;
+  const rejectedCount = combinedQueue.filter(
+    (item) => normalizeStatus(item.status) === "rejected",
+  ).length;
+  const tabCounts: Record<QueueFilter, number> = {
+    all: combinedQueue.length,
+    pending: pendingCount,
+    in_review: reviewCount,
+    needs_revision: needsRevisionCount,
+    scheduled: scheduledCount,
+    published: publishedCount,
+    rejected: rejectedCount,
+    failed: failures.length,
+  };
+  const hasActiveSelection = Boolean(selectedId);
+  const isQueueExpanded = isDesktop && !hasActiveSelection;
+  const isOverflowTabActive = !PINNED_TABS.includes(filter);
 
   const selectedLockVerification = selected && lockVerification?.submissionId === selected.id
     ? lockVerification.status
@@ -442,41 +522,52 @@ export default function ValidationQueueScreen({
 
   const watermarkQuery = useWatermarkConfiguration({
     user,
-    enabled: Boolean(selectedId || selectedFailureId),
+    enabled: Boolean(selectedId),
   });
   const watermarkConfig = watermarkQuery.data ?? null;
   const [showWatermarkPreview, setShowWatermarkPreview] = useState<boolean>(true);
   const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
 
-  useEffect(() => {
-    if (!isFailedMode || failuresLoading) return;
-    const selectionIsVisible = selectedFailureId
-      ? filteredFailures.some((item) => item.submissionId === selectedFailureId)
-      : false;
-    if (selectionIsVisible) return;
-    queueMicrotask(() => setSelectedFailureId(filteredFailures[0]?.submissionId ?? null));
-  }, [isFailedMode, failuresLoading, filteredFailures, selectedFailureId]);
+  const {
+    startTour: startQueueTour,
+    tourProps: queueTourProps,
+  } = useScreenTour({
+    screenId: "validation-queue",
+    steps: validationQueueTourSteps,
+    autoStartDelayMs: 700,
+    canStart: !loading && !selectedId && !isFailedMode,
+  });
 
-  useEffect(() => {
-    if (!selectedFailureId) {
-      queueMicrotask(() => setFailureContent(null));
-      return;
-    }
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      const detailQueryKey = submissionDetailQueryKey(selectedFailureId, selectedFailure?.institutionId);
-      const cachedDetail = queryClient.getQueryData<SubmissionSummary>(detailQueryKey);
-      setFailureContent(cachedDetail ?? null);
-      setFailureMediaIndex(0);
-      setFailureContentLoading(!cachedDetail);
-      fetchSubmissionDetail(selectedFailureId, selectedFailure?.institutionId)
-        .then((submission) => { if (active) setFailureContent(submission); })
-        .catch((err: unknown) => { if (active) toast.error(readApiError(err, "Unable to load submission content.")); })
-        .finally(() => { if (active) setFailureContentLoading(false); });
-    });
-    return () => { active = false; };
-  }, [fetchSubmissionDetail, queryClient, selectedFailure?.institutionId, selectedFailureId, submissionDetailQueryKey, toast]);
+  const {
+    startTour: startReviewTour,
+    tourProps: reviewTourProps,
+  } = useScreenTour({
+    screenId: "validation-review",
+    steps: validationReviewTourSteps,
+    autoStartDelayMs: 600,
+    canStart: Boolean(selected) && !failureInfo && !editMode && !queueTourProps.isOpen,
+  });
+
+  const {
+    startTour: startFailedTour,
+    tourProps: failedTourProps,
+  } = useScreenTour({
+    screenId: "validation-failed",
+    steps: validationFailedTourSteps,
+    autoStartDelayMs: 600,
+    canStart: Boolean(failureInfo) && !queueTourProps.isOpen,
+  });
+
+  const {
+    startTour: startEditTour,
+    tourProps: editTourProps,
+  } = useScreenTour({
+    screenId: "validation-edit",
+    steps: validationEditTourSteps,
+    autoStartDelayMs: 500,
+    canStart: Boolean(selected) && editMode && !reviewTourProps.isOpen && !queueTourProps.isOpen,
+  });
+
 
   useEffect(() => {
     return () => {
@@ -484,26 +575,59 @@ export default function ValidationQueueScreen({
     };
   }, []);
 
+  useEffect(() => {
+    if (!tabMenuOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
+      if (
+        tabMenuTriggerRef.current?.contains(target) ||
+        tabMenuPanelRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setTabMenuOpen(false);
+    }
+    // The menu is portaled to <body> as position:fixed at coordinates
+    // captured on open — close it on scroll/resize rather than tracking and
+    // re-measuring, since it's a short-lived popover.
+    function handleClose() {
+      setTabMenuOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    window.addEventListener("scroll", handleClose, true);
+    window.addEventListener("resize", handleClose);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("scroll", handleClose, true);
+      window.removeEventListener("resize", handleClose);
+    };
+  }, [tabMenuOpen]);
+
   function handleFilterChange(next: QueueFilter) {
     if (next === filter) return;
-    openRequestRef.current += 1;
     setMobileView("queue");
+    setTabMenuOpen(false);
     setSortKey(next === "all" ? "submitted" : "publish_slot");
     setFilter(next);
+    setShowHistoryModal(false);
+    // Deliberately does NOT clear selectedId/selected here — switching tabs
+    // is just re-filtering the list on the left; a submission already open
+    // for review (including a failed one) should stay open (desktop stays in
+    // split view, not snap back to the full-width queue) unless it isn't
+    // part of the new tab's results at all, which the auto-select effect
+    // below already handles.
+    if (next === "all" || HISTORY_ONLY_STATUSES.has(next)) {
+      void refreshAllQueue();
+    }
+  }
+
+  /** Desktop-only: clears the selection to return to the full-width queue view. */
+  function handleBackToQueue() {
+    openRequestRef.current += 1;
     setSelectedId(null);
     setSelected(null);
     setSelectedLoading(false);
     setLockVerification(null);
-    setLockNotice("");
-    setEditMode(false);
-    setShowHistoryModal(false);
-    if (next !== "failed") {
-      setSelectedFailureId(null);
-      setFailureContent(null);
-    }
-    if (next === "all") {
-      void refreshAllQueue();
-    }
   }
 
   function openDecisionModal(nextModal: Exclude<DecisionModal, null>) {
@@ -543,10 +667,16 @@ export default function ValidationQueueScreen({
     const detailQueryKey = submissionDetailQueryKey(summary.id, summary.institutionId);
     const cachedDetail = queryClient.getQueryData<SubmissionSummary>(detailQueryKey);
     const requiresLockVerification = REVIEWABLE_STATUSES.has(normalizeStatus(summary.status));
+    // NEEDS_REVISION is still being actively edited/autosaved by the contributor —
+    // GET /submissions/{id} always returns the LIVE row (it's the same endpoint the
+    // contributor's own editor uses), which would leak their in-progress edits into
+    // this read-only view. The queue summary itself already carries the frozen
+    // review_snapshot values instead, so it's used as-is with no live re-fetch.
+    const isFrozenSnapshot = normalizeStatus(summary.status) === "needs_revision";
 
     setSelectedId(summary.id);
     setSelected(cachedDetail ?? summary);
-    setSelectedLoading(!cachedDetail);
+    setSelectedLoading(!cachedDetail && !isFrozenSnapshot);
     setMediaIndex(0);
     setLockNotice("");
     setLockVerification(
@@ -557,18 +687,20 @@ export default function ValidationQueueScreen({
     setEditMode(false);
     setEditedThisSession(false);
 
-    const detailRequest = fetchSubmissionDetail(summary.id, summary.institutionId)
-      .then((detail) => {
-        if (requestId === openRequestRef.current) setSelected(detail);
-      })
-      .catch((err: unknown) => {
-        if (requestId === openRequestRef.current) {
-          toast.error(readApiError(err, "Unable to open this submission."));
-        }
-      })
-      .finally(() => {
-        if (requestId === openRequestRef.current) setSelectedLoading(false);
-      });
+    const detailRequest = isFrozenSnapshot
+      ? Promise.resolve()
+      : fetchSubmissionDetail(summary.id, summary.institutionId)
+          .then((detail) => {
+            if (requestId === openRequestRef.current) setSelected(detail);
+          })
+          .catch((err: unknown) => {
+            if (requestId === openRequestRef.current) {
+              toast.error(readApiError(err, "Unable to open this submission."));
+            }
+          })
+          .finally(() => {
+            if (requestId === openRequestRef.current) setSelectedLoading(false);
+          });
 
     // Lock state is deliberately not query-cached as permission. Its live check
     // runs independently so readable content does not wait for authorization UI.
@@ -611,30 +743,71 @@ export default function ValidationQueueScreen({
     await Promise.allSettled([detailRequest, lockRequest]);
   }, [fetchSubmissionDetail, queryClient, selectedId, submissionDetailQueryKey, toast, user.email]);
 
-  useEffect(() => {
-    if (isFailedMode || loading) return;
-    const selectedIsVisible = selectedId
-      ? filteredQueue.some((item) => item.id === selectedId)
-      : false;
-    if (selectedIsVisible) return;
+  function clearSelection() {
+    const requestId = ++openRequestRef.current;
+    queueMicrotask(() => {
+      if (requestId !== openRequestRef.current) return;
+      setSelectedId(null);
+      setSelected(null);
+      setSelectedLoading(false);
+      setLockVerification(null);
+    });
+  }
 
-    if (filteredQueue.length > 0) {
-      const firstSubmission = filteredQueue[0];
-      queueMicrotask(() => void openSubmission(firstSubmission));
+  // Keeps whatever's open in sync with the active tab — for every tab
+  // including Failed, which is just another status filter on the same
+  // selection now, not a parallel selection system with its own panel.
+  useEffect(() => {
+    if (loading || (isFailedMode && failuresLoading)) return;
+
+    const selectedIsInCurrentTab = selectedId
+      ? (isFailedMode ? filteredFailures.some((f) => f.submissionId === selectedId) : filteredQueue.some((item) => item.id === selectedId))
+      : false;
+    if (selectedIsInCurrentTab) return;
+
+    if (isDesktop) {
+      // Switching tabs only re-filters the left-hand list — an already-open
+      // submission must stay open even if it doesn't match the tab just
+      // clicked (e.g. viewing a Pending item, then clicking Failed). Existence
+      // is checked against every known source (active+history queue, and the
+      // failures list), not just the current tab's own filtered view — only
+      // clear if it's genuinely gone everywhere (deleted, or no longer returned
+      // by any query at all).
+      const stillExists = selectedId
+        ? combinedQueue.some((item) => item.id === selectedId) || failures.some((f) => f.submissionId === selectedId)
+        : true;
+      if (stillExists) return;
+      if (selectedId || selected) clearSelection();
       return;
     }
 
-    if (selectedId || selected) {
-      const requestId = ++openRequestRef.current;
-      queueMicrotask(() => {
-        if (requestId !== openRequestRef.current) return;
-        setSelectedId(null);
-        setSelected(null);
-        setSelectedLoading(false);
-        setLockVerification(null);
-      });
+    // Mobile: the list is always the starting screen, so auto-pick a first
+    // item from the current tab as a convenience once the previous
+    // selection (if any) no longer matches it.
+    if (isFailedMode) {
+      const first = filteredFailures[0];
+      if (first) {
+        queueMicrotask(() =>
+          void openSubmission({
+            id: first.submissionId,
+            institutionId: first.institutionId,
+            institutionName: first.institutionName,
+            eventTitle: first.eventTitle,
+            eventDate: "",
+            status: first.status as SubmissionStatus,
+            scheduledAt: first.scheduledAt ?? undefined,
+            fastTrack: first.fastTrack,
+          }),
+        );
+        return;
+      }
+    } else if (filteredQueue.length > 0) {
+      queueMicrotask(() => void openSubmission(filteredQueue[0]));
+      return;
     }
-  }, [isFailedMode, loading, filteredQueue, selectedId, selected, openSubmission]);
+
+    if (selectedId || selected) clearSelection();
+  }, [isFailedMode, loading, failuresLoading, filteredFailures, filteredQueue, combinedQueue, failures, selectedId, selected, openSubmission, isDesktop]);
 
   function setLockFor(submissionId: string, lock: ReviewLock) {
     setLocks((prev) => ({ ...prev, [submissionId]: lock }));
@@ -910,7 +1083,23 @@ export default function ValidationQueueScreen({
 
   async function handleAiCaptionPromptSubmit(prompt: string, tone: CaptionTone) {
     const generated = await aiCaption.suggest(prompt, tone, undefined, editForm.caption);
-    if (generated) setCaptionPromptOpen(false);
+    if (generated) {
+      toast.success("AI caption generated! Review and refine, or click Approve.");
+      return generated;
+    } else if (aiCaption.notice) {
+      toast.error(aiCaption.notice);
+      return null;
+    } else {
+      toast.error("AI caption could not be generated. Please try again.");
+      return null;
+    }
+  }
+
+  function handleAiCaptionApprove(caption: string, tone: CaptionTone) {
+    applyEditCaption(caption);
+    aiCaption.logApply(tone, "use");
+    setCaptionPromptOpen(false);
+    toast.success("AI caption approved and placed in your caption box!");
   }
 
   // ── Recommended publish times (Schedule tab) ─────────────────────────────
@@ -1154,7 +1343,9 @@ export default function ValidationQueueScreen({
   }
 
   return (
-    <div className={`val-page ${isPanelCollapsed ? "is-queue-collapsed" : ""} val-mobile-view--${mobileView}`}>
+    <div
+      className={`val-page ${isPanelCollapsed ? "is-queue-collapsed" : ""} ${isQueueExpanded ? "is-queue-expanded" : ""} val-mobile-view--${mobileView}`}
+    >
       <aside className="val-queue-panel">
         <div className="val-queue-header">
           <div className="val-title-row">
@@ -1163,54 +1354,125 @@ export default function ValidationQueueScreen({
               <h1>Review Queue</h1>
               <p>Review, refine, and release network content.</p>
             </div>
-            <button
-              type="button"
-              className="val-collapse-btn"
-              onClick={() => setIsPanelCollapsed(true)}
-              title="Collapse queue panel (<<)"
-              aria-label="Collapse queue list"
-            >
-              <i className="ti ti-chevrons-left" />
-            </button>
+            <div className="val-title-actions">
+              <button
+                type="button"
+                className="val-guide-btn"
+                onClick={() => startQueueTour(true)}
+                title="Show the Review Queue guide"
+                aria-label="Show the Review Queue guide"
+              >
+                <i className="ti ti-help-circle" />
+                <span>Guide</span>
+              </button>
+              {!isQueueExpanded && isDesktop && (
+                <>
+                  <button
+                    type="button"
+                    className="val-collapse-btn"
+                    onClick={handleBackToQueue}
+                    title="Expand to full-width queue"
+                    aria-label="Expand to full-width queue"
+                  >
+                    <i className="ti ti-arrows-maximize" />
+                  </button>
+                  <button
+                    type="button"
+                    className="val-collapse-btn"
+                    onClick={() => setIsPanelCollapsed(true)}
+                    title="Hide queue panel (<<)"
+                    aria-label="Hide queue list"
+                  >
+                    <i className="ti ti-chevrons-left" />
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
-          <div className="val-tabs" role="tablist" aria-label="Queue filters">
-            <button
-              className={filter === "all" ? "active" : ""}
-              type="button"
-              role="tab"
-              aria-selected={filter === "all"}
-              onClick={() => handleFilterChange("all")}
-            >
-              All <span>{combinedQueue.length}</span>
-            </button>
-            <button
-              className={filter === "pending" ? "active" : ""}
-              type="button"
-              role="tab"
-              aria-selected={filter === "pending"}
-              onClick={() => handleFilterChange("pending")}
-            >
-              Pending <span>{pendingCount}</span>
-            </button>
-            <button
-              className={filter === "in_review" ? "active" : ""}
-              type="button"
-              role="tab"
-              aria-selected={filter === "in_review"}
-              onClick={() => handleFilterChange("in_review")}
-            >
-              Review <span>{reviewCount}</span>
-            </button>
-            <button
-              className={filter === "failed" ? "active" : ""}
-              type="button"
-              role="tab"
-              aria-selected={filter === "failed"}
-              onClick={() => handleFilterChange("failed")}
-            >
-              Failed <span>{failures.length}</span>
-            </button>
+          <div
+            className={`val-tabs ${isQueueExpanded ? "val-tabs--expanded" : ""}`}
+            role="tablist"
+            aria-label="Queue filters"
+          >
+            {(isQueueExpanded ? TAB_ORDER : TAB_ORDER.filter((tab) => PINNED_TABS.includes(tab.key))).map(
+              (tab) => (
+                <button
+                  key={tab.key}
+                  className={filter === tab.key ? "active" : ""}
+                  type="button"
+                  role="tab"
+                  aria-selected={filter === tab.key}
+                  onClick={() => handleFilterChange(tab.key)}
+                >
+                  <span className="val-tab-label">{tab.label}</span>
+                  <span className="val-tab-count">{tabCounts[tab.key]}</span>
+                </button>
+              ),
+            )}
+            {!isQueueExpanded && (
+              <div className="val-tabs-more" ref={tabMenuTriggerRef}>
+                <button
+                  type="button"
+                  className={`val-tabs-more-btn ${isOverflowTabActive ? "active" : ""}`}
+                  aria-haspopup="true"
+                  aria-expanded={tabMenuOpen}
+                  title={
+                    isOverflowTabActive
+                      ? (TAB_ORDER.find((tab) => tab.key === filter)?.label ?? "More filters")
+                      : "More filters"
+                  }
+                  aria-label={
+                    isOverflowTabActive
+                      ? `More filters (currently ${TAB_ORDER.find((tab) => tab.key === filter)?.label ?? filter})`
+                      : "More filters"
+                  }
+                  onClick={() => {
+                    if (tabMenuOpen) {
+                      setTabMenuOpen(false);
+                      return;
+                    }
+                    const rect = tabMenuTriggerRef.current?.getBoundingClientRect();
+                    if (rect) {
+                      const menuWidth = 200;
+                      setTabMenuPos({
+                        top: rect.bottom + 6,
+                        left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)),
+                      });
+                    }
+                    setTabMenuOpen(true);
+                  }}
+                >
+                  <i className={`ti ${tabMenuOpen ? "ti-chevron-up" : "ti-chevron-down"}`} />
+                </button>
+                {tabMenuOpen && tabMenuPos && createPortal(
+                  <div
+                    className="val-tabs-menu"
+                    role="menu"
+                    ref={tabMenuPanelRef}
+                    style={{ top: tabMenuPos.top, left: tabMenuPos.left }}
+                  >
+                    {TAB_ORDER.filter((tab) => !PINNED_TABS.includes(tab.key)).map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={filter === tab.key}
+                        className={filter === tab.key ? "active" : ""}
+                        onClick={() => {
+                          handleFilterChange(tab.key);
+                          setTabMenuOpen(false);
+                        }}
+                      >
+                        <span>{tab.label}</span>
+                        <span className="val-tabs-menu-count">{tabCounts[tab.key]}</span>
+                      </button>
+                    ))}
+                  </div>,
+                  document.body,
+                )}
+              </div>
+            )}
           </div>
 
           <label className="val-search">
@@ -1276,11 +1538,20 @@ export default function ValidationQueueScreen({
                 !failuresError &&
                 filteredFailures.map((item) => (
                   <button
-                    className={`val-queue-item ${item.submissionId === selectedFailureId ? "active" : ""}`}
+                    className={`val-queue-item ${item.submissionId === selectedId ? "active" : ""}`}
                     key={item.submissionId}
                     type="button"
                     onClick={() => {
-                      setSelectedFailureId(item.submissionId);
+                      void openSubmission({
+                        id: item.submissionId,
+                        institutionId: item.institutionId,
+                        institutionName: item.institutionName,
+                        eventTitle: item.eventTitle,
+                        eventDate: "",
+                        status: item.status as SubmissionStatus,
+                        scheduledAt: item.scheduledAt ?? undefined,
+                        fastTrack: item.fastTrack,
+                      });
                       setMobileView("review");
                     }}
                     title={`${item.eventTitle || "Untitled submission"} • ${item.institutionName || "Unknown institution"}`}
@@ -1353,7 +1624,7 @@ export default function ValidationQueueScreen({
                 !error &&
                 filteredQueue.map((item) => (
                   <button
-                    className={`val-queue-item ${item.id === selectedId ? "active" : ""} ${deadlineTone(item.scheduledAt)}`}
+                    className={`val-queue-item ${item.id === selectedId ? "active" : ""} ${normalizeStatus(item.status) === "pending" ? deadlineTone(item.scheduledAt) : ""}`}
                     key={item.id}
                     type="button"
                     onClick={() => {
@@ -1431,23 +1702,52 @@ export default function ValidationQueueScreen({
             <i className="ti ti-arrow-left" />
             <span>Back to Queue</span>
           </button>
-          <span className="val-mobile-queue-badge">
-            {isFailedMode ? "Failed" : filter === "all" ? "All Queue" : statusLabel[filter] || filter}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            {selected && (
+              <button
+                type="button"
+                className="val-guide-btn"
+                onClick={() => (editMode ? startEditTour(true) : failureInfo ? startFailedTour(true) : startReviewTour(true))}
+                title="Show the Content Submission guide"
+                aria-label="Show the Content Submission guide"
+              >
+                <i className="ti ti-help-circle" />
+                <span>Guide</span>
+              </button>
+            )}
+          </div>
         </div>
-        {isPanelCollapsed && (
-          <button
-            type="button"
-            className="val-expand-btn"
-            onClick={() => setIsPanelCollapsed(false)}
-            title="Expand queue panel (>>)"
-            aria-label="Expand queue list"
-          >
-            <i className="ti ti-chevrons-right" />
-            <span>Show Queue</span>
-          </button>
+        {(isPanelCollapsed || (isDesktop && selected)) && (
+          <div className="val-review-toolbar">
+            <div>
+              {isPanelCollapsed && (
+                <button
+                  type="button"
+                  className="val-expand-btn"
+                  onClick={() => setIsPanelCollapsed(false)}
+                  title="Expand queue panel (>>)"
+                  aria-label="Expand queue list"
+                >
+                  <i className="ti ti-chevrons-right" />
+                  <span>Show Queue</span>
+                </button>
+              )}
+            </div>
+            {isDesktop && selected && (
+              <button
+                type="button"
+                className="val-guide-btn"
+                onClick={() => (editMode ? startEditTour(true) : failureInfo ? startFailedTour(true) : startReviewTour(true))}
+                title="Show the Content Submission guide"
+                aria-label="Show the Content Submission guide"
+              >
+                <i className="ti ti-help-circle" />
+                <span>Guide</span>
+              </button>
+            )}
+          </div>
         )}
-        {!isFailedMode && selected && !editMode && !selectedLoading && (
+        {selected && !editMode && !selectedLoading && (
           <button
             type="button"
             className={`val-details-btn ${showDetails ? "is-hidden" : ""}`}
@@ -1459,155 +1759,8 @@ export default function ValidationQueueScreen({
             <span>Details</span>
           </button>
         )}
-        {isFailedMode && !selectedFailure && (
-          <div className="val-empty">
-            <i className="ti ti-mood-sad"></i>
-            <h2>{filteredFailures.length === 0 ? "No matching failed publications" : "Select a failed submission"}</h2>
-            <p>
-              {filteredFailures.length === 0
-                ? failures.length === 0
-                  ? "Automated publish failures needing manual recovery will appear here."
-                  : "Clear or adjust your search to see failed publications."
-                : "Open an item from the list to retry it or fall back to manual publishing."}
-            </p>
-          </div>
-        )}
 
-        {isFailedMode && selectedFailure && (
-          <>
-            <div className="val-scroll">
-              {selectedFailure.lastManualPublishAbandonedAt && (
-                <NoticeBar
-                  tone="warn"
-                  icon="ti-alert-triangle"
-                  text={`A manual publish session was abandoned on ${formatDateTime(selectedFailure.lastManualPublishAbandonedAt)}.`}
-                />
-              )}
-
-              {failureContentLoading ? (
-                <PanelContentLoader text="Loading submission details" />
-              ) : failureContent ? (
-                <>
-                  <FacebookPostPreviewCard
-                    submission={failureContent}
-                    editMode={false}
-                    editForm={emptyEditForm()}
-                    mediaAssets={failureContent.mediaAssets ?? []}
-                    mediaIndex={failureMediaIndex}
-                    onMediaIndexChange={setFailureMediaIndex}
-                    watermarkConfig={watermarkConfig}
-                    showWatermarkPreview={showWatermarkPreview}
-                    onToggleWatermark={() => setShowWatermarkPreview((prev) => !prev)}
-                    onOpenHistory={() => setShowHistoryModal(true)}
-                  />
-
-                  <section className="val-detail-grid" style={{ width: "100%", maxWidth: "620px" }}>
-                    <DetailCard icon="ti-refresh" label="Retry Attempts">
-                      {selectedFailure.retryCount}
-                    </DetailCard>
-                    <DetailCard icon="ti-clock-hour-4" label="Last Attempt">
-                      {selectedFailure.lastAttemptAt ? formatDateTime(selectedFailure.lastAttemptAt) : "No attempts recorded"}
-                    </DetailCard>
-                    {selectedFailure.lastError && (
-                      <DetailCard icon="ti-bug" label="Last Error" full muted>
-                        {selectedFailure.lastError}
-                      </DetailCard>
-                    )}
-                  </section>
-                </>
-              ) : null}
-            </div>
-
-            {showHistoryModal && failureContent && (
-              <ValidationHistoryModal
-                submission={failureContent}
-                log={failureLog}
-                loading={failureLogLoading}
-                isTerminalStatus={false}
-                onClose={() => setShowHistoryModal(false)}
-              />
-            )}
-
-            <footer className="val-action-bar">
-              <div className="val-action-status">
-                <span className="val-action-hint">
-                  <i className="ti ti-info-circle" />
-                  <span>
-                    {selectedFailure.status === "missed_review"
-                      ? "This submission missed its review window. Assign a new schedule to send it back to the approval queue."
-                      : selectedFailure.manualPublishInProgress
-                        ? "A manual publish session is already open for this submission."
-                        : "Retry automatically, or fall back to manual publishing."}
-                  </span>
-                </span>
-              </div>
-              <div className="val-action-group">
-                {selectedFailure.status === "missed_review" ? (
-                  <button
-                    className="val-btn val-btn-primary"
-                    type="button"
-                    disabled={failureBusy === selectedFailure.submissionId}
-                    onClick={() => setRetryItem(selectedFailure)}
-                  >
-                    <i className="ti ti-calendar-plus" />
-                    <span>Retry with New Schedule</span>
-                  </button>
-                ) : selectedFailure.manualPublishInProgress ? (
-                  <>
-                    <button
-                      className="val-btn val-btn-danger-outline"
-                      type="button"
-                      disabled={failureBusy === selectedFailure.submissionId}
-                      onClick={() => void handleCancelManual(selectedFailure)}
-                    >
-                      <i className="ti ti-x" />
-                      <span>Cancel Manual Session</span>
-                    </button>
-                    <button
-                      className="val-btn val-btn-primary"
-                      type="button"
-                      onClick={() => openWorkflowPanel(selectedFailure)}
-                    >
-                      <i className="ti ti-user-check" />
-                      <span>Continue Manual Publish</span>
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      className="val-btn val-btn-secondary"
-                      type="button"
-                      disabled={failureBusy === selectedFailure.submissionId}
-                      onClick={() =>
-                        // A Moderator retrying an already-Live submission has no
-                        // mode decision to make — retry it as-is, no modal. Any
-                        // other case (Scheduled needs a new time; an Admin may
-                        // also want to change the mode) opens the picker.
-                        !isAdmin && selectedFailure.fastTrack
-                          ? void handleFailureRetry(selectedFailure)
-                          : setRetryItem(selectedFailure)
-                      }
-                    >
-                      <i className="ti ti-refresh" />
-                      <span>Retry</span>
-                    </button>
-                    <button
-                      className="val-btn val-btn-primary"
-                      type="button"
-                      disabled={failureBusy === selectedFailure.submissionId}
-                      onClick={() => void handleStartManual(selectedFailure)}
-                    >
-                      <i className="ti ti-user-check" />
-                      <span>Start Manual Publish</span>
-                    </button>
-                  </>
-                )}
-              </div>
-            </footer>
-          </>
-        )}
-
-        {!isFailedMode && !selected && !selectedLoading && (
+        {!selected && !selectedLoading && (
           <div className="val-empty">
             <i className="ti ti-clipboard-check"></i>
             <h2>Select a submission</h2>
@@ -1615,14 +1768,21 @@ export default function ValidationQueueScreen({
           </div>
         )}
 
-        {!isFailedMode && selected && (
+        {selected && (
           <>
             <div className="val-scroll">
-              {isSelfReview && (
+              {isSelfReview && normalizeStatus(selected.status ?? "") === "pending" && (
                 <NoticeBar
                   tone="warn"
                   icon="ti-alert-triangle"
                   text="You cannot review your own submission. Another Moderator must review it."
+                />
+              )}
+              {failureInfo?.lastManualPublishAbandonedAt && (
+                <NoticeBar
+                  tone="warn"
+                  icon="ti-alert-triangle"
+                  text={`A manual publish session was abandoned on ${formatDateTime(failureInfo.lastManualPublishAbandonedAt)}.`}
                 />
               )}
               {lockNotice && (
@@ -1659,6 +1819,8 @@ export default function ValidationQueueScreen({
                       currentUserEmail={user.email}
                       onHide={() => setShowDetails(false)}
                       isOpen={showDetails}
+                      retryCount={failureInfo?.retryCount}
+                      lastAttemptAt={failureInfo?.lastAttemptAt}
                     />
                   )}
 
@@ -1710,7 +1872,7 @@ export default function ValidationQueueScreen({
                             </label>
                           </div>
 
-                          <div className="val-edit-field">
+                          <div className="val-edit-field" id="val-edit-caption-group">
                             <div className="val-edit-label-row">
                               <span>Caption</span>
                               <div className="val-edit-caption-tools">
@@ -1970,6 +2132,33 @@ export default function ValidationQueueScreen({
                   )}
                 </div>
               )}
+
+              {failureInfo && (failureInfo.lastError || failureInfo.unresolvedPhotoIds) && (
+                <section className="val-detail-grid" style={{ width: "100%", maxWidth: "620px" }}>
+                  {failureInfo.lastError && (
+                    <DetailCard icon="ti-bug" label="Last Error" full muted>
+                      {failureInfo.lastError}
+                    </DetailCard>
+                  )}
+                  {failureInfo.unresolvedPhotoIds && (
+                    <DetailCard icon="ti-photo-off" label="Orphaned Facebook Photos" full muted>
+                      <p style={{ margin: "0 0 4px" }}>
+                        These photos were staged but could not be deleted after the post failed to publish —
+                        they may still exist unpublished on the Facebook Page and need manual removal.
+                      </p>
+                      <code style={{ fontSize: "0.85em", wordBreak: "break-all" }}>
+                        {(() => {
+                          try {
+                            return (JSON.parse(failureInfo.unresolvedPhotoIds) as string[]).join(", ");
+                          } catch {
+                            return failureInfo.unresolvedPhotoIds;
+                          }
+                        })()}
+                      </code>
+                    </DetailCard>
+                  )}
+                </section>
+              )}
             </div>
 
             {showHistoryModal && (
@@ -1982,17 +2171,96 @@ export default function ValidationQueueScreen({
               />
             )}
 
-            {isTerminalStatus ? (
-              <footer className="val-action-bar val-action-bar--readonly">
+            {failureInfo ? (
+              <footer className="val-action-bar">
+                <div className="val-action-status">
+                  <span className="val-action-hint">
+                    <i className="ti ti-info-circle" />
+                    <span>
+                      {failureInfo.status === "missed_review"
+                        ? "This submission missed its review window. Assign a new schedule to send it back to the approval queue."
+                        : failureInfo.manualPublishInProgress
+                          ? "A manual publish session is already open for this submission."
+                          : "Retry automatically, or fall back to manual publishing."}
+                    </span>
+                  </span>
+                </div>
+                <div className="val-action-group">
+                  {failureInfo.status === "missed_review" ? (
+                    <button
+                      className="val-btn val-btn-primary"
+                      type="button"
+                      disabled={failureBusy === failureInfo.submissionId}
+                      onClick={() => setRetryItem(failureInfo)}
+                    >
+                      <i className="ti ti-calendar-plus" />
+                      <span>Retry with New Schedule</span>
+                    </button>
+                  ) : failureInfo.manualPublishInProgress ? (
+                    <>
+                      <button
+                        className="val-btn val-btn-danger-outline"
+                        type="button"
+                        disabled={failureBusy === failureInfo.submissionId}
+                        onClick={() => void handleCancelManual(failureInfo)}
+                      >
+                        <i className="ti ti-x" />
+                        <span>Cancel Manual Session</span>
+                      </button>
+                      <button
+                        className="val-btn val-btn-primary"
+                        type="button"
+                        onClick={() => openWorkflowPanel(failureInfo)}
+                      >
+                        <i className="ti ti-user-check" />
+                        <span>Continue Manual Publish</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className="val-btn val-btn-secondary"
+                        type="button"
+                        disabled={failureBusy === failureInfo.submissionId}
+                        onClick={() =>
+                          // A Moderator retrying an already-Live submission has no
+                          // mode decision to make — retry it as-is, no modal. Any
+                          // other case (Scheduled needs a new time; an Admin may
+                          // also want to change the mode) opens the picker.
+                          !isAdmin && failureInfo.fastTrack
+                            ? void handleFailureRetry(failureInfo)
+                            : setRetryItem(failureInfo)
+                        }
+                      >
+                        <i className="ti ti-refresh" />
+                        <span>Retry</span>
+                      </button>
+                      <button
+                        className="val-btn val-btn-primary"
+                        type="button"
+                        disabled={failureBusy === failureInfo.submissionId}
+                        onClick={() => void handleStartManual(failureInfo)}
+                      >
+                        <i className="ti ti-user-check" />
+                        <span>Start Manual Publish</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </footer>
+            ) : isTerminalStatus ? (
+              <footer className="val-action-bar val-action-bar--readonly" id="val-review-actions">
                 <div className="val-action-status">
                   <span className="val-action-hint">
                     <i className="ti ti-eye" />
-                    Read-only — this submission is {statusLabel[normalizeStatus(selected?.status ?? "")] ?? selected?.status ?? "in a terminal state"}.
+                    {normalizeStatus(selected?.status ?? "") === "needs_revision"
+                      ? "Read-only — showing what was last submitted for review. The contributor is revising it now; this will update once they resubmit."
+                      : `Read-only — this submission is ${statusLabel[normalizeStatus(selected?.status ?? "")] ?? selected?.status ?? "in a terminal state"}.`}
                   </span>
                 </div>
               </footer>
             ) : editMode ? (
-              <footer className="val-action-bar">
+              <footer className="val-action-bar" id="val-edit-actions">
                 <div className="val-action-status">
                   <span className="val-action-edit-pill">
                     <i className="ti ti-pencil" />
@@ -2009,6 +2277,7 @@ export default function ValidationQueueScreen({
                     Cancel
                   </button>
                   <button
+                    id="val-btn-save-edit"
                     className="val-btn val-btn-primary"
                     type="button"
                     disabled={!canSaveEdit}
@@ -2020,14 +2289,14 @@ export default function ValidationQueueScreen({
                 </div>
               </footer>
             ) : activeLock ? (
-              <footer className="val-action-bar">
+              <footer className="val-action-bar" id="val-review-actions">
                 <div className="val-action-status">
                   <span className="val-action-lock-pill">
                     <i className="ti ti-lock-check" />
                     Review in progress by you until {formatDateTime(activeLock.expiresAt)}
                   </span>
                 </div>
-                <div className="val-action-group">
+                <div className="val-action-group" id="val-review-decision-group">
                   <button
                     className="val-btn val-btn-subtle"
                     type="button"
@@ -2042,6 +2311,7 @@ export default function ValidationQueueScreen({
                   <div className="val-action-divider" />
 
                   <button
+                    id="val-btn-reject"
                     className="val-btn val-btn-danger-outline"
                     type="button"
                     onClick={() => openDecisionModal("reject")}
@@ -2050,6 +2320,7 @@ export default function ValidationQueueScreen({
                     <span>Reject</span>
                   </button>
                   <button
+                    id="val-btn-revise"
                     className="val-btn val-btn-secondary"
                     type="button"
                     onClick={() => openDecisionModal("revise")}
@@ -2058,6 +2329,7 @@ export default function ValidationQueueScreen({
                     <span>Request Revision</span>
                   </button>
                   <button
+                    id="val-btn-edit"
                     className="val-btn val-btn-blue-outline"
                     type="button"
                     onClick={handleStartEdit}
@@ -2066,6 +2338,7 @@ export default function ValidationQueueScreen({
                     <span>Edit</span>
                   </button>
                   <button
+                    id="val-btn-approve"
                     className="val-btn val-btn-primary"
                     type="button"
                     disabled={isSelfReview}
@@ -2078,7 +2351,7 @@ export default function ValidationQueueScreen({
                 </div>
               </footer>
             ) : (
-              <footer className="val-action-bar">
+              <footer className="val-action-bar" id="val-review-actions">
                 <div className="val-action-status">
                   <span className="val-action-hint">
                     <i className="ti ti-info-circle" />
@@ -2089,6 +2362,7 @@ export default function ValidationQueueScreen({
                 </div>
                 <div className="val-action-group">
                   <button
+                    id="val-btn-start-review"
                     className="val-btn val-btn-primary"
                     type="button"
                     disabled={lockBusy || lockVerificationChecking || isSelfReview}
@@ -2345,7 +2619,8 @@ export default function ValidationQueueScreen({
             hasImageAssets={editHasImage}
             existingCaption={editForm.caption}
             onClose={() => setCaptionPromptOpen(false)}
-            onSubmit={(prompt, tone) => void handleAiCaptionPromptSubmit(prompt, tone)}
+            onSubmit={(prompt, tone) => handleAiCaptionPromptSubmit(prompt, tone)}
+            onApprove={handleAiCaptionApprove}
           />
         </Suspense>
       )}
@@ -2362,6 +2637,10 @@ export default function ValidationQueueScreen({
         );
       })()}
 
+      <SpotlightTour {...queueTourProps} />
+      <SpotlightTour {...reviewTourProps} />
+      <SpotlightTour {...failedTourProps} />
+      <SpotlightTour {...editTourProps} />
     </div>
   );
 }
@@ -2492,15 +2771,46 @@ function FacebookPostImage({
   skipWatermark?: boolean;
 }) {
   const [isVeryTall, setIsVeryTall] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
-    queueMicrotask(() => setIsVeryTall(false));
+    queueMicrotask(() => {
+      setIsVeryTall(false);
+      setLoadFailed(false);
+      setRetryToken(0);
+    });
   }, [src]);
+
+  // A7: a broken/unreachable media asset must not block review — the reviewer
+  // can retry the load (e.g. a transient R2/network hiccup) or acknowledge it
+  // and proceed straight to Request Revision/Reject with the rest of the
+  // submission's content still visible.
+  if (loadFailed) {
+    return (
+      <div className="val-fb-image-wrapper val-fb-image-error">
+        <i className="ti ti-photo-off" aria-hidden="true" />
+        <span>This media asset failed to load.</span>
+        <button
+          type="button"
+          className="val-btn val-btn-secondary"
+          onClick={() => {
+            setLoadFailed(false);
+            setRetryToken((n) => n + 1);
+          }}
+        >
+          <i className="ti ti-refresh" aria-hidden="true" />
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className={`val-fb-image-wrapper ${isVeryTall ? "is-very-tall" : ""}`}>
       <img
-        src={src}
+        key={retryToken}
+        src={retryToken > 0 ? `${src}${src.includes("?") ? "&" : "?"}retry=${retryToken}` : src}
         alt={alt}
         className={isVeryTall ? "val-fb-img-cover" : "val-fb-img-natural"}
         onLoad={(e) => {
@@ -2513,6 +2823,7 @@ function FacebookPostImage({
             setIsVeryTall(ratio < 0.8);
           }
         }}
+        onError={() => setLoadFailed(true)}
       />
       {showWatermark && watermarkConfig?.enabled && !skipWatermark && (
         <WatermarkOverlay elements={watermarkConfig.elements} />
@@ -2533,12 +2844,17 @@ function SubmissionDetailsPanel({
   currentUserEmail,
   onHide,
   isOpen = true,
+  retryCount,
+  lastAttemptAt,
 }: {
   submission: SubmissionSummary;
   log: ValidationLog[];
   currentUserEmail: string;
   onHide: () => void;
   isOpen?: boolean;
+  /** Failed-tab only — a regular submission's review has no retry history. */
+  retryCount?: number;
+  lastAttemptAt?: string | null;
 }) {
   const isLive = Boolean(submission.fastTrack);
   const slot = submission.scheduledAt;
@@ -2633,6 +2949,20 @@ function SubmissionDetailsPanel({
             )}
           </dd>
         </div>
+
+        {retryCount !== undefined && (
+          <div>
+            <dt>Retry attempts</dt>
+            <dd>{retryCount}</dd>
+          </div>
+        )}
+
+        {retryCount !== undefined && (
+          <div>
+            <dt>Last attempt</dt>
+            <dd>{lastAttemptAt ? formatDateTime(lastAttemptAt) : "No attempts recorded"}</dd>
+          </div>
+        )}
 
         <div>
           <dt>Edits during review</dt>

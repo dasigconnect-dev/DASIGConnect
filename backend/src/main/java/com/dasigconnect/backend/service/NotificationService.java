@@ -80,12 +80,16 @@ public class NotificationService {
         if (notification.getReadAt() == null) {
             notification.setReadAt(Instant.now());
             notificationRepository.save(notification);
+            // Cross-session sync: without this, a second open tab/device only
+            // learns this was read on its own next poll, not immediately.
+            dispatchRead(user.userId(), notificationId);
         }
     }
 
     @Transactional
     public void markAllRead(JwtUserDetails user) {
         notificationRepository.markAllRead(user.userId(), Instant.now());
+        dispatchReadAll(user.userId());
     }
 
     /**
@@ -161,6 +165,43 @@ public class NotificationService {
             } catch (IOException | IllegalStateException ex) {
                 log.debug("Failed to send SSE to {}: {}", notification.getRecipient().getId(), ex.getMessage());
                 removeEmitter(notification.getRecipient().getId(), emitter);
+            }
+        }
+    }
+
+    /**
+     * Pushes a "read" event (the notification id, as a bare string) to every
+     * live SSE stream for the recipient, so a second open tab/device updates
+     * its badge/list immediately instead of waiting for its own next poll.
+     * No @Transactional — no DB access here, same as dispatch().
+     */
+    public void dispatchRead(UUID recipientId, UUID notificationId) {
+        List<SseEmitter> userEmitters = emitters.get(recipientId);
+        if (userEmitters == null || userEmitters.isEmpty()) {
+            return;
+        }
+        for (SseEmitter emitter : userEmitters) {
+            try {
+                emitter.send(SseEmitter.event().name("read").data(notificationId.toString()));
+            } catch (IOException | IllegalStateException ex) {
+                log.debug("Failed to send SSE read event to {}: {}", recipientId, ex.getMessage());
+                removeEmitter(recipientId, emitter);
+            }
+        }
+    }
+
+    /** Same as {@link #dispatchRead}, for the mark-all-read case. */
+    public void dispatchReadAll(UUID recipientId) {
+        List<SseEmitter> userEmitters = emitters.get(recipientId);
+        if (userEmitters == null || userEmitters.isEmpty()) {
+            return;
+        }
+        for (SseEmitter emitter : userEmitters) {
+            try {
+                emitter.send(SseEmitter.event().name("read-all").data(""));
+            } catch (IOException | IllegalStateException ex) {
+                log.debug("Failed to send SSE read-all event to {}: {}", recipientId, ex.getMessage());
+                removeEmitter(recipientId, emitter);
             }
         }
     }

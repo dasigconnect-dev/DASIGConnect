@@ -145,6 +145,9 @@ class ManualPublishingServiceTest {
         assertThat(s.getManualPublishStartedAt()).isNull();
         verify(auditLogService).record(any(), eq("MANUAL_PUBLISH_COMPLETE"), any(), any(), eq(submissionId), any());
         verify(eventPublisher).publishEvent(any(PostPublishedManualEvent.class));
+        // A locked SlotReservation serves no further purpose once the post is
+        // actually out (see V95 migration / GR-H1 network-wide race fix, 2026-09-17).
+        verify(slotReservationService).release(submissionId);
     }
 
     @Test
@@ -285,8 +288,32 @@ class ManualPublishingServiceTest {
         assertThat(s.getStatus()).isEqualTo(SubmissionStatus.scheduled);
         assertThat(s.getScheduledAt()).isEqualTo(newSlot);
         assertThat(s.getRetryCount()).isZero();
-        verify(slotReservationService).reserveLockedSlot(submissionId, s.getInstitution().getId(), newSlot);
+        verify(slotReservationService).reserveLockedSlot(submissionId, s.getInstitution().getId(), newSlot, false);
         verify(eventPublisher).publishEvent(any(SubmissionRescheduledEvent.class));
+    }
+
+    @Test
+    void retryWithNewSchedule_resetsModeratorRescheduleCapBaseline() {
+        // Regression: a submission that had already used up its Moderator
+        // reschedule cap (UC-3.1) before failing to publish must not come back
+        // from a successful retry still capped out, or anchored to a now-stale
+        // original slot far from the new one.
+        Submission s = submission(submissionId, SubmissionStatus.publish_failed);
+        Instant staleOriginal = Instant.now().minusSeconds(30 * 24 * 3600);
+        s.setOriginalScheduledAt(staleOriginal);
+        s.setModeratorRescheduleCount(2);
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(s));
+        when(submissionRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(guardRailService.validate(any(), any(), any())).thenReturn(new GuardRailResult());
+
+        RescheduleRequestDto dto = new RescheduleRequestDto();
+        Instant newSlot = Instant.now().plusSeconds(7200);
+        dto.setScheduledAt(newSlot);
+
+        service.retryWithNewSchedule(submissionId, dto, admin);
+
+        assertThat(s.getOriginalScheduledAt()).isEqualTo(newSlot);
+        assertThat(s.getModeratorRescheduleCount()).isZero();
     }
 
     @Test

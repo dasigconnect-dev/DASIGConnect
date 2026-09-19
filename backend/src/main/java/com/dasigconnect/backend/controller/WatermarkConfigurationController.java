@@ -5,7 +5,6 @@ import com.dasigconnect.backend.model.dto.settings.WatermarkConfigurationRequest
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.WatermarkConfigurationService;
 import jakarta.validation.Valid;
-import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -24,10 +23,9 @@ public class WatermarkConfigurationController {
     /** Readable by any authenticated user — every role needs it to render post previews. */
     @GetMapping
     public ResponseEntity<WatermarkConfigurationDto> get(
-            @RequestParam(required = false) UUID institutionId,
             @AuthenticationPrincipal JwtUserDetails actor
     ) {
-        return ResponseEntity.ok(service.get(institutionId, actor));
+        return ResponseEntity.ok(service.get(actor));
     }
 
     @PutMapping

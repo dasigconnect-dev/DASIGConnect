@@ -21,6 +21,10 @@ public class CalendarEventDto {
     private String contributorName;
     /** True once the submission's slot reservation is permanently locked (post-approval). */
     private boolean locked;
+    /** UC-3.1: the slot as of approval — the anchor for the Moderator reschedule window. */
+    private Instant originalScheduledAt;
+    /** UC-3.1: how many times a Moderator has rescheduled this post (capped at 2; Admin doesn't count). */
+    private int moderatorRescheduleCount;
     /** True when this event is the viewer's own authored submission (own-workflow bucket). */
     private boolean mine;
 
@@ -38,6 +42,8 @@ public class CalendarEventDto {
         dto.publishedAt = s.getPublishedAt();
         dto.caption = s.getCaption();
         dto.description = s.getDescription();
+        dto.originalScheduledAt = s.getOriginalScheduledAt();
+        dto.moderatorRescheduleCount = s.getModeratorRescheduleCount();
         if (s.getContributor() != null) {
             String firstName = s.getContributor().getFirstName() != null ? s.getContributor().getFirstName() : "";
             String lastName = s.getContributor().getLastName() != null ? s.getContributor().getLastName() : "";
@@ -77,6 +83,8 @@ public class CalendarEventDto {
     public String getCaption() { return caption; }
     public String getDescription() { return description; }
     public String getContributorName() { return contributorName; }
+    public Instant getOriginalScheduledAt() { return originalScheduledAt; }
+    public int getModeratorRescheduleCount() { return moderatorRescheduleCount; }
 
     public boolean isLocked() { return locked; }
     public void setLocked(boolean locked) { this.locked = locked; }

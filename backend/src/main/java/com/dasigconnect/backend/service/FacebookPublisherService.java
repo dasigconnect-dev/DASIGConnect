@@ -83,6 +83,7 @@ public class FacebookPublisherService {
     private final ApplicationEventPublisher eventPublisher;
     private final WatermarkApplicationService watermarkApplicationService;
     private final AuditLogService auditLogService;
+    private final SlotReservationService slotReservationService;
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -99,7 +100,8 @@ public class FacebookPublisherService {
             SubmissionRepository submissionRepository,
             ApplicationEventPublisher eventPublisher,
             WatermarkApplicationService watermarkApplicationService,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            SlotReservationService slotReservationService) {
         this.envPageAccessToken = envPageAccessToken;
         this.envPageId = envPageId;
         this.appId = appId;
@@ -112,6 +114,7 @@ public class FacebookPublisherService {
         this.eventPublisher = eventPublisher;
         this.watermarkApplicationService = watermarkApplicationService;
         this.auditLogService = auditLogService;
+        this.slotReservationService = slotReservationService;
     }
 
     /** True once some page is connected — the actual identity is resolved dynamically, never cached here. */
@@ -296,8 +299,8 @@ public class FacebookPublisherService {
                 lastError = ex.getMessage();
                 log.warn("Photo publish attempt {}/{} failed for submission {}: {}",
                         attempt, MAX_RETRIES, submission.getId(), lastError);
-                recordAttempt(submission, attempt, "failed", lastError, toJson(stagedPhotoIds));
-                cleanupStagedPhotos(stagedPhotoIds, token);
+                List<String> unresolvedPhotoIds = cleanupStagedPhotos(stagedPhotoIds, token);
+                recordAttempt(submission, attempt, "failed", lastError, toJson(stagedPhotoIds), toJson(unresolvedPhotoIds));
 
                 if (attempt < MAX_RETRIES) {
                     sleep(BACKOFF_MS[attempt - 1]);
@@ -364,7 +367,14 @@ public class FacebookPublisherService {
         return photoId;
     }
 
-    private void cleanupStagedPhotos(List<String> photoIds, String token) {
+    /**
+     * Attempts to delete every staged photo, returning the subset that
+     * couldn't be deleted (HTTP failure or exception) -- these are the ones
+     * actually left orphaned on the Facebook Page, and get recorded on the
+     * PublicationAttempt for an Administrator to see and manually resolve.
+     */
+    private List<String> cleanupStagedPhotos(List<String> photoIds, String token) {
+        List<String> unresolved = new ArrayList<>();
         for (String photoId : photoIds) {
             try {
                 String url = "https://graph.facebook.com/" + apiVersion + "/" + photoId
@@ -376,11 +386,14 @@ public class FacebookPublisherService {
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
                 if (response.statusCode() != 200) {
                     log.warn("Failed to delete staged photo {}: HTTP {}", photoId, response.statusCode());
+                    unresolved.add(photoId);
                 }
             } catch (Exception ex) {
                 log.warn("Exception deleting staged photo {}: {}", photoId, ex.getMessage());
+                unresolved.add(photoId);
             }
         }
+        return unresolved;
     }
 
     private JsonNode postForm(String url, String body) throws IOException, InterruptedException {
@@ -419,6 +432,12 @@ public class FacebookPublisherService {
         s.setPublishedAt(Instant.now());
         clearTokenSuspension(s);
         submissionRepository.save(s);
+        // The slot is spoken for the instant the post actually goes out — a
+        // locked SlotReservation serving no further purpose that lingers
+        // forever is what let two already-published submissions' reservations
+        // quietly violate GR-H1's ±30-minute network-wide rule (found 2026-09-17
+        // while closing the reschedule-count race; see V95 migration).
+        slotReservationService.release(s.getId());
         String postUrl = "https://www.facebook.com/" + postId.replace("_", "/posts/");
         // `direct_post_*` is a legacy lifecycle (the admin Direct Post UI was
         // removed); any remaining such rows still publish and are marked
@@ -485,12 +504,19 @@ public class FacebookPublisherService {
 
     @Transactional
     public void recordAttempt(Submission submission, int attemptNumber, String result, String error, String photoIds) {
+        recordAttempt(submission, attemptNumber, result, error, photoIds, null);
+    }
+
+    @Transactional
+    public void recordAttempt(Submission submission, int attemptNumber, String result, String error, String photoIds,
+            String cleanupFailedPhotoIds) {
         PublicationAttempt attempt = new PublicationAttempt();
         attempt.setSubmission(submissionRepository.getReferenceById(submission.getId()));
         attempt.setAttemptNumber(attemptNumber);
         attempt.setResult(result);
         attempt.setErrorDetail(error);
         attempt.setPhotoIdsStaged(photoIds);
+        attempt.setPhotoIdsCleanupFailed(cleanupFailedPhotoIds);
         publicationAttemptRepository.save(attempt);
     }
 

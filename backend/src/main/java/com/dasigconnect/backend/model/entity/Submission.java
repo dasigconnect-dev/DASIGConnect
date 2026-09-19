@@ -14,6 +14,8 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "submissions")
@@ -48,6 +50,30 @@ public class Submission {
 
     @Column(name = "scheduled_at")
     private Instant scheduledAt;
+
+    /**
+     * The slot as of the moment this submission was approved (set once, in
+     * {@code ValidationService.approve()}, never touched afterward) — the
+     * anchor point for the Moderator reschedule cap in
+     * {@code SubmissionService.reschedule()}: a Moderator may only move a
+     * post within 1 day of this original slot, not of wherever it most
+     * recently landed. Null for a Fast-Track submission (never has a slot)
+     * and for anything approved before this column existed.
+     */
+    @Column(name = "original_scheduled_at")
+    private Instant originalScheduledAt;
+
+    /**
+     * Count of Moderator-initiated calendar reschedules via
+     * {@code SubmissionService.reschedule()} — capped at 2. Not incremented
+     * by an Administrator's reschedule (unrestricted) or by a schedule
+     * change made during review, before approval (UC-2.4 A9, a different
+     * action). Per-submission, not per-Moderator: it doesn't matter how many
+     * different Moderators made the moves, only how many times this post
+     * has been moved by the role.
+     */
+    @Column(name = "moderator_reschedule_count", nullable = false)
+    private int moderatorRescheduleCount = 0;
 
     @Column(name = "submitted_at")
     private Instant submittedAt;
@@ -111,6 +137,22 @@ public class Submission {
 
     @Column(name = "token_final_failed_at")
     private Instant tokenFinalFailedAt;
+
+    /**
+     * JSON snapshot of the reviewable display fields (title, date, caption,
+     * category, tags, album, scheduled time, media list) captured at the
+     * moment this submission was last submitted or resubmitted for review
+     * (see {@code SubmissionService.submit()}). While the submission sits in
+     * {@code needs_revision}, the contributor's ongoing edits/autosaves
+     * mutate the live columns above directly — this snapshot is what the
+     * Review Queue displays instead, so those in-progress edits don't leak
+     * into the moderator's view until an actual resubmission overwrites it.
+     * Null for submissions that have never been submitted, or that reached
+     * needs_revision before this column existed.
+     */
+    @Column(name = "review_snapshot", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String reviewSnapshot;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -203,6 +245,22 @@ public class Submission {
 
     public void setScheduledAt(Instant scheduledAt) {
         this.scheduledAt = scheduledAt;
+    }
+
+    public Instant getOriginalScheduledAt() {
+        return originalScheduledAt;
+    }
+
+    public void setOriginalScheduledAt(Instant originalScheduledAt) {
+        this.originalScheduledAt = originalScheduledAt;
+    }
+
+    public int getModeratorRescheduleCount() {
+        return moderatorRescheduleCount;
+    }
+
+    public void setModeratorRescheduleCount(int moderatorRescheduleCount) {
+        this.moderatorRescheduleCount = moderatorRescheduleCount;
     }
 
     public Instant getSubmittedAt() {
@@ -336,6 +394,14 @@ public class Submission {
 
     public void setTokenFinalFailedAt(Instant tokenFinalFailedAt) {
         this.tokenFinalFailedAt = tokenFinalFailedAt;
+    }
+
+    public String getReviewSnapshot() {
+        return reviewSnapshot;
+    }
+
+    public void setReviewSnapshot(String reviewSnapshot) {
+        this.reviewSnapshot = reviewSnapshot;
     }
 
     public Instant getCreatedAt() {

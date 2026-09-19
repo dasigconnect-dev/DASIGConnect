@@ -44,8 +44,16 @@ type NotificationSseParser = {
   push: (chunk: string) => void;
 };
 
+export interface NotificationSseHandlers {
+  onNotification: (dto: NotificationDto) => void;
+  /** Fired when another of this user's sessions marks one notification read. */
+  onRead?: (notificationId: string) => void;
+  /** Fired when another of this user's sessions marks everything read. */
+  onReadAll?: () => void;
+}
+
 export function createNotificationSseParser(
-  onNotification: (dto: NotificationDto) => void,
+  handlers: NotificationSseHandlers,
 ): NotificationSseParser {
   let buffer = "";
   let eventName = "";
@@ -54,10 +62,14 @@ export function createNotificationSseParser(
   const dispatchEvent = () => {
     if (eventName === "notification" && dataLines.length > 0) {
       try {
-        onNotification(JSON.parse(dataLines.join("\n")) as NotificationDto);
+        handlers.onNotification(JSON.parse(dataLines.join("\n")) as NotificationDto);
       } catch {
         // Ignore malformed payloads without closing an otherwise healthy stream.
       }
+    } else if (eventName === "read" && dataLines.length > 0) {
+      handlers.onRead?.(dataLines.join("\n"));
+    } else if (eventName === "read-all") {
+      handlers.onReadAll?.();
     }
     eventName = "";
     dataLines = [];
@@ -94,7 +106,7 @@ export function createNotificationSseParser(
 }
 
 export function openNotificationStream(
-  onNotification: (dto: NotificationDto) => void,
+  handlers: NotificationSseHandlers,
   onConnect: () => void,
   onDisconnect: () => void,
   signal: AbortSignal,
@@ -130,7 +142,7 @@ export function openNotificationStream(
       onConnect();
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      const parser = createNotificationSseParser(onNotification);
+      const parser = createNotificationSseParser(handlers);
 
       function pump(): Promise<void> {
         return reader.read().then(({ done, value }) => {

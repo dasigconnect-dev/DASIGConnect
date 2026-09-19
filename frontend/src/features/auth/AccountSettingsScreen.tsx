@@ -31,6 +31,12 @@ import { queryKeys } from "../../lib/queryKeys";
 import { firstPasswordError, getPasswordRules } from "../../lib/passwordPolicy";
 import { watermarkConfigurationQueryOptions } from "../../hooks/useWatermarkConfiguration";
 import { currentProfileQueryOptions } from "../../hooks/useCurrentProfile";
+import {
+  getTourPreferences,
+  toggleToursEnabled,
+  resetAllTours,
+  subscribeTourPreferences,
+} from "../onboarding/tourStorage";
 
 interface Props {
   user: User;
@@ -137,6 +143,27 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [copiedCode, setCopiedCode] = useState(false);
   const [messengerExpanded, setMessengerExpanded] = useState(false);
 
+  // Onboarding / Feature Guides State
+  const [toursEnabled, setToursEnabled] = useState(() => getTourPreferences().enabled);
+
+  useEffect(() => {
+    return subscribeTourPreferences((prefs) => {
+      setToursEnabled(prefs.enabled);
+    });
+  }, []);
+
+  function handleToggleTours(enabled: boolean) {
+    toggleToursEnabled(enabled);
+    setToursEnabled(enabled);
+    toast.success(enabled ? "Interactive feature guides enabled." : "Interactive feature guides disabled.");
+  }
+
+  function handleResetTours() {
+    resetAllTours();
+    setToursEnabled(true);
+    toast.success("All screen guides have been reset.");
+  }
+
   const [saving, setSaving] = useState<"account" | "password" | "watermark" | "messenger" | "guardrails" | null>(null);
   const pageInstitutionId = null;
   const profileQueryOptions = currentProfileQueryOptions(user);
@@ -149,7 +176,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   });
   const watermarkQueryOptions = watermarkConfigurationQueryOptions({
     user,
-    institutionId: pageInstitutionId,
     enabled: canManagePage && activeTab === "page",
   });
   const watermarkQueryKey = watermarkQueryOptions.queryKey;
@@ -390,7 +416,6 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     setSaving("watermark");
     try {
       const { data } = await saveWatermarkConfiguration({
-        institutionId: null,
         enabled: watermarkEnabled,
         elements: watermarkElements,
       });
@@ -402,7 +427,10 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
       await invalidateWatermarkSettingsDependencies();
       toast.success("Watermark settings saved.");
     } catch (err: unknown) {
-      const errorMsg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      // The axios response interceptor (authApi.ts) collapses the backend's
+      // { error: { code, message } } envelope down to a plain string at
+      // response.data.error -- there is no response.data.message.
+      const errorMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
       toast.error(errorMsg || "Unable to save watermark configuration.");
     } finally {
       setSaving(null);
@@ -811,6 +839,35 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
                         )}
                       </>
                     )}
+                  </div>
+                </div>
+
+                <div className="settings-field" style={{ marginTop: "24px" }}>
+                  <span className="settings-label">Interface & Guidance</span>
+                  <div className="settings-toggle-list">
+                    <Toggle
+                      icon="ti ti-sparkles"
+                      title="Interactive feature guides"
+                      description="Show spotlight walkthroughs and tips when visiting screens for the first time."
+                      checked={toursEnabled}
+                      onChange={handleToggleTours}
+                    />
+                    <div className="settings-toggle-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                      <span className="settings-toggle-icon"><i className="ti ti-rotate-clockwise-2" /></span>
+                      <span className="settings-toggle-copy">
+                        <strong>Reset all screen guides</strong>
+                        <span>Re-enable feature walkthroughs across all screens so they appear again as you navigate.</span>
+                      </span>
+                      <button
+                        type="button"
+                        className="sub-btn-ghost"
+                        style={{ padding: "6px 14px", fontSize: "12px", height: "auto", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                        onClick={handleResetTours}
+                      >
+                        <i className="ti ti-rotate" />
+                        <span>Reset Guides</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

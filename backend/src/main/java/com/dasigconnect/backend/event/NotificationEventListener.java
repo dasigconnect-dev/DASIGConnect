@@ -321,6 +321,24 @@ public class NotificationEventListener {
         }
     }
 
+    // ── UC-2.5 A4 — Watermark Application Failed (non-blocking, publish still proceeds) ──
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onWatermarkApplicationFailed(WatermarkApplicationFailedEvent event) {
+        Submission s = event.submission();
+        String msg = "The watermark failed to apply to a photo in '" + s.getEventTitle()
+                + "' — it published without the watermark. Open the audit log for details.";
+        String link = "/submissions/" + s.getId();
+        for (User admin : admins()) {
+            notificationService.createNotification(admin, NotificationEventType.watermark_apply_failed, msg, link);
+            emailDeliveryService.send(admin,
+                    NotificationEventType.watermark_apply_failed.name(),
+                    "DASIGConnect — Watermark failed to apply",
+                    msg + "\n\nError: " + event.errorDetail()
+                            + "\n\nView submission: " + frontendBaseUrl + link);
+        }
+    }
+
     // ── Token Publishing Suspended Alert (Suspension Lifecycle) ───────────────
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)

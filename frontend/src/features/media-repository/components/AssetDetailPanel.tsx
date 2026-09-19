@@ -180,15 +180,25 @@ export default function AssetDetailPanel({
                 >
                   <div className="med-sel-thumb">
                     {sel.storageUrl ? (
-                      <OptimizedImage
-                        src={sel.storageUrl}
-                        alt={sel.title}
-                        width={48}
-                        height={48}
-                        sizes="48px"
-                        candidateWidths={[48, 96]}
-                        transform={canTransformImageType(sel.fileType)}
-                      />
+                      isVideoType(sel.fileType) ? (
+                        <video
+                          src={sel.storageUrl}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          aria-label={sel.title}
+                        />
+                      ) : (
+                        <OptimizedImage
+                          src={sel.storageUrl}
+                          alt={sel.title}
+                          width={48}
+                          height={48}
+                          sizes="48px"
+                          candidateWidths={[48, 96]}
+                          transform={canTransformImageType(sel.fileType)}
+                        />
+                      )
                     ) : (
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <rect x="3" y="3" width="18" height="18" rx="2" />

@@ -7,7 +7,7 @@ interface Props {
 }
 
 export default function OperationalHealthPanel({ data, onOpenReport }: Props) {
-  const cells: Array<{ label: string; value: string; sub: string }> = [
+  const cells: Array<{ label: string; value: string; sub: string; targetMet?: boolean; target?: number }> = [
     {
       label: "Publishing Success",
       value: formatPercent(data.publishingSuccessRate),
@@ -17,6 +17,8 @@ export default function OperationalHealthPanel({ data, onOpenReport }: Props) {
       label: "On-Time Publication",
       value: formatPercent(data.onTimePublicationRate),
       sub: `${formatNumber(data.onTimePublications)} within ±5 mins`,
+      targetMet: data.meetsOnTimePublicationTarget,
+      target: data.onTimePublicationTarget,
     },
     {
       label: "Deadline Risk",
@@ -38,6 +40,11 @@ export default function OperationalHealthPanel({ data, onOpenReport }: Props) {
             <span className="analytics-stat-cell-label">{cell.label}</span>
             <span className="analytics-stat-cell-value">{cell.value}</span>
             <span className="analytics-stat-cell-sub">{cell.sub}</span>
+            {cell.target !== undefined && (
+              <span className={`analytics-target-badge ${cell.targetMet ? "met" : "miss"}`}>
+                {cell.targetMet ? "On target" : "Below target"} · target {cell.target}%
+              </span>
+            )}
           </div>
         ))}
       </div>

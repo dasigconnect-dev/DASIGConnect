@@ -48,6 +48,13 @@ import AlbumCombobox from "../../components/ui/AlbumCombobox";
 import { RevisionFeedbackModal } from "./components/RevisionFeedbackModal";
 import { RevisionFeedbackBanner } from "./components/RevisionFeedbackBanner";
 import { parseRevisionRemarks, REVISION_SUPPORTED_FIELDS } from "./utils/revisionComments";
+import SpotlightTour from "../onboarding/components/SpotlightTour";
+import { useScreenTour } from "../onboarding/hooks/useScreenTour";
+import {
+  submissionListTourSteps,
+  submissionComposerTourSteps,
+  saveDraftTourSteps,
+} from "../onboarding/tours/submissionTour";
 import "../../styles/dasig-loader.css";
 import "../../styles/submission.css";
 
@@ -204,6 +211,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     loading: lookupsLoading,
   } = useSubmissionLookups(user, isComposerRoute);
   const toast = useToast();
+
+  const {
+    startTour: startSubmissionTour,
+    tourProps: submissionTourProps,
+  } = useScreenTour({
+    screenId: "submissions-list",
+    steps: submissionListTourSteps,
+    autoStartDelayMs: 700,
+    canStart: isMySubmissionsPage && !loading,
+  });
   const detailsSectionRef = useRef<HTMLElement | null>(null);
   const mediaSectionRef = useRef<HTMLElement | null>(null);
   const scheduleSectionRef = useRef<HTMLElement | null>(null);
@@ -449,6 +466,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const isReadOnlySubmission = !isEditableSubmission;
   const canUseAiCaption = !isReadOnlySubmission;
   const hasMedia = form.files.length > 0 || form.savedAssets.length > 0;
+
+  const {
+    startTour: startComposerTour,
+    tourProps: composerTourProps,
+  } = useScreenTour({
+    screenId: "submission-composer",
+    steps: submissionComposerTourSteps,
+    autoStartDelayMs: 800,
+    canStart: isComposerRoute && !loading && !lookupsLoading && !hydratingId && !isReadOnlySubmission,
+  });
   const isDirty = useMemo(
     () =>
       !isReadOnlySubmission &&
@@ -459,6 +486,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const shouldPromptBeforeLeave = isDirty;
   const busy =
     saveState === "saving" || submitting || withdrawing || deleting || reorderingMedia;
+
+  const {
+    tourProps: saveDraftTourProps,
+  } = useScreenTour({
+    screenId: "save-draft-prompt",
+    steps: saveDraftTourSteps,
+    autoStartDelayMs: 400,
+    canStart: isComposerRoute && isDirty && !busy && !isReadOnlySubmission && !composerTourProps.isOpen,
+  });
   const shouldLoadEngagementRecommendations =
     activeStep === "schedule" &&
     !form.fastTrack &&
@@ -981,8 +1017,57 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   async function handleAiCaptionPromptSubmit(prompt: string, tone: CaptionTone) {
-    const generated = await aiCaption.suggest(prompt, tone, undefined, form.caption);
-    if (generated) setCaptionPromptOpen(false);
+    let currentId = form.id;
+    if (!currentId) {
+      if (!form.eventTitle.trim()) {
+        toast.warning("Please enter an Event Title first so AI knows what event this is for.");
+        setCaptionPromptOpen(false);
+        setActiveStep("details");
+        setTimeout(() => eventTitleRef.current?.focus(), 150);
+        return;
+      }
+      if (!form.eventDate) {
+        toast.warning("Please select an Event Date first.");
+        setCaptionPromptOpen(false);
+        setActiveStep("details");
+        return;
+      }
+      if (isAdminComposer && !form.institutionId) {
+        toast.warning("Please select an Institution scope first.");
+        setCaptionPromptOpen(false);
+        setActiveStep("details");
+        return;
+      }
+
+      toast.info("Auto-saving draft and uploading media so AI can analyze your event...");
+      const savedId = await saveDraft({ silent: true });
+      if (!savedId) {
+        toast.error("Could not auto-save draft. Please check your submission fields.");
+        return;
+      }
+      currentId = savedId;
+    } else if (isDirty) {
+      await saveDraft({ silent: true });
+    }
+
+    const generated = await aiCaption.suggest(prompt, tone, currentId, form.caption);
+    if (generated) {
+      toast.success("AI caption generated! Review and refine, or click Approve.");
+      return generated;
+    } else if (aiCaption.notice) {
+      toast.error(aiCaption.notice);
+      return null;
+    } else {
+      toast.error("AI caption could not be generated. Please try again or write one manually.");
+      return null;
+    }
+  }
+
+  function handleAiCaptionApprove(caption: string, tone: CaptionTone) {
+    updateCaption(caption);
+    aiCaption.logApply(tone, "use");
+    setCaptionPromptOpen(false);
+    toast.success("AI caption approved and placed in your caption box!");
   }
 
   function updateFastTrack(value: boolean) {
@@ -1401,7 +1486,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
   }
 
-  async function saveDraft(options: { silent?: boolean } = {}) {
+  async function saveDraft(options: { silent?: boolean } = {}): Promise<string | false> {
     if (isReadOnlySubmission) return false;
     if (busy) return false;
     if (isAdminComposer && !form.institutionId) {
@@ -1480,7 +1565,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setMediaUploadFailed(false);
       cleanSignatureRef.current = getDirtySignature(nextForm);
       if (!options.silent) toast.success("Draft saved.");
-      return true;
+      return finalResponse.data.id;
     } catch (err: unknown) {
       setSaveState("idle");
       if (form.files.length > 0) setMediaUploadFailed(true);
@@ -1959,6 +2044,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               <button
                 className="sub-btn-ghost"
                 type="button"
+                onClick={() => startSubmissionTour(true)}
+                title="Show interactive feature guide"
+                aria-label="Show feature guide"
+              >
+                <i className="ti ti-help-circle" style={{ fontSize: 14 }} />
+                <span>Guide</span>
+              </button>
+              <button
+                className="sub-btn-ghost"
+                type="button"
                 onClick={() => void refreshQueue()}
                 disabled={refreshingQueue || loading || refreshing}
                 title="Refresh submissions list"
@@ -2165,6 +2260,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
           </section>
         </main>
+        <SpotlightTour {...submissionTourProps} />
       </div>
     );
   }
@@ -2216,7 +2312,20 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         <div className="sub-nav-right">
           {(isDirty || saveState === "saving" || saveState === "saved") && (
             <div
-              className={`sub-nav-save-status ${saveState === "saved" && !isDirty ? "saved" : ""}`}
+              className={`sub-nav-save-status ${
+                saveState === "saving"
+                  ? "saving"
+                  : saveState === "saved" && !isDirty
+                    ? "saved"
+                    : ""
+              }`}
+              title={
+                saveState === "saving"
+                  ? "Saving draft changes..."
+                  : saveState === "saved" && !isDirty
+                    ? "All draft changes saved"
+                    : "You have unsaved changes"
+              }
             >
               <i
                 className={
@@ -2226,14 +2335,28 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                       ? "ti ti-cloud-check"
                       : "ti ti-cloud"
                 }
+                aria-hidden="true"
               ></i>
-              {saveState === "saving"
-                ? "Saving..."
-                : saveState === "saved" && !isDirty
-                  ? "Draft saved"
-                  : "Unsaved draft"}
+              <span>
+                {saveState === "saving"
+                  ? "Saving..."
+                  : saveState === "saved" && !isDirty
+                    ? "Draft saved"
+                    : "Unsaved draft"}
+              </span>
             </div>
           )}
+          <button
+            type="button"
+            className="sub-btn-ghost"
+            style={{ padding: "4px 10px", fontSize: "12px", height: "30px", display: "inline-flex", alignItems: "center", gap: "5px" }}
+            onClick={() => startComposerTour(true)}
+            title="How to use the composer"
+            aria-label="How to use the composer"
+          >
+            <i className="ti ti-help-circle" style={{ fontSize: 14 }} />
+            <span>Guide</span>
+          </button>
           <div className="sub-nav-chip">{formatRole(user.role)}</div>
           <div className="sub-nav-avatar">{user.initials}</div>
         </div>
@@ -2405,6 +2528,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               )}
               {isDirty && (
                 <button
+                  id="btn-save-draft"
                   className="sub-btn-ghost save"
                   type="button"
                   onClick={() => void handleSave()}
@@ -2591,7 +2715,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     {canUseAiCaption && (
                       <AiCaptionButton
                         state={aiCaption.state}
-                        canSuggest={aiCaption.canSuggest}
+                        canSuggest={canUseAiCaption}
                         rateLimitReset={aiCaption.rateLimitReset}
                         notice={aiCaption.notice}
                         onSuggest={() => setCaptionPromptOpen(true)}
@@ -2646,8 +2770,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     state={aiCaption.state}
                     hasImageAssets={hasImageAssets}
                     existingCaption={form.caption}
+                    isUnsaved={!form.id}
                     onClose={() => setCaptionPromptOpen(false)}
-                    onSubmit={(prompt, tone) => void handleAiCaptionPromptSubmit(prompt, tone)}
+                    onSubmit={(prompt, tone) => handleAiCaptionPromptSubmit(prompt, tone)}
+                    onApprove={handleAiCaptionApprove}
                   />
                 </Suspense>
               )}
@@ -2684,6 +2810,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   <i className="ti ti-plus" aria-hidden />
                   Add
                 </button>
+              </div>
+              <div className="sub-finput-hint">
+                Type a tag (without &apos;#&apos;) and press Enter or click Add to append it to your caption. Click a tag below to remove it.
               </div>
               <div className="sub-tag-row">
                 {captionHashtags.length > 0 ? (
@@ -2810,6 +2939,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 >
                   <i className="ti ti-plus" aria-hidden /> Add
                 </button>
+              </div>
+              <div className="sub-finput-hint">
+                Add relevant keywords to help categorize and search for this media content later.
               </div>
               <div className="sub-tag-row">
                 {effectiveMediaTags(form).length > 0 ? (
@@ -3317,6 +3449,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           setRevisionModalOpen(false);
         }}
       />
+      <SpotlightTour {...composerTourProps} />
+      <SpotlightTour {...saveDraftTourProps} />
     </div>
   );
 }
