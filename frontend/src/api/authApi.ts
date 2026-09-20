@@ -42,7 +42,12 @@ api.interceptors.response.use(
     finishApiRequest(config ? requestTimers.get(config) : undefined, outcome, error?.response?.status);
     if (config) requestTimers.delete(config);
     const url = String(error?.config?.url || "");
-    if (error?.response?.status === 401 && !url.includes("/auth/login") && !url.includes("/auth/forgot-password")) {
+    const isPublicAuthRequest = [
+      "/auth/login",
+      "/auth/forgot-password",
+      "/auth/reset-password",
+    ].some((path) => url.includes(path));
+    if (error?.response?.status === 401 && !isPublicAuthRequest) {
       window.dispatchEvent(new CustomEvent("dasigconnect:session-expired"));
     }
     const body = error?.response?.data;
