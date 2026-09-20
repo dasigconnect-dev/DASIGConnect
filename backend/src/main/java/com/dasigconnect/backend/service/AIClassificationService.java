@@ -36,7 +36,7 @@ import java.util.UUID;
 public class AIClassificationService {
 
     private static final Logger log = LoggerFactory.getLogger(AIClassificationService.class);
-    private static final int MAX_AI_TAGS_TO_STORE = 15;
+    private static final int MAX_AI_TAGS_TO_STORE = 30;
     private static final DateTimeFormatter UPLOAD_MONTH_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM").withZone(ZoneOffset.UTC);
 
@@ -116,6 +116,37 @@ public class AIClassificationService {
      */
     public void generateAndStoreEmbedding(UUID assetId, String embeddingText) {
         generateAndStoreEmbeddingInternal(assetId, embeddingText);
+    }
+
+    /**
+     * Retries only the embedding step(s) for an image asset that already has
+     * a classification (ai_classified_at set) but is stuck in PROCESSING/FAILED
+     * because a prior embedding call failed. Used by EmbeddingReconciliationJob
+     * instead of {@link #classifyAndEmbed} so a stuck asset isn't fully
+     * reclassified by Claude Vision on every 5-minute retry — that used to
+     * silently re-run classifyAndEmbed's classification step indefinitely for
+     * any asset stuck on the embedding side, which (before persistSuggestedTags
+     * was made to replace rather than accumulate) let one asset's AI tags grow
+     * to 374 over repeated retries.
+     */
+    public void retryStuckImageEmbedding(UUID assetId, String storageUrl) {
+        if (!generateAndStoreImageEmbedding(assetId, storageUrl)) {
+            mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
+            return;
+        }
+        List<String> tagLabels = assetTagRepository
+                .findByMediaAssetIdOrderByCreatedAtAsc(assetId)
+                .stream()
+                .map(AssetTag::getLabel)
+                .toList();
+        String embeddingText = mediaAssetRepository.findActiveById(assetId)
+                .map(asset -> buildEmbeddingText(asset, tagLabels))
+                .orElse(null);
+        if (embeddingText == null || !generateAndStoreEmbeddingInternal(assetId, embeddingText)) {
+            mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
+            return;
+        }
+        mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.READY.name());
     }
 
     private boolean generateAndStoreEmbeddingInternal(UUID assetId, String embeddingText) {
@@ -211,6 +242,17 @@ public class AIClassificationService {
         }
     }
 
+    /**
+     * Replaces this asset's AI-generated tags with the current classification
+     * run's output (bounded to MAX_AI_TAGS_TO_STORE by normalizeTags), rather
+     * than only adding to what's there. This used to be purely additive —
+     * exact-label dedup (DB unique constraint on (media_asset_id, label))
+     * blocked a re-run from re-inserting an identical label, but Claude's
+     * wording is not deterministic across calls ("Outdoor Event" one run,
+     * "outdoor gathering" the next), so every reclassification of the same
+     * asset just kept adding ~15-30 more rows with no ceiling — one asset in
+     * production had accumulated 374. Manual tags are untouched.
+     */
     private List<String> persistSuggestedTags(UUID assetId, Collection<String> suggestedTags) {
         if (suggestedTags == null || suggestedTags.isEmpty()) return List.of();
 
@@ -221,6 +263,10 @@ public class AIClassificationService {
         if (normalized.isEmpty()) return List.of();
 
         try {
+            assetTagRepository.deleteByMediaAssetIdAndSource(assetId, "ai_generated");
+            // A remaining match now can only be a manual tag (AI-sourced ones were
+            // just cleared) — skip it to avoid violating the (media_asset_id, label)
+            // unique constraint; the manual tag already covers that label.
             List<AssetTag> tagsToSave = normalized.stream()
                     .filter(label -> !assetTagRepository.existsByMediaAssetIdAndLabel(assetId, label))
                     .map(label -> {
@@ -231,9 +277,7 @@ public class AIClassificationService {
                         return tag;
                     })
                     .toList();
-            if (!tagsToSave.isEmpty()) {
-                assetTagRepository.saveAll(tagsToSave);
-            }
+            assetTagRepository.saveAll(tagsToSave);
         } catch (Exception e) {
             log.warn("Failed to persist AI tags for asset {}: {}", assetId, e.getMessage());
         }

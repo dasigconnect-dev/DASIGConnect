@@ -34,6 +34,12 @@ interface MediaAssetsPickerProps {
    * the host supplies its own add-media controls. Defaults to showing the tabs.
    */
   sourceTabs?: boolean;
+  /**
+   * Institutions to populate the library's institution filter with, when
+   * `networkView` is on. If omitted, MediaLibraryTab fetches them itself —
+   * pass this when the caller already has the list to avoid a duplicate request.
+   */
+  institutions?: { id: string; name: string }[];
 }
 
 export default function MediaAssetsPicker({
@@ -50,6 +56,7 @@ export default function MediaAssetsPicker({
   institutionId,
   networkView,
   sourceTabs = true,
+  institutions,
 }: MediaAssetsPickerProps) {
   const [activeTab, setActiveTab] = useState<PickerTab>("upload");
 
@@ -101,7 +108,7 @@ export default function MediaAssetsPicker({
         getItemCaption={getItemCaption}
       />
 
-      {aiSuggestions.state === "ready" && activeTab !== "ai" && (
+      {!sourceTabs && aiSuggestions.state === "ready" && (
         <div className="mp-auto-suggestions" aria-label="Suggested media ranked by relevance">
           <AiSuggestedMediaTab
             suggestions={aiSuggestions}
@@ -167,6 +174,8 @@ export default function MediaAssetsPicker({
               disabled={disabled}
               institutionId={institutionId}
               networkView={networkView}
+              showAlbumFilter
+              institutions={institutions}
             />
           )}
         </div>

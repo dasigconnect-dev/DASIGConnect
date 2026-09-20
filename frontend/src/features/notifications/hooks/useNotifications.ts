@@ -500,9 +500,22 @@ export function useNotifications(user: User) {
     let attempts = 0;
     let connectedAt = 0;
     let hasConnected = false;
+    let connected = false;
+
+    const disconnect = () => {
+      if (retryTimer) {
+        window.clearTimeout(retryTimer);
+        retryTimer = undefined;
+      }
+      controller.abort();
+      connected = false;
+      setSseStatus("disconnected");
+    };
 
     const connect = () => {
-      if (stopped) return;
+      // No point holding a stream open (and reconnecting it every 30 min)
+      // for a backgrounded tab nobody is looking at -- resumes on visibility.
+      if (stopped || document.hidden) return;
       const connectionController = new AbortController();
       controller = connectionController;
       setSseStatus("connecting");
@@ -511,8 +524,9 @@ export function useNotifications(user: User) {
       const handleDisconnect = () => {
         if (disconnected || connectionController.signal.aborted) return;
         disconnected = true;
+        connected = false;
         setSseStatus("disconnected");
-        if (stopped) return;
+        if (stopped || document.hidden) return;
         // A stream that stayed open a while (e.g. the 30-min server timeout)
         // is healthy, so reconnect quickly. Repeated early failures back off.
         if (connectedAt && Date.now() - connectedAt > 10_000) attempts = 0;
@@ -543,6 +557,7 @@ export function useNotifications(user: User) {
         () => {
           if (stopped || connectionController.signal.aborted) return;
           connectedAt = Date.now();
+          connected = true;
           setSseStatus("connected");
           if (hasConnected) {
             void reconcileNotificationCache();
@@ -554,10 +569,24 @@ export function useNotifications(user: User) {
       );
     };
 
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        disconnect();
+        return;
+      }
+      if (!connected) {
+        attempts = 0;
+        void reconcileNotificationCache();
+        connect();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     connect();
 
     return () => {
       stopped = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (retryTimer) window.clearTimeout(retryTimer);
       controller.abort();
     };
@@ -655,9 +684,12 @@ export function useNotificationUnreadCount(user: User) {
     queryKey,
     queryFn: ({ signal }) => getUnreadCount(signal).then((res) => res.data.unreadCount),
     staleTime: UNREAD_COUNT_STALE_TIME_MS,
-    // SSE below keeps this live; polling is just a safety net for a dropped
-    // stream the reconnect loop hasn't caught up with yet.
-    refetchInterval: 3 * 60_000,
+    // SSE below keeps this live, and refetchOnWindowFocus already re-syncs the
+    // moment a backgrounded tab comes back -- this poll only exists to catch a
+    // stream that silently stalled (no onerror) without either of those firing.
+    // That's rare, so it doesn't need a tight interval; refetchIntervalInBackground
+    // stays false since a hidden tab has no badge to keep fresh anyway.
+    refetchInterval: 15 * 60_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     meta: authenticatedQueryMeta,
@@ -673,6 +705,7 @@ export function useNotificationUnreadCount(user: User) {
     let retryTimer: number | undefined;
     let attempts = 0;
     let connectedAt = 0;
+    let connected = false;
 
     // Refetches the true count from the server rather than adding/subtracting
     // locally -- this hook and useNotifications (on the Notifications screen)
@@ -684,8 +717,21 @@ export function useNotificationUnreadCount(user: User) {
       void queryClient.invalidateQueries({ queryKey, exact: true });
     };
 
+    const disconnect = () => {
+      if (retryTimer) {
+        window.clearTimeout(retryTimer);
+        retryTimer = undefined;
+      }
+      controller.abort();
+      connected = false;
+    };
+
     const connect = () => {
-      if (stopped) return;
+      // This hook lives in the navbar, mounted for the entire logged-in
+      // session -- without this guard it would hold an SSE connection open
+      // (and keep reconnecting it every 30 min) even while the tab sits
+      // backgrounded all day with nobody watching the badge.
+      if (stopped || document.hidden) return;
       const connectionController = new AbortController();
       controller = connectionController;
       let disconnected = false;
@@ -693,7 +739,8 @@ export function useNotificationUnreadCount(user: User) {
       const handleDisconnect = () => {
         if (disconnected || connectionController.signal.aborted) return;
         disconnected = true;
-        if (stopped) return;
+        connected = false;
+        if (stopped || document.hidden) return;
         if (connectedAt && Date.now() - connectedAt > 10_000) attempts = 0;
         connectedAt = 0;
         const delay = Math.min(2000 * 2 ** Math.min(attempts, 4), 30_000);
@@ -720,16 +767,31 @@ export function useNotificationUnreadCount(user: User) {
         () => {
           if (stopped || connectionController.signal.aborted) return;
           connectedAt = Date.now();
+          connected = true;
         },
         handleDisconnect,
         connectionController.signal,
       );
     };
 
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        disconnect();
+        return;
+      }
+      if (!connected) {
+        attempts = 0;
+        refetchCount();
+        connect();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     connect();
 
     return () => {
       stopped = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (retryTimer) window.clearTimeout(retryTimer);
       controller.abort();
     };

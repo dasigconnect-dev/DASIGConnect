@@ -78,6 +78,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     List<User> findByRole(UserRole role);
 
+    List<User> findByAccountStateIn(Collection<UserStatus> accountStates);
+
     @Query("""
             select user
             from User user

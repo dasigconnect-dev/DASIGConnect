@@ -1,0 +1,20 @@
+# Railway config for the DASIGConnect backend (dev environment).
+#
+# Service root directory must be set to `backend` in the Railway dashboard
+# (Settings → Root Directory) when the service is created from this repo,
+# since this file only configures build/deploy behavior, not the repo path.
+#
+# Unlike Render's render.yaml, Railway has no supported way to commit a
+# non-secret env var list alongside `sync: false` secrets in this file — all
+# environment variables (DB, JWT, mail, R2, Facebook, AI keys) are set in the
+# Railway dashboard → Variables. See DEPLOY.md for the full list.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 100
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

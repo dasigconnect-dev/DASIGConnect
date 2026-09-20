@@ -42,7 +42,12 @@ api.interceptors.response.use(
     finishApiRequest(config ? requestTimers.get(config) : undefined, outcome, error?.response?.status);
     if (config) requestTimers.delete(config);
     const url = String(error?.config?.url || "");
-    if (error?.response?.status === 401 && !url.includes("/auth/login") && !url.includes("/auth/forgot-password")) {
+    const isPublicAuthRequest = [
+      "/auth/login",
+      "/auth/forgot-password",
+      "/auth/reset-password",
+    ].some((path) => url.includes(path));
+    if (error?.response?.status === 401 && !isPublicAuthRequest) {
       window.dispatchEvent(new CustomEvent("dasigconnect:session-expired"));
     }
     const body = error?.response?.data;
@@ -88,6 +93,9 @@ export interface UserProfileResponse {
   createdAt: string;
   notifyInApp: boolean;
   notifyEmail: boolean;
+  /** Onboarding-guide "seen" screenIds, tracked per account (not per browser). */
+  tourSeenScreens?: string[];
+  toursEnabled?: boolean;
   hasAvatar: boolean;
   avatarUpdatedAt: string | null;
   avatarUrl?: string | null;
@@ -144,10 +152,6 @@ export function acceptInvitation(payload: AcceptInvitationPayload) {
   return api.post<LoginResponse>("/invitations/accept", payload);
 }
 
-export function resendExpiredInvitation(payload: { token?: string | null; email?: string | null }) {
-  return api.post<{ message: string }>("/invitations/resend-expired", payload);
-}
-
 export function getMe(signal?: AbortSignal) {
   return api.get<UserProfileResponse>("/me", { signal });
 }
@@ -158,6 +162,11 @@ export function refreshSession() {
 
 export function updateAccountSettings(data: { displayName: string; notifyInApp: boolean; notifyEmail: boolean }) {
   return api.patch<UserProfileResponse>("/me/settings", data);
+}
+
+/** Full-replace update of the caller's onboarding-guide preferences (per account, not per browser). */
+export function updateTourPreferences(data: { enabled: boolean; seenScreens: string[] }) {
+  return api.patch<UserProfileResponse>("/me/tour-preferences", data);
 }
 
 export function changePassword(currentPassword: string, newPassword: string) {

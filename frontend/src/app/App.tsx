@@ -12,7 +12,6 @@ import {
   login,
   logout as logoutRequest,
   requestPasswordReset,
-  resendExpiredInvitation,
   resetPassword as resetPasswordRequest,
   setAuthToken,
   validateInvitation,
@@ -36,6 +35,8 @@ import { firstPasswordError, getPasswordRules } from "../lib/passwordPolicy";
 import { clearAppCaches } from "../lib/appCache";
 import { appQueryClient, clearAuthenticatedQueryCache } from "../lib/queryClient";
 import { seedCurrentProfile } from "../hooks/useCurrentProfile";
+import { hydrateTourPreferences, resetTourPreferencesCache } from "../features/onboarding/tourStorage";
+import { readPasswordResetToken } from "../utils/passwordResetLink";
 
 const LOCKOUT_LIMIT = 5;
 const LOCKOUT_SECONDS = 15 * 60;
@@ -102,6 +103,7 @@ function App() {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState("");
   const [resetSuccess, setResetSuccess] = useState(false);
+  const resetTokenRef = useRef<string | null>(null);
 
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [inviteState, setInviteState] = useState<
@@ -118,8 +120,6 @@ function App() {
   const [showInviteConfirmPassword, setShowInviteConfirmPassword] =
     useState(false);
   const [inviteCountdown, setInviteCountdown] = useState("");
-  const [inviteResending, setInviteResending] = useState(false);
-  const [inviteResendSuccess, setInviteResendSuccess] = useState(false);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -142,6 +142,7 @@ function App() {
     localStorage.removeItem("dasigconnect_user");
     setAuthToken(null);
     setCurrentUser(null);
+    resetTourPreferencesCache();
     await clearAuthenticatedQueryCache();
     clearAppCaches();
   }
@@ -159,6 +160,7 @@ function App() {
         throw new DOMException("Superseded profile request.", "AbortError");
       }
       seedCurrentProfile(appQueryClient, result.profile);
+      hydrateTourPreferences(result.profile);
       return result.user;
     } finally {
       if (profileRequestRef.current?.id === request.id) {
@@ -258,6 +260,7 @@ function App() {
           const result = await loadCurrentUser(parsedUser.email, controller.signal);
           if (!active) return;
           seedCurrentProfile(appQueryClient, result.profile);
+          hydrateTourPreferences(result.profile);
           const user = result.user;
           localStorage.setItem("dasigconnect_user", JSON.stringify(user));
           setCurrentUser(user);
@@ -295,14 +298,53 @@ function App() {
 
   useEffect(() => {
     if (!isPasswordResetPath(location.pathname)) return;
-    const params = new URLSearchParams(location.search);
-    const token = params.get("token");
-    setResetToken(token);
-    setResetError(token ? "" : "Reset token is missing or invalid.");
-    setResetSuccess(false);
-    setResetPassword("");
-    setResetConfirmPassword("");
+    const token = readPasswordResetToken(window.location.href);
+    resetTokenRef.current = token;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setResetToken(token);
+      setResetError(token ? "" : "Reset token is missing or invalid.");
+      setResetSuccess(false);
+      setResetPassword("");
+      setResetConfirmPassword("");
+    });
+    return () => {
+      active = false;
+    };
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    function syncResetTokenFromLiveUrl() {
+      if (!isPasswordResetPath(window.location.pathname)) return;
+
+      const token = readPasswordResetToken(window.location.href);
+      if (token === resetTokenRef.current) return;
+
+      resetTokenRef.current = token;
+      setResetToken(token);
+      setResetError(token ? "" : "Reset token is missing or invalid.");
+      setResetSuccess(false);
+      setResetPassword("");
+      setResetConfirmPassword("");
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") syncResetTokenFromLiveUrl();
+    }
+
+    window.addEventListener("pageshow", syncResetTokenFromLiveUrl);
+    window.addEventListener("focus", syncResetTokenFromLiveUrl);
+    window.addEventListener("popstate", syncResetTokenFromLiveUrl);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pageshow", syncResetTokenFromLiveUrl);
+      window.removeEventListener("focus", syncResetTokenFromLiveUrl);
+      window.removeEventListener("popstate", syncResetTokenFromLiveUrl);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (location.pathname !== "/invite") return;
@@ -454,9 +496,19 @@ function App() {
   }
 
   async function handleResetPassword() {
-    if (!resetToken) {
+    // Mobile in-app browsers may reuse an existing SPA instance for a newly
+    // opened email link. Read the live URL at submission time so an older
+    // token retained in React state cannot be sent to the backend.
+    const liveToken = isPasswordResetPath(window.location.pathname)
+      ? readPasswordResetToken(window.location.href)
+      : resetToken;
+    if (!liveToken) {
       setResetError("Reset token is missing or invalid.");
       return;
+    }
+    if (liveToken !== resetTokenRef.current) {
+      resetTokenRef.current = liveToken;
+      setResetToken(liveToken);
     }
     const passwordError = firstPasswordError(resetPassword);
     if (passwordError) {
@@ -471,7 +523,7 @@ function App() {
     setResetLoading(true);
     setResetError("");
     try {
-      await resetPasswordRequest(resetToken, resetPassword);
+      await resetPasswordRequest(liveToken, resetPassword);
       setResetSuccess(true);
       setResetPassword("");
       setResetConfirmPassword("");
@@ -562,28 +614,6 @@ function App() {
       }
     } finally {
       if (authenticationFlowIdRef.current === flowId) setInviteLoading(false);
-    }
-  }
-
-  async function handleResendExpired() {
-    if (inviteResending) return;
-    setInviteResending(true);
-    try {
-      await resendExpiredInvitation({
-        token: inviteToken,
-        email: inviteEmail || undefined,
-      });
-      setInviteResendSuccess(true);
-      toast.success("A fresh invitation link has been dispatched to your email.");
-    } catch (err: unknown) {
-      toast.error(
-        getApiErrorMessage(
-          err,
-          "Could not resend invitation. Please contact your DASIG Moderator.",
-        ),
-      );
-    } finally {
-      setInviteResending(false);
     }
   }
 
@@ -707,6 +737,27 @@ function App() {
     bannerTimerRef.current = timerId;
     setBannerTimerId(timerId);
   }
+
+  // The client-side countdown above tracks the JWT's own `exp`, but a
+  // session can also end server-side before that clock runs out (token
+  // revocation, a password reset, session_version bump, or the countdown
+  // simply drifting/throttling in a backgrounded tab). The axios interceptor
+  // in authApi.ts dispatches this event on any real 401; without a listener
+  // it was previously dropped and no session modal ever appeared.
+  useEffect(() => {
+    function handleSessionExpiredEvent() {
+      if (!currentUser || showSessionModal) return;
+      if (bannerTimerRef.current) window.clearInterval(bannerTimerRef.current);
+      bannerTimerRef.current = null;
+      setBannerTimerId(null);
+      setBannerRemaining(0);
+      setModalEmail(currentUser.email || loginEmail);
+      setShowSessionModal(true);
+    }
+    window.addEventListener("dasigconnect:session-expired", handleSessionExpiredEvent);
+    return () =>
+      window.removeEventListener("dasigconnect:session-expired", handleSessionExpiredEvent);
+  }, [currentUser, loginEmail, showSessionModal]);
 
   async function validateInviteToken(token: string) {
     try {
@@ -875,9 +926,6 @@ function App() {
               }
               onActivate={() => void handleInviteActivate()}
               onBackToLogin={() => navigate("/login")}
-              onResendExpired={() => void handleResendExpired()}
-              resending={inviteResending}
-              resendSuccess={inviteResendSuccess}
               showPassword={showInvitePassword}
               showConfirmPassword={showInviteConfirmPassword}
               loading={inviteLoading}

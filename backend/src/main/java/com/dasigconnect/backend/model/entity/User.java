@@ -14,6 +14,8 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "users")
@@ -46,6 +48,19 @@ public class User {
 
     @Column(name = "notify_email", nullable = false)
     private boolean notifyEmail = true;
+
+    /**
+     * Which onboarding-guide screenIds this account has already dismissed —
+     * per account, not per browser, so a guide seen once never reappears
+     * regardless of device/browser/cleared storage. JSON array of strings,
+     * mirroring the frontend's old localStorage shape one-for-one.
+     */
+    @Column(name = "tour_seen_screens", columnDefinition = "jsonb", nullable = false)
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String tourSeenScreens = "[]";
+
+    @Column(name = "tours_enabled", nullable = false)
+    private boolean toursEnabled = true;
 
     @Column(name = "session_version", nullable = false)
     private long sessionVersion = 0;
@@ -173,6 +188,10 @@ public class User {
     public void setNotifyInApp(boolean notifyInApp) { this.notifyInApp = notifyInApp; }
     public boolean isNotifyEmail() { return notifyEmail; }
     public void setNotifyEmail(boolean notifyEmail) { this.notifyEmail = notifyEmail; }
+    public String getTourSeenScreens() { return tourSeenScreens; }
+    public void setTourSeenScreens(String tourSeenScreens) { this.tourSeenScreens = tourSeenScreens; }
+    public boolean isToursEnabled() { return toursEnabled; }
+    public void setToursEnabled(boolean toursEnabled) { this.toursEnabled = toursEnabled; }
     public long getSessionVersion() { return sessionVersion; }
     public void setSessionVersion(long sessionVersion) { this.sessionVersion = sessionVersion; }
 

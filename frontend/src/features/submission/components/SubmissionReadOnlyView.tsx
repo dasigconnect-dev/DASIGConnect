@@ -5,7 +5,6 @@ import FacebookPreviewCard from "../../../components/facebook/FacebookPreviewCar
 import type { FacebookPreviewMediaItem } from "../../../types/facebook";
 import type { SubmissionMediaItem } from "../../../types/media";
 import type { FormState } from "../types";
-import { formatDateTime, formatLongDate } from "../utils";
 import { formatRevisionRemarksForDisplay } from "../utils/revisionComments";
 import "./SubmissionReadOnlyView.css";
 
@@ -30,6 +29,8 @@ interface SubmissionReadOnlyBodyProps {
   rejectionReason?: string | null;
   /** Shown when the submission needs revision. */
   revisionNotes?: string | null;
+  /** Callback to transition from read-only rejected view into editing mode. */
+  onEditRejected?: () => void;
 }
 
 /**
@@ -48,6 +49,7 @@ export default function SubmissionReadOnlyBody({
   onMediaIndexChange,
   rejectionReason,
   revisionNotes,
+  onEditRejected,
 }: SubmissionReadOnlyBodyProps) {
   const [tab, setTab] = useState<"details" | "preview">("details");
 
@@ -117,6 +119,18 @@ export default function SubmissionReadOnlyBody({
                 ? "No reason was recorded. Check your email for details."
                 : "No notes were recorded. Check your email for details."}
             </p>
+          )}
+          {isRejected && onEditRejected && (
+            <div className="sub-ro-feedback-actions">
+              <button
+                type="button"
+                className="sub-ro-edit-rejected-btn"
+                onClick={onEditRejected}
+              >
+                <i className="ti ti-pencil" aria-hidden />
+                Edit &amp; Resubmit
+              </button>
+            </div>
           )}
         </section>
       )}
@@ -228,4 +242,26 @@ function Chips({ values, empty }: { values: string[]; empty: string }) {
       ))}
     </div>
   );
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatLongDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return value;
+  const date = new Date(year, month - 1, day);
+  return new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
 }

@@ -15,6 +15,9 @@ import org.springframework.data.repository.query.Param;
 public interface InvitationTokenRepository extends JpaRepository<InvitationToken, UUID> {
     Optional<InvitationToken> findByTokenHash(String tokenHash);
 
+    /** Most recent invitation ever issued to an address, regardless of used/expired state. */
+    Optional<InvitationToken> findFirstByRecipientEmailIgnoreCaseOrderByCreatedAtDesc(String recipientEmail);
+
     /** Removes every invitation token for an address, regardless of used/expired state. */
     @Modifying
     @Query(value = "DELETE FROM invitation_tokens WHERE lower(recipient_email) = lower(:email)", nativeQuery = true)

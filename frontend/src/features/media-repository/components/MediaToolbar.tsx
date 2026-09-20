@@ -1,11 +1,6 @@
 import BrandedSelect from "../../../components/ui/BrandedSelect";
 import type { SortOption, ViewMode } from "../types";
 
-interface TagChip {
-  label: string;
-  count: number;
-}
-
 interface MediaToolbarProps {
   isAdmin: boolean;
   institutions: { id: string; name: string }[];
@@ -23,10 +18,6 @@ interface MediaToolbarProps {
   onSortChange: (value: SortOption) => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
-
-  activeTags: Set<string>;
-  tagChips: TagChip[];
-  onTagToggle: (tag: string) => void;
 }
 
 export default function MediaToolbar({
@@ -44,9 +35,6 @@ export default function MediaToolbar({
   onSortChange,
   viewMode,
   onViewModeChange,
-  activeTags,
-  tagChips,
-  onTagToggle,
 }: MediaToolbarProps) {
   return (
     <div className="med-filter-bar">
@@ -62,7 +50,7 @@ export default function MediaToolbar({
             placeholder={
               semantic
                 ? "Describe what you're looking for, then press Enter…"
-                : "Search files, folders, or tags…"
+                : "Search files or folders…"
             }
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
@@ -145,23 +133,6 @@ export default function MediaToolbar({
           </button>
         </div>
       </div>
-
-      {tagChips.length > 0 && (
-        <div className="med-filter-row2">
-          <span className="med-filter-label">Tags</span>
-          {tagChips.map((chip) => (
-            <button
-              key={chip.label}
-              className={`med-chip${activeTags.has(chip.label) ? " active" : ""}`}
-              onClick={() => onTagToggle(chip.label)}
-              type="button"
-            >
-              {chip.label}
-              <span className="med-chip-count">{chip.count}</span>
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

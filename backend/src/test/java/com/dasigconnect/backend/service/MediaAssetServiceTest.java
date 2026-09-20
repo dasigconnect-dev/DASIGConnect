@@ -244,10 +244,10 @@ class MediaAssetServiceTest {
         stubRepositoryPage(List.of(), 0, 1, 20);
 
         MediaAssetListResponseDto resultForUploader = mediaAssetService.list(
-                null, null, null, null, null, null, null, 1, 20, null,
+                null, null, null, null, null, null, 1, 20, null,
                 user(uploaderId, "contributor", institutionId));
         MediaAssetListResponseDto resultForOtherUser = mediaAssetService.list(
-                null, null, null, null, null, null, null, 1, 20, null,
+                null, null, null, null, null, null, 1, 20, null,
                 user(UUID.randomUUID(), "contributor", institutionId));
 
         assertTrue(resultForUploader.getItems().isEmpty());
@@ -263,7 +263,7 @@ class MediaAssetServiceTest {
         stubRepositoryPage(List.of(asset), 1, 1, 20);
 
         MediaAssetListResponseDto result = mediaAssetService.list(
-                null, null, null, null, null, null, null, 1, 20, null,
+                null, null, null, null, null, null, 1, 20, null,
                 user(UUID.randomUUID(), "contributor", institutionId));
 
         assertEquals(1, result.getItems().size());
@@ -276,7 +276,7 @@ class MediaAssetServiceTest {
         stubRepositoryPage(List.of(lastAsset), 26, 2, 25);
 
         MediaAssetListResponseDto result = mediaAssetService.list(
-                null, null, null, null, null, null, "newest", 2, 25, null,
+                null, null, null, null, null, "newest", 2, 25, null,
                 user(UUID.randomUUID(), "contributor", institutionId));
 
         assertEquals(1, result.getItems().size());
@@ -285,7 +285,7 @@ class MediaAssetServiceTest {
         assertEquals(25, result.getPageSize());
         ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
         verify(mediaAssetRepository).findRepositoryPage(
-                eq(false), anyCollection(), isNull(), eq(""), eq(""), anyCollection(), isNull(), pageable.capture());
+                eq(false), anyCollection(), isNull(), eq(""), anyCollection(), isNull(), pageable.capture());
         assertEquals(1, pageable.getValue().getPageNumber());
         assertEquals(25, pageable.getValue().getPageSize());
     }
@@ -299,7 +299,7 @@ class MediaAssetServiceTest {
         stubRepositoryPage(List.of(asset), 1, 1, 20);
 
         MediaAssetListResponseDto result = mediaAssetService.list(
-                null, null, null, null, null, null, null, 1, 20, null,
+                null, null, null, null, null, null, 1, 20, null,
                 user(UUID.randomUUID(), "contributor", institutionId));
 
         assertEquals(1, result.getItems().size());
@@ -315,14 +315,14 @@ class MediaAssetServiceTest {
         stubRepositoryPage(List.of(asset), 1, 1, 20);
 
         MediaAssetListResponseDto result = mediaAssetService.list(
-                "hackathon", null, null, null, null, null, null, 1, 20, null,
+                "hackathon", null, null, null, null, null, 1, 20, null,
                 user(UUID.randomUUID(), "contributor", institutionId));
 
         assertEquals(1, result.getItems().size());
         verify(mediaAssetRepository, never()).findActiveByInstitutionIds(anyCollection());
         verify(submissionMediaAssetRepository, never()).findAssetIdsWithAnySubmissionLink(anyCollection());
         verify(mediaAssetRepository).findRepositoryPage(
-                eq(false), anyCollection(), isNull(), eq("hackathon"), eq(""), anyCollection(), isNull(), any(Pageable.class));
+                eq(false), anyCollection(), isNull(), eq("hackathon"), anyCollection(), isNull(), any(Pageable.class));
     }
 
     @Test
@@ -333,7 +333,7 @@ class MediaAssetServiceTest {
         stubRepositoryPage(List.of(), 0, 1, 20);
 
         MediaAssetListResponseDto result = mediaAssetService.list(
-                "graduation", null, null, null, null, null, null, 1, 20, null,
+                "graduation", null, null, null, null, null, 1, 20, null,
                 user(UUID.randomUUID(), "contributor", institutionId));
 
         assertTrue(result.getItems().isEmpty());
@@ -342,13 +342,13 @@ class MediaAssetServiceTest {
     @Test
     void list_withoutVisibleInstitution_returnsEmptyWithoutRepositoryQuery() {
         MediaAssetListResponseDto result = mediaAssetService.list(
-                null, null, null, null, null, null, null, 1, 25, null,
+                null, null, null, null, null, null, 1, 25, null,
                 user(UUID.randomUUID(), "contributor", null));
 
         assertTrue(result.getItems().isEmpty());
         assertEquals(0, result.getTotalCount());
         verify(mediaAssetRepository, never()).findRepositoryPage(
-                anyBoolean(), anyCollection(), nullable(UUID.class), anyString(), anyString(),
+                anyBoolean(), anyCollection(), nullable(UUID.class), anyString(),
                 anyCollection(), nullable(UUID.class), any(Pageable.class));
     }
 
@@ -361,7 +361,6 @@ class MediaAssetServiceTest {
                 anyBoolean(),
                 anyCollection(),
                 nullable(UUID.class),
-                anyString(),
                 anyString(),
                 anyCollection(),
                 nullable(UUID.class),
@@ -417,7 +416,7 @@ class MediaAssetServiceTest {
         MediaAlbum album = album(albumId, UUID.randomUUID(), null);
         when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album));
         when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(0L);
-        when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(0L);
+        when(mediaAssetRepository.countVisibleAssetsByAlbum(albumId)).thenReturn(0L);
 
         mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "admin", null));
 
@@ -485,7 +484,7 @@ class MediaAssetServiceTest {
         UUID albumId = UUID.randomUUID();
         when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album(albumId, institutionId, null)));
         when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(0L);
-        when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(5L);
+        when(mediaAssetRepository.countVisibleAssetsByAlbum(albumId)).thenReturn(5L);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
                 () -> mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "admin", null)));
@@ -500,7 +499,7 @@ class MediaAssetServiceTest {
         MediaAlbum album = album(albumId, institutionId, null);
         when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album));
         when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(0L);
-        when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(0L);
+        when(mediaAssetRepository.countVisibleAssetsByAlbum(albumId)).thenReturn(0L);
 
         mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "admin", null));
 
@@ -516,7 +515,7 @@ class MediaAssetServiceTest {
         album.setCreatedBy(userId);
         when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album));
         when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(0L);
-        when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(0L);
+        when(mediaAssetRepository.countVisibleAssetsByAlbum(albumId)).thenReturn(0L);
 
         mediaAssetService.deleteAlbum(albumId, user(userId, "contributor", institutionId));
 
@@ -749,6 +748,56 @@ class MediaAssetServiceTest {
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
                 () -> mediaAssetService.history(assetId, user(UUID.randomUUID(), "contributor", UUID.randomUUID())));
         assertEquals(404, ex.getStatusCode().value());
+    }
+
+    @Test
+    void listTrash_nonAdmin_throwsForbidden() {
+        assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.listTrash("", null, 1, 25, user(UUID.randomUUID(), "contributor", UUID.randomUUID())));
+    }
+
+    @Test
+    void listTrash_admin_returnsPage() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, UUID.randomUUID(), UUID.randomUUID());
+        asset.setDeletedAt(Instant.now());
+        asset.setDeletedByUserId(UUID.randomUUID());
+        when(mediaAssetRepository.findTrashPage(anyBoolean(), anyCollection(), anyString(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(asset)));
+
+        var result = mediaAssetService.listTrash("", null, 1, 25, user(UUID.randomUUID(), "admin", null));
+        assertEquals(1, result.getTotalCount());
+        assertEquals(assetId, result.getItems().get(0).getId());
+    }
+
+    @Test
+    void restore_admin_setsStatusReadyAndClearsDeletedAt() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, UUID.randomUUID(), UUID.randomUUID());
+        asset.setDeletedAt(Instant.now());
+        asset.setDeletedByUserId(UUID.randomUUID());
+        when(mediaAssetRepository.findTrashedById(assetId)).thenReturn(Optional.of(asset));
+        when(mediaAssetRepository.save(any(MediaAsset.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var result = mediaAssetService.restore(assetId, user(UUID.randomUUID(), "admin", null));
+        assertEquals(assetId, result.getId());
+        assertNull(asset.getDeletedAt());
+        assertNull(asset.getDeletedByUserId());
+        assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.READY, asset.getStatus());
+        verify(mediaAssetRepository).save(asset);
+    }
+
+    @Test
+    void purgeTrashAsset_admin_deletesStorageAndPurgesProfile() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, UUID.randomUUID(), UUID.randomUUID());
+        asset.setDeletedAt(Instant.now());
+        when(mediaAssetRepository.findTrashedById(assetId)).thenReturn(Optional.of(asset));
+
+        mediaAssetService.purgeTrashAsset(assetId, user(UUID.randomUUID(), "admin", null));
+
+        verify(mediaStorage).deletePublicObject(asset.getStorageUrl());
+        verify(mediaAssetRepository).purgeAiProfile(assetId);
     }
 
     private static MediaAlbum album(UUID id, UUID institutionId, MediaAlbum parent) {

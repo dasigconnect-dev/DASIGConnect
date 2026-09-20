@@ -597,20 +597,27 @@
 }
 
 .med-grid.list-view {
-  grid-template-columns: 1fr;
+  /* Plain `1fr` is shorthand for `minmax(auto, 1fr)` -- the track's auto
+     minimum equals its items' min-content width, so a long folder/asset
+     name still forced the column wider than the viewport even after the
+     internal flex children were given min-width: 0. minmax(0, 1fr) removes
+     that floor so the track (and the row inside it) can actually shrink. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
 /* ===== ASSET CARD ===== */
 .med-card {
+  position: relative;
   background: var(--med-surface-0);
   border: 1px solid var(--med-border);
   border-radius: var(--med-radius-md);
-  overflow: hidden;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.15s;
   animation: med-fade-up 0.4s ease both;
 }
+
+.med-card:focus-within { z-index: 20; }
 
 .med-card:hover {
   transform: translateY(-2px);
@@ -623,18 +630,102 @@
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
 }
 
-/* List view card */
-.med-grid.list-view .med-card {
-  display: grid;
-  grid-template-columns: 120px 1fr auto;
+/* List view card — a real horizontal row (own JSX branch in AssetCard, not
+   a CSS reflow of the grid-tile markup): small square thumb, single-line
+   title + code/album/institution sub-line, date/size/type at the right —
+   same shape as AlbumCard's list-view row. */
+.med-card.list-view {
+  display: flex;
   align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  min-width: 0;
 }
 
-.med-grid.list-view .med-card-meta {
+.med-card.list-view:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--med-surface-2);
+}
+
+.med-card-row-thumb {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--med-radius-sm);
+  overflow: hidden;
+  background: var(--med-surface-2);
+}
+
+.med-card-row-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  padding-right: 16px;
+  gap: 2px;
+}
+
+.med-card-row-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--med-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.med-card-row-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--med-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.med-card-row-sub .med-card-code { margin-bottom: 0; }
+.med-card-row-sub .med-card-album.inline {
+  margin: 0;
+  overflow: visible;
+  text-overflow: initial;
+  white-space: nowrap;
+}
+.med-card-row-sub .med-inst-chip.inline {
+  position: static;
+  flex: none;
+}
+
+.med-card-row-meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  font-size: 12px;
+  color: var(--med-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.med-card.list-view .med-video-badge.sm {
+  position: absolute;
+  bottom: 3px;
+  left: 3px;
+  padding: 2px;
+  gap: 0;
+}
+
+.med-card.list-view .med-card-check {
+  position: static;
+  opacity: 1;
+  flex: none;
+  border-color: var(--med-border);
+  background: transparent;
+}
+.med-card.list-view .med-card-check.checked {
+  border-color: var(--med-blue);
+  background: var(--med-blue);
 }
 
 /* Card thumbnail */
@@ -643,11 +734,12 @@
   aspect-ratio: 16 / 10;
   position: relative;
   overflow: hidden;
-}
-
-.med-grid.list-view .med-card-thumb {
-  aspect-ratio: 4 / 3;
-  height: 70px;
+  /* Corner-rounding used to come from .med-card's own overflow: hidden, but
+     the asset kebab menu's dropdown (in the meta row below) needs to be
+     able to overflow the card's box when open, so the thumb rounds its own
+     top corners instead. */
+  border-top-left-radius: var(--med-radius-md);
+  border-top-right-radius: var(--med-radius-md);
 }
 
 .med-card-thumb-img {
@@ -696,6 +788,34 @@
   text-transform: uppercase;
 }
 
+/* Opens the full-screen viewer on tap — double-click has no touch
+   equivalent, so this stays visible on every device rather than hover-only. */
+.med-card-expand {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--med-radius-full);
+  background: rgba(10, 22, 40, 0.75);
+  color: #fff;
+  cursor: pointer;
+}
+.med-card-expand:hover { background: rgba(10, 22, 40, 0.9); }
+
+.med-card-row-thumb .med-card-expand {
+  width: 18px;
+  height: 18px;
+  bottom: 2px;
+  right: 2px;
+}
+.med-card-row-thumb .med-card-expand svg { width: 10px; height: 10px; }
+
 /* Card body */
 .med-card-body {
   padding: 12px 16px;
@@ -742,6 +862,35 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
+}
+
+.med-card-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+/* Asset card kebab menu — sits in the meta row (grid) or after the meta
+   column (list), so it never has to overlay the thumbnail where the
+   checkbox/institution-chip/video-badge/expand-button corners are already
+   spoken for. */
+.med-card-menu-wrap {
+  position: static;
+  flex: none;
+}
+.med-card-menu-wrap .med-folder-kebab {
+  opacity: 1;
+  position: static;
+}
+.med-card-menu-wrap .med-folder-menu {
+  top: auto;
+  right: 0;
+  bottom: 30px;
+}
+.med-card.list-view .med-card-menu-wrap .med-folder-menu {
+  bottom: auto;
+  top: 30px;
 }
 
 .med-card-date,
@@ -1398,79 +1547,16 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   text-underline-offset: 2px;
 }
 
-.med-upload-specs {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.med-spec-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 10px 11px;
-  transition: all 0.15s ease;
-  min-width: 0;
-}
-
-.med-spec-item:hover {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-}
-
-.med-spec-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: #eff6ff;
-  border: 1px solid #dbeafe;
-  color: var(--d-blue, #1877f2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  flex-shrink: 0;
-  margin-top: 1px;
-  transition: all 0.15s ease;
-}
-
-.med-spec-item:hover .med-spec-icon {
-  background: var(--d-blue, #1877f2);
-  color: #ffffff;
-  border-color: var(--d-blue, #1877f2);
-}
-
-.med-spec-content {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.med-spec-label {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #64748b;
-  line-height: 1.2;
-}
-
-.med-spec-val {
+.med-upload-footnote {
+  margin: 14px 0 0;
   font-size: 11.5px;
-  font-weight: 600;
-  color: #1e293b;
-  line-height: 1.35;
+  color: var(--med-muted);
+  line-height: 1.5;
 }
 
-@media (max-width: 580px) {
-  .med-upload-specs {
-    grid-template-columns: 1fr;
-  }
+.med-upload-footnote strong {
+  color: var(--med-text-2);
+  font-weight: 700;
 }
 
 /* Upload progress */
@@ -2021,6 +2107,109 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   box-shadow: 0 4px 12px rgba(24, 119, 242, 0.35);
 }
 
+.med-header-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--d-blue, #1877f2);
+  font-family: var(--med-ff-body, system-ui, sans-serif);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 16px;
+  align-self: flex-start;
+  transition: color 0.15s ease, transform 0.2s ease;
+}
+
+.med-header-back-btn i {
+  font-size: 15px;
+  display: inline-block;
+  line-height: 1;
+}
+
+.med-header-back-btn:hover {
+  color: #1565d8;
+  transform: translateX(-4px);
+}
+
+:root[data-theme="dark"] .med-header-back-btn {
+  color: #60a5fa;
+}
+
+:root[data-theme="dark"] .med-header-back-btn:hover {
+  color: #93c5fd;
+}
+
+
+.med-btn-trash,
+.med-header-actions .med-btn-trash {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--med-card-bg, #ffffff);
+  border: 1px solid var(--med-border, #e2e8f0);
+  color: var(--med-text, #1e293b);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.med-btn-trash svg,
+.med-header-actions .med-btn-trash svg {
+  flex-shrink: 0;
+  color: var(--med-muted, #64748b);
+  transition: color 0.15s ease, stroke 0.15s ease;
+}
+
+.med-btn-trash:hover:not(:disabled),
+.med-header-actions .med-btn-trash:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+  transform: translateY(-0.5px);
+  box-shadow: 0 3px 8px rgba(220, 38, 38, 0.12);
+}
+
+.med-btn-trash:hover:not(:disabled) svg,
+.med-header-actions .med-btn-trash:hover:not(:disabled) svg {
+  color: #dc2626;
+  stroke: #dc2626;
+}
+
+:root[data-theme="dark"] .med-btn-trash,
+:root[data-theme="dark"] .med-header-actions .med-btn-trash {
+  background: var(--med-card-bg, #1e293b);
+  border-color: var(--med-border, #334155);
+  color: var(--med-text, #f1f5f9);
+}
+
+:root[data-theme="dark"] .med-btn-trash svg,
+:root[data-theme="dark"] .med-header-actions .med-btn-trash svg {
+  color: var(--med-muted, #94a3b8);
+}
+
+:root[data-theme="dark"] .med-btn-trash:hover:not(:disabled),
+:root[data-theme="dark"] .med-header-actions .med-btn-trash:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+:root[data-theme="dark"] .med-btn-trash:hover:not(:disabled) svg,
+:root[data-theme="dark"] .med-header-actions .med-btn-trash:hover:not(:disabled) svg {
+  color: #fca5a5;
+  stroke: #fca5a5;
+}
+
 .med-new-menu {
   position: absolute;
   top: calc(100% + 8px);
@@ -2337,6 +2526,89 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
 }
 
 .med-folder-card.has-inst .med-folder-open { padding-top: 32px; }
+
+/* Folder tile — list view: a real horizontal table row instead of the grid
+   tile stretched full-width (the badge/logo used to stay absolutely
+   positioned in the corners, leaving a mostly-empty stretched card). */
+.med-folder-card.list-view {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  /* The card is itself a grid item of .med-grid.list-view; grid items also
+     default to min-width: auto, which floors this row at its min-content
+     width no matter what the flex children inside are told to do. */
+  min-width: 0;
+}
+
+.med-folder-card.list-view:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--med-surface-2);
+}
+
+.med-folder-row-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  padding: 0;
+}
+
+.med-folder-card.list-view .med-folder-name {
+  /* Flex items default to min-width: auto, which refuses to shrink below the
+     text's natural unwrapped width -- without this, text-overflow: ellipsis
+     never actually gets a narrower box to truncate into, so a long title
+     just claims full width and pushes the meta column off-screen instead. */
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.med-folder-row-meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 96px;
+  font-size: 12px;
+  color: var(--med-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.med-folder-inst-badge.inline {
+  position: static;
+  flex: none;
+}
+
+.med-folder-row-logo {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  border-radius: var(--med-radius-sm);
+}
+
+.med-folder-row-logo.placeholder {
+  visibility: hidden;
+}
+
+.med-folder-card.list-view .med-folder-menu-wrap {
+  flex: none;
+}
+
+.med-folder-card.list-view .med-folder-kebab {
+  position: static;
+  opacity: 1;
+}
 
 /* Upload modal — dismissable "current folder" chip */
 .med-upload-current {
@@ -2699,6 +2971,36 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   color: var(--med-muted);
 }
 
+/* Tag dropdown (AI tags / Your tags) — collapsed by default so a
+   tag-heavy asset doesn't stretch the whole detail panel into a long
+   scroll; the panel itself scrolls internally once expanded. */
+.med-tag-dropdown {
+  margin: 12px 0 6px;
+}
+
+.med-tag-dropdown-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: 600 10px var(--med-ff-body);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--med-muted);
+}
+
+.med-tag-dropdown-toggle:hover { color: var(--med-text-2); }
+
+.med-tag-dropdown-panel {
+  margin-top: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
 /* Activity timeline */
 .med-history-loading {
   font: 400 12px var(--med-ff-body);
@@ -2824,14 +3126,13 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
     justify-content: flex-end;
     width: auto;
   }
-  .med-header-actions .med-btn-primary {
+  .med-header-actions .med-btn-primary,
+  .med-header-actions .med-btn-trash {
     height: 36px;
     padding: 0 16px;
     font-size: 13px;
-    font-weight: 650;
     border-radius: 999px;
     white-space: nowrap;
-    box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
   }
   .med-filter-bar {
     width: 100%;
@@ -2930,6 +3231,26 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   .med-folder-name {
     font-size: 13.5px;
   }
+  /* List-view rows: drop the least essential columns first (institution
+     logo/badge) so the name and item-count/date stay readable instead of
+     everything getting crushed — or, previously, hard-clipped mid-word by
+     .med-page's overflow-x: hidden since nothing was willing to shrink. */
+  .med-folder-card.list-view,
+  .med-card.list-view {
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .med-folder-row-logo,
+  .med-folder-inst-badge.inline,
+  .med-card-row-sub .med-inst-chip.inline {
+    display: none;
+  }
+  .med-folder-row-meta {
+    max-width: 130px;
+  }
+  .med-card-row-meta {
+    max-width: 46%;
+  }
   .med-result-strip {
     flex-direction: row;
     align-items: center;
@@ -3010,7 +3331,8 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   .med-title {
     font-size: 22px;
   }
-  .med-header-actions .med-btn-primary {
+  .med-header-actions .med-btn-primary,
+  .med-header-actions .med-btn-trash {
     height: 34px;
     padding: 0 12px;
     font-size: 12px;
@@ -3036,4 +3358,433 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
     padding: 10px 12px;
   }
 }
+
+/* ==========================================================================
+   TRASH VIEW (ADMIN)
+   ========================================================================== */
+
+.med-trash-view {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+}
+
+.med-trash-retention-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(24, 119, 242, 0.07);
+  border: 1px solid rgba(24, 119, 242, 0.2);
+  border-radius: var(--med-radius-md, 8px);
+  color: var(--med-text, #0f172a);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.med-trash-banner-icon {
+  font-size: 18px;
+  color: var(--med-blue, #1877f2);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.med-trash-banner-text strong {
+  color: var(--med-blue, #1877f2);
+  font-weight: 600;
+}
+
+.med-trash-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.med-trash-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--med-muted, #64748b);
+  cursor: pointer;
+  user-select: none;
+}
+
+.med-trash-select-all input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--med-blue, #1877f2);
+}
+
+.med-trash-bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.med-trash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.med-trash-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--med-card-bg, #ffffff);
+  border: 1px solid var(--med-border, #e2e8f0);
+  border-radius: var(--med-radius-md, 8px);
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  cursor: pointer;
+}
+
+.med-trash-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-color: var(--med-border-strong, #cbd5e1);
+}
+
+.med-trash-card.is-selected {
+  border-color: var(--med-blue, #1877f2);
+  box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.2);
+}
+
+.med-trash-card-checkbox {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.med-trash-card-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--med-blue, #1877f2);
+}
+
+.med-trash-card-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: var(--med-bg-subtle, #f1f5f9);
+  overflow: hidden;
+}
+
+.med-trash-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.med-trash-card-video-thumb {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #1e293b;
+  color: #94a3b8;
+  gap: 6px;
+  font-size: 28px;
+}
+
+.med-trash-format-pill {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: rgba(255, 255, 255, 0.15);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #f8fafc;
+}
+
+.med-trash-retention-pill {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--med-radius-full, 9999px);
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(4px);
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.med-trash-retention-pill.warning {
+  background: rgba(217, 119, 6, 0.9);
+  color: #fff;
+}
+
+.med-trash-retention-pill.urgent {
+  background: rgba(220, 38, 38, 0.95);
+  color: #fff;
+  animation: med-pulse 2s infinite;
+}
+
+@keyframes med-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+.med-trash-card-body {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  gap: 8px;
+  flex: 1;
+}
+
+.med-trash-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--med-text, #0f172a);
+  line-height: 1.35;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.med-trash-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--med-muted, #64748b);
+}
+
+.med-trash-meta-code {
+  font-weight: 600;
+  font-family: monospace;
+  letter-spacing: 0.03em;
+}
+
+.med-trash-card-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--med-muted, #64748b);
+  border-top: 1px solid var(--med-border-subtle, #f1f5f9);
+  padding-top: 8px;
+}
+
+.med-trash-date-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.med-trash-date-row i {
+  font-size: 12px;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.med-trash-inst-name {
+  color: var(--med-blue, #1877f2);
+  font-weight: 500;
+}
+
+.med-trash-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--med-border-subtle, #f1f5f9);
+}
+
+.med-btn-restore {
+  flex: 1;
+  background: var(--med-bg-subtle, #f1f5f9);
+  color: var(--med-text, #0f172a);
+  border: 1px solid var(--med-border, #e2e8f0);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 8px;
+  border-radius: var(--med-radius-sm, 6px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.med-btn-restore:hover {
+  background: rgba(16, 185, 129, 0.1);
+  color: #059669;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.med-btn-purge {
+  background: transparent;
+  color: var(--med-red, #dc2626);
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 8px;
+  border-radius: var(--med-radius-sm, 6px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.med-btn-purge:hover {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.25);
+}
+
+.med-btn-danger-outline {
+  background: transparent;
+  color: var(--med-red, #dc2626);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.med-btn-danger-outline:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: var(--med-red, #dc2626);
+}
+
+.med-trash-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  gap: 12px;
+  background: var(--med-card-bg, #ffffff);
+  border: 1px dashed var(--med-border, #cbd5e1);
+  border-radius: var(--med-radius-md, 8px);
+}
+
+.med-trash-empty-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--med-bg-subtle, #f1f5f9);
+  color: var(--med-muted, #94a3b8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+}
+
+.med-trash-empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--med-text, #0f172a);
+  margin: 0;
+}
+
+.med-trash-empty-desc {
+  font-size: 13px;
+  color: var(--med-muted, #64748b);
+  max-width: 420px;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.med-trash-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--med-border, #e2e8f0);
+  border-top-color: var(--med-blue, #1877f2);
+  border-radius: 50%;
+  animation: med-spin 0.8s linear infinite;
+}
+
+.med-trash-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding-top: 16px;
+}
+
+.med-trash-page-info {
+  font-size: 13px;
+  color: var(--med-muted, #64748b);
+  font-weight: 500;
+}
+
+.med-trash-confirm-modal {
+  max-width: 460px;
+  width: 100%;
+}
+
+.med-trash-warning-text {
+  font-size: 14px;
+  color: var(--med-text, #0f172a);
+  line-height: 1.5;
+  margin: 0 0 14px 0;
+}
+
+.med-trash-warning-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: var(--med-radius-sm, 6px);
+  color: var(--med-red, #dc2626);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+/* Dark mode adjustments */
+:root[data-theme="dark"] .med-trash-retention-banner {
+  background: rgba(24, 119, 242, 0.15);
+  border-color: rgba(24, 119, 242, 0.3);
+}
+
+:root[data-theme="dark"] .med-btn-restore {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #f1f5f9;
+}
+
+:root[data-theme="dark"] .med-btn-restore:hover {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+:root[data-theme="dark"] .med-trash-empty {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
 

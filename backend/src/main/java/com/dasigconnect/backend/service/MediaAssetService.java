@@ -8,11 +8,15 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -36,6 +40,8 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetHistoryEntryDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetTrashDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetTrashListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlResponseDto;
@@ -83,6 +89,9 @@ public class MediaAssetService {
     private final AuditLogRepository auditLogRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+
+    @Value("${app.media-assets.deleted-retention-days:30}")
+    private int retentionDays = 30;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -163,7 +172,6 @@ public class MediaAssetService {
     @Transactional(readOnly = true)
     public MediaAssetListResponseDto list(
             String query,
-            String aiCategory,
             String mediaType,
             UUID uploaderId,
             UUID institutionId,
@@ -176,7 +184,6 @@ public class MediaAssetService {
         int safePage = Math.max(page, 1);
         int safePageSize = Math.min(Math.max(pageSize, 1), 100);
         String trimmedQuery = query == null ? "" : query.trim().toLowerCase();
-        String trimmedCategory = aiCategory == null ? "" : aiCategory.trim();
         String trimmedMediaType = mediaType == null ? "" : mediaType.trim().toLowerCase();
 
         boolean moderator = isNetworkRole(user);
@@ -205,7 +212,6 @@ public class MediaAssetService {
                 institutionScope,
                 effectiveAlbumId,
                 trimmedQuery,
-                trimmedCategory.toLowerCase(),
                 resolveMediaTypes(trimmedMediaType),
                 uploaderId,
                 pageRequest);
@@ -530,6 +536,189 @@ public class MediaAssetService {
         return new MediaAssetBulkDeleteResponseDto(assetIds);
     }
 
+    @Transactional(readOnly = true)
+    public MediaAssetTrashListResponseDto listTrash(
+            String query,
+            UUID institutionId,
+            int page,
+            int pageSize,
+            JwtUserDetails user) {
+        if (!isAdmin(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators can view trash.");
+        }
+        int safePage = Math.max(page, 1);
+        int safePageSize = Math.min(Math.max(pageSize, 1), 100);
+        String trimmedQuery = query == null ? "" : query.trim().toLowerCase();
+
+        boolean networkWide = institutionId == null;
+        Set<UUID> institutionScope = institutionId != null ? Set.of(institutionId) : Set.of(EMPTY_SCOPE_ID);
+
+        PageRequest pageRequest = PageRequest.of(safePage - 1, safePageSize, Sort.by(Sort.Order.desc("deletedAt"), Sort.Order.desc("id")));
+        Page<MediaAsset> result = mediaAssetRepository.findTrashPage(
+                networkWide,
+                institutionScope,
+                trimmedQuery,
+                pageRequest);
+
+        Set<UUID> userIds = result.getContent().stream()
+                .map(MediaAsset::getDeletedByUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, String> userNames = userIds.isEmpty() ? Map.of() :
+                userRepository.findAllById(userIds).stream()
+                        .collect(Collectors.toMap(
+                                User::getId,
+                                u -> {
+                                    if (u.getDisplayName() != null && !u.getDisplayName().isBlank()) return u.getDisplayName();
+                                    String first = u.getFirstName() != null ? u.getFirstName().trim() : "";
+                                    String last = u.getLastName() != null ? u.getLastName().trim() : "";
+                                    String full = (first + " " + last).trim();
+                                    return full.isEmpty() ? u.getEmail() : full;
+                                },
+                                (a, b) -> a));
+
+        List<MediaAssetTrashDto> items = result.getContent().stream()
+                .map(asset -> {
+                    String deletedByName = asset.getDeletedByUserId() != null
+                            ? userNames.getOrDefault(asset.getDeletedByUserId(), "Unknown")
+                            : "System";
+                    return MediaAssetTrashDto.from(asset, deletedByName, retentionDays);
+                })
+                .toList();
+
+        int totalCount = (int) Math.min(result.getTotalElements(), Integer.MAX_VALUE);
+        return new MediaAssetTrashListResponseDto(items, totalCount, safePage, safePageSize);
+    }
+
+    @Transactional
+    public MediaAssetDetailDto restore(UUID assetId, JwtUserDetails user) {
+        if (!isAdmin(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators can restore assets from trash.");
+        }
+        MediaAsset asset = mediaAssetRepository.findTrashedById(assetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Trashed media asset not found."));
+
+        if (asset.getMediaAlbum() != null && !mediaAlbumRepository.existsById(asset.getMediaAlbum().getId())) {
+            asset.setMediaAlbum(null);
+        }
+
+        asset.setDeletedAt(null);
+        asset.setDeletedByUserId(null);
+        asset.setStatus(MediaAssetStatus.READY);
+        MediaAsset saved = mediaAssetRepository.save(asset);
+
+        recordAssetAudit(user, "MEDIA_ASSET_RESTORED", assetId, Map.of(
+                "assetCode", asset.getAssetCode(),
+                "fileName", asset.getFileName()));
+
+        return MediaAssetDetailDto.from(saved, List.of(), currentTags(assetId));
+    }
+
+    @Transactional
+    public List<UUID> bulkRestore(List<UUID> assetIds, JwtUserDetails user) {
+        if (!isAdmin(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators can restore assets from trash.");
+        }
+        if (assetIds == null || assetIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Select at least one asset to restore.");
+        }
+        List<UUID> restoredIds = new ArrayList<>();
+        for (UUID id : assetIds) {
+            Optional<MediaAsset> opt = mediaAssetRepository.findTrashedById(id);
+            if (opt.isPresent()) {
+                MediaAsset asset = opt.get();
+                if (asset.getMediaAlbum() != null && !mediaAlbumRepository.existsById(asset.getMediaAlbum().getId())) {
+                    asset.setMediaAlbum(null);
+                }
+                asset.setDeletedAt(null);
+                asset.setDeletedByUserId(null);
+                asset.setStatus(MediaAssetStatus.READY);
+                mediaAssetRepository.save(asset);
+                restoredIds.add(id);
+            }
+        }
+        recordAssetAudit(user, "MEDIA_BULK_RESTORED", null, Map.of(
+                "count", restoredIds.size(),
+                "assetIds", restoredIds.stream().limit(50).map(UUID::toString).toList()));
+        return restoredIds;
+    }
+
+    @Transactional
+    public void purgeTrashAsset(UUID assetId, JwtUserDetails user) {
+        if (!isAdmin(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators can permanently delete assets.");
+        }
+        MediaAsset asset = mediaAssetRepository.findTrashedById(assetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Trashed media asset not found."));
+
+        String storageUrl = asset.getStorageUrl();
+        boolean storageDeleted = false;
+        if (storageUrl != null && !storageUrl.isBlank()) {
+            storageDeleted = mediaStorage.deletePublicObject(storageUrl);
+        }
+
+        mediaAssetEmbeddingRepository.deleteByAssetId(assetId);
+        assetTagRepository.deleteByMediaAssetId(assetId);
+        mediaAssetRepository.purgeAiProfile(assetId);
+
+        recordAssetAudit(user, "MEDIA_ASSET_PURGED", assetId, Map.of(
+                "permanent", true,
+                "storageDeleted", storageDeleted,
+                "assetCode", asset.getAssetCode()));
+    }
+
+    @Transactional
+    public List<UUID> bulkPurgeTrash(List<UUID> assetIds, JwtUserDetails user) {
+        if (!isAdmin(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators can permanently delete assets.");
+        }
+        if (assetIds == null || assetIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Select at least one asset to delete permanently.");
+        }
+        List<UUID> purgedIds = new ArrayList<>();
+        for (UUID id : assetIds) {
+            Optional<MediaAsset> opt = mediaAssetRepository.findTrashedById(id);
+            if (opt.isPresent()) {
+                MediaAsset asset = opt.get();
+                if (asset.getStorageUrl() != null && !asset.getStorageUrl().isBlank()) {
+                    mediaStorage.deletePublicObject(asset.getStorageUrl());
+                }
+                mediaAssetEmbeddingRepository.deleteByAssetId(id);
+                assetTagRepository.deleteByMediaAssetId(id);
+                mediaAssetRepository.purgeAiProfile(id);
+                purgedIds.add(id);
+            }
+        }
+        recordAssetAudit(user, "MEDIA_BULK_PURGED", null, Map.of(
+                "count", purgedIds.size(),
+                "assetIds", purgedIds.stream().limit(50).map(UUID::toString).toList()));
+        return purgedIds;
+    }
+
+    @Transactional
+    public int emptyTrash(UUID institutionId, JwtUserDetails user) {
+        if (!isAdmin(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators can empty trash.");
+        }
+        boolean networkWide = institutionId == null;
+        Set<UUID> scope = institutionId != null ? Set.of(institutionId) : Set.of(EMPTY_SCOPE_ID);
+        List<MediaAsset> trashed = mediaAssetRepository.findAllTrashed(networkWide, scope);
+        int purgedCount = 0;
+        for (MediaAsset asset : trashed) {
+            if (asset.getStorageUrl() != null && !asset.getStorageUrl().isBlank()) {
+                mediaStorage.deletePublicObject(asset.getStorageUrl());
+            }
+            mediaAssetEmbeddingRepository.deleteByAssetId(asset.getId());
+            assetTagRepository.deleteByMediaAssetId(asset.getId());
+            mediaAssetRepository.purgeAiProfile(asset.getId());
+            purgedCount++;
+        }
+        recordAssetAudit(user, "MEDIA_TRASH_EMPTIED", null, Map.of(
+                "count", purgedCount,
+                "institutionId", institutionId != null ? institutionId.toString() : "all"));
+        return purgedCount;
+    }
+
     private void validateDeleteReferences(UUID assetId, boolean force) {
         long blockingCount = submissionMediaAssetRepository.countBlockingSubmissionsByAssetId(assetId);
         if (blockingCount > 0) {
@@ -753,15 +942,23 @@ public class MediaAssetService {
 
     /**
      * Delete an empty album. Blocks (409) while it still has sub-albums or
-     * assets.
+     * visible assets. An asset exclusively attached to a draft submission
+     * doesn't count as "in" the folder here (same rule findRepositoryPage
+     * uses to hide it from browsing) — the album is the source of truth for
+     * where an asset lives, not an unsubmitted draft, so deleting the album
+     * just detaches it rather than blocking the delete.
      */
     public void deleteAlbum(UUID albumId, JwtUserDetails user) {
         MediaAlbum album = loadAlbumForDelete(albumId, user);
         if (mediaAlbumRepository.countByParentAlbumId(albumId) > 0
-                || mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId) > 0) {
+                || mediaAssetRepository.countVisibleAssetsByAlbum(albumId) > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Move or delete everything inside this album before deleting it.");
         }
+        // Whatever's left pointing at this album is either soft-deleted
+        // (awaiting the 30-day purge) or a draft-only-hidden active asset —
+        // detach both or the delete below fails on the raw media_album_id FK.
+        mediaAssetRepository.detachAllAssetsFromAlbum(albumId);
         mediaAlbumRepository.delete(album);
     }
 

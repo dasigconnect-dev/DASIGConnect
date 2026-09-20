@@ -1,8 +1,10 @@
 import type { FormEvent } from 'react'
+import { useMemo, useState } from 'react'
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
 import dasigLogo from '../../assets/dasigconnect-logo.png'
+import { isInAppBrowser } from '../../utils/inAppBrowser'
 
 type InviteState = 'form' | 'expired' | 'already' | 'success'
 
@@ -41,9 +43,6 @@ interface InviteScreenProps {
   onToggleConfirmPassword: () => void
   onActivate: () => void
   onBackToLogin: () => void
-  onResendExpired?: () => void
-  resending?: boolean
-  resendSuccess?: boolean
   showPassword: boolean
   showConfirmPassword: boolean
 }
@@ -69,12 +68,23 @@ export default function InviteScreen({
   onToggleConfirmPassword,
   onActivate,
   onBackToLogin,
-  onResendExpired,
-  resending = false,
-  resendSuccess = false,
   showPassword,
   showConfirmPassword,
 }: InviteScreenProps) {
+  const showInAppBrowserNotice = useMemo(() => isInAppBrowser(), [])
+  const [linkCopied, setLinkCopied] = useState(false)
+
+  async function handleCopyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 3000)
+    } catch {
+      // Clipboard API unavailable in this in-app browser — the visible URL
+      // bar (if any) is the fallback for a manual copy.
+    }
+  }
+
   return (
     <Screen id="invite" active={active}>
       <div className="split">
@@ -123,6 +133,30 @@ export default function InviteScreen({
           </div>
         </LeftPanel>
         <RightPanel>
+          {showInAppBrowserNotice && (
+            <div className="alert alert-warn" style={{ marginBottom: 14 }}>
+              <i className="ti ti-alert-triangle"></i>
+              <div>
+                <strong style={{ display: 'block', marginBottom: 3, color: '#FCD34D' }}>
+                  You're viewing this inside an app's built-in browser.
+                </strong>
+                Some apps (Messenger, Instagram, etc.) reuse this popup across
+                links and can show an outdated page. For the most reliable
+                activation, open this link in Chrome or your device's default
+                browser instead.
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => void handleCopyLink()}
+                  >
+                    <i className="ti ti-copy"></i>{' '}
+                    {linkCopied ? 'Link copied!' : 'Copy this link'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           <div id="inv-expired" className={state === 'expired' ? '' : 'hidden'}>
             <div className="alert alert-err" style={{ marginBottom: 14 }}>
               <i className="ti ti-clock-x"></i>
@@ -133,39 +167,23 @@ export default function InviteScreen({
                   Invitation link has expired.
                 </strong>
                 This invitation token is no longer valid. Your account remains
-                in PENDING status. You can request a fresh invitation link below,
-                or contact your DASIG Moderator.
+                in PENDING status. If an Administrator or Moderator already
+                sent you a newer invitation, make sure you open{' '}
+                <strong>that latest email's link</strong> in a fresh browser
+                tab or window — reopening this same link (especially from an
+                app's built-in browser popup) will keep showing this expired
+                page even after a new one is issued. Otherwise, contact your
+                DASIG Administrator or Moderator to request a new invitation
+                link.
               </div>
             </div>
-            {resendSuccess && (
-              <div className="alert alert-ok" style={{ marginBottom: 14 }}>
-                <i className="ti ti-mail-check"></i>
-                <div>
-                  <strong style={{ display: 'block', marginBottom: 3, color: '#86EFAC' }}>
-                    New invitation link sent!
-                  </strong>
-                  A fresh invitation link has been dispatched to your email address. Please check your inbox.
-                </div>
-              </div>
-            )}
-            {onResendExpired && !resendSuccess && (
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={onResendExpired}
-                disabled={resending}
-                style={{ width: '100%', marginBottom: 10 }}
-              >
-                <i className="ti ti-send"></i> {resending ? 'Sending new link…' : 'Resend Invitation Link'}
-              </button>
-            )}
             <button
               type="button"
-              className="btn-ghost"
+              className="btn-primary"
               onClick={onBackToLogin}
               style={{ width: '100%' }}
             >
-              Return to Sign In
+              <i className="ti ti-login"></i> Return to Sign In
             </button>
           </div>
 

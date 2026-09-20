@@ -290,10 +290,17 @@ public class SubmissionService {
 
         UUID previousInstitutionId = submission.getInstitution().getId();
 
-        // Staged uploads (status STAGED, no institution) are not bound to the old
-        // institution — they stay attached and survive the move. Only assets
-        // picked from the previous institution's library are detached; those rows
-        // remain in that library, so nothing is lost.
+        // No attached asset is detached here, regardless of source: a STAGED
+        // upload has no institution yet and simply gets bound to `target` the
+        // next time submit()'s reconciliation runs (see the loop there); a
+        // library pick already has its own institution/album and keeps both
+        // untouched — it stays attached to this submission (now under a
+        // different institution) but administratively still belongs to
+        // whichever institution's library it was picked from. This is
+        // intentional (reviewers/admins reusing vetted assets across
+        // institutions), not a bug — do not add auto-detach here without
+        // confirming that's actually the desired UX, since it would silently
+        // strip media an admin deliberately chose to reuse.
         slotReservationService.deleteAllForSubmission(submission.getId());
 
         submission.setInstitution(target);
@@ -447,12 +454,15 @@ public class SubmissionService {
         Submission submission = loadOwnedSubmission(submissionId, user);
 
         if (submission.getStatus() != SubmissionStatus.draft
-                && submission.getStatus() != SubmissionStatus.needs_revision) {
+                && submission.getStatus() != SubmissionStatus.needs_revision
+                && submission.getStatus() != SubmissionStatus.rejected) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Only DRAFT or NEEDS_REVISION submissions can be submitted. Current status: "
+                    "Only DRAFT, NEEDS_REVISION, or REJECTED submissions can be submitted. Current status: "
                     + submission.getStatus());
         }
 
+        boolean wasRejected = submission.getStatus() == SubmissionStatus.rejected;
+        boolean wasRevision = submission.getStatus() == SubmissionStatus.needs_revision;
         boolean fastTrack = submission.isFastTrack();
 
         // A Standard post always needs a scheduled time — the guard-rail switch
@@ -530,17 +540,28 @@ public class SubmissionService {
 
         submission.setStatus(SubmissionStatus.pending);
         submission.setSubmittedAt(Instant.now());
+        if (wasRejected) {
+            submission.setRejectionReason(null);
+        }
         submission = submissionRepository.save(submission);
+
+        java.util.Map<String, String> auditDetails = new java.util.HashMap<>();
+        if (fastTrack) {
+            auditDetails.put("fastTrack", "true");
+        } else if (submission.getScheduledAt() != null) {
+            auditDetails.put("scheduledAt", submission.getScheduledAt().toString());
+        }
+        if (wasRejected) {
+            auditDetails.put("resubmittedFrom", "rejected");
+        } else if (wasRevision) {
+            auditDetails.put("resubmittedFrom", "needs_revision");
+        }
 
         auditLogService.record(
                 entityManager.getReference(User.class, user.userId()),
                 "SUBMISSION_SUBMITTED", null, null,
                 submissionId,
-                fastTrack
-                        ? Map.of("fastTrack", "true")
-                        : submission.getScheduledAt() != null
-                        ? Map.of("scheduledAt", submission.getScheduledAt().toString())
-                        : Map.of());
+                auditDetails);
 
         // T-01 / T-11 — notify institution moderators via domain events
         if (eventPublisher != null) {
@@ -1133,13 +1154,19 @@ public class SubmissionService {
 
     private boolean isEditableStatus(Submission submission) {
         return submission.getStatus() == SubmissionStatus.draft
+                || submission.getStatus() == SubmissionStatus.needs_revision
+                || submission.getStatus() == SubmissionStatus.rejected;
+    }
+
+    private boolean isPrivateDraftStatus(Submission submission) {
+        return submission.getStatus() == SubmissionStatus.draft
                 || submission.getStatus() == SubmissionStatus.needs_revision;
     }
 
     private void assertReadAccess(Submission submission, JwtUserDetails user) {
         switch (user.role().toLowerCase()) {
             case "moderator", "admin" -> {
-                if (isEditableStatus(submission)
+                if (isPrivateDraftStatus(submission)
                         && !submission.getContributor().getId().equals(user.userId())) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied.");
                 }

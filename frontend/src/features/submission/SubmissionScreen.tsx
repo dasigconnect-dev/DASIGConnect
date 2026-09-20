@@ -30,6 +30,7 @@ import {
   useSubmissionLookups,
   useSubmissions,
 } from "../../hooks/useSubmissions";
+import { useIncrementalPagination } from "../../hooks/useIncrementalPagination";
 import { useFacebookPreviewData } from "../../hooks/useFacebookPreviewData";
 import { fileMediaKey, savedMediaKey } from "../../hooks/useMediaReorder";
 import type { User } from "../../types/auth.types";
@@ -46,7 +47,7 @@ import AiCaptionButton from "./components/AiCaptionButton";
 import type { FancyTextSelection } from "./components/FancyTextTool";
 import AlbumCombobox from "../../components/ui/AlbumCombobox";
 import { RevisionFeedbackModal } from "./components/RevisionFeedbackModal";
-import { RevisionFeedbackBanner } from "./components/RevisionFeedbackBanner";
+import { RevisionFeedbackBanner, RejectionFeedbackBanner } from "./components/RevisionFeedbackBanner";
 import { parseRevisionRemarks, REVISION_SUPPORTED_FIELDS } from "./utils/revisionComments";
 import SpotlightTour from "../onboarding/components/SpotlightTour";
 import { useScreenTour } from "../onboarding/hooks/useScreenTour";
@@ -252,6 +253,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [albumMatchCandidates, setAlbumMatchCandidates] = useState<AlbumMatchCandidate[]>([]);
   const [albumMatchNoResult, setAlbumMatchNoResult] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
+  const [pendingInstitutionId, setPendingInstitutionId] = useState<string | null>(null);
   const [captionMediaKey, setCaptionMediaKey] = useState<string | null>(null);
   const [hashtagInput, setHashtagInput] = useState("");
   const [mediaTagInput, setMediaTagInput] = useState("");
@@ -273,6 +275,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [loadedDetail, setLoadedDetail] = useState<
     { id: string; rejectionReason?: string | null; validatorRemarks?: string | null } | null
   >(null);
+  const [isEditingRejected, setIsEditingRejected] = useState(false);
   const [revisionModalOpen, setRevisionModalOpen] = useState(false);
   const shownRevisionModalForIdRef = useRef<string | null>(null);
   const [addressedRevisionFields, setAddressedRevisionFields] = useState<Set<string>>(new Set());
@@ -405,6 +408,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         : submissions.filter((item) => queueBucket(item.status) === filter);
     return base.filter((item) => matchesQueueSearch(item, queueSearch));
   }, [filter, queueSearch, submissions]);
+
+  const {
+    visibleItems: visibleQueued,
+    hasMore: hasMoreQueued,
+    totalCount: totalQueuedCount,
+    sentinelRef: queuedSentinelRef,
+  } = useIncrementalPagination(queued, {
+    pageSize: 8,
+    initialSize: 8,
+    resetDeps: [filter, queueSearch],
+  });
   // One pass over the list for every tab count.
   const counts = useMemo(() => {
     const acc: Record<QueueBucket, number> = {
@@ -461,7 +475,10 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     previewValidation.blockingErrors.length > 0
       ? previewValidation.blockingErrors[0]
       : undefined;
-  const isEditableSubmission = form.status === "draft" || form.status === "needs_revision";
+  const isEditableSubmission =
+    form.status === "draft" ||
+    form.status === "needs_revision" ||
+    (form.status === "rejected" && isEditingRejected);
   const canSubmitCurrentSubmission = isEditableSubmission;
   const isReadOnlySubmission = !isEditableSubmission;
   const canUseAiCaption = !isReadOnlySubmission;
@@ -959,14 +976,45 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
 
     const hasSchedule = Boolean(form.scheduledDate || form.scheduledTime);
+    const hasCrossInstitutionAssets = form.savedAssets.some(
+      (asset) => asset.institutionId && asset.institutionId !== nextInstitutionId,
+    );
 
-    if (hasSchedule) {
-      const confirmed = window.confirm(
-        "Changing the institution will clear the preferred schedule. Selected media is kept. Continue?",
-      );
-      if (!confirmed) return;
+    if (hasSchedule || hasCrossInstitutionAssets) {
+      setPendingInstitutionId(nextInstitutionId);
+      setModal("institution-switch");
+      return;
     }
 
+    applyPostingInstitutionChange(nextInstitutionId);
+  }
+
+  /**
+   * Nothing attached ever gets detached on a rehome (see
+   * SubmissionService.maybeRehomeSubmission) — a library pick keeps its
+   * original institution/album untouched. This just tells the user which
+   * currently attached items won't administratively move with the draft.
+   */
+  function describeInstitutionSwitch(nextInstitutionId: string): string {
+    const parts: string[] = [];
+    if (form.scheduledDate || form.scheduledTime) {
+      parts.push("Changing the institution will clear the preferred schedule.");
+    }
+    const crossInstitutionAssets = form.savedAssets.filter(
+      (asset) => asset.institutionId && asset.institutionId !== nextInstitutionId,
+    );
+    if (crossInstitutionAssets.length > 0) {
+      const names = crossInstitutionAssets.map((asset) => asset.fileName).join(", ");
+      parts.push(
+        `Selected media is kept, but ${crossInstitutionAssets.length} item(s) (${names}) will remain filed under their original institution's library rather than moving to the new one.`,
+      );
+    } else {
+      parts.push("Selected media is kept.");
+    }
+    return parts.join(" ");
+  }
+
+  function applyPostingInstitutionChange(nextInstitutionId: string) {
     setForm((current) => ({
       ...current,
       institutionId: nextInstitutionId,
@@ -1269,16 +1317,38 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setAlbumMatchCandidates([]);
     setAlbumMatchNoResult(false);
 
-    if (!form.id) {
-      // No saved draft yet — the match endpoint needs a submissionId. Fall back
-      // to the plain event-title fill rather than blocking the action.
-      updateField("albumName", form.eventTitle.trim() || form.liveEventName.trim() || "Auto-Matched Album");
-      return;
+    let currentId = form.id;
+    if (!currentId) {
+      // The AI match endpoint needs a submissionId — mirrors handleAiCaptionPromptSubmit's
+      // auto-save-on-demand pattern rather than falling back to a non-AI plain fill.
+      if (!form.eventTitle.trim()) {
+        toast.warning("Please enter an Event Title first so AI knows what event this is for.");
+        setActiveStep("details");
+        setTimeout(() => eventTitleRef.current?.focus(), 150);
+        return;
+      }
+      if (isAdminComposer && !form.institutionId) {
+        toast.warning("Please select an Institution scope first.");
+        setActiveStep("details");
+        return;
+      }
     }
 
     setAlbumMatching(true);
     try {
-      const result = await suggestAlbum(form.id, {
+      if (!currentId) {
+        toast.info("Auto-saving draft so AI can match an album...");
+        const savedId = await saveDraft({ silent: true });
+        if (!savedId) {
+          toast.error("Could not auto-save draft. Please check your submission fields.");
+          return;
+        }
+        currentId = savedId;
+      } else if (isDirty) {
+        await saveDraft({ silent: true });
+      }
+
+      const result = await suggestAlbum(currentId, {
         eventTitle: form.eventTitle.trim() || undefined,
         caption: form.caption.trim() || undefined,
         tags: effectiveMediaTags(form),
@@ -1323,6 +1393,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     shownRevisionModalForIdRef.current = null;
     setRevisionModalOpen(false);
     setAddressedRevisionFields(new Set());
+    setIsEditingRejected(false);
   }
 
   function startNewSubmission() {
@@ -1334,6 +1405,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     const returnTo = (location.state as { returnTo?: string } | null)?.returnTo;
     setModal(null);
     setPendingLeaveAction(null);
+    setIsEditingRejected(false);
     setForm(initialForm);
     setPickerItems([]);
     setCaptionMediaKey(null);
@@ -1448,6 +1520,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         validatorRemarks: submission.validatorRemarks,
       });
       setAddressedRevisionFields(new Set());
+      setIsEditingRejected(false);
       setPickerItems((submission.mediaAssets ?? []).map(savedAssetToPickerItem));
       setCaptionMediaKey(null);
       setHashtagInput("");
@@ -1484,6 +1557,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     } finally {
       setHydratingId(null);
     }
+  }
+
+  function handleStartEditRejected() {
+    setIsEditingRejected(true);
+    setActiveStep("details");
+    setCenterMode("edit");
+  }
+
+  function handleCancelEditRejected() {
+    setIsEditingRejected(false);
   }
 
   async function saveDraft(options: { silent?: boolean } = {}): Promise<string | false> {
@@ -1705,6 +1788,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setPickerItems(submittedAssets.map(savedAssetToPickerItem));
       setCaptionMediaKey(null);
       clearAssetIdParam();
+      setIsEditingRejected(false);
       setModal("success");
       toast.success("Submission sent for approval.");
       void refresh();
@@ -2161,102 +2245,117 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 description="Try another filter or create a new submission."
               />
             ) : (
-              queued.map((item) => {
-                const thumbnail = item.mediaAssets?.[0] ?? item.previewMediaAsset ?? undefined;
-                const captionPreview = item.caption || "";
-                return (
-                  <article
-                    className="sub-fb-post-card"
-                    key={item.id}
-                    onClick={() => navigate(`/submissions/${item.id}`)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        navigate(`/submissions/${item.id}`);
-                      }
-                    }}
-                  >
-                    {/* Header: FB Brand Avatar + Page Info + Status Badge */}
-                    <div className="sub-fb-card-head">
-                      <div className="sub-fb-avatar" aria-hidden="true">
-                        <i className="ti ti-brand-facebook"></i>
-                      </div>
-                      <div className="sub-fb-author">
-                        <div className="sub-fb-author-name">
-                          {item.institutionName || user.inst || "DASIGCONNECT"}
+              <>
+                {visibleQueued.map((item) => {
+                  const thumbnail = item.mediaAssets?.[0] ?? item.previewMediaAsset ?? undefined;
+                  const captionPreview = item.caption || "";
+                  return (
+                    <article
+                      className="sub-fb-post-card"
+                      key={item.id}
+                      onClick={() => navigate(`/submissions/${item.id}`)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          navigate(`/submissions/${item.id}`);
+                        }
+                      }}
+                    >
+                      {/* Header: FB Brand Avatar + Page Info + Status Badge */}
+                      <div className="sub-fb-card-head">
+                        <div className="sub-fb-avatar" aria-hidden="true">
+                          <i className="ti ti-brand-facebook"></i>
                         </div>
-                        <div className="sub-fb-author-meta">
-                          <span>{formatDate(item.eventDate)}</span>
-                          <span className="sub-fb-dot" aria-hidden="true">•</span>
-                          <i className="ti ti-world" title="Public post" aria-hidden="true"></i>
+                        <div className="sub-fb-author">
+                          <div className="sub-fb-author-name">
+                            {item.institutionName || user.inst || "DASIGCONNECT"}
+                          </div>
+                          <div className="sub-fb-author-meta">
+                            <span>{formatDate(item.eventDate)}</span>
+                            <span className="sub-fb-dot" aria-hidden="true">•</span>
+                            <i className="ti ti-world" title="Public post" aria-hidden="true"></i>
+                          </div>
+                        </div>
+                        <div className="sub-fb-status-wrap">
+                          <span className={`sub-qi-badge status-${item.status}`}>
+                            <i className={getSubmissionStatusIcon(item.status)} aria-hidden="true"></i>
+                            {statusLabels[item.status]}
+                          </span>
                         </div>
                       </div>
-                      <div className="sub-fb-status-wrap">
-                        <span className={`sub-qi-badge status-${item.status}`}>
-                          <i className={getSubmissionStatusIcon(item.status)} aria-hidden="true"></i>
-                          {statusLabels[item.status]}
-                        </span>
-                      </div>
-                    </div>
 
-                    {/* Post Content: Event Title & Caption */}
-                    <div className="sub-fb-card-content">
-                      {item.eventTitle && <h2 className="sub-fb-event-title">{item.eventTitle}</h2>}
-                      {captionPreview ? (
-                        <p className="sub-fb-caption-text">{captionPreview}</p>
-                      ) : (
-                        <p className="sub-fb-caption-text sub-fb-empty-text">No caption provided.</p>
-                      )}
-                    </div>
+                      {/* Post Content: Event Title & Caption */}
+                      <div className="sub-fb-card-content">
+                        {item.eventTitle && <h2 className="sub-fb-event-title">{item.eventTitle}</h2>}
+                        {captionPreview ? (
+                          <p className="sub-fb-caption-text">{captionPreview}</p>
+                        ) : (
+                          <p className="sub-fb-caption-text sub-fb-empty-text">No caption provided.</p>
+                        )}
+                      </div>
 
-                    {/* Media Container with Circular Loader */}
-                    <SubmissionCardMedia
-                      thumbnail={thumbnail}
-                      mediaCount={item.mediaCount}
-                      detailsLoaded={
-                        item.previewMediaAsset !== undefined || item.mediaAssets !== undefined
-                      }
-                    />
+                      {/* Media Container with Circular Loader */}
+                      <SubmissionCardMedia
+                        thumbnail={thumbnail}
+                        mediaCount={item.mediaCount}
+                        detailsLoaded={
+                          item.previewMediaAsset !== undefined || item.mediaAssets !== undefined
+                        }
+                      />
 
-                    {/* Reactions & Engagement Row */}
-                    <div className="sub-fb-reactions-bar">
-                      <div className="sub-fb-reactions-icons">
-                        <span className="sub-fb-react-icon fb-like-icon" title="Like">
-                          <i className="ti ti-thumb-up-filled"></i>
-                        </span>
-                        <span className="sub-fb-react-icon fb-heart-icon" title="Love">
-                          <i className="ti ti-heart-filled"></i>
-                        </span>
-                        <span className="sub-fb-reactions-text">
-                          {(item.mediaCount ?? 0)} media · {item.eventTitle ? "1 Post" : "Draft"}
-                        </span>
+                      {/* Reactions & Engagement Row */}
+                      <div className="sub-fb-reactions-bar">
+                        <div className="sub-fb-reactions-icons">
+                          <span className="sub-fb-react-icon fb-like-icon" title="Like">
+                            <i className="ti ti-thumb-up-filled"></i>
+                          </span>
+                          <span className="sub-fb-react-icon fb-heart-icon" title="Love">
+                            <i className="ti ti-heart-filled"></i>
+                          </span>
+                          <span className="sub-fb-reactions-text">
+                            {(item.mediaCount ?? 0)} media · {item.eventTitle ? "1 Post" : "Draft"}
+                          </span>
+                        </div>
+                        <div className="sub-fb-open-action">
+                          <span>Open details</span>
+                          <i className="ti ti-chevron-right"></i>
+                        </div>
                       </div>
-                      <div className="sub-fb-open-action">
-                        <span>Open details</span>
-                        <i className="ti ti-chevron-right"></i>
-                      </div>
-                    </div>
 
-                    {/* Facebook Interactive Bar */}
-                    <div className="sub-fb-actions-bar" aria-hidden="true">
-                      <div className="sub-fb-action-btn">
-                        <i className="ti ti-thumb-up"></i>
-                        <span>Like</span>
+                      {/* Facebook Interactive Bar */}
+                      <div className="sub-fb-actions-bar" aria-hidden="true">
+                        <div className="sub-fb-action-btn">
+                          <i className="ti ti-thumb-up"></i>
+                          <span>Like</span>
+                        </div>
+                        <div className="sub-fb-action-btn">
+                          <i className="ti ti-message-circle"></i>
+                          <span>Comment</span>
+                        </div>
+                        <div className="sub-fb-action-btn">
+                          <i className="ti ti-share-3"></i>
+                          <span>Share</span>
+                        </div>
                       </div>
-                      <div className="sub-fb-action-btn">
-                        <i className="ti ti-message-circle"></i>
-                        <span>Comment</span>
-                      </div>
-                      <div className="sub-fb-action-btn">
-                        <i className="ti ti-share-3"></i>
-                        <span>Share</span>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })
+                    </article>
+                  );
+                })}
+
+                {hasMoreQueued && (
+                  <div ref={queuedSentinelRef} className="sub-load-more-sentinel">
+                    <div className="sub-load-more-spinner" />
+                    <span>Loading more submissions...</span>
+                  </div>
+                )}
+
+                {!hasMoreQueued && totalQueuedCount > 8 && (
+                  <div className="sub-list-end-indicator">
+                    <span>Showing all {totalQueuedCount} submissions</span>
+                  </div>
+                )}
+              </>
             )}
           </section>
         </main>
@@ -2479,16 +2578,26 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   ? "Facebook Preview"
                   : isReadOnlySubmission
                     ? `${statusLabels[form.status]} submission`
-                    : "Submit Content"}
+                    : isEditingRejected
+                      ? "Edit & Resubmit Post"
+                      : "Submit Content"}
               </h1>
               {!isReadOnlySubmission && (
                 <p className="sub-form-page-sub">
                   {centerMode === "preview"
                     ? "Review how followers will see this post before sending it for approval."
-                    : "Prepare event media, caption, tags, and a preferred publishing slot."}
+                    : isEditingRejected
+                      ? "Address the rejection remarks and update your post before resubmitting for review."
+                      : "Prepare event media, caption, tags, and a preferred publishing slot."}
                 </p>
               )}
-              {isReadOnlySubmission && (
+              {isReadOnlySubmission && form.status === "rejected" && (
+                <div className="sub-readonly-note is-rejected-note">
+                  <i className="ti ti-circle-x"></i>
+                  Rejected — review feedback below and click Edit &amp; Resubmit to make changes
+                </div>
+              )}
+              {isReadOnlySubmission && form.status !== "rejected" && (
                 <div className="sub-readonly-note">
                   <i className="ti ti-eye"></i>
                   Read-only — this submission can no longer be edited
@@ -2514,6 +2623,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   disabled={busy || Boolean(hydratingId)}
                 >
                   <i className="ti ti-brand-facebook"></i> Preview
+                </button>
+              )}
+              {isEditingRejected && (
+                <button
+                  className="sub-btn-ghost"
+                  type="button"
+                  onClick={handleCancelEditRejected}
+                  disabled={busy || Boolean(hydratingId)}
+                >
+                  <i className="ti ti-x"></i> Cancel Editing
                 </button>
               )}
               {form.status === "draft" && (
@@ -2560,6 +2679,18 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 </button>
               </div>
             )}
+            {isReadOnlySubmission && form.status === "rejected" && (
+              <div className="sub-form-page-actions">
+                <button
+                  className="sub-btn-primary"
+                  type="button"
+                  onClick={handleStartEditRejected}
+                  disabled={busy || Boolean(hydratingId)}
+                >
+                  <i className="ti ti-pencil"></i> Edit &amp; Resubmit
+                </button>
+              </div>
+            )}
           </div>
 
           {centerMode === "preview" ? (
@@ -2601,6 +2732,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 onMediaIndexChange={setActiveMediaIndex}
                 rejectionReason={loadedDetail?.id === form.id ? loadedDetail.rejectionReason : null}
                 revisionNotes={loadedDetail?.id === form.id ? loadedDetail.validatorRemarks : null}
+                onEditRejected={handleStartEditRejected}
               />
             </Suspense>
           ) : (
@@ -2615,6 +2747,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                     ? loadedDetail.validatorRemarks
                     : undefined)
               }
+            />
+          )}
+          {form.status === "rejected" && isEditingRejected && (
+            <RejectionFeedbackBanner
+              type="rejected"
+              remarks={loadedDetail?.id === form.id ? loadedDetail.rejectionReason : null}
             />
           )}
           {!isReadOnlySubmission && (
@@ -2862,6 +3000,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 getItemCaption={(item) => form.mediaCaptions[pickerMediaKey(item)] ?? ""}
                 institutionId={selectedInstitutionId}
                 networkView={isAdminComposer}
+                institutions={institutions}
               />
             </Suspense>
             {pickerItems.some((item) => item.mediaType === "image") &&
@@ -2898,10 +3037,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             />
             <Field
               label="Album Assignment"
-              tooltip="Select an existing album, type to create a new one, or let AI auto-match based on your event details."
+              tooltip="Select an existing album, type to create a new one, or let AI auto-match based on your event details. Auto-Match saves this draft first if it hasn't been saved yet."
             >
                 <AlbumCombobox
                     value={form.albumName}
+                    autoMatchHint={
+                      form.id
+                        ? "Match against your media library using event details and tags."
+                        : "Match against your media library using event details and tags (saves this draft first)."
+                    }
                     existingAlbums={existingAlbums}
                     readOnly={isReadOnlySubmission}
                     placeholder="Search, select, or create a new album"
@@ -3135,7 +3279,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               ) : (
                 <i className="ti ti-send"></i>
               )}
-              {isNeedsRevision ? "Submit for Revision" : "Submit for Approval"}
+              {isNeedsRevision
+                ? "Submit for Revision"
+                : form.status === "rejected"
+                  ? "Resubmit for Review"
+                  : "Submit for Approval"}
             </button>
             {isDirty && (
               <button
@@ -3315,16 +3463,20 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           title={
             isNeedsRevision
               ? "Submit revision for approval?"
-              : hasRecommendedWarnings
-                ? "Submit with recommended warnings?"
-                : "Submit for Approval?"
+              : form.status === "rejected"
+                ? "Resubmit for approval?"
+                : hasRecommendedWarnings
+                  ? "Submit with recommended warnings?"
+                  : "Submit for Approval?"
           }
           description={
             isNeedsRevision
               ? "Your updated changes will be re-submitted to the reviewer for approval."
-              : hasRecommendedWarnings
-                ? `Required checks are complete, but ${recommendedWarnings.length} recommended item(s) still need attention: ${recommendedWarnings.map((item) => item.title).join(", ")}. You can still submit for approval.`
-                : `This submission will be sent for moderator approval. Readiness score: ${readiness.score} / 100.`
+              : form.status === "rejected"
+                ? "Your updated submission will be sent back to moderators for review."
+                : hasRecommendedWarnings
+                  ? `Required checks are complete, but ${recommendedWarnings.length} recommended item(s) still need attention: ${recommendedWarnings.map((item) => item.title).join(", ")}. You can still submit for approval.`
+                  : `This submission will be sent for moderator approval. Readiness score: ${readiness.score} / 100.`
           }
           cancelLabel={hasRecommendedWarnings ? "Review Warnings" : "Go Back"}
           confirmLabel={
@@ -3332,9 +3484,11 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               ? "Submitting..."
               : isNeedsRevision
                 ? "Submit Revision"
-                : hasRecommendedWarnings
-                  ? "Submit Anyway"
-                  : "Confirm Submission"
+                : form.status === "rejected"
+                  ? "Resubmit Post"
+                  : hasRecommendedWarnings
+                    ? "Submit Anyway"
+                    : "Confirm Submission"
           }
           loading={submitting}
           disabled={busy || hasUnaddressedRevisions}
@@ -3397,6 +3551,24 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           disabled={busy}
           onCancel={() => setModal(null)}
           onConfirm={() => void handleWithdraw()}
+        />
+      )}
+      {modal === "institution-switch" && pendingInstitutionId && (
+        <ConfirmModal
+          icon="ti-building-community"
+          title="Change posting institution?"
+          description={describeInstitutionSwitch(pendingInstitutionId)}
+          cancelLabel="Cancel"
+          confirmLabel="Continue"
+          onCancel={() => {
+            setPendingInstitutionId(null);
+            setModal(null);
+          }}
+          onConfirm={() => {
+            if (pendingInstitutionId) applyPostingInstitutionChange(pendingInstitutionId);
+            setPendingInstitutionId(null);
+            setModal(null);
+          }}
         />
       )}
       {modal === "fast-track-switch" && (

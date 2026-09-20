@@ -70,6 +70,7 @@ import {
   useValidationQueue,
 } from "./hooks/useValidationQueue";
 import { useResolutionFailures } from "../../hooks/useResolutionFailures";
+import { useIncrementalPagination } from "../../hooks/useIncrementalPagination";
 import type { FailedPublication } from "../../api/resolutionApi";
 import ResolutionRetryModal from "./ResolutionRetryModal";
 import ManualPublishWorkflowPanel from "./ManualPublishWorkflowPanel";
@@ -471,6 +472,32 @@ export default function ValidationQueueScreen({
         return needsHistory ? -cmp : cmp;
       });
   }, [filter, needsHistory, queue, search, sortKey]);
+
+  const {
+    visibleItems: visibleQueue,
+    hasMore: hasMoreQueue,
+    totalCount: totalQueueCount,
+    sentinelRef: queueSentinelRef,
+  } = useIncrementalPagination(filteredQueue, {
+    pageSize: 15,
+    initialSize: 15,
+    resetDeps: [filter, search, sortKey],
+    selectedItemId: selectedId,
+    getItemId: (item) => (item as SubmissionSummary)?.id,
+  });
+
+  const {
+    visibleItems: visibleFailures,
+    hasMore: hasMoreFailures,
+    totalCount: totalFailuresCount,
+    sentinelRef: failuresSentinelRef,
+  } = useIncrementalPagination(filteredFailures, {
+    pageSize: 15,
+    initialSize: 15,
+    resetDeps: [search],
+    selectedItemId: selectedId,
+    getItemId: (item) => (item as FailedPublication)?.submissionId,
+  });
 
   const pendingCount = activeQueue.filter(
     (item) => normalizeStatus(item.status) === "pending",
@@ -1536,7 +1563,7 @@ export default function ValidationQueueScreen({
               )}
               {!failuresLoading &&
                 !failuresError &&
-                filteredFailures.map((item) => (
+                visibleFailures.map((item) => (
                   <button
                     className={`val-queue-item ${item.submissionId === selectedId ? "active" : ""}`}
                     key={item.submissionId}
@@ -1602,6 +1629,19 @@ export default function ValidationQueueScreen({
                     </div>
                   </button>
                 ))}
+
+              {hasMoreFailures && (
+                <div ref={failuresSentinelRef} className="val-load-more-sentinel">
+                  <div className="val-load-more-spinner" />
+                  <span>Loading more items...</span>
+                </div>
+              )}
+
+              {!hasMoreFailures && totalFailuresCount > 15 && (
+                <div className="val-queue-end-indicator">
+                  <span>Showing all {totalFailuresCount} failures</span>
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -1622,7 +1662,7 @@ export default function ValidationQueueScreen({
               )}
               {!loading &&
                 !error &&
-                filteredQueue.map((item) => (
+                visibleQueue.map((item) => (
                   <button
                     className={`val-queue-item ${item.id === selectedId ? "active" : ""} ${normalizeStatus(item.status) === "pending" ? deadlineTone(item.scheduledAt) : ""}`}
                     key={item.id}
@@ -1686,6 +1726,19 @@ export default function ValidationQueueScreen({
                     </div>
                   </button>
                 ))}
+
+              {hasMoreQueue && (
+                <div ref={queueSentinelRef} className="val-load-more-sentinel">
+                  <div className="val-load-more-spinner" />
+                  <span>Loading more items...</span>
+                </div>
+              )}
+
+              {!hasMoreQueue && totalQueueCount > 15 && (
+                <div className="val-queue-end-indicator">
+                  <span>Showing all {totalQueueCount} submissions</span>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -1821,6 +1874,7 @@ export default function ValidationQueueScreen({
                       isOpen={showDetails}
                       retryCount={failureInfo?.retryCount}
                       lastAttemptAt={failureInfo?.lastAttemptAt}
+                      lastError={failureInfo?.lastError}
                     />
                   )}
 
@@ -2133,13 +2187,8 @@ export default function ValidationQueueScreen({
                 </div>
               )}
 
-              {failureInfo && (failureInfo.lastError || failureInfo.unresolvedPhotoIds) && (
+              {failureInfo?.unresolvedPhotoIds && (
                 <section className="val-detail-grid" style={{ width: "100%", maxWidth: "620px" }}>
-                  {failureInfo.lastError && (
-                    <DetailCard icon="ti-bug" label="Last Error" full muted>
-                      {failureInfo.lastError}
-                    </DetailCard>
-                  )}
                   {failureInfo.unresolvedPhotoIds && (
                     <DetailCard icon="ti-photo-off" label="Orphaned Facebook Photos" full muted>
                       <p style={{ margin: "0 0 4px" }}>
@@ -2846,6 +2895,7 @@ function SubmissionDetailsPanel({
   isOpen = true,
   retryCount,
   lastAttemptAt,
+  lastError,
 }: {
   submission: SubmissionSummary;
   log: ValidationLog[];
@@ -2855,6 +2905,7 @@ function SubmissionDetailsPanel({
   /** Failed-tab only — a regular submission's review has no retry history. */
   retryCount?: number;
   lastAttemptAt?: string | null;
+  lastError?: string | null;
 }) {
   const isLive = Boolean(submission.fastTrack);
   const slot = submission.scheduledAt;
@@ -2961,6 +3012,13 @@ function SubmissionDetailsPanel({
           <div>
             <dt>Last attempt</dt>
             <dd>{lastAttemptAt ? formatDateTime(lastAttemptAt) : "No attempts recorded"}</dd>
+          </div>
+        )}
+
+        {lastError && (
+          <div>
+            <dt>Last error</dt>
+            <dd>{humanizeFacebookError(lastError)}</dd>
           </div>
         )}
 
@@ -3503,6 +3561,32 @@ function parseEditDiff(diffJson: string): Array<[string, { from: unknown; to: un
 
 function normalizeStatus(value?: string | null) {
   return String(value ?? "").toLowerCase().replace(/-/g, "_");
+}
+
+/**
+ * The stored publish error is the raw Facebook Graph API exception body
+ * (`Graph API error: {"message": "...", "type": "OAuthException", "code":
+ * 190, "error_subcode": 463, "fbtrace_id": "..."}`) — accurate for debugging,
+ * but unreadable for a moderator deciding what to do next. Strips it down to
+ * just the human message, and gives the single most common real-world case
+ * (an expired/invalid Page access token, Graph API code 190) a specific,
+ * actionable message instead of Facebook's own wording.
+ */
+function humanizeFacebookError(raw?: string | null): string {
+  if (!raw) return "";
+  const jsonStart = raw.indexOf("{");
+  if (jsonStart < 0) return raw;
+  let parsed: { message?: string; type?: string; code?: number } | null;
+  try {
+    parsed = JSON.parse(raw.slice(jsonStart));
+  } catch {
+    parsed = null;
+  }
+  if (!parsed?.message) return raw;
+  if (parsed.type === "OAuthException" && parsed.code === 190) {
+    return "The Facebook connection has expired. An Admin needs to reconnect the Page (Settings → System Health → Tokens) before this can publish.";
+  }
+  return parsed.message;
 }
 
 function deadlineTone(value?: string) {

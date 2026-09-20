@@ -310,6 +310,51 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void submit_rejectedSubmission_transitionsToPendingAndClearsRejectionReason() {
+        UUID submissionId = UUID.randomUUID();
+        Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
+        Submission submission = submission(submissionId, SubmissionStatus.rejected, scheduledAt);
+        submission.setRejectionReason("POLICY_VIOLATION: Inappropriate caption");
+        User validator = user(UUID.randomUUID(), "validator@cit.edu.ph", UserRole.moderator, institution);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(guardRailService.validate(eq(institutionId), eq(scheduledAt), any())).thenReturn(new GuardRailResult());
+        when(submissionRepository.save(submission)).thenReturn(submission);
+        when(entityManager.getReference(User.class, contributorId)).thenReturn(contributor);
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(1L);
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+        when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId))
+                .thenReturn(List.of(mediaAsset(UUID.randomUUID(), institution)));
+        when(userRepository.findByRole(UserRole.moderator))
+                .thenReturn(List.of(validator));
+
+        SubmissionResponseDto result = submissionService.submit(submissionId, contributorPrincipal);
+
+        assertThat(result.getStatus()).isEqualTo("pending");
+        assertThat(submission.getStatus()).isEqualTo(SubmissionStatus.pending);
+        assertThat(submission.getRejectionReason()).isNull();
+        verify(auditLogService).record(eq(contributor), eq("SUBMISSION_SUBMITTED"), eq(null), eq(null), eq(submissionId), any());
+        verify(eventPublisher).publishEvent(any(com.dasigconnect.backend.event.SubmissionPendingEvent.class));
+    }
+
+    @Test
+    void update_rejectedSubmission_succeeds() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.rejected, Instant.parse("2026-06-01T08:00:00Z"));
+        SubmissionUpdateDto dto = new SubmissionUpdateDto();
+        dto.setEventTitle("Updated Rejected Post");
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(submissionRepository.save(submission)).thenReturn(submission);
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+
+        SubmissionResponseDto result = submissionService.update(submissionId, dto, contributorPrincipal);
+
+        assertThat(result.getEventTitle()).isEqualTo("Updated Rejected Post");
+        assertThat(result.getStatus()).isEqualTo("rejected");
+    }
+
+    @Test
     void submit_withoutScheduledAt_returns400() {
         UUID submissionId = UUID.randomUUID();
         when(submissionRepository.findById(submissionId))

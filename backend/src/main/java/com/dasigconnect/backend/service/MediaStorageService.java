@@ -40,24 +40,44 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
  * <p>The browser uploads file bytes directly to a short-lived presigned PUT URL
  * ({@link #createSignedUploadUrl}). The URL stored in the database and used for
  * {@code <img>} tags, Claude Vision input, and downloads is {@link #getPublicUrl}
- * — deliberately NOT a direct R2 URL. R2's "Public Development URL" (the
- * {@code pub-*.r2.dev} host {@code app.r2.public-base-url} used to point at)
- * is documented by Cloudflare as unfit for production and can be disabled or
- * silently rotated to a new hash at any time; when that happened here, every
- * previously-stored asset URL died at once (DNS stopped resolving for the old
- * host) and every media preview in the app broke simultaneously. Instead,
- * {@code getPublicUrl} now returns an address on this app's own backend
- * ({@code app.backend.public-base-url} + {@code /api/v1/media-files/<key>}),
- * served by {@code MediaProxyController} which streams the bytes from R2
- * server-side via {@link #downloadObject}. The tradeoff is that every media
- * request now round-trips through this backend instead of being served
- * directly from Cloudflare's edge — acceptable at this project's scale, and
- * immune to the R2 dev-URL failure mode entirely.
+ * — deliberately NOT R2's own "Public Development URL" (the {@code pub-*.r2.dev}
+ * host {@code app.r2.public-base-url} used to point at). Cloudflare documents that
+ * host as unfit for production and it can be disabled or silently rotated to a new
+ * hash at any time; when that happened here, every previously-stored asset URL died
+ * at once (DNS stopped resolving for the old host) and every media preview in the
+ * app broke simultaneously. Two ways {@code getPublicUrl} avoids that:
+ *
+ * <ul>
+ *   <li>If {@code app.r2.custom-domain-url} ({@code R2_CUSTOM_DOMAIN_URL}) is set —
+ *   a real domain attached to the R2 bucket via Cloudflare's "Custom Domains"
+ *   feature, not the dev URL — URLs point straight at it. Unlike the dev URL this
+ *   is Cloudflare-documented as production-safe and doesn't rotate/disappear, and
+ *   the browser fetches media from Cloudflare's edge with zero egress cost to R2
+ *   and zero bandwidth through this backend at all — the intended steady state.
+ *   <li>Otherwise (no custom domain configured — e.g. local dev, or before one is
+ *   set up), it falls back to an address on this app's own backend
+ *   ({@code app.backend.public-base-url} + {@code /api/v1/media-files/<key>}),
+ *   served by {@code MediaProxyController} which streams the bytes from R2
+ *   server-side via {@link #downloadObject}. Immune to the dev-URL failure mode,
+ *   but every media request round-trips through this backend's own bandwidth —
+ *   fine at small scale, but the first thing to look at if a Render-style hosting
+ *   bandwidth cap gets hit, since media (not JSON) is almost always the dominant
+ *   share of traffic. {@code MediaProxyController} is kept regardless of which
+ *   mode is active, both for this fallback and because rows written before a
+ *   custom domain existed keep pointing at it — those aren't rewritten
+ *   automatically (see the one-time SQL backfill note below).
+ * </ul>
  *
  * <p>Configured via {@code app.r2.*} (kept as the stable config key namespace so
  * existing {@code R2_*} environment variables keep working). {@code app.r2.public-base-url}
- * itself is now used only to recognize pre-existing stored URLs from before this
- * change, for {@link #deletePublicObject} to still resolve them back to an object key.
+ * itself is now used only to recognize pre-existing stored URLs from before the proxy
+ * was introduced, for {@link #deletePublicObject} to still resolve them back to an
+ * object key. Switching {@code app.r2.custom-domain-url} on only changes URLs for
+ * <em>new</em> uploads — existing {@code media_assets.storage_url} rows still on the
+ * backend-proxy host need a one-time SQL backfill to move off it too, same as the
+ * original R2-dev-URL migration
+ * ({@code UPDATE media_assets SET storage_url = REPLACE(storage_url, '<backend host>/api/v1/media-files/', '<custom domain>/') WHERE storage_url LIKE '<backend host>/api/v1/media-files/%'}),
+ * not run automatically since the backend host isn't knowable at build time.
  */
 @Service
 public class MediaStorageService {
@@ -82,6 +102,7 @@ public class MediaStorageService {
     private final String bucket;
     private final String publicBaseUrl;
     private final String backendPublicBaseUrl;
+    private final String customDomainUrl;
     private final S3Client s3Client;
     private final S3Presigner presigner;
     private final boolean configured;
@@ -94,11 +115,13 @@ public class MediaStorageService {
             @Value("${app.r2.secret-access-key:}") String secretAccessKey,
             @Value("${app.r2.bucket:dasigconnect-media}") String bucket,
             @Value("${app.r2.public-base-url:}") String publicBaseUrl,
-            @Value("${app.backend.public-base-url:http://localhost:8080}") String backendPublicBaseUrl) {
+            @Value("${app.backend.public-base-url:http://localhost:8080}") String backendPublicBaseUrl,
+            @Value("${app.r2.custom-domain-url:}") String customDomainUrl) {
 
         this.bucket = bucket;
         this.publicBaseUrl = publicBaseUrl.replaceAll("/$", "");
         this.backendPublicBaseUrl = backendPublicBaseUrl.replaceAll("/$", "");
+        this.customDomainUrl = customDomainUrl.replaceAll("/$", "");
 
         String resolvedEndpoint = endpoint.isBlank() && !accountId.isBlank()
                 ? "https://" + accountId + ".r2.cloudflarestorage.com"
@@ -175,11 +198,15 @@ public class MediaStorageService {
     }
 
     /**
-     * The URL the browser/AI clients actually fetch — served by
-     * {@code MediaProxyController} on this backend, not directly from R2. See
-     * the class-level javadoc for why (R2's dev URL is not stable).
+     * The URL the browser/AI clients actually fetch. Points at the configured R2
+     * custom domain when one is set (bypasses this backend's own bandwidth
+     * entirely), otherwise falls back to this backend's own {@code MediaProxyController}
+     * proxy. See the class-level javadoc for the full tradeoff.
      */
     public String getPublicUrl(String objectPath) {
+        if (!customDomainUrl.isBlank()) {
+            return customDomainUrl + "/" + objectPath;
+        }
         return backendPublicBaseUrl + MEDIA_PROXY_PATH + objectPath;
     }
 

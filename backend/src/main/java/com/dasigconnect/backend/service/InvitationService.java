@@ -347,58 +347,6 @@ public class InvitationService {
                 emailService.buildInvitationLink(rawToken));
     }
 
-    public void resendExpiredToken(String rawToken, String email) {
-        InvitationToken targetToken = null;
-        if (rawToken != null && !rawToken.isBlank()) {
-            String hash = TokenHashUtils.sha256Hex(normalizeRawToken(rawToken));
-            targetToken = invitationTokenRepository.findByTokenHash(hash).orElse(null);
-        }
-
-        String targetEmail = targetToken != null ? targetToken.getRecipientEmail() : (email != null ? email.trim().toLowerCase() : null);
-        if (targetEmail == null || targetEmail.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email or valid token is required.");
-        }
-
-        User user = userRepository.findByEmail(targetEmail).orElse(null);
-        if (user != null && user.getAccountState() == UserStatus.active) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Account is already active. Please sign in.");
-        }
-
-        UserRole role = targetToken != null ? targetToken.getAssignedRole() : (user != null ? user.getRole() : UserRole.contributor);
-        Institution institution = targetToken != null ? targetToken.getInstitution() : (user != null ? user.getInstitution() : null);
-
-        if (user != null && (user.getAccountState() == UserStatus.pending_email_undelivered
-                || user.getAccountState() == UserStatus.expired
-                || user.getAccountState() == UserStatus.cancelled)) {
-            user.setAccountState(UserStatus.pending);
-            userRepository.save(user);
-        }
-
-        Instant now = Instant.now();
-        invalidateOpenInvitations(targetEmail, now);
-
-        String freshRawToken = TokenHashUtils.generateRawToken();
-        String freshTokenHash = TokenHashUtils.sha256Hex(freshRawToken);
-
-        InvitationToken newToken = new InvitationToken();
-        newToken.setRecipientEmail(targetEmail);
-        newToken.setAssignedRole(role);
-        newToken.setInstitution(institution);
-        newToken.setTokenHash(freshTokenHash);
-        newToken.setExpiresAt(now.plus(Duration.ofHours(72)));
-        invitationTokenRepository.save(newToken);
-
-        try {
-            emailService.sendInvitationEmail(targetEmail, freshRawToken);
-        } catch (RuntimeException ex) {
-            if (user != null) {
-                user.setAccountState(UserStatus.pending_email_undelivered);
-                userRepository.save(user);
-            }
-            log.warn("Resend expired invitation email failed for {}: {}", targetEmail, ex.getMessage());
-        }
-    }
-
     public void cancel(UUID tokenId, JwtUserDetails requester) {
         InvitationToken token = invitationTokenRepository.findById(tokenId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invitation not found."));
@@ -546,6 +494,43 @@ public class InvitationService {
         }
         throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                 "Only admins can send invitations");
+    }
+
+    private static final java.util.Set<UserStatus> EXPIRABLE_ACCOUNT_STATES =
+            java.util.EnumSet.of(UserStatus.pending, UserStatus.pending_email_undelivered);
+
+    /**
+     * A token's own 72h {@code expires_at} only ever blocks {@link #acceptInvitation},
+     * it never updates the invited user's row -- so a pending account used to show
+     * "Pending" in every User Management table forever, indistinguishable from an
+     * invite sent five minutes ago, even long after its invitation window had
+     * passed. Called from {@code InvitationExpiryJob} (hourly): for every pending /
+     * pending_email_undelivered user whose most recently issued invitation is both
+     * unused and past its expiry — i.e. no live invite currently covers them —
+     * flips the account to {@code expired}, matching what {@link UserDto}, the
+     * delete/removal rules, and the User Management filters already assume this
+     * status means. A user with no invitation history at all (legacy data) is left
+     * untouched. Returns the number of accounts transitioned.
+     */
+    @Transactional
+    public int expireOverdueInvitations() {
+        Instant now = Instant.now();
+        int expiredCount = 0;
+        for (User user : userRepository.findByAccountStateIn(EXPIRABLE_ACCOUNT_STATES)) {
+            if (user.getEmail() == null) {
+                continue;
+            }
+            InvitationToken latest = invitationTokenRepository
+                    .findFirstByRecipientEmailIgnoreCaseOrderByCreatedAtDesc(user.getEmail())
+                    .orElse(null);
+            if (latest == null || latest.getUsedAt() != null || latest.getExpiresAt().isAfter(now)) {
+                continue;
+            }
+            user.setAccountState(UserStatus.expired);
+            userRepository.save(user);
+            expiredCount++;
+        }
+        return expiredCount;
     }
 
     private void invalidateOpenInvitations(String recipientEmail, Instant now) {

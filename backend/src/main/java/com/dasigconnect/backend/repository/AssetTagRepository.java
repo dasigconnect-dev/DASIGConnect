@@ -17,6 +17,14 @@ public interface AssetTagRepository extends JpaRepository<AssetTag, UUID> {
 
     void deleteByMediaAssetId(UUID mediaAssetId);
 
+    /**
+     * Clears only the AI-generated tags for an asset, leaving any manual
+     * ones untouched — used before re-inserting a fresh classification run's
+     * tags so they replace the prior run's instead of accumulating forever
+     * (see AIClassificationService.persistSuggestedTags).
+     */
+    void deleteByMediaAssetIdAndSource(UUID mediaAssetId, String source);
+
     @Query("""
             SELECT t.mediaAsset.id, t.label
             FROM AssetTag t
