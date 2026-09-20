@@ -120,15 +120,6 @@ public class UserService {
         user.setNotifyInApp(request.notifyInApp());
         user.setNotifyEmail(request.notifyEmail());
         var saved = userRepository.save(user);
-        auditLogService.record(
-                saved,
-                "USER_SETTINGS_UPDATED",
-                null,
-                null,
-                saved.getId(),
-                Map.of(
-                        "notifyInApp", saved.isNotifyInApp(),
-                        "notifyEmail", saved.isNotifyEmail()));
         return UserDto.from(saved);
     }
 
@@ -296,13 +287,6 @@ public class UserService {
         user.setAvatarContentType(contentType);
         user.setAvatarUpdatedAt(Instant.now());
         User saved = userRepository.save(user);
-
-        auditLogService.record(
-                findRequesterForAudit(requester),
-                "USER_AVATAR_UPDATED",
-                null, null,
-                saved.getId(),
-                java.util.Map.of("contentType", contentType, "sizeBytes", bytes.length));
         return UserDto.from(saved);
     }
 

@@ -1132,7 +1132,6 @@ public class MediaAssetService {
         tag.setLabel(trimmedLabel);
         tag.setSource("manual");
         AssetTagDto saved = AssetTagDto.from(assetTagRepository.save(tag));
-        recordAssetAudit(user, "MEDIA_ASSET_TAG_ADDED", assetId, Map.of("label", trimmedLabel));
         return saved;
     }
 
@@ -1156,9 +1155,7 @@ public class MediaAssetService {
                         "At least one media tag is required — add a replacement before removing the last one.");
             }
         }
-        String label = tag.getLabel();
         assetTagRepository.delete(tag);
-        recordAssetAudit(user, "MEDIA_ASSET_TAG_REMOVED", assetId, Map.of("label", label));
     }
 
     public MediaAssetUploadUrlResponseDto createUploadUrl(MediaAssetUploadUrlRequestDto dto, JwtUserDetails user) {
