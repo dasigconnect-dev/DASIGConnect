@@ -1398,79 +1398,16 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   text-underline-offset: 2px;
 }
 
-.med-upload-specs {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.med-spec-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 10px 11px;
-  transition: all 0.15s ease;
-  min-width: 0;
-}
-
-.med-spec-item:hover {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-}
-
-.med-spec-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: #eff6ff;
-  border: 1px solid #dbeafe;
-  color: var(--d-blue, #1877f2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  flex-shrink: 0;
-  margin-top: 1px;
-  transition: all 0.15s ease;
-}
-
-.med-spec-item:hover .med-spec-icon {
-  background: var(--d-blue, #1877f2);
-  color: #ffffff;
-  border-color: var(--d-blue, #1877f2);
-}
-
-.med-spec-content {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.med-spec-label {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #64748b;
-  line-height: 1.2;
-}
-
-.med-spec-val {
+.med-upload-footnote {
+  margin: 14px 0 0;
   font-size: 11.5px;
-  font-weight: 600;
-  color: #1e293b;
-  line-height: 1.35;
+  color: var(--med-muted);
+  line-height: 1.5;
 }
 
-@media (max-width: 580px) {
-  .med-upload-specs {
-    grid-template-columns: 1fr;
-  }
+.med-upload-footnote strong {
+  color: var(--med-text-2);
+  font-weight: 700;
 }
 
 /* Upload progress */
