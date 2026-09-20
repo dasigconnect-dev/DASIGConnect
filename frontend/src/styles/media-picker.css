@@ -1015,6 +1015,16 @@
   padding: 0 6px;
 }
 
+.mac-institution {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--mp-blue);
+  padding: 0 6px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Skeleton shimmer */
 .skeleton-block {
   background: linear-gradient(90deg, var(--mp-border) 25%, var(--mp-surface-2) 50%, var(--mp-border) 75%);

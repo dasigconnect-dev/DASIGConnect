@@ -8,6 +8,8 @@ export interface GridAsset {
   aiCategory?: string | null;
   similarityScore?: number;
   matchReasons?: string[];
+  /** Shown as a badge when browsing across more than one institution. */
+  institutionName?: string | null;
 }
 
 interface MediaAssetGridProps {
@@ -55,6 +57,7 @@ export default function MediaAssetGrid({
             aiCategory={asset.aiCategory}
             similarityScore={asset.similarityScore}
             matchReasons={asset.matchReasons}
+            institutionName={asset.institutionName}
             selected={selectedIds.has(asset.id)}
             alreadyAdded={alreadyAddedIds.has(asset.id)}
             onToggle={() => onToggle(asset.id)}

@@ -252,6 +252,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [albumMatchCandidates, setAlbumMatchCandidates] = useState<AlbumMatchCandidate[]>([]);
   const [albumMatchNoResult, setAlbumMatchNoResult] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
+  const [pendingInstitutionId, setPendingInstitutionId] = useState<string | null>(null);
   const [captionMediaKey, setCaptionMediaKey] = useState<string | null>(null);
   const [hashtagInput, setHashtagInput] = useState("");
   const [mediaTagInput, setMediaTagInput] = useState("");
@@ -959,14 +960,45 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }
 
     const hasSchedule = Boolean(form.scheduledDate || form.scheduledTime);
+    const hasCrossInstitutionAssets = form.savedAssets.some(
+      (asset) => asset.institutionId && asset.institutionId !== nextInstitutionId,
+    );
 
-    if (hasSchedule) {
-      const confirmed = window.confirm(
-        "Changing the institution will clear the preferred schedule. Selected media is kept. Continue?",
-      );
-      if (!confirmed) return;
+    if (hasSchedule || hasCrossInstitutionAssets) {
+      setPendingInstitutionId(nextInstitutionId);
+      setModal("institution-switch");
+      return;
     }
 
+    applyPostingInstitutionChange(nextInstitutionId);
+  }
+
+  /**
+   * Nothing attached ever gets detached on a rehome (see
+   * SubmissionService.maybeRehomeSubmission) — a library pick keeps its
+   * original institution/album untouched. This just tells the user which
+   * currently attached items won't administratively move with the draft.
+   */
+  function describeInstitutionSwitch(nextInstitutionId: string): string {
+    const parts: string[] = [];
+    if (form.scheduledDate || form.scheduledTime) {
+      parts.push("Changing the institution will clear the preferred schedule.");
+    }
+    const crossInstitutionAssets = form.savedAssets.filter(
+      (asset) => asset.institutionId && asset.institutionId !== nextInstitutionId,
+    );
+    if (crossInstitutionAssets.length > 0) {
+      const names = crossInstitutionAssets.map((asset) => asset.fileName).join(", ");
+      parts.push(
+        `Selected media is kept, but ${crossInstitutionAssets.length} item(s) (${names}) will remain filed under their original institution's library rather than moving to the new one.`,
+      );
+    } else {
+      parts.push("Selected media is kept.");
+    }
+    return parts.join(" ");
+  }
+
+  function applyPostingInstitutionChange(nextInstitutionId: string) {
     setForm((current) => ({
       ...current,
       institutionId: nextInstitutionId,
@@ -1269,16 +1301,38 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     setAlbumMatchCandidates([]);
     setAlbumMatchNoResult(false);
 
-    if (!form.id) {
-      // No saved draft yet — the match endpoint needs a submissionId. Fall back
-      // to the plain event-title fill rather than blocking the action.
-      updateField("albumName", form.eventTitle.trim() || form.liveEventName.trim() || "Auto-Matched Album");
-      return;
+    let currentId = form.id;
+    if (!currentId) {
+      // The AI match endpoint needs a submissionId — mirrors handleAiCaptionPromptSubmit's
+      // auto-save-on-demand pattern rather than falling back to a non-AI plain fill.
+      if (!form.eventTitle.trim()) {
+        toast.warning("Please enter an Event Title first so AI knows what event this is for.");
+        setActiveStep("details");
+        setTimeout(() => eventTitleRef.current?.focus(), 150);
+        return;
+      }
+      if (isAdminComposer && !form.institutionId) {
+        toast.warning("Please select an Institution scope first.");
+        setActiveStep("details");
+        return;
+      }
     }
 
     setAlbumMatching(true);
     try {
-      const result = await suggestAlbum(form.id, {
+      if (!currentId) {
+        toast.info("Auto-saving draft so AI can match an album...");
+        const savedId = await saveDraft({ silent: true });
+        if (!savedId) {
+          toast.error("Could not auto-save draft. Please check your submission fields.");
+          return;
+        }
+        currentId = savedId;
+      } else if (isDirty) {
+        await saveDraft({ silent: true });
+      }
+
+      const result = await suggestAlbum(currentId, {
         eventTitle: form.eventTitle.trim() || undefined,
         caption: form.caption.trim() || undefined,
         tags: effectiveMediaTags(form),
@@ -2862,6 +2916,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 getItemCaption={(item) => form.mediaCaptions[pickerMediaKey(item)] ?? ""}
                 institutionId={selectedInstitutionId}
                 networkView={isAdminComposer}
+                institutions={institutions}
               />
             </Suspense>
             {pickerItems.some((item) => item.mediaType === "image") &&
@@ -2898,10 +2953,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             />
             <Field
               label="Album Assignment"
-              tooltip="Select an existing album, type to create a new one, or let AI auto-match based on your event details."
+              tooltip="Select an existing album, type to create a new one, or let AI auto-match based on your event details. Auto-Match saves this draft first if it hasn't been saved yet."
             >
                 <AlbumCombobox
                     value={form.albumName}
+                    autoMatchHint={
+                      form.id
+                        ? "Match against your media library using event details and tags."
+                        : "Match against your media library using event details and tags (saves this draft first)."
+                    }
                     existingAlbums={existingAlbums}
                     readOnly={isReadOnlySubmission}
                     placeholder="Search, select, or create a new album"
@@ -3397,6 +3457,24 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           disabled={busy}
           onCancel={() => setModal(null)}
           onConfirm={() => void handleWithdraw()}
+        />
+      )}
+      {modal === "institution-switch" && pendingInstitutionId && (
+        <ConfirmModal
+          icon="ti-building-community"
+          title="Change posting institution?"
+          description={describeInstitutionSwitch(pendingInstitutionId)}
+          cancelLabel="Cancel"
+          confirmLabel="Continue"
+          onCancel={() => {
+            setPendingInstitutionId(null);
+            setModal(null);
+          }}
+          onConfirm={() => {
+            if (pendingInstitutionId) applyPostingInstitutionChange(pendingInstitutionId);
+            setPendingInstitutionId(null);
+            setModal(null);
+          }}
         />
       )}
       {modal === "fast-track-switch" && (

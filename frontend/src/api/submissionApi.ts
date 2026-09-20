@@ -31,6 +31,9 @@ export interface SavedMediaAsset {
   /** Media Library album this asset is filed under (null while STAGED). */
   albumId?: string | null;
   albumName?: string | null;
+  /** The institution this asset's library row belongs to (null while STAGED). */
+  institutionId?: string | null;
+  institutionName?: string | null;
 }
 
 export interface SubmissionMediaPreview {

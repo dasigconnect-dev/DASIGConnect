@@ -61,7 +61,6 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
                     AND LOWER(tag.label) LIKE CONCAT('%', :searchTerm, '%')
               )
           )
-          AND (:aiCategory = '' OR LOWER(m.aiCategory) = :aiCategory)
           AND m.fileType IN :mediaTypes
           AND (:uploaderId IS NULL OR m.uploader.id = :uploaderId)
         """, countQuery = """
@@ -93,7 +92,6 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
                     AND LOWER(tag.label) LIKE CONCAT('%', :searchTerm, '%')
               )
           )
-          AND (:aiCategory = '' OR LOWER(m.aiCategory) = :aiCategory)
           AND m.fileType IN :mediaTypes
           AND (:uploaderId IS NULL OR m.uploader.id = :uploaderId)
         """)
@@ -102,7 +100,6 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             @Param("institutionIds") Collection<UUID> institutionIds,
             @Param("albumId") UUID albumId,
             @Param("searchTerm") String searchTerm,
-            @Param("aiCategory") String aiCategory,
             @Param("mediaTypes") Collection<MediaFileType> mediaTypes,
             @Param("uploaderId") UUID uploaderId,
             Pageable pageable);

@@ -36,6 +36,7 @@ export type ModalState =
   | "fast-track-switch"
   | "draft-choice"
   | "draft-exit"
+  | "institution-switch"
   | null;
 export type SaveState = "idle" | "saving" | "saved";
 export type PendingLeaveAction = (() => void) | null;

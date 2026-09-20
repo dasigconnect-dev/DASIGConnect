@@ -163,7 +163,6 @@ public class MediaAssetService {
     @Transactional(readOnly = true)
     public MediaAssetListResponseDto list(
             String query,
-            String aiCategory,
             String mediaType,
             UUID uploaderId,
             UUID institutionId,
@@ -176,7 +175,6 @@ public class MediaAssetService {
         int safePage = Math.max(page, 1);
         int safePageSize = Math.min(Math.max(pageSize, 1), 100);
         String trimmedQuery = query == null ? "" : query.trim().toLowerCase();
-        String trimmedCategory = aiCategory == null ? "" : aiCategory.trim();
         String trimmedMediaType = mediaType == null ? "" : mediaType.trim().toLowerCase();
 
         boolean moderator = isNetworkRole(user);
@@ -205,7 +203,6 @@ public class MediaAssetService {
                 institutionScope,
                 effectiveAlbumId,
                 trimmedQuery,
-                trimmedCategory.toLowerCase(),
                 resolveMediaTypes(trimmedMediaType),
                 uploaderId,
                 pageRequest);

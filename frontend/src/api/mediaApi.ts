@@ -120,7 +120,6 @@ export interface MediaAssetSearchParams {
   institutionId?: string | null;
   albumId?: string | null;
   query?: string;
-  aiCategory?: string;
   mediaType?: "image" | "video";
   page?: number;
   pageSize?: number;
@@ -209,7 +208,6 @@ export async function searchMediaAssets(
     institutionId: params.institutionId ?? undefined,
     albumId: params.albumId ?? undefined,
     query: params.query || undefined,
-    aiCategory: params.aiCategory || undefined,
     mediaType: params.mediaType || undefined,
     page: params.page ?? 1,
     pageSize: params.pageSize ?? 24,
