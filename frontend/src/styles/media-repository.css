@@ -698,7 +698,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: right;
 }
 
 .med-card.list-view .med-video-badge.sm {
@@ -2424,7 +2423,6 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   max-width: 96px;
   font-size: 12px;
   color: var(--med-muted);
-  text-align: right;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
