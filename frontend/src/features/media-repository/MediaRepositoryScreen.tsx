@@ -47,6 +47,7 @@ import AssetDetailPanel from "./components/AssetDetailPanel";
 import UploadModal, { type UploadMetadata } from "./components/UploadModal";
 import DeleteModal from "./components/DeleteModal";
 import AddToDraftModal from "./components/AddToDraftModal";
+import TrashView from "./components/TrashView";
 import "../../styles/media-repository.css";
 
 interface MediaRepositoryScreenProps {
@@ -158,6 +159,18 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
 
   const [searchParams, setSearchParams] = useSearchParams();
   const currentAlbumId = searchParams.get("album");
+  const viewingTrash = isAdmin && searchParams.get("view") === "trash";
+  const setViewingTrash = (active: boolean) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (active) {
+        next.set("view", "trash");
+      } else {
+        next.delete("view");
+      }
+      return next;
+    });
+  };
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("newest");
@@ -1192,12 +1205,54 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       {/* Page Header */}
       <div className="med-header">
         <div>
-          <h1 className="med-title">Media Repository</h1>
-          <p className="med-subtitle">Institution assets · AI-classified</p>
+          {viewingTrash && (
+            <button
+              type="button"
+              className="med-header-back-btn"
+              onClick={() => setViewingTrash(false)}
+              title="Back to Media Library"
+            >
+              <i className="ti ti-arrow-left" />
+              <span>Back to Library</span>
+            </button>
+          )}
+          <h1 className="med-title">{viewingTrash ? "Media Repository Deleted Items" : "Media Repository"}</h1>
+          <p className="med-subtitle">
+            {viewingTrash ? "Manage deleted media assets and retention recovery" : "Institution assets · AI-classified"}
+          </p>
         </div>
         <div className="med-header-actions">
-          <div
-            className="med-new-menu-wrap"
+          {!viewingTrash && (
+            <>
+              {isAdmin && (
+                <button
+                  type="button"
+                  className="med-btn med-btn-sm med-btn-trash"
+                  onClick={() => setViewingTrash(true)}
+                  title="View Deleted Assets (Trash)"
+                >
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M3 6h18" />
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                    <line x1="10" y1="11" x2="10" y2="17" />
+                    <line x1="14" y1="11" x2="14" y2="17" />
+                  </svg>
+                  <span>Trash</span>
+                </button>
+              )}
+              <div
+                className="med-new-menu-wrap"
             onBlur={(e) => {
               if (!e.currentTarget.contains(e.relatedTarget as Node)) setNewMenuOpen(false);
             }}
@@ -1269,23 +1324,38 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
               </div>
             )}
           </div>
-          <input
-            ref={folderInputRef}
-            type="file"
-            multiple
-            // @ts-expect-error non-standard directory-picker attributes
-            webkitdirectory=""
-            directory=""
-            style={{ display: "none" }}
-            onChange={(e) => {
-              void handleUploadFolder(e.target.files);
-              e.target.value = "";
-            }}
-          />
+            <input
+              ref={folderInputRef}
+              type="file"
+              multiple
+              // @ts-expect-error non-standard directory-picker attributes
+              webkitdirectory=""
+              directory=""
+              style={{ display: "none" }}
+              onChange={(e) => {
+                void handleUploadFolder(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </>
+        )}
         </div>
       </div>
 
-      {/* Network View bar */}
+      {viewingTrash ? (
+        <TrashView
+          user={user}
+          institutions={institutions}
+          selectedInstitutionId={selectedInstitutionId}
+          onInstitutionChange={(id) => (id ? openInstitution(id) : goToAllInstitutions())}
+          onBack={() => setViewingTrash(false)}
+          onRestored={() => {
+            void invalidateMediaMetadata();
+          }}
+        />
+      ) : (
+        <>
+          {/* Network View bar */}
       {/* {isAdmin && (
         <div className={`med-network-bar${networkView ? " visible" : ""}`}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1573,6 +1643,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           </>
         );
       })()}
+        </>
+      )}
 
       {(() => {
         const lightboxAssets = semanticResults ?? visibleAssets;

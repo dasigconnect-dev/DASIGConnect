@@ -402,3 +402,93 @@ export function renameMediaAsset(id: string, title: string) {
 export function logNetworkViewAccess() {
   return api.post<void>("/media-assets/network-view/log").catch(() => {});
 }
+
+export interface TrashAsset {
+  id: string;
+  assetCode: string;
+  storageUrl: string;
+  fileName: string;
+  title: string;
+  fileType: string;
+  fileSizeBytes: number;
+  deletedAt: string;
+  deletedByUserId?: string;
+  deletedByName?: string;
+  institutionId?: string;
+  institutionName?: string;
+  uploaderName?: string;
+  daysRemaining: number;
+}
+
+export interface TrashAssetPage {
+  items: TrashAsset[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export async function listTrashMediaAssets(
+  params: {
+    query?: string;
+    institutionId?: string | null;
+    page?: number;
+    pageSize?: number;
+  } = {},
+  signal?: AbortSignal,
+): Promise<TrashAssetPage> {
+  const queryParams: Record<string, string | number | undefined> = {
+    query: params.query || undefined,
+    institutionId: params.institutionId ?? undefined,
+    page: params.page ?? 1,
+    pageSize: params.pageSize ?? 24,
+  };
+  Object.keys(queryParams).forEach(
+    (k) => queryParams[k] === undefined && delete queryParams[k],
+  );
+  const res = await api.get<{
+    items: TrashAsset[];
+    totalCount: number;
+    page: number;
+    pageSize: number;
+  }>("/media-assets/trash", {
+    params: queryParams,
+    signal,
+  });
+  return {
+    items: res.data.items ?? [],
+    totalCount: res.data.totalCount ?? 0,
+    page: res.data.page ?? 1,
+    pageSize: res.data.pageSize ?? 24,
+  };
+}
+
+export function restoreMediaAsset(id: string) {
+  return api
+    .post<MediaAssetDetailResponse>(`/media-assets/trash/${id}/restore`)
+    .then((res) => ({ ...res, data: mapDetailToAsset(res.data) }));
+}
+
+export function bulkRestoreMediaAssets(assetIds: string[]) {
+  return api
+    .post<string[]>("/media-assets/trash/bulk-restore", { assetIds })
+    .then((res) => res.data);
+}
+
+export function purgeTrashMediaAsset(id: string) {
+  return api.delete<void>(`/media-assets/trash/${id}`);
+}
+
+export function bulkPurgeTrashMediaAssets(assetIds: string[]) {
+  return api
+    .post<string[]>("/media-assets/trash/bulk-purge", { assetIds })
+    .then((res) => res.data);
+}
+
+export function emptyTrashMediaAssets(institutionId?: string | null) {
+  return api
+    .post<number>("/media-assets/trash/empty", null, {
+      params: institutionId ? { institutionId } : undefined,
+    })
+    .then((res) => res.data);
+}
+
