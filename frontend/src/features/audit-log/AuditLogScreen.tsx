@@ -330,7 +330,7 @@ export default function AuditLogScreen({ user }: Props) {
               ) : (
                 <>
                   <i className="ti ti-download" style={{ fontSize: 14 }} />
-                  <span>Export DOST-7 CSV</span>
+                  <span>Export</span>
                 </>
               )}
             </button>
