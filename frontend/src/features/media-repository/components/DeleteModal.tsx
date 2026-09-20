@@ -12,6 +12,8 @@ interface DeleteModalProps {
   warningUsages: MediaUsage[];
   deleting: boolean;
   assetCount?: number;
+  /** Opened from a multi-select bulk action rather than a single asset's own menu. */
+  isBulk?: boolean;
   onClose: () => void;
   onConfirmDelete: () => void;
 }
@@ -44,6 +46,7 @@ export default function DeleteModal({
   warningUsages,
   deleting,
   assetCount = asset ? 1 : 0,
+  isBulk = false,
   onClose,
   onConfirmDelete,
 }: DeleteModalProps) {
@@ -69,13 +72,16 @@ export default function DeleteModal({
           {tier === "blocked" && (
             <BlockedBody usage={blockingUsages[0] ?? null} />
           )}
-          {tier === "warning" && assetCount > 1 && (
+          {tier === "warning" && isBulk && (
             <BulkWarningBody assetCount={assetCount} />
           )}
-          {tier === "warning" && assetCount <= 1 && (
+          {tier === "warning" && !isBulk && (
             <WarningBody usages={warningUsages} />
           )}
-          {tier === "free" && asset && (
+          {tier === "free" && isBulk && (
+            <BulkFreeBody assetCount={assetCount} />
+          )}
+          {tier === "free" && !isBulk && asset && (
             <FreeBody asset={asset} />
           )}
         </div>
@@ -87,14 +93,14 @@ export default function DeleteModal({
             <>
               <button className="med-btn med-btn-ghost" onClick={onClose} type="button" disabled={deleting}>Cancel</button>
               <button className="med-btn med-btn-warn-confirm" onClick={onConfirmDelete} type="button" disabled={deleting}>
-                {deleting ? "Deleting..." : assetCount > 1 ? `Delete ${assetCount} Assets` : "Delete & Flag Reference"}
+                {deleting ? "Deleting..." : isBulk ? `Delete ${assetCount} Assets` : "Delete & Flag Reference"}
               </button>
             </>
           ) : (
             <>
               <button className="med-btn med-btn-ghost" onClick={onClose} type="button" disabled={deleting}>Cancel</button>
               <button className="med-btn med-btn-danger" onClick={onConfirmDelete} type="button" disabled={deleting}>
-                {deleting ? "Deleting..." : "Delete Asset"}
+                {deleting ? "Deleting..." : isBulk ? `Delete ${assetCount} Assets` : "Delete Asset"}
               </button>
             </>
           )}
@@ -196,16 +202,20 @@ function WarningBody({ usages }: { usages: MediaUsage[] }) {
         <div>
           <div className="med-banner-title warn">Warning — This Asset Has Active Draft References</div>
           <div className="med-banner-sub">
-            Deleting this asset will break its reference in {usages.length} {referenceLabel}. The contributor will be prompted to replace the asset before submitting.
+            {usages.length > 0
+              ? `Deleting this asset will break its reference in ${usages.length} ${referenceLabel}. The contributor will be prompted to replace the asset before submitting.`
+              : "Deleting this asset will break at least one draft/revision reference. The contributor will be prompted to replace the asset before submitting."}
           </div>
         </div>
       </div>
-      <p style={{ fontSize: 13, color: "var(--med-text-2)", marginBottom: 16, lineHeight: 1.6 }}>
-        The following submission{usages.length !== 1 ? "s" : ""} will have a broken asset reference after deletion:
-      </p>
+      {usages.length > 0 && (
+        <p style={{ fontSize: 13, color: "var(--med-text-2)", marginBottom: 16, lineHeight: 1.6 }}>
+          The following submission{usages.length !== 1 ? "s" : ""} will have a broken asset reference after deletion:
+        </p>
+      )}
       {usages.length === 0 && (
         <p style={{ fontSize: 13, color: "var(--med-text-2)", marginBottom: 16, lineHeight: 1.6 }}>
-          This asset has a recoverable draft or revision reference, but the linked submission details are not available in this response.
+          The affected submission's details could not be loaded, but the reference is still real.
         </p>
       )}
       {usages.map((usage) => (
@@ -268,6 +278,28 @@ function FreeBody({ asset }: { asset: MediaAsset }) {
       </div>
       <p style={{ fontSize: 12, color: "var(--med-muted)", lineHeight: 1.5 }}>
         Referenced terminal submissions will show "[Asset Deleted]" in their Used In records. The physical media file is retained in storage during the pilot period. This deletion will be logged.
+      </p>
+    </>
+  );
+}
+
+function BulkFreeBody({ assetCount }: { assetCount: number }) {
+  return (
+    <>
+      <div className="med-delete-info-banner">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
+          <path d="M9 11l3 3L22 4" />
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+        </svg>
+        <div>
+          <div className="med-banner-title ok">No Active References — Safe to Delete</div>
+          <div className="med-banner-sub">
+            None of the {assetCount} selected assets are referenced by an active workflow. Deletion will not affect any active submissions.
+          </div>
+        </div>
+      </div>
+      <p style={{ fontSize: 12, color: "var(--med-muted)", lineHeight: 1.5 }}>
+        Referenced terminal submissions will show "[Asset Deleted]" in their Used In records. The physical media files are retained in storage during the pilot period. This deletion will be logged.
       </p>
     </>
   );

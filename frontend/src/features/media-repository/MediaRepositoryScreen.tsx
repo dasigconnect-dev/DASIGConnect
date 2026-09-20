@@ -349,6 +349,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [deleteTier, setDeleteTier] = useState<DeleteTier | null>(null);
   const [deleteAsset, setDeleteAsset] = useState<MediaAsset | null>(null);
   const [deleteAssets, setDeleteAssets] = useState<MediaAsset[]>([]);
+  const [deleteIsBulk, setDeleteIsBulk] = useState(false);
   const [blockingUsages, setBlockingUsages] = useState<MediaUsage[]>([]);
   const [warningUsages, setWarningUsages] = useState<MediaUsage[]>([]);
   const [deleting, setDeleting] = useState(false);
@@ -1103,6 +1104,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     if (!selectedAsset) return;
     setDeleteAsset(selectedAsset);
     setDeleteAssets([selectedAsset]);
+    setDeleteIsBulk(false);
     setDeleteTier(tier);
 
     if (tier === "blocked") {
@@ -1141,18 +1143,40 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     openDeleteModal(deleteTierForAsset(selectedAsset));
   }
 
+  /**
+   * Aggregates the real per-asset tier across the selection instead of
+   * hardcoding "warning" — that used to force every bulk delete through the
+   * single-asset WarningBody's copy with an always-empty usage list (a
+   * contradictory "0 references" state) whenever the selection happened to
+   * be exactly one asset, and silently skipped the actual blocked-asset
+   * check the single-delete path performs.
+   */
   function openBulkDeleteModal() {
     if (selectedAssets.length === 0) return;
-    const deletable = selectedAssets.filter(canDeleteAsset);
-    if (deletable.length !== selectedAssets.length) {
+    const ownable = selectedAssets.filter(canDeleteAsset);
+    if (ownable.length !== selectedAssets.length) {
       toast.error("One or more selected assets cannot be deleted by your role.");
       return;
     }
+
+    const blocked = ownable.filter((a) => deleteTierForAsset(a) === "blocked");
+    const deletable = ownable.filter((a) => deleteTierForAsset(a) !== "blocked");
+    if (blocked.length > 0) {
+      toast.error(
+        deletable.length > 0
+          ? `${blocked.length} of ${ownable.length} selected asset(s) are referenced by an active submission and were excluded. Deleting the remaining ${deletable.length}.`
+          : "All selected assets are referenced by an active submission and cannot be deleted.",
+      );
+    }
+    if (deletable.length === 0) return;
+
+    const tier: DeleteTier = deletable.some((a) => deleteTierForAsset(a) === "warning") ? "warning" : "free";
     setDeleteAssets(deletable);
     setDeleteAsset(deletable[0] ?? null);
+    setDeleteIsBulk(true);
     setBlockingUsages([]);
     setWarningUsages([]);
-    setDeleteTier("warning");
+    setDeleteTier(tier);
     setDeleteOpen(true);
   }
 
@@ -1652,6 +1676,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         warningUsages={warningUsages}
         deleting={deleting}
         assetCount={deleteAssets.length || (deleteAsset ? 1 : 0)}
+        isBulk={deleteIsBulk}
         onClose={() => { if (!deleting) setDeleteOpen(false); }}
         onConfirmDelete={() => void handleConfirmDelete()}
       />

@@ -2636,6 +2636,36 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   color: var(--med-muted);
 }
 
+/* Tag dropdown (AI tags / Your tags) — collapsed by default so a
+   tag-heavy asset doesn't stretch the whole detail panel into a long
+   scroll; the panel itself scrolls internally once expanded. */
+.med-tag-dropdown {
+  margin: 12px 0 6px;
+}
+
+.med-tag-dropdown-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: 600 10px var(--med-ff-body);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--med-muted);
+}
+
+.med-tag-dropdown-toggle:hover { color: var(--med-text-2); }
+
+.med-tag-dropdown-panel {
+  margin-top: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
 /* Activity timeline */
 .med-history-loading {
   font: 400 12px var(--med-ff-body);

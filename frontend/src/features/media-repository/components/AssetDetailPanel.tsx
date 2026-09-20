@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   getMediaAssetHistory,
@@ -40,6 +40,9 @@ interface AssetDetailPanelProps {
   onAddTag?: (assetId: string, label: string) => void | Promise<void>;
   onRemoveTag?: (assetId: string, tagId: string) => void | Promise<void>;
 }
+
+/** Keeps a very tag-heavy asset from turning the panel into a long scroll. */
+const MAX_VISIBLE_TAGS = 30;
 
 const submissionStatusLabel: Record<string, string> = {
   published: "Published",
@@ -402,10 +405,14 @@ export default function AssetDetailPanel({
                 <span className="med-badge med-badge-processing">AI classification in progress…</span>
               )}
               {asset.aiTags && asset.aiTags.length > 0 && (
-                <>
-                  <div className="med-tag-group-label">AI tags</div>
+                <TagDropdown
+                  key={`ai-${asset.id}`}
+                  label="AI tags"
+                  count={asset.aiTags.length}
+                  hiddenCount={Math.max(0, asset.aiTags.length - MAX_VISIBLE_TAGS)}
+                >
                   <div className="med-ai-tags">
-                    {asset.aiTags.map((tag) => (
+                    {asset.aiTags.slice(0, MAX_VISIBLE_TAGS).map((tag) => (
                       <div key={tag.label} className="med-ai-tag">
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
@@ -416,37 +423,44 @@ export default function AssetDetailPanel({
                       </div>
                     ))}
                   </div>
-                </>
+                </TagDropdown>
               )}
-              <div className="med-tag-group-label">Your tags</div>
-              <div className="med-user-tags">
-                {(asset.userTags ?? []).map((tag) => (
-                  <span key={tag.id} className="med-user-tag">
-                    {tag.label}
-                    {onRemoveTag && (asset.userTags ?? []).length > 1 && (
-                      <button
-                        type="button"
-                        className="med-user-tag-x"
-                        aria-label={`Remove tag ${tag.label}`}
-                        onClick={() => void Promise.resolve(onRemoveTag(asset.id, tag.id))}
-                      >
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
-                    )}
-                  </span>
-                ))}
-                {onRemoveTag && (asset.userTags ?? []).length === 1 && (
-                  <span className="med-tag-empty" title="At least one tag is required — add another before removing this one.">
-                    (last tag)
-                  </span>
-                )}
-                {(asset.userTags ?? []).length === 0 && (
-                  <span className="med-tag-empty">No tags yet</span>
-                )}
-              </div>
+              <TagDropdown
+                key={`user-${asset.id}`}
+                label="Your tags"
+                count={(asset.userTags ?? []).length}
+                hiddenCount={Math.max(0, (asset.userTags ?? []).length - MAX_VISIBLE_TAGS)}
+                defaultOpen
+              >
+                <div className="med-user-tags">
+                  {(asset.userTags ?? []).slice(0, MAX_VISIBLE_TAGS).map((tag) => (
+                    <span key={tag.id} className="med-user-tag">
+                      {tag.label}
+                      {onRemoveTag && (asset.userTags ?? []).length > 1 && (
+                        <button
+                          type="button"
+                          className="med-user-tag-x"
+                          aria-label={`Remove tag ${tag.label}`}
+                          onClick={() => void Promise.resolve(onRemoveTag(asset.id, tag.id))}
+                        >
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                  {onRemoveTag && (asset.userTags ?? []).length === 1 && (
+                    <span className="med-tag-empty" title="At least one tag is required — add another before removing this one.">
+                      (last tag)
+                    </span>
+                  )}
+                  {(asset.userTags ?? []).length === 0 && (
+                    <span className="med-tag-empty">No tags yet</span>
+                  )}
+                </div>
+              </TagDropdown>
               {onAddTag && (
                 <input
                   type="text"
@@ -578,6 +592,50 @@ export default function AssetDetailPanel({
   );
 
   return createPortal(panel, document.body);
+}
+
+function TagDropdown({
+  label,
+  count,
+  hiddenCount,
+  defaultOpen,
+  children,
+}: {
+  label: string;
+  count: number;
+  hiddenCount: number;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
+  return (
+    <div className="med-tag-dropdown">
+      <button
+        type="button"
+        className="med-tag-dropdown-toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span>{label} ({count})</span>
+        <svg
+          width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
+        >
+          <polyline points="6,9 12,15 18,9" />
+        </svg>
+      </button>
+      {open && (
+        <div className="med-tag-dropdown-panel">
+          {children}
+          {hiddenCount > 0 && (
+            <div className="med-tag-empty" style={{ marginTop: 6 }}>
+              +{hiddenCount} more not shown
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function TrashIcon() {
