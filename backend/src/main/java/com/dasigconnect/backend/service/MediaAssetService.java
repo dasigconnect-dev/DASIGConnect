@@ -750,19 +750,23 @@ public class MediaAssetService {
 
     /**
      * Delete an empty album. Blocks (409) while it still has sub-albums or
-     * assets.
+     * visible assets. An asset exclusively attached to a draft submission
+     * doesn't count as "in" the folder here (same rule findRepositoryPage
+     * uses to hide it from browsing) — the album is the source of truth for
+     * where an asset lives, not an unsubmitted draft, so deleting the album
+     * just detaches it rather than blocking the delete.
      */
     public void deleteAlbum(UUID albumId, JwtUserDetails user) {
         MediaAlbum album = loadAlbumForDelete(albumId, user);
         if (mediaAlbumRepository.countByParentAlbumId(albumId) > 0
-                || mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId) > 0) {
+                || mediaAssetRepository.countVisibleAssetsByAlbum(albumId) > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Move or delete everything inside this album before deleting it.");
         }
-        // Soft-deleted assets (retained for the 30-day purge window) still hold
-        // this album's FK even though the check above already treats the album
-        // as empty — detach them first or the delete below fails on the raw FK.
-        mediaAssetRepository.detachSoftDeletedAssetsFromAlbum(albumId);
+        // Whatever's left pointing at this album is either soft-deleted
+        // (awaiting the 30-day purge) or a draft-only-hidden active asset —
+        // detach both or the delete below fails on the raw media_album_id FK.
+        mediaAssetRepository.detachAllAssetsFromAlbum(albumId);
         mediaAlbumRepository.delete(album);
     }
 

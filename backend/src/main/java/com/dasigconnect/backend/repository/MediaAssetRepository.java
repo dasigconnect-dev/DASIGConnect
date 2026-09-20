@@ -123,6 +123,41 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     long countByMediaAlbumIdAndDeletedAtIsNull(UUID mediaAlbumId);
 
     /**
+     * Same visibility rule as findRepositoryPage/countActiveAssetsByAlbum: an
+     * asset exclusively attached to a draft submission doesn't count as
+     * "in" the folder for the purposes of blocking a delete — the album is
+     * the source of truth for where an asset lives, not a draft that hasn't
+     * even been submitted yet.
+     */
+    @Query("""
+            SELECT COUNT(m) FROM MediaAsset m
+            WHERE m.mediaAlbum.id = :albumId AND m.deletedAt IS NULL
+              AND m.status <> com.dasigconnect.backend.model.entity.MediaAssetStatus.STAGED
+              AND (
+                  NOT EXISTS (
+                      SELECT sma.id FROM SubmissionMediaAsset sma
+                      WHERE sma.mediaAsset = m
+                  )
+                  OR EXISTS (
+                      SELECT publishedLink.id FROM SubmissionMediaAsset publishedLink
+                      WHERE publishedLink.mediaAsset = m
+                        AND publishedLink.submission.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+                  )
+              )
+            """)
+    long countVisibleAssetsByAlbum(@Param("albumId") UUID albumId);
+
+    /**
+     * Detach every remaining asset from a deleted album — soft-deleted rows
+     * still awaiting purge, and active rows that countVisibleAssetsByAlbum
+     * doesn't count (exclusively attached to a draft submission). The album
+     * is gone either way, so their media_album_id can't survive it.
+     */
+    @Modifying
+    @Query(value = "UPDATE media_assets SET media_album_id = NULL WHERE media_album_id = :albumId", nativeQuery = true)
+    void detachAllAssetsFromAlbum(@Param("albumId") UUID albumId);
+
+    /**
      * Every stored object URL for an institution's assets (active and
      * soft-deleted). Used to best-effort purge objects from the media store
      * before the institution and its asset rows are hard-deleted.
@@ -149,17 +184,6 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Modifying
     @Query(value = "UPDATE media_assets SET institution_id = :institutionId WHERE media_album_id IN :albumIds AND deleted_at IS NULL", nativeQuery = true)
     void rehomeAssetsInAlbums(@Param("institutionId") UUID institutionId, @Param("albumIds") java.util.Collection<UUID> albumIds);
-
-    /**
-     * Detach an album's soft-deleted assets from it. countByMediaAlbumIdAndDeletedAtIsNull
-     * only counts active assets, so the UI can show an album as empty while
-     * soft-deleted rows still hold its media_album_id FK — deleting the album
-     * would then fail with a raw FK violation instead of the app-level "not
-     * empty" check. Called right before deleteAlbum()'s actual delete.
-     */
-    @Modifying
-    @Query(value = "UPDATE media_assets SET media_album_id = NULL WHERE media_album_id = :albumId AND deleted_at IS NOT NULL", nativeQuery = true)
-    void detachSoftDeletedAssetsFromAlbum(@Param("albumId") UUID albumId);
 
     /**
      * [albumId, assetCount] pairs for every album in the institution that holds
