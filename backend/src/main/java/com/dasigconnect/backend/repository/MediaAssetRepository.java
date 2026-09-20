@@ -151,6 +151,17 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     void rehomeAssetsInAlbums(@Param("institutionId") UUID institutionId, @Param("albumIds") java.util.Collection<UUID> albumIds);
 
     /**
+     * Detach an album's soft-deleted assets from it. countByMediaAlbumIdAndDeletedAtIsNull
+     * only counts active assets, so the UI can show an album as empty while
+     * soft-deleted rows still hold its media_album_id FK — deleting the album
+     * would then fail with a raw FK violation instead of the app-level "not
+     * empty" check. Called right before deleteAlbum()'s actual delete.
+     */
+    @Modifying
+    @Query(value = "UPDATE media_assets SET media_album_id = NULL WHERE media_album_id = :albumId AND deleted_at IS NOT NULL", nativeQuery = true)
+    void detachSoftDeletedAssetsFromAlbum(@Param("albumId") UUID albumId);
+
+    /**
      * [albumId, assetCount] pairs for every album in the institution that holds
      * active assets.
      */

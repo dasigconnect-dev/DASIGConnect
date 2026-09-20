@@ -759,6 +759,10 @@ public class MediaAssetService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Move or delete everything inside this album before deleting it.");
         }
+        // Soft-deleted assets (retained for the 30-day purge window) still hold
+        // this album's FK even though the check above already treats the album
+        // as empty — detach them first or the delete below fails on the raw FK.
+        mediaAssetRepository.detachSoftDeletedAssetsFromAlbum(albumId);
         mediaAlbumRepository.delete(album);
     }
 
