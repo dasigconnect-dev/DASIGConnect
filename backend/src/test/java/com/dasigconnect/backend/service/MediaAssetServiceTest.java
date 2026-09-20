@@ -369,22 +369,6 @@ class MediaAssetServiceTest {
     }
 
     @Test
-    void logNetworkViewAccess_moderator_recordsAuditEntry() {
-        UUID userId = UUID.randomUUID();
-        mediaAssetService.logNetworkViewAccess(user(userId, "moderator", null));
-
-        verify(auditLogService).record(any(), eq("MEDIA_NETWORK_VIEW_ACCESSED"), isNull(), isNull(), isNull(), any());
-    }
-
-    @Test
-    void logNetworkViewAccess_contributor_isNoOp() {
-        UUID institutionId = UUID.randomUUID();
-        mediaAssetService.logNetworkViewAccess(user(UUID.randomUUID(), "contributor", institutionId));
-
-        verify(auditLogService, never()).record(any(), eq("MEDIA_NETWORK_VIEW_ACCESSED"), any(), any(), any(), any());
-    }
-
-    @Test
     void listAlbums_adminWithoutInstitution_returnsAlbumsAcrossInstitutions() {
         MediaAlbum a = album(UUID.randomUUID(), UUID.randomUUID(), null);
         MediaAlbum b = album(UUID.randomUUID(), UUID.randomUUID(), null);

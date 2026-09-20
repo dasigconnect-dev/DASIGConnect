@@ -395,11 +395,6 @@ export function renameMediaAsset(id: string, title: string) {
     .then((res) => ({ ...res, data: mapDetailToAsset(res.data) }));
 }
 
-/** UC-2.2 A2: records that this browser session browsed Network View. Never throws — best-effort. */
-export function logNetworkViewAccess() {
-  return api.post<void>("/media-assets/network-view/log").catch(() => {});
-}
-
 export interface TrashAsset {
   id: string;
   assetCode: string;

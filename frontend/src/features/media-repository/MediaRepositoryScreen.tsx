@@ -20,7 +20,6 @@ import {
   semanticSearchMediaAssets,
   updateMediaAssetAlbum,
   renameMediaAsset,
-  logNetworkViewAccess,
   type MediaAlbum,
 } from "../../api/mediaApi";
 import { REQUEST_DEADLINES_MS } from "../../api/requestPolicy";
@@ -404,21 +403,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       controller.abort();
     };
   }, [isNetworkBrowser, toast]);
-
-  // UC-2.2 A2: the Network View banner tells the actor this session is being
-  // logged — make that true, once per browser session (sessionStorage survives
-  // navigating away and back, but not a fresh tab/reload of the auth session).
-  useEffect(() => {
-    if (!isNetworkBrowser) return;
-    const flagKey = `dasig:network-view-logged:${user.id ?? user.email}`;
-    try {
-      if (sessionStorage.getItem(flagKey)) return;
-      sessionStorage.setItem(flagKey, "1");
-    } catch {
-      // sessionStorage unavailable (e.g. private browsing) — log anyway rather than silently skip.
-    }
-    void logNetworkViewAccess();
-  }, [isNetworkBrowser, user.id, user.email]);
 
   const currentAlbum = useMemo(
     () => albums.find((a) => a.id === currentAlbumId) ?? null,
@@ -1418,20 +1402,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         />
       ) : (
         <>
-          {/* Network View bar */}
-      {/* {isAdmin && (
-        <div className={`med-network-bar${networkView ? " visible" : ""}`}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="2" y1="12" x2="22" y2="12" />
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-          </svg>
-          <span>
-            <strong>Network View active</strong> — Showing assets across all DASIG member institutions. This session is being logged in the access audit log (BR-MED-01).
-          </span>
-        </div>
-      )} */}
-
       {/* Toolbar: institution · search (+ semantic) · sort · view · tags */}
       <MediaToolbar
         isAdmin={isNetworkBrowser}
