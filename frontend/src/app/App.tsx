@@ -36,6 +36,7 @@ import { clearAppCaches } from "../lib/appCache";
 import { appQueryClient, clearAuthenticatedQueryCache } from "../lib/queryClient";
 import { seedCurrentProfile } from "../hooks/useCurrentProfile";
 import { hydrateTourPreferences, resetTourPreferencesCache } from "../features/onboarding/tourStorage";
+import { readPasswordResetToken } from "../utils/passwordResetLink";
 
 const LOCKOUT_LIMIT = 5;
 const LOCKOUT_SECONDS = 15 * 60;
@@ -102,6 +103,7 @@ function App() {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState("");
   const [resetSuccess, setResetSuccess] = useState(false);
+  const resetTokenRef = useRef<string | null>(null);
 
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [inviteState, setInviteState] = useState<
@@ -296,14 +298,53 @@ function App() {
 
   useEffect(() => {
     if (!isPasswordResetPath(location.pathname)) return;
-    const params = new URLSearchParams(location.search);
-    const token = params.get("token");
-    setResetToken(token);
-    setResetError(token ? "" : "Reset token is missing or invalid.");
-    setResetSuccess(false);
-    setResetPassword("");
-    setResetConfirmPassword("");
+    const token = readPasswordResetToken(window.location.href);
+    resetTokenRef.current = token;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setResetToken(token);
+      setResetError(token ? "" : "Reset token is missing or invalid.");
+      setResetSuccess(false);
+      setResetPassword("");
+      setResetConfirmPassword("");
+    });
+    return () => {
+      active = false;
+    };
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    function syncResetTokenFromLiveUrl() {
+      if (!isPasswordResetPath(window.location.pathname)) return;
+
+      const token = readPasswordResetToken(window.location.href);
+      if (token === resetTokenRef.current) return;
+
+      resetTokenRef.current = token;
+      setResetToken(token);
+      setResetError(token ? "" : "Reset token is missing or invalid.");
+      setResetSuccess(false);
+      setResetPassword("");
+      setResetConfirmPassword("");
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") syncResetTokenFromLiveUrl();
+    }
+
+    window.addEventListener("pageshow", syncResetTokenFromLiveUrl);
+    window.addEventListener("focus", syncResetTokenFromLiveUrl);
+    window.addEventListener("popstate", syncResetTokenFromLiveUrl);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pageshow", syncResetTokenFromLiveUrl);
+      window.removeEventListener("focus", syncResetTokenFromLiveUrl);
+      window.removeEventListener("popstate", syncResetTokenFromLiveUrl);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (location.pathname !== "/invite") return;
@@ -455,9 +496,19 @@ function App() {
   }
 
   async function handleResetPassword() {
-    if (!resetToken) {
+    // Mobile in-app browsers may reuse an existing SPA instance for a newly
+    // opened email link. Read the live URL at submission time so an older
+    // token retained in React state cannot be sent to the backend.
+    const liveToken = isPasswordResetPath(window.location.pathname)
+      ? readPasswordResetToken(window.location.href)
+      : resetToken;
+    if (!liveToken) {
       setResetError("Reset token is missing or invalid.");
       return;
+    }
+    if (liveToken !== resetTokenRef.current) {
+      resetTokenRef.current = liveToken;
+      setResetToken(liveToken);
     }
     const passwordError = firstPasswordError(resetPassword);
     if (passwordError) {
@@ -472,7 +523,7 @@ function App() {
     setResetLoading(true);
     setResetError("");
     try {
-      await resetPasswordRequest(resetToken, resetPassword);
+      await resetPasswordRequest(liveToken, resetPassword);
       setResetSuccess(true);
       setResetPassword("");
       setResetConfirmPassword("");
