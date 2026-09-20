@@ -1821,6 +1821,7 @@ export default function ValidationQueueScreen({
                       isOpen={showDetails}
                       retryCount={failureInfo?.retryCount}
                       lastAttemptAt={failureInfo?.lastAttemptAt}
+                      lastError={failureInfo?.lastError}
                     />
                   )}
 
@@ -2133,13 +2134,8 @@ export default function ValidationQueueScreen({
                 </div>
               )}
 
-              {failureInfo && (failureInfo.lastError || failureInfo.unresolvedPhotoIds) && (
+              {failureInfo?.unresolvedPhotoIds && (
                 <section className="val-detail-grid" style={{ width: "100%", maxWidth: "620px" }}>
-                  {failureInfo.lastError && (
-                    <DetailCard icon="ti-bug" label="Last Error" full muted>
-                      {failureInfo.lastError}
-                    </DetailCard>
-                  )}
                   {failureInfo.unresolvedPhotoIds && (
                     <DetailCard icon="ti-photo-off" label="Orphaned Facebook Photos" full muted>
                       <p style={{ margin: "0 0 4px" }}>
@@ -2846,6 +2842,7 @@ function SubmissionDetailsPanel({
   isOpen = true,
   retryCount,
   lastAttemptAt,
+  lastError,
 }: {
   submission: SubmissionSummary;
   log: ValidationLog[];
@@ -2855,6 +2852,7 @@ function SubmissionDetailsPanel({
   /** Failed-tab only — a regular submission's review has no retry history. */
   retryCount?: number;
   lastAttemptAt?: string | null;
+  lastError?: string | null;
 }) {
   const isLive = Boolean(submission.fastTrack);
   const slot = submission.scheduledAt;
@@ -2961,6 +2959,13 @@ function SubmissionDetailsPanel({
           <div>
             <dt>Last attempt</dt>
             <dd>{lastAttemptAt ? formatDateTime(lastAttemptAt) : "No attempts recorded"}</dd>
+          </div>
+        )}
+
+        {lastError && (
+          <div>
+            <dt>Last error</dt>
+            <dd>{humanizeFacebookError(lastError)}</dd>
           </div>
         )}
 
@@ -3503,6 +3508,32 @@ function parseEditDiff(diffJson: string): Array<[string, { from: unknown; to: un
 
 function normalizeStatus(value?: string | null) {
   return String(value ?? "").toLowerCase().replace(/-/g, "_");
+}
+
+/**
+ * The stored publish error is the raw Facebook Graph API exception body
+ * (`Graph API error: {"message": "...", "type": "OAuthException", "code":
+ * 190, "error_subcode": 463, "fbtrace_id": "..."}`) — accurate for debugging,
+ * but unreadable for a moderator deciding what to do next. Strips it down to
+ * just the human message, and gives the single most common real-world case
+ * (an expired/invalid Page access token, Graph API code 190) a specific,
+ * actionable message instead of Facebook's own wording.
+ */
+function humanizeFacebookError(raw?: string | null): string {
+  if (!raw) return "";
+  const jsonStart = raw.indexOf("{");
+  if (jsonStart < 0) return raw;
+  let parsed: { message?: string; type?: string; code?: number } | null;
+  try {
+    parsed = JSON.parse(raw.slice(jsonStart));
+  } catch {
+    parsed = null;
+  }
+  if (!parsed?.message) return raw;
+  if (parsed.type === "OAuthException" && parsed.code === 190) {
+    return "The Facebook connection has expired. An Admin needs to reconnect the Page (Settings → System Health → Tokens) before this can publish.";
+  }
+  return parsed.message;
 }
 
 function deadlineTone(value?: string) {
