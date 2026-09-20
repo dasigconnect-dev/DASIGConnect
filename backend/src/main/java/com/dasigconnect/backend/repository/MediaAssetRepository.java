@@ -163,12 +163,28 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     /**
      * [albumId, assetCount] pairs for every album in the institution that holds
-     * active assets.
+     * active assets. Mirrors findRepositoryPage's own visibility rule (STAGED
+     * excluded, and an asset exclusively attached to a draft submission hidden
+     * until that draft leaves draft status) — otherwise a folder card could
+     * show "1 item" for an asset the browse view itself never displays,
+     * leaving the folder looking empty once opened.
      */
     @Query("""
             SELECT m.mediaAlbum.id, COUNT(m)
             FROM MediaAsset m
             WHERE m.institution.id = :institutionId AND m.deletedAt IS NULL AND m.mediaAlbum IS NOT NULL
+              AND m.status <> com.dasigconnect.backend.model.entity.MediaAssetStatus.STAGED
+              AND (
+                  NOT EXISTS (
+                      SELECT sma.id FROM SubmissionMediaAsset sma
+                      WHERE sma.mediaAsset = m
+                  )
+                  OR EXISTS (
+                      SELECT publishedLink.id FROM SubmissionMediaAsset publishedLink
+                      WHERE publishedLink.mediaAsset = m
+                        AND publishedLink.submission.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+                  )
+              )
             GROUP BY m.mediaAlbum.id
             """)
     List<Object[]> countActiveAssetsByAlbum(@Param("institutionId") UUID institutionId);
@@ -181,6 +197,18 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             SELECT m.mediaAlbum.id, COUNT(m)
             FROM MediaAsset m
             WHERE m.deletedAt IS NULL AND m.mediaAlbum IS NOT NULL
+              AND m.status <> com.dasigconnect.backend.model.entity.MediaAssetStatus.STAGED
+              AND (
+                  NOT EXISTS (
+                      SELECT sma.id FROM SubmissionMediaAsset sma
+                      WHERE sma.mediaAsset = m
+                  )
+                  OR EXISTS (
+                      SELECT publishedLink.id FROM SubmissionMediaAsset publishedLink
+                      WHERE publishedLink.mediaAsset = m
+                        AND publishedLink.submission.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+                  )
+              )
             GROUP BY m.mediaAlbum.id
             """)
     List<Object[]> countActiveAssetsByAlbumAllInstitutions();
