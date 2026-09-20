@@ -738,6 +738,27 @@ function App() {
     setBannerTimerId(timerId);
   }
 
+  // The client-side countdown above tracks the JWT's own `exp`, but a
+  // session can also end server-side before that clock runs out (token
+  // revocation, a password reset, session_version bump, or the countdown
+  // simply drifting/throttling in a backgrounded tab). The axios interceptor
+  // in authApi.ts dispatches this event on any real 401; without a listener
+  // it was previously dropped and no session modal ever appeared.
+  useEffect(() => {
+    function handleSessionExpiredEvent() {
+      if (!currentUser || showSessionModal) return;
+      if (bannerTimerRef.current) window.clearInterval(bannerTimerRef.current);
+      bannerTimerRef.current = null;
+      setBannerTimerId(null);
+      setBannerRemaining(0);
+      setModalEmail(currentUser.email || loginEmail);
+      setShowSessionModal(true);
+    }
+    window.addEventListener("dasigconnect:session-expired", handleSessionExpiredEvent);
+    return () =>
+      window.removeEventListener("dasigconnect:session-expired", handleSessionExpiredEvent);
+  }, [currentUser, loginEmail, showSessionModal]);
+
   async function validateInviteToken(token: string) {
     try {
       const response = await validateInvitation(token.trim());
