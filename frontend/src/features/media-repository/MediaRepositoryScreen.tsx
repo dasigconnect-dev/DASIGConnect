@@ -162,7 +162,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("newest");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
-  const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
 
   // Meaning-based (Voyage embedding) search — explicit: toggle on, then press Enter.
   const [semantic, setSemantic] = useState(false);
@@ -176,9 +175,9 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   // Admin with no institution filter: the repository shows every institution's
   // top-level albums together, each card badged with its institution.
   const networkAlbumMode = isNetworkBrowser && !selectedInstitutionId;
-  // At that network root (no folder open, no search/tag filter) only folder cards
-  // are shown, so the network-wide asset fetch is skipped.
-  const skipAssetFetch = networkAlbumMode && !currentAlbumId && !search.trim() && activeTags.size === 0;
+  // At that network root (no folder open, no search) only folder cards are
+  // shown, so the network-wide asset fetch is skipped.
+  const skipAssetFetch = networkAlbumMode && !currentAlbumId && !search.trim();
 
   // Folder scoping is dropped while searching so matches are never hidden by the current folder.
   const listAlbumId = search.trim() ? null : currentAlbumId;
@@ -354,18 +353,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [warningUsages, setWarningUsages] = useState<MediaUsage[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [contentTypeFilter, setContentTypeFilter] = useState<"all" | "folders" | "files">("all");
-
-  const tagChips = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const asset of assets) {
-      for (const tag of asset.aiTags ?? []) {
-        counts.set(tag.label, (counts.get(tag.label) ?? 0) + 1);
-      }
-    }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([label, count]) => ({ label, count }));
-  }, [assets]);
 
   useEffect(() => {
     if (!isNetworkBrowser) return;
@@ -559,13 +546,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const filteredAssets = useMemo(() => {
     const term = search.trim().toLowerCase();
     let result = assets.filter((a) => {
-      if (activeTags.size > 0) {
-        const assetTagLabels = new Set((a.aiTags ?? []).map((t) => t.label.toLowerCase()));
-        const selectedTags = [...activeTags].map((tag) => tag.toLowerCase());
-        if (!selectedTags.some((tag) => assetTagLabels.has(tag))) return false;
-      }
       if (!term) return true;
-      return [a.title, a.fileName, a.uploaderName, a.institutionName, ...(a.aiTags ?? []).map((t) => t.label)]
+      return [a.title, a.fileName, a.uploaderName, a.institutionName]
         .filter(Boolean)
         .some((val) => val!.toLowerCase().includes(term));
     });
@@ -579,11 +561,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     });
 
     return result;
-  }, [assets, search, sort, activeTags]);
+  }, [assets, search, sort]);
 
   // At the library root (no folder, no search) every asset lives in some folder,
   // so the root shows folders only — loose asset tiles would just be noise.
-  const atRootNoSearch = !currentAlbumId && !search.trim() && activeTags.size === 0;
+  const atRootNoSearch = !currentAlbumId && !search.trim();
   const visibleAssets = atRootNoSearch ? [] : filteredAssets;
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
@@ -611,11 +593,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         : [],
     [albums, searchTerm, searchActive],
   );
-  const matchingTagChips = useMemo(
-    () => (searchActive ? tagChips.filter((c) => c.label.toLowerCase().includes(searchTerm)) : []),
-    [tagChips, searchTerm, searchActive],
-  );
-
   const selectedAssets = useMemo(
     () => assets.filter((a) => checkedIds.has(a.id)),
     [assets, checkedIds],
@@ -741,23 +718,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     } finally {
       setBusyDraftId(null);
     }
-  }
-
-  function toggleTag(tag: string) {
-    setActiveTags((prev) => {
-      const next = new Set(prev);
-      if (next.has(tag)) next.delete(tag);
-      else next.add(tag);
-      return next;
-    });
-  }
-
-  function clearTag(tag: string) {
-    setActiveTags((prev) => {
-      const next = new Set(prev);
-      next.delete(tag);
-      return next;
-    });
   }
 
   async function handleCreateAlbum(
@@ -1349,9 +1309,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         onSortChange={setSort}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        activeTags={activeTags}
-        tagChips={tagChips}
-        onTagToggle={toggleTag}
       />
 
       {/* Breadcrumb */}
@@ -1420,31 +1377,9 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         </div>
       )}
 
-      {/* Matching tags */}
-      {matchingTagChips.length > 0 && (
-        <div className="med-filter-row2 med-match-tags">
-          <span className="med-filter-label">Matching tags</span>
-          {matchingTagChips.map((chip) => (
-            <button
-              key={chip.label}
-              className={`med-chip${activeTags.has(chip.label) ? " active" : ""}`}
-              onClick={() => toggleTag(chip.label)}
-              type="button"
-            >
-              {chip.label}
-              <span className="med-chip-count">{chip.count}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Dynamic Content Type Nav & Result Strip */}
       {(() => {
-        const folderCards = searchActive
-          ? matchingAlbums
-          : activeTags.size === 0
-            ? childAlbums
-            : [];
+        const folderCards = searchActive ? matchingAlbums : childAlbums;
         const gridAssets = semanticResults ?? visibleAssets;
         const hasMixedContent = folderCards.length > 0 && gridAssets.length > 0;
 
@@ -1513,21 +1448,6 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
                 )}
               </div>
 
-              {activeTags.size > 0 && (
-                <div className="med-active-filters">
-                  {[...activeTags].map((tag) => (
-                    <div key={tag} className="med-filter-tag">
-                      {tag}
-                      <button onClick={() => clearTag(tag)} type="button" aria-label={`Remove ${tag} filter`}>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Folders + Media Grid / States */}
@@ -1537,7 +1457,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
               if (gridAssets.length === 0 && folderCards.length === 0) {
                 return (
                   <EmptyState
-                    hasSearch={searchActive || activeTags.size > 0 || semanticResults !== null}
+                    hasSearch={searchActive || semanticResults !== null}
                     inFolder={Boolean(currentAlbumId)}
                     onUpload={() => setUploadOpen(true)}
                   />

@@ -27,7 +27,6 @@ export default function AssetCard({
   onOpen,
 }: AssetCardProps) {
   const isVideo = isVideoType(asset.fileType);
-  const primaryTag = asset.aiTags?.[0];
 
   // A double click also fires two single clicks first; defer the select briefly
   // so a double click opens the viewer without leaving the panel flickering.
@@ -149,11 +148,9 @@ export default function AssetCard({
               <span className="med-card-size">{formatFileSize(asset.fileSizeBytes)} · {asset.fileType.toUpperCase()}</span>
             </div>
           )}
-          {asset.status === "processing" ? (
+          {asset.status === "processing" && (
             <span className="med-badge med-badge-processing">Processing…</span>
-          ) : primaryTag ? (
-            <span className="med-badge med-badge-tag">{primaryTag.label}</span>
-          ) : null}
+          )}
         </div>
       </div>
     </div>
