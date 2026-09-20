@@ -55,6 +55,7 @@ public class SystemHealthService {
         EXPECTED_JOBS.put("ValidationDeadlineNotificationJob", Duration.ofMinutes(5));
         EXPECTED_JOBS.put("EmbeddingReconciliationJob", Duration.ofMinutes(5));
         EXPECTED_JOBS.put("SocialEngagementSyncJob", Duration.ofMinutes(15));
+        EXPECTED_JOBS.put("InvitationExpiryJob", Duration.ofHours(1));
         EXPECTED_JOBS.put("MediaAssetRetentionPurgeJob", Duration.ofDays(1));
         EXPECTED_JOBS.put("GeneratedWatermarkPurgeJob", Duration.ofDays(1));
         EXPECTED_JOBS.put("StaleDraftSlotReleaseJob", Duration.ofDays(1));

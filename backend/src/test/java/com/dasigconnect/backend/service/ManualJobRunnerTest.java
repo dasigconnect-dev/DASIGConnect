@@ -22,6 +22,7 @@ import com.dasigconnect.backend.schedule.EmbeddingFailureDigestJob;
 import com.dasigconnect.backend.schedule.EmbeddingReconciliationJob;
 import com.dasigconnect.backend.schedule.EmptyScheduleWarningJob;
 import com.dasigconnect.backend.schedule.GeneratedWatermarkPurgeJob;
+import com.dasigconnect.backend.schedule.InvitationExpiryJob;
 import com.dasigconnect.backend.schedule.MediaAssetRetentionPurgeJob;
 import com.dasigconnect.backend.schedule.PublishingSchedulerJob;
 import com.dasigconnect.backend.schedule.ReviewLockCleanupJob;
@@ -52,6 +53,7 @@ class ManualJobRunnerTest {
     @Mock private EmbeddingFailureDigestJob embeddingFailureDigestJob;
     @Mock private EmptyScheduleWarningJob emptyScheduleWarningJob;
     @Mock private GeneratedWatermarkPurgeJob generatedWatermarkPurgeJob;
+    @Mock private InvitationExpiryJob invitationExpiryJob;
 
     private ManualJobRunner runner() {
         return new ManualJobRunner(
@@ -69,7 +71,8 @@ class ManualJobRunnerTest {
                 scheduledJobRunRetentionJob,
                 embeddingFailureDigestJob,
                 emptyScheduleWarningJob,
-                generatedWatermarkPurgeJob);
+                generatedWatermarkPurgeJob,
+                invitationExpiryJob);
     }
 
     @Test

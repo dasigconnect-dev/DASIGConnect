@@ -1,9 +1,11 @@
 import type { FormEvent } from 'react'
+import { useMemo, useState } from 'react'
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
 import { getPasswordRules } from '../../lib/passwordPolicy'
 import dasigLogo from '../../assets/dasigconnect-logo.png'
+import { isInAppBrowser } from '../../utils/inAppBrowser'
 
 interface ResetPasswordScreenProps {
   active: boolean
@@ -42,6 +44,19 @@ export default function ResetPasswordScreen({
   const rules = getPasswordRules(password)
   const passwordOk = Object.values(rules).every(Boolean)
   const canSubmit = passwordOk && passwordsMatch && !loading
+  const showInAppBrowserNotice = useMemo(() => isInAppBrowser(), [])
+  const [linkCopied, setLinkCopied] = useState(false)
+
+  async function handleCopyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 3000)
+    } catch {
+      // Clipboard API unavailable in this in-app browser — the visible URL
+      // bar (if any) is the fallback for a manual copy.
+    }
+  }
 
   return (
     <Screen id="reset-password" active={active}>
@@ -77,6 +92,31 @@ export default function ResetPasswordScreen({
           <button type="button" className="back-btn" onClick={onBack}>
             <i className="ti ti-arrow-left"></i> Back to sign in
           </button>
+
+          {showInAppBrowserNotice && (
+            <div className="alert alert-warn" style={{ marginBottom: 14 }}>
+              <i className="ti ti-alert-triangle"></i>
+              <div>
+                <strong style={{ display: 'block', marginBottom: 3, color: '#FCD34D' }}>
+                  You're viewing this inside an app's built-in browser.
+                </strong>
+                Some apps (Messenger, Instagram, etc.) reuse this popup across
+                links and can show an outdated page. For the most reliable
+                reset, open this link in Chrome or your device's default
+                browser instead.
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => void handleCopyLink()}
+                  >
+                    <i className="ti ti-copy"></i>{' '}
+                    {linkCopied ? 'Link copied!' : 'Copy this link'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {success ? (
             <div className="success-center">

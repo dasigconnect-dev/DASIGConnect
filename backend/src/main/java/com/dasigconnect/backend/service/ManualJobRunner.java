@@ -5,6 +5,7 @@ import com.dasigconnect.backend.schedule.EmbeddingFailureDigestJob;
 import com.dasigconnect.backend.schedule.EmbeddingReconciliationJob;
 import com.dasigconnect.backend.schedule.EmptyScheduleWarningJob;
 import com.dasigconnect.backend.schedule.GeneratedWatermarkPurgeJob;
+import com.dasigconnect.backend.schedule.InvitationExpiryJob;
 import com.dasigconnect.backend.schedule.MediaAssetRetentionPurgeJob;
 import com.dasigconnect.backend.schedule.PublishingSchedulerJob;
 import com.dasigconnect.backend.schedule.ReviewLockCleanupJob;
@@ -53,7 +54,8 @@ public class ManualJobRunner {
             ScheduledJobRunRetentionJob scheduledJobRunRetention,
             EmbeddingFailureDigestJob embeddingFailureDigest,
             EmptyScheduleWarningJob emptyScheduleWarning,
-            GeneratedWatermarkPurgeJob generatedWatermarkPurge) {
+            GeneratedWatermarkPurgeJob generatedWatermarkPurge,
+            InvitationExpiryJob invitationExpiry) {
         jobs.put("PublishingSchedulerJob", publishingScheduler::run);
         jobs.put("ReviewLockCleanupJob", reviewLockCleanup::releaseExpiredLocks);
         jobs.put("StaleSubmissionDetectorJob", staleSubmissionDetector::run);
@@ -69,6 +71,7 @@ public class ManualJobRunner {
         jobs.put("EmbeddingFailureDigestJob", embeddingFailureDigest::scanFailedEmbeddings);
         jobs.put("EmptyScheduleWarningJob", emptyScheduleWarning::scanEmptySchedules);
         jobs.put("GeneratedWatermarkPurgeJob", generatedWatermarkPurge::purgeExpiredGeneratedWatermarks);
+        jobs.put("InvitationExpiryJob", invitationExpiry::run);
     }
 
     /**
