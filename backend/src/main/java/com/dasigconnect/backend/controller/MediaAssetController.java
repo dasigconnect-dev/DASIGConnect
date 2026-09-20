@@ -64,7 +64,6 @@ public class MediaAssetController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<MediaAssetListResponseDto>> list(
             @RequestParam(required = false) String query,
-            @RequestParam(required = false) String aiCategory,
             @RequestParam(required = false) String mediaType,
             @RequestParam(required = false) UUID uploaderId,
             @RequestParam(required = false) UUID institutionId,
@@ -75,7 +74,7 @@ public class MediaAssetController {
             @RequestParam(required = false) String scope,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(
-                mediaAssetService.list(query, aiCategory, mediaType, uploaderId, institutionId, albumId, sort, page, pageSize, scope, user)));
+                mediaAssetService.list(query, mediaType, uploaderId, institutionId, albumId, sort, page, pageSize, scope, user)));
     }
 
     @GetMapping("/search")

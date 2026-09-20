@@ -12,8 +12,6 @@ export interface UseMediaLibraryAssetsReturn {
   hasMore: boolean;
   search: string;
   setSearch: (v: string) => void;
-  aiCategory: string;
-  setAiCategory: (v: string) => void;
   mediaType: "" | "image" | "video";
   setMediaType: (v: "" | "image" | "video") => void;
   albumId: string;
@@ -46,7 +44,6 @@ export function useMediaLibraryAssets(
   const requestIdRef = useRef(0);
 
   const [search, setSearch] = useState("");
-  const [aiCategory, setAiCategory] = useState("");
   const [mediaType, setMediaType] = useState<"" | "image" | "video">("");
   const [albumId, setAlbumId] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -63,7 +60,6 @@ export function useMediaLibraryAssets(
   const doFetch = useCallback(
     (
       q: string,
-      cat: string,
       type: "" | "image" | "video",
       album: string,
       pageNum: number,
@@ -80,7 +76,6 @@ export function useMediaLibraryAssets(
       setError(false);
       return searchMediaAssets({
         query: q || undefined,
-        aiCategory: cat || undefined,
         mediaType: type || undefined,
         albumId: album || undefined,
         institutionId: networkView ? undefined : institutionId || undefined,
@@ -111,10 +106,10 @@ export function useMediaLibraryAssets(
   useEffect(() => {
     const controller = { aborted: false };
     queueMicrotask(() => {
-      if (!controller.aborted) void doFetch(debouncedSearch, aiCategory, mediaType, albumId, 1, false);
+      if (!controller.aborted) void doFetch(debouncedSearch, mediaType, albumId, 1, false);
     });
     return () => { controller.aborted = true; };
-  }, [debouncedSearch, aiCategory, mediaType, albumId, doFetch]);
+  }, [debouncedSearch, mediaType, albumId, doFetch]);
 
   useEffect(() => {
     return () => {
@@ -125,11 +120,11 @@ export function useMediaLibraryAssets(
   }, []);
 
   function loadMore() {
-    void doFetch(debouncedSearch, aiCategory, mediaType, albumId, pageRef.current + 1, true);
+    void doFetch(debouncedSearch, mediaType, albumId, pageRef.current + 1, true);
   }
 
   function retry() {
-    void doFetch(debouncedSearch, aiCategory, mediaType, albumId, pageRef.current, false);
+    void doFetch(debouncedSearch, mediaType, albumId, pageRef.current, false);
   }
 
   function toggleSelect(id: string) {
@@ -150,8 +145,6 @@ export function useMediaLibraryAssets(
     hasMore: assets.length < totalCount,
     search,
     setSearch,
-    aiCategory,
-    setAiCategory,
     mediaType,
     setMediaType,
     albumId,

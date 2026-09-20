@@ -290,10 +290,17 @@ public class SubmissionService {
 
         UUID previousInstitutionId = submission.getInstitution().getId();
 
-        // Staged uploads (status STAGED, no institution) are not bound to the old
-        // institution — they stay attached and survive the move. Only assets
-        // picked from the previous institution's library are detached; those rows
-        // remain in that library, so nothing is lost.
+        // No attached asset is detached here, regardless of source: a STAGED
+        // upload has no institution yet and simply gets bound to `target` the
+        // next time submit()'s reconciliation runs (see the loop there); a
+        // library pick already has its own institution/album and keeps both
+        // untouched — it stays attached to this submission (now under a
+        // different institution) but administratively still belongs to
+        // whichever institution's library it was picked from. This is
+        // intentional (reviewers/admins reusing vetted assets across
+        // institutions), not a bug — do not add auto-detach here without
+        // confirming that's actually the desired UX, since it would silently
+        // strip media an admin deliberately chose to reuse.
         slotReservationService.deleteAllForSubmission(submission.getId());
 
         submission.setInstitution(target);

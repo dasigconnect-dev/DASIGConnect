@@ -15,6 +15,8 @@ interface AlbumComboboxProps {
   readOnly?: boolean;
   placeholder?: string;
   autoMatchLabel?: string;
+  /** Tooltip on the Auto-Match row — e.g. to warn it will save an unsaved draft first. */
+  autoMatchHint?: string;
   /** Shown under the "Create new album" row, e.g. "in CIT-U · top level". */
   createHint?: string;
   onChange: (value: string) => void;
@@ -40,6 +42,7 @@ export default function AlbumCombobox({
   readOnly,
   placeholder,
   autoMatchLabel = "Auto-Match from Event Title",
+  autoMatchHint,
   createHint,
   onChange,
   onAutoMatch,
@@ -151,6 +154,7 @@ export default function AlbumCombobox({
           <button
             type="button"
             disabled={matching}
+            title={matching ? undefined : autoMatchHint}
             style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "10px 12px", border: "none", borderBottom: "1px solid #e5e7eb", background: "#f0f9ff", color: "#0284c7", textAlign: "left", cursor: matching ? "default" : "pointer", fontSize: "14px", fontWeight: 500, opacity: matching ? 0.7 : 1 }}
             onClick={() => {
               onAutoMatch();

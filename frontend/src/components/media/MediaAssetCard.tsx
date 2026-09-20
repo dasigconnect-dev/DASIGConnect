@@ -8,6 +8,7 @@ interface MediaAssetCardProps {
   aiCategory?: string | null;
   similarityScore?: number;
   matchReasons?: string[];
+  institutionName?: string | null;
   selected: boolean;
   alreadyAdded: boolean;
   onToggle: () => void;
@@ -32,6 +33,7 @@ export default function MediaAssetCard({
   aiCategory,
   similarityScore,
   matchReasons = [],
+  institutionName,
   selected,
   alreadyAdded,
   onToggle,
@@ -102,6 +104,7 @@ export default function MediaAssetCard({
       </div>
       <p className="mac-name" title={fileName}>{shortName}</p>
       {aiCategory && <p className="mac-category">{aiCategory}</p>}
+      {institutionName && <p className="mac-institution">{institutionName}</p>}
       {alreadyAdded && <p className="mac-added-label">In post</p>}
     </button>
   );

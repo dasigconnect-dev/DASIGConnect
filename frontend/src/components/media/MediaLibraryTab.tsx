@@ -2,32 +2,38 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { SubmissionMediaItem } from "../../types/media";
 import { useMediaLibraryAssets } from "../../hooks/useMediaLibraryAssets";
 import { listMediaAlbums, type MediaAlbum } from "../../api/mediaApi";
+import { listInstitutions } from "../../api/authApi";
 import { buildAlbumOptions } from "../../features/media-repository/albumTree";
 import MediaAssetGrid, { type GridAsset } from "./MediaAssetGrid";
 import BrandedSelect from "../ui/BrandedSelect";
 import "../../styles/media-picker.css";
 
+interface InstitutionOption {
+  id: string;
+  name: string;
+}
+
 interface MediaLibraryTabProps {
   alreadyAddedIds: Set<string>;
   onAddItems: (items: SubmissionMediaItem[]) => void;
   disabled?: boolean;
-  /** Scope the library to a specific institution (network-wide admins). */
+  /**
+   * The institution this picker is opened "for" (e.g. the submission's own
+   * institution) — used as the institution filter's starting value when
+   * `networkView` is on, and as the sole scope when it's off.
+   */
   institutionId?: string;
   /** Show assets across every institution for network-wide roles. */
   networkView?: boolean;
   /** Show a folder/album filter dropdown above the grid. */
   showAlbumFilter?: boolean;
+  /**
+   * Institutions to populate the institution filter with, when `networkView`
+   * is on. If omitted, fetched internally — pass this when the caller already
+   * has the list (e.g. the composer) to avoid a duplicate request.
+   */
+  institutions?: InstitutionOption[];
 }
-
-const CATEGORY_OPTIONS = [
-  { value: "", label: "All categories" },
-  { value: "event", label: "Event" },
-  { value: "award", label: "Award" },
-  { value: "facility", label: "Facility" },
-  { value: "people", label: "People" },
-  { value: "research", label: "Research" },
-  { value: "training", label: "Training" },
-];
 
 const MEDIA_TYPE_OPTIONS = [
   { value: "", label: "All types" },
@@ -42,7 +48,30 @@ export default function MediaLibraryTab({
   institutionId,
   networkView,
   showAlbumFilter,
+  institutions: institutionsProp,
 }: MediaLibraryTabProps) {
+  // Defaults to the institution this picker was opened for (least surprising),
+  // not "All institutions" — see the composer/Review Queue conversation this
+  // was built for. "" means "All institutions".
+  const [institutionFilter, setInstitutionFilter] = useState(institutionId ?? "");
+
+  const [fetchedInstitutions, setFetchedInstitutions] = useState<InstitutionOption[]>([]);
+  useEffect(() => {
+    if (!networkView || institutionsProp) return;
+    const controller = new AbortController();
+    listInstitutions(controller.signal)
+      .then((res) => setFetchedInstitutions(res.data ?? []))
+      .catch(() => setFetchedInstitutions([]));
+    return () => controller.abort();
+  }, [networkView, institutionsProp]);
+  const institutionOptions = institutionsProp ?? fetchedInstitutions;
+
+  // Narrowing to one institution disables networkView so the hook sends that
+  // institutionId through; "" (All institutions) keeps true network-wide —
+  // useMediaLibraryAssets strips institutionId whenever networkView is on.
+  const effectiveNetworkView = networkView && institutionFilter === "";
+  const effectiveInstitutionId = networkView ? institutionFilter || undefined : institutionId;
+
   const {
     assets,
     loading,
@@ -51,8 +80,6 @@ export default function MediaLibraryTab({
     hasMore,
     search,
     setSearch,
-    aiCategory,
-    setAiCategory,
     mediaType,
     setMediaType,
     albumId,
@@ -62,7 +89,7 @@ export default function MediaLibraryTab({
     selectedIds,
     toggleSelect,
     clearSelection,
-  } = useMediaLibraryAssets({ institutionId, networkView });
+  } = useMediaLibraryAssets({ institutionId: effectiveInstitutionId, networkView: effectiveNetworkView });
 
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -70,11 +97,11 @@ export default function MediaLibraryTab({
   useEffect(() => {
     if (!showAlbumFilter) return;
     const controller = new AbortController();
-    listMediaAlbums(institutionId, controller.signal)
+    listMediaAlbums(effectiveInstitutionId, controller.signal)
       .then((res) => setAlbums(res.data ?? []))
       .catch(() => setAlbums([]));
     return () => controller.abort();
-  }, [showAlbumFilter, institutionId]);
+  }, [showAlbumFilter, effectiveInstitutionId]);
 
   const albumOptions = useMemo(
     () => [
@@ -82,6 +109,16 @@ export default function MediaLibraryTab({
       ...buildAlbumOptions(albums).map((o) => ({ value: o.id, label: o.label })),
     ],
     [albums],
+  );
+
+  const institutionFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All institutions" },
+      ...[...institutionOptions]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((inst) => ({ value: inst.id, label: inst.name })),
+    ],
+    [institutionOptions],
   );
 
   const pendingSelected = [...selectedIds].filter((id) => !alreadyAddedIds.has(id));
@@ -111,7 +148,7 @@ export default function MediaLibraryTab({
             ref={searchRef}
             type="search"
             className="mlt-search"
-            placeholder="Search by filename or category…"
+            placeholder="Search by filename or tags…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Search media library"
@@ -131,21 +168,23 @@ export default function MediaLibraryTab({
 
         <BrandedSelect
           className="mlt-select"
-          value={aiCategory}
-          options={CATEGORY_OPTIONS}
-          onChange={setAiCategory}
-          ariaLabel="Filter by category"
-          disabled={disabled}
-        />
-
-        <BrandedSelect
-          className="mlt-select"
           value={mediaType}
           options={MEDIA_TYPE_OPTIONS}
           onChange={(value) => setMediaType(value as "" | "image" | "video")}
           ariaLabel="Filter by media type"
           disabled={disabled}
         />
+
+        {networkView && (
+          <BrandedSelect
+            className="mlt-select"
+            value={institutionFilter}
+            options={institutionFilterOptions}
+            onChange={setInstitutionFilter}
+            ariaLabel="Filter by institution"
+            disabled={disabled || institutionFilterOptions.length <= 1}
+          />
+        )}
 
         {showAlbumFilter && (
           <BrandedSelect
@@ -180,6 +219,8 @@ export default function MediaLibraryTab({
               fileName: a.fileName,
               fileType: a.fileType,
               aiCategory: a.aiTags?.[0]?.label ?? null,
+              // Only worth a badge when results can actually mix institutions.
+              institutionName: effectiveNetworkView ? a.institutionName ?? null : null,
             }))}
             selectedIds={new Set(selectedIds)}
             alreadyAddedIds={alreadyAddedIds}

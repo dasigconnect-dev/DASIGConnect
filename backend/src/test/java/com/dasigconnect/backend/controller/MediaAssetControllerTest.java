@@ -67,7 +67,7 @@ class MediaAssetControllerTest {
                 1,
                 1,
                 25);
-        when(mediaAssetService.list(any(), any(), any(), any(), any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
+        when(mediaAssetService.list(any(), any(), any(), any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
                 .thenReturn(response);
 
         mockMvc.perform(get("/api/v1/media-assets").param("page", "1").param("pageSize", "25"))
@@ -83,12 +83,11 @@ class MediaAssetControllerTest {
     void list_withParams_delegatesToService() throws Exception {
         UUID uploaderId = UUID.randomUUID();
         MediaAssetListResponseDto response = new MediaAssetListResponseDto(List.of(), 0, 2, 10);
-        when(mediaAssetService.list(any(), any(), any(), any(), any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
+        when(mediaAssetService.list(any(), any(), any(), any(), any(), any(), any(Integer.class), any(Integer.class), any(), any()))
                 .thenReturn(response);
 
         mockMvc.perform(get("/api/v1/media-assets")
                 .param("query", "award")
-                .param("aiCategory", "Awarding")
                 .param("uploaderId", uploaderId.toString())
                 .param("sort", "name")
                 .param("page", "2")
@@ -97,7 +96,6 @@ class MediaAssetControllerTest {
 
         verify(mediaAssetService).list(
                 eq("award"),
-                eq("Awarding"),
                 any(),
                 eq(uploaderId),
                 any(),
