@@ -353,6 +353,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [albumModalInstitutionId, setAlbumModalInstitutionId] = useState<string>("");
   const [savingAlbum, setSavingAlbum] = useState(false);
   const [moveAlbumTarget, setMoveAlbumTarget] = useState<MediaAlbum | null>(null);
+  const [assetRenameTarget, setAssetRenameTarget] = useState<MediaAsset | null>(null);
+  const [assetRenameValue, setAssetRenameValue] = useState("");
+  const [savingAssetRename, setSavingAssetRename] = useState(false);
+  const [assetMoveTarget, setAssetMoveTarget] = useState<MediaAsset | null>(null);
+  const [addToDraftAssetOverride, setAddToDraftAssetOverride] = useState<string | null>(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const [folderUploadBusy, setFolderUploadBusy] = useState(false);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -553,6 +558,12 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     return isNetworkBrowser || album.institutionId === user.institutionId;
   }
 
+  // Same rule as canManageAlbum: rename/move an asset anywhere for a
+  // network-wide role, otherwise only within your own institution.
+  function canManageAsset(asset: MediaAsset) {
+    return isNetworkBrowser || asset.institutionId === user.institutionId;
+  }
+
   const currentAlbumInstitution = currentAlbum ? institutionById.get(currentAlbum.institutionId) ?? null : null;
   // Institution shown as the 2nd breadcrumb crumb for admins.
   const crumbInstitution = selectedInstitution ?? (networkAlbumMode ? currentAlbumInstitution : null);
@@ -664,7 +675,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     }
   }
 
-  function activeAssetIds() {
+  /** overrideId bypasses the current selection entirely — used by an asset
+   * card's kebab menu to act on just that one asset regardless of what
+   * else is checked. */
+  function activeAssetIds(overrideId?: string) {
+    if (overrideId) return [overrideId];
     if (checkedIds.size > 0) return [...checkedIds];
     return selectedAsset ? [selectedAsset.id] : [];
   }
@@ -677,14 +692,15 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     return false;
   }
 
-  function handleNewPost() {
-    const ids = activeAssetIds();
+  function handleNewPost(overrideAssetId?: string) {
+    const ids = activeAssetIds(overrideAssetId);
     if (ids.length === 0) return;
     navigate(`/submissions/new?assetIds=${encodeURIComponent(ids.join(","))}`);
   }
 
-  function openAddToDraft() {
-    if (activeAssetIds().length === 0) return;
+  function openAddToDraft(overrideAssetId?: string) {
+    if (activeAssetIds(overrideAssetId).length === 0) return;
+    setAddToDraftAssetOverride(overrideAssetId ?? null);
     setAddToDraftOpen(true);
     setDraftsLoading(true);
     queryClient.fetchQuery({
@@ -699,7 +715,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   }
 
   async function handleSelectDraft(draftId: string) {
-    const ids = activeAssetIds();
+    const ids = activeAssetIds(addToDraftAssetOverride ?? undefined);
     if (ids.length === 0) return;
     setBusyDraftId(draftId);
     let added = 0;
@@ -732,6 +748,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       toast.error(message);
     } finally {
       setBusyDraftId(null);
+      setAddToDraftAssetOverride(null);
     }
   }
 
@@ -869,6 +886,34 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       void invalidateMediaMetadata();
     } catch {
       toast.error("Could not rename this asset.");
+    }
+  }
+
+  function openAssetRenameModal(asset: MediaAsset) {
+    setAssetRenameTarget(asset);
+    setAssetRenameValue(asset.title);
+  }
+
+  function closeAssetRenameModal() {
+    if (savingAssetRename) return;
+    setAssetRenameTarget(null);
+    setAssetRenameValue("");
+  }
+
+  async function handleSaveAssetRename() {
+    const title = assetRenameValue.trim();
+    if (!assetRenameTarget || !title) return;
+    if (title === assetRenameTarget.title) {
+      closeAssetRenameModal();
+      return;
+    }
+    setSavingAssetRename(true);
+    try {
+      await handleRenameAsset(assetRenameTarget.id, title);
+    } finally {
+      setSavingAssetRename(false);
+      setAssetRenameTarget(null);
+      setAssetRenameValue("");
     }
   }
 
@@ -1075,22 +1120,22 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     void downloadAsset(selectedAsset);
   }
 
-  function openDeleteModal(tier: DeleteTier) {
-    if (!selectedAsset) return;
-    setDeleteAsset(selectedAsset);
-    setDeleteAssets([selectedAsset]);
+  function openDeleteModal(tier: DeleteTier, asset: MediaAsset | null = selectedAsset) {
+    if (!asset) return;
+    setDeleteAsset(asset);
+    setDeleteAssets([asset]);
     setDeleteIsBulk(false);
     setDeleteTier(tier);
 
     if (tier === "blocked") {
-      const blocking = selectedAsset.usedIn?.filter(
+      const blocking = asset.usedIn?.filter(
         (u) => u.submissionStatus === "scheduled" || u.submissionStatus === "in_review",
       ) ?? [];
       setBlockingUsages(blocking);
       setWarningUsages([]);
     } else if (tier === "warning") {
       setBlockingUsages([]);
-      const warning = selectedAsset.usedIn?.filter(
+      const warning = asset.usedIn?.filter(
         (u) => u.submissionStatus === "draft" || u.submissionStatus === "needs_revision",
       ) ?? [];
       setWarningUsages(warning);
@@ -1113,9 +1158,9 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     return "free";
   }
 
-  function openSingleDeleteModal() {
-    if (!selectedAsset || !canDeleteAsset(selectedAsset)) return;
-    openDeleteModal(deleteTierForAsset(selectedAsset));
+  function openSingleDeleteModal(asset: MediaAsset | null = selectedAsset) {
+    if (!asset || !canDeleteAsset(asset)) return;
+    openDeleteModal(deleteTierForAsset(asset), asset);
   }
 
   /**
@@ -1519,6 +1564,14 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
                             showInstitutionChip={networkView}
                             onClick={() => handleToggleCheck(asset)}
                             onOpen={() => setLightboxAssetId(asset.id)}
+                            canManage={canManageAsset(asset)}
+                            canDelete={canDeleteAsset(asset)}
+                            onAddToDraft={() => openAddToDraft(asset.id)}
+                            onNewSubmission={() => handleNewPost(asset.id)}
+                            onDownload={() => void downloadAsset(asset)}
+                            onRename={() => openAssetRenameModal(asset)}
+                            onMove={() => setAssetMoveTarget(asset)}
+                            onDelete={() => openSingleDeleteModal(asset)}
                           />
                         ))}
                       </div>
@@ -1620,13 +1673,21 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
       {/* Add to Draft Modal (portal) */}
       <AddToDraftModal
         open={addToDraftOpen}
-        assetCount={activeAssetIds().length}
+        assetCount={activeAssetIds(addToDraftAssetOverride ?? undefined).length}
         drafts={drafts}
         loading={draftsLoading}
         busyDraftId={busyDraftId}
-        onClose={() => { if (busyDraftId === null) setAddToDraftOpen(false); }}
+        onClose={() => {
+          if (busyDraftId !== null) return;
+          setAddToDraftOpen(false);
+          setAddToDraftAssetOverride(null);
+        }}
         onSelectDraft={(id) => void handleSelectDraft(id)}
-        onNewPostInstead={() => { setAddToDraftOpen(false); handleNewPost(); }}
+        onNewPostInstead={() => {
+          setAddToDraftOpen(false);
+          handleNewPost(addToDraftAssetOverride ?? undefined);
+          setAddToDraftAssetOverride(null);
+        }}
       />
 
       <AlbumNameModal
@@ -1652,6 +1713,28 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           onMove={(parentId, institutionId) =>
             void handleMoveAlbum(moveAlbumTarget.id, parentId, institutionId)
           }
+        />
+      )}
+
+      <AssetRenameModal
+        open={assetRenameTarget !== null}
+        value={assetRenameValue}
+        saving={savingAssetRename}
+        onChange={setAssetRenameValue}
+        onClose={closeAssetRenameModal}
+        onSubmit={() => void handleSaveAssetRename()}
+      />
+
+      {assetMoveTarget && (
+        <AssetMoveModal
+          key={assetMoveTarget.id}
+          asset={assetMoveTarget}
+          albums={albums}
+          onClose={() => setAssetMoveTarget(null)}
+          onMove={(albumId) => {
+            void handleUpdateAssetAlbum(assetMoveTarget.id, albumId);
+            setAssetMoveTarget(null);
+          }}
         />
       )}
 
@@ -1949,6 +2032,189 @@ function MoveAlbumModal({
             type="button"
             disabled={unchanged}
             onClick={() => onMove(resolved.parentAlbumId, resolved.institutionId)}
+          >
+            Move here
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
+}
+
+/* ===== Asset rename modal (kebab menu → Rename) ===== */
+function AssetRenameModal({
+  open,
+  value,
+  saving,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  value: string;
+  saving: boolean;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !saving) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, saving, onClose]);
+
+  if (!open) return null;
+
+  const disabled = saving || value.trim().length === 0;
+
+  const modal = (
+    <div
+      className="med-modal-overlay"
+      role="presentation"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !saving) onClose();
+      }}
+    >
+      <form
+        className="med-modal-card med-album-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Rename asset"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!disabled) onSubmit();
+        }}
+      >
+        <div className="med-modal-header">
+          <div>
+            <span className="med-modal-title">Rename asset</span>
+            <p className="med-album-modal-sub">Update this asset's display title.</p>
+          </div>
+          <button
+            className="med-modal-close"
+            type="button"
+            onClick={onClose}
+            aria-label="Close rename modal"
+            disabled={saving}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="med-modal-body">
+          <label className="med-form-label" htmlFor="media-asset-rename">Title</label>
+          <input
+            id="media-asset-rename"
+            className="med-form-input"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            autoFocus
+            maxLength={200}
+            disabled={saving}
+          />
+        </div>
+
+        <div className="med-modal-footer">
+          <button className="med-btn med-btn-ghost" type="button" onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+          <button className="med-btn med-btn-primary" type="submit" disabled={disabled}>
+            {saving ? "Saving..." : "Save changes"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
+}
+
+/* ===== Asset move modal (kebab menu → Move to…) ===== */
+function AssetMoveModal({
+  asset,
+  albums,
+  onClose,
+  onMove,
+}: {
+  asset: MediaAsset;
+  albums: MediaAlbum[];
+  onClose: () => void;
+  onMove: (albumId: string) => void;
+}) {
+  const [target, setTarget] = useState<string>(asset.albumId ?? "");
+
+  // Valid move targets: folders in the asset's own institution, plus the shared library —
+  // same scoping AssetDetailPanel's Album Organization select already uses.
+  const options = buildAlbumOptions(
+    albums.filter((a) => a.institutionId === asset.institutionId || a.shared),
+  ).map((o) => ({ value: o.id, label: o.label }));
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  const unchanged = !target || target === (asset.albumId ?? "");
+
+  const modal = (
+    <div
+      className="med-modal-overlay"
+      role="presentation"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="med-modal-card med-album-modal" role="dialog" aria-modal="true" aria-label="Move asset">
+        <div className="med-modal-header">
+          <div>
+            <span className="med-modal-title">Move "{asset.title}"</span>
+            <p className="med-album-modal-sub">Choose the folder this asset should live inside.</p>
+          </div>
+          <button className="med-modal-close" type="button" onClick={onClose} aria-label="Close move modal">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <div className="med-modal-body">
+          <label className="med-form-label" htmlFor="move-asset-target">Destination</label>
+          <BrandedSelect
+            className="med-move-select"
+            value={target}
+            onChange={setTarget}
+            ariaLabel="Move destination folder"
+            options={options}
+          />
+        </div>
+        <div className="med-modal-footer">
+          <button className="med-btn med-btn-ghost" type="button" onClick={onClose}>Cancel</button>
+          <button
+            className="med-btn med-btn-primary"
+            type="button"
+            disabled={unchanged}
+            onClick={() => onMove(target)}
           >
             Move here
           </button>

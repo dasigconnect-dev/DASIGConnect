@@ -608,14 +608,16 @@
 
 /* ===== ASSET CARD ===== */
 .med-card {
+  position: relative;
   background: var(--med-surface-0);
   border: 1px solid var(--med-border);
   border-radius: var(--med-radius-md);
-  overflow: hidden;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.15s;
   animation: med-fade-up 0.4s ease both;
 }
+
+.med-card:focus-within { z-index: 20; }
 
 .med-card:hover {
   transform: translateY(-2px);
@@ -732,6 +734,12 @@
   aspect-ratio: 16 / 10;
   position: relative;
   overflow: hidden;
+  /* Corner-rounding used to come from .med-card's own overflow: hidden, but
+     the asset kebab menu's dropdown (in the meta row below) needs to be
+     able to overflow the card's box when open, so the thumb rounds its own
+     top corners instead. */
+  border-top-left-radius: var(--med-radius-md);
+  border-top-right-radius: var(--med-radius-md);
 }
 
 .med-card-thumb-img {
@@ -854,6 +862,35 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
+}
+
+.med-card-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+/* Asset card kebab menu — sits in the meta row (grid) or after the meta
+   column (list), so it never has to overlay the thumbnail where the
+   checkbox/institution-chip/video-badge/expand-button corners are already
+   spoken for. */
+.med-card-menu-wrap {
+  position: static;
+  flex: none;
+}
+.med-card-menu-wrap .med-folder-kebab {
+  opacity: 1;
+  position: static;
+}
+.med-card-menu-wrap .med-folder-menu {
+  top: auto;
+  right: 0;
+  bottom: 30px;
+}
+.med-card.list-view .med-card-menu-wrap .med-folder-menu {
+  bottom: auto;
+  top: 30px;
 }
 
 .med-card-date,
