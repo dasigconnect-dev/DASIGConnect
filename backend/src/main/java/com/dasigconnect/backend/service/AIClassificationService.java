@@ -118,6 +118,37 @@ public class AIClassificationService {
         generateAndStoreEmbeddingInternal(assetId, embeddingText);
     }
 
+    /**
+     * Retries only the embedding step(s) for an image asset that already has
+     * a classification (ai_classified_at set) but is stuck in PROCESSING/FAILED
+     * because a prior embedding call failed. Used by EmbeddingReconciliationJob
+     * instead of {@link #classifyAndEmbed} so a stuck asset isn't fully
+     * reclassified by Claude Vision on every 5-minute retry — that used to
+     * silently re-run classifyAndEmbed's classification step indefinitely for
+     * any asset stuck on the embedding side, which (before persistSuggestedTags
+     * was made to replace rather than accumulate) let one asset's AI tags grow
+     * to 374 over repeated retries.
+     */
+    public void retryStuckImageEmbedding(UUID assetId, String storageUrl) {
+        if (!generateAndStoreImageEmbedding(assetId, storageUrl)) {
+            mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
+            return;
+        }
+        List<String> tagLabels = assetTagRepository
+                .findByMediaAssetIdOrderByCreatedAtAsc(assetId)
+                .stream()
+                .map(AssetTag::getLabel)
+                .toList();
+        String embeddingText = mediaAssetRepository.findActiveById(assetId)
+                .map(asset -> buildEmbeddingText(asset, tagLabels))
+                .orElse(null);
+        if (embeddingText == null || !generateAndStoreEmbeddingInternal(assetId, embeddingText)) {
+            mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
+            return;
+        }
+        mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.READY.name());
+    }
+
     private boolean generateAndStoreEmbeddingInternal(UUID assetId, String embeddingText) {
         String embeddingJson;
         try {
