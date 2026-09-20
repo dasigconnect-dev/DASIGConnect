@@ -2412,6 +2412,12 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
 }
 
 .med-folder-card.list-view .med-folder-name {
+  /* Flex items default to min-width: auto, which refuses to shrink below the
+     text's natural unwrapped width -- without this, text-overflow: ellipsis
+     never actually gets a narrower box to truncate into, so a long title
+     just claims full width and pushes the meta column off-screen instead. */
+  flex: 1 1 auto;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
