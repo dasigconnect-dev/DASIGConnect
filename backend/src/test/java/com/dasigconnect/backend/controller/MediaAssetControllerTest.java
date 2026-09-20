@@ -198,6 +198,47 @@ class MediaAssetControllerTest {
                 .andExpect(jsonPath("$.data.deletedIds[0]").value(assetId.toString()));
     }
 
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void listTrash_asAdmin_returns200() throws Exception {
+        when(mediaAssetService.listTrash(any(), any(), eq(1), eq(25), any()))
+                .thenReturn(new com.dasigconnect.backend.model.dto.media.MediaAssetTrashListResponseDto(List.of(), 0, 1, 25));
+
+        mockMvc.perform(get("/api/v1/media-assets/trash"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(0));
+    }
+
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
+    void listTrash_asContributor_returns403() throws Exception {
+        mockMvc.perform(get("/api/v1/media-assets/trash"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void restore_asAdmin_returns200() throws Exception {
+        UUID assetId = UUID.randomUUID();
+        when(mediaAssetService.restore(eq(assetId), any()))
+                .thenReturn(MediaAssetDetailDto.from(mediaAsset(assetId), List.of(), List.of()));
+
+        mockMvc.perform(post("/api/v1/media-assets/trash/{id}/restore", assetId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(assetId.toString()));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void purgeTrash_asAdmin_returns204() throws Exception {
+        UUID assetId = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/v1/media-assets/trash/{id}", assetId))
+                .andExpect(status().isNoContent());
+
+        verify(mediaAssetService).purgeTrashAsset(eq(assetId), any());
+    }
+
     private static MediaAsset mediaAsset(UUID id) {
         MediaAsset asset = new MediaAsset();
         asset.setId(id);

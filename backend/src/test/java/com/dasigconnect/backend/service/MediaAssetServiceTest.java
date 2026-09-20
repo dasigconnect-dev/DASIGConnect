@@ -750,6 +750,56 @@ class MediaAssetServiceTest {
         assertEquals(404, ex.getStatusCode().value());
     }
 
+    @Test
+    void listTrash_nonAdmin_throwsForbidden() {
+        assertThrows(ResponseStatusException.class,
+                () -> mediaAssetService.listTrash("", null, 1, 25, user(UUID.randomUUID(), "contributor", UUID.randomUUID())));
+    }
+
+    @Test
+    void listTrash_admin_returnsPage() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, UUID.randomUUID(), UUID.randomUUID());
+        asset.setDeletedAt(Instant.now());
+        asset.setDeletedByUserId(UUID.randomUUID());
+        when(mediaAssetRepository.findTrashPage(anyBoolean(), anyCollection(), anyString(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(asset)));
+
+        var result = mediaAssetService.listTrash("", null, 1, 25, user(UUID.randomUUID(), "admin", null));
+        assertEquals(1, result.getTotalCount());
+        assertEquals(assetId, result.getItems().get(0).getId());
+    }
+
+    @Test
+    void restore_admin_setsStatusReadyAndClearsDeletedAt() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, UUID.randomUUID(), UUID.randomUUID());
+        asset.setDeletedAt(Instant.now());
+        asset.setDeletedByUserId(UUID.randomUUID());
+        when(mediaAssetRepository.findTrashedById(assetId)).thenReturn(Optional.of(asset));
+        when(mediaAssetRepository.save(any(MediaAsset.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var result = mediaAssetService.restore(assetId, user(UUID.randomUUID(), "admin", null));
+        assertEquals(assetId, result.getId());
+        assertNull(asset.getDeletedAt());
+        assertNull(asset.getDeletedByUserId());
+        assertEquals(com.dasigconnect.backend.model.entity.MediaAssetStatus.READY, asset.getStatus());
+        verify(mediaAssetRepository).save(asset);
+    }
+
+    @Test
+    void purgeTrashAsset_admin_deletesStorageAndPurgesProfile() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = asset(assetId, UUID.randomUUID(), UUID.randomUUID());
+        asset.setDeletedAt(Instant.now());
+        when(mediaAssetRepository.findTrashedById(assetId)).thenReturn(Optional.of(asset));
+
+        mediaAssetService.purgeTrashAsset(assetId, user(UUID.randomUUID(), "admin", null));
+
+        verify(mediaStorage).deletePublicObject(asset.getStorageUrl());
+        verify(mediaAssetRepository).purgeAiProfile(assetId);
+    }
+
     private static MediaAlbum album(UUID id, UUID institutionId, MediaAlbum parent) {
         MediaAlbum album = new MediaAlbum();
         album.setId(id);

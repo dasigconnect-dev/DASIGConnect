@@ -27,9 +27,11 @@ import com.dasigconnect.backend.model.dto.media.MediaAssetAlbumRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetRenameRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetBulkDeleteResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetBulkTrashRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetDetailDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetHistoryEntryDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetListResponseDto;
+import com.dasigconnect.backend.model.dto.media.MediaAssetTrashListResponseDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlRequestDto;
 import com.dasigconnect.backend.model.dto.media.MediaAssetUploadUrlResponseDto;
@@ -227,4 +229,58 @@ public class MediaAssetController {
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(mediaAssetService.bulkDelete(dto, user)));
     }
+
+    @GetMapping("/trash")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<MediaAssetTrashListResponseDto>> listTrash(
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) UUID institutionId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "25") int pageSize,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(
+                mediaAssetService.listTrash(query, institutionId, page, pageSize, user)));
+    }
+
+    @PostMapping("/trash/{id}/restore")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<MediaAssetDetailDto>> restore(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.restore(id, user)));
+    }
+
+    @PostMapping("/trash/bulk-restore")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<List<UUID>>> bulkRestore(
+            @Valid @RequestBody MediaAssetBulkTrashRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.bulkRestore(dto.getAssetIds(), user)));
+    }
+
+    @DeleteMapping("/trash/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> purgeTrash(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        mediaAssetService.purgeTrashAsset(id, user);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/trash/bulk-purge")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<List<UUID>>> bulkPurgeTrash(
+            @Valid @RequestBody MediaAssetBulkTrashRequestDto dto,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.bulkPurgeTrash(dto.getAssetIds(), user)));
+    }
+
+    @PostMapping("/trash/empty")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<Integer>> emptyTrash(
+            @RequestParam(required = false) UUID institutionId,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(mediaAssetService.emptyTrash(institutionId, user)));
+    }
 }
+

@@ -454,12 +454,15 @@ public class SubmissionService {
         Submission submission = loadOwnedSubmission(submissionId, user);
 
         if (submission.getStatus() != SubmissionStatus.draft
-                && submission.getStatus() != SubmissionStatus.needs_revision) {
+                && submission.getStatus() != SubmissionStatus.needs_revision
+                && submission.getStatus() != SubmissionStatus.rejected) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Only DRAFT or NEEDS_REVISION submissions can be submitted. Current status: "
+                    "Only DRAFT, NEEDS_REVISION, or REJECTED submissions can be submitted. Current status: "
                     + submission.getStatus());
         }
 
+        boolean wasRejected = submission.getStatus() == SubmissionStatus.rejected;
+        boolean wasRevision = submission.getStatus() == SubmissionStatus.needs_revision;
         boolean fastTrack = submission.isFastTrack();
 
         // A Standard post always needs a scheduled time — the guard-rail switch
@@ -537,17 +540,28 @@ public class SubmissionService {
 
         submission.setStatus(SubmissionStatus.pending);
         submission.setSubmittedAt(Instant.now());
+        if (wasRejected) {
+            submission.setRejectionReason(null);
+        }
         submission = submissionRepository.save(submission);
+
+        java.util.Map<String, String> auditDetails = new java.util.HashMap<>();
+        if (fastTrack) {
+            auditDetails.put("fastTrack", "true");
+        } else if (submission.getScheduledAt() != null) {
+            auditDetails.put("scheduledAt", submission.getScheduledAt().toString());
+        }
+        if (wasRejected) {
+            auditDetails.put("resubmittedFrom", "rejected");
+        } else if (wasRevision) {
+            auditDetails.put("resubmittedFrom", "needs_revision");
+        }
 
         auditLogService.record(
                 entityManager.getReference(User.class, user.userId()),
                 "SUBMISSION_SUBMITTED", null, null,
                 submissionId,
-                fastTrack
-                        ? Map.of("fastTrack", "true")
-                        : submission.getScheduledAt() != null
-                        ? Map.of("scheduledAt", submission.getScheduledAt().toString())
-                        : Map.of());
+                auditDetails);
 
         // T-01 / T-11 — notify institution moderators via domain events
         if (eventPublisher != null) {
@@ -1140,13 +1154,19 @@ public class SubmissionService {
 
     private boolean isEditableStatus(Submission submission) {
         return submission.getStatus() == SubmissionStatus.draft
+                || submission.getStatus() == SubmissionStatus.needs_revision
+                || submission.getStatus() == SubmissionStatus.rejected;
+    }
+
+    private boolean isPrivateDraftStatus(Submission submission) {
+        return submission.getStatus() == SubmissionStatus.draft
                 || submission.getStatus() == SubmissionStatus.needs_revision;
     }
 
     private void assertReadAccess(Submission submission, JwtUserDetails user) {
         switch (user.role().toLowerCase()) {
             case "moderator", "admin" -> {
-                if (isEditableStatus(submission)
+                if (isPrivateDraftStatus(submission)
                         && !submission.getContributor().getId().equals(user.userId())) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied.");
                 }

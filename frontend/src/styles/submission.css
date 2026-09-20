@@ -1555,6 +1555,17 @@
   font-size: 12px;
   font-weight: 800;
 }
+.sub-readonly-note.is-rejected-note {
+  background: var(--sub-red-dim, #fef2f2);
+  border-color: var(--sub-red-bdr, #fecaca);
+  color: #dc2626;
+}
+:root[data-theme="dark"] .sub-readonly-note.is-rejected-note,
+:root:not([data-theme="light"]) .sub-readonly-note.is-rejected-note {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
 .sub-form-page-actions {
   display: flex;
   gap: 8px;
@@ -6081,6 +6092,69 @@ textarea.sub-finput {
   font-weight: 500;
 }
 
+/* Simple In-Editor Rejection Banner */
+.sub-rejection-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--sub-red-dim, #fef2f2);
+  border: 1px solid var(--sub-red-bdr, #fecaca);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+}
+
+:root[data-theme="dark"] .sub-rejection-banner,
+:root:not([data-theme="light"]) .sub-rejection-banner {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.sub-rejection-banner-icon {
+  color: #dc2626;
+  font-size: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+:root[data-theme="dark"] .sub-rejection-banner-icon,
+:root:not([data-theme="light"]) .sub-rejection-banner-icon {
+  color: #f87171;
+}
+
+.sub-rejection-banner-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sub-rejection-banner-content strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: #b91c1c;
+}
+
+:root[data-theme="dark"] .sub-rejection-banner-content strong,
+:root:not([data-theme="light"]) .sub-rejection-banner-content strong {
+  color: #fca5a5;
+}
+
+.sub-rejection-banner-content p {
+  margin: 0;
+  font-size: 13px;
+  color: #334155;
+  font-weight: 500;
+}
+
+:root[data-theme="dark"] .sub-rejection-banner-content p,
+:root:not([data-theme="light"]) .sub-rejection-banner-content p {
+  color: #cbd5e1;
+}
+
 /* Subtle Live Breathing / Pulsing Outline Animation for Requested Revisions */
 @keyframes subFieldPulse {
   0% {
@@ -6308,6 +6382,42 @@ section.sub-form-section.sub-field-pulse {
 .sub-unaddressed-revision-notice strong {
   font-weight: 700;
   color: #1877f2;
+}
+
+/* Infinite scroll & incremental pagination sentinel */
+.sub-load-more-sentinel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 16px;
+  color: var(--sub-muted, #64748b);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.sub-load-more-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--sub-border, #e2e8f0);
+  border-top-color: var(--sub-blue, #1877f2);
+  border-radius: 50%;
+  animation: sub-spin 0.75s linear infinite;
+}
+
+@keyframes sub-spin {
+  to { transform: rotate(360deg); }
+}
+
+.sub-list-end-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 16px 32px;
+  color: var(--sub-muted, #94a3b8);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
 }
 
 

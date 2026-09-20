@@ -457,4 +457,57 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
         LIMIT 5
         """, nativeQuery = true)
     List<String> findSampleFailedFilenames();
+
+    @Query(value = """
+        SELECT m FROM MediaAsset m
+        WHERE m.deletedAt IS NOT NULL
+          AND m.purgedAt IS NULL
+          AND (:networkWide = true OR m.institution.id IN :institutionIds)
+          AND (
+              :searchTerm = ''
+              OR LOWER(m.fileName) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(COALESCE(m.displayTitle, '')) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(m.assetCode) LIKE CONCAT('%', :searchTerm, '%')
+          )
+        """, countQuery = """
+        SELECT COUNT(m) FROM MediaAsset m
+        WHERE m.deletedAt IS NOT NULL
+          AND m.purgedAt IS NULL
+          AND (:networkWide = true OR m.institution.id IN :institutionIds)
+          AND (
+              :searchTerm = ''
+              OR LOWER(m.fileName) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(COALESCE(m.displayTitle, '')) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(m.assetCode) LIKE CONCAT('%', :searchTerm, '%')
+          )
+        """)
+    Page<MediaAsset> findTrashPage(
+            @Param("networkWide") boolean networkWide,
+            @Param("institutionIds") Collection<UUID> institutionIds,
+            @Param("searchTerm") String searchTerm,
+            Pageable pageable);
+
+    @Query("SELECT m FROM MediaAsset m WHERE m.id = :id AND m.deletedAt IS NOT NULL AND m.purgedAt IS NULL")
+    Optional<MediaAsset> findTrashedById(@Param("id") UUID id);
+
+    @Query(value = """
+        SELECT COUNT(m) FROM MediaAsset m
+        WHERE m.deletedAt IS NOT NULL
+          AND m.purgedAt IS NULL
+          AND (:networkWide = true OR m.institution.id IN :institutionIds)
+        """)
+    long countTrash(
+            @Param("networkWide") boolean networkWide,
+            @Param("institutionIds") Collection<UUID> institutionIds);
+
+    @Query(value = """
+        SELECT m FROM MediaAsset m
+        WHERE m.deletedAt IS NOT NULL
+          AND m.purgedAt IS NULL
+          AND (:networkWide = true OR m.institution.id IN :institutionIds)
+        """)
+    List<MediaAsset> findAllTrashed(
+            @Param("networkWide") boolean networkWide,
+            @Param("institutionIds") Collection<UUID> institutionIds);
 }
+
