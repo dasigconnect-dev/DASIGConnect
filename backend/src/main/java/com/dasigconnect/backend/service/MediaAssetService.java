@@ -155,20 +155,6 @@ public class MediaAssetService {
         return ids;
     }
 
-    /**
-     * UC-2.2 A2: the Network View banner tells a Moderator/Admin their session
-     * is being logged. Nothing ever actually wrote that log entry — this does,
-     * once per browser session (the frontend guards the repeat calls). Silently
-     * a no-op for a non-network role, so a stray or replayed call can't forge
-     * an audit entry for someone else's session.
-     */
-    public void logNetworkViewAccess(JwtUserDetails user) {
-        if (!isNetworkRole(user)) {
-            return;
-        }
-        recordAssetAudit(user, "MEDIA_NETWORK_VIEW_ACCESSED", null, Map.of());
-    }
-
     @Transactional(readOnly = true)
     public MediaAssetListResponseDto list(
             String query,
@@ -1132,7 +1118,6 @@ public class MediaAssetService {
         tag.setLabel(trimmedLabel);
         tag.setSource("manual");
         AssetTagDto saved = AssetTagDto.from(assetTagRepository.save(tag));
-        recordAssetAudit(user, "MEDIA_ASSET_TAG_ADDED", assetId, Map.of("label", trimmedLabel));
         return saved;
     }
 
@@ -1156,9 +1141,7 @@ public class MediaAssetService {
                         "At least one media tag is required — add a replacement before removing the last one.");
             }
         }
-        String label = tag.getLabel();
         assetTagRepository.delete(tag);
-        recordAssetAudit(user, "MEDIA_ASSET_TAG_REMOVED", assetId, Map.of("label", label));
     }
 
     public MediaAssetUploadUrlResponseDto createUploadUrl(MediaAssetUploadUrlRequestDto dto, JwtUserDetails user) {

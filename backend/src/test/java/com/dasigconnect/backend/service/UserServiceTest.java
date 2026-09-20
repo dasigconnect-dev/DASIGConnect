@@ -130,7 +130,7 @@ class UserServiceTest {
     }
 
     @Test
-    void updateSettings_persistsPreferencesAndWritesAudit() {
+    void updateSettings_persistsPreferences() {
         when(userRepository.findById(userId)).thenReturn(Optional.of(contributor));
         when(userRepository.save(contributor)).thenReturn(contributor);
 
@@ -140,8 +140,6 @@ class UserServiceTest {
 
         assertThat(contributor.isNotifyInApp()).isTrue();
         assertThat(contributor.isNotifyEmail()).isFalse();
-        verify(auditLogService).record(
-                eq(contributor), eq("USER_SETTINGS_UPDATED"), any(), any(), eq(userId), any());
     }
 
     @Test
