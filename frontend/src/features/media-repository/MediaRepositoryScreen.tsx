@@ -87,6 +87,19 @@ function getUserCacheScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
 }
 
+// Folders used to always sort by name regardless of the toolbar's sort
+// control, which only ever reordered files — at a folder-only view (0 items)
+// that made the control look completely inert. "Largest" maps to item count
+// since a folder has no byte size of its own.
+function sortAlbums(list: MediaAlbum[], sort: SortOption): MediaAlbum[] {
+  return [...list].sort((a, b) => {
+    if (sort === "newest") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    if (sort === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    if (sort === "size") return b.assetCount - a.assetCount;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 // PUT the file straight to object storage (Cloudflare R2) using XHR so we can
 // report real upload progress (fetch() cannot) and surface the actual HTTP
 // status from storage on failure.
@@ -405,10 +418,11 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   // Sub-folders directly under the folder being viewed (root = parentAlbumId null).
   const childAlbums = useMemo(
     () =>
-      albums
-        .filter((a) => (a.parentAlbumId ?? null) === (currentAlbumId ?? null))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [albums, currentAlbumId],
+      sortAlbums(
+        albums.filter((a) => (a.parentAlbumId ?? null) === (currentAlbumId ?? null)),
+        sort,
+      ),
+    [albums, currentAlbumId, sort],
   );
 
   // Root → current folder, for the breadcrumb.
@@ -587,11 +601,12 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const matchingAlbums = useMemo(
     () =>
       searchActive
-        ? albums
-            .filter((a) => a.name.toLowerCase().includes(searchTerm))
-            .sort((a, b) => a.name.localeCompare(b.name))
+        ? sortAlbums(
+            albums.filter((a) => a.name.toLowerCase().includes(searchTerm)),
+            sort,
+          )
         : [],
-    [albums, searchTerm, searchActive],
+    [albums, searchTerm, searchActive, sort],
   );
   const selectedAssets = useMemo(
     () => assets.filter((a) => checkedIds.has(a.id)),
