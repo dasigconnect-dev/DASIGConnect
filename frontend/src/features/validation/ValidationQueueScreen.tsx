@@ -70,6 +70,7 @@ import {
   useValidationQueue,
 } from "./hooks/useValidationQueue";
 import { useResolutionFailures } from "../../hooks/useResolutionFailures";
+import { useIncrementalPagination } from "../../hooks/useIncrementalPagination";
 import type { FailedPublication } from "../../api/resolutionApi";
 import ResolutionRetryModal from "./ResolutionRetryModal";
 import ManualPublishWorkflowPanel from "./ManualPublishWorkflowPanel";
@@ -471,6 +472,32 @@ export default function ValidationQueueScreen({
         return needsHistory ? -cmp : cmp;
       });
   }, [filter, needsHistory, queue, search, sortKey]);
+
+  const {
+    visibleItems: visibleQueue,
+    hasMore: hasMoreQueue,
+    totalCount: totalQueueCount,
+    sentinelRef: queueSentinelRef,
+  } = useIncrementalPagination(filteredQueue, {
+    pageSize: 15,
+    initialSize: 15,
+    resetDeps: [filter, search, sortKey],
+    selectedItemId: selectedId,
+    getItemId: (item) => (item as SubmissionSummary)?.id,
+  });
+
+  const {
+    visibleItems: visibleFailures,
+    hasMore: hasMoreFailures,
+    totalCount: totalFailuresCount,
+    sentinelRef: failuresSentinelRef,
+  } = useIncrementalPagination(filteredFailures, {
+    pageSize: 15,
+    initialSize: 15,
+    resetDeps: [search],
+    selectedItemId: selectedId,
+    getItemId: (item) => (item as FailedPublication)?.submissionId,
+  });
 
   const pendingCount = activeQueue.filter(
     (item) => normalizeStatus(item.status) === "pending",
@@ -1536,7 +1563,7 @@ export default function ValidationQueueScreen({
               )}
               {!failuresLoading &&
                 !failuresError &&
-                filteredFailures.map((item) => (
+                visibleFailures.map((item) => (
                   <button
                     className={`val-queue-item ${item.submissionId === selectedId ? "active" : ""}`}
                     key={item.submissionId}
@@ -1602,6 +1629,19 @@ export default function ValidationQueueScreen({
                     </div>
                   </button>
                 ))}
+
+              {hasMoreFailures && (
+                <div ref={failuresSentinelRef} className="val-load-more-sentinel">
+                  <div className="val-load-more-spinner" />
+                  <span>Loading more items...</span>
+                </div>
+              )}
+
+              {!hasMoreFailures && totalFailuresCount > 15 && (
+                <div className="val-queue-end-indicator">
+                  <span>Showing all {totalFailuresCount} failures</span>
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -1622,7 +1662,7 @@ export default function ValidationQueueScreen({
               )}
               {!loading &&
                 !error &&
-                filteredQueue.map((item) => (
+                visibleQueue.map((item) => (
                   <button
                     className={`val-queue-item ${item.id === selectedId ? "active" : ""} ${normalizeStatus(item.status) === "pending" ? deadlineTone(item.scheduledAt) : ""}`}
                     key={item.id}
@@ -1686,6 +1726,19 @@ export default function ValidationQueueScreen({
                     </div>
                   </button>
                 ))}
+
+              {hasMoreQueue && (
+                <div ref={queueSentinelRef} className="val-load-more-sentinel">
+                  <div className="val-load-more-spinner" />
+                  <span>Loading more items...</span>
+                </div>
+              )}
+
+              {!hasMoreQueue && totalQueueCount > 15 && (
+                <div className="val-queue-end-indicator">
+                  <span>Showing all {totalQueueCount} submissions</span>
+                </div>
+              )}
             </>
           )}
         </div>

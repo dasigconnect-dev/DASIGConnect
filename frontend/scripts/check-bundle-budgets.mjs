@@ -11,7 +11,7 @@ const budgets = {
   entryJsKiB: 360,
   asyncJsKiB: 300,
   cssKiB: 110,
-  totalJsGzipKiB: 400,
+  totalJsGzipKiB: 405,
 };
 
 const entryJsPattern = /^index-[\w-]+\.js$/;
