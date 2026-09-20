@@ -775,6 +775,34 @@
   text-transform: uppercase;
 }
 
+/* Opens the full-screen viewer on tap — double-click has no touch
+   equivalent, so this stays visible on every device rather than hover-only. */
+.med-card-expand {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--med-radius-full);
+  background: rgba(10, 22, 40, 0.75);
+  color: #fff;
+  cursor: pointer;
+}
+.med-card-expand:hover { background: rgba(10, 22, 40, 0.9); }
+
+.med-card-row-thumb .med-card-expand {
+  width: 18px;
+  height: 18px;
+  bottom: 2px;
+  right: 2px;
+}
+.med-card-row-thumb .med-card-expand svg { width: 10px; height: 10px; }
+
 /* Card body */
 .med-card-body {
   padding: 12px 16px;
@@ -3065,10 +3093,10 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
     display: none;
   }
   .med-folder-row-meta {
-    max-width: 64px;
+    max-width: 130px;
   }
   .med-card-row-meta {
-    max-width: 34%;
+    max-width: 46%;
   }
   .med-result-strip {
     flex-direction: row;

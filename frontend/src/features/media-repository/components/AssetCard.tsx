@@ -12,7 +12,7 @@ interface AssetCardProps {
   showInstitutionChip?: boolean;
   /** Single click / Enter — select the asset and show its detail panel. */
   onClick: () => void;
-  /** Double click — open the full-screen viewer. */
+  /** Double click (desktop) or the expand button (any device) — open the full-screen viewer. */
   onOpen?: () => void;
 }
 
@@ -51,6 +51,29 @@ export default function AssetCard({
     }
     onOpen?.();
   }
+
+  // Double-click has no touch equivalent, so this is the only way a mobile
+  // user can reach the full-screen viewer — always visible (not hover-only)
+  // for that reason, on both grid and list thumbnails.
+  const expandButton = onOpen && (
+    <button
+      type="button"
+      className="med-card-expand"
+      aria-label={`View ${asset.title} full size`}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (clickTimer.current) {
+          clearTimeout(clickTimer.current);
+          clickTimer.current = null;
+        }
+        onOpen();
+      }}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+      </svg>
+    </button>
+  );
 
   const checkbox = (
     <span className={`med-card-check${checked ? " checked" : ""}`} aria-hidden="true">
@@ -129,6 +152,7 @@ export default function AssetCard({
               </svg>
             </span>
           )}
+          {expandButton}
         </div>
 
         <div className="med-card-row-body">
@@ -189,6 +213,8 @@ export default function AssetCard({
             {institutionAbbr(asset.institutionName)}
           </span>
         )}
+
+        {expandButton}
       </div>
 
       <div className="med-card-body">
