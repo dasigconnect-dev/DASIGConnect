@@ -5,7 +5,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -13,6 +15,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import com.dasigconnect.backend.model.entity.FacebookPageToken;
+import com.dasigconnect.backend.repository.FacebookPageTokenRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
@@ -26,22 +30,31 @@ public class MessengerDeliveryService {
             .connectTimeout(Duration.ofSeconds(5))
             .build();
     private final boolean enabled;
-    private final String pageId;
-    private final String accessToken;
     private final String apiVersion;
+
+    // Messenger sends through the same Page Access Token used for publishing
+    // (a page token with pages_messaging carries Send API rights too), so
+    // this must resolve the same DB-driven active FacebookPageToken row that
+    // FacebookPublisherService uses (see CLAUDE.md's "connected Facebook Page
+    // is DB-driven, not env-driven") rather than a static env var — those env
+    // vars are a one-time bootstrap only and go stale the moment the token is
+    // reauthorized/rotated via System Health -> Tokens, silently breaking
+    // Messenger delivery while publishing keeps working fine.
+    private final TokenEncryptionService tokenEncryptionService;
+    private final FacebookPageTokenRepository pageTokenRepository;
 
     public MessengerDeliveryService(
             MessengerConnectionService connections,
             ObjectMapper objectMapper,
+            TokenEncryptionService tokenEncryptionService,
+            FacebookPageTokenRepository pageTokenRepository,
             @Value("${app.messenger.enabled:true}") boolean enabled,
-            @Value("${app.messenger.page-id:${app.facebook.page-id:}}") String pageId,
-            @Value("${app.messenger.page-access-token:${app.facebook.page-access-token:}}") String accessToken,
             @Value("${app.messenger.api-version:${app.facebook.api-version:v25.0}}") String apiVersion) {
         this.connections = connections;
         this.objectMapper = objectMapper;
+        this.tokenEncryptionService = tokenEncryptionService;
+        this.pageTokenRepository = pageTokenRepository;
         this.enabled = enabled;
-        this.pageId = pageId;
-        this.accessToken = accessToken;
         this.apiVersion = apiVersion;
     }
 
@@ -58,10 +71,29 @@ public class MessengerDeliveryService {
     }
 
     public boolean sendToPsid(String psid, String message) {
-        if (!enabled || pageId == null || pageId.isBlank() || accessToken == null || accessToken.isBlank()) {
+        if (!enabled) return false;
+        if (psid == null || psid.isBlank() || message == null || message.isBlank()) {
             return false;
         }
-        if (psid == null || psid.isBlank() || message == null || message.isBlank()) {
+        Optional<FacebookPageToken> active = pageTokenRepository.findFirstByIsActiveTrue();
+        if (active.isEmpty()) {
+            log.warn("Messenger delivery skipped: no active Facebook page token found.");
+            return false;
+        }
+        FacebookPageToken token = active.get();
+        if (token.getExpiresAt() != null && !token.getExpiresAt().isAfter(Instant.now())) {
+            log.warn("Messenger delivery skipped: Facebook page token expired at {}.", token.getExpiresAt());
+            return false;
+        }
+        String pageId = token.getPageId();
+        String accessToken;
+        try {
+            accessToken = tokenEncryptionService.decryptToken(token.getEncryptedToken());
+        } catch (Exception ex) {
+            log.error("Messenger delivery skipped: failed to decrypt Facebook page token: {}", ex.getMessage());
+            return false;
+        }
+        if (pageId == null || pageId.isBlank() || accessToken == null || accessToken.isBlank()) {
             return false;
         }
         try {
