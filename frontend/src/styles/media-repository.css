@@ -597,7 +597,12 @@
 }
 
 .med-grid.list-view {
-  grid-template-columns: 1fr;
+  /* Plain `1fr` is shorthand for `minmax(auto, 1fr)` -- the track's auto
+     minimum equals its items' min-content width, so a long folder/asset
+     name still forced the column wider than the viewport even after the
+     internal flex children were given min-width: 0. minmax(0, 1fr) removes
+     that floor so the track (and the row inside it) can actually shrink. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -632,6 +637,7 @@
   align-items: center;
   gap: 12px;
   padding: 8px 14px;
+  min-width: 0;
 }
 
 .med-card.list-view:hover {
@@ -2389,6 +2395,10 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
+  /* The card is itself a grid item of .med-grid.list-view; grid items also
+     default to min-width: auto, which floors this row at its min-content
+     width no matter what the flex children inside are told to do. */
+  min-width: 0;
 }
 
 .med-folder-card.list-view:hover {
