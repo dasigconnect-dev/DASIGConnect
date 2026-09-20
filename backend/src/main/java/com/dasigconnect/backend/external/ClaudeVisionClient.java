@@ -753,7 +753,7 @@ public class ClaudeVisionClient {
             Rules:
             - Classify based only on visual evidence.
             - ai_caption must be factual and neutral, not promotional.
-            - ai_tags must contain 8 to 15 searchable visual tags.
+            - ai_tags must contain 8 to 30 searchable visual tags.
             - Tags must describe visible subjects, objects, setting, style, or use case.
             - Do not identify private individuals by name.
             """;
@@ -787,9 +787,9 @@ public class ClaudeVisionClient {
             List<String> visualStyle = readStringArray(node, "visual_style", 15, 60);
             List<String> dominantColors = readStringArray(node, "dominant_colors", 10, 40);
             List<String> possibleUseCases = readStringArray(node, "possible_use_cases", 15, 80);
-            List<String> tags = readStringArray(node, "ai_tags", 15, 60);
+            List<String> tags = readStringArray(node, "ai_tags", 30, 60);
             if (tags.isEmpty()) {
-                tags = readStringArray(node, "suggestedTags", 15, 60);
+                tags = readStringArray(node, "suggestedTags", 30, 60);
             }
             List<String> excludedCategories = readStringArray(node, "excluded_categories", 15, 80);
 

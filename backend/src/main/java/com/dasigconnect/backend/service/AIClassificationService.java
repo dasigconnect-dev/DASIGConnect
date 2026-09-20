@@ -36,7 +36,7 @@ import java.util.UUID;
 public class AIClassificationService {
 
     private static final Logger log = LoggerFactory.getLogger(AIClassificationService.class);
-    private static final int MAX_AI_TAGS_TO_STORE = 15;
+    private static final int MAX_AI_TAGS_TO_STORE = 30;
     private static final DateTimeFormatter UPLOAD_MONTH_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM").withZone(ZoneOffset.UTC);
 
@@ -211,6 +211,17 @@ public class AIClassificationService {
         }
     }
 
+    /**
+     * Replaces this asset's AI-generated tags with the current classification
+     * run's output (bounded to MAX_AI_TAGS_TO_STORE by normalizeTags), rather
+     * than only adding to what's there. This used to be purely additive —
+     * exact-label dedup (DB unique constraint on (media_asset_id, label))
+     * blocked a re-run from re-inserting an identical label, but Claude's
+     * wording is not deterministic across calls ("Outdoor Event" one run,
+     * "outdoor gathering" the next), so every reclassification of the same
+     * asset just kept adding ~15-30 more rows with no ceiling — one asset in
+     * production had accumulated 374. Manual tags are untouched.
+     */
     private List<String> persistSuggestedTags(UUID assetId, Collection<String> suggestedTags) {
         if (suggestedTags == null || suggestedTags.isEmpty()) return List.of();
 
@@ -221,6 +232,10 @@ public class AIClassificationService {
         if (normalized.isEmpty()) return List.of();
 
         try {
+            assetTagRepository.deleteByMediaAssetIdAndSource(assetId, "ai_generated");
+            // A remaining match now can only be a manual tag (AI-sourced ones were
+            // just cleared) — skip it to avoid violating the (media_asset_id, label)
+            // unique constraint; the manual tag already covers that label.
             List<AssetTag> tagsToSave = normalized.stream()
                     .filter(label -> !assetTagRepository.existsByMediaAssetIdAndLabel(assetId, label))
                     .map(label -> {
@@ -231,9 +246,7 @@ public class AIClassificationService {
                         return tag;
                     })
                     .toList();
-            if (!tagsToSave.isEmpty()) {
-                assetTagRepository.saveAll(tagsToSave);
-            }
+            assetTagRepository.saveAll(tagsToSave);
         } catch (Exception e) {
             log.warn("Failed to persist AI tags for asset {}: {}", assetId, e.getMessage());
         }
