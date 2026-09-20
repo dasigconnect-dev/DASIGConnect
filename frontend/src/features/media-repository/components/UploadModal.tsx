@@ -429,6 +429,13 @@ export default function UploadModal({
   const effectiveInstName = effectiveInstId
     ? institutions.find((i) => i.id === effectiveInstId)?.name ?? ""
     : "";
+  // `institutionName` is the caller's own `user.inst`, which for a network-wide
+  // role (moderator/admin, no institution binding) is just an email-domain
+  // guess, not a real institution — never show it when we have a real
+  // resolved institution (`institutions` non-empty means the caller is a
+  // network browser). A contributor genuinely has one institution, so their
+  // `institutionName` prop is accurate and used as-is.
+  const footnoteInstitutionName = institutions.length === 0 ? institutionName : effectiveInstName;
   const newAlbumLocationLabel = currentAlbum
     ? `inside “${currentAlbum.name}”`
     : effectiveInstName
@@ -495,7 +502,7 @@ export default function UploadModal({
               <div className="med-dropzone-title">
                 Drop files here or <span className="med-dropzone-link">browse multiple assets</span>
               </div>
-              <div className="med-dropzone-sub">Upload directly to the institutional media library</div>
+              <div className="med-dropzone-sub">JPG, PNG, GIF, WEBP, MP4, MOV, WEBM · up to 50 MB each</div>
               <input
                 ref={inputRef}
                 type="file"
@@ -638,39 +645,12 @@ export default function UploadModal({
             <div className="med-upload-error">{inlineError || fileError}</div>
           )}
 
-          <div className="med-upload-specs">
-            <div className="med-spec-item">
-              <div className="med-spec-icon">
-                <i className="ti ti-photo" aria-hidden="true" />
-              </div>
-              <div className="med-spec-content">
-                <span className="med-spec-label">Accepted Formats</span>
-                <span className="med-spec-val">JPG, PNG, GIF, MP4, MOV, WEBP</span>
-              </div>
-            </div>
-            <div className="med-spec-item">
-              <div className="med-spec-icon">
-                <i className="ti ti-database" aria-hidden="true" />
-              </div>
-              <div className="med-spec-content">
-                <span className="med-spec-label">Max File Size</span>
-                <span className="med-spec-val">50 MB per asset</span>
-              </div>
-            </div>
-            <div className="med-spec-item">
-              <div className="med-spec-icon">
-                <i className="ti ti-sparkles" aria-hidden="true" />
-              </div>
-              <div className="med-spec-content">
-                <span className="med-spec-label">Classification</span>
-                <span className="med-spec-val">Auto AI tags on upload</span>
-              </div>
-            </div>
-          </div>
-
-          <p style={{ fontSize: 12, color: "var(--med-muted)", marginTop: 16, lineHeight: 1.6 }}>
-            Uploaded assets are scoped to the selected institution ({institutionName}) and immediately available in the Media Library. AI classification runs asynchronously and may take up to 60 seconds.
-          </p>
+          {selectedCount > 0 && (
+            <p className="med-upload-footnote">
+              {footnoteInstitutionName && <>Scoped to <strong>{footnoteInstitutionName}</strong> · </>}
+              AI tags apply automatically after upload
+            </p>
+          )}
         </div>
 
         <div className="med-modal-footer">

@@ -93,10 +93,23 @@ export default function AlbumCombobox({
           aria-expanded={open}
           role="combobox"
         />
-        <i
-          className="ti ti-chevron-down"
-          style={{ position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", color: "#6b7280", pointerEvents: "none" }}
-        />
+        <button
+          type="button"
+          disabled={readOnly}
+          aria-label={open ? "Close album list" : "Open album list"}
+          onClick={() => setOpen((prev) => !prev)}
+          style={{
+            position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: "24px", height: "24px", padding: 0, border: "none", background: "none",
+            color: "#6b7280", cursor: readOnly ? "default" : "pointer",
+          }}
+        >
+          <i
+            className="ti ti-chevron-down"
+            style={{ transition: "transform 0.15s ease", transform: open ? "rotate(180deg)" : "none" }}
+          />
+        </button>
       </div>
 
       {matchedBadge && (
