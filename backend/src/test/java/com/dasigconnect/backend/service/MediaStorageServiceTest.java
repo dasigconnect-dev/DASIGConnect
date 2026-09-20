@@ -30,7 +30,10 @@ import static org.mockito.Mockito.when;
  * Covers the R2-dev-URL-outage fix: getPublicUrl now points at this backend's
  * own proxy instead of R2 directly, and deletePublicObject must still resolve
  * an object key from both the new proxy format and old, already-stored URLs
- * (proxy switch is not retroactive without a data backfill).
+ * (proxy switch is not retroactive without a data backfill). Also covers the
+ * later app.r2.custom-domain-url option, which bypasses the backend proxy
+ * entirely (and this backend's own bandwidth with it) once a stable custom
+ * domain is attached to the R2 bucket via Cloudflare.
  */
 @ExtendWith(MockitoExtension.class)
 class MediaStorageServiceTest {
@@ -38,10 +41,14 @@ class MediaStorageServiceTest {
     @Mock S3Client s3Client;
 
     private MediaStorageService build(String r2PublicBaseUrl, String backendPublicBaseUrl) {
+        return build(r2PublicBaseUrl, backendPublicBaseUrl, "");
+    }
+
+    private MediaStorageService build(String r2PublicBaseUrl, String backendPublicBaseUrl, String customDomainUrl) {
         MediaStorageService service = new MediaStorageService(
                 "account-id", "https://account-id.r2.cloudflarestorage.com",
                 "access-key", "secret-key", "dasigconnect-media",
-                r2PublicBaseUrl, backendPublicBaseUrl);
+                r2PublicBaseUrl, backendPublicBaseUrl, customDomainUrl);
         ReflectionTestUtils.setField(service, "s3Client", s3Client);
         return service;
     }
@@ -53,6 +60,29 @@ class MediaStorageServiceTest {
         String url = service.getPublicUrl("media/inst-1/asset-1/photo.jpg");
 
         assertThat(url).isEqualTo("https://api.dasigconnect.com/api/v1/media-files/media/inst-1/asset-1/photo.jpg");
+    }
+
+    @Test
+    void getPublicUrl_whenCustomDomainConfigured_pointsAtItDirectly_bypassingTheBackendProxy() {
+        MediaStorageService service = build(
+                "https://pub-oldhash.r2.dev", "https://api.dasigconnect.com", "https://media.dasigconnect.org");
+
+        String url = service.getPublicUrl("media/inst-1/asset-1/photo.jpg");
+
+        assertThat(url).isEqualTo("https://media.dasigconnect.org/media/inst-1/asset-1/photo.jpg");
+    }
+
+    @Test
+    void deletePublicObject_customDomainFormat_stillExtractsKeyCorrectly() {
+        MediaStorageService service = build(
+                "https://pub-oldhash.r2.dev", "https://api.dasigconnect.com", "https://media.dasigconnect.org");
+
+        boolean result = service.deletePublicObject(
+                "https://media.dasigconnect.org/media/inst-1/asset-1/photo.jpg");
+
+        assertThat(result).isTrue();
+        verify(s3Client).deleteObject((DeleteObjectRequest) org.mockito.ArgumentMatchers.argThat(req ->
+                ((DeleteObjectRequest) req).key().equals("media/inst-1/asset-1/photo.jpg")));
     }
 
     @Test
