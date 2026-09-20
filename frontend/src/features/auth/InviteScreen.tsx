@@ -41,9 +41,6 @@ interface InviteScreenProps {
   onToggleConfirmPassword: () => void
   onActivate: () => void
   onBackToLogin: () => void
-  onResendExpired?: () => void
-  resending?: boolean
-  resendSuccess?: boolean
   showPassword: boolean
   showConfirmPassword: boolean
 }
@@ -69,9 +66,6 @@ export default function InviteScreen({
   onToggleConfirmPassword,
   onActivate,
   onBackToLogin,
-  onResendExpired,
-  resending = false,
-  resendSuccess = false,
   showPassword,
   showConfirmPassword,
 }: InviteScreenProps) {
@@ -133,39 +127,17 @@ export default function InviteScreen({
                   Invitation link has expired.
                 </strong>
                 This invitation token is no longer valid. Your account remains
-                in PENDING status. You can request a fresh invitation link below,
-                or contact your DASIG Moderator.
+                in PENDING status. Please contact your DASIG Administrator or
+                Moderator to request a new invitation link.
               </div>
             </div>
-            {resendSuccess && (
-              <div className="alert alert-ok" style={{ marginBottom: 14 }}>
-                <i className="ti ti-mail-check"></i>
-                <div>
-                  <strong style={{ display: 'block', marginBottom: 3, color: '#86EFAC' }}>
-                    New invitation link sent!
-                  </strong>
-                  A fresh invitation link has been dispatched to your email address. Please check your inbox.
-                </div>
-              </div>
-            )}
-            {onResendExpired && !resendSuccess && (
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={onResendExpired}
-                disabled={resending}
-                style={{ width: '100%', marginBottom: 10 }}
-              >
-                <i className="ti ti-send"></i> {resending ? 'Sending new link…' : 'Resend Invitation Link'}
-              </button>
-            )}
             <button
               type="button"
-              className="btn-ghost"
+              className="btn-primary"
               onClick={onBackToLogin}
               style={{ width: '100%' }}
             >
-              Return to Sign In
+              <i className="ti ti-login"></i> Return to Sign In
             </button>
           </div>
 

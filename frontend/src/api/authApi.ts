@@ -147,10 +147,6 @@ export function acceptInvitation(payload: AcceptInvitationPayload) {
   return api.post<LoginResponse>("/invitations/accept", payload);
 }
 
-export function resendExpiredInvitation(payload: { token?: string | null; email?: string | null }) {
-  return api.post<{ message: string }>("/invitations/resend-expired", payload);
-}
-
 export function getMe(signal?: AbortSignal) {
   return api.get<UserProfileResponse>("/me", { signal });
 }

@@ -347,58 +347,6 @@ public class InvitationService {
                 emailService.buildInvitationLink(rawToken));
     }
 
-    public void resendExpiredToken(String rawToken, String email) {
-        InvitationToken targetToken = null;
-        if (rawToken != null && !rawToken.isBlank()) {
-            String hash = TokenHashUtils.sha256Hex(normalizeRawToken(rawToken));
-            targetToken = invitationTokenRepository.findByTokenHash(hash).orElse(null);
-        }
-
-        String targetEmail = targetToken != null ? targetToken.getRecipientEmail() : (email != null ? email.trim().toLowerCase() : null);
-        if (targetEmail == null || targetEmail.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email or valid token is required.");
-        }
-
-        User user = userRepository.findByEmail(targetEmail).orElse(null);
-        if (user != null && user.getAccountState() == UserStatus.active) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Account is already active. Please sign in.");
-        }
-
-        UserRole role = targetToken != null ? targetToken.getAssignedRole() : (user != null ? user.getRole() : UserRole.contributor);
-        Institution institution = targetToken != null ? targetToken.getInstitution() : (user != null ? user.getInstitution() : null);
-
-        if (user != null && (user.getAccountState() == UserStatus.pending_email_undelivered
-                || user.getAccountState() == UserStatus.expired
-                || user.getAccountState() == UserStatus.cancelled)) {
-            user.setAccountState(UserStatus.pending);
-            userRepository.save(user);
-        }
-
-        Instant now = Instant.now();
-        invalidateOpenInvitations(targetEmail, now);
-
-        String freshRawToken = TokenHashUtils.generateRawToken();
-        String freshTokenHash = TokenHashUtils.sha256Hex(freshRawToken);
-
-        InvitationToken newToken = new InvitationToken();
-        newToken.setRecipientEmail(targetEmail);
-        newToken.setAssignedRole(role);
-        newToken.setInstitution(institution);
-        newToken.setTokenHash(freshTokenHash);
-        newToken.setExpiresAt(now.plus(Duration.ofHours(72)));
-        invitationTokenRepository.save(newToken);
-
-        try {
-            emailService.sendInvitationEmail(targetEmail, freshRawToken);
-        } catch (RuntimeException ex) {
-            if (user != null) {
-                user.setAccountState(UserStatus.pending_email_undelivered);
-                userRepository.save(user);
-            }
-            log.warn("Resend expired invitation email failed for {}: {}", targetEmail, ex.getMessage());
-        }
-    }
-
     public void cancel(UUID tokenId, JwtUserDetails requester) {
         InvitationToken token = invitationTokenRepository.findById(tokenId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invitation not found."));
