@@ -2275,6 +2275,76 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
 
 .med-folder-card.has-inst .med-folder-open { padding-top: 32px; }
 
+/* Folder tile — list view: a real horizontal table row instead of the grid
+   tile stretched full-width (the badge/logo used to stay absolutely
+   positioned in the corners, leaving a mostly-empty stretched card). */
+.med-folder-card.list-view {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.med-folder-card.list-view:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--med-surface-2);
+}
+
+.med-folder-row-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  padding: 0;
+}
+
+.med-folder-card.list-view .med-folder-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.med-folder-row-meta {
+  flex: none;
+  width: 96px;
+  font-size: 12px;
+  color: var(--med-muted);
+  text-align: right;
+}
+
+.med-folder-inst-badge.inline {
+  position: static;
+  flex: none;
+}
+
+.med-folder-row-logo {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  border-radius: var(--med-radius-sm);
+}
+
+.med-folder-row-logo.placeholder {
+  visibility: hidden;
+}
+
+.med-folder-card.list-view .med-folder-menu-wrap {
+  flex: none;
+}
+
+.med-folder-card.list-view .med-folder-kebab {
+  position: static;
+  opacity: 1;
+}
+
 /* Upload modal — dismissable "current folder" chip */
 .med-upload-current {
   display: flex;

@@ -1494,6 +1494,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
                             album={album}
                             animationDelay={Math.min(idx * 30, 240)}
                             canManage={canManageAlbum(album)}
+                            listView={listView}
                             {...albumInstitutionProps(album)}
                             onOpen={() => openFolder(album)}
                             onRename={() => void handleRenameAlbum(album)}
