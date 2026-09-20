@@ -690,10 +690,15 @@
 }
 
 .med-card-row-meta {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
   font-size: 12px;
   color: var(--med-muted);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
 }
 
 .med-card.list-view .med-video-badge.sm {
@@ -2386,11 +2391,15 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
 }
 
 .med-folder-row-meta {
-  flex: none;
-  width: 96px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 96px;
   font-size: 12px;
   color: var(--med-muted);
   text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .med-folder-inst-badge.inline {
@@ -3040,6 +3049,26 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   }
   .med-folder-name {
     font-size: 13.5px;
+  }
+  /* List-view rows: drop the least essential columns first (institution
+     logo/badge) so the name and item-count/date stay readable instead of
+     everything getting crushed — or, previously, hard-clipped mid-word by
+     .med-page's overflow-x: hidden since nothing was willing to shrink. */
+  .med-folder-card.list-view,
+  .med-card.list-view {
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .med-folder-row-logo,
+  .med-folder-inst-badge.inline,
+  .med-card-row-sub .med-inst-chip.inline {
+    display: none;
+  }
+  .med-folder-row-meta {
+    max-width: 64px;
+  }
+  .med-card-row-meta {
+    max-width: 34%;
   }
   .med-result-strip {
     flex-direction: row;
