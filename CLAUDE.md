@@ -63,7 +63,7 @@ or storage keys are needed on the client.
 DASIGConnect is a three-tier client-server system:
 
 ```text
-React SPA (Vercel) -> Spring Boot REST API (Render) -> Supabase PostgreSQL + pgvector
+React SPA (Vercel) -> Spring Boot REST API (Railway) -> Supabase PostgreSQL + pgvector
                                                      -> Cloudflare R2 (S3-compatible object storage)
                                                      -> Facebook Graph API
                                                      -> Anthropic Claude
@@ -171,7 +171,7 @@ Same situation as Module 2's numbering note above: this file's pre-existing "UC-
 
 ### Known cross-cutting gaps
 
-- Backend deployment runtime needs team-owned SMTP credentials configured on Render (infrastructure, not code).
+- Backend deployment runtime needs team-owned SMTP credentials configured on Railway (infrastructure, not code).
 - Per-type media file size limits (25 MB image / 500 MB video) require a Supabase Pro upgrade; the free tier is capped at 50 MB for all file types.
 
 See `TASKS.md` for the detailed task checklist.
