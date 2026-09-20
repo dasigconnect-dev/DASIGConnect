@@ -760,6 +760,78 @@ class InvitationServiceTest {
                 .isEqualTo(403);
     }
 
+    // ── expireOverdueInvitations ─────────────────────────────────────────
+    @Test
+    void expireOverdueInvitations_pendingUserWithExpiredUnusedToken_transitionsToExpired() {
+        User pendingUser = new User();
+        pendingUser.setEmail("invitee@example.com");
+        pendingUser.setAccountState(UserStatus.pending);
+        when(userRepository.findByAccountStateIn(any())).thenReturn(List.of(pendingUser));
+
+        InvitationToken staleToken = buildToken(false, true); // unused, expired
+        when(invitationTokenRepository.findFirstByRecipientEmailIgnoreCaseOrderByCreatedAtDesc("invitee@example.com"))
+                .thenReturn(Optional.of(staleToken));
+
+        int expired = invitationService.expireOverdueInvitations();
+
+        assertThat(expired).isEqualTo(1);
+        assertThat(pendingUser.getAccountState()).isEqualTo(UserStatus.expired);
+        verify(userRepository).save(pendingUser);
+    }
+
+    @Test
+    void expireOverdueInvitations_pendingUserWithLiveToken_isLeftAlone() {
+        User pendingUser = new User();
+        pendingUser.setEmail("invitee@example.com");
+        pendingUser.setAccountState(UserStatus.pending);
+        when(userRepository.findByAccountStateIn(any())).thenReturn(List.of(pendingUser));
+
+        InvitationToken liveToken = buildToken(false, false); // unused, not expired
+        when(invitationTokenRepository.findFirstByRecipientEmailIgnoreCaseOrderByCreatedAtDesc("invitee@example.com"))
+                .thenReturn(Optional.of(liveToken));
+
+        int expired = invitationService.expireOverdueInvitations();
+
+        assertThat(expired).isZero();
+        assertThat(pendingUser.getAccountState()).isEqualTo(UserStatus.pending);
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void expireOverdueInvitations_pendingUserWhoseExpiredTokenWasResent_isLeftAlone() {
+        // The stale token itself expired, but a resend already issued a fresh
+        // one -- the most-recent-token lookup must find that new one, not the
+        // dead original, so a resent invite is never mistakenly expired.
+        User pendingUser = new User();
+        pendingUser.setEmail("invitee@example.com");
+        pendingUser.setAccountState(UserStatus.pending);
+        when(userRepository.findByAccountStateIn(any())).thenReturn(List.of(pendingUser));
+
+        InvitationToken freshToken = buildToken(false, false);
+        when(invitationTokenRepository.findFirstByRecipientEmailIgnoreCaseOrderByCreatedAtDesc("invitee@example.com"))
+                .thenReturn(Optional.of(freshToken));
+
+        int expired = invitationService.expireOverdueInvitations();
+
+        assertThat(expired).isZero();
+        assertThat(pendingUser.getAccountState()).isEqualTo(UserStatus.pending);
+    }
+
+    @Test
+    void expireOverdueInvitations_userWithNoInvitationHistory_isLeftAlone() {
+        User pendingUser = new User();
+        pendingUser.setEmail("legacy@example.com");
+        pendingUser.setAccountState(UserStatus.pending);
+        when(userRepository.findByAccountStateIn(any())).thenReturn(List.of(pendingUser));
+        when(invitationTokenRepository.findFirstByRecipientEmailIgnoreCaseOrderByCreatedAtDesc("legacy@example.com"))
+                .thenReturn(Optional.empty());
+
+        int expired = invitationService.expireOverdueInvitations();
+
+        assertThat(expired).isZero();
+        assertThat(pendingUser.getAccountState()).isEqualTo(UserStatus.pending);
+    }
+
     private static JwtUserDetails principal(String role, UUID institutionId) {
         return new JwtUserDetails(UUID.randomUUID(), role + "@example.com", role, institutionId);
     }

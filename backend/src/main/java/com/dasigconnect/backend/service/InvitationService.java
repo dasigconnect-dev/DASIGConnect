@@ -496,6 +496,43 @@ public class InvitationService {
                 "Only admins can send invitations");
     }
 
+    private static final java.util.Set<UserStatus> EXPIRABLE_ACCOUNT_STATES =
+            java.util.EnumSet.of(UserStatus.pending, UserStatus.pending_email_undelivered);
+
+    /**
+     * A token's own 72h {@code expires_at} only ever blocks {@link #acceptInvitation},
+     * it never updates the invited user's row -- so a pending account used to show
+     * "Pending" in every User Management table forever, indistinguishable from an
+     * invite sent five minutes ago, even long after its invitation window had
+     * passed. Called from {@code InvitationExpiryJob} (hourly): for every pending /
+     * pending_email_undelivered user whose most recently issued invitation is both
+     * unused and past its expiry — i.e. no live invite currently covers them —
+     * flips the account to {@code expired}, matching what {@link UserDto}, the
+     * delete/removal rules, and the User Management filters already assume this
+     * status means. A user with no invitation history at all (legacy data) is left
+     * untouched. Returns the number of accounts transitioned.
+     */
+    @Transactional
+    public int expireOverdueInvitations() {
+        Instant now = Instant.now();
+        int expiredCount = 0;
+        for (User user : userRepository.findByAccountStateIn(EXPIRABLE_ACCOUNT_STATES)) {
+            if (user.getEmail() == null) {
+                continue;
+            }
+            InvitationToken latest = invitationTokenRepository
+                    .findFirstByRecipientEmailIgnoreCaseOrderByCreatedAtDesc(user.getEmail())
+                    .orElse(null);
+            if (latest == null || latest.getUsedAt() != null || latest.getExpiresAt().isAfter(now)) {
+                continue;
+            }
+            user.setAccountState(UserStatus.expired);
+            userRepository.save(user);
+            expiredCount++;
+        }
+        return expiredCount;
+    }
+
     private void invalidateOpenInvitations(String recipientEmail, Instant now) {
         invitationTokenRepository
                 .findByRecipientEmailAndUsedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(recipientEmail, now)
