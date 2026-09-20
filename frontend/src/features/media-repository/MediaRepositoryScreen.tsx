@@ -1164,6 +1164,25 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   }
 
   /**
+   * The grid/list only ever holds the lightweight list DTO, which has no
+   * `usedIn` — that's only populated by the detail endpoint (the panel path
+   * always fetches it via openAsset() first). Calling openSingleDeleteModal
+   * directly from a kebab menu with that bare grid asset would always read
+   * an empty usedIn and show "Safe to delete" even when the asset actually
+   * has an active reference, only to have the backend reject it with a 409.
+   * Refetch full detail first so the tier (free/warning/blocked) is accurate.
+   */
+  async function openAssetDeleteModalFresh(asset: MediaAsset) {
+    if (!canDeleteAsset(asset)) return;
+    try {
+      const detail = await fetchMediaAssetDetail(asset.id);
+      openSingleDeleteModal(detail);
+    } catch {
+      openSingleDeleteModal(asset);
+    }
+  }
+
+  /**
    * Aggregates the real per-asset tier across the selection instead of
    * hardcoding "warning" — that used to force every bulk delete through the
    * single-asset WarningBody's copy with an always-empty usage list (a
@@ -1571,7 +1590,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
                             onDownload={() => void downloadAsset(asset)}
                             onRename={() => openAssetRenameModal(asset)}
                             onMove={() => setAssetMoveTarget(asset)}
-                            onDelete={() => openSingleDeleteModal(asset)}
+                            onDelete={() => void openAssetDeleteModalFresh(asset)}
                           />
                         ))}
                       </div>
