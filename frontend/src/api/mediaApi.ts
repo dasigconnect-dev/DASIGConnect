@@ -149,7 +149,6 @@ function rawToAsset(raw: MediaAssetPageResponse["items"][0]): MediaAsset {
     status: "ready" as const,
     albumId: raw.albumId ?? undefined,
     albumName: raw.albumName ?? undefined,
-    aiTags: raw.aiCategory ? [{ label: raw.aiCategory, confidence: 100 }] : [],
   };
 }
 

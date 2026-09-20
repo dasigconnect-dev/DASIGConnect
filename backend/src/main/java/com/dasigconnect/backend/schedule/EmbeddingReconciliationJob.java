@@ -72,7 +72,14 @@ public class EmbeddingReconciliationJob {
         for (MediaAsset asset : pending) {
             try {
                 if (asset.getFileType() != null && asset.getFileType().isImage()) {
-                    aiClassificationService.classifyAndEmbed(asset.getId(), asset.getStorageUrl());
+                    if (asset.getAiClassifiedAt() == null) {
+                        aiClassificationService.classifyAndEmbed(asset.getId(), asset.getStorageUrl());
+                    } else {
+                        // Already classified, just stuck on embedding — retrying the
+                        // full classifyAndEmbed here would call Claude Vision again
+                        // for no reason every 5 minutes until the embedding succeeds.
+                        aiClassificationService.retryStuckImageEmbedding(asset.getId(), asset.getStorageUrl());
+                    }
                     continue;
                 }
 

@@ -100,4 +100,68 @@ class AIClassificationServiceTest {
         verify(mediaAssetRepository).updateStatus(assetId, MediaAssetStatus.FAILED.name());
         verify(mediaAssetRepository, never()).updateStatus(eq(assetId), eq(MediaAssetStatus.READY.name()));
     }
+
+    @Test
+    void retryStuckImageEmbedding_bothStepsSucceed_marksReady() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        asset.setAiClassifiedAt(java.time.Instant.now());
+
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(claudeVisionClient.prepareImageForEmbedding(anyString()))
+                .thenReturn(new ClaudeVisionClient.PreparedImage(new byte[]{1, 2, 3}, "image/jpeg"));
+        when(voyageAIClient.embedImageDocument(any(), anyString())).thenReturn("[0.1]");
+        when(voyageAIClient.multimodalModelName()).thenReturn("voyage-multimodal");
+        when(voyageAIClient.embedDocument(anyString())).thenReturn("[0.2]");
+        when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
+
+        service().retryStuckImageEmbedding(assetId, "https://example.com/a.jpg");
+
+        // Claude Vision must NOT be called again — that's the whole point of this path.
+        verify(claudeVisionClient, never()).classifyMedia(any());
+        verify(mediaAssetRepository).updateStatus(assetId, MediaAssetStatus.READY.name());
+        verify(mediaAssetRepository, never()).updateStatus(assetId, MediaAssetStatus.FAILED.name());
+    }
+
+    @Test
+    void retryStuckImageEmbedding_imageEmbeddingStillFails_marksFailedWithoutCallingClaude() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        asset.setAiClassifiedAt(java.time.Instant.now());
+
+        when(claudeVisionClient.prepareImageForEmbedding(anyString()))
+                .thenThrow(new RuntimeException("fetch failed"));
+
+        service().retryStuckImageEmbedding(assetId, "https://example.com/a.jpg");
+
+        verify(claudeVisionClient, never()).classifyMedia(any());
+        verify(mediaAssetRepository).updateStatus(assetId, MediaAssetStatus.FAILED.name());
+        verify(mediaAssetRepository, never()).updateStatus(eq(assetId), eq(MediaAssetStatus.READY.name()));
+    }
+
+    @Test
+    void classifyAndEmbed_reclassifyingAnAsset_replacesRatherThanAccumulatesAiTags() {
+        // Regression: persistSuggestedTags used to only skip an exact-label
+        // duplicate, so a second classifyAndEmbed run for the same asset just
+        // kept adding more ai_generated rows forever (one production asset hit
+        // 374). It must now clear the prior run's AI tags before inserting.
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+
+        when(claudeVisionClient.classifyMedia(any())).thenReturn(classification());
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(claudeVisionClient.prepareImageForEmbedding(anyString()))
+                .thenReturn(new ClaudeVisionClient.PreparedImage(new byte[]{1, 2, 3}, "image/jpeg"));
+        when(voyageAIClient.embedImageDocument(any(), anyString())).thenReturn("[0.1]");
+        when(voyageAIClient.multimodalModelName()).thenReturn("voyage-multimodal");
+        when(voyageAIClient.embedDocument(anyString())).thenReturn("[0.2]");
+        when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
+
+        service().classifyAndEmbed(assetId, "https://example.com/a.jpg");
+
+        verify(assetTagRepository).deleteByMediaAssetIdAndSource(assetId, "ai_generated");
+    }
 }

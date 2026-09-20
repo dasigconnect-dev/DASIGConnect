@@ -597,20 +597,27 @@
 }
 
 .med-grid.list-view {
-  grid-template-columns: 1fr;
+  /* Plain `1fr` is shorthand for `minmax(auto, 1fr)` -- the track's auto
+     minimum equals its items' min-content width, so a long folder/asset
+     name still forced the column wider than the viewport even after the
+     internal flex children were given min-width: 0. minmax(0, 1fr) removes
+     that floor so the track (and the row inside it) can actually shrink. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
 /* ===== ASSET CARD ===== */
 .med-card {
+  position: relative;
   background: var(--med-surface-0);
   border: 1px solid var(--med-border);
   border-radius: var(--med-radius-md);
-  overflow: hidden;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.15s;
   animation: med-fade-up 0.4s ease both;
 }
+
+.med-card:focus-within { z-index: 20; }
 
 .med-card:hover {
   transform: translateY(-2px);
@@ -623,18 +630,102 @@
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
 }
 
-/* List view card */
-.med-grid.list-view .med-card {
-  display: grid;
-  grid-template-columns: 120px 1fr auto;
+/* List view card — a real horizontal row (own JSX branch in AssetCard, not
+   a CSS reflow of the grid-tile markup): small square thumb, single-line
+   title + code/album/institution sub-line, date/size/type at the right —
+   same shape as AlbumCard's list-view row. */
+.med-card.list-view {
+  display: flex;
   align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  min-width: 0;
 }
 
-.med-grid.list-view .med-card-meta {
+.med-card.list-view:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--med-surface-2);
+}
+
+.med-card-row-thumb {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--med-radius-sm);
+  overflow: hidden;
+  background: var(--med-surface-2);
+}
+
+.med-card-row-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  padding-right: 16px;
+  gap: 2px;
+}
+
+.med-card-row-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--med-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.med-card-row-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--med-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.med-card-row-sub .med-card-code { margin-bottom: 0; }
+.med-card-row-sub .med-card-album.inline {
+  margin: 0;
+  overflow: visible;
+  text-overflow: initial;
+  white-space: nowrap;
+}
+.med-card-row-sub .med-inst-chip.inline {
+  position: static;
+  flex: none;
+}
+
+.med-card-row-meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  font-size: 12px;
+  color: var(--med-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.med-card.list-view .med-video-badge.sm {
+  position: absolute;
+  bottom: 3px;
+  left: 3px;
+  padding: 2px;
+  gap: 0;
+}
+
+.med-card.list-view .med-card-check {
+  position: static;
+  opacity: 1;
+  flex: none;
+  border-color: var(--med-border);
+  background: transparent;
+}
+.med-card.list-view .med-card-check.checked {
+  border-color: var(--med-blue);
+  background: var(--med-blue);
 }
 
 /* Card thumbnail */
@@ -643,11 +734,12 @@
   aspect-ratio: 16 / 10;
   position: relative;
   overflow: hidden;
-}
-
-.med-grid.list-view .med-card-thumb {
-  aspect-ratio: 4 / 3;
-  height: 70px;
+  /* Corner-rounding used to come from .med-card's own overflow: hidden, but
+     the asset kebab menu's dropdown (in the meta row below) needs to be
+     able to overflow the card's box when open, so the thumb rounds its own
+     top corners instead. */
+  border-top-left-radius: var(--med-radius-md);
+  border-top-right-radius: var(--med-radius-md);
 }
 
 .med-card-thumb-img {
@@ -696,6 +788,34 @@
   text-transform: uppercase;
 }
 
+/* Opens the full-screen viewer on tap — double-click has no touch
+   equivalent, so this stays visible on every device rather than hover-only. */
+.med-card-expand {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--med-radius-full);
+  background: rgba(10, 22, 40, 0.75);
+  color: #fff;
+  cursor: pointer;
+}
+.med-card-expand:hover { background: rgba(10, 22, 40, 0.9); }
+
+.med-card-row-thumb .med-card-expand {
+  width: 18px;
+  height: 18px;
+  bottom: 2px;
+  right: 2px;
+}
+.med-card-row-thumb .med-card-expand svg { width: 10px; height: 10px; }
+
 /* Card body */
 .med-card-body {
   padding: 12px 16px;
@@ -742,6 +862,35 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
+}
+
+.med-card-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+/* Asset card kebab menu — sits in the meta row (grid) or after the meta
+   column (list), so it never has to overlay the thumbnail where the
+   checkbox/institution-chip/video-badge/expand-button corners are already
+   spoken for. */
+.med-card-menu-wrap {
+  position: static;
+  flex: none;
+}
+.med-card-menu-wrap .med-folder-kebab {
+  opacity: 1;
+  position: static;
+}
+.med-card-menu-wrap .med-folder-menu {
+  top: auto;
+  right: 0;
+  bottom: 30px;
+}
+.med-card.list-view .med-card-menu-wrap .med-folder-menu {
+  bottom: auto;
+  top: 30px;
 }
 
 .med-card-date,
@@ -2275,6 +2424,89 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
 
 .med-folder-card.has-inst .med-folder-open { padding-top: 32px; }
 
+/* Folder tile — list view: a real horizontal table row instead of the grid
+   tile stretched full-width (the badge/logo used to stay absolutely
+   positioned in the corners, leaving a mostly-empty stretched card). */
+.med-folder-card.list-view {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  /* The card is itself a grid item of .med-grid.list-view; grid items also
+     default to min-width: auto, which floors this row at its min-content
+     width no matter what the flex children inside are told to do. */
+  min-width: 0;
+}
+
+.med-folder-card.list-view:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--med-surface-2);
+}
+
+.med-folder-row-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  padding: 0;
+}
+
+.med-folder-card.list-view .med-folder-name {
+  /* Flex items default to min-width: auto, which refuses to shrink below the
+     text's natural unwrapped width -- without this, text-overflow: ellipsis
+     never actually gets a narrower box to truncate into, so a long title
+     just claims full width and pushes the meta column off-screen instead. */
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.med-folder-row-meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 96px;
+  font-size: 12px;
+  color: var(--med-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.med-folder-inst-badge.inline {
+  position: static;
+  flex: none;
+}
+
+.med-folder-row-logo {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  border-radius: var(--med-radius-sm);
+}
+
+.med-folder-row-logo.placeholder {
+  visibility: hidden;
+}
+
+.med-folder-card.list-view .med-folder-menu-wrap {
+  flex: none;
+}
+
+.med-folder-card.list-view .med-folder-kebab {
+  position: static;
+  opacity: 1;
+}
+
 /* Upload modal — dismissable "current folder" chip */
 .med-upload-current {
   display: flex;
@@ -2636,6 +2868,36 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   color: var(--med-muted);
 }
 
+/* Tag dropdown (AI tags / Your tags) — collapsed by default so a
+   tag-heavy asset doesn't stretch the whole detail panel into a long
+   scroll; the panel itself scrolls internally once expanded. */
+.med-tag-dropdown {
+  margin: 12px 0 6px;
+}
+
+.med-tag-dropdown-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: 600 10px var(--med-ff-body);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--med-muted);
+}
+
+.med-tag-dropdown-toggle:hover { color: var(--med-text-2); }
+
+.med-tag-dropdown-panel {
+  margin-top: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
 /* Activity timeline */
 .med-history-loading {
   font: 400 12px var(--med-ff-body);
@@ -2866,6 +3128,26 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
   }
   .med-folder-name {
     font-size: 13.5px;
+  }
+  /* List-view rows: drop the least essential columns first (institution
+     logo/badge) so the name and item-count/date stay readable instead of
+     everything getting crushed — or, previously, hard-clipped mid-word by
+     .med-page's overflow-x: hidden since nothing was willing to shrink. */
+  .med-folder-card.list-view,
+  .med-card.list-view {
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .med-folder-row-logo,
+  .med-folder-inst-badge.inline,
+  .med-card-row-sub .med-inst-chip.inline {
+    display: none;
+  }
+  .med-folder-row-meta {
+    max-width: 130px;
+  }
+  .med-card-row-meta {
+    max-width: 46%;
   }
   .med-result-strip {
     flex-direction: row;

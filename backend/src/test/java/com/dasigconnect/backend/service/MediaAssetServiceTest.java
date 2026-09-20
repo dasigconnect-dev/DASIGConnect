@@ -416,7 +416,7 @@ class MediaAssetServiceTest {
         MediaAlbum album = album(albumId, UUID.randomUUID(), null);
         when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album));
         when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(0L);
-        when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(0L);
+        when(mediaAssetRepository.countVisibleAssetsByAlbum(albumId)).thenReturn(0L);
 
         mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "admin", null));
 
@@ -484,7 +484,7 @@ class MediaAssetServiceTest {
         UUID albumId = UUID.randomUUID();
         when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album(albumId, institutionId, null)));
         when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(0L);
-        when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(5L);
+        when(mediaAssetRepository.countVisibleAssetsByAlbum(albumId)).thenReturn(5L);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
                 () -> mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "admin", null)));
@@ -499,7 +499,7 @@ class MediaAssetServiceTest {
         MediaAlbum album = album(albumId, institutionId, null);
         when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album));
         when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(0L);
-        when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(0L);
+        when(mediaAssetRepository.countVisibleAssetsByAlbum(albumId)).thenReturn(0L);
 
         mediaAssetService.deleteAlbum(albumId, user(UUID.randomUUID(), "admin", null));
 
@@ -515,7 +515,7 @@ class MediaAssetServiceTest {
         album.setCreatedBy(userId);
         when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album));
         when(mediaAlbumRepository.countByParentAlbumId(albumId)).thenReturn(0L);
-        when(mediaAssetRepository.countByMediaAlbumIdAndDeletedAtIsNull(albumId)).thenReturn(0L);
+        when(mediaAssetRepository.countVisibleAssetsByAlbum(albumId)).thenReturn(0L);
 
         mediaAssetService.deleteAlbum(albumId, user(userId, "contributor", institutionId));
 
