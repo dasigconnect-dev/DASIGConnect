@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { User } from "../../types/auth.types";
@@ -1722,6 +1723,20 @@ function AlbumNameModal({
   onClose: () => void;
   onSubmit: () => void;
 }) {
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !saving) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, saving, onClose]);
+
   if (!open) return null;
 
   const showInstitutionPicker = mode === "create" && institutions.length > 0;
@@ -1734,8 +1749,14 @@ function AlbumNameModal({
   const actionLabel = mode === "create" ? "Create folder" : "Save changes";
   const disabled = saving || value.trim().length === 0 || (showInstitutionPicker && !institutionId);
 
-  return (
-    <div className="med-modal-overlay" role="presentation">
+  const modal = (
+    <div
+      className="med-modal-overlay"
+      role="presentation"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !saving) onClose();
+      }}
+    >
       <form
         className="med-modal-card med-album-modal"
         role="dialog"
@@ -1809,6 +1830,8 @@ function AlbumNameModal({
       </form>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 }
 
 /* ===== Skeleton Loading ===== */
@@ -1909,13 +1932,32 @@ function MoveAlbumModal({
     return { parentAlbumId: value, institutionId: albumById.get(value)?.institutionId ?? null };
   }
 
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
   const resolved = resolve(target);
   const unchanged =
     resolved.parentAlbumId === (album.parentAlbumId ?? null) &&
     resolved.institutionId === album.institutionId;
 
-  return (
-    <div className="med-modal-overlay" role="presentation">
+  const modal = (
+    <div
+      className="med-modal-overlay"
+      role="presentation"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="med-modal-card med-album-modal" role="dialog" aria-modal="true" aria-label="Move folder">
         <div className="med-modal-header">
           <div>
@@ -1953,6 +1995,8 @@ function MoveAlbumModal({
       </div>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 }
 
 /* ===== Error State ===== */
