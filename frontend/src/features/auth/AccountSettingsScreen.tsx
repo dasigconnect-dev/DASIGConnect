@@ -1,5 +1,6 @@
 import "../../styles/dasig-loader.css";
 import "../../styles/settings.css";
+import "../../styles/user-management.css";
 import {
   Component,
   lazy,
@@ -31,6 +32,7 @@ import { queryKeys } from "../../lib/queryKeys";
 import { firstPasswordError, getPasswordRules } from "../../lib/passwordPolicy";
 import { watermarkConfigurationQueryOptions } from "../../hooks/useWatermarkConfiguration";
 import { currentProfileQueryOptions } from "../../hooks/useCurrentProfile";
+import ConfirmDialog from "../user-management/components/ConfirmDialog";
 import {
   getTourPreferences,
   toggleToursEnabled,
@@ -142,6 +144,7 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
   const [linkCode, setLinkCode] = useState<MessengerLinkCode | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [messengerExpanded, setMessengerExpanded] = useState(false);
+  const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
 
   // Onboarding / Feature Guides State
   const [toursEnabled, setToursEnabled] = useState(() => getTourPreferences().enabled);
@@ -451,8 +454,12 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
     }
   }
 
-  async function handleDisconnectMessenger() {
-    if (!window.confirm("Are you sure you want to disconnect Facebook Messenger alerts?")) return;
+  function handleDisconnectMessenger() {
+    setDisconnectConfirmOpen(true);
+  }
+
+  async function confirmDisconnectMessenger() {
+    setDisconnectConfirmOpen(false);
     setSaving("messenger");
     try {
       await disconnectMessenger();
@@ -1083,6 +1090,16 @@ export default function AccountSettingsScreen({ user, onProfileUpdated }: Props)
           )}
         </div>
       </div>
+      {disconnectConfirmOpen && (
+        <ConfirmDialog
+          title="Disconnect Facebook Messenger?"
+          message="Facebook Messenger alerts will stop for this account. You can reconnect Messenger again from Account Settings."
+          confirmLabel={saving === "messenger" ? "Disconnecting..." : "Disconnect"}
+          dangerous
+          onConfirm={() => void confirmDisconnectMessenger()}
+          onCancel={() => setDisconnectConfirmOpen(false)}
+        />
+      )}
     </div>
   );
 }
