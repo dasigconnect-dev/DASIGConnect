@@ -34,7 +34,7 @@
   font-family: var(--ff-body);
   font-size: 14px;
   line-height: 1.45;
-  transition: grid-template-columns 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: grid-template-columns 0.28s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.22s ease;
 }
 
 .val-page.is-queue-collapsed {
@@ -81,28 +81,42 @@
 .val-guide-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--val-border);
-  background: var(--val-surface-2);
-  color: var(--val-text-2);
-  font-size: 12px;
-  font-weight: 600;
+  gap: 6px;
+  height: 38px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid var(--val-border, #dde3ee);
+  background: var(--val-surface, #ffffff);
+  color: var(--val-text-2, #475569);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 650;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   line-height: 1;
+  white-space: nowrap;
 }
 
 .val-guide-btn:hover {
-  background: var(--val-blue-dim);
-  border-color: var(--val-blue-bdr);
-  color: var(--val-blue);
+  background: var(--val-blue-dim, #eff6ff);
+  border-color: var(--val-blue-bdr, #bfdbfe);
+  color: var(--val-blue, #1877f2);
+  transform: translateY(-0.5px);
+  box-shadow: 0 2px 6px rgba(24, 119, 242, 0.12);
 }
 
 .val-guide-btn i {
-  font-size: 14px;
-  color: var(--val-blue);
+  font-size: 15px;
+  color: var(--val-blue, #1877f2);
+}
+
+.val-page:not(.is-queue-expanded) .val-queue-header .val-guide-btn,
+.val-review-toolbar .val-guide-btn {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
 }
 
 .val-guide-pill-btn {
@@ -227,77 +241,133 @@
   font-weight: 800;
 }
 
+/* Toolbar card & filter controls */
+.val-toolbar-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.val-toolbar-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .val-tabs {
   display: flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 8px;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  margin-bottom: 12px;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 2px 6px;
+  background: transparent;
+  border: none;
+  margin-bottom: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.val-tabs::-webkit-scrollbar {
+  height: 4px;
+}
+
+.val-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.val-tabs::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
 }
 
 .val-tabs button {
-  border: 0;
-  /* Equal-share, like the original 4-tab row — the icon-only .val-tabs-more-btn
-     is fixed-width instead of also sharing this, which is what makes room
-     for it without squeezing these back to needing to shrink/scroll. */
-  flex: 1;
-  border-radius: 6px;
-  padding: 6px 4px;
-  background: transparent;
+  border: 1px solid transparent;
+  flex: 1 1 0px;
+  min-width: fit-content;
+  border-radius: 999px;
+  padding: 6px 14px;
+  min-height: 34px;
+  height: 34px;
+  background: #f1f5f9;
   color: #64748b;
   font: inherit;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
   white-space: nowrap;
-  transition: all 0.15s ease;
+  transition: all 0.16s ease;
+  box-sizing: border-box;
 }
 
 .val-tabs button:hover:not(.active) {
-  color: #1e293b;
-  background: rgba(255, 255, 255, 0.5);
+  color: #1877f2;
+  border-color: #bfdbfe;
+  background: #eff6ff;
 }
 
 .val-tabs button.active {
-  background: #ffffff;
-  color: #1877f2;
-  font-weight: 700;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  background: #1877f2;
+  color: #ffffff;
+  border-color: #1877f2;
+  font-weight: 650;
+  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
 }
 
 .val-tab-count {
   display: inline-flex;
   flex-shrink: 0;
-  min-width: 16px;
-  height: 16px;
+  min-width: 19px;
+  height: 19px;
   align-items: center;
   justify-content: center;
-  padding: 0 4px;
-  border-radius: 10px;
+  padding: 0 5px;
+  border-radius: 999px;
   background: #e2e8f0;
   color: #64748b;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
+  line-height: 1;
+  transition: all 0.16s ease;
 }
 
-.val-tabs .active .val-tab-count {
-  background: #eff6ff;
+.val-tabs button:hover:not(.active) .val-tab-count {
+  background: #dbeafe;
   color: #1877f2;
+}
+
+.val-tabs button.active .val-tab-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
 }
 
 /* Full status row shown in the desktop expanded (no-selection) queue view */
 .val-tabs--expanded {
-  flex-wrap: wrap;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  width: 100%;
 }
 
 .val-tabs--expanded button {
-  flex: 1 1 112px;
+  flex: 1 1 0px;
+  min-width: fit-content;
 }
 
 /* Overflow "More" dropdown shown once the sidebar narrows (a selection is
@@ -308,19 +378,15 @@
 }
 
 .val-tabs-more-btn {
-  /* Icon-only (a chevron, no label) — overrides the `.val-tabs button { flex: 1; }`
-     base rule so it stays a small fixed square instead of sharing the row
-     equally with the pinned tabs, which is what was squeezing/cutting it off
-     in a narrow (sidebar-width) tab row. */
   flex: 0 0 auto;
   min-width: 0;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   margin: 0;
-  border: 0;
-  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
   padding: 0;
-  background: transparent;
+  background: #f1f5f9;
   color: #64748b;
   font: inherit;
   cursor: pointer;
@@ -328,10 +394,6 @@
   align-items: center;
   justify-content: center;
   transition: all 0.15s ease;
-  /* Without this, some browsers still paint native button chrome (a subtle
-     background/border/shadow) on top of the transparent background above,
-     making this look like a separate floating chip instead of blending into
-     the same tab-pill row as the other tabs. */
   appearance: none;
   -webkit-appearance: none;
   box-shadow: none;
@@ -339,8 +401,9 @@
 }
 
 .val-tabs-more-btn:hover {
-  color: #1e293b;
-  background: rgba(255, 255, 255, 0.5);
+  color: #1877f2;
+  border-color: #bfdbfe;
+  background: #eff6ff;
 }
 
 .val-tabs-more-btn:focus-visible {
@@ -349,10 +412,11 @@
 }
 
 .val-tabs-more-btn.active {
-  background: #ffffff;
-  color: #1877f2;
+  background: #1877f2;
+  color: #ffffff;
+  border-color: #1877f2;
   font-weight: 700;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
 }
 
 .val-tabs-more-btn i {
@@ -360,23 +424,17 @@
 }
 
 .val-tabs-menu {
-  /* Portaled to <body> (ValidationQueueScreen) so it escapes .val-queue-panel's
-     overflow:hidden instead of being clipped by it; top/left are set inline
-     from the trigger button's measured position. Because it renders outside
-     .val-page's subtree, it can't see that scope's --val-* custom properties
-     (CSS variables cascade through the DOM tree, not the React tree) — every
-     var() below needs an explicit fallback or it resolves to nothing. */
   position: fixed;
   z-index: 1000;
   min-width: 200px;
   background: var(--val-surface, #ffffff);
   border: 1px solid var(--val-border, #dde3ee);
-  border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(12, 29, 61, 0.12);
-  padding: 4px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(12, 29, 61, 0.12);
+  padding: 6px;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
 .val-tabs-menu button {
@@ -385,8 +443,8 @@
   justify-content: space-between;
   gap: 10px;
   border: 0;
-  border-radius: 6px;
-  padding: 8px 10px;
+  border-radius: 999px;
+  padding: 7px 12px;
   background: transparent;
   color: var(--val-text-2, #334e6b);
   font: inherit;
@@ -394,34 +452,42 @@
   font-weight: 600;
   cursor: pointer;
   text-align: left;
+  transition: all 0.15s ease;
 }
 
 .val-tabs-menu button:hover {
   background: var(--val-surface-2, #f7f9fd);
-}
-
-.val-tabs-menu button.active {
-  background: var(--val-blue-dim, #eff6ff);
   color: var(--val-blue, #1877f2);
 }
 
+.val-tabs-menu button.active {
+  background: var(--val-blue, #1877f2);
+  color: #ffffff;
+}
+
 .val-tabs-menu-count {
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 10px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 999px;
   background: #e2e8f0;
   color: #64748b;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  line-height: 1;
+}
+
+.val-tabs-menu button:hover:not(.active) .val-tabs-menu-count {
+  background: #dbeafe;
+  color: #1877f2;
 }
 
 .val-tabs-menu button.active .val-tabs-menu-count {
-  background: #eff6ff;
-  color: #1877f2;
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
 }
 
 /* Base styling for the queue-badge pill (mobile topbar; breakpoint-specific
@@ -513,21 +579,24 @@
 .val-sort-row button {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  border: 0;
-  border-radius: 5px;
+  gap: 5px;
+  border: 1px solid transparent;
+  border-radius: 999px;
   background: transparent;
   color: var(--val-muted);
-  padding: 4px 8px;
+  padding: 5px 12px;
   font: inherit;
-  font-size: 11.5px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .val-sort-row button.active {
   color: var(--val-blue);
   background: var(--val-blue-dim);
+  border-color: var(--val-blue-bdr);
+  font-weight: 700;
 }
 
 .val-queue-list {
@@ -540,16 +609,21 @@
   position: relative;
   width: 100%;
   border: 1px solid var(--val-border, #e2e8f0);
-  border-radius: 10px;
+  border-radius: 14px;
   background: #ffffff;
-  padding: 12px 14px;
+  padding: 14px 16px;
   margin-bottom: 8px;
   text-align: left;
   color: var(--val-text);
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(12, 29, 61, 0.03);
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.2s ease,
+              background-color 0.2s ease,
+              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   animation: valItemIn 0.24s ease both;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 @keyframes valItemIn {
@@ -558,15 +632,23 @@
 }
 
 .val-queue-item:hover {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  box-shadow: 0 2px 8px rgba(12, 29, 61, 0.05);
+  background: #ffffff;
+  border-color: #93c5fd;
+  box-shadow: 0 4px 14px rgba(24, 119, 242, 0.08);
+  transform: translateY(-2px);
+}
+
+.val-queue-item:active {
+  transform: scale(0.985);
+  box-shadow: 0 1px 3px rgba(24, 119, 242, 0.06);
+  transition: transform 0.08s ease;
 }
 
 .val-queue-item.active {
   background: #eff6ff;
-  border-color: #93c5fd;
-  box-shadow: 0 2px 10px rgba(24, 119, 242, 0.08);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18), 0 4px 14px rgba(24, 119, 242, 0.1);
+  transform: translateY(-1px);
 }
 
 .val-queue-item.urgent::before,
@@ -752,6 +834,18 @@
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+  animation: valPanelFadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes valPanelFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 /* Desktop-only utility strip (Show Queue / Content Guide) at the top of the
@@ -2802,25 +2896,202 @@
 @media (min-width: 861px) {
   .val-page.is-queue-expanded {
     grid-template-columns: 1fr;
+    background: var(--d-bg, #f4f6f8);
+    height: calc(100vh - 56px);
+    overflow: hidden;
   }
   .val-page.is-queue-expanded .val-queue-panel {
     border-right: none;
+    background: transparent;
+    overflow: hidden;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
   }
   .val-page.is-queue-expanded .val-queue-header {
-    padding-left: max(24px, calc(50% - 490px));
-    padding-right: max(24px, calc(50% - 490px));
+    background: transparent;
+    border-bottom: none;
+    padding: 32px 32px 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .val-page.is-queue-expanded .val-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .val-page.is-queue-expanded .val-title-row h1 {
+    font-size: 28px;
+    font-weight: 650;
+    color: var(--val-text, #0c1d3d);
+    letter-spacing: -0.01em;
+  }
+  .val-page.is-queue-expanded .val-title-row p {
+    font-size: 14px;
+    color: var(--val-muted, #6a7f9a);
+    margin-top: 4px;
+  }
+  /* The Toolbar Card in expanded mode */
+  .val-page.is-queue-expanded .val-toolbar-card {
+    background: #ffffff;
+    border: 1px solid var(--val-border, #dde3ee);
+    border-radius: 14px;
+    box-shadow: 0 1px 4px rgba(12, 29, 61, 0.04);
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    gap: 14px;
+  }
+  .val-page.is-queue-expanded .val-tabs--expanded {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    width: 100%;
+    box-sizing: border-box;
+    gap: 8px;
+    padding-bottom: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  .val-page.is-queue-expanded .val-tabs--expanded button {
+    flex: 1 1 0px;
+    min-width: fit-content;
+    min-height: 36px;
+    height: 36px;
+    padding: 0 16px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .val-page.is-queue-expanded .val-toolbar-controls {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    border-top: 1px solid #f1f5f9;
+    padding-top: 14px;
+  }
+  .val-page.is-queue-expanded .val-search {
+    flex: 1 1 320px;
+    max-width: 440px;
+  }
+  .val-page.is-queue-expanded .val-search input {
+    height: 38px;
+    border-radius: 999px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    font-size: 13px;
+    padding: 0 36px;
+  }
+  .val-page.is-queue-expanded .val-search input:focus {
+    background: #ffffff;
+    border-color: var(--val-blue, #1877f2);
   }
   .val-page.is-queue-expanded .val-sort-row {
-    padding-left: max(24px, calc(50% - 490px));
-    padding-right: max(24px, calc(50% - 490px));
+    border-bottom: none;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .val-page.is-queue-expanded .val-sort-row span {
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+  }
+  .val-page.is-queue-expanded .val-sort-row button {
+    border-radius: 999px;
+    padding: 6px 14px;
+    height: 34px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.16s ease;
+  }
+  .val-page.is-queue-expanded .val-sort-row button:hover {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    color: #1877f2;
+  }
+  .val-page.is-queue-expanded .val-sort-row button.active {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1877f2;
+    font-weight: 700;
+    box-shadow: 0 1px 3px rgba(24, 119, 242, 0.12);
   }
   .val-page.is-queue-expanded .val-queue-list {
-    max-width: 980px;
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 32px 80px;
     width: 100%;
-    margin: 0 auto;
+    max-width: 100%;
+    margin: 0;
+    box-sizing: border-box;
+  }
+  .val-page.is-queue-expanded .val-queue-item {
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    background: #ffffff;
+    border: 1px solid var(--val-border, #e2e8f0);
+    box-shadow: 0 1px 4px rgba(12, 29, 61, 0.04);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.2s ease,
+                background-color 0.2s ease,
+                box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .val-page.is-queue-expanded .val-queue-item:hover {
+    background: #ffffff;
+    border-color: #93c5fd;
+    box-shadow: 0 6px 20px rgba(24, 119, 242, 0.09);
+    transform: translateY(-2px);
+  }
+  .val-page.is-queue-expanded .val-queue-item:active {
+    transform: scale(0.985);
+    box-shadow: 0 1px 4px rgba(24, 119, 242, 0.06);
+    transition: transform 0.08s ease;
+  }
+  .val-page.is-queue-expanded .val-qi-title {
+    font-size: 15px;
+    font-weight: 650;
   }
   .val-page.is-queue-expanded .val-review-panel {
     display: none;
+  }
+}
+
+@media (max-width: 1100px) {
+  .val-page.is-queue-expanded .val-queue-header {
+    padding: 24px 20px 0;
+  }
+  .val-page.is-queue-expanded .val-queue-list {
+    padding: 0 20px 60px;
+  }
+}
+
+@media (max-width: 768px) {
+  .val-page.is-queue-expanded .val-queue-header {
+    padding: 16px 12px 0;
+  }
+  .val-page.is-queue-expanded .val-queue-list {
+    padding: 0 12px 60px;
+  }
+  .val-page.is-queue-expanded .val-toolbar-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .val-page.is-queue-expanded .val-search {
+    max-width: 100%;
   }
 }
 

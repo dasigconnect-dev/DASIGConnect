@@ -22,13 +22,6 @@ export const validationQueueTourSteps: TourStep[] = [
     icon: "ti ti-list-check",
     placement: "right",
   },
-  {
-    target: ".val-review-panel",
-    title: "Review & Moderation Center",
-    description: "Select a post from the list to preview Facebook rendering, inspect contributor details, start a review, and record decisions.",
-    icon: "ti ti-layout-sidebar-right",
-    placement: "left",
-  },
 ];
 
 export const validationReviewTourSteps: TourStep[] = [
