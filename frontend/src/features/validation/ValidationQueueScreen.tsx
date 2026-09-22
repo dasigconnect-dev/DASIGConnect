@@ -104,8 +104,6 @@ type QueueFilter =
   | "failed";
 /** Tabs whose submissions only exist in the history query, not the active queue. */
 const HISTORY_ONLY_STATUSES = new Set<QueueFilter>(["scheduled", "published", "rejected"]);
-/** Tabs shown directly in the narrow sidebar once a submission is selected; the rest move into the overflow dropdown. */
-const PINNED_TABS: QueueFilter[] = ["all", "pending", "in_review", "failed"];
 const TAB_ORDER: Array<{ key: QueueFilter; label: string }> = [
   { key: "all", label: "All" },
   { key: "pending", label: "Pending" },
@@ -318,10 +316,6 @@ export default function ValidationQueueScreen({
   } | null>(null);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [mobileView, setMobileView] = useState<"queue" | "review">("queue");
-  const [tabMenuOpen, setTabMenuOpen] = useState(false);
-  const [tabMenuPos, setTabMenuPos] = useState<{ top: number; left: number } | null>(null);
-  const tabMenuTriggerRef = useRef<HTMLDivElement | null>(null);
-  const tabMenuPanelRef = useRef<HTMLDivElement | null>(null);
   const [showDetails, setShowDetails] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("submitted");
   const [search, setSearch] = useState("");
@@ -529,7 +523,6 @@ export default function ValidationQueueScreen({
   };
   const hasActiveSelection = Boolean(selectedId);
   const isQueueExpanded = isDesktop && !hasActiveSelection;
-  const isOverflowTabActive = !PINNED_TABS.includes(filter);
 
   const selectedLockVerification = selected && lockVerification?.submissionId === selected.id
     ? lockVerification.status
@@ -602,38 +595,9 @@ export default function ValidationQueueScreen({
     };
   }, []);
 
-  useEffect(() => {
-    if (!tabMenuOpen) return;
-    function handleClickOutside(e: MouseEvent) {
-      const target = e.target as Node;
-      if (
-        tabMenuTriggerRef.current?.contains(target) ||
-        tabMenuPanelRef.current?.contains(target)
-      ) {
-        return;
-      }
-      setTabMenuOpen(false);
-    }
-    // The menu is portaled to <body> as position:fixed at coordinates
-    // captured on open — close it on scroll/resize rather than tracking and
-    // re-measuring, since it's a short-lived popover.
-    function handleClose() {
-      setTabMenuOpen(false);
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    window.addEventListener("scroll", handleClose, true);
-    window.addEventListener("resize", handleClose);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      window.removeEventListener("scroll", handleClose, true);
-      window.removeEventListener("resize", handleClose);
-    };
-  }, [tabMenuOpen]);
-
   function handleFilterChange(next: QueueFilter) {
     if (next === filter) return;
     setMobileView("queue");
-    setTabMenuOpen(false);
     setSortKey(next === "all" ? "submitted" : "publish_slot");
     setFilter(next);
     setShowHistoryModal(false);
@@ -1417,13 +1381,19 @@ export default function ValidationQueueScreen({
             </div>
           </div>
 
-          <div
-            className={`val-tabs ${isQueueExpanded ? "val-tabs--expanded" : ""}`}
-            role="tablist"
-            aria-label="Queue filters"
-          >
-            {(isQueueExpanded ? TAB_ORDER : TAB_ORDER.filter((tab) => PINNED_TABS.includes(tab.key))).map(
-              (tab) => (
+          <div className="val-toolbar-card">
+            <div
+              className={`val-tabs ${isQueueExpanded ? "val-tabs--expanded" : ""}`}
+              role="tablist"
+              aria-label="Queue filters"
+              tabIndex={0}
+              onWheel={(e) => {
+                if (e.deltaY !== 0) {
+                  e.currentTarget.scrollLeft += e.deltaY;
+                }
+              }}
+            >
+              {TAB_ORDER.map((tab) => (
                 <button
                   key={tab.key}
                   className={filter === tab.key ? "active" : ""}
@@ -1435,113 +1405,52 @@ export default function ValidationQueueScreen({
                   <span className="val-tab-label">{tab.label}</span>
                   <span className="val-tab-count">{tabCounts[tab.key]}</span>
                 </button>
-              ),
-            )}
-            {!isQueueExpanded && (
-              <div className="val-tabs-more" ref={tabMenuTriggerRef}>
-                <button
-                  type="button"
-                  className={`val-tabs-more-btn ${isOverflowTabActive ? "active" : ""}`}
-                  aria-haspopup="true"
-                  aria-expanded={tabMenuOpen}
-                  title={
-                    isOverflowTabActive
-                      ? (TAB_ORDER.find((tab) => tab.key === filter)?.label ?? "More filters")
-                      : "More filters"
-                  }
-                  aria-label={
-                    isOverflowTabActive
-                      ? `More filters (currently ${TAB_ORDER.find((tab) => tab.key === filter)?.label ?? filter})`
-                      : "More filters"
-                  }
-                  onClick={() => {
-                    if (tabMenuOpen) {
-                      setTabMenuOpen(false);
-                      return;
-                    }
-                    const rect = tabMenuTriggerRef.current?.getBoundingClientRect();
-                    if (rect) {
-                      const menuWidth = 200;
-                      setTabMenuPos({
-                        top: rect.bottom + 6,
-                        left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)),
-                      });
-                    }
-                    setTabMenuOpen(true);
-                  }}
-                >
-                  <i className={`ti ${tabMenuOpen ? "ti-chevron-up" : "ti-chevron-down"}`} />
-                </button>
-                {tabMenuOpen && tabMenuPos && createPortal(
-                  <div
-                    className="val-tabs-menu"
-                    role="menu"
-                    ref={tabMenuPanelRef}
-                    style={{ top: tabMenuPos.top, left: tabMenuPos.left }}
+              ))}
+            </div>
+
+            <div className="val-toolbar-controls">
+              <label className="val-search">
+                <i className="ti ti-search"></i>
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search title, contributor, tags..."
+                  aria-label="Search review queue"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    className="val-search-clear"
+                    onClick={() => setSearch("")}
+                    aria-label="Clear queue search"
                   >
-                    {TAB_ORDER.filter((tab) => !PINNED_TABS.includes(tab.key)).map((tab) => (
-                      <button
-                        key={tab.key}
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={filter === tab.key}
-                        className={filter === tab.key ? "active" : ""}
-                        onClick={() => {
-                          handleFilterChange(tab.key);
-                          setTabMenuOpen(false);
-                        }}
-                      >
-                        <span>{tab.label}</span>
-                        <span className="val-tabs-menu-count">{tabCounts[tab.key]}</span>
-                      </button>
-                    ))}
-                  </div>,
-                  document.body,
+                    <i className="ti ti-x" />
+                  </button>
                 )}
-              </div>
-            )}
-          </div>
+              </label>
 
-          <label className="val-search">
-            <i className="ti ti-search"></i>
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search title, contributor, tags..."
-              aria-label="Search review queue"
-            />
-            {search && (
-              <button
-                type="button"
-                className="val-search-clear"
-                onClick={() => setSearch("")}
-                aria-label="Clear queue search"
-              >
-                <i className="ti ti-x" />
-              </button>
-            )}
-          </label>
+              {!isFailedMode && (
+                <div className="val-sort-row">
+                  <span>Sort by</span>
+                  <button
+                    className={sortKey === "publish_slot" ? "active" : ""}
+                    type="button"
+                    onClick={() => setSortKey("publish_slot")}
+                  >
+                    <i className="ti ti-calendar-due"></i> Publish Slot
+                  </button>
+                  <button
+                    className={sortKey === "submitted" ? "active" : ""}
+                    type="button"
+                    onClick={() => setSortKey("submitted")}
+                  >
+                    <i className="ti ti-send"></i> Submitted
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-
-        {!isFailedMode && (
-          <div className="val-sort-row">
-            <span>Sort by</span>
-            <button
-              className={sortKey === "publish_slot" ? "active" : ""}
-              type="button"
-              onClick={() => setSortKey("publish_slot")}
-            >
-              <i className="ti ti-calendar-due"></i> Publish Slot
-            </button>
-            <button
-              className={sortKey === "submitted" ? "active" : ""}
-              type="button"
-              onClick={() => setSortKey("submitted")}
-            >
-              <i className="ti ti-send"></i> Submitted
-            </button>
-          </div>
-        )}
 
         <div className="val-queue-list">
           {isFailedMode ? (
