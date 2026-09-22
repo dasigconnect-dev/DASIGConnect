@@ -130,63 +130,66 @@
   flex-wrap: nowrap;
 }
 
-.audit-status-tab,
-.sub-status-tab {
+.audit-status-tab {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 38px;
+  height: 36px;
+  min-height: 36px;
   padding: 0 14px;
-  border: 1px solid #dde3ee;
+  border: 1px solid transparent;
   border-radius: 9999px;
-  background: #f8fafc;
-  color: #5a6f8a;
+  background: #f1f5f9;
+  color: #64748b;
   font-family: var(--ff-body, system-ui, sans-serif);
-  font-size: 13px;
-  font-weight: 550;
+  font-size: 12.5px;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.16s ease;
   user-select: none;
   text-decoration: none;
+  box-sizing: border-box;
 }
 
-.audit-status-tab:hover,
-.sub-status-tab:hover {
+.audit-status-tab:hover:not(.is-active) {
   background: #eff6ff;
   color: var(--d-blue, #1877f2);
   border-color: #bfdbfe;
 }
 
-.audit-status-tab.is-active,
-.sub-status-tab.is-active {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  color: var(--d-blue, #1877f2);
+.audit-status-tab.is-active {
+  background: var(--d-blue, #1877f2);
+  border-color: var(--d-blue, #1877f2);
+  color: #ffffff;
   font-weight: 650;
+  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
 }
 
-.audit-status-tab-count,
-.sub-status-tab-count {
+.audit-status-tab-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
   border-radius: 9999px;
   background: #e2e8f0;
-  color: #475569;
-  font-size: 11px;
+  color: #64748b;
+  font-size: 10px;
   font-weight: 700;
   line-height: 1;
   transition: all 0.16s ease;
 }
 
-.audit-status-tab.is-active .audit-status-tab-count,
-.sub-status-tab.is-active .sub-status-tab-count {
-  background: var(--d-blue, #1877f2);
+.audit-status-tab:hover:not(.is-active) .audit-status-tab-count {
+  background: #dbeafe;
+  color: var(--d-blue, #1877f2);
+}
+
+.audit-status-tab.is-active .audit-status-tab-count {
+  background: rgba(255, 255, 255, 0.25);
   color: #ffffff;
 }
 

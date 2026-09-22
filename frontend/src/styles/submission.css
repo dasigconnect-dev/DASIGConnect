@@ -342,23 +342,23 @@
   padding: 0 14px;
   border: 1px solid transparent;
   border-radius: 999px;
-  background: #f8fafc;
+  background: #f1f5f9;
   color: #64748b;
   font-family: var(--sub-body, inherit);
   font-size: 12.5px;
-  font-weight: 550;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.16s ease;
   box-sizing: border-box;
 }
-.sub-status-tab:hover {
+.sub-status-tab:hover:not(.is-active) {
   color: var(--sub-blue, #1877f2);
   border-color: #bfdbfe;
   background: #eff6ff;
 }
 .sub-status-tab.is-active {
-  color: #fff;
+  color: #ffffff;
   font-weight: 650;
   background: var(--sub-blue, #1877f2);
   border-color: var(--sub-blue, #1877f2);
@@ -370,18 +370,23 @@
   justify-content: center;
   min-width: 19px;
   height: 19px;
-  padding: 0 6px;
+  padding: 0 5px;
   border-radius: 999px;
-  color: var(--sub-blue, #1877f2);
-  background: #dbeafe;
+  background: #e2e8f0;
+  color: #64748b;
   font-size: 10px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  transition: all 0.16s ease;
+}
+.sub-status-tab:hover:not(.is-active) .sub-status-tab-count {
+  background: #dbeafe;
+  color: var(--sub-blue, #1877f2);
 }
 .sub-status-tab.is-active .sub-status-tab-count {
-  background: rgba(255, 255, 255, 0.24);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
 }
 .sub-status-tab.has-alert:not(.is-active) {
   color: #b45309;

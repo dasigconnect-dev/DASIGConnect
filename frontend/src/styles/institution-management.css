@@ -175,19 +175,25 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
   border-radius: 999px;
-  color: var(--d-blue);
-  background: #DBEAFE;
+  color: #64748b;
+  background: #e2e8f0;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  transition: all 0.16s ease;
+}
+
+.im-status-tab:hover:not(.is-active) .im-status-tab-count {
+  background: #dbeafe;
+  color: var(--d-blue);
 }
 
 .im-status-tab.is-active .im-status-tab-count {
-  background: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.25);
   color: #fff;
 }
 
