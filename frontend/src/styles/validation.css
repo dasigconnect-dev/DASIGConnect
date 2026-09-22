@@ -277,20 +277,32 @@
   width: 100%;
   max-width: 100%;
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: var(--val-blue, #1877f2) var(--val-blue-dim, #eff6ff);
 }
 
 .val-tabs::-webkit-scrollbar {
-  height: 4px;
+  height: 6px;
 }
 
 .val-tabs::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--val-blue-dim, #eff6ff);
+  border-radius: 999px;
 }
 
 .val-tabs::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
+  background: var(--val-blue, #1877f2);
+  border-radius: 999px;
+  border: 1px solid var(--val-blue-dim, #eff6ff);
+}
+
+.val-tabs::-webkit-scrollbar-thumb:hover {
+  background: #1565d8;
+}
+
+.val-tabs::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 .val-tabs button {
@@ -2956,7 +2968,7 @@
     gap: 8px;
     padding-bottom: 6px;
     scrollbar-width: thin;
-    scrollbar-color: #cbd5e1 transparent;
+    scrollbar-color: var(--val-blue, #1877f2) var(--val-blue-dim, #eff6ff);
   }
   .val-page.is-queue-expanded .val-tabs--expanded button {
     flex: 1 1 0px;
@@ -3781,19 +3793,19 @@
 
 .val-history-list::-webkit-scrollbar-track,
 .val-history-body::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--val-blue-dim, #eff6ff);
   border-radius: 6px;
 }
 
 .val-history-list::-webkit-scrollbar-thumb,
 .val-history-body::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--val-blue, #1877f2);
   border-radius: 6px;
 }
 
 .val-history-list::-webkit-scrollbar-thumb:hover,
 .val-history-body::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #1565d8;
 }
 
 .val-log-item {
@@ -4347,13 +4359,20 @@
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: var(--val-border-2) transparent;
+  scrollbar-color: var(--val-blue, #1877f2) var(--val-blue-dim, #eff6ff);
 }
-.val-libpick-body::-webkit-scrollbar { width: 10px; }
-.val-libpick-body::-webkit-scrollbar-thumb {
-  background: var(--val-border-2);
-  border: 3px solid var(--val-surface);
+.val-libpick-body::-webkit-scrollbar { width: 8px; }
+.val-libpick-body::-webkit-scrollbar-track {
+  background: var(--val-blue-dim, #eff6ff);
   border-radius: 999px;
+}
+.val-libpick-body::-webkit-scrollbar-thumb {
+  background: var(--val-blue, #1877f2);
+  border: 1.5px solid var(--val-blue-dim, #eff6ff);
+  border-radius: 999px;
+}
+.val-libpick-body::-webkit-scrollbar-thumb:hover {
+  background: #1565d8;
 }
 .val-libpick-body .mlt-root {
   padding: 0 14px;
