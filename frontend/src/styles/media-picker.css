@@ -128,8 +128,9 @@
   scroll-snap-type: x mandatory;
 }
 
-.sms-strip::-webkit-scrollbar { height: 4px; }
-.sms-strip::-webkit-scrollbar-thumb { background: var(--mp-border); border-radius: 2px; }
+.sms-strip::-webkit-scrollbar { height: 6px; }
+.sms-strip::-webkit-scrollbar-track { background: #eff6ff; border-radius: 999px; }
+.sms-strip::-webkit-scrollbar-thumb { background: #1877f2; border-radius: 999px; }
 
 .sms-item {
   position: relative;
@@ -837,21 +838,25 @@
   overflow-y: auto;
   max-height: 460px;
   scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
+  scrollbar-color: #1877f2 #eff6ff;
 }
 .mag-scroll-wrap:hover {
-  scrollbar-color: var(--mp-border) transparent;
+  scrollbar-color: #1565d8 #eff6ff;
 }
 .mag-scroll-wrap::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
+}
+.mag-scroll-wrap::-webkit-scrollbar-track {
+  background: #eff6ff;
+  border-radius: 999px;
 }
 .mag-scroll-wrap::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 2px;
+  background: #1877f2;
+  border-radius: 999px;
   transition: background 0.2s;
 }
 .mag-scroll-wrap:hover::-webkit-scrollbar-thumb {
-  background: var(--mp-border);
+  background: #1565d8;
 }
 
 .mag-grid {

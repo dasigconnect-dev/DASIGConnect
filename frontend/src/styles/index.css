@@ -127,36 +127,56 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    scrollbar-width: thin;
-    scrollbar-color: var(--dc-scrollbar-thumb) var(--dc-scrollbar-track);
-    }
-  *::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-    }
-  *::-webkit-scrollbar-track {
-    background: var(--dc-scrollbar-track);
-    border-radius: 999px;
-    }
-  *::-webkit-scrollbar-thumb {
-    min-height: 36px;
-    background: var(--dc-scrollbar-thumb);
-    border: 2px solid var(--dc-scrollbar-track);
-    border-radius: 999px;
-    }
-  *::-webkit-scrollbar-thumb:hover {
-    background: var(--dc-scrollbar-thumb-hover);
-    }
-  *::-webkit-scrollbar-corner {
-    background: transparent;
-    }
+  }
   body {
     @apply bg-background text-foreground;
     margin: 0;
     min-height: 100vh;
     background: var(--ink);
-    }
+  }
   html {
     @apply font-sans;
-    }
+  }
+}
+
+/* Universal Custom Blue Scrollbars across the entire application */
+*, *::before, *::after {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dc-scrollbar-thumb, #1877f2) var(--dc-scrollbar-track, #eef3fa);
+}
+
+*::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--dc-scrollbar-track, #eef3fa);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  min-height: 28px;
+  background: var(--dc-scrollbar-thumb, #1877f2);
+  border: 1.5px solid var(--dc-scrollbar-track, #eef3fa);
+  border-radius: 999px;
+  transition: background-color 0.15s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--dc-scrollbar-thumb-hover, #1565d8);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background: #0c5ec4;
+}
+
+*::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }

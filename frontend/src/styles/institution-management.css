@@ -1440,21 +1440,21 @@
     padding: 2px 2px 6px !important;
     margin: 0 !important;
     scrollbar-width: thin;
-    scrollbar-color: #cbd5e1 transparent;
+    scrollbar-color: var(--im-blue, #1877f2) var(--im-blue-dim, #eff6ff);
   }
 
   .im-status-tabs::-webkit-scrollbar {
-    height: 4px;
+    height: 6px;
     display: block;
   }
 
   .im-status-tabs::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: #eff6ff;
     border-radius: 999px;
   }
 
   .im-status-tabs::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: #1877f2;
     border-radius: 999px;
   }
 

@@ -2065,13 +2065,13 @@ div.med-editable-title.editable:hover .med-editable-title-icon {
 
 /* Scrollbar */
 .med-page::-webkit-scrollbar,
-.med-panel-body::-webkit-scrollbar { width: 6px; }
+.med-panel-body::-webkit-scrollbar { width: 6px; height: 6px; }
 .med-page::-webkit-scrollbar-track,
-.med-panel-body::-webkit-scrollbar-track { background: transparent; }
+.med-panel-body::-webkit-scrollbar-track { background: #eff6ff; border-radius: 999px; }
 .med-page::-webkit-scrollbar-thumb,
-.med-panel-body::-webkit-scrollbar-thumb { background: var(--med-border); border-radius: 3px; }
+.med-panel-body::-webkit-scrollbar-thumb { background: #1877f2; border-radius: 999px; }
 .med-page::-webkit-scrollbar-thumb:hover,
-.med-panel-body::-webkit-scrollbar-thumb:hover { background: #b5c0d8; }
+.med-panel-body::-webkit-scrollbar-thumb:hover { background: #1565d8; }
 
 /* ===== UC-2.1 FOLDERS: New menu, breadcrumb, folder cards ===== */
 
