@@ -11,6 +11,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
@@ -22,11 +24,15 @@ import com.dasigconnect.backend.event.SubmissionApprovedEvent;
 import com.dasigconnect.backend.event.SubmissionEditedDuringReviewEvent;
 import com.dasigconnect.backend.event.SubmissionRejectedEvent;
 import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionMediaPreviewDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
+import com.dasigconnect.backend.model.dto.validation.ValidationQueueCountsDto;
+import com.dasigconnect.backend.model.dto.validation.ValidationQueuePageDto;
 import com.dasigconnect.backend.model.entity.ReviewEditSeverity;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.ValidationAction;
@@ -44,6 +50,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class ValidationService {
 
     private static final Logger log = LoggerFactory.getLogger(ValidationService.class);
+    private static final int DEFAULT_QUEUE_PAGE_SIZE = 20;
+    private static final int MAX_QUEUE_PAGE_SIZE = 50;
 
     // BR-VAL-03 rejection reason codes
     private static final Set<String> VALID_REJECTION_CODES = Set.of(
@@ -104,12 +112,13 @@ public class ValidationService {
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> getQueue(JwtUserDetails caller) {
-        return submissionRepository.findValidationQueue().stream()
-                .map(this::toQueueSummary)
-                .toList();
+        return buildQueueSummaries(submissionRepository.findValidationQueue());
     }
 
-    private SubmissionSummaryDto toQueueSummary(Submission s) {
+    private SubmissionSummaryDto toQueueSummary(
+            Submission s,
+            Map<UUID, Long> mediaCounts,
+            Map<UUID, SubmissionMediaPreviewDto> previews) {
         if (s.getStatus() == SubmissionStatus.needs_revision && s.getReviewSnapshot() != null) {
             try {
                 return SubmissionSummaryDto.fromSnapshot(s,
@@ -119,7 +128,10 @@ public class ValidationService {
                 log.warn("Failed to parse review_snapshot for submission {}, falling back to live fields", s.getId(), e);
             }
         }
-        return SubmissionSummaryDto.from(s, submissionMediaAssetRepository.countBySubmissionId(s.getId()));
+        return SubmissionSummaryDto.from(
+                s,
+                mediaCounts.getOrDefault(s.getId(), 0L),
+                previews.get(s.getId()));
     }
 
     /**
@@ -128,10 +140,144 @@ public class ValidationService {
      */
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> getHistory(JwtUserDetails caller) {
-        return submissionRepository.findValidationHistory().stream()
-                .map(s -> SubmissionSummaryDto.from(s,
-                        submissionMediaAssetRepository.countBySubmissionId(s.getId())))
+        return buildQueueSummaries(submissionRepository.findValidationHistory());
+    }
+
+    @Transactional(readOnly = true)
+    public ValidationQueuePageDto getQueuePage(
+            JwtUserDetails caller,
+            String view,
+            String sort,
+            int page,
+            int pageSize,
+            String search) {
+        String normalizedView = normalizeView(view);
+        String normalizedSort = normalizeSort(sort);
+        int safePage = Math.max(page, 0);
+        int safePageSize = pageSize <= 0
+                ? DEFAULT_QUEUE_PAGE_SIZE
+                : Math.min(pageSize, MAX_QUEUE_PAGE_SIZE);
+        boolean activeOrdering = isActiveView(normalizedView);
+        String normalizedSearch = search == null ? "" : search.trim().toLowerCase();
+
+        Page<Submission> result = submissionRepository.findValidationPage(
+                statusesForView(normalizedView),
+                normalizedSearch,
+                normalizedSort,
+                activeOrdering,
+                activeOrdering,
+                PageRequest.of(safePage, safePageSize));
+
+        return new ValidationQueuePageDto(
+                buildQueueSummaries(result.getContent()),
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.hasNext(),
+                buildQueueCounts(submissionRepository.countValidationStatuses()));
+    }
+
+    private List<SubmissionSummaryDto> buildQueueSummaries(List<Submission> submissions) {
+        if (submissions.isEmpty()) {
+            return List.of();
+        }
+
+        List<UUID> liveSubmissionIds = submissions.stream()
+                .filter(s -> s.getStatus() != SubmissionStatus.needs_revision || s.getReviewSnapshot() == null)
+                .map(Submission::getId)
                 .toList();
+        Map<UUID, Long> mediaCounts = new HashMap<>();
+        Map<UUID, SubmissionMediaPreviewDto> previews = new HashMap<>();
+        if (!liveSubmissionIds.isEmpty()) {
+            for (SubmissionMediaAsset link
+                    : submissionMediaAssetRepository.findListPreviewMediaBySubmissionIds(liveSubmissionIds)) {
+                UUID submissionId = link.getSubmission().getId();
+                mediaCounts.merge(submissionId, 1L, Long::sum);
+                previews.putIfAbsent(
+                        submissionId,
+                        SubmissionMediaPreviewDto.from(link.getMediaAsset()));
+            }
+        }
+
+        return submissions.stream()
+                .map(s -> toQueueSummary(s, mediaCounts, previews))
+                .toList();
+    }
+
+    private String normalizeView(String view) {
+        String normalized = view == null ? "all" : view.trim().toLowerCase().replace('-', '_');
+        return switch (normalized) {
+            case "all", "pending", "in_review", "needs_revision", "scheduled", "published", "rejected" -> normalized;
+            default -> throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Unsupported validation queue view: " + view);
+        };
+    }
+
+    private String normalizeSort(String sort) {
+        String normalized = sort == null ? "submitted" : sort.trim().toLowerCase();
+        return switch (normalized) {
+            case "publish_slot", "submitted" -> normalized;
+            default -> throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Unsupported validation queue sort: " + sort);
+        };
+    }
+
+    private boolean isActiveView(String view) {
+        return view.equals("pending") || view.equals("in_review") || view.equals("needs_revision");
+    }
+
+    private List<SubmissionStatus> statusesForView(String view) {
+        return switch (view) {
+            case "all" -> java.util.Arrays.stream(SubmissionStatus.values())
+                    .filter(status -> status != SubmissionStatus.draft)
+                    .toList();
+            case "pending" -> List.of(SubmissionStatus.pending);
+            case "in_review" -> List.of(SubmissionStatus.in_review);
+            case "needs_revision" -> List.of(SubmissionStatus.needs_revision);
+            case "scheduled" -> List.of(SubmissionStatus.scheduled);
+            case "published" -> List.of(SubmissionStatus.published);
+            case "rejected" -> List.of(SubmissionStatus.rejected);
+            default -> throw new IllegalStateException("Validated view was not mapped: " + view);
+        };
+    }
+
+    private ValidationQueueCountsDto buildQueueCounts(
+            List<SubmissionRepository.SubmissionStatusCount> statusCounts) {
+        long all = 0;
+        long pending = 0;
+        long inReview = 0;
+        long needsRevision = 0;
+        long scheduled = 0;
+        long published = 0;
+        long rejected = 0;
+
+        for (SubmissionRepository.SubmissionStatusCount row : statusCounts) {
+            long count = row.getCount();
+            all += count;
+            switch (row.getStatus()) {
+                case pending -> pending += count;
+                case in_review -> inReview += count;
+                case needs_revision -> needsRevision += count;
+                case scheduled -> scheduled += count;
+                case published -> published += count;
+                case rejected -> rejected += count;
+                default -> {
+                    // Other non-draft workflow statuses contribute only to All.
+                }
+            }
+        }
+
+        return new ValidationQueueCountsDto(
+                all,
+                pending,
+                inReview,
+                needsRevision,
+                scheduled,
+                published,
+                rejected);
     }
 
     /**

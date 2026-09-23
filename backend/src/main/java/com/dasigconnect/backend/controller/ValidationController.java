@@ -27,6 +27,7 @@ import com.dasigconnect.backend.model.dto.validation.RejectionRequestDto;
 import com.dasigconnect.backend.model.dto.validation.ReviewLockDto;
 import com.dasigconnect.backend.model.dto.validation.RevisionRequestDto;
 import com.dasigconnect.backend.model.dto.validation.ValidationLogDto;
+import com.dasigconnect.backend.model.dto.validation.ValidationQueuePageDto;
 import com.dasigconnect.backend.model.entity.ReviewLock;
 import com.dasigconnect.backend.repository.ValidationLogRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -70,6 +71,23 @@ public class ValidationController {
         return ResponseEntity.ok(ApiResponse.success(
             history ? validationService.getHistory(caller) : validationService.getQueue(caller)
         ));
+    }
+
+    /**
+     * Bounded Review Queue/history page used by the server-backed queue UI.
+     * Counts are network-wide and independent of the active search term.
+     */
+    @GetMapping("/queue/page")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<ValidationQueuePageDto>> getQueuePage(
+            @RequestParam(defaultValue = "all") String view,
+            @RequestParam(defaultValue = "submitted") String sort,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(defaultValue = "") String search,
+            @AuthenticationPrincipal JwtUserDetails caller) {
+        return ResponseEntity.ok(ApiResponse.success(
+                validationService.getQueuePage(caller, view, sort, page, pageSize, search)));
     }
 
     /**
