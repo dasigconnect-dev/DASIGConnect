@@ -436,3 +436,24 @@
     animation: none !important;
   }
 }
+
+/* OptimizedImage placeholder when the media no longer exists (null URL). */
+.optimized-image-missing {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  max-width: 100%;
+  background: var(--d-bg, #f3f6fb);
+  color: var(--d-muted, #5a6f8a);
+  font-family: var(--ff-body, system-ui, sans-serif);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: center;
+}
+.optimized-image-missing i {
+  font-size: 22px;
+  opacity: 0.8;
+}
