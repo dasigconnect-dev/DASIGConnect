@@ -528,11 +528,6 @@
   border-color: var(--mp-blue);
 }
 
-.mlt-count {
-  font-size: 12px;
-  color: var(--mp-muted);
-  margin-bottom: 8px;
-}
 
 .mlt-error,
 .mlt-empty {
@@ -585,18 +580,52 @@
   background: var(--mp-border);
 }
 
-/* Action bar shared between mlt- and ast- */
-.mlt-action-bar,
-.ast-action-bar {
-  position: sticky;
-  bottom: 0;
+/* Selection toolbar, above the grid in both tabs: the result count (library)
+   or "Top N matches" (AI) until something is selected, then
+   "N selected · Clear · Add Selected". Fixed height so selecting doesn't
+   shift the grid. (It used to be a bar after the grid / "Load more".) */
+.mlt-selection-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
-  background: var(--mp-surface);
-  border-top: 1px solid var(--mp-border);
-  margin: 8px -12px -12px;
+  min-height: 40px;
+  margin-bottom: 10px;
+  padding: 0 0 0 2px;
+  font-size: 12px;
+  color: var(--mp-muted);
+}
+.mlt-selection-bar.has-selection,
+.ast-results-header.has-selection {
+  padding: 4px 4px 4px 12px;
+  border: 1px solid var(--mp-blue-bdr);
+  border-radius: var(--mp-r-sm);
+  background: var(--mp-blue-dim);
+}
+.mlt-selection-bar .mlt-action-count,
+.mlt-selection-bar button,
+.ast-results-header.has-selection .ast-action-count,
+.ast-results-header.has-selection button {
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .mlt-selection-bar.has-selection,
+  .ast-results-header.has-selection {
+    gap: 6px;
+    padding-left: 10px;
+  }
+  .mlt-selection-bar .mlt-action-clear,
+  .ast-results-header .ast-action-clear {
+    padding: 5px 10px;
+  }
+  .mlt-selection-bar .mlt-action-add,
+  .ast-results-header .ast-action-add {
+    padding: 6px 12px;
+  }
+}
+.mlt-selection-bar:not(.has-selection) .mlt-action-count {
+  font-weight: 400;
+  color: var(--mp-muted);
+  font-size: 12px;
 }
 
 .mlt-action-count,
@@ -799,6 +828,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
 }
 
 .ast-results-label {
