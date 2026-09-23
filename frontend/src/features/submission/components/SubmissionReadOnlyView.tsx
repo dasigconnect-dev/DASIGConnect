@@ -6,6 +6,7 @@ import type { FacebookPreviewMediaItem } from "../../../types/facebook";
 import type { SubmissionMediaItem } from "../../../types/media";
 import type { FormState } from "../types";
 import { formatRevisionRemarksForDisplay } from "../utils/revisionComments";
+import { parseRejectionReason } from "../../../lib/rejectionReason";
 import "./SubmissionReadOnlyView.css";
 
 interface FacebookPreviewData {
@@ -54,8 +55,10 @@ export default function SubmissionReadOnlyBody({
 
   const isRejected = form.status === "rejected";
   const needsRevision = form.status === "needs_revision";
+  // A rejection is stored as "CODE: note" — show the code as a label, not raw.
+  const rejection = isRejected ? parseRejectionReason(rejectionReason) : null;
   const feedbackText = isRejected
-    ? rejectionReason
+    ? rejection?.note ?? null
     : needsRevision
       ? formatRevisionRemarksForDisplay(revisionNotes)
       : null;
@@ -116,12 +119,20 @@ export default function SubmissionReadOnlyBody({
                   </p>
                 </div>
               </div>
+              {rejection?.label && (
+                <span className="sub-ro-reason-chip">
+                  <i className="ti ti-tag" aria-hidden />
+                  {rejection.label}
+                </span>
+              )}
               {feedbackText && feedbackText.trim() ? (
                 <blockquote className="sub-ro-feedback-body">{feedbackText}</blockquote>
               ) : (
                 <p className="sub-ro-empty">
                   {isRejected
-                    ? "No reason was recorded. Check your email for details."
+                    ? rejection?.label
+                      ? "The reviewer didn't add a note."
+                      : "No reason was recorded. Check your email for details."
                     : "No notes were recorded. Check your email for details."}
                 </p>
               )}

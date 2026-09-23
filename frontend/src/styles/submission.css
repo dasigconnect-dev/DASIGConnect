@@ -1572,8 +1572,7 @@
   border-color: var(--sub-red-bdr, #fecaca);
   color: #dc2626;
 }
-:root[data-theme="dark"] .sub-readonly-note.is-rejected-note,
-:root:not([data-theme="light"]) .sub-readonly-note.is-rejected-note {
+:root[data-theme="dark"] .sub-readonly-note.is-rejected-note {
   background: rgba(239, 68, 68, 0.12);
   border-color: rgba(239, 68, 68, 0.4);
   color: #f87171;
@@ -6117,8 +6116,7 @@ textarea.sub-finput {
   margin-bottom: 20px;
 }
 
-:root[data-theme="dark"] .sub-rejection-banner,
-:root:not([data-theme="light"]) .sub-rejection-banner {
+:root[data-theme="dark"] .sub-rejection-banner {
   background: rgba(239, 68, 68, 0.12);
   border-color: rgba(239, 68, 68, 0.4);
 }
@@ -6131,8 +6129,7 @@ textarea.sub-finput {
   align-items: center;
 }
 
-:root[data-theme="dark"] .sub-rejection-banner-icon,
-:root:not([data-theme="light"]) .sub-rejection-banner-icon {
+:root[data-theme="dark"] .sub-rejection-banner-icon {
   color: #f87171;
 }
 
@@ -6151,9 +6148,18 @@ textarea.sub-finput {
   color: #b91c1c;
 }
 
-:root[data-theme="dark"] .sub-rejection-banner-content strong,
-:root:not([data-theme="light"]) .sub-rejection-banner-content strong {
+:root[data-theme="dark"] .sub-rejection-banner-content strong {
   color: #fca5a5;
+}
+
+.sub-rejection-reason {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid var(--sub-red-bdr, #fecaca);
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .sub-rejection-banner-content p {
@@ -6163,8 +6169,7 @@ textarea.sub-finput {
   font-weight: 500;
 }
 
-:root[data-theme="dark"] .sub-rejection-banner-content p,
-:root:not([data-theme="light"]) .sub-rejection-banner-content p {
+:root[data-theme="dark"] .sub-rejection-banner-content p {
   color: #cbd5e1;
 }
 

@@ -203,6 +203,22 @@
   color: var(--sub-text-2);
   font-size: 13px;
 }
+.sub-ro-reason-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 10px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: var(--sub-surface);
+  border: 1px solid var(--sub-red-bdr);
+  color: #991b1b;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.sub-ro-reason-chip i {
+  font-size: 14px;
+}
 .sub-ro-feedback-body {
   margin: 0;
   padding: 12px 14px;
