@@ -9,7 +9,6 @@ import type {
 } from "../../api/submissionApi";
 import { fileMediaKey, savedMediaKey } from "../../hooks/useMediaReorder";
 import type { SubmissionMediaItem } from "../../types/media";
-import type { User } from "../../types/auth.types";
 import {
   DEFAULT_INSTITUTION_CODE,
   DEFAULT_INSTITUTION_NAME,
@@ -820,12 +819,6 @@ export function formatTimeInput(value: string) {
   return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 }
 
-export function formatRole(role: User["role"]) {
-  if (role === "admin") return "Admin";
-  if (role === "moderator") return "Moderator";
-  return "Contributor";
-}
-
 export function isAllowedFile(file: File, allowedFileTypes: string[]) {
   if (allowedFileTypes.length === 0) return true;
   const extension = normalizeFileType(
@@ -842,4 +835,9 @@ export function stepLabel(step: ProgressStep) {
   if (step === "media") return "Add Media";
   if (step === "details") return "Post Details";
   return "Preferred Schedule";
+}
+
+/** Same thresholds as ReadinessRing's colors: ≥80 good, ≥60 fair, else low. */
+export function readinessTone(score: number): "good" | "fair" | "low" {
+  return score >= 80 ? "good" : score >= 60 ? "fair" : "low";
 }
