@@ -205,7 +205,6 @@ public class SubmissionService {
         submission.setLiveEventName(normalizeOptional(dto.getLiveEventName()));
         if (submission.isFastTrack()) {
             submission.setCategory(null);
-            submission.setTemplateId(null);
             submission.setDescription(null);
         }
         if (dto.getTags() != null && !dto.getTags().isEmpty()) {
@@ -355,7 +354,6 @@ public class SubmissionService {
             if (dto.getFastTrack()) {
                 submission.setScheduledAt(null);
                 submission.setCategory(null);
-                submission.setTemplateId(null);
                 submission.setDescription(null);
                 submission.setTags(null);
                 slotReservationService.release(submissionId);
@@ -371,7 +369,6 @@ public class SubmissionService {
         }
         if (submission.isFastTrack()) {
             submission.setCategory(null);
-            submission.setTemplateId(null);
             submission.setDescription(null);
             submission.setTags(null);
         }

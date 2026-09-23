@@ -144,7 +144,7 @@ export function toPayload(form: FormState, scheduledAt?: string): SubmissionPayl
     description: "",
     scheduledAt,
     category: "",
-    templateId: form.fastTrack ? "" : form.selectedTemplateId ?? "",
+    templateId: form.selectedTemplateId ?? "",
     fastTrack: form.fastTrack,
     liveEventName: form.fastTrack ? form.liveEventName.trim() : "",
     tags: [],
@@ -575,10 +575,12 @@ export function getReadinessChecklist(
       title: "Template used",
       target: "template",
       pass: form.fastTrack || Boolean(form.selectedTemplateId),
-      sub: form.fastTrack
-        ? "Skipped for Fast-Track"
-        : form.selectedTemplateId
-          ? "Template selected"
+      // Still auto-passes for Live posts: templates are available there too,
+      // but a live event shouldn't be nagged to use one.
+      sub: form.selectedTemplateId
+        ? "Template selected"
+        : form.fastTrack
+          ? "Optional for live events"
           : "Optional baseline structure",
     },
   ];

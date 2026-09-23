@@ -2527,103 +2527,101 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       <div className={`sub-workspace${isReadOnlySubmission ? " is-readonly" : ""}`}>
         {!isReadOnlySubmission && (
         <aside className="sub-sidebar sub-template-sidebar">
-          {!form.fastTrack && (
-            <section className="sub-sidebar-templates" aria-label="Post templates">
-              <div className="sub-sidebar-template-head">
-                <div>
-                  <div className="sub-sidebar-section-title">Post Templates</div>
-                  <div className="sub-sidebar-section-subtitle">
-                    {hasMedia
-                      ? "Insert a baseline caption structure."
-                      : "Add media first to unlock templates."}
-                  </div>
+          <section className="sub-sidebar-templates" aria-label="Post templates">
+            <div className="sub-sidebar-template-head">
+              <div>
+                <div className="sub-sidebar-section-title">Post Templates</div>
+                <div className="sub-sidebar-section-subtitle">
+                  {hasMedia
+                    ? "Insert a baseline caption structure."
+                    : "Add media first to unlock templates."}
                 </div>
-                {form.selectedTemplateId && (
-                  <div className="sub-sidebar-template-actions">
-                    <button
-                      className="sub-sidebar-template-clear"
-                      type="button"
-                      disabled={isReadOnlySubmission}
-                      onClick={clearTemplate}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                )}
               </div>
-              {templatesLoading && (
-                <div className="sub-sidebar-template-loading">
-                  <i className="ti ti-loader-2 sub-spin" aria-hidden="true" />
-                  Loading saved templates
+              {form.selectedTemplateId && (
+                <div className="sub-sidebar-template-actions">
+                  <button
+                    className="sub-sidebar-template-clear"
+                    type="button"
+                    disabled={isReadOnlySubmission}
+                    onClick={clearTemplate}
+                  >
+                    Clear
+                  </button>
                 </div>
               )}
-              <div className="sub-sidebar-template-list">
-                {composerTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    className={`sub-sidebar-template-card ${
-                      form.selectedTemplateId === template.id ? "active" : ""
-                    }`}
-                    disabled={isReadOnlySubmission || !hasMedia}
-                    title={!hasMedia ? "Add media first before choosing a template." : undefined}
-                    onClick={() => applyTemplate(template.id)}
-                  >
-                    <span className="sub-sidebar-template-main">
-                      <span className="sub-sidebar-template-icon" aria-hidden="true">
-                        <i className={templateIcons[template.id] ?? "ti ti-template"} />
-                      </span>
-                      <span className="sub-sidebar-template-copy">
-                        <span className="sub-sidebar-template-name">{template.name}</span>
-                        <span className="sub-sidebar-template-target">{template.target}</span>
-                      </span>
-                      {template.custom && (
-                        <span
-                          role="button"
-                          tabIndex={0}
-                      className="sub-sidebar-template-delete"
-                          aria-label={`Delete ${template.name} template`}
-                          title="Delete template"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            requestDeleteCustomTemplate(template.id);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key !== "Enter" && event.key !== " ") return;
-                            event.preventDefault();
-                            event.stopPropagation();
-                            requestDeleteCustomTemplate(template.id);
-                          }}
-                        >
-                          <i className="ti ti-trash" aria-hidden="true" />
-                        </span>
-                      )}
-                    </span>
-                    <span className="sub-sidebar-template-preview">
-                      {template.caption}
-                    </span>
-                    <span className="sub-sidebar-template-tags">
-                      {template.tags.slice(0, 3).map((tag) => (
-                        <span key={tag}>{tag}</span>
-                      ))}
-                    </span>
-                  </button>
-                ))}
+            </div>
+            {templatesLoading && (
+              <div className="sub-sidebar-template-loading">
+                <i className="ti ti-loader-2 sub-spin" aria-hidden="true" />
+                Loading saved templates
               </div>
-              <div className="sub-sidebar-template-footer">
+            )}
+            <div className="sub-sidebar-template-list">
+              {composerTemplates.map((template) => (
                 <button
-                  className="sub-sidebar-template-save"
+                  key={template.id}
                   type="button"
-                  disabled={isReadOnlySubmission || savingTemplate || !form.caption.trim()}
-                  title={!form.caption.trim() ? "Add a caption before saving as a template." : undefined}
-                  onClick={openSaveTemplateModal}
+                  className={`sub-sidebar-template-card ${
+                    form.selectedTemplateId === template.id ? "active" : ""
+                  }`}
+                  disabled={isReadOnlySubmission || !hasMedia}
+                  title={!hasMedia ? "Add media first before choosing a template." : undefined}
+                  onClick={() => applyTemplate(template.id)}
                 >
-                  <i className="ti ti-plus" aria-hidden="true" />
-                  Save as Template
+                  <span className="sub-sidebar-template-main">
+                    <span className="sub-sidebar-template-icon" aria-hidden="true">
+                      <i className={templateIcons[template.id] ?? "ti ti-template"} />
+                    </span>
+                    <span className="sub-sidebar-template-copy">
+                      <span className="sub-sidebar-template-name">{template.name}</span>
+                      <span className="sub-sidebar-template-target">{template.target}</span>
+                    </span>
+                    {template.custom && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                    className="sub-sidebar-template-delete"
+                        aria-label={`Delete ${template.name} template`}
+                        title="Delete template"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          requestDeleteCustomTemplate(template.id);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          requestDeleteCustomTemplate(template.id);
+                        }}
+                      >
+                        <i className="ti ti-trash" aria-hidden="true" />
+                      </span>
+                    )}
+                  </span>
+                  <span className="sub-sidebar-template-preview">
+                    {template.caption}
+                  </span>
+                  <span className="sub-sidebar-template-tags">
+                    {template.tags.slice(0, 3).map((tag) => (
+                      <span key={tag}>{tag}</span>
+                    ))}
+                  </span>
                 </button>
-              </div>
-            </section>
-          )}
+              ))}
+            </div>
+            <div className="sub-sidebar-template-footer">
+              <button
+                className="sub-sidebar-template-save"
+                type="button"
+                disabled={isReadOnlySubmission || savingTemplate || !form.caption.trim()}
+                title={!form.caption.trim() ? "Add a caption before saving as a template." : undefined}
+                onClick={openSaveTemplateModal}
+              >
+                <i className="ti ti-plus" aria-hidden="true" />
+                Save as Template
+              </button>
+            </div>
+          </section>
         </aside>
         )}
 
