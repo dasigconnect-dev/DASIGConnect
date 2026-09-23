@@ -139,6 +139,14 @@ public class ClaudeVisionClient {
      * Generates a plain-text completion for system alerts / suggestions.
      */
     public String generateText(String systemPrompt, String userPrompt) {
+        return generateText(systemPrompt, userPrompt, 512);
+    }
+
+    /**
+     * Same as {@link #generateText(String, String)} with a caller-chosen output
+     * budget, for completions longer than a short suggestion list.
+     */
+    public String generateText(String systemPrompt, String userPrompt, int maxTokens) {
         if (apiKey == null || apiKey.isBlank()) {
             throw new ClaudeApiException("Anthropic API key is not configured.");
         }
@@ -151,7 +159,7 @@ public class ClaudeVisionClient {
 
             var root = objectMapper.createObjectNode();
             root.put("model", model);
-            root.put("max_tokens", 512);
+            root.put("max_tokens", maxTokens);
             if (systemPrompt != null && !systemPrompt.isBlank()) {
                 root.put("system", systemPrompt);
             }

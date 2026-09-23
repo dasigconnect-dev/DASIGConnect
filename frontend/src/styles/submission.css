@@ -940,9 +940,40 @@
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
 }
 .sub-sidebar-template-footer {
+  display: grid;
+  gap: 8px;
   padding-top: 12px;
   margin-top: 12px;
   border-top: 1px solid var(--sub-border);
+}
+/* AI template from top posts (UC-1.5 alternate flow) — purple = AI accent. */
+.sub-sidebar-template-ai {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid var(--sub-purple-bdr);
+  border-radius: 999px;
+  background: var(--sub-purple-dim);
+  color: var(--sub-purple);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.sub-sidebar-template-ai:hover:not(:disabled) {
+  background: var(--sub-purple);
+  border-color: var(--sub-purple);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
+}
+.sub-sidebar-template-ai:disabled {
+  cursor: default;
+  opacity: 0.72;
 }
 .sub-sidebar-template-list {
   display: grid;

@@ -125,6 +125,7 @@ const AiCaptionPromptDialog = lazy(() => import("./components/AiCaptionPromptDia
 const AiCaptionSuggestion = lazy(() => import("./components/AiCaptionSuggestion"));
 const FancyTextTool = lazy(() => import("./components/FancyTextTool"));
 const SubmissionReadOnlyBody = lazy(() => import("./components/SubmissionReadOnlyView"));
+const TopPostTemplateModal = lazy(() => import("./components/TopPostTemplateModal"));
 const EngagementRecommendationsPanel = lazy(() =>
   import("./components/EngagementRecommendationsPanel").then((module) => ({
     default: module.EngagementRecommendationsPanel,
@@ -270,6 +271,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [topPostTemplateOpen, setTopPostTemplateOpen] = useState(false);
   const [templateDeleteId, setTemplateDeleteId] = useState<string | null>(null);
   const [deletingTemplate, setDeletingTemplate] = useState(false);
   const [pendingLeaveAction, setPendingLeaveAction] =
@@ -1260,6 +1262,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     } finally {
       setSavingTemplate(false);
     }
+  }
+
+  // UC-1.5 alternate flow: an AI-drafted template was reviewed and saved.
+  // Added to the list but not applied — applying replaces the current caption.
+  function handleTopPostTemplateSaved(saved: ApiPostTemplate) {
+    const template = apiTemplateToComposerTemplate(saved);
+    queryClient.setQueryData<ComposerTemplate[]>(templatesQueryKey, (current = []) => [template, ...current]);
+    templateErrorNotifiedRef.current = false;
+    setTopPostTemplateOpen(false);
+    toast.success(`"${template.name}" saved. Pick it from the template list to use it.`);
   }
 
   function requestDeleteCustomTemplate(templateId: string) {
@@ -2620,6 +2632,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 <i className="ti ti-plus" aria-hidden="true" />
                 Save as Template
               </button>
+              <button
+                className="sub-sidebar-template-ai"
+                type="button"
+                disabled={isReadOnlySubmission}
+                onClick={() => setTopPostTemplateOpen(true)}
+                title="Draft a template from the Page's best-performing posts"
+              >
+                <i className="ti ti-sparkles" aria-hidden="true" />
+                Generate from Top Posts
+              </button>
             </div>
           </section>
         </aside>
@@ -3395,6 +3417,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           </div>
         </aside>
       </div>
+
+      {topPostTemplateOpen && (
+        <Suspense fallback={null}>
+          <TopPostTemplateModal
+            institutionId={selectedInstitutionId || null}
+            onClose={() => setTopPostTemplateOpen(false)}
+            onSaved={handleTopPostTemplateSaved}
+          />
+        </Suspense>
+      )}
 
       {templateSaveOpen && (
         <div

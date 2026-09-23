@@ -111,6 +111,42 @@ public class FacebookEngagementAnalyticsClient {
     }
 
     /**
+     * The Page's most recent posts (up to 100) with their text and engagement
+     * counts — used by the AI template generator to learn from what performed
+     * well. Posts without text (e.g. photo-only shares) are skipped.
+     */
+    public List<PagePostSample> fetchRecentPostsWithText() throws IOException, InterruptedException {
+        ActivePage active = resolveActivePage();
+        if (active.pageId() == null || active.pageId().isBlank() || active.token() == null || active.token().isBlank()) {
+            throw new IOException("Facebook engagement analytics is not configured.");
+        }
+        String fields = "message,created_time,reactions.limit(0).summary(true),comments.limit(0).summary(true),shares";
+        String url = "https://graph.facebook.com/" + apiVersion + "/" + encode(active.pageId())
+                + "/posts?fields=" + encode(fields) + "&limit=100&access_token=" + encode(active.token());
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(java.time.Duration.ofSeconds(10)).GET().build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Facebook analytics returned HTTP " + response.statusCode());
+        }
+        JsonNode root = objectMapper.readTree(response.body());
+        if (root.has("error")) throw new IOException("Facebook analytics request failed.");
+        List<PagePostSample> posts = new ArrayList<>();
+        for (JsonNode post : root.path("data")) {
+            String message = post.path("message").asText("");
+            String created = post.path("created_time").asText("");
+            if (message.isBlank() || created.isBlank()) continue;
+            posts.add(new PagePostSample(
+                    message,
+                    parseFacebookInstant(created),
+                    post.path("reactions").path("summary").path("total_count").asLong(0),
+                    post.path("comments").path("summary").path("total_count").asLong(0),
+                    post.path("shares").path("count").asLong(0)));
+        }
+        return posts;
+    }
+
+    /**
      * Fetches reactions/comments/shares (and best-effort reach) for a single
      * Facebook post by its platform post ID. Reactions/comments/shares use the
      * same `/posts` fields already proven working by
@@ -297,6 +333,8 @@ public class FacebookEngagementAnalyticsClient {
     }
 
     public record EngagementSample(Instant publishedAt, double engagementScore) {}
+
+    public record PagePostSample(String message, Instant publishedAt, long reactions, long comments, long shares) {}
 
     /** reach may be null when the Insights call fails or is unavailable (missing read_insights permission). */
     public record PostEngagement(Long reach, long reactions, long comments, long shares) {}
