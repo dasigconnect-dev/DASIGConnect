@@ -30,7 +30,7 @@ import {
   useSubmissionLookups,
   useSubmissions,
 } from "../../hooks/useSubmissions";
-import { useIncrementalPagination } from "../../hooks/useIncrementalPagination";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useFacebookPreviewData } from "../../hooks/useFacebookPreviewData";
 import { fileMediaKey, savedMediaKey } from "../../hooks/useMediaReorder";
 import type { User } from "../../types/auth.types";
@@ -82,7 +82,6 @@ import {
   isConflictError,
   isDefaultInstitution,
   isDirtyDraft,
-  matchesQueueSearch,
   mediaCaptionsFromSavedAssets,
   mediaSkipWatermarkFromSavedAssets,
   normalizeHashtagInput,
@@ -91,7 +90,6 @@ import {
   pruneMediaCaptions,
   pruneMediaFlags,
   queueBucket,
-  type QueueBucket,
   removeHashtag,
   resolveSavedMediaCaptions,
   resolveSavedMediaOrder,
@@ -103,7 +101,6 @@ import {
   sortSavedAssetsByOrder,
   toPayload,
   trimToCharLimit,
-  upsertSubmission,
 } from "./utils";
 import {
   CheckItem,
@@ -205,8 +202,27 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const { submissionId: routeSubmissionId } = useParams<{ submissionId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const { submissions, setSubmissions, loading, refreshing, error, refresh } =
-    useSubmissions(user);
+  const [filter, setFilter] = useState<QueueFilter>(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    const valid: QueueFilter[] = ["drafts", "action-needed", "submitted", "published", "failed", "all"];
+    if (tab && (valid as string[]).includes(tab)) return tab as QueueFilter;
+    return "all";
+  });
+  const [queueSearch, setQueueSearch] = useState("");
+  const debouncedQueueSearch = useDebouncedValue(queueSearch.trim(), 350);
+  const {
+    submissions,
+    counts,
+    totalCount: totalQueuedCount,
+    hasNextPage: hasMoreQueued,
+    loadingMore,
+    loadMoreError,
+    loadMore,
+    loading,
+    refreshing,
+    error,
+    refresh,
+  } = useSubmissions(user, filter, debouncedQueueSearch, isMySubmissionsPage);
   const {
     lookups,
     loading: lookupsLoading,
@@ -238,13 +254,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const shouldPromptBeforeLeaveRef = useRef(false);
   const browserBackGuardRef = useRef(false);
   const uploadBatchControllerRef = useRef<AbortController | null>(null);
-  const [filter, setFilter] = useState<QueueFilter>(() => {
-    const tab = new URLSearchParams(window.location.search).get("tab");
-    const valid: QueueFilter[] = ["drafts", "action-needed", "submitted", "published", "failed", "all"];
-    if (tab && (valid as string[]).includes(tab)) return tab as QueueFilter;
-    return "all";
-  });
-  const [queueSearch, setQueueSearch] = useState("");
   const [form, setForm] = useState<FormState>(initialForm);
   const [pickerItems, setPickerItems] = useState<SubmissionMediaItem[]>([]);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -401,36 +410,26 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     selectedPostingInstitution && isDefaultInstitution(selectedPostingInstitution),
   );
 
-  const queued = useMemo(() => {
-    const base =
-      filter === "all"
-        ? submissions
-        : submissions.filter((item) => queueBucket(item.status) === filter);
-    return base.filter((item) => matchesQueueSearch(item, queueSearch));
-  }, [filter, queueSearch, submissions]);
+  const queued = submissions;
+  const visibleQueued = submissions;
+  const queuedSentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const {
-    visibleItems: visibleQueued,
-    hasMore: hasMoreQueued,
-    totalCount: totalQueuedCount,
-    sentinelRef: queuedSentinelRef,
-  } = useIncrementalPagination(queued, {
-    pageSize: 8,
-    initialSize: 8,
-    resetDeps: [filter, queueSearch],
-  });
-  // One pass over the list for every tab count.
-  const counts = useMemo(() => {
-    const acc: Record<QueueBucket, number> = {
-      drafts: 0,
-      "action-needed": 0,
-      submitted: 0,
-      published: 0,
-      failed: 0,
-    };
-    for (const item of submissions) acc[queueBucket(item.status)] += 1;
-    return acc;
-  }, [submissions]);
+  useEffect(() => {
+    const target = queuedSentinelRef.current;
+    if (!isMySubmissionsPage || !target || !hasMoreQueued || loadingMore || loadMoreError) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          observer.disconnect();
+          void loadMore();
+        }
+      },
+      { rootMargin: "240px 0px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMoreQueued, isMySubmissionsPage, loadMore, loadMoreError, loadingMore]);
 
   const scheduledAt = useMemo(() => {
     if (form.fastTrack) return undefined;
@@ -548,7 +547,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   function syncSubmissionCaches(next: SubmissionSummary) {
-    setSubmissions((current) => upsertSubmission(current, next));
     const detailParams = submissionDetailParams(next);
     queryClient.setQueryData<SubmissionSummary>(
       queryKeys.submissions.editorDetail(detailParams),
@@ -561,13 +559,24 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         mediaAssets: next.mediaAssets ?? [],
       },
     );
+    clearSubmissionPageCaches();
   }
 
   function removeSubmissionCaches(submission: Pick<SubmissionSummary, "id" | "institutionId">) {
-    setSubmissions((current) => current.filter((item) => item.id !== submission.id));
     const detailParams = submissionDetailParams(submission);
     queryClient.removeQueries({ queryKey: queryKeys.submissions.editorDetail(detailParams) });
     queryClient.removeQueries({ queryKey: queryKeys.submissions.detail(detailParams) });
+    clearSubmissionPageCaches();
+  }
+
+  function clearSubmissionPageCaches() {
+    queryClient.removeQueries({
+      queryKey: ["submissions"],
+      predicate: (query) => {
+        const params = query.queryKey[1];
+        return typeof params === "object" && params !== null && "view" in params && params.view === "page";
+      },
+    });
   }
 
   useEffect(() => () => {
@@ -593,14 +602,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }, [isComposerRoute, templatesQuery.isError, toast]);
 
   useEffect(() => {
-    if (!error || submissions.length === 0) {
+    if (!isMySubmissionsPage || !error || submissions.length === 0) {
       if (!error) submissionsRefreshErrorNotifiedRef.current = false;
       return;
     }
     if (submissionsRefreshErrorNotifiedRef.current) return;
     submissionsRefreshErrorNotifiedRef.current = true;
     toast.error(error);
-  }, [error, submissions.length, toast]);
+  }, [error, isMySubmissionsPage, submissions.length, toast]);
 
   useEffect(() => {
     if (!isComposerRoute || !selectedInstitutionId || !albumNamesQuery.isError || albumErrorNotifiedRef.current === selectedInstitutionId) return;
@@ -1752,7 +1761,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           // The draft (and any files that uploaded before the failure — real
           // STAGED rows) exist server-side. Re-read rather than guess from
           // draftResponse, which predates those uploads.
-          void refresh();
+          clearSubmissionPageCaches();
           setMediaUploadFailed(true);
           setActiveStep("media");
           return;
@@ -1791,7 +1800,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setIsEditingRejected(false);
       setModal("success");
       toast.success("Submission sent for approval.");
-      void refresh();
+      clearSubmissionPageCaches();
     } catch (err: unknown) {
       const message = getErrorMessage(err, "Submission failed.");
       // A4 — another submission claimed this slot between the last save and
@@ -1946,7 +1955,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       setFilter("drafts");
       setModal(null);
       toast.success("Submission withdrawn to draft.");
-      void refresh();
+      clearSubmissionPageCaches();
     } catch (err: unknown) {
       toast.error(getErrorMessage(err, "Submission could not be withdrawn."));
     } finally {
@@ -2166,7 +2175,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   aria-pressed={filter === "all"}
                 >
                   All
-                  <span className="sub-status-tab-count">{loading ? "-" : submissions.length}</span>
+                  <span className="sub-status-tab-count">{loading ? "-" : counts.all}</span>
                 </button>
                 <button
                   type="button"
@@ -2345,12 +2354,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
                 {hasMoreQueued && (
                   <div ref={queuedSentinelRef} className="sub-load-more-sentinel">
-                    <div className="sub-load-more-spinner" />
-                    <span>Loading more submissions...</span>
+                    {!loadMoreError && <div className="sub-load-more-spinner" />}
+                    <span>
+                      {loadMoreError
+                        ? "Unable to load more submissions. Use Refresh to retry."
+                        : "Loading more submissions..."}
+                    </span>
                   </div>
                 )}
 
-                {!hasMoreQueued && totalQueuedCount > 8 && (
+                {!hasMoreQueued && totalQueuedCount > 20 && (
                   <div className="sub-list-end-indicator">
                     <span>Showing all {totalQueuedCount} submissions</span>
                   </div>

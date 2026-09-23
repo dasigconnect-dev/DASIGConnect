@@ -29,7 +29,7 @@ The branch was created after fast-forwarding local `dev` to `origin/dev`.
 | Phase | Status | Verification |
 | --- | --- | --- |
 | Phase 1 - Contract and My Submissions Backend | Complete | New additive endpoint, bounded page sizes, ownership scope, server bucket/search handling, complete bucket counts, batched page media previews, controller/service coverage, application-context query parsing |
-| Phase 2 - My Submissions Frontend | Not started | Pending Phase 1 merge |
+| Phase 2 - My Submissions Frontend | Complete | Server-backed 20-item infinite query, debounced bucket/search requests, page cache reuse, mutation cache reset, direct ID-scoped detail loading, production build and focused lint |
 | Phase 3 - Review Queue Backend | Not started | Pending |
 | Phase 4 - Review Queue Frontend | Not started | Pending |
 | Phase 5 - Failed Publications | Not started | Pending |
@@ -41,6 +41,15 @@ Phase 1 verification completed on September 23, 2026:
 Focused suite: 79 tests passed
 Full backend suite after the final compatibility refinement: 748 tests passed
 Repository query parsing: verified by BackendApplicationTests context startup
+```
+
+Phase 2 verification completed on September 23, 2026:
+
+```text
+Frontend production build: passed
+Focused ESLint for all changed frontend files: passed with no errors
+Repository-wide ESLint: blocked by 48 pre-existing errors outside the Phase 2 changes
+UI/CSS files changed: none
 ```
 
 ## 3. Verified Current Behavior
@@ -423,6 +432,7 @@ frontend/src/api/validationApi.ts
 frontend/src/api/resolutionApi.ts
 frontend/src/lib/queryKeys.ts
 frontend/src/hooks/useSubmissions.ts
+frontend/src/hooks/useDebouncedValue.ts
 frontend/src/hooks/useResolutionFailures.ts
 frontend/src/features/validation/hooks/useValidationQueue.ts
 frontend/src/features/submission/SubmissionScreen.tsx
@@ -474,6 +484,17 @@ Exit criteria:
 - Filter/search changes cancel obsolete requests and reset pages.
 - Returning to the page reuses fresh cached pages.
 - Existing visual snapshots/layout remain unchanged.
+
+Implemented September 23, 2026:
+
+- `SubmissionScreen` no longer requests the unbounded legacy submissions list.
+- Initial list work is bounded to 20 records; the existing sentinel requests one additional page at a time.
+- Status tabs and the 350 ms debounced search are server parameters included in the scoped React Query key.
+- Tab badges use complete backend counts instead of counts derived from loaded pages.
+- Fresh pages remain cached for back navigation; explicit refresh resets the active query to page zero.
+- Composer/detail routes keep using ID-scoped detail queries and do not trigger the legacy full-list request.
+- Submission mutations clear paginated list caches so the next list visit fetches one fresh first page rather than refetching every previously loaded page.
+- No stylesheet, component hierarchy, card markup, tab markup, or responsive-layout change was introduced.
 
 ### Phase 3 - Review Queue Backend
 

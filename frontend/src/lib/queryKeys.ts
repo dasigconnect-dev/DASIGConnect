@@ -49,6 +49,14 @@ export const queryKeys = {
   submissions: {
     all: (params: { role: string; userId?: string | null; institutionId?: string | null; status?: string }) =>
       scopedKey("submissions", params),
+    page: (params: {
+      role: string;
+      userId?: string | null;
+      institutionId?: string | null;
+      bucket: string;
+      search: string;
+      pageSize: number;
+    }) => scopedKey("submissions", { ...params, view: "page" }),
     detail: (params: { role: string; userId?: string | null; institutionId?: string | null; submissionId: string }) =>
       scopedKey("submissions", { ...params, view: "detail" }),
     editorDetail: (params: { role: string; userId?: string | null; institutionId?: string | null; submissionId: string }) =>
