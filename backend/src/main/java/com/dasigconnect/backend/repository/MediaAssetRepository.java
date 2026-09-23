@@ -104,6 +104,53 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             @Param("uploaderId") UUID uploaderId,
             Pageable pageable);
 
+    /**
+     * Keyword-search fallback for {@code /media-assets/search}, filtered and
+     * capped in SQL instead of loading every visible asset into memory first
+     * (that used to be the semantic-search keyword path — a full table scan
+     * into the JVM heap on every Enter-press, the single biggest Supabase
+     * egress source once semantic search itself is already scoped by pgvector).
+     */
+    @EntityGraph(attributePaths = {"institution", "uploader", "mediaAlbum"})
+    @Query("""
+        SELECT m FROM MediaAsset m
+        WHERE m.deletedAt IS NULL
+          AND m.status <> com.dasigconnect.backend.model.entity.MediaAssetStatus.STAGED
+          AND (:networkWide = true OR m.institution.id IN :institutionIds)
+          AND m.id NOT IN :excludeIds
+          AND (
+              NOT EXISTS (
+                  SELECT sma.id FROM SubmissionMediaAsset sma
+                  WHERE sma.mediaAsset = m
+              )
+              OR EXISTS (
+                  SELECT publishedLink.id FROM SubmissionMediaAsset publishedLink
+                  WHERE publishedLink.mediaAsset = m
+                    AND publishedLink.submission.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+              )
+          )
+          AND (
+              LOWER(m.fileName) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(COALESCE(m.displayTitle, '')) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(m.assetCode) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(COALESCE(m.aiCategory, '')) LIKE CONCAT('%', :searchTerm, '%')
+              OR LOWER(COALESCE(m.aiDescription, '')) LIKE CONCAT('%', :searchTerm, '%')
+              OR (m.uploader IS NOT NULL AND LOWER(m.uploader.email) LIKE CONCAT('%', :searchTerm, '%'))
+              OR EXISTS (
+                  SELECT tag.id FROM AssetTag tag
+                  WHERE tag.mediaAsset = m
+                    AND LOWER(tag.label) LIKE CONCAT('%', :searchTerm, '%')
+              )
+          )
+        ORDER BY m.createdAt DESC
+        """)
+    List<MediaAsset> findKeywordMatches(
+            @Param("networkWide") boolean networkWide,
+            @Param("institutionIds") Collection<UUID> institutionIds,
+            @Param("searchTerm") String searchTerm,
+            @Param("excludeIds") Collection<UUID> excludeIds,
+            Pageable pageable);
+
     // JPQL (not SELECT *) so Hibernate emits an explicit column list and never
     // pulls the unmapped embedding VECTOR(1024) column across the wire.
     @Query("""

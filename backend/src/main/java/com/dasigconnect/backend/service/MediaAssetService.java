@@ -2,7 +2,6 @@ package com.dasigconnect.backend.service;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -210,10 +209,18 @@ public class MediaAssetService {
         return new MediaAssetListResponseDto(items, totalCount, safePage, safePageSize);
     }
 
+    private static final int SEMANTIC_SEARCH_RESULT_CAP = 60;
+
     /**
      * Meaning-based asset search: embeds the query with Voyage AI and ranks the
      * viewer's visible assets by pgvector cosine similarity, then appends plain
      * keyword matches (covers assets without an embedding and Voyage outages).
+     *
+     * <p>Both the semantic and keyword paths are scoped/filtered/capped in SQL —
+     * this used to load every visible asset in scope into memory on every
+     * Enter-press (network-wide, for a moderator/admin, meaning the whole
+     * table) before filtering down to 60 in Java. That full-table load was a
+     * major Supabase DB egress source; see {@link MediaAssetRepository#findKeywordMatches}.
      */
     @Transactional(readOnly = true)
     public MediaAssetListResponseDto semanticSearch(String query, UUID institutionId, JwtUserDetails user) {
@@ -223,82 +230,68 @@ public class MediaAssetService {
         }
         boolean moderator = isNetworkRole(user);
 
-        List<MediaAsset> scope;
-        java.util.Set<UUID> institutionScope = null; // null => network-wide (admin)
+        boolean networkWide;
+        java.util.Set<UUID> institutionScope;
         if (moderator && institutionId != null) {
+            networkWide = false;
             institutionScope = java.util.Set.of(institutionId);
-            scope = mediaAssetRepository.findActiveByInstitution(institutionId);
         } else if (moderator) {
-            scope = mediaAssetRepository.findAllActive();
+            networkWide = true;
+            institutionScope = java.util.Set.of(EMPTY_SCOPE_ID);
         } else {
+            networkWide = false;
             institutionScope = visibleInstitutionIds(user);
-            scope = institutionScope.isEmpty() ? List.of()
-                    : mediaAssetRepository.findActiveByInstitutionIds(institutionScope);
-        }
-
-        List<UUID> scopeIds = scope.stream().map(MediaAsset::getId).toList();
-        Set<UUID> attached = submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(scopeIds);
-        Set<UUID> beyondDraft = submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(scopeIds);
-        java.util.Map<UUID, MediaAsset> byId = new java.util.HashMap<>();
-        for (MediaAsset a : scope) {
-            if (isPublishedToRepository(a, attached, beyondDraft)) {
-                byId.put(a.getId(), a);
+            if (institutionScope.isEmpty()) {
+                return new MediaAssetListResponseDto(List.of(), 0, 1, 0);
             }
         }
 
         java.util.LinkedHashMap<UUID, MediaAsset> ordered = new java.util.LinkedHashMap<>();
-        if (!byId.isEmpty()) {
-            try {
-                String queryVector = voyageAIClient.embedQuery(trimmed);
-                List<Object[]> hits = institutionScope == null
-                        ? mediaAssetRepository.findTopSimilarAllInstitutions(queryVector)
-                        : mediaAssetRepository.findTopSimilarInInstitutions(institutionScope, queryVector);
-                for (Object[] row : hits) {
-                    MediaAsset a = byId.get(UUID.fromString((String) row[0]));
-                    if (a != null) {
-                        ordered.putIfAbsent(a.getId(), a);
+        try {
+            String queryVector = voyageAIClient.embedQuery(trimmed);
+            List<Object[]> hits = networkWide
+                    ? mediaAssetRepository.findTopSimilarAllInstitutions(queryVector)
+                    : mediaAssetRepository.findTopSimilarInInstitutions(institutionScope, queryVector);
+            List<UUID> hitIds = hits.stream().map(row -> UUID.fromString((String) row[0])).toList();
+            if (!hitIds.isEmpty()) {
+                // Re-check "published to repository" visibility only for the bounded
+                // set of candidates pgvector actually returned, not the whole scope.
+                Set<UUID> attached = submissionMediaAssetRepository.findAssetIdsWithAnySubmissionLink(hitIds);
+                Set<UUID> beyondDraft = submissionMediaAssetRepository.findAssetIdsUsedBeyondDraft(hitIds);
+                List<UUID> visibleHitIds = hitIds.stream()
+                        .filter(id -> isPublishedToRepository(id, attached, beyondDraft))
+                        .toList();
+                if (!visibleHitIds.isEmpty()) {
+                    Map<UUID, MediaAsset> byId = mediaAssetRepository.findActiveByIds(visibleHitIds).stream()
+                            .collect(Collectors.toMap(MediaAsset::getId, a -> a));
+                    for (UUID id : visibleHitIds) {
+                        MediaAsset a = byId.get(id);
+                        if (a != null) {
+                            ordered.put(id, a);
+                        }
                     }
                 }
-            } catch (RuntimeException e) {
-                log.warn("Semantic media search fell back to keyword matching: {}", e.getMessage());
             }
+        } catch (RuntimeException e) {
+            log.warn("Semantic media search fell back to keyword matching: {}", e.getMessage());
+        }
 
+        if (ordered.size() < SEMANTIC_SEARCH_RESULT_CAP) {
             String lower = trimmed.toLowerCase();
-            Map<UUID, List<String>> manualTagsByAsset = loadAllTagLabels(new ArrayList<>(byId.keySet()));
-            byId.values().stream()
-                    .filter(a -> !ordered.containsKey(a.getId()))
-                    .filter(a -> matchesKeyword(a, lower, manualTagsByAsset.getOrDefault(a.getId(), List.of())))
-                    .sorted(resolveSort("newest"))
-                    .forEach(a -> ordered.put(a.getId(), a));
+            Set<UUID> excludeIds = ordered.isEmpty() ? Set.of(EMPTY_SCOPE_ID) : ordered.keySet();
+            PageRequest keywordPage = PageRequest.of(0, SEMANTIC_SEARCH_RESULT_CAP - ordered.size());
+            List<MediaAsset> keywordHits = mediaAssetRepository.findKeywordMatches(
+                    networkWide, institutionScope, lower, excludeIds, keywordPage);
+            for (MediaAsset a : keywordHits) {
+                ordered.put(a.getId(), a);
+            }
         }
 
         List<MediaAssetSummaryDto> items = ordered.values().stream()
-                .limit(60)
+                .limit(SEMANTIC_SEARCH_RESULT_CAP)
                 .map(MediaAssetSummaryDto::from)
                 .toList();
         return new MediaAssetListResponseDto(items, items.size(), 1, items.size());
-    }
-
-    private static boolean matchesKeyword(MediaAsset a, String lower, List<String> manualTags) {
-        if (containsIgnoreCase(a.getFileName(), lower)
-                || containsIgnoreCase(a.getDisplayTitle(), lower)
-                || containsIgnoreCase(a.getAssetCode(), lower)
-                || containsIgnoreCase(a.getAiDescription(), lower)
-                || containsIgnoreCase(a.getAiCategory(), lower)
-                || (a.getUploader() != null && containsIgnoreCase(a.getUploader().getEmail(), lower))) {
-            return true;
-        }
-        String[] tags = a.getAiTags();
-        if (tags != null) {
-            for (String t : tags) {
-                if (containsIgnoreCase(t, lower)) {
-                    return true;
-                }
-            }
-        }
-        // UC-2.2 A3: a custom tag added after upload must be searchable too,
-        // not just AI-generated ones.
-        return manualTags.stream().anyMatch(label -> containsIgnoreCase(label, lower));
     }
 
     @Transactional(readOnly = true)
@@ -1346,11 +1339,11 @@ public class MediaAssetService {
     }
 
     private boolean isPublishedToRepository(
-            MediaAsset asset, Set<UUID> attachedAssetIds, Set<UUID> assetIdsUsedBeyondDraft) {
-        if (!attachedAssetIds.contains(asset.getId())) {
+            UUID assetId, Set<UUID> attachedAssetIds, Set<UUID> assetIdsUsedBeyondDraft) {
+        if (!attachedAssetIds.contains(assetId)) {
             return true;
         }
-        return assetIdsUsedBeyondDraft.contains(asset.getId());
+        return assetIdsUsedBeyondDraft.contains(assetId);
     }
 
     private boolean isContributor(JwtUserDetails user) {
@@ -1387,37 +1380,6 @@ public class MediaAssetService {
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to delete media assets.");
     }
 
-    private static boolean containsIgnoreCase(String value, String query) {
-        if (value == null) {
-            return false;
-        }
-        return value.toLowerCase().contains(query);
-    }
-
-    /**
-     * Every tag (manual or AI-generated) for each of the given assets, batched
-     * in one query instead of N+1. UC-2.2 A3: a custom tag added after upload
-     * must be searchable, same as an AI-generated one.
-     */
-    private Map<UUID, List<String>> loadAllTagLabels(List<UUID> assetIds) {
-        if (assetIds.isEmpty()) {
-            return Map.of();
-        }
-        Map<UUID, List<String>> result = new java.util.HashMap<>();
-        List<Object[]> rows = assetTagRepository.findLabelsByMediaAssetIds(assetIds);
-        if (rows == null) {
-            return Map.of();
-        }
-        for (Object[] row : rows) {
-            UUID assetId = (UUID) row[0];
-            String label = row[1] instanceof String s ? s : null;
-            if (label != null && !label.isBlank()) {
-                result.computeIfAbsent(assetId, ignored -> new java.util.ArrayList<>()).add(label);
-            }
-        }
-        return result;
-    }
-
     private static Sort resolveRepositorySort(String sort) {
         if (sort == null || sort.isBlank() || sort.equalsIgnoreCase("newest")) {
             return Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
@@ -1432,24 +1394,6 @@ public class MediaAssetService {
             return Sort.by(Sort.Order.desc("fileSizeBytes"), Sort.Order.desc("id"));
         }
         return Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
-    }
-
-    private static Comparator<MediaAsset> resolveSort(String sort) {
-        if (sort == null || sort.isBlank() || sort.equalsIgnoreCase("newest")) {
-            return Comparator.comparing(MediaAsset::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
-                    .reversed();
-        }
-        if (sort.equalsIgnoreCase("oldest")) {
-            return Comparator.comparing(MediaAsset::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()));
-        }
-        if (sort.equalsIgnoreCase("name")) {
-            return Comparator.comparing(MediaAsset::getFileName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
-        }
-        if (sort.equalsIgnoreCase("size")) {
-            return Comparator.comparingLong(MediaAsset::getFileSizeBytes).reversed();
-        }
-        return Comparator.comparing(MediaAsset::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
-                .reversed();
     }
 
     private static List<MediaFileType> resolveMediaTypes(String mediaType) {
