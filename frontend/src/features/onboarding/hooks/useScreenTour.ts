@@ -13,6 +13,12 @@ interface UseScreenTourOptions {
   steps: TourStep[];
   autoStartDelayMs?: number;
   canStart?: boolean;
+  /**
+   * Called with the active step whenever it changes, and with null when the
+   * tour closes — lets a screen show the UI a step talks about (and put it
+   * back afterwards).
+   */
+  onStepChange?: (step: TourStep | null) => void;
 }
 
 export function useScreenTour({
@@ -20,12 +26,21 @@ export function useScreenTour({
   steps,
   autoStartDelayMs = 600,
   canStart = true,
+  onStepChange,
 }: UseScreenTourOptions) {
   const [isActive, setIsActive] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isGloballyEnabled, setIsGloballyEnabled] = useState(isTourEnabled());
   const [preferencesLoaded, setPreferencesLoaded] = useState(isTourPreferencesLoaded());
   const timerRef = useRef<number | null>(null);
+  const onStepChangeRef = useRef(onStepChange);
+  useEffect(() => {
+    onStepChangeRef.current = onStepChange;
+  });
+  const activeStep = isActive ? steps[currentStepIndex] ?? null : null;
+  useEffect(() => {
+    onStepChangeRef.current?.(activeStep);
+  }, [activeStep]);
 
   // Synchronize with global preferences updates (hydration from the account
   // profile, a mutation, or a logout reset).

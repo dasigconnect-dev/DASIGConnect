@@ -35,6 +35,8 @@ interface Props {
   ) => void;
   onRestoreSelection: (nextSelection: FancyTextSelection) => void;
   onPreviewStateChange?: (active: boolean) => void;
+  /** Show the styles panel regardless of internal state (the composer guide's view-only preview). */
+  forceOpen?: boolean;
 }
 
 const PREVIEW_TEXT_LIMIT = 54;
@@ -111,8 +113,10 @@ export default function FancyTextTool({
   onPreviewSelection,
   onRestoreSelection,
   onPreviewStateChange,
+  forceOpen = false,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const panelOpen = open || forceOpen;
   const baseCaptionRef = useRef<string | null>(null);
   const baseSelectionRef = useRef<FancyTextSelection | null>(null);
   const lastPreviewCaptionRef = useRef<string | null>(null);
@@ -129,7 +133,7 @@ export default function FancyTextTool({
   const hasExplicitSelection = activeSelection.end > activeSelection.start;
   const effectiveSelection = hasExplicitSelection
     ? activeSelection
-    : open && activeCaption.length > 0
+    : panelOpen && activeCaption.length > 0
       ? { start: 0, end: activeCaption.length }
       : activeSelection;
   const selectedText = effectiveSelection.end > effectiveSelection.start
@@ -228,11 +232,11 @@ export default function FancyTextTool({
   }
 
   return (
-    <div className={`fancy-text-tool${open ? " is-open" : ""}`}>
+    <div className={`fancy-text-tool${panelOpen ? " is-open" : ""}`}>
       <button
         type="button"
         className="fancy-text-trigger"
-        aria-expanded={open}
+        aria-expanded={panelOpen}
         aria-controls="fancy-text-panel"
         disabled={disabled}
         title="Open Fancy text"
@@ -255,7 +259,7 @@ export default function FancyTextTool({
         Fancy text
       </button>
 
-      {open && (
+      {panelOpen && (
         <div
           id="fancy-text-panel"
           className="fancy-text-panel"
