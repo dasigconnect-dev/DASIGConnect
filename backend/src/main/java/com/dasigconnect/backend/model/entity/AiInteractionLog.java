@@ -11,10 +11,12 @@ public class AiInteractionLog {
     @Id
     private UUID id;
 
-    @Column(name = "submission_id", nullable = false)
+    /** Null for AI events not tied to a submission (e.g. template drafts). */
+    @Column(name = "submission_id")
     private UUID submissionId;
 
-    @Column(name = "institution_id", nullable = false)
+    /** Null when the actor has no institution (Moderator/Admin) and there's no submission. */
+    @Column(name = "institution_id")
     private UUID institutionId;
 
     @Column(name = "interaction_type", nullable = false, length = 30)
@@ -25,6 +27,10 @@ public class AiInteractionLog {
 
     @Column(name = "tone_selected", length = 30)
     private String toneSelected;
+
+    /** What the AI proposed, for events that compare it with the final choice (album_match). */
+    @Column(name = "suggested_value", columnDefinition = "text")
+    private String suggestedValue;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -46,5 +52,7 @@ public class AiInteractionLog {
     public void setActionTaken(String actionTaken) { this.actionTaken = actionTaken; }
     public String getToneSelected() { return toneSelected; }
     public void setToneSelected(String toneSelected) { this.toneSelected = toneSelected; }
+    public String getSuggestedValue() { return suggestedValue; }
+    public void setSuggestedValue(String suggestedValue) { this.suggestedValue = suggestedValue; }
     public Instant getCreatedAt() { return createdAt; }
 }

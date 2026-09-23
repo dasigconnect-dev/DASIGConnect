@@ -3,6 +3,7 @@ import type { SubmissionMediaItem } from "../../types/media";
 import type { UseAiMediaSuggestionsReturn } from "../../hooks/useAiMediaSuggestions";
 import { hasSufficientMediaContext } from "../../hooks/useAiMediaSuggestions";
 import MediaAssetGrid, { type GridAsset } from "./MediaAssetGrid";
+import { logAiInteraction } from "../../api/aiApi";
 
 interface AiSuggestedMediaTabProps {
   suggestions: UseAiMediaSuggestionsReturn;
@@ -75,6 +76,8 @@ export default function AiSuggestedMediaTab({
       similarityScore: r.similarityScore,
     }));
     onAddItems(items);
+    // AI Feature Adoption: one "accepted" per add, against one "shown" per result set.
+    if (submissionId) logAiInteraction(submissionId, "media_recommendation", "accepted");
     setSelectedIds(new Set());
   }
 

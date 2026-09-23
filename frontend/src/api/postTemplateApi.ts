@@ -20,6 +20,8 @@ export interface PostTemplatePayload {
   tags?: string[];
   sourceSubmissionId?: string | null;
   institutionId?: string | null;
+  /** "ai_top_posts" when saving a Generate-from-Top-Posts draft (AI adoption tracking). */
+  source?: "ai_top_posts";
 }
 
 export function listPostTemplates(signal?: AbortSignal) {

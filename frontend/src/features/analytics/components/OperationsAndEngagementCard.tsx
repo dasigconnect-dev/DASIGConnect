@@ -122,19 +122,32 @@ export default function OperationsAndEngagementCard({ summary, onOpenReport }: P
 
             <div className="analytics-matrix-grid">
               <div className="analytics-matrix-cell">
-                <span className="analytics-matrix-cell-label">Caption Acceptance</span>
+                <span className="analytics-matrix-cell-label">Caption Generator</span>
                 <strong className="analytics-matrix-cell-val">{formatPercent(ai.captionAcceptanceRate)}</strong>
-                <span className="analytics-matrix-cell-sub">{ai.captionAcceptedEvents} of {ai.captionSuggestionEvents} events</span>
+                <span className="analytics-matrix-cell-sub">
+                  {ai.captionAcceptedEvents} of {ai.captionSuggestionEvents} captions used
+                </span>
               </div>
               <div className="analytics-matrix-cell">
-                <span className="analytics-matrix-cell-label">Tag Correction</span>
-                <strong className="analytics-matrix-cell-val">{formatPercent(ai.tagCorrectionRate)}</strong>
-                <span className="analytics-matrix-cell-sub">{ai.tagCorrectionEvents} of {ai.tagClassificationEvents} events</span>
-              </div>
-              <div className="analytics-matrix-cell">
-                <span className="analytics-matrix-cell-label">Media Recommendation</span>
+                <span className="analytics-matrix-cell-label">Media Suggestions</span>
                 <strong className="analytics-matrix-cell-val">{formatPercent(ai.mediaRecommendationRelevanceRate)}</strong>
-                <span className="analytics-matrix-cell-sub">{ai.mediaRecommendationRelevantEvents} of {ai.mediaRecommendationEvents} events</span>
+                <span className="analytics-matrix-cell-sub">
+                  {ai.mediaRecommendationRelevantEvents} added of {ai.mediaRecommendationEvents} shown
+                </span>
+              </div>
+              <div className="analytics-matrix-cell">
+                <span className="analytics-matrix-cell-label">Album Auto-Match</span>
+                <strong className="analytics-matrix-cell-val">{formatPercent(ai.albumMatchKeptRate)}</strong>
+                <span className="analytics-matrix-cell-sub">
+                  {ai.albumMatchKeptEvents} of {ai.albumMatchEvents} posts kept the AI album
+                </span>
+              </div>
+              <div className="analytics-matrix-cell">
+                <span className="analytics-matrix-cell-label">Template from Top Posts</span>
+                <strong className="analytics-matrix-cell-val">{formatPercent(ai.templateDraftSaveRate)}</strong>
+                <span className="analytics-matrix-cell-sub">
+                  {ai.templateDraftsSaved} of {ai.templateDraftsGenerated} drafts saved
+                </span>
               </div>
             </div>
           </div>

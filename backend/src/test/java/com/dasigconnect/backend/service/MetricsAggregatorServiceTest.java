@@ -74,7 +74,7 @@ class MetricsAggregatorServiceTest {
         when(analyticsRepository.institutionFilterOptions()).thenReturn(List.of());
         when(analyticsRepository.postsByInstitution(any(), any(), any())).thenReturn(List.of());
         when(analyticsRepository.aiPerformance(any(), any(), any()))
-                .thenReturn(new AiStats(10, 7, 4, 1, 8, 6));
+                .thenReturn(new AiStats(10, 7, 8, 6, 4, 3, 2, 1));
         when(analyticsRepository.operationalHealth(any(), any(), any(), any()))
                 .thenReturn(new AnalyticsRepository.OperationalStats(4, 1, 0, 4, 3, 2, 0));
 
@@ -96,7 +96,51 @@ class MetricsAggregatorServiceTest {
         org.mockito.Mockito.verify(analyticsRepository, org.mockito.Mockito.atLeastOnce())
                 .averagePostingDelay(any(Instant.class), any(Instant.class), scopeCaptor.capture());
         assertThat(scopeCaptor.getValue().role()).isEqualTo("admin");
-        assertThat(scopeCaptor.getValue().institutionId()).isNull();
+        assertThat(scopeCaptor.getValue().institutionIds()).isEmpty();
+    }
+
+    @Test
+    void summary_adminCanSelectSeveralInstitutions_withoutSingleInstitutionDrilldown() {
+        UUID first = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID second = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "admin", null);
+        stubCoreQueries();
+        when(analyticsRepository.institutionFilterOptions()).thenReturn(List.of());
+        when(analyticsRepository.postsByInstitution(any(), any(), any())).thenReturn(List.of());
+        when(analyticsRepository.aiPerformance(any(), any(), any()))
+                .thenReturn(new AiStats(10, 7, 8, 6, 4, 3, 2, 1));
+        when(analyticsRepository.operationalHealth(any(), any(), any(), any()))
+                .thenReturn(new AnalyticsRepository.OperationalStats(4, 1, 0, 4, 3, 2, 0));
+
+        // Unsorted with a duplicate: the scope is normalized.
+        var summary = service.summary("30d", List.of(second, first, second), admin);
+
+        assertThat(summary.selectedInstitutionIds()).containsExactly(first, second);
+        assertThat(summary.contributorBreakdown()).isEmpty();
+        assertThat(summary.validatorAnalytics()).isNull();
+        org.mockito.Mockito.verify(analyticsRepository, org.mockito.Mockito.never())
+                .contributorBreakdown(any(), any(), any());
+    }
+
+    @Test
+    void summary_aiAdoptionRatesAreUsedOverOffered() {
+        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "admin", null);
+        stubCoreQueries();
+        when(analyticsRepository.institutionFilterOptions()).thenReturn(List.of());
+        when(analyticsRepository.postsByInstitution(any(), any(), any())).thenReturn(List.of());
+        // captions 10 generated / 7 applied; media 8 shown / 6 added; album 4 outcomes / 3 kept; templates 2 / 1
+        when(analyticsRepository.aiPerformance(any(), any(), any()))
+                .thenReturn(new AiStats(10, 7, 8, 6, 4, 3, 2, 1));
+        when(analyticsRepository.operationalHealth(any(), any(), any(), any()))
+                .thenReturn(new AnalyticsRepository.OperationalStats(4, 1, 0, 4, 3, 2, 0));
+
+        var ai = service.summary("30d", null, admin).aiPerformance();
+
+        assertThat(ai.captionAcceptanceRate()).isEqualTo(70.0);
+        assertThat(ai.mediaRecommendationRelevanceRate()).isEqualTo(75.0);
+        assertThat(ai.albumMatchKeptRate()).isEqualTo(75.0);
+        assertThat(ai.templateDraftSaveRate()).isEqualTo(50.0);
+        assertThat(ai.insufficientData()).isFalse(); // 10 + 8 + 4 + 2 = 24 events
     }
 
     @Test
@@ -107,7 +151,7 @@ class MetricsAggregatorServiceTest {
         when(analyticsRepository.institutionFilterOptions()).thenReturn(List.of());
         when(analyticsRepository.postsByInstitution(any(), any(), any())).thenReturn(List.of());
         when(analyticsRepository.aiPerformance(any(), any(), any()))
-                .thenReturn(new AiStats(10, 7, 4, 1, 8, 6));
+                .thenReturn(new AiStats(10, 7, 8, 6, 4, 3, 2, 1));
         when(analyticsRepository.operationalHealth(any(), any(), any(), any()))
                 .thenReturn(new AnalyticsRepository.OperationalStats(4, 1, 0, 4, 3, 2, 0));
         when(analyticsRepository.contributorBreakdown(any(), any(), any()))
@@ -115,7 +159,7 @@ class MetricsAggregatorServiceTest {
         when(analyticsRepository.validatorStats(any(), any(), any(), any()))
                 .thenReturn(new ValidatorStats(5, 2, 1, 1.25, 1));
 
-        var summary = service.summary("30d", institutionId, admin);
+        var summary = service.summary("30d", List.of(institutionId), admin);
 
         assertThat(summary.contributorBreakdown()).hasSize(1);
         assertThat(summary.validatorAnalytics()).isNotNull();
@@ -124,7 +168,7 @@ class MetricsAggregatorServiceTest {
         ArgumentCaptor<AnalyticsScope> scopeCaptor = ArgumentCaptor.forClass(AnalyticsScope.class);
         org.mockito.Mockito.verify(analyticsRepository, org.mockito.Mockito.atLeastOnce())
                 .averagePostingDelay(any(Instant.class), any(Instant.class), scopeCaptor.capture());
-        assertThat(scopeCaptor.getValue().institutionId()).isEqualTo(institutionId);
+        assertThat(scopeCaptor.getValue().institutionIds()).containsExactly(institutionId);
     }
 
     @Test
@@ -147,7 +191,7 @@ class MetricsAggregatorServiceTest {
         org.mockito.Mockito.verify(analyticsRepository, org.mockito.Mockito.atLeastOnce())
                 .averagePostingDelay(any(Instant.class), any(Instant.class), scopeCaptor.capture());
         assertThat(scopeCaptor.getValue().role()).isEqualTo("contributor");
-        assertThat(scopeCaptor.getValue().institutionId()).isEqualTo(institutionId);
+        assertThat(scopeCaptor.getValue().institutionIds()).containsExactly(institutionId);
     }
 
     @Test
@@ -155,7 +199,7 @@ class MetricsAggregatorServiceTest {
         UUID institutionId = UUID.randomUUID();
         JwtUserDetails contributor = new JwtUserDetails(UUID.randomUUID(), "contributor@test.local", "contributor", institutionId);
 
-        assertThatThrownBy(() -> service.summary("30d", UUID.randomUUID(), contributor))
+        assertThatThrownBy(() -> service.summary("30d", List.of(UUID.randomUUID()), contributor))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -179,14 +223,14 @@ class MetricsAggregatorServiceTest {
         org.mockito.Mockito.verify(analyticsRepository, org.mockito.Mockito.atLeastOnce())
                 .averagePostingDelay(any(Instant.class), any(Instant.class), scopeCaptor.capture());
         assertThat(scopeCaptor.getValue().role()).isEqualTo("moderator");
-        assertThat(scopeCaptor.getValue().institutionId()).isNull();
+        assertThat(scopeCaptor.getValue().institutionIds()).isEmpty();
     }
 
     @Test
     void summary_moderatorCannotPassInstitutionFilter() {
         JwtUserDetails moderator = new JwtUserDetails(UUID.randomUUID(), "mod@test.local", "moderator", null);
 
-        assertThatThrownBy(() -> service.summary("30d", UUID.randomUUID(), moderator))
+        assertThatThrownBy(() -> service.summary("30d", List.of(UUID.randomUUID()), moderator))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -259,6 +303,49 @@ class MetricsAggregatorServiceTest {
                 .reportRows(any(), any(), any(), any(), eq(2), eq(100));
         org.mockito.Mockito.verify(analyticsRepository, org.mockito.Mockito.never())
                 .dailyBreakdown(any(), any(), any(), any());
+    }
+
+    @Test
+    void report_customDateRangeCoversWholeDaysInPhilippineTime() {
+        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "admin", null);
+        when(analyticsRepository.reportRows(any(), any(), any(), any(), anyInt(), anyInt()))
+                .thenReturn(new AnalyticsRowsPage(List.of(), 0, 1, 50));
+        when(analyticsRepository.dailyBreakdown(any(), any(), any(), any())).thenReturn(List.of());
+
+        var report = service.report("posting-delay", "2026-08-01..2026-08-31", null, 1, 50, admin);
+
+        // Aug 1 00:00 PHT (UTC+8) through the start of Sep 1 PHT; both ends inclusive.
+        assertThat(report.periodStart()).isEqualTo(Instant.parse("2026-07-31T16:00:00Z"));
+        assertThat(report.periodEnd()).isEqualTo(Instant.parse("2026-08-31T16:00:00Z"));
+        assertThat(report.range()).isEqualTo("2026-08-01..2026-08-31");
+    }
+
+    @Test
+    void report_customDateRangeEndingTodayIsCappedAtNow() {
+        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "admin", null);
+        when(analyticsRepository.reportRows(any(), any(), any(), any(), anyInt(), anyInt()))
+                .thenReturn(new AnalyticsRowsPage(List.of(), 0, 1, 50));
+        when(analyticsRepository.dailyBreakdown(any(), any(), any(), any())).thenReturn(List.of());
+        String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Manila")).toString();
+
+        var report = service.report("posting-delay", today + ".." + today, null, 1, 50, admin);
+
+        assertThat(report.periodEnd()).isBeforeOrEqualTo(Instant.now());
+    }
+
+    @Test
+    void summary_rejectsInvalidCustomRanges() {
+        JwtUserDetails admin = new JwtUserDetails(UUID.randomUUID(), "admin@test.local", "admin", null);
+        String future = java.time.LocalDate.now().plusDays(10).toString();
+
+        assertThatThrownBy(() -> service.summary("2026-08-31..2026-08-01", null, admin))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("start is after its end");
+        assertThatThrownBy(() -> service.summary("2024-01-01..2025-06-01", null, admin))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("at most 366 days");
+        assertThatThrownBy(() -> service.summary(future + ".." + future, null, admin))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("future");
+        assertThatThrownBy(() -> service.summary("2026-08-01..next-week", null, admin))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("YYYY-MM-DD..YYYY-MM-DD");
     }
 
     @Test

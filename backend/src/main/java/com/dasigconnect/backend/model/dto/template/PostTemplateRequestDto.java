@@ -24,6 +24,9 @@ public class PostTemplateRequestDto {
     private List<@Size(max = 50) String> tags;
     private UUID sourceSubmissionId;
     private UUID institutionId;
+    /** "ai_top_posts" when saving a draft from Generate from Top Posts (adoption tracking only). */
+    @Size(max = 30)
+    private String source;
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
@@ -39,4 +42,6 @@ public class PostTemplateRequestDto {
     public void setSourceSubmissionId(UUID sourceSubmissionId) { this.sourceSubmissionId = sourceSubmissionId; }
     public UUID getInstitutionId() { return institutionId; }
     public void setInstitutionId(UUID institutionId) { this.institutionId = institutionId; }
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
 }

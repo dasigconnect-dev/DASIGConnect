@@ -9,6 +9,7 @@ import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.model.dto.media.MediaAssetSummaryDto;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.AIRecommendationService;
+import com.dasigconnect.backend.service.AiAdoptionTrackingService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -27,9 +28,12 @@ import java.util.UUID;
 public class AIRecommendationController {
 
     private final AIRecommendationService aiRecommendationService;
+    private final AiAdoptionTrackingService adoptionTracking;
 
-    public AIRecommendationController(AIRecommendationService aiRecommendationService) {
+    public AIRecommendationController(AIRecommendationService aiRecommendationService,
+                                      AiAdoptionTrackingService adoptionTracking) {
         this.aiRecommendationService = aiRecommendationService;
+        this.adoptionTracking = adoptionTracking;
     }
 
     /** Returns up to 5 similar media assets from the library using pgvector cosine search. */
@@ -65,7 +69,17 @@ public class AIRecommendationController {
             @PathVariable UUID id,
             @RequestBody AlbumMatchRequestDto dto,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(aiRecommendationService.suggestAlbum(id, dto, user)));
+        AlbumMatchResponseDto result = aiRecommendationService.suggestAlbum(id, dto, user);
+        if (result.getStatus() != AlbumMatchResponseDto.Status.none) {
+            try {
+                // AI Feature Adoption: the outcome (kept/changed) is judged on submit.
+                adoptionTracking.recordAlbumSuggestion(id, user.institutionId(), result.getStatus().name(),
+                        result.getCandidates().stream().map(candidate -> candidate.getAlbumName()).toList());
+            } catch (RuntimeException ignored) {
+                // Tracking must never fail the suggestion itself.
+            }
+        }
+        return ResponseEntity.ok(ApiResponse.success(result));
     }
 
     /** Records a user action (accepted/dismissed) for tag_classification or media_recommendation. */

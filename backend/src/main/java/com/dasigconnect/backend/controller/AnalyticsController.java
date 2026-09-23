@@ -1,5 +1,6 @@
 package com.dasigconnect.backend.controller;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.ContentDisposition;
@@ -42,22 +43,26 @@ public class AnalyticsController {
     @GetMapping("/summary")
     public ResponseEntity<ApiResponse<AnalyticsSummaryDto>> summary(
             @RequestParam(defaultValue = "30d") String range,
-            @RequestParam(required = false) UUID institutionId,
+            @RequestParam(name = "institutionId", required = false) List<UUID> institutionIds,
             @AuthenticationPrincipal JwtUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.success(metricsAggregatorService.summary(range, institutionId, user)));
+        return ResponseEntity.ok(ApiResponse.success(metricsAggregatorService.summary(range, institutionIds, user)));
     }
 
     @GetMapping(value = "/export/{metric}", produces = "text/csv")
     public ResponseEntity<String> export(
             @PathVariable String metric,
             @RequestParam(defaultValue = "30d") String range,
-            @RequestParam(required = false) UUID institutionId,
+            @RequestParam(name = "institutionId", required = false) List<UUID> institutionIds,
             @AuthenticationPrincipal JwtUserDetails user) {
-        CsvExport export = metricsAggregatorService.export(metric, range, institutionId, user);
+        CsvExport export = metricsAggregatorService.export(metric, range, institutionIds, user);
+        boolean scoped = institutionIds != null && !institutionIds.isEmpty();
         auditLogService.recordByActorId(user != null ? user.userId() : null,
-                "ANALYTICS_EXPORTED", null, null, institutionId,
+                "ANALYTICS_EXPORTED", null, null,
+                scoped && institutionIds.size() == 1 ? institutionIds.get(0) : null,
                 java.util.Map.of("metric", metric, "range", range,
-                        "institutionScope", institutionId != null ? institutionId.toString() : "all"));
+                        "institutionScope", scoped
+                                ? institutionIds.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(","))
+                                : "all"));
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
@@ -69,11 +74,11 @@ public class AnalyticsController {
     public ResponseEntity<ApiResponse<AnalyticsReportDto>> report(
             @PathVariable String metric,
             @RequestParam(defaultValue = "30d") String range,
-            @RequestParam(required = false) UUID institutionId,
+            @RequestParam(name = "institutionId", required = false) List<UUID> institutionIds,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int pageSize,
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(
-                metricsAggregatorService.report(metric, range, institutionId, page, pageSize, user)));
+                metricsAggregatorService.report(metric, range, institutionIds, page, pageSize, user)));
     }
 }

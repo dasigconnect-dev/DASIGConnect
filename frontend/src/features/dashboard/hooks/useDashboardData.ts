@@ -111,7 +111,7 @@ export function useDashboardData(user: User) {
   });
   const analyticsQuery = useQuery({
     ...options("analytics-30d", user.role === "admin"),
-    queryFn: ({ signal }) => getAnalyticsSummary("30d", null, signal).then((response) => response.data),
+    queryFn: ({ signal }) => getAnalyticsSummary("30d", [], signal).then((response) => response.data),
   });
 
   const queue = queueQuery.data ?? [];

@@ -72,6 +72,22 @@ class AnalyticsControllerTest {
 
     @Test
     @WithMockUser
+    @SuppressWarnings("unchecked")
+    void summary_commaSeparatedInstitutionIds_bindToAList() throws Exception {
+        java.util.UUID first = java.util.UUID.randomUUID();
+        java.util.UUID second = java.util.UUID.randomUUID();
+        when(metricsAggregatorService.summary(eq("30d"), any(), any())).thenReturn(summaryDto());
+
+        mockMvc.perform(get("/api/v1/analytics/summary").param("institutionId", first + "," + second))
+                .andExpect(status().isOk());
+
+        org.mockito.ArgumentCaptor<List<java.util.UUID>> ids = org.mockito.ArgumentCaptor.forClass(List.class);
+        org.mockito.Mockito.verify(metricsAggregatorService).summary(eq("30d"), ids.capture(), any());
+        org.assertj.core.api.Assertions.assertThat(ids.getValue()).containsExactly(first, second);
+    }
+
+    @Test
+    @WithMockUser
     void export_authenticated_returnsCsvAttachment() throws Exception {
         when(metricsAggregatorService.export(eq("posting-delay"), eq("30d"), any(), any()))
                 .thenReturn(new CsvExport("posting-delay.csv", "\"submission_id\"\r\n\"abc\"\r\n"));
@@ -109,7 +125,7 @@ class AnalyticsControllerTest {
                 Instant.parse("2026-05-31T00:00:00Z"),
                 "admin",
                 true,
-                null,
+                List.of(),
                 List.of(),
                 new KpiMetricDto("averagePostingDelay", "AVG Posting Delay", 2.5, "days", 8, null, true, null, List.of(2.0, 2.5), null, null),
                 new KpiMetricDto("contentCompleteness", "Content Completeness", 96.0, "percent", 25, 95.0, true, 2.0, List.of(94.0, 96.0), null, null),
@@ -120,7 +136,7 @@ class AnalyticsControllerTest {
                 List.of(),
                 null,
                 null,
-                new AiPerformanceDto(0, 0, 0, 0, 0, 0, 0, 0, 0, true),
+                new AiPerformanceDto(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, true),
                 new AdminAnalyticsDto(1, 4, 1),
                 new OperationalHealthDto(12, 0, 0, 0, 0, 20, 19, 95.0, 19, 100.0, 95.0, true, 4),
                 new com.dasigconnect.backend.model.dto.analytics.FacebookEngagementSummaryDto(0, 0, 0, 0, 0, 0, null),

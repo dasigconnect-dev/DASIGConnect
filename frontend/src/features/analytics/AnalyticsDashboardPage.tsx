@@ -13,8 +13,9 @@ import ContributorAnalyticsView from "./components/ContributorAnalyticsView";
 import ContributorBreakdownTable from "./components/ContributorBreakdownTable";
 import RoleMetricPanel from "./components/RoleMetricPanel";
 import FullReportModal from "./components/FullReportModal";
-import BrandedSelect from "../../components/ui/BrandedSelect";
-import { formatDateRange, formatDateTime, formatNumber } from "./analyticsUtils";
+import AnalyticsDateRangePicker from "./components/AnalyticsDateRangePicker";
+import MultiSelect from "../../components/ui/MultiSelect";
+import { formatDateTime, formatNumber } from "./analyticsUtils";
 import "../../styles/analytics.css";
 import "../../styles/dasig-loader.css";
 
@@ -22,25 +23,20 @@ interface Props {
   user: User;
 }
 
-const RANGES: Array<{ value: AnalyticsRange; label: string }> = [
-  { value: "7d", label: "7D" },
-  { value: "30d", label: "30D" },
-  { value: "90d", label: "90D" },
-  { value: "ytd", label: "YTD" },
-];
+const DEFAULT_RANGE: AnalyticsRange = "30d";
 
 export default function AnalyticsDashboardPage({ user }: Props) {
   const {
     range,
     setRange,
-    institutionId,
-    setInstitutionId,
+    institutionIds,
+    setInstitutionIds,
     summary,
     loading,
     refreshing,
     error,
     refresh,
-  } = useAnalyticsSummary(user, "30d");
+  } = useAnalyticsSummary(user, DEFAULT_RANGE);
   const [reportMetric, setReportMetric] = useState<AnalyticsExportMetric | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
 
@@ -55,7 +51,7 @@ export default function AnalyticsDashboardPage({ user }: Props) {
     <div id="screen-analytics" style={{ background: "var(--d-bg)" }}>
       <div className="dash-body analytics-page" data-role={user.role}>
 
-        {/* ── Executive Header Banner ── */}
+        {/* ── Header: title + scope/period controls ── */}
         <div className="analytics-header-banner">
           <div className="analytics-header-titles">
             <h1 className="dash-view-title" style={{ fontSize: "24px", marginBottom: "4px" }}>
@@ -64,84 +60,40 @@ export default function AnalyticsDashboardPage({ user }: Props) {
             <p className="dash-view-desc" style={{ fontSize: "13px", color: "var(--d-muted)" }}>
               Comprehensive posting velocity, audience reach, content quality, and network health
             </p>
+            {summary && (
+              <p className="analytics-updated">
+                <i className="ti ti-clock-check" aria-hidden />
+                Updated {formatDateTime(summary.lastUpdated)}
+              </p>
+            )}
           </div>
 
-          {summary && (
-            <div className="analytics-header-meta">
-              <span className="analytics-meta-pill">
-                <i className="ti ti-calendar" />
-                {formatDateRange(summary.periodStart, summary.periodEnd)}
-              </span>
-
-              <span className="analytics-scope-badge">
-                <i className="ti ti-shield-check" />
-                {summary.adminView
-                  ? summary.selectedInstitutionId
-                    ? "Institution Filter"
-                    : "Network Scope"
-                  : isContributorView
-                  ? "My Submissions"
-                  : isModeratorView
-                  ? "Network Scope"
-                  : "Institution Scope"}
-              </span>
-
-              <span className="analytics-meta-pill">
-                <i className="ti ti-clock-check" />
-                Updated {formatDateTime(summary.lastUpdated)}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* ── Filter & Time Range Toolbar Card ── */}
-        <div className="analytics-toolbar-card">
-          <div className="analytics-toolbar-inner">
-            <div className="analytics-filters-group">
-              {summary?.adminView && (
-                <div className="analytics-filter-field">
-                  <span className="analytics-field-label">Institution:</span>
-                  <BrandedSelect
-                    value={institutionId ?? ""}
-                    onChange={(v) => setInstitutionId(v || null)}
-                    ariaLabel="Filter analytics by institution"
-                    options={[
-                      { value: "", label: "All institutions" },
-                      ...summary.institutionFilterOptions.map((i) => ({
-                        value: i.institutionId,
-                        label: i.institutionName,
-                      })),
-                    ]}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="analytics-actions-group">
-              <div className="analytics-segmented" role="group" aria-label="Time range">
-                {RANGES.map((r) => (
-                  <button
-                    key={r.value}
-                    type="button"
-                    className={range === r.value ? "active" : ""}
-                    onClick={() => setRange(r.value)}
-                  >
-                    {r.label}
-                  </button>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                className="notif-btn notif-btn-ghost"
-                onClick={refresh}
-                disabled={refreshing}
-                title="Refresh analytics data"
-              >
-                <i className={`ti ti-refresh${refreshing ? " spin" : ""}`} style={{ fontSize: 14 }} />
-                <span>Refresh</span>
-              </button>
-            </div>
+          <div className="analytics-header-controls">
+            {/* Institution drill-down is Admin-only (backend rejects it for other roles). */}
+            {summary?.adminView && (
+              <MultiSelect
+                values={institutionIds}
+                onChange={setInstitutionIds}
+                placeholder="All institutions"
+                ariaLabel="Filter analytics by institution"
+                className="analytics-institution-select"
+                options={summary.institutionFilterOptions.map((i) => ({
+                  value: i.institutionId,
+                  label: i.institutionName,
+                }))}
+              />
+            )}
+            <AnalyticsDateRangePicker value={range} onChange={setRange} defaultRange={DEFAULT_RANGE} />
+            <button
+              type="button"
+              className="analytics-refresh-btn"
+              onClick={refresh}
+              disabled={refreshing}
+              aria-label="Refresh analytics data"
+              title="Refresh analytics data"
+            >
+              <i className={`ti ti-refresh${refreshing ? " spin" : ""}`} aria-hidden />
+            </button>
           </div>
         </div>
 
@@ -265,7 +217,8 @@ export default function AnalyticsDashboardPage({ user }: Props) {
             )}
 
             {/* 4. Institution Drilldown & Contributor Breakdown Table */}
-            {isAdminView && summary.selectedInstitutionId && (
+            {/* Per-institution drill-down only makes sense for exactly one institution. */}
+            {isAdminView && summary.selectedInstitutionIds.length === 1 && (
               <>
                 {summary.validatorAnalytics && (
                   <RoleMetricPanel
@@ -289,7 +242,7 @@ export default function AnalyticsDashboardPage({ user }: Props) {
           user={user}
           metric={reportMetric}
           range={range}
-          institutionId={institutionId}
+          institutionIds={institutionIds}
           busy={exportBusy}
           onBusyChange={setExportBusy}
           onClose={() => setReportMetric(null)}
