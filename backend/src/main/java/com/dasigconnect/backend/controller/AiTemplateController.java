@@ -18,6 +18,7 @@ import com.dasigconnect.backend.external.ClaudeVisionClient;
 import com.dasigconnect.backend.model.dto.ai.TopPostTemplateSuggestionDto;
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
 import com.dasigconnect.backend.security.JwtUserDetails;
+import com.dasigconnect.backend.service.AiAdoptionTrackingService;
 import com.dasigconnect.backend.service.TopPostTemplateService;
 
 /**
@@ -33,12 +34,15 @@ public class AiTemplateController {
     private static final int RATE_LIMIT_PER_HOUR = 10;
 
     private final TopPostTemplateService topPostTemplateService;
+    private final AiAdoptionTrackingService adoptionTracking;
 
     /** In-memory per-user sliding-window rate limiter (same approach as CaptionController). */
     private final ConcurrentHashMap<UUID, CopyOnWriteArrayList<Instant>> userRequests = new ConcurrentHashMap<>();
 
-    public AiTemplateController(TopPostTemplateService topPostTemplateService) {
+    public AiTemplateController(TopPostTemplateService topPostTemplateService,
+                                AiAdoptionTrackingService adoptionTracking) {
         this.topPostTemplateService = topPostTemplateService;
+        this.adoptionTracking = adoptionTracking;
     }
 
     @PostMapping("/from-top-posts")
@@ -53,7 +57,15 @@ public class AiTemplateController {
                     .build();
         }
         try {
-            return ResponseEntity.ok(ApiResponse.success(topPostTemplateService.suggest()));
+            TopPostTemplateSuggestionDto suggestion = topPostTemplateService.suggest();
+            if (suggestion.available()) {
+                try {
+                    adoptionTracking.recordTemplateDraft(user.institutionId(), "generated");
+                } catch (RuntimeException ignored) {
+                    // Tracking must never fail the draft itself.
+                }
+            }
+            return ResponseEntity.ok(ApiResponse.success(suggestion));
         } catch (ClaudeVisionClient.ClaudeApiException e) {
             String msg = e.getMessage();
             if (msg != null && msg.contains("timed out")) {

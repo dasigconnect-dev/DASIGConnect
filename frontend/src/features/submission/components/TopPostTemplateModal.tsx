@@ -156,6 +156,7 @@ function TemplateDraft({
         target: `Based on ${suggestion.topPosts.length} top-performing posts`,
         category: "AI Suggested",
         institutionId,
+        source: "ai_top_posts",
       });
       onSaved(response.data);
     } catch (err) {

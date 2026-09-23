@@ -355,32 +355,55 @@ public class AnalyticsRepository {
         return jdbc.query(sql, params(start, end, scope), (rs, rowNum) -> round(rs.getDouble("value")));
     }
 
+    /**
+     * AI Feature Adoption. Each rate is "used / offered":
+     * <ul>
+     *   <li>Captions: applied ({@code use}/{@code use_then_edited}) / generated
+     *       ({@code re_generate}, logged server-side once per generation).</li>
+     *   <li>Media suggestions: added from the AI tab ({@code accepted}) / result
+     *       sets shown ({@code shown}).</li>
+     *   <li>Album Auto-Match: submissions that kept an album the AI proposed /
+     *       submissions it proposed one for (one outcome per submission).</li>
+     *   <li>Template from Top Posts: drafts saved / drafts generated.</li>
+     * </ul>
+     * Tag classification isn't reported: its composer UI was cut from scope, so
+     * no tag events are recorded any more.
+     */
     public AiStats aiPerformance(Instant start, Instant end, AnalyticsScope scope) {
         String sql = """
             SELECT
-                COALESCE(SUM(CASE WHEN ail.interaction_type = 'caption_suggestion' THEN 1 ELSE 0 END), 0) AS caption_total,
-                COALESCE(SUM(CASE WHEN ail.interaction_type = 'caption_suggestion'
-                    AND ail.action_taken IN ('use', 'use_then_edited') THEN 1 ELSE 0 END), 0) AS caption_accepted,
-                COALESCE(SUM(CASE WHEN ail.interaction_type = 'tag_classification' THEN 1 ELSE 0 END), 0) AS tag_total,
-                COALESCE(SUM(CASE WHEN ail.interaction_type = 'tag_classification'
-                    AND ail.action_taken IN ('manual_correction', 'edited', 'corrected') THEN 1 ELSE 0 END), 0) AS tag_corrected,
-                COALESCE(SUM(CASE WHEN ail.interaction_type = 'media_recommendation' THEN 1 ELSE 0 END), 0) AS media_total,
-                COALESCE(SUM(CASE WHEN ail.interaction_type = 'media_recommendation'
-                    AND ail.action_taken IN ('relevant', 'highly_relevant', 'use', 'used') THEN 1 ELSE 0 END), 0) AS media_relevant
+                COUNT(*) FILTER (WHERE ail.interaction_type = 'caption_suggestion'
+                    AND ail.action_taken = 're_generate') AS caption_generated,
+                COUNT(*) FILTER (WHERE ail.interaction_type = 'caption_suggestion'
+                    AND ail.action_taken IN ('use', 'use_then_edited')) AS caption_accepted,
+                COUNT(*) FILTER (WHERE ail.interaction_type = 'media_recommendation'
+                    AND ail.action_taken = 'shown') AS media_shown,
+                COUNT(*) FILTER (WHERE ail.interaction_type = 'media_recommendation'
+                    AND ail.action_taken IN ('accepted', 'relevant', 'highly_relevant', 'use', 'used')) AS media_used,
+                COUNT(*) FILTER (WHERE ail.interaction_type = 'album_match'
+                    AND ail.action_taken IN ('kept', 'changed')) AS album_outcomes,
+                COUNT(*) FILTER (WHERE ail.interaction_type = 'album_match'
+                    AND ail.action_taken = 'kept') AS album_kept,
+                COUNT(*) FILTER (WHERE ail.interaction_type = 'template_draft'
+                    AND ail.action_taken = 'generated') AS template_generated,
+                COUNT(*) FILTER (WHERE ail.interaction_type = 'template_draft'
+                    AND ail.action_taken = 'saved') AS template_saved
             FROM ai_interaction_log ail
-            JOIN submissions s ON s.id = ail.submission_id
+            LEFT JOIN submissions s ON s.id = ail.submission_id
             WHERE ail.created_at >= :start
               AND ail.created_at < :end
               %s
-            """.formatted(scope.aiFilter("s"));
+            """.formatted(scope.aiFilter());
         return jdbc.queryForObject(sql, params(start, end, scope), (rs, rowNum) ->
                 new AiStats(
-                        rs.getLong("caption_total"),
+                        rs.getLong("caption_generated"),
                         rs.getLong("caption_accepted"),
-                        rs.getLong("tag_total"),
-                        rs.getLong("tag_corrected"),
-                        rs.getLong("media_total"),
-                        rs.getLong("media_relevant")));
+                        rs.getLong("media_shown"),
+                        rs.getLong("media_used"),
+                        rs.getLong("album_outcomes"),
+                        rs.getLong("album_kept"),
+                        rs.getLong("template_generated"),
+                        rs.getLong("template_saved")));
     }
 
     public FacebookEngagementStats facebookEngagement(Instant start, Instant end, AnalyticsScope scope) {
@@ -439,7 +462,7 @@ public class AnalyticsRepository {
         // Publish success rate comes from the shared calculator so System Health
         // and Analytics can never report a different definition of it.
         PublishSuccessRateRepository.Stats publish =
-                publishSuccessRateRepository.between(start, end, scope.institutionId());
+                publishSuccessRateRepository.between(start, end, scope.institutionIds());
         return jdbc.queryForObject(sql, params, (rs, rowNum) ->
                 new OperationalStats(
                         rs.getLong("workflow_count"),
@@ -609,18 +632,22 @@ public class AnalyticsRepository {
     private List<DailyAnalyticsPointDto> dailyAiPerformance(Instant start, Instant end, AnalyticsScope scope) {
         String sql = """
             SELECT CAST(day_start AS date) AS day,
-                   COUNT(CASE WHEN ail.interaction_type = 'caption_suggestion'
-                       AND ail.action_taken IN ('use', 'use_then_edited') THEN 1 END)::double precision AS value,
-                   COUNT(CASE WHEN ail.interaction_type = 'caption_suggestion' THEN 1 END) AS secondary_value
+                   COUNT(CASE WHEN ev.interaction_type = 'caption_suggestion'
+                       AND ev.action_taken IN ('use', 'use_then_edited') THEN 1 END)::double precision AS value,
+                   COUNT(CASE WHEN ev.interaction_type = 'caption_suggestion'
+                       AND ev.action_taken = 're_generate' THEN 1 END) AS secondary_value
             FROM generate_series(CAST(:start AS timestamptz), CAST(:end AS timestamptz), interval '1 day') AS day_start
-            LEFT JOIN ai_interaction_log ail ON CAST(ail.created_at AS date) = CAST(day_start AS date)
-                AND ail.created_at >= :start
-                AND ail.created_at < :end
-            LEFT JOIN submissions s ON s.id = ail.submission_id
-            WHERE ail.id IS NULL OR 1 = 1 %s
+            LEFT JOIN (
+                SELECT ail.created_at, ail.interaction_type, ail.action_taken
+                FROM ai_interaction_log ail
+                LEFT JOIN submissions s ON s.id = ail.submission_id
+                WHERE ail.created_at >= :start
+                  AND ail.created_at < :end
+                  %s
+            ) ev ON CAST(ev.created_at AS date) = CAST(day_start AS date)
             GROUP BY day_start
             ORDER BY day_start ASC
-            """.formatted(scope.aiFilter("s"));
+            """.formatted(scope.aiFilter());
         return queryDaily(sql, start, end, scope);
     }
 
@@ -710,12 +737,12 @@ public class AnalyticsRepository {
             case "ai-performance" -> """
             SELECT ail.interaction_type, ail.action_taken, COUNT(*) AS event_count
             FROM ai_interaction_log ail
-            JOIN submissions s ON s.id = ail.submission_id
+            LEFT JOIN submissions s ON s.id = ail.submission_id
             WHERE ail.created_at >= :start AND ail.created_at < :end
               %s
             GROUP BY ail.interaction_type, ail.action_taken
             ORDER BY ail.interaction_type ASC, ail.action_taken ASC
-            """.formatted(scope.aiFilter("s"));
+            """.formatted(scope.aiFilter());
             case "facebook-engagement" -> """
             SELECT s.id AS submission_id, s.event_title, i.name AS institution_name, s.published_at,
                    sem.reach, sem.reactions, sem.comments_count, sem.shares,
@@ -756,8 +783,8 @@ public class AnalyticsRepository {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("start", Timestamp.from(start))
                 .addValue("end", Timestamp.from(end));
-        if (scope.institutionId() != null) {
-            params.addValue("institutionId", scope.institutionId());
+        if (!scope.networkWide()) {
+            params.addValue("institutionIds", scope.institutionIds());
         }
         if (scope.userId() != null) {
             params.addValue("userId", scope.userId());
@@ -779,19 +806,39 @@ public class AnalyticsRepository {
         return timestamp == null ? null : timestamp.toInstant();
     }
 
-    public record AnalyticsScope(String role, UUID institutionId, UUID userId) {
+    /**
+     * @param institutionIds institutions in scope; empty = network-wide. A
+     *        Contributor is always scoped to their own one; an Admin may pick
+     *        any number; a Moderator is always network-wide.
+     */
+    public record AnalyticsScope(String role, List<UUID> institutionIds, UUID userId) {
+        public AnalyticsScope {
+            institutionIds = institutionIds == null ? List.of() : List.copyOf(institutionIds);
+        }
+
+        /** Scope for zero or one institution (null = network-wide). */
+        public static AnalyticsScope of(String role, UUID institutionId, UUID userId) {
+            return new AnalyticsScope(role, institutionId == null ? List.of() : List.of(institutionId), userId);
+        }
+
+        public boolean networkWide() {
+            return institutionIds.isEmpty();
+        }
+
+        /** The one institution in scope, or null when zero or several are. */
+        public UUID singleInstitutionId() {
+            return institutionIds.size() == 1 ? institutionIds.get(0) : null;
+        }
+
         /**
-         * Institution scoping only. Contributor's institutionId is always their
-         * own (never null) so they are always scoped; moderator/
-         * admin are network-wide unless an institutionId filter
-         * was supplied. Both admin tiers are treated identically — there is no
-         * distinct "validator" scope in the current role model.
+         * Institution scoping only. Both admin tiers are treated identically —
+         * there is no distinct "validator" scope in the current role model.
          */
         public String submissionFilter(String alias) {
-            if (institutionId == null) {
+            if (networkWide()) {
                 return "";
             }
-            return " AND " + alias + ".institution_id = :institutionId ";
+            return " AND " + alias + ".institution_id IN (:institutionIds) ";
         }
 
         /** Institution scope as a WHERE fragment. (Category filtering was removed — submissions carry no category.) */
@@ -800,10 +847,10 @@ public class AnalyticsRepository {
         }
 
         public String auditFilter(String actorAlias) {
-            if (institutionId == null) {
+            if (networkWide()) {
                 return "";
             }
-            return " AND " + actorAlias + ".institution_id = :institutionId ";
+            return " AND " + actorAlias + ".institution_id IN (:institutionIds) ";
         }
 
         public String joinSubmissionFilter(String alias) {
@@ -815,8 +862,16 @@ public class AnalyticsRepository {
             return scopedFilter(alias);
         }
 
-        public String aiFilter(String alias) {
-            return scopedFilter(alias);
+        /**
+         * AI events: scoped by their submission's institution, or — for events
+         * not tied to a submission (template drafts) — the actor's institution.
+         * Expects {@code s} (LEFT JOINed submissions) and {@code ail}.
+         */
+        public String aiFilter() {
+            if (networkWide()) {
+                return "";
+            }
+            return " AND COALESCE(s.institution_id, ail.institution_id) IN (:institutionIds) ";
         }
 
         public String validationSubmissionFilter(String submissionAlias) {
@@ -834,8 +889,8 @@ public class AnalyticsRepository {
     public record PostingDelayStats(double averageDays, long sampleSize) {}
     public record CompletenessStats(long completeCount, long totalCount) {}
     public record PublishedPostStats(long totalCount, long automatedCount, long manualCount, long adminDirectCount) {}
-    public record AiStats(long captionTotal, long captionAccepted, long tagTotal, long tagCorrected,
-                          long mediaTotal, long mediaRelevant) {}
+    public record AiStats(long captionGenerated, long captionAccepted, long mediaShown, long mediaUsed,
+                          long albumOutcomes, long albumKept, long templateGenerated, long templateSaved) {}
     public record OperationalStats(long workflowCount, long deadlineRiskCount, long overrideCount,
                                    long attemptCount, long successCount, long onTimeCount,
                                    long adminActionCount) {}

@@ -11,13 +11,13 @@ import {
 import type { User } from "../../../types/auth.types";
 import { authenticatedQueryMeta } from "../../../lib/queryClient";
 import { queryKeys } from "../../../lib/queryKeys";
-import { formatDateRange, formatNumber } from "../analyticsUtils";
+import { formatNumber, formatRangeLabel } from "../analyticsUtils";
 
 interface Props {
   user: User;
   metric: AnalyticsExportMetric | null;
   range: AnalyticsRange;
-  institutionId?: string | null;
+  institutionIds: string[];
   busy: boolean;
   onBusyChange: (busy: boolean) => void;
   onClose: () => void;
@@ -48,6 +48,16 @@ const REPORT_UNITS: Record<AnalyticsExportMetric, string> = {
   "ai-performance": "events",
   "operational-health": "percent",
   "facebook-engagement": "reach",
+};
+
+// What each daily row's secondary number counts (it differs per metric).
+const DAILY_SECONDARY_LABEL: Record<AnalyticsExportMetric, [singular: string, plural: string]> = {
+  "posting-delay": ["post", "posts"],
+  "content-completeness": ["submission", "submissions"],
+  "posts-by-institution": ["direct post", "direct posts"],
+  "ai-performance": ["suggestion", "suggestions"],
+  "operational-health": ["publish attempt", "publish attempts"],
+  "facebook-engagement": ["engagement", "engagements"],
 };
 
 // The second tab shows the metric-specific rows (same data as the CSV), so its
@@ -129,7 +139,7 @@ export default function FullReportModal({
   user,
   metric,
   range,
-  institutionId,
+  institutionIds,
   busy,
   onBusyChange,
   onClose,
@@ -141,7 +151,7 @@ export default function FullReportModal({
     queryKey: queryKeys.analytics.report({
       role: user.role,
       userId: userScope(user),
-      institutionId: institutionId ?? null,
+      institutionId: institutionIds.length > 0 ? [...institutionIds].sort().join(",") : null,
       range,
       metric: metric ?? "none",
     }),
@@ -149,7 +159,7 @@ export default function FullReportModal({
       getAnalyticsReport(
         metric!,
         range,
-        institutionId,
+        institutionIds,
         pageParam as number,
         REPORT_PAGE_SIZE,
         signal,
@@ -243,7 +253,7 @@ export default function FullReportModal({
     setDownloadError(null);
     onBusyChange(true);
     try {
-      await downloadAnalyticsCsv(metric, range, institutionId);
+      await downloadAnalyticsCsv(metric, range, institutionIds);
     } catch {
       setDownloadError("Could not download the CSV export.");
     } finally {
@@ -278,9 +288,8 @@ export default function FullReportModal({
               <div>
                 <h2 id="report-modal-title">{REPORT_LABELS[metric]}</h2>
                 <p>
-                  {reportReady
-                    ? formatDateRange(report.periodStart, report.periodEnd)
-                    : `${range.toUpperCase()} detail report`}
+                  {/* Same label as the header's date button; the server's periodEnd is exclusive for custom ranges. */}
+                  {formatRangeLabel(range)}
                 </p>
               </div>
             </div>
@@ -392,7 +401,8 @@ export default function FullReportModal({
                           </strong>
                           {point.secondaryValue !== null && (
                             <em className="analytics-daily-sub">
-                              {formatNumber(point.secondaryValue)} total
+                              {formatNumber(point.secondaryValue)}{" "}
+                              {DAILY_SECONDARY_LABEL[metric][point.secondaryValue === 1 ? 0 : 1]}
                             </em>
                           )}
                         </div>

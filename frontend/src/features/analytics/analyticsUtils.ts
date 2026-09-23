@@ -1,4 +1,4 @@
-import type { KpiMetricDto } from "../../api/analyticsApi";
+import type { AnalyticsRange, KpiMetricDto } from "../../api/analyticsApi";
 
 export function formatMetric(metric: KpiMetricDto) {
   if (metric.unit === "percent") return `${metric.value.toFixed(1)}%`;
@@ -12,19 +12,6 @@ export function formatNumber(value: number) {
 
 export function formatPercent(value: number) {
   return `${value.toFixed(1)}%`;
-}
-
-export function formatDateRange(start: string, end: string) {
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  return `${startDate.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  })} - ${endDate.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })}`;
 }
 
 export function formatDateTime(value: string) {
@@ -125,3 +112,61 @@ export const BLUE_GRADIENT_PALETTE = [
   "#93C5FD", // Soft Blue
   "#BFDBFE", // Light Blue
 ];
+
+// ── Reporting range (preset or custom date range) ──
+
+/** Local calendar date as YYYY-MM-DD. */
+export function toIsoDate(date: Date) {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/** Parses YYYY-MM-DD as a local calendar date (not UTC midnight). */
+export function parseIsoDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+export function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+export function customRange(from: Date, to: Date): AnalyticsRange {
+  const [start, end] = from <= to ? [from, to] : [to, from];
+  return `${toIsoDate(start)}..${toIsoDate(end)}`;
+}
+
+/** Calendar dates a range covers, mirroring the backend's resolvePeriod. */
+export function rangeBounds(range: AnalyticsRange, today = new Date()): { from: Date; to: Date } {
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  switch (range) {
+    case "7d":
+      return { from: addDays(end, -7), to: end };
+    case "30d":
+      return { from: addDays(end, -30), to: end };
+    case "90d":
+      return { from: addDays(end, -90), to: end };
+    case "ytd":
+      return { from: new Date(end.getFullYear(), 0, 1), to: end };
+    default: {
+      const [from, to] = range.split("..");
+      return { from: parseIsoDate(from), to: parseIsoDate(to) };
+    }
+  }
+}
+
+/** "Aug 24 – Sep 23, 2026", "Sep 23, 2026" for a single day. */
+export function formatRangeLabel(range: AnalyticsRange, today = new Date()) {
+  const { from, to } = rangeBounds(range, today);
+  const full: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
+  if (toIsoDate(from) === toIsoDate(to)) return from.toLocaleDateString(undefined, full);
+  const sameYear = from.getFullYear() === to.getFullYear();
+  const start = from.toLocaleDateString(
+    undefined,
+    sameYear ? { month: "short", day: "numeric" } : full,
+  );
+  return `${start} – ${to.toLocaleDateString(undefined, full)}`;
+}

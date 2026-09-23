@@ -31,21 +31,23 @@ public class PublishSuccessRateRepository {
 
     /** Network-wide counts for {@code [start, end)}. */
     public Stats networkWide(Instant start, Instant end) {
-        return between(start, end, null);
+        return between(start, end, java.util.List.of());
     }
 
     /**
-     * Counts for {@code [start, end)}, optionally narrowed to one institution.
-     * The submissions table is joined only when an institution scope is supplied.
+     * Counts for {@code [start, end)}, optionally narrowed to some institutions
+     * (empty = network-wide). The submissions table is joined only when an
+     * institution scope is supplied.
      */
-    public Stats between(Instant start, Instant end, UUID institutionId) {
+    public Stats between(Instant start, Instant end, java.util.Collection<UUID> institutionIds) {
+        boolean scoped = institutionIds != null && !institutionIds.isEmpty();
         StringBuilder where = new StringBuilder("pa.attempted_at >= :start AND pa.attempted_at < :end");
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("start", Timestamp.from(start))
                 .addValue("end", Timestamp.from(end));
-        if (institutionId != null) {
-            where.append(" AND s.institution_id = :institutionId");
-            params.addValue("institutionId", institutionId);
+        if (scoped) {
+            where.append(" AND s.institution_id IN (:institutionIds)");
+            params.addValue("institutionIds", institutionIds);
         }
 
         String sql = """
@@ -54,7 +56,7 @@ public class PublishSuccessRateRepository {
             FROM publication_attempts pa
             %s
             WHERE %s
-            """.formatted(institutionId != null ? "JOIN submissions s ON s.id = pa.submission_id" : "", where);
+            """.formatted(scoped ? "JOIN submissions s ON s.id = pa.submission_id" : "", where);
 
         return jdbc.queryForObject(sql, params, (rs, rowNum) ->
                 new Stats(rs.getLong("attempts"), rs.getLong("successes")));

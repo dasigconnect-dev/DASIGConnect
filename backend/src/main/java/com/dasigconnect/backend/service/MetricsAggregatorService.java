@@ -70,17 +70,18 @@ public class MetricsAggregatorService {
 
     @Cacheable(
             cacheNames = CacheConfig.ANALYTICS_SUMMARY_CACHE,
-            key = "#range + ':' + #institutionId + ':' + #user.role() + ':' + #user.userId() + ':' + #user.institutionId()")
-    public AnalyticsSummaryDto summary(String range, UUID institutionId, JwtUserDetails user) {
+            key = "#range + ':' + #institutionIds + ':' + #user.role() + ':' + #user.userId() + ':' + #user.institutionId()")
+    public AnalyticsSummaryDto summary(String range, List<UUID> institutionIds, JwtUserDetails user) {
         ReportingPeriod period = resolvePeriod(range);
         ReportingPeriod previousPeriod = previousPeriod(period);
-        AnalyticsScope scope = scopeFor(user, institutionId);
+        AnalyticsScope scope = scopeFor(user, institutionIds);
         boolean adminView = isAdmin(scope.role());
         boolean contributorView = "contributor".equals(scope.role());
         // Admins and (network-wide) moderators both see cross-institution data;
         // only the admin-only operational blocks below stay gated on adminView.
         boolean networkView = adminView || "moderator".equals(scope.role());
-        boolean institutionDrilldown = adminView && scope.institutionId() != null;
+        // Per-institution drill-down panels only make sense for exactly one institution.
+        boolean institutionDrilldown = adminView && scope.singleInstitutionId() != null;
 
         PostingDelayStats delay = analyticsRepository.averagePostingDelay(period.start(), period.end(), scope);
         PostingDelayStats previousDelay = analyticsRepository.averagePostingDelay(
@@ -171,7 +172,7 @@ public class MetricsAggregatorService {
                 Instant.now(),
                 scope.role(),
                 adminView,
-                scope.institutionId(),
+                scope.role().equals("contributor") ? List.of() : scope.institutionIds(),
                 adminView ? analyticsRepository.institutionFilterOptions() : List.of(),
                 new KpiMetricDto(
                         "averagePostingDelay",
@@ -242,9 +243,9 @@ public class MetricsAggregatorService {
                 period.end());
     }
 
-    public CsvExport export(String metric, String range, UUID institutionId, JwtUserDetails user) {
+    public CsvExport export(String metric, String range, List<UUID> institutionIds, JwtUserDetails user) {
         ReportingPeriod period = resolvePeriod(range);
-        AnalyticsScope scope = scopeFor(user, institutionId);
+        AnalyticsScope scope = scopeFor(user, institutionIds);
         String normalizedMetric = normalizeMetric(metric);
         assertMetricAllowed(normalizedMetric, scope);
         List<Map<String, Object>> rows = analyticsRepository.exportRows(
@@ -255,10 +256,10 @@ public class MetricsAggregatorService {
         return new CsvExport(csvFilename(normalizedMetric, period, scope), toCsv(rows));
     }
 
-    public AnalyticsReportDto report(String metric, String range, UUID institutionId,
+    public AnalyticsReportDto report(String metric, String range, List<UUID> institutionIds,
             int requestedPage, int requestedPageSize, JwtUserDetails user) {
         ReportingPeriod period = resolvePeriod(range);
-        AnalyticsScope scope = scopeFor(user, institutionId);
+        AnalyticsScope scope = scopeFor(user, institutionIds);
         String normalizedMetric = normalizeMetric(metric);
         assertMetricAllowed(normalizedMetric, scope);
         int page = Math.max(1, requestedPage);
@@ -280,49 +281,65 @@ public class MetricsAggregatorService {
     }
 
     private AiPerformanceDto aiPerformance(AiStats ai) {
-        long totalEvents = ai.captionTotal() + ai.tagTotal() + ai.mediaTotal();
+        long totalEvents = ai.captionGenerated() + ai.mediaShown() + ai.albumOutcomes() + ai.templateGenerated();
         return new AiPerformanceDto(
-                ai.captionTotal(),
+                ai.captionGenerated(),
                 ai.captionAccepted(),
-                round(percent(ai.captionAccepted(), ai.captionTotal())),
-                ai.tagTotal(),
-                ai.tagCorrected(),
-                round(percent(ai.tagCorrected(), ai.tagTotal())),
-                ai.mediaTotal(),
-                ai.mediaRelevant(),
-                round(percent(ai.mediaRelevant(), ai.mediaTotal())),
+                adoptionRate(ai.captionAccepted(), ai.captionGenerated()),
+                ai.mediaShown(),
+                ai.mediaUsed(),
+                adoptionRate(ai.mediaUsed(), ai.mediaShown()),
+                ai.albumOutcomes(),
+                ai.albumKept(),
+                adoptionRate(ai.albumKept(), ai.albumOutcomes()),
+                ai.templateGenerated(),
+                ai.templateSaved(),
+                adoptionRate(ai.templateSaved(), ai.templateGenerated()),
                 totalEvents < 20);
+    }
+
+    /** used / offered as a percentage, capped at 100 (older logs can hold an accept without its "shown"). */
+    private double adoptionRate(long used, long offered) {
+        return round(Math.min(100.0, percent(used, offered)));
     }
 
     private boolean isAdmin(String role) {
         return "admin".equals(role);
     }
 
-    private AnalyticsScope scopeFor(JwtUserDetails user, UUID institutionId) {
+    private AnalyticsScope scopeFor(JwtUserDetails user, List<UUID> requestedInstitutionIds) {
         String role = user.role() == null ? "" : user.role().toLowerCase(Locale.ROOT);
+        // Sorted + de-duplicated so the same selection always hits the same cache entry.
+        List<UUID> institutionIds = requestedInstitutionIds == null ? List.of()
+                : requestedInstitutionIds.stream().filter(java.util.Objects::nonNull).distinct().sorted().toList();
         return switch (role) {
-            case "admin" -> new AnalyticsScope(role, institutionId, null);
+            case "admin" -> new AnalyticsScope(role, institutionIds, null);
             case "moderator" -> {
                 // Moderators are network-wide: they get the network engagement +
                 // workflow view (no institution filter). The admin-only blocks in
                 // summary()/assertMetricAllowed() (operational health, AI performance,
                 // override rate, admin workload) stay gated on isAdmin().
-                if (institutionId != null) {
+                if (!institutionIds.isEmpty()) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                             "Institution analytics filters are available to admins only.");
                 }
-                yield new AnalyticsScope("moderator", null, null);
+                yield new AnalyticsScope("moderator", List.of(), null);
             }
             case "contributor" -> {
-                if (institutionId != null) {
+                if (!institutionIds.isEmpty()) {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                             "Institution analytics filters are available to admins only.");
                 }
-                yield new AnalyticsScope("contributor", user.institutionId(), user.userId());
+                yield AnalyticsScope.of("contributor", user.institutionId(), user.userId());
             }
             default -> throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Unsupported analytics role.");
         };
     }
+
+    /** Separator for an explicit date range, e.g. {@code 2026-08-01..2026-08-31}. */
+    static final String CUSTOM_RANGE_SEPARATOR = "..";
+    static final int MAX_CUSTOM_RANGE_DAYS = 366;
+    private static final java.time.ZoneId REPORTING_ZONE = java.time.ZoneId.of("Asia/Manila");
 
     private ReportingPeriod resolvePeriod(String rawRange) {
         String range = rawRange == null || rawRange.isBlank()
@@ -338,9 +355,49 @@ public class MetricsAggregatorService {
                 Instant start = today.withDayOfYear(1).atStartOfDay().toInstant(ZoneOffset.UTC);
                 yield new ReportingPeriod("ytd", start, end);
             }
-            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Unsupported analytics range. Use 7d, 30d, 90d, or ytd.");
+            default -> {
+                if (range.contains(CUSTOM_RANGE_SEPARATOR)) {
+                    yield customPeriod(range, end);
+                }
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Unsupported analytics range. Use 7d, 30d, 90d, ytd, or YYYY-MM-DD..YYYY-MM-DD.");
+            }
         };
+    }
+
+    /**
+     * An explicit calendar-date range, {@code YYYY-MM-DD..YYYY-MM-DD}, both ends
+     * inclusive, interpreted as whole days in Philippine time (the Page's
+     * timezone). The end is capped at now, so "this month" stops at today.
+     */
+    private ReportingPeriod customPeriod(String range, Instant now) {
+        String[] parts = range.split(java.util.regex.Pattern.quote(CUSTOM_RANGE_SEPARATOR), -1);
+        LocalDate from;
+        LocalDate to;
+        try {
+            if (parts.length != 2) throw new java.time.format.DateTimeParseException("bad range", range, 0);
+            from = LocalDate.parse(parts[0].trim());
+            to = LocalDate.parse(parts[1].trim());
+        } catch (java.time.format.DateTimeParseException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Custom analytics range must be YYYY-MM-DD..YYYY-MM-DD.");
+        }
+        LocalDate today = LocalDate.now(REPORTING_ZONE);
+        if (from.isAfter(to)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Analytics range start is after its end.");
+        }
+        if (from.isAfter(today)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Analytics range can't start in the future.");
+        }
+        if (java.time.temporal.ChronoUnit.DAYS.between(from, to) + 1 > MAX_CUSTOM_RANGE_DAYS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Analytics range can span at most " + MAX_CUSTOM_RANGE_DAYS + " days.");
+        }
+        Instant start = from.atStartOfDay(REPORTING_ZONE).toInstant();
+        Instant endOfRange = to.plusDays(1).atStartOfDay(REPORTING_ZONE).toInstant();
+        Instant end = endOfRange.isAfter(now) ? now : endOfRange;
+        // Echo the requested range back (like the presets do) so clients can match responses to requests.
+        return new ReportingPeriod(from + CUSTOM_RANGE_SEPARATOR + to, start, end);
     }
 
     private ReportingPeriod previousPeriod(ReportingPeriod period) {
@@ -446,7 +503,8 @@ public class MetricsAggregatorService {
             case "contributor" -> "Contributor";
             default -> "User";
         };
-        String scopeLabel = scope.institutionId() == null && isAdmin(scope.role()) ? "Network" : "Institution";
+        String scopeLabel = scope.networkWide() && isAdmin(scope.role()) ? "Network"
+                : scope.institutionIds().size() > 1 ? "Institutions" : "Institution";
         return "DASIGConnect_Analytics_%s_%s_%s_%s.csv".formatted(
                 role,
                 scopeLabel,

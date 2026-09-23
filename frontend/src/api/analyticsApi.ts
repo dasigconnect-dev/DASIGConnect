@@ -1,6 +1,8 @@
 import { api } from "./authApi";
 
-export type AnalyticsRange = "7d" | "30d" | "90d" | "ytd";
+export type AnalyticsPresetRange = "7d" | "30d" | "90d" | "ytd";
+/** A preset, or an explicit inclusive date range: "YYYY-MM-DD..YYYY-MM-DD" (Philippine time). */
+export type AnalyticsRange = AnalyticsPresetRange | `${string}..${string}`;
 
 export interface KpiMetricDto {
   id: string;
@@ -25,16 +27,26 @@ export interface InstitutionPostsDto {
   adminDirectPosts: number;
 }
 
+/** AI Feature Adoption — each rate is used ÷ offered. */
 export interface AiPerformanceDto {
+  /** Captions generated. */
   captionSuggestionEvents: number;
+  /** Generated captions applied (as-is or then edited). */
   captionAcceptedEvents: number;
   captionAcceptanceRate: number;
-  tagClassificationEvents: number;
-  tagCorrectionEvents: number;
-  tagCorrectionRate: number;
+  /** AI media suggestion sets shown in the picker. */
   mediaRecommendationEvents: number;
+  /** Times suggested media was added from the AI tab. */
   mediaRecommendationRelevantEvents: number;
   mediaRecommendationRelevanceRate: number;
+  /** Submitted posts Album Auto-Match proposed an album for. */
+  albumMatchEvents: number;
+  /** Of those, posts that kept an album the AI proposed. */
+  albumMatchKeptEvents: number;
+  albumMatchKeptRate: number;
+  templateDraftsGenerated: number;
+  templateDraftsSaved: number;
+  templateDraftSaveRate: number;
   insufficientData: boolean;
 }
 
@@ -130,7 +142,8 @@ export interface AnalyticsSummaryDto {
   lastUpdated: string;
   scopeRole: string;
   adminView: boolean;
-  selectedInstitutionId: string | null;
+  /** Admin's institution filter; empty = all institutions (always empty for other roles). */
+  selectedInstitutionIds: string[];
   institutionFilterOptions: InstitutionFilterOptionDto[];
   averagePostingDelay: KpiMetricDto;
   contentCompleteness: KpiMetricDto;
@@ -187,13 +200,18 @@ export type AnalyticsExportMetric =
   | "operational-health"
   | "facebook-engagement";
 
+/** Sent as one comma-separated param, which Spring binds to a list. */
+function institutionParam(institutionIds: string[]) {
+  return institutionIds.length > 0 ? { institutionId: institutionIds.join(",") } : {};
+}
+
 export function getAnalyticsSummary(
   range: AnalyticsRange,
-  institutionId?: string | null,
+  institutionIds: string[] = [],
   signal?: AbortSignal,
 ) {
   return api.get<AnalyticsSummaryDto>("/analytics/summary", {
-    params: { range, ...(institutionId ? { institutionId } : {}) },
+    params: { range, ...institutionParam(institutionIds) },
     signal,
   });
 }
@@ -201,13 +219,13 @@ export function getAnalyticsSummary(
 export function getAnalyticsReport(
   metric: AnalyticsExportMetric,
   range: AnalyticsRange,
-  institutionId?: string | null,
+  institutionIds: string[] = [],
   page = 1,
   pageSize = 50,
   signal?: AbortSignal,
 ) {
   return api.get<AnalyticsReportDto>(`/analytics/report/${metric}`, {
-    params: { range, page, pageSize, ...(institutionId ? { institutionId } : {}) },
+    params: { range, page, pageSize, ...institutionParam(institutionIds) },
     signal,
   });
 }
@@ -215,10 +233,10 @@ export function getAnalyticsReport(
 export async function downloadAnalyticsCsv(
   metric: AnalyticsExportMetric,
   range: AnalyticsRange,
-  institutionId?: string | null,
+  institutionIds: string[] = [],
 ) {
   const response = await api.get<string>(`/analytics/export/${metric}`, {
-    params: { range, ...(institutionId ? { institutionId } : {}) },
+    params: { range, ...institutionParam(institutionIds) },
     responseType: "text",
   });
   const blob = new Blob([response.data], { type: "text/csv;charset=utf-8" });

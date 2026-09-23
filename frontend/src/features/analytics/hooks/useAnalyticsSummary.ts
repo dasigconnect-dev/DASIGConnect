@@ -16,22 +16,24 @@ function getUserCacheScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
 }
 
-function getInstitutionCacheScope(user: User, selectedInstitutionId: string | null) {
-  return selectedInstitutionId ?? user.institutionId ?? null;
+function getInstitutionCacheScope(user: User, selectedInstitutionIds: string[]) {
+  return selectedInstitutionIds.length > 0
+    ? [...selectedInstitutionIds].sort().join(",")
+    : user.institutionId ?? null;
 }
 
 export function useAnalyticsSummary(user: User, initialRange: AnalyticsRange = "30d") {
   const [range, setRangeValue] = useState<AnalyticsRange>(initialRange);
-  const [institutionId, setInstitutionIdValue] = useState<string | null>(null);
+  const [institutionIds, setInstitutionIdsValue] = useState<string[]>([]);
 
   const analyticsQuery = useQuery<AnalyticsSummaryDto>({
     queryKey: queryKeys.analytics.summary({
       role: user.role,
       userId: getUserCacheScope(user),
-      institutionId: getInstitutionCacheScope(user, institutionId),
+      institutionId: getInstitutionCacheScope(user, institutionIds),
       range,
     }),
-    queryFn: ({ signal }) => getAnalyticsSummary(range, institutionId, signal).then((res) => res.data),
+    queryFn: ({ signal }) => getAnalyticsSummary(range, institutionIds, signal).then((res) => res.data),
     meta: authenticatedQueryMeta,
     staleTime: ANALYTICS_STALE_TIME_MS,
   });
@@ -51,8 +53,8 @@ export function useAnalyticsSummary(user: User, initialRange: AnalyticsRange = "
     setRangeValue(nextRange);
   }, []);
 
-  const setInstitutionId = useCallback((nextInstitutionId: string | null) => {
-    setInstitutionIdValue(nextInstitutionId);
+  const setInstitutionIds = useCallback((nextInstitutionIds: string[]) => {
+    setInstitutionIdsValue(nextInstitutionIds);
   }, []);
 
   const refresh = useCallback(() => {
@@ -62,8 +64,8 @@ export function useAnalyticsSummary(user: User, initialRange: AnalyticsRange = "
   return {
     range,
     setRange,
-    institutionId,
-    setInstitutionId,
+    institutionIds,
+    setInstitutionIds,
     summary: analyticsQuery.data ?? null,
     loading: analyticsQuery.isPending || (analyticsQuery.isFetching && !analyticsQuery.data),
     refreshing: analyticsQuery.isFetching,
