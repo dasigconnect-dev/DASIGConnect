@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { listInstitutions } from "../../api/authApi";
@@ -42,6 +43,7 @@ import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { queryKeys } from "../../lib/queryKeys";
 import { mapSettledWithConcurrency } from "../../lib/boundedConcurrency";
 import BrandedSelect from "../../components/ui/BrandedSelect";
+import InfoTip from "../../components/ui/InfoTip";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
 import AiCaptionButton from "./components/AiCaptionButton";
 import type { FancyTextSelection } from "./components/FancyTextTool";
@@ -240,6 +242,20 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     autoStartDelayMs: 700,
     canStart: isMySubmissionsPage && !loading,
   });
+  // On phones the status tabs are a horizontal scroller; keep the active one
+  // centred so a filter restored from ?tab= (or picked at the edge) isn't hidden.
+  const statusTabsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const strip = statusTabsRef.current;
+    if (!strip || strip.scrollWidth <= strip.clientWidth) return;
+    const tab = strip.querySelector<HTMLElement>(".sub-status-tab.is-active");
+    if (!tab) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    strip.scrollTo({
+      left: tab.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2,
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
+  }, [filter, isMySubmissionsPage]);
   const detailsSectionRef = useRef<HTMLElement | null>(null);
   const mediaSectionRef = useRef<HTMLElement | null>(null);
   const scheduleSectionRef = useRef<HTMLElement | null>(null);
@@ -451,6 +467,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const isCompactLayout = useMediaQuery("(max-width: 900px)");
   const [readinessSheetOpen, setReadinessSheetOpen] = useState(false);
   const readinessSheetVisible = isCompactLayout && readinessSheetOpen;
+  // Post Templates panel: opened from the caption's "Templates" button (or the
+  // empty-caption starter) on the Post Details step only — templates are a
+  // caption tool, so there's no always-on sidebar. Slides in from the right on
+  // desktop and is a bottom sheet at ≤900px (CSS); portalled to <body>.
+  const [templatesPanelOpen, setTemplatesPanelOpen] = useState(false);
+  const [templateFilter, setTemplateFilter] = useState<"all" | "builtin" | "mine">("all");
+  const templatesPanelCloseRef = useRef<HTMLButtonElement | null>(null);
   const readinessSheetCloseRef = useRef<HTMLButtonElement | null>(null);
   const readinessChipRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
@@ -481,6 +504,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     () => [...postTemplates, ...customTemplates],
     [customTemplates],
   );
+  const selectedTemplateName = form.selectedTemplateId
+    ? composerTemplates.find((template) => template.id === form.selectedTemplateId)?.name ?? null
+    : null;
   const captionMediaItem = useMemo(
     () => pickerItems.find((item) => pickerMediaKey(item) === captionMediaKey),
     [captionMediaKey, pickerItems],
@@ -508,6 +534,27 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const isReadOnlySubmission = !isEditableSubmission;
   const canUseAiCaption = !isReadOnlySubmission;
   const hasMedia = form.files.length > 0 || form.savedAssets.length > 0;
+  const templatesPanelVisible =
+    templatesPanelOpen && activeStep === "details" && centerMode === "edit" && !isReadOnlySubmission;
+  useEffect(() => {
+    if (!templatesPanelVisible) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    templatesPanelCloseRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      // A modal opened from the panel (save/delete/top posts) handles its own Escape.
+      if (event.key === "Escape" && !document.querySelector(".sub-modal-overlay")) {
+        setTemplatesPanelOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+      opener?.focus();
+    };
+  }, [templatesPanelVisible]);
 
   const {
     startTour: startComposerTour,
@@ -2163,6 +2210,187 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     }, 0);
   }
 
+  function renderTemplateCards(templates: ComposerTemplate[], onPicked?: () => void) {
+    return (
+      <div className="sub-sidebar-template-list">
+        {templates.map((template) => (
+          <button
+            key={template.id}
+            type="button"
+            className={`sub-sidebar-template-card ${
+              form.selectedTemplateId === template.id ? "active" : ""
+            }`}
+            disabled={isReadOnlySubmission || !hasMedia}
+            title={!hasMedia ? "Add media first before choosing a template." : undefined}
+            onClick={() => {
+              applyTemplate(template.id);
+              if (hasMedia) onPicked?.();
+            }}
+          >
+            <span className="sub-sidebar-template-main">
+              <span className="sub-sidebar-template-icon" aria-hidden="true">
+                <i className={templateIcons[template.id] ?? "ti ti-template"} />
+              </span>
+              <span className="sub-sidebar-template-copy">
+                <span className="sub-sidebar-template-name">{template.name}</span>
+                <span className="sub-sidebar-template-target">{template.target}</span>
+              </span>
+              {template.custom && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="sub-sidebar-template-delete"
+                  aria-label={`Delete ${template.name} template`}
+                  title="Delete template"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    requestDeleteCustomTemplate(template.id);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    requestDeleteCustomTemplate(template.id);
+                  }}
+                >
+                  <i className="ti ti-trash" aria-hidden="true" />
+                </span>
+              )}
+            </span>
+            <span className="sub-sidebar-template-preview">
+              {template.caption}
+            </span>
+            <span className="sub-sidebar-template-tags">
+              {template.tags.slice(0, 3).map((tag) => (
+                <span key={tag}>{tag}</span>
+              ))}
+            </span>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  function renderTemplatesPanel() {
+    const close = () => setTemplatesPanelOpen(false);
+    const builtInTemplates = composerTemplates.filter((template) => !template.custom);
+    const myTemplates = composerTemplates.filter((template) => template.custom);
+    const shown =
+      templateFilter === "builtin"
+        ? builtInTemplates
+        : templateFilter === "mine"
+          ? myTemplates
+          : composerTemplates;
+    const filters: { id: typeof templateFilter; label: string; count: number }[] = [
+      { id: "all", label: "All", count: composerTemplates.length },
+      { id: "builtin", label: "Built-in", count: builtInTemplates.length },
+      { id: "mine", label: "My templates", count: myTemplates.length },
+    ];
+    return (
+      <div className="sub-tpl-root">
+        <div className="sub-tpl-backdrop" aria-hidden="true" onClick={close} />
+        <div
+          className="sub-tpl-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sub-tpl-title"
+        >
+          <div className="sub-tpl-head">
+            <span className="sub-tpl-grip" aria-hidden="true" />
+            <div className="sub-tpl-heading">
+              <h2 id="sub-tpl-title" className="sub-tpl-title">Post Templates</h2>
+              <p className="sub-tpl-sub">
+                {selectedTemplateName ? (
+                  <>
+                    Using <strong>{selectedTemplateName}</strong>
+                    <button type="button" className="sub-tpl-clear" onClick={clearTemplate}>
+                      Clear
+                    </button>
+                  </>
+                ) : (
+                  "Pick a structure to pre-fill your caption and tags."
+                )}
+              </p>
+            </div>
+            <button
+              ref={templatesPanelCloseRef}
+              type="button"
+              className="sub-tpl-close"
+              onClick={close}
+              aria-label="Close post templates"
+            >
+              <i className="ti ti-x" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className="sub-tpl-actions">
+            <button
+              type="button"
+              className="sub-tpl-action is-ai"
+              onClick={() => setTopPostTemplateOpen(true)}
+              title="Draft a template from the Page's best-performing posts"
+            >
+              <i className="ti ti-sparkles" aria-hidden="true" />
+              Generate from Top Posts
+            </button>
+            <button
+              type="button"
+              className="sub-tpl-action"
+              disabled={savingTemplate || !form.caption.trim()}
+              onClick={openSaveTemplateModal}
+              title={
+                form.caption.trim()
+                  ? "Save the caption you've written as a reusable template"
+                  : "Write a caption first, then save it as a template."
+              }
+            >
+              <i className="ti ti-plus" aria-hidden="true" />
+              Save current caption
+            </button>
+          </div>
+
+          <div className="sub-tpl-filters" role="group" aria-label="Filter templates">
+            {filters.map((filterOption) => (
+              <button
+                key={filterOption.id}
+                type="button"
+                className={`sub-tpl-filter${templateFilter === filterOption.id ? " is-active" : ""}`}
+                aria-pressed={templateFilter === filterOption.id}
+                onClick={() => setTemplateFilter(filterOption.id)}
+              >
+                {filterOption.label}
+                <span className="sub-tpl-filter-count">{filterOption.count}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="sub-tpl-body">
+            {templatesLoading && (
+              <div className="sub-sidebar-template-loading">
+                <i className="ti ti-loader-2 sub-spin" aria-hidden="true" />
+                Loading saved templates
+              </div>
+            )}
+            {shown.length > 0 ? (
+              renderTemplateCards(shown, close)
+            ) : (
+              !templatesLoading && (
+                <div className="sub-tpl-empty">
+                  <i className="ti ti-template" aria-hidden="true" />
+                  <strong>No saved templates yet</strong>
+                  <span>
+                    Write a caption you'd reuse, then choose <em>Save current caption</em>, or
+                    let AI draft one with <em>Generate from Top Posts</em>.
+                  </span>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (isMySubmissionsPage) {
     return (
       <div className="submission-screen sub-list-shell-page">
@@ -2208,7 +2436,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
           <div className="sub-toolbar-card" style={{ marginBottom: "16px" }}>
             <div className="sub-registry-toolbar">
-              <div className="sub-status-tabs" role="group" aria-label="Filter submissions by status">
+              <div
+                ref={statusTabsRef}
+                className="sub-status-tabs"
+                role="group"
+                aria-label="Filter submissions by status"
+              >
                 <button
                   type="button"
                   className={`sub-status-tab${filter === "all" ? " is-active" : ""}`}
@@ -2443,7 +2676,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               aria-label="Back to My Submissions"
             >
               <i className="ti ti-arrow-left"></i>
-              <span>Back to My Submissions</span>
+              <span className="sub-back-label-full">Back to My Submissions</span>
+            <span className="sub-back-label-short">Back</span>
             </button>
           </div>
         </nav>
@@ -2453,6 +2687,31 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       </div>
     );
   }
+
+  const submitButton = (
+    <button
+      className="sub-guard-submit-btn"
+      type="button"
+      onClick={() => setModal("submit")}
+      disabled={busy || Boolean(hydratingId) || previewValidation.blockingErrors.length > 0 || hasUnaddressedRevisions}
+      title={
+        hasUnaddressedRevisions
+          ? `Please edit all requested revision fields (${unaddressedRevisionLabels.join(", ")}) before submitting.`
+          : previewValidation.blockingErrors[0]
+      }
+    >
+      {submitting ? (
+        <i className="ti ti-loader-2 sub-spin"></i>
+      ) : (
+        <i className="ti ti-send"></i>
+      )}
+      {isNeedsRevision
+        ? "Submit for Revision"
+        : form.status === "rejected"
+          ? "Resubmit for Review"
+          : "Submit for Approval"}
+    </button>
+  );
 
   return (
     <div className="submission-screen">
@@ -2468,7 +2727,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             aria-label="Back to My Submissions"
           >
             <i className="ti ti-arrow-left"></i>
-            <span>Back to My Submissions</span>
+            <span className="sub-back-label-full">Back to My Submissions</span>
+            <span className="sub-back-label-short">Back</span>
           </button>
         </div>
         <div className="sub-nav-right">
@@ -2551,116 +2811,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       )}
 
       <div className={`sub-workspace${isReadOnlySubmission ? " is-readonly" : ""}`}>
-        {!isReadOnlySubmission && (
-        <aside className="sub-sidebar sub-template-sidebar">
-          <section className="sub-sidebar-templates" aria-label="Post templates">
-            <div className="sub-sidebar-template-head">
-              <div>
-                <div className="sub-sidebar-section-title">Post Templates</div>
-                <div className="sub-sidebar-section-subtitle">
-                  {hasMedia
-                    ? "Insert a baseline caption structure."
-                    : "Add media first to unlock templates."}
-                </div>
-              </div>
-              {form.selectedTemplateId && (
-                <div className="sub-sidebar-template-actions">
-                  <button
-                    className="sub-sidebar-template-clear"
-                    type="button"
-                    disabled={isReadOnlySubmission}
-                    onClick={clearTemplate}
-                  >
-                    Clear
-                  </button>
-                </div>
-              )}
-            </div>
-            {templatesLoading && (
-              <div className="sub-sidebar-template-loading">
-                <i className="ti ti-loader-2 sub-spin" aria-hidden="true" />
-                Loading saved templates
-              </div>
-            )}
-            <div className="sub-sidebar-template-list">
-              {composerTemplates.map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  className={`sub-sidebar-template-card ${
-                    form.selectedTemplateId === template.id ? "active" : ""
-                  }`}
-                  disabled={isReadOnlySubmission || !hasMedia}
-                  title={!hasMedia ? "Add media first before choosing a template." : undefined}
-                  onClick={() => applyTemplate(template.id)}
-                >
-                  <span className="sub-sidebar-template-main">
-                    <span className="sub-sidebar-template-icon" aria-hidden="true">
-                      <i className={templateIcons[template.id] ?? "ti ti-template"} />
-                    </span>
-                    <span className="sub-sidebar-template-copy">
-                      <span className="sub-sidebar-template-name">{template.name}</span>
-                      <span className="sub-sidebar-template-target">{template.target}</span>
-                    </span>
-                    {template.custom && (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                    className="sub-sidebar-template-delete"
-                        aria-label={`Delete ${template.name} template`}
-                        title="Delete template"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          requestDeleteCustomTemplate(template.id);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter" && event.key !== " ") return;
-                          event.preventDefault();
-                          event.stopPropagation();
-                          requestDeleteCustomTemplate(template.id);
-                        }}
-                      >
-                        <i className="ti ti-trash" aria-hidden="true" />
-                      </span>
-                    )}
-                  </span>
-                  <span className="sub-sidebar-template-preview">
-                    {template.caption}
-                  </span>
-                  <span className="sub-sidebar-template-tags">
-                    {template.tags.slice(0, 3).map((tag) => (
-                      <span key={tag}>{tag}</span>
-                    ))}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <div className="sub-sidebar-template-footer">
-              <button
-                className="sub-sidebar-template-save"
-                type="button"
-                disabled={isReadOnlySubmission || savingTemplate || !form.caption.trim()}
-                title={!form.caption.trim() ? "Add a caption before saving as a template." : undefined}
-                onClick={openSaveTemplateModal}
-              >
-                <i className="ti ti-plus" aria-hidden="true" />
-                Save as Template
-              </button>
-              <button
-                className="sub-sidebar-template-ai"
-                type="button"
-                disabled={isReadOnlySubmission}
-                onClick={() => setTopPostTemplateOpen(true)}
-                title="Draft a template from the Page's best-performing posts"
-              >
-                <i className="ti ti-sparkles" aria-hidden="true" />
-                Generate from Top Posts
-              </button>
-            </div>
-          </section>
-        </aside>
-        )}
-
         <main className={`sub-form-canvas${isReadOnlySubmission ? " sub-ro" : ""}`}>
           <div className="sub-form-page-head">
             <div>
@@ -2872,7 +3022,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               icon="ti-edit"
               tone="blue"
               title="Post Details"
-              subtitle="Use backend field names for the saved submission draft."
+              subtitle="Tell people what the event is and when it happens. Fields marked * are required."
             />
             {isAdminComposer && (
               <Field label="Posting As" count="" tone="" action={undefined}>
@@ -2895,6 +3045,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             <div className="sub-field-row">
               <Field
                 label="Event Title"
+                required={!isReadOnlySubmission}
                 revisionComment={parsedRevision.fields.eventTitle}
                 isPulsing={eventTitlePulsing}
                 isDone={addressedRevisionFields.has("eventTitle")}
@@ -2904,6 +3055,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   ref={eventTitleRef}
                   className="sub-finput"
                   readOnly={isReadOnlySubmission}
+                  aria-required={!isReadOnlySubmission}
+                  placeholder="e.g. CIT-U Innovation Summit 2026"
                   value={form.eventTitle}
                   onChange={(event) =>
                     updateField("eventTitle", event.target.value)
@@ -2913,6 +3066,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               <div ref={eventDateRef}>
                 <Field
                   label="Event Date"
+                  required={!isReadOnlySubmission}
                   revisionComment={parsedRevision.fields.eventDate}
                   isPulsing={eventDatePulsing}
                   isDone={addressedRevisionFields.has("eventDate")}
@@ -2930,6 +3084,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
             <Field
               label="Caption"
+              required={!isReadOnlySubmission}
               revisionComment={parsedRevision.fields.caption}
               isPulsing={captionPulsing}
               isDone={addressedRevisionFields.has("caption")}
@@ -2937,6 +3092,33 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               action={
                 !isReadOnlySubmission ? (
                   <div className="sub-caption-actions">
+                    {canUseAiCaption && (
+                      <AiCaptionButton
+                        state={aiCaption.state}
+                        canSuggest={canUseAiCaption}
+                        rateLimitReset={aiCaption.rateLimitReset}
+                        notice={aiCaption.notice}
+                        onSuggest={() => setCaptionPromptOpen(true)}
+                      />
+                    )}
+                    <button
+                      type="button"
+                      className={`sub-caption-templates-btn${form.selectedTemplateId ? " is-applied" : ""}`}
+                      aria-haspopup="dialog"
+                      aria-expanded={templatesPanelVisible}
+                      title={
+                        selectedTemplateName
+                          ? `Template: ${selectedTemplateName}`
+                          : "Browse post templates"
+                      }
+                      onClick={() => {
+                        setReadinessSheetOpen(false);
+                        setTemplatesPanelOpen(true);
+                      }}
+                    >
+                      <i className="ti ti-template" aria-hidden="true" />
+                      Templates
+                    </button>
                     <Suspense fallback={null}>
                       <FancyTextTool
                         caption={form.caption}
@@ -2948,15 +3130,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                         onPreviewStateChange={setFancyTextPreviewActive}
                       />
                     </Suspense>
-                    {canUseAiCaption && (
-                      <AiCaptionButton
-                        state={aiCaption.state}
-                        canSuggest={canUseAiCaption}
-                        rateLimitReset={aiCaption.rateLimitReset}
-                        notice={aiCaption.notice}
-                        onSuggest={() => setCaptionPromptOpen(true)}
-                      />
-                    )}
                   </div>
                 ) : undefined
               }
@@ -2980,6 +3153,43 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 <span className={`sub-caption-counter ${captionTone(form.caption)}`}>
                   {Array.from(form.caption).length} / {CAPTION_CHAR_LIMIT} characters
                 </span>
+                {/* Empty-caption starter: the moment templates and AI are most
+                    useful. Disappears as soon as the caption has text. */}
+                {!isReadOnlySubmission &&
+                  !form.caption.trim() &&
+                  aiCaption.state !== "loading" &&
+                  !aiCaption.variants && (
+                    <div className="sub-caption-starter">
+                      <span className="sub-caption-starter-label">Need a head start?</span>
+                      <div className="sub-caption-starter-actions">
+                        <button
+                          type="button"
+                          className="sub-caption-starter-btn"
+                          onClick={() => {
+                            setReadinessSheetOpen(false);
+                            setTemplatesPanelOpen(true);
+                          }}
+                        >
+                          <i className="ti ti-template" aria-hidden="true" />
+                          Start from a template
+                        </button>
+                        {canUseAiCaption && (
+                          <button
+                            type="button"
+                            className="sub-caption-starter-btn is-ai"
+                            disabled={
+                              aiCaption.state === "rate-limited" ||
+                              aiCaption.state === "error-unavailable"
+                            }
+                            onClick={() => setCaptionPromptOpen(true)}
+                          >
+                            <i className="ti ti-sparkles" aria-hidden="true" />
+                            Let AI draft it
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
               </div>
               {canUseAiCaption && aiCaption.variants && (
                 <Suspense fallback={<DeferredSubmissionPanelFallback />}>
@@ -3079,7 +3289,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               icon="ti-photo-up"
               tone="blue"
               title="Add Media"
-              subtitle="Upload files, pick from your library, or let AI suggest relevant assets."
+              subtitle="Upload files, pick from your library, or let AI suggest relevant assets. At least one photo or video is required."
               revisionComment={parsedRevision.fields.media}
               isDone={addressedRevisionFields.has("media")}
               onToggleDone={() => toggleRevisionFieldDone("media")}
@@ -3129,12 +3339,13 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               title="Organize & Schedule"
               subtitle={
                 form.fastTrack
-                  ? "Assign the media album, add media tags, and submit as urgent live-event content."
-                  : "Assign the media album, add media tags, then choose the preferred publishing slot."
+                  ? "Pick an album, add tags, and send it as an urgent live event."
+                  : "Pick an album, add tags, and choose when to post."
               }
             />
             <Field
               label="Album Assignment"
+              required={!isReadOnlySubmission}
               tooltip="Select an existing album, type to create a new one, or let AI auto-match based on your event details. Auto-Match saves this draft first if it hasn't been saved yet."
             >
                 <AlbumCombobox
@@ -3182,9 +3393,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   <i className="ti ti-plus" aria-hidden /> Add
                 </button>
               </div>
-              <div className="sub-finput-hint">
-                Add relevant keywords to help categorize and search for this media content later.
-              </div>
               <div className="sub-tag-row">
                 {effectiveMediaTags(form).length > 0 ? (
                   effectiveMediaTags(form).map((tag) => (
@@ -3208,10 +3416,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", marginTop: "24px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, color: "#374151", fontSize: "14px" }}>
                   Publishing Mode
-                  <i
-                    className="ti ti-info-circle"
-                    title="Choose 'Schedule' to plan a future post, or 'Live Event' to bypass the calendar queue for urgent, immediate publication."
-                    style={{ color: "#9ca3af", cursor: "help", fontSize: "15px" }}
+                  <InfoTip
+                    label="Publishing Mode"
+                    text="Choose 'Schedule' to plan a future post, or 'Live Event' to bypass the calendar queue for urgent, immediate publication."
                   />
                 </div>
 
@@ -3246,33 +3453,37 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
             {!form.fastTrack && (
               <>
-            <Suspense fallback={<DeferredSubmissionPanelFallback />}>
-              <EngagementRecommendationsPanel
-                loading={engagementLoading}
-                recommendations={engagementRecommendations}
-                selectedAt={scheduledAt}
-                onSelect={applyEngagementSlot}
-              />
-            </Suspense>
-            <div className="sub-field-row">
-              <Field label="Preferred Date">
-                <CalendarDateField
-                  value={form.scheduledDate}
-                  readOnly={isReadOnlySubmission || form.fastTrack}
-                  placeholder="Select preferred date"
-                  minValue={dateToInputValue(new Date())}
-                  onChange={(value) => updateField("scheduledDate", value)}
+            {/* One "When to post" group: suggested-time chips fill the Date /
+                Time pickers below them (the chips' explanation is behind ⓘ). */}
+            <Field label="When to Post" required={!isReadOnlySubmission}>
+              <Suspense fallback={<DeferredSubmissionPanelFallback />}>
+                <EngagementRecommendationsPanel
+                  loading={engagementLoading}
+                  recommendations={engagementRecommendations}
+                  selectedAt={scheduledAt}
+                  onSelect={applyEngagementSlot}
                 />
-              </Field>
-              <Field label="Preferred Time">
-                <TimePickerField
-                  value={form.scheduledTime}
-                  readOnly={isReadOnlySubmission || form.fastTrack}
-                  placeholder="Select preferred time"
-                  onChange={(value) => updateField("scheduledTime", value)}
-                />
-              </Field>
-            </div>
+              </Suspense>
+              <div className="sub-field-row sub-when-fields">
+                <Field label="Date">
+                  <CalendarDateField
+                    value={form.scheduledDate}
+                    readOnly={isReadOnlySubmission || form.fastTrack}
+                    placeholder="Pick a date"
+                    minValue={dateToInputValue(new Date())}
+                    onChange={(value) => updateField("scheduledDate", value)}
+                  />
+                </Field>
+                <Field label="Time">
+                  <TimePickerField
+                    value={form.scheduledTime}
+                    readOnly={isReadOnlySubmission || form.fastTrack}
+                    placeholder="Pick a time"
+                    onChange={(value) => updateField("scheduledTime", value)}
+                  />
+                </Field>
+              </div>
+            </Field>
             {lookups.guardrailsEnforced && !guardRailsLoading && !guardRails?.blocked
               && guardRails?.softWarnings[0] && (
               <div className="sub-inline-warning" role="status">
@@ -3287,7 +3498,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
           </section>
 
-          {!isReadOnlySubmission && (
+          {!isReadOnlySubmission && !isCompactLayout && (
             <StepPanelActions
               activeStep={activeStep}
               hasMedia={hasMedia}
@@ -3401,43 +3612,39 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 </span>
               </div>
             )}
-            <button
-              className="sub-guard-submit-btn"
-              type="button"
-              onClick={() => setModal("submit")}
-              disabled={busy || Boolean(hydratingId) || previewValidation.blockingErrors.length > 0 || hasUnaddressedRevisions}
-              title={
-                hasUnaddressedRevisions
-                  ? `Please edit all requested revision fields (${unaddressedRevisionLabels.join(", ")}) before submitting.`
-                  : previewValidation.blockingErrors[0]
-              }
-            >
-              {submitting ? (
-                <i className="ti ti-loader-2 sub-spin"></i>
-              ) : (
-                <i className="ti ti-send"></i>
-              )}
-              {isNeedsRevision
-                ? "Submit for Revision"
-                : form.status === "rejected"
-                  ? "Resubmit for Review"
-                  : "Submit for Approval"}
-            </button>
-            {isDirty && (
-              <button
-                className="sub-guard-save-btn"
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={busy || Boolean(hydratingId)}
-              >
-                {saveState === "saving" ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
-              </button>
+            {isCompactLayout ? (
+              // ≤900px: the sticky bottom bar is the step navigation —
+              // Previous / Next, with Submit taking Next's place on the last
+              // step. Save Draft stays in the page header (#btn-save-draft).
+              <StepPanelActions
+                activeStep={activeStep}
+                hasMedia={hasMedia}
+                isDetailsComplete={isDetailsComplete}
+                onStepChange={handleStepNav}
+                finalAction={submitButton}
+              />
+            ) : (
+              <>
+                {submitButton}
+                {isDirty && (
+                  <button
+                    className="sub-guard-save-btn"
+                    type="button"
+                    onClick={() => void handleSave()}
+                    disabled={busy || Boolean(hydratingId)}
+                  >
+                    {saveState === "saving" ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
+                  </button>
+                )}
+              </>
             )}
               </>
             )}
           </div>
         </aside>
       </div>
+
+      {templatesPanelVisible && createPortal(renderTemplatesPanel(), document.body)}
 
       {topPostTemplateOpen && (
         <Suspense fallback={null}>

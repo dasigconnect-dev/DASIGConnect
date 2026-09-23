@@ -31,7 +31,6 @@
   --sub-r-sm: 7px;
   --sub-r-lg: 14px;
   --sub-nav-h: 56px;
-  --sub-sidebar-w: 316px;
   --sub-guard-w: 272px;
   --sub-shadow: 0 1px 4px rgba(0, 0, 0, 0.07), 0 4px 16px rgba(0, 0, 0, 0.04);
   min-height: 100vh;
@@ -218,7 +217,9 @@
 
 .sub-workspace {
   display: grid;
-  grid-template-columns: var(--sub-sidebar-w) 1fr var(--sub-guard-w);
+  /* Form + Readiness. Post Templates open from the caption (Post Details
+     step), not a permanent left column. */
+  grid-template-columns: minmax(0, 1fr) var(--sub-guard-w);
   min-height: calc(100vh - var(--sub-nav-h));
 }
 
@@ -422,12 +423,6 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   gap: 20px;
-}
-
-@media (max-width: 860px) {
-  .sub-list-results {
-    grid-template-columns: 1fr;
-  }
 }
 
 .sub-fb-post-card {
@@ -699,7 +694,6 @@
   background: #f1f5f9;
   color: var(--sub-blue, #1877f2);
 }
-.sub-sidebar,
 .sub-guard-panel {
   background: var(--sub-surface);
   position: sticky;
@@ -708,19 +702,8 @@
   overflow: hidden;
   z-index: 1;
 }
-.sub-sidebar {
-  border-right: 1px solid var(--sub-border);
-  display: flex;
-  flex-direction: column;
-  padding: 12px;
-  gap: 10px;
-}
-.sub-template-sidebar {
-  background: var(--sub-surface);
-  padding: 0;
-  gap: 0;
-  min-height: 0;
-}
+
+
 .sub-sidebar-header {
   background: var(--sub-surface);
   border: 1px solid var(--sub-border);
@@ -867,114 +850,20 @@
   overflow-y: auto;
   padding: 2px;
 }
-.sub-sidebar-templates {
-  background: var(--sub-surface);
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  padding: 16px 14px;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-.sub-sidebar-template-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.sub-sidebar-section-title {
-  color: var(--sub-text);
-  font-size: 14px;
-  font-weight: 800;
-}
-.sub-sidebar-section-subtitle {
-  color: var(--sub-muted);
-  font-size: 11.5px;
-  line-height: 1.35;
-  margin-top: 2px;
-}
-.sub-sidebar-template-clear {
-  border: 1px solid var(--sub-border);
-  background: var(--sub-surface-2);
-  color: var(--sub-muted);
-  border-radius: var(--sub-r-sm);
-  padding: 5px 8px;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.sub-sidebar-template-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-.sub-sidebar-template-save {
-  border: 1px solid var(--sub-blue-bdr, #bfdbfe);
-  background: var(--sub-blue-dim, #eff6ff);
-  color: var(--sub-blue, #1877f2);
-  border-radius: 999px;
-  min-height: 38px;
-  height: 38px;
-  width: 100%;
-  padding: 0 16px;
-  font-size: 12.5px;
-  font-weight: 650;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-  box-sizing: border-box;
-}
-.sub-sidebar-template-save:hover:not(:disabled) {
-  background: var(--sub-blue, #1877f2);
-  border-color: var(--sub-blue, #1877f2);
-  color: #fff;
-  transform: translateY(-0.5px);
-  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
-}
-.sub-sidebar-template-footer {
-  display: grid;
-  gap: 8px;
-  padding-top: 12px;
-  margin-top: 12px;
-  border-top: 1px solid var(--sub-border);
-}
+
+
+
+
+
+
+
+
+
+
 /* AI template from top posts (UC-1.5 alternate flow) — purple = AI accent. */
-.sub-sidebar-template-ai {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  min-height: 38px;
-  padding: 0 16px;
-  border: 1px solid var(--sub-purple-bdr);
-  border-radius: 999px;
-  background: var(--sub-purple-dim);
-  color: var(--sub-purple);
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 650;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-}
-.sub-sidebar-template-ai:hover:not(:disabled) {
-  background: var(--sub-purple);
-  border-color: var(--sub-purple);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
-}
-.sub-sidebar-template-ai:disabled {
-  cursor: default;
-  opacity: 0.72;
-}
+
+
+
 .sub-sidebar-template-list {
   display: grid;
   gap: 10px;
@@ -1020,9 +909,7 @@
 .sub-sidebar-template-card:hover:not(:disabled) {
   transform: translateY(-1px);
 }
-.sub-sidebar-template-card:disabled,
-.sub-sidebar-template-save:disabled,
-.sub-sidebar-template-clear:disabled {
+.sub-sidebar-template-card:disabled {
   cursor: default;
   opacity: 0.72;
 }
@@ -1784,6 +1671,10 @@
   gap: 12px;
   margin-top: 2px;
 }
+/* Step 1 has no Previous button; keep the forward action on the right. */
+.sub-step-panel-actions > :last-child {
+  margin-left: auto;
+}
 .sub-step-panel-btn {
   border-radius: 999px;
   height: 38px;
@@ -2198,6 +2089,23 @@
   margin-bottom: 16px;
   position: relative;
 }
+/* Required-field marker (Field required prop). */
+.sub-freq {
+  margin-left: 3px;
+  color: var(--sub-red);
+  font-weight: 800;
+}
+.sub-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 .sub-flabel {
   display: flex;
   align-items: center;
@@ -2212,6 +2120,10 @@
   z-index: 10;
 }
 .sub-flabel:has(.fancy-text-tool.is-open) {
+  z-index: 1000;
+}
+/* Lift a label row above its neighbours while its ⓘ bubble is open. */
+.sub-flabel:has(.infotip.is-open) {
   z-index: 1000;
 }
 .sub-flabel-count {
@@ -4538,7 +4450,7 @@ textarea.sub-finput {
 
 @media (max-width: 1120px) and (min-width: 901px) {
   .sub-workspace {
-    grid-template-columns: 220px 1fr 250px;
+    grid-template-columns: minmax(0, 1fr) 250px;
   }
 }
 
@@ -4642,7 +4554,7 @@ textarea.sub-finput {
     margin-left: 0;
   }
   .sub-list-results {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 16px;
   }
   .sub-topnav {
@@ -4671,107 +4583,28 @@ textarea.sub-finput {
   .sub-form-canvas:has(.is-open) {
     z-index: 600;
   }
+  /* Keep the sticky top bar above the canvas while a caption panel (e.g.
+     Fancy text) lifts it to 600; bottom sheets (2900/3100) and modals (3000)
+     still cover the bar. */
+  .sub-topnav {
+    z-index: 700;
+  }
   .sub-guard-panel {
     order: 2;
     width: 100%;
     box-sizing: border-box;
     position: relative;
+    top: auto;
     z-index: 1;
     height: auto;
     border-left: none;
     border-top: 1px solid var(--sub-border);
   }
-  .sub-sidebar {
-    order: 3;
-    width: 100%;
-    box-sizing: border-box;
-    position: relative;
-    z-index: 1;
-    height: auto;
-    max-height: none;
-    padding: 16px 14px;
-    border-right: none;
-    border-top: 1px solid var(--sub-border);
-    border-bottom: none;
-  }
-  .sub-sidebar-template-head::after {
-    content: "Swipe cards to browse \2192";
-    display: inline-block;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--d-blue, #1877f2);
-    background: rgba(24, 119, 242, 0.08);
-    padding: 2px 8px;
-    border-radius: 999px;
-    margin-top: 4px;
-    width: fit-content;
-  }
-  .sub-sidebar-template-list {
-    display: flex;
-    flex-direction: row;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scroll-snap-type: x mandatory;
-    gap: 12px;
-    max-height: none;
-    padding-bottom: 12px;
-    scrollbar-width: thin;
-    scrollbar-color: #1877f2 #eff6ff;
-  }
-  .sub-sidebar-template-list::-webkit-scrollbar {
-    display: block;
-    height: 6px;
-  }
-  .sub-sidebar-template-list::-webkit-scrollbar-track {
-    background: #eff6ff;
-    border-radius: 999px;
-  }
-  .sub-sidebar-template-list::-webkit-scrollbar-thumb {
-    background: #1877f2;
-    border-radius: 999px;
-  }
-  .sub-sidebar-template-card {
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    align-items: stretch;
-    width: 84%;
-    min-width: 270px;
-    max-width: 320px;
-    min-height: 225px;
-    height: auto;
-    box-sizing: border-box;
-    flex-shrink: 0;
-    scroll-snap-align: start;
-    padding: 13px 14px;
-    border-radius: 10px;
-    overflow: hidden;
-  }
-  .sub-sidebar-template-preview {
-    margin-top: 10px;
-    padding-top: 9px;
-    padding-bottom: 4px;
-    border-top: 1px solid rgba(148, 163, 184, 0.22);
-    color: var(--sub-text-2, #475569);
-    font-size: 11.5px;
-    line-height: 1.5;
-    white-space: pre-line;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 4;
-    max-height: 96px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    word-break: break-word;
-    margin-bottom: 10px;
-  }
-  .sub-sidebar-template-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: auto;
-    padding-top: 6px;
-  }
+  /* The templates sidebar isn't rendered at this width (templates live in
+     the caption "Write for me" sheet); kept neutral in case that changes. */
+
+
+
   .sub-form-page-head {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -4860,12 +4693,24 @@ textarea.sub-finput {
   textarea.sub-finput {
     font-size: 15px;
   }
+  /* Step pills stay pinned just under the 52px top bar while the form
+     scrolls (works here because the canvas is overflow: visible at this
+     width; on desktop it's a non-scrolling scroll container, so no sticky). */
   .sub-step-nav {
+    position: sticky;
+    top: 60px;
     grid-template-columns: repeat(3, 1fr);
     gap: 4px;
     padding: 4px;
     border-radius: 999px;
     margin-bottom: 16px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 6px 18px rgba(12, 29, 61, 0.1);
+  }
+  /* Keep scroll-into-view targets (step changes, readiness jumps) clear of
+     the top bar + pinned step pills. */
+  .sub-form-canvas * {
+    scroll-margin-top: 116px;
   }
   .sub-step {
     padding: 6px 8px;
@@ -5108,15 +4953,6 @@ textarea.sub-finput {
     min-height: 28px;
     font-size: 10.5px;
     padding: 0 8px;
-  }
-  .sub-fb-card-head {
-    padding: 10px 12px;
-  }
-  .sub-fb-card-content {
-    padding: 8px 12px;
-  }
-  .sub-fb-reactions-bar {
-    padding: 6px 12px;
   }
 }
 
@@ -6600,4 +6436,812 @@ section.sub-form-section.sub-field-pulse {
   .sub-guard-panel.is-sheet-open .sub-guard-sheet-backdrop {
     animation: none;
   }
+}
+
+/* ==========================================================================
+   My Submissions (/submissions) — small screens
+   Tablet (≤900px): sticky filter bar, 2-up card grid with shorter media.
+   Phone (≤640px): cards collapse to a compact thumbnail row so several fit
+   per screen, the decorative Facebook reaction/action bars are dropped, and
+   "New Submission" becomes a thumb-reach floating button.
+   Scoped to .sub-list-page — .sub-status-tabs is shared with the Audit Log.
+   ========================================================================== */
+@media (max-width: 900px) {
+  .sub-list-page .sub-toolbar-card {
+    position: sticky;
+    top: 58px; /* .dash-nav height */
+    z-index: 30;
+    box-shadow: 0 4px 14px rgba(12, 29, 61, 0.08);
+  }
+  .sub-list-page .sub-status-tabs {
+    position: relative; /* offsetParent for the active-tab auto-scroll */
+    padding-bottom: 0;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 24px;
+    scrollbar-width: none;
+    /* Fade the clipped edge so it reads as "more tabs this way". */
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  }
+  .sub-list-page .sub-status-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .sub-list-page .sub-status-tab {
+    flex-shrink: 0;
+    scroll-snap-align: start;
+  }
+  .sub-list-page .sub-status-tab:last-child {
+    margin-right: 24px; /* clear the edge fade */
+  }
+  .sub-list-page .sub-fb-media-container {
+    height: 180px;
+  }
+}
+
+@media (max-width: 768px) {
+  .sub-list-page .sub-toolbar-card {
+    top: 50px; /* .dash-nav height at this breakpoint */
+  }
+}
+
+@media (max-width: 640px) {
+  .sub-list-page {
+    padding: 14px 16px 104px; /* bottom room so the FAB never covers the last card */
+  }
+  .sub-list-page .sub-list-title {
+    font-size: 22px;
+  }
+
+  /* Header: Guide / Refresh become icon buttons; New Submission floats. */
+  .sub-list-page .sub-list-actions .sub-btn-ghost {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    justify-content: center;
+  }
+  .sub-list-page .sub-list-actions .sub-btn-ghost span {
+    display: none;
+  }
+  .sub-list-page .sub-list-new {
+    position: fixed;
+    right: 16px;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    z-index: 40;
+    height: 52px;
+    min-height: 52px;
+    padding: 0 20px 0 16px;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    box-shadow: 0 8px 24px rgba(24, 119, 242, 0.38), 0 2px 6px rgba(10, 22, 40, 0.14);
+  }
+  .sub-list-page .sub-list-new i {
+    font-size: 18px;
+  }
+  .sub-list-page .sub-list-new:active {
+    transform: scale(0.97);
+  }
+
+  /* Filter bar: tighter so the sticky strip stays slim. */
+  .sub-list-page .sub-toolbar-card {
+    margin-inline: -4px;
+    width: calc(100% + 8px);
+  }
+  .sub-list-page .sub-registry-toolbar {
+    gap: 10px;
+    padding: 10px 12px;
+  }
+  .sub-list-page .sub-search-input {
+    height: 40px;
+    font-size: 16px; /* ≥16px stops iOS zooming the page on focus */
+  }
+  .sub-list-page .sub-status-tab {
+    height: 34px;
+    min-height: 34px;
+    padding: 0 12px;
+  }
+
+  .sub-list-page .sub-list-results {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  /* Card → compact row:
+       [thumb] status
+       [thumb] title + caption
+       [thumb] institution · date
+       ─────── media count · Open ── */
+  .sub-list-page .sub-fb-post-card {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr auto;
+    grid-template-areas:
+      "media status"
+      "media content"
+      "media author"
+      "foot  foot";
+    column-gap: 12px;
+    padding: 12px;
+    border-radius: var(--sub-r);
+  }
+  .sub-list-page .sub-fb-card-head {
+    display: contents;
+  }
+  .sub-list-page .sub-fb-avatar,
+  .sub-list-page .sub-fb-react-icon,
+  .sub-list-page .sub-fb-actions-bar {
+    display: none;
+  }
+  .sub-list-page .sub-fb-status-wrap {
+    grid-area: status;
+    justify-self: start;
+    margin: 0 0 6px;
+  }
+  .sub-list-page .sub-fb-card-content {
+    grid-area: content;
+    padding: 0;
+  }
+  .sub-list-page .sub-fb-event-title {
+    margin-bottom: 2px;
+    font-size: 14px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .sub-list-page .sub-fb-caption-text {
+    font-size: 12.5px;
+  }
+  .sub-list-page .sub-fb-author {
+    grid-area: author;
+    align-self: end;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+    min-width: 0;
+    font-size: 11px;
+    color: var(--sub-muted);
+  }
+  .sub-list-page .sub-fb-author-name {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--sub-text-2);
+  }
+  .sub-list-page .sub-fb-author-name::after {
+    content: "·";
+    margin-left: 4px;
+    color: var(--sub-muted-2);
+  }
+  .sub-list-page .sub-fb-author-meta {
+    flex-shrink: 0;
+    margin-top: 0;
+    white-space: nowrap;
+  }
+  .sub-list-page .sub-fb-author-meta .sub-fb-dot,
+  .sub-list-page .sub-fb-author-meta .ti-world {
+    display: none;
+  }
+
+  .sub-list-page .sub-fb-media-container {
+    grid-area: media;
+    align-self: start;
+    width: 88px;
+    height: 88px;
+    border: 1px solid var(--sub-border);
+    border-radius: var(--sub-r-sm);
+  }
+  .sub-list-page .sub-fb-no-media span {
+    display: none;
+  }
+  .sub-list-page .sub-fb-no-media i {
+    font-size: 26px;
+  }
+  .sub-list-page .sub-fb-spinner {
+    width: 22px;
+    height: 22px;
+    border-width: 2.5px;
+  }
+  .sub-list-page .sub-fb-media-badge {
+    right: 4px;
+    bottom: 4px;
+    padding: 2px 6px;
+    font-size: 10px;
+  }
+
+  .sub-list-page .sub-fb-reactions-bar {
+    grid-area: foot;
+    margin-top: 10px;
+    padding: 8px 0 0;
+    border-top: 1px solid #eef2f7;
+    border-bottom: none;
+  }
+  .sub-list-page .sub-fb-reactions-text {
+    margin-left: 0;
+  }
+  .sub-list-page .sub-fb-open-action {
+    font-size: 12px;
+  }
+}
+
+/* Touch devices: no hover-lift (it sticks after a tap); give press feedback instead. */
+@media (hover: none) {
+  .sub-list-page .sub-fb-post-card:hover {
+    transform: none;
+    border-color: var(--sub-border);
+    box-shadow: 0 1px 3px rgba(12, 29, 61, 0.05);
+  }
+  .sub-list-page .sub-fb-post-card:active {
+    transform: scale(0.99);
+    border-color: #93c5fd;
+  }
+}
+
+.sub-list-page .sub-fb-post-card:focus-visible {
+  outline: 2px solid var(--sub-blue);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sub-list-page .sub-fb-post-card,
+  .sub-list-page .sub-fb-post-card:active,
+  .sub-list-page .sub-list-new:active {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+   Composer — sticky bottom step bar (≤900px)
+   Below 900px the readiness checklist lives in a bottom sheet, so the guard
+   panel is just this bar, pinned to the bottom of the viewport. It carries
+   the step navigation — [‹ Previous] [Next ›] — with Submit taking Next's
+   place on the last step (StepPanelActions finalAction). Save Draft lives
+   in the page header at this width.
+   ========================================================================== */
+@media (max-width: 900px) {
+  .sub-guard-panel {
+    position: sticky;
+    bottom: 0;
+    z-index: 20; /* above the canvas (10); below open popovers (600) and the sheet (3100) */
+    box-shadow: 0 -6px 20px rgba(12, 29, 61, 0.08);
+  }
+  .sub-guard-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    box-shadow: none;
+  }
+  .sub-guard-actions .sub-unaddressed-revision-notice {
+    margin-bottom: 0;
+  }
+  .sub-guard-actions .sub-step-panel-actions {
+    margin: 0;
+    padding: 0;
+    border: none;
+    gap: 10px;
+  }
+  .sub-guard-actions .sub-step-panel-btn {
+    height: 44px;
+    min-height: 44px;
+    font-size: 14px;
+  }
+  /* Previous stays compact; the forward action (Next / Submit) gets the room. */
+  .sub-guard-actions .sub-step-panel-btn.secondary {
+    flex: 0 0 auto;
+    padding: 0 16px;
+  }
+  .sub-guard-actions .sub-step-panel-btn.primary,
+  .sub-guard-actions .sub-step-panel-btn.locked,
+  .sub-guard-actions .sub-guard-submit-btn {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .sub-guard-actions .sub-guard-submit-btn {
+    width: auto;
+    height: 44px;
+    min-height: 44px;
+  }
+  .sub-guard-actions .sub-step-panel-btn:active,
+  .sub-guard-actions .sub-guard-submit-btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+}
+
+/* Back button: short label on narrow screens so it can't collide with the
+   save status / readiness chips. */
+.sub-back-label-short {
+  display: none;
+}
+@media (max-width: 520px) {
+  .sub-back-label-full {
+    display: none;
+  }
+  .sub-back-label-short {
+    display: inline;
+  }
+}
+
+/* ≤640px: if the caption tools (plus any AI notice) don't fit beside the
+   "Caption" label, let them drop to their own left-aligned row. */
+@media (max-width: 640px) {
+  .sub-flabel:has(.sub-caption-actions) {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .sub-flabel-right > .sub-caption-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+/* ==========================================================================
+   Composer — caption tools & Post Templates panel
+   Caption toolbar: [Suggest with AI] [Templates] [Fancy text]. Templates open
+   a panel portalled to <body> (.sub-tpl-root): a right-hand drawer on desktop,
+   a bottom sheet at ≤900px. z-index 2900 sits under .sub-modal-overlay (3000)
+   so Save / Delete / Generate from Top Posts open on top of it.
+   The cards inside reuse the .sub-sidebar-template-* styles.
+   ========================================================================== */
+.sub-caption-templates-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--sub-border);
+  background: var(--sub-surface);
+  color: var(--sub-text);
+  font-family: var(--sub-body);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.sub-caption-templates-btn:hover,
+.sub-caption-templates-btn[aria-expanded="true"],
+.sub-caption-templates-btn.is-applied {
+  border-color: var(--sub-blue);
+  color: var(--sub-blue);
+  background: var(--sub-blue-dim);
+}
+.sub-caption-templates-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.16);
+}
+.sub-caption-templates-btn:active {
+  transform: scale(0.97);
+}
+
+/* Empty-caption starter, laid over the bottom of the empty textarea. The
+   wrapper ignores pointer events so clicks still reach the textarea. */
+.sub-caption-starter {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 30px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+.sub-caption-starter-label {
+  color: var(--sub-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.sub-caption-starter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sub-caption-starter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px dashed var(--sub-blue-bdr);
+  border-radius: var(--sub-r);
+  background: var(--sub-surface);
+  color: var(--sub-blue);
+  font-family: var(--sub-body);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.sub-caption-starter-btn i {
+  font-size: 16px;
+}
+.sub-caption-starter-btn:hover:not(:disabled) {
+  border-style: solid;
+  border-color: var(--sub-blue);
+  background: var(--sub-blue-dim);
+}
+.sub-caption-starter-btn.is-ai {
+  border-color: var(--sub-purple-bdr);
+  color: var(--sub-purple);
+}
+.sub-caption-starter-btn.is-ai:hover:not(:disabled) {
+  border-color: var(--sub-purple);
+  background: var(--sub-purple-dim);
+}
+.sub-caption-starter-btn:focus-visible {
+  outline: 2px solid var(--sub-blue);
+  outline-offset: 2px;
+}
+.sub-caption-starter-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.sub-caption-starter-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Panel shell */
+.sub-tpl-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2900;
+  font-family: var(--sub-body);
+  color: var(--sub-text);
+}
+.sub-tpl-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 22, 40, 0.42);
+  backdrop-filter: blur(2px);
+  animation: sub-sheet-fade 0.2s ease-out both;
+}
+.sub-tpl-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(460px, 100vw);
+  background: var(--sub-surface);
+  border-left: 1px solid var(--sub-border);
+  box-shadow: -18px 0 44px rgba(12, 29, 61, 0.18);
+  animation: sub-tpl-drawer-in 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes sub-tpl-drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.sub-tpl-head {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 20px 14px;
+}
+.sub-tpl-grip {
+  display: none;
+}
+.sub-tpl-heading {
+  flex: 1;
+  min-width: 0;
+}
+.sub-tpl-title {
+  margin: 0;
+  font-family: var(--sub-display);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.sub-tpl-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0 0;
+  color: var(--sub-muted);
+  font-size: 12.5px;
+}
+.sub-tpl-sub strong {
+  color: var(--sub-text);
+  font-weight: 700;
+}
+.sub-tpl-clear {
+  margin-left: 4px;
+  padding: 2px 10px;
+  border: 1px solid var(--sub-border);
+  border-radius: 999px;
+  background: var(--sub-surface);
+  color: var(--sub-red);
+  font: 700 11px var(--sub-body);
+  cursor: pointer;
+}
+.sub-tpl-close {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: -4px -6px 0 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sub-muted);
+  font-size: 18px;
+  cursor: pointer;
+}
+.sub-tpl-close:hover {
+  background: var(--sub-surface-2);
+  color: var(--sub-text);
+}
+.sub-tpl-close:focus-visible,
+.sub-tpl-clear:focus-visible {
+  outline: 2px solid var(--sub-blue);
+  outline-offset: 2px;
+}
+
+/* Actions pinned at the top so they never scroll out of view. */
+.sub-tpl-actions {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 20px 12px;
+}
+.sub-tpl-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--sub-blue-bdr);
+  border-radius: 999px;
+  background: var(--sub-blue-dim);
+  color: var(--sub-blue);
+  font-family: var(--sub-body);
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.sub-tpl-action:hover:not(:disabled) {
+  background: var(--sub-blue);
+  border-color: var(--sub-blue);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
+}
+.sub-tpl-action.is-ai {
+  border-color: var(--sub-purple-bdr);
+  background: var(--sub-purple-dim);
+  color: var(--sub-purple);
+}
+.sub-tpl-action.is-ai:hover:not(:disabled) {
+  background: var(--sub-purple);
+  border-color: var(--sub-purple);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
+}
+.sub-tpl-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.sub-tpl-action:focus-visible {
+  outline: 2px solid var(--sub-blue);
+  outline-offset: 2px;
+}
+.sub-tpl-action:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.sub-tpl-filters {
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--sub-border);
+  border-bottom: 1px solid var(--sub-border);
+  background: var(--sub-surface-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.sub-tpl-filters::-webkit-scrollbar {
+  display: none;
+}
+.sub-tpl-filter {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #64748b;
+  font-family: var(--sub-body);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.sub-tpl-filter:hover:not(.is-active) {
+  border-color: var(--sub-blue-bdr);
+  background: var(--sub-blue-dim);
+  color: var(--sub-blue);
+}
+.sub-tpl-filter.is-active {
+  background: var(--sub-blue);
+  border-color: var(--sub-blue);
+  color: #ffffff;
+}
+.sub-tpl-filter:focus-visible {
+  outline: 2px solid var(--sub-blue);
+  outline-offset: 2px;
+}
+.sub-tpl-filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.14);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.sub-tpl-filter.is-active .sub-tpl-filter-count {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.sub-tpl-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+}
+.sub-tpl-body .sub-sidebar-template-list {
+  display: grid;
+  gap: 10px;
+  flex: none;
+  min-height: 0;
+  overflow: visible;
+  padding: 0;
+}
+.sub-tpl-body .sub-sidebar-template-card {
+  padding: 12px 14px;
+}
+.sub-tpl-body .sub-sidebar-template-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  white-space: pre-line;
+}
+.sub-tpl-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 36px 12px;
+  color: var(--sub-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: center;
+}
+.sub-tpl-empty i {
+  color: var(--sub-muted-2);
+  font-size: 28px;
+}
+.sub-tpl-empty strong {
+  color: var(--sub-text);
+  font-size: 14px;
+}
+
+/* ≤900px: same panel as a bottom sheet. */
+@media (max-width: 900px) {
+  .sub-tpl-backdrop {
+    background: rgba(12, 29, 61, 0.62);
+    backdrop-filter: blur(3px);
+  }
+  .sub-tpl-panel {
+    top: auto;
+    left: 0;
+    width: 100%;
+    max-height: min(88dvh, 760px);
+    border-left: none;
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -14px 40px rgba(12, 29, 61, 0.22);
+    animation: sub-sheet-up 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .sub-tpl-head {
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 48px 12px;
+    text-align: center;
+  }
+  .sub-tpl-grip {
+    display: block;
+    width: 40px;
+    height: 4px;
+    margin: 0 auto 4px;
+    border-radius: 999px;
+    background: var(--sub-border-2);
+  }
+  .sub-tpl-heading {
+    width: 100%;
+  }
+  .sub-tpl-title {
+    font-size: 18px;
+  }
+  .sub-tpl-sub {
+    justify-content: center;
+  }
+  .sub-tpl-close {
+    position: absolute;
+    top: 10px;
+    right: 8px;
+    width: 40px;
+    height: 40px;
+    margin: 0;
+  }
+  .sub-tpl-actions,
+  .sub-tpl-filters {
+    padding-inline: 16px;
+  }
+  .sub-tpl-action {
+    min-height: 44px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .sub-tpl-body {
+    padding-inline: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sub-tpl-panel,
+  .sub-tpl-backdrop {
+    animation: none;
+  }
+}
+
+/* "When to Post" group (Organize & Schedule): suggested-time chips, then the
+   Date / Time pickers side by side at every width. The inner labels are
+   small since the group label already carries the required marker. */
+.sub-when-fields,
+.sub-field-row.sub-when-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+.sub-when-fields > .sub-fgroup {
+  margin-bottom: 0;
+}
+.sub-when-fields .sub-flabel {
+  margin-bottom: 5px;
+  font-size: 10.5px;
 }

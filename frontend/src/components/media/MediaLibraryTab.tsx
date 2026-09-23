@@ -198,10 +198,41 @@ export default function MediaLibraryTab({
         )}
       </div>
 
-      {totalCount > 0 && (
-        <p className="mlt-count" aria-live="polite">
-          {totalCount} asset{totalCount !== 1 ? "s" : ""} found
-        </p>
+      {/* Selection toolbar sits above the grid (it used to be a bar under
+          "Load more", easy to miss). Always rendered once there are results,
+          so the grid doesn't jump when the first asset is selected. */}
+      {(totalCount > 0 || pendingSelected.length > 0) && (
+        <div
+          className={`mlt-selection-bar${pendingSelected.length > 0 ? " has-selection" : ""}`}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="mlt-action-count">
+            {pendingSelected.length > 0
+              ? `${pendingSelected.length} selected`
+              : `${totalCount} asset${totalCount !== 1 ? "s" : ""} found`}
+          </span>
+          {pendingSelected.length > 0 && (
+            <>
+              <button
+                type="button"
+                className="mlt-action-clear"
+                onClick={clearSelection}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                className="mlt-action-add"
+                onClick={handleAdd}
+                disabled={disabled}
+              >
+                <i className="ti ti-plus" aria-hidden />
+                Add Selected ({pendingSelected.length})
+              </button>
+            </>
+          )}
+        </div>
       )}
 
       {error ? (
@@ -247,30 +278,6 @@ export default function MediaLibraryTab({
             </button>
           )}
         </>
-      )}
-
-      {pendingSelected.length > 0 && (
-        <div className="mlt-action-bar" role="status" aria-live="polite">
-          <span className="mlt-action-count">
-            {pendingSelected.length} selected
-          </span>
-          <button
-            type="button"
-            className="mlt-action-clear"
-            onClick={clearSelection}
-          >
-            Clear
-          </button>
-          <button
-            type="button"
-            className="mlt-action-add"
-            onClick={handleAdd}
-            disabled={disabled}
-          >
-            <i className="ti ti-plus" aria-hidden />
-            Add Selected ({pendingSelected.length})
-          </button>
-        </div>
       )}
     </div>
   );

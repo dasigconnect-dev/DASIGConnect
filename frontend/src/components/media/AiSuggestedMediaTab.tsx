@@ -150,20 +150,50 @@ export default function AiSuggestedMediaTab({
 
       {state === "ready" && (
         <>
-          <div className="ast-results-header">
-            <span className="ast-results-label">
-              Top {results.length} match{results.length !== 1 ? "es" : ""} — ranked by relevance
-            </span>
-            <button
-              type="button"
-              className="ast-regenerate-btn"
-              onClick={fetch}
-              disabled={disabled}
-              title="Regenerate suggestions"
-            >
-              <i className="ti ti-refresh" aria-hidden />
-              Regenerate
-            </button>
+          {/* The header doubles as the selection toolbar, above the grid
+              rather than a bar after it. */}
+          <div
+            className={`ast-results-header${pendingSelected.length > 0 ? " has-selection" : ""}`}
+            role="status"
+            aria-live="polite"
+          >
+            {pendingSelected.length > 0 ? (
+              <>
+                <span className="ast-action-count">{pendingSelected.length} selected</span>
+                <button
+                  type="button"
+                  className="ast-action-clear"
+                  onClick={() => setSelectedIds(new Set())}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className="ast-action-add"
+                  onClick={handleAdd}
+                  disabled={disabled}
+                >
+                  <i className="ti ti-plus" aria-hidden />
+                  Add Selected ({pendingSelected.length})
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="ast-results-label">
+                  Top {results.length} match{results.length !== 1 ? "es" : ""} — ranked by relevance
+                </span>
+                <button
+                  type="button"
+                  className="ast-regenerate-btn"
+                  onClick={fetch}
+                  disabled={disabled}
+                  title="Regenerate suggestions"
+                >
+                  <i className="ti ti-refresh" aria-hidden />
+                  Regenerate
+                </button>
+              </>
+            )}
           </div>
 
           <MediaAssetGrid
@@ -173,28 +203,6 @@ export default function AiSuggestedMediaTab({
             onToggle={toggleSelect}
           />
         </>
-      )}
-
-      {pendingSelected.length > 0 && (
-        <div className="ast-action-bar" role="status" aria-live="polite">
-          <span className="ast-action-count">{pendingSelected.length} selected</span>
-          <button
-            type="button"
-            className="ast-action-clear"
-            onClick={() => setSelectedIds(new Set())}
-          >
-            Clear
-          </button>
-          <button
-            type="button"
-            className="ast-action-add"
-            onClick={handleAdd}
-            disabled={disabled}
-          >
-            <i className="ti ti-plus" aria-hidden />
-            Add Selected ({pendingSelected.length})
-          </button>
-        </div>
       )}
     </div>
   );
