@@ -96,7 +96,7 @@ class SubmissionControllerTest {
                         31,
                         2,
                         true,
-                        new SubmissionBucketCountsDto(40, 4, 5, 10, 18, 3)));
+                        new SubmissionBucketCountsDto(40, 4, 5, 2, 10, 18, 3)));
 
         mockMvc.perform(get("/api/v1/submissions/page")
                 .param("page", "0")
@@ -111,7 +111,8 @@ class SubmissionControllerTest {
                 .andExpect(jsonPath("$.data.totalPages").value(2))
                 .andExpect(jsonPath("$.data.hasNext").value(true))
                 .andExpect(jsonPath("$.data.counts.all").value(40))
-                .andExpect(jsonPath("$.data.counts.action-needed").value(5));
+                .andExpect(jsonPath("$.data.counts.action-needed").value(5))
+                .andExpect(jsonPath("$.data.counts.rejected").value(2));
     }
 
     @Test

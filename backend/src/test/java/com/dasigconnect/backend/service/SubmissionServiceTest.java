@@ -530,7 +530,7 @@ class SubmissionServiceTest {
         PageRequest requestedPage = PageRequest.of(1, 20);
         when(submissionRepository.findSubmissionPage(
                 eq(contributorId),
-                eq(List.of(SubmissionStatus.needs_revision, SubmissionStatus.rejected)),
+                eq(List.of(SubmissionStatus.needs_revision)),
                 eq("research expo"),
                 eq(false),
                 eq(List.of(SubmissionStatus.draft)),
@@ -539,6 +539,7 @@ class SubmissionServiceTest {
         when(submissionRepository.countStatusesByContributorId(contributorId)).thenReturn(List.of(
                 statusCount(SubmissionStatus.draft, 2),
                 statusCount(SubmissionStatus.needs_revision, 3),
+                statusCount(SubmissionStatus.rejected, 7),
                 statusCount(SubmissionStatus.pending, 4),
                 statusCount(SubmissionStatus.published, 5),
                 statusCount(SubmissionStatus.publish_failed, 6)));
@@ -554,9 +555,11 @@ class SubmissionServiceTest {
         assertThat(result.totalCount()).isEqualTo(45);
         assertThat(result.totalPages()).isEqualTo(3);
         assertThat(result.hasNext()).isTrue();
-        assertThat(result.counts().all()).isEqualTo(20);
+        assertThat(result.counts().all()).isEqualTo(27);
         assertThat(result.counts().drafts()).isEqualTo(2);
+        // Rejected is its own bucket, no longer part of Action Needed.
         assertThat(result.counts().actionNeeded()).isEqualTo(3);
+        assertThat(result.counts().rejected()).isEqualTo(7);
         assertThat(result.counts().submitted()).isEqualTo(4);
         assertThat(result.counts().published()).isEqualTo(5);
         assertThat(result.counts().failed()).isEqualTo(6);
@@ -1481,9 +1484,8 @@ class SubmissionServiceTest {
     private static Stream<Arguments> submissionBucketMappings() {
         return Stream.of(
                 Arguments.of("drafts", List.of(SubmissionStatus.draft)),
-                Arguments.of("action-needed", List.of(
-                        SubmissionStatus.needs_revision,
-                        SubmissionStatus.rejected)),
+                Arguments.of("action-needed", List.of(SubmissionStatus.needs_revision)),
+                Arguments.of("rejected", List.of(SubmissionStatus.rejected)),
                 Arguments.of("submitted", List.of(
                         SubmissionStatus.pending,
                         SubmissionStatus.in_review,

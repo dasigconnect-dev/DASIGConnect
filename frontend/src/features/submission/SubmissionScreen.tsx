@@ -206,7 +206,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<QueueFilter>(() => {
     const tab = new URLSearchParams(window.location.search).get("tab");
-    const valid: QueueFilter[] = ["drafts", "action-needed", "submitted", "published", "failed", "all"];
+    const valid: QueueFilter[] = ["drafts", "action-needed", "rejected", "submitted", "published", "failed", "all"];
     if (tab && (valid as string[]).includes(tab)) return tab as QueueFilter;
     return "all";
   });
@@ -2253,6 +2253,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 >
                   Published
                   <span className="sub-status-tab-count">{loading ? "-" : counts.published}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`sub-status-tab${filter === "rejected" ? " is-active" : ""}`}
+                  onClick={() => setFilter("rejected")}
+                  aria-pressed={filter === "rejected"}
+                >
+                  Rejected
+                  <span className="sub-status-tab-count">{loading ? "-" : counts.rejected}</span>
                 </button>
                 <button
                   type="button"

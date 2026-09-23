@@ -80,6 +80,7 @@ export type SubmissionQueueBucket =
   | "all"
   | "drafts"
   | "action-needed"
+  | "rejected"
   | "submitted"
   | "published"
   | "failed";
@@ -88,6 +89,7 @@ export interface SubmissionBucketCounts {
   all: number;
   drafts: number;
   "action-needed": number;
+  rejected: number;
   submitted: number;
   published: number;
   failed: number;

@@ -184,10 +184,12 @@ function getNotificationTargetRoute(n: Notification, userRole: User["role"]): st
     return canReview ? "/scheduler/calendar" : "/submissions?tab=published";
   }
 
-  if (eventType === "submission_needs_revision" || eventType === "submission_rejected") {
-    // Both live under the "Action Needed" tab in My Submissions. `openFeedback`
-    // is only honored on a single-submission route, so it's not appended here.
+  // `openFeedback` is only honored on a single-submission route, so it's not appended here.
+  if (eventType === "submission_needs_revision") {
     return "/submissions?tab=action-needed";
+  }
+  if (eventType === "submission_rejected") {
+    return "/submissions?tab=rejected";
   }
 
   if (eventType === "token_expiring" || eventType === "token_invalid") {
