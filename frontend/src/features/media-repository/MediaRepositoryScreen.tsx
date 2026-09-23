@@ -27,7 +27,7 @@ import { listInstitutions, getInstitutionLogoUrl, type InstitutionResponse } fro
 import BrandedSelect from "../../components/ui/BrandedSelect";
 import {
   attachAsset,
-  listSubmissions,
+  listSubmissionPage,
   type SubmissionSummary,
 } from "../../api/submissionApi";
 import { useToast } from "../../context/ToastContext";
@@ -273,12 +273,15 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     });
   }, [queryClient, user.role, userScope]);
 
-  const submissionsQueryKey = useMemo(
+  const draftsQueryKey = useMemo(
     () =>
-      queryKeys.submissions.all({
+      queryKeys.submissions.page({
         role: user.role,
         userId: userScope,
         institutionId: user.institutionId ?? null,
+        bucket: "drafts",
+        search: "",
+        pageSize: 50,
       }),
     [user.institutionId, user.role, userScope],
   );
@@ -353,6 +356,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
   const [addToDraftOpen, setAddToDraftOpen] = useState(false);
   const [drafts, setDrafts] = useState<SubmissionSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftsLoadingMore, setDraftsLoadingMore] = useState(false);
+  const [draftNextPage, setDraftNextPage] = useState<number | null>(null);
   const [busyDraftId, setBusyDraftId] = useState<string | null>(null);
 
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -701,14 +706,36 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
     setAddToDraftOpen(true);
     setDraftsLoading(true);
     queryClient.fetchQuery({
-      queryKey: submissionsQueryKey,
-      queryFn: ({ signal }) => listSubmissions(signal).then((res) => res.data),
+      queryKey: draftsQueryKey,
+      queryFn: ({ signal }) => listSubmissionPage(
+        { page: 0, pageSize: 50, bucket: "drafts" },
+        signal,
+      ).then((res) => res.data),
       staleTime: 30_000,
       meta: authenticatedQueryMeta,
     })
-      .then((submissions) => setDrafts(submissions.filter((item) => item.status === "draft")))
+      .then((page) => {
+        setDrafts(page.items);
+        setDraftNextPage(page.hasNext ? page.page + 1 : null);
+      })
       .catch(() => toast.error("Could not load your drafts."))
       .finally(() => setDraftsLoading(false));
+  }
+
+  function loadMoreDrafts() {
+    if (draftNextPage === null || draftsLoadingMore) return;
+    const requestedPage = draftNextPage;
+    setDraftsLoadingMore(true);
+    listSubmissionPage({ page: requestedPage, pageSize: 50, bucket: "drafts" })
+      .then(({ data: page }) => {
+        setDrafts((current) => {
+          const knownIds = new Set(current.map((draft) => draft.id));
+          return [...current, ...page.items.filter((draft) => !knownIds.has(draft.id))];
+        });
+        setDraftNextPage(page.hasNext ? page.page + 1 : null);
+      })
+      .catch(() => toast.error("Could not load more drafts."))
+      .finally(() => setDraftsLoadingMore(false));
   }
 
   async function handleSelectDraft(draftId: string) {
@@ -1737,6 +1764,8 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
         assetCount={activeAssetIds(addToDraftAssetOverride ?? undefined).length}
         drafts={drafts}
         loading={draftsLoading}
+        loadingMore={draftsLoadingMore}
+        hasMore={draftNextPage !== null}
         busyDraftId={busyDraftId}
         onClose={() => {
           if (busyDraftId !== null) return;
@@ -1744,6 +1773,7 @@ export default function MediaRepositoryScreen({ user }: MediaRepositoryScreenPro
           setAddToDraftAssetOverride(null);
         }}
         onSelectDraft={(id) => void handleSelectDraft(id)}
+        onLoadMore={loadMoreDrafts}
         onNewPostInstead={() => {
           setAddToDraftOpen(false);
           handleNewPost(addToDraftAssetOverride ?? undefined);

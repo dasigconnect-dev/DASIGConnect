@@ -91,11 +91,15 @@ export interface ValidationQueuePage {
   counts: ValidationQueueCounts;
 }
 
-export function getValidationQueue(options?: { history?: boolean; signal?: AbortSignal }) {
-  return api.get<SubmissionSummary[]>("/validation/queue", {
-    params: options?.history ? { history: true } : undefined,
-    signal: options?.signal,
-  });
+export interface ValidationDashboardSummary {
+  awaitingReview: number;
+  approvedThisMonth: number;
+  rejectedThisMonth: number;
+  contributorCount: number;
+}
+
+export function getValidationDashboardSummary(signal?: AbortSignal) {
+  return api.get<ValidationDashboardSummary>("/validation/dashboard-summary", { signal });
 }
 
 export function getValidationQueuePage(

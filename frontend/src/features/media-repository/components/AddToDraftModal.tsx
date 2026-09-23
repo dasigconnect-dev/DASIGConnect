@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { SubmissionSummary } from "../../../api/submissionApi";
 
@@ -6,9 +7,12 @@ interface AddToDraftModalProps {
   assetCount: number;
   drafts: SubmissionSummary[];
   loading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
   busyDraftId: string | null;
   onClose: () => void;
   onSelectDraft: (draftId: string) => void;
+  onLoadMore: () => void;
   onNewPostInstead: () => void;
 }
 
@@ -17,11 +21,26 @@ export default function AddToDraftModal({
   assetCount,
   drafts,
   loading,
+  loadingMore,
+  hasMore,
   busyDraftId,
   onClose,
   onSelectDraft,
+  onLoadMore,
   onNewPostInstead,
 }: AddToDraftModalProps) {
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!open || !target || !hasMore) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting && !loadingMore) onLoadMore();
+    });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, onLoadMore, open]);
+
   if (!open) return null;
 
   const busy = busyDraftId !== null;
@@ -90,6 +109,7 @@ export default function AddToDraftModal({
                   </div>
                 </div>
               ))}
+              <div ref={loadMoreRef} aria-hidden="true" style={{ height: 1 }} />
             </div>
           )}
         </div>

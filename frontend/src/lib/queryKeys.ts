@@ -47,8 +47,6 @@ export const queryKeys = {
       scopedKey("administrators", { ...params, view: "pending-invitations" }),
   },
   submissions: {
-    all: (params: { role: string; userId?: string | null; institutionId?: string | null; status?: string }) =>
-      scopedKey("submissions", params),
     page: (params: {
       role: string;
       userId?: string | null;
@@ -97,8 +95,8 @@ export const queryKeys = {
       scopedKey("media-albums", params),
   },
   validation: {
-    queue: (params: { role: string; userId?: string | null; scope?: "network" | "institution" | "history"; institutionId?: string | null }) =>
-      scopedKey("validation", { ...params, view: "queue" }),
+    dashboardSummary: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
+      scopedKey("validation", { ...params, view: "dashboard-summary" }),
     page: (params: {
       role: string;
       userId?: string | null;
@@ -139,8 +137,6 @@ export const queryKeys = {
       scopedKey("settings", { ...params, view: "watermark" }),
   },
   resolution: {
-    failures: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
-      scopedKey("resolution", { ...params, view: "failures" }),
     failurePage: (params: {
       role: string;
       userId?: string | null;

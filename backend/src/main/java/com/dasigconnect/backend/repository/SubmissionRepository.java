@@ -60,6 +60,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
               OR LOCATE(:search, LOWER(COALESCE(s.institution.name, ''))) > 0
               OR LOCATE(:search, LOWER(COALESCE(s.contributor.email, ''))) > 0
               OR LOCATE(:search, LOWER(COALESCE(s.liveEventName, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.category, ''))) > 0
               OR (:matchesStatus = true AND s.status IN :searchStatuses)
           )
         ORDER BY s.createdAt DESC, s.id DESC
@@ -75,6 +76,7 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
               OR LOCATE(:search, LOWER(COALESCE(s.institution.name, ''))) > 0
               OR LOCATE(:search, LOWER(COALESCE(s.contributor.email, ''))) > 0
               OR LOCATE(:search, LOWER(COALESCE(s.liveEventName, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.category, ''))) > 0
               OR (:matchesStatus = true AND s.status IN :searchStatuses)
           )
         """)
@@ -229,6 +231,23 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         GROUP BY s.status
         """)
     List<SubmissionStatusCount> countValidationStatuses();
+
+    @Query("""
+        SELECT COUNT(s) FROM Submission s
+        WHERE s.status IN :statuses
+          AND COALESCE(s.publishedAt, s.scheduledAt, s.submittedAt, s.createdAt) >= :start
+          AND COALESCE(s.publishedAt, s.scheduledAt, s.submittedAt, s.createdAt) < :end
+        """)
+    long countValidationDashboardStatusesBetween(
+            @Param("statuses") List<SubmissionStatus> statuses,
+            @Param("start") Instant start,
+            @Param("end") Instant end);
+
+    @Query("""
+        SELECT COUNT(DISTINCT s.contributor.id) FROM Submission s
+        WHERE s.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+        """)
+    long countDistinctValidationContributors();
 
     // ── UC-3.1 Publishing Pipeline ─────────────────────────────────────────────
 

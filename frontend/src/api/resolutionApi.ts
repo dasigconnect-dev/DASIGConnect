@@ -67,10 +67,6 @@ export interface RetryWithNewSchedulePayload {
   overrideReason?: string;
 }
 
-export function getResolutionFailures(signal?: AbortSignal) {
-  return api.get<FailedPublication[]>("/resolution/failures", { signal });
-}
-
 export function getResolutionFailurePage(
   params: { page: number; pageSize: number; search?: string },
   signal?: AbortSignal,

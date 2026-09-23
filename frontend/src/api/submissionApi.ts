@@ -81,9 +81,12 @@ export type SubmissionQueueBucket =
   | "drafts"
   | "action-needed"
   | "rejected"
+  | "under-review"
+  | "scheduled"
   | "submitted"
   | "published"
-  | "failed";
+  | "failed"
+  | "failed-or-rejected";
 
 export interface SubmissionBucketCounts {
   all: number;
@@ -91,6 +94,8 @@ export interface SubmissionBucketCounts {
   "action-needed": number;
   rejected: number;
   submitted: number;
+  "under-review": number;
+  scheduled: number;
   published: number;
   failed: number;
 }
@@ -167,10 +172,6 @@ export interface EngagementRecommendations {
   timezone: string;
   sampleSize: number;
   slots: EngagementRecommendedSlot[];
-}
-
-export function listSubmissions(signal?: AbortSignal) {
-  return api.get<SubmissionSummary[]>("/submissions", { signal });
 }
 
 export function listSubmissionPage(

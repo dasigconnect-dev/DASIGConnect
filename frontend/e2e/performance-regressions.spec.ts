@@ -22,11 +22,15 @@ test.describe("data loading and cache regressions", () => {
     await installFragmentableSse(page);
     let queueVersion = 0;
     await mockApi(page, "moderator", {
-      "/api/v1/validation/queue": async ({ search }) => {
-        if (search.get("history") === "true") return [];
+      "/api/v1/validation/queue/page": async ({ search }) => {
         queueVersion += 1;
         if (queueVersion > 1) await new Promise((resolve) => setTimeout(resolve, 500));
-        return [{ ...submission, eventTitle: `Cached Queue Item ${queueVersion}` }];
+        return {
+          items: [{ ...submission, eventTitle: `Cached Queue Item ${queueVersion}` }],
+          page: Number(search.get("page") ?? 0), pageSize: Number(search.get("pageSize") ?? 20),
+          totalCount: 1, totalPages: 1, hasNext: false,
+          counts: { all: 1, pending: 1, in_review: 0, needs_revision: 0, scheduled: 0, published: 0, rejected: 0 },
+        };
       },
     });
     await page.goto("/validation/queue", { waitUntil: "domcontentloaded" });
@@ -43,6 +47,30 @@ test.describe("data loading and cache regressions", () => {
     await expect(page.getByText("Cached Queue Item 1")).toBeVisible();
     await expect(page.getByText("Cached Queue Item 2")).toBeVisible();
     expect(queueVersion).toBe(2);
+  });
+
+  test("dashboard uses bounded pagination endpoints and avoids legacy collection requests", async ({ page }) => {
+    await installSession(page, "contributor");
+    await installFragmentableSse(page);
+    let requestedPageSize: string | null = null;
+    const api = await mockApi(page, "contributor", {
+      "/api/v1/submissions/page": ({ search }) => {
+        requestedPageSize = search.get("pageSize");
+        return {
+          items: [submission], page: 0, pageSize: 5, totalCount: 37, totalPages: 8, hasNext: true,
+          counts: {
+            all: 37, drafts: 4, "action-needed": 2, rejected: 1, submitted: 12,
+            "under-review": 7, scheduled: 5, published: 17, failed: 1,
+          },
+        };
+      },
+    });
+
+    await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
+    await expect(page.getByText("37", { exact: true })).toBeVisible();
+    expect(requestedPageSize).toBe("5");
+    expect(api.count("GET", "/api/v1/submissions/page")).toBe(1);
+    expect(api.count("GET", "/api/v1/submissions")).toBe(0);
   });
 
   test("deep-linked media detail loads once and remains warm", async ({ page }) => {
@@ -201,7 +229,7 @@ test.describe("data loading and cache regressions", () => {
     await expect(page.locator("body")).not.toContainText("account-a@example.invalid");
   });
 
-  test("session timeout is classified by telemetry", async ({ page }) => {
+  test("profile request timeout is classified without clearing the local session", async ({ page }) => {
     test.slow();
     await installSession(page, "contributor");
     await installFragmentableSse(page);
@@ -210,6 +238,7 @@ test.describe("data loading and cache regressions", () => {
     await expect.poll(() => page.evaluate(() => window.__performanceEvents.some(
       (event) => event.metric === "api-request" && event.endpoint === "/me" && event.outcome === "timeout",
     )), { timeout: 15_000 }).toBe(true);
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/dashboard$/);
+    expect(await page.evaluate(() => localStorage.getItem("dasigconnect_token"))).not.toBeNull();
   });
 });

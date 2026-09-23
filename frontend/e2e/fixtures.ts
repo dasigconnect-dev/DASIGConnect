@@ -94,14 +94,38 @@ function defaultBody(path: string, search: URLSearchParams, role: AppRole) {
   if (path.endsWith("/notifications/history")) return { items: [], totalCount: 0, page: Number(search.get("page") ?? 0), pageSize: 50 };
   if (path.endsWith("/institutions/summary-counts")) return [{ institutionId: institution.id, contributors: 3, moderators: 1, pendingInvitations: 2 }];
   if (path.endsWith("/institutions")) return [institution];
-  if (path.endsWith("/validation/queue")) return search.get("history") === "true" ? [] : [submission];
+  if (path.endsWith("/analytics/summary")) return {
+    totalPostsPublished: { value: 0 }, statusBreakdown: [], operationalHealth: null,
+  };
+  if (path.endsWith("/validation/dashboard-summary")) return {
+    awaitingReview: 1, approvedThisMonth: 0, rejectedThisMonth: 0, contributorCount: 1,
+  };
+  if (path.endsWith("/validation/queue/page")) return {
+    items: [submission], page: Number(search.get("page") ?? 0),
+    pageSize: Number(search.get("pageSize") ?? 20), totalCount: 1, totalPages: 1,
+    hasNext: false,
+    counts: { all: 1, pending: 1, in_review: 0, needs_revision: 0, scheduled: 0, published: 0, rejected: 0 },
+  };
+  if (path.endsWith("/resolution/failures/page")) return {
+    items: [], page: Number(search.get("page") ?? 0),
+    pageSize: Number(search.get("pageSize") ?? 20), totalCount: 0,
+    totalPages: 0, hasNext: false, failureCount: 0,
+  };
   if (path.endsWith(`/submissions/${submission.id}`)) return submission;
   if (path.endsWith("/submissions/lookups")) return {
     allowedFileTypes: ["jpeg"], allowedImageTypes: ["jpeg"], allowedVideoTypes: [], maxFileSizeMb: 10,
     maxMediaAssetsPerSubmission: 10, maxTitleLength: 255, minScheduleLeadTimeHours: 1,
     maxScheduleDaysAhead: 30, categories: [], availableTags: [], guardrailsEnforced: true,
   };
-  if (path.endsWith("/submissions")) return [submission];
+  if (path.endsWith("/submissions/page")) return {
+    items: [submission], page: Number(search.get("page") ?? 0),
+    pageSize: Number(search.get("pageSize") ?? 20), totalCount: 1, totalPages: 1,
+    hasNext: false,
+    counts: {
+      all: 1, drafts: 0, "action-needed": 0, rejected: 0, submitted: 1,
+      "under-review": 1, scheduled: 0, published: 0, failed: 0,
+    },
+  };
   if (path.endsWith("/media-assets/albums")) return [{
     id: "66666666-6666-4666-8666-666666666666", institutionId: institution.id,
     institutionCode: institution.institutionCode, institutionName: institution.name,

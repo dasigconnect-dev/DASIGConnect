@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.dasigconnect.backend.config.SecurityConfig;
 import com.dasigconnect.backend.model.dto.validation.ValidationQueueCountsDto;
 import com.dasigconnect.backend.model.dto.validation.ValidationQueuePageDto;
+import com.dasigconnect.backend.model.dto.validation.ValidationDashboardSummaryDto;
 import com.dasigconnect.backend.repository.ValidationLogRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 import com.dasigconnect.backend.service.JWTService;
@@ -89,5 +90,26 @@ class ValidationControllerTest {
                 .andExpect(jsonPath("$.data.counts.all").value(88))
                 .andExpect(jsonPath("$.data.counts.in_review").value(4))
                 .andExpect(jsonPath("$.data.counts.needs_revision").value(3));
+    }
+
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
+    void dashboardSummary_contributorReturns403() throws Exception {
+        mockMvc.perform(get("/api/v1/validation/dashboard-summary"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void dashboardSummary_moderatorReturnsAggregateContract() throws Exception {
+        when(validationService.getDashboardSummary())
+                .thenReturn(new ValidationDashboardSummaryDto(9, 14, 2, 6));
+
+        mockMvc.perform(get("/api/v1/validation/dashboard-summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.awaitingReview").value(9))
+                .andExpect(jsonPath("$.data.approvedThisMonth").value(14))
+                .andExpect(jsonPath("$.data.rejectedThisMonth").value(2))
+                .andExpect(jsonPath("$.data.contributorCount").value(6));
     }
 }
