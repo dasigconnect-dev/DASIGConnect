@@ -15,6 +15,8 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
@@ -38,8 +40,10 @@ import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlRequest;
 import com.dasigconnect.backend.model.dto.submission.SignedUploadUrlResponse;
 import com.dasigconnect.backend.model.dto.submission.SlotEvaluateRequestDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionCreateDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionBucketCountsDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionMediaPreviewDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionPageDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
@@ -87,6 +91,8 @@ public class SubmissionService {
     private static final long MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024;
     // Matches the frontend composer's CAPTION_CHAR_LIMIT (code-point count).
     private static final int MAX_CAPTION_CHARS = 3000;
+    private static final int DEFAULT_SUBMISSION_PAGE_SIZE = 20;
+    private static final int MAX_SUBMISSION_PAGE_SIZE = 50;
 
     // UC-3.1: a Moderator's calendar reschedule power is deliberately bounded —
     // Admin is exempt from both limits (final override authority already).
@@ -636,6 +642,51 @@ public class SubmissionService {
     @Transactional(readOnly = true)
     public List<SubmissionSummaryDto> list(JwtUserDetails user) {
         List<Submission> submissions = submissionRepository.findByContributorIdOrderByCreatedAtDesc(user.userId());
+        return buildSubmissionSummaries(submissions);
+    }
+
+    /**
+     * Returns one bounded page for My Submissions while preserving the existing
+     * status buckets and search fields used by the frontend.
+     */
+    @Transactional(readOnly = true)
+    public SubmissionPageDto listPage(
+            JwtUserDetails user,
+            int page,
+            int pageSize,
+            String bucket,
+            String search) {
+        int safePage = Math.max(page, 0);
+        int safePageSize = pageSize <= 0
+                ? DEFAULT_SUBMISSION_PAGE_SIZE
+                : Math.min(pageSize, MAX_SUBMISSION_PAGE_SIZE);
+        List<SubmissionStatus> statuses = statusesForBucket(bucket);
+        String normalizedSearch = search == null ? "" : search.trim().toLowerCase();
+        List<SubmissionStatus> matchingStatuses = statusesMatchingSearch(normalizedSearch);
+
+        Page<Submission> result = submissionRepository.findSubmissionPage(
+                user.userId(),
+                statuses,
+                normalizedSearch,
+                !matchingStatuses.isEmpty(),
+                matchingStatuses.isEmpty() ? List.of(SubmissionStatus.draft) : matchingStatuses,
+                PageRequest.of(safePage, safePageSize));
+
+        List<SubmissionSummaryDto> items = buildSubmissionSummaries(result.getContent());
+        SubmissionBucketCountsDto counts = buildBucketCounts(
+                submissionRepository.countStatusesByContributorId(user.userId()));
+
+        return new SubmissionPageDto(
+                items,
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.hasNext(),
+                counts);
+    }
+
+    private List<SubmissionSummaryDto> buildSubmissionSummaries(List<Submission> submissions) {
 
         if (submissions.isEmpty()) {
             return List.of();
@@ -659,6 +710,89 @@ public class SubmissionService {
                         mediaCounts.getOrDefault(s.getId(), 0L),
                         previews.get(s.getId())))
                 .toList();
+    }
+
+    private List<SubmissionStatus> statusesForBucket(String bucket) {
+        String normalized = bucket == null ? "all" : bucket.trim().toLowerCase();
+        return switch (normalized) {
+            case "all" -> List.of(SubmissionStatus.values());
+            case "drafts" -> List.of(SubmissionStatus.draft);
+            case "action-needed" -> List.of(SubmissionStatus.needs_revision, SubmissionStatus.rejected);
+            case "submitted" -> List.of(
+                    SubmissionStatus.pending,
+                    SubmissionStatus.in_review,
+                    SubmissionStatus.missed_review,
+                    SubmissionStatus.scheduled,
+                    SubmissionStatus.publishing,
+                    SubmissionStatus.direct_post_scheduled,
+                    SubmissionStatus.direct_post_publishing);
+            case "published" -> List.of(
+                    SubmissionStatus.published,
+                    SubmissionStatus.published_manual,
+                    SubmissionStatus.admin_direct_post);
+            case "failed" -> List.of(
+                    SubmissionStatus.publish_failed,
+                    SubmissionStatus.direct_post_failed);
+            default -> throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Unsupported submission bucket: " + bucket);
+        };
+    }
+
+    private List<SubmissionStatus> statusesMatchingSearch(String search) {
+        if (search.isEmpty()) {
+            return List.of();
+        }
+        return List.of(SubmissionStatus.values()).stream()
+                .filter(status -> submissionStatusLabel(status).contains(search))
+                .toList();
+    }
+
+    private String submissionStatusLabel(SubmissionStatus status) {
+        return switch (status) {
+            case draft -> "draft";
+            case pending -> "pending approval";
+            case in_review -> "under review";
+            case needs_revision -> "needs revision";
+            case missed_review -> "missed review";
+            case scheduled -> "scheduled";
+            case publishing -> "publishing";
+            case publish_failed -> "publish failed";
+            case published, published_manual -> "published";
+            case admin_direct_post -> "direct post";
+            case direct_post_scheduled -> "direct post scheduled";
+            case direct_post_publishing -> "direct post publishing";
+            case direct_post_failed -> "direct post failed";
+            case rejected -> "rejected";
+        };
+    }
+
+    private SubmissionBucketCountsDto buildBucketCounts(
+            List<SubmissionRepository.SubmissionStatusCount> statusCounts) {
+        long drafts = 0;
+        long actionNeeded = 0;
+        long submitted = 0;
+        long published = 0;
+        long failed = 0;
+
+        for (SubmissionRepository.SubmissionStatusCount row : statusCounts) {
+            long count = row.getCount();
+            switch (row.getStatus()) {
+                case draft -> drafts += count;
+                case needs_revision, rejected -> actionNeeded += count;
+                case published, published_manual, admin_direct_post -> published += count;
+                case publish_failed, direct_post_failed -> failed += count;
+                default -> submitted += count;
+            }
+        }
+
+        return new SubmissionBucketCountsDto(
+                drafts + actionNeeded + submitted + published + failed,
+                drafts,
+                actionNeeded,
+                submitted,
+                published,
+                failed);
     }
 
     /**

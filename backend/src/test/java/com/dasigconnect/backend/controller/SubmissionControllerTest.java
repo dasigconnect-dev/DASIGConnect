@@ -5,6 +5,8 @@ import com.dasigconnect.backend.exception.GuardRailViolationException;
 import com.dasigconnect.backend.model.dto.guardrail.GuardRailResult;
 import com.dasigconnect.backend.model.dto.guardrail.GuardRailViolation;
 import com.dasigconnect.backend.model.dto.submission.SubmissionMediaPreviewDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionBucketCountsDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionPageDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.entity.Institution;
@@ -81,6 +83,35 @@ class SubmissionControllerTest {
                 .andExpect(jsonPath("$.data[0].previewMediaAsset.storageUrl")
                         .value("https://storage.example/preview.jpg"))
                 .andExpect(jsonPath("$.data[0].previewMediaAsset.fileType").value("jpeg"));
+    }
+
+    @Test
+    @WithMockUser
+    void listPage_authenticatedReturnsStablePageContract() throws Exception {
+        when(submissionService.listPage(any(), any(Integer.class), any(Integer.class), any(), any()))
+                .thenReturn(new SubmissionPageDto(
+                        List.of(summaryDto(UUID.randomUUID())),
+                        0,
+                        20,
+                        31,
+                        2,
+                        true,
+                        new SubmissionBucketCountsDto(40, 4, 5, 10, 18, 3)));
+
+        mockMvc.perform(get("/api/v1/submissions/page")
+                .param("page", "0")
+                .param("pageSize", "20")
+                .param("bucket", "all")
+                .param("search", "research"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].eventTitle").value("Research Expo"))
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.pageSize").value(20))
+                .andExpect(jsonPath("$.data.totalCount").value(31))
+                .andExpect(jsonPath("$.data.totalPages").value(2))
+                .andExpect(jsonPath("$.data.hasNext").value(true))
+                .andExpect(jsonPath("$.data.counts.all").value(40))
+                .andExpect(jsonPath("$.data.counts.action-needed").value(5));
     }
 
     @Test
