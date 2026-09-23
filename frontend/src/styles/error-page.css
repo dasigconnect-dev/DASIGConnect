@@ -1,0 +1,326 @@
+/* Error states (404 / 403 / crash). Tokens come from auth.css (:root). */
+.errp {
+  --errp-navy: var(--d-text, #0c1d3d);
+  --errp-blue: var(--d-blue, #1877f2);
+  --errp-gold: #f5b301;
+  --errp-muted: var(--d-muted, #5a6f8a);
+  --errp-border: var(--d-border, #dde3ee);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  font-family: var(--ff-body, "Plus Jakarta Sans", system-ui, sans-serif);
+  color: var(--errp-navy);
+}
+
+.errp-standalone {
+  min-height: 100dvh;
+  padding: 28px 16px 48px;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(12, 29, 61, 0.07) 1px, transparent 0) 0 0 / 22px 22px,
+    var(--d-bg, #f3f6fb);
+}
+
+.errp-in-shell {
+  min-height: calc(100dvh - 160px);
+  justify-content: center;
+  padding: 32px 16px;
+}
+
+.errp-logo {
+  align-self: flex-start;
+  display: inline-flex;
+  margin-bottom: auto;
+}
+.errp-logo img {
+  display: block;
+  height: 36px;
+  width: auto;
+}
+
+.errp-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 480px);
+  align-items: center;
+  gap: 44px;
+  margin: auto 0;
+  animation: errp-rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Signal mark ── */
+.errp-mark {
+  position: relative;
+  width: 220px;
+  height: 220px;
+}
+.errp-mark-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.errp-arc {
+  fill: none;
+  stroke-linecap: round;
+}
+.errp-arc-blue {
+  stroke: var(--errp-blue);
+  stroke-width: 9;
+}
+.errp-arc-gold {
+  stroke: var(--errp-gold);
+  stroke-width: 9;
+}
+.errp-arc-loose {
+  stroke: var(--errp-blue);
+  stroke-width: 9;
+  opacity: 0.35;
+  stroke-dasharray: 4 10;
+  animation: errp-drift 3.6s ease-in-out infinite;
+  transform-origin: 178px 56px;
+}
+.errp-node-blue {
+  fill: var(--errp-blue);
+}
+.errp-node-gold {
+  fill: var(--errp-gold);
+}
+.errp-node-loose {
+  fill: var(--errp-blue);
+  opacity: 0.35;
+  animation: errp-drift 3.6s ease-in-out infinite;
+  transform-origin: 178px 56px;
+}
+.errp-mark-core {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.errp-mark-core i {
+  font-size: 30px;
+  color: var(--errp-blue);
+}
+.errp-mark-core span {
+  font-family: var(--ff-display, "Fraunces", Georgia, serif);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--errp-navy);
+}
+.errp-forbidden .errp-mark-core i {
+  color: #b45309;
+}
+.errp-crash .errp-mark-core i {
+  color: #dc2626;
+}
+
+/* ── Copy ── */
+.errp-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+.errp-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.errp-crash .errp-eyebrow {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+.errp-title {
+  margin: 14px 0 10px;
+  font-family: var(--ff-display, "Fraunces", Georgia, serif);
+  font-size: clamp(26px, 4vw, 36px);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--errp-navy);
+}
+.errp-title:focus {
+  outline: none;
+}
+.errp-message {
+  max-width: 46ch;
+  color: var(--errp-muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.errp-message p {
+  margin: 0 0 8px;
+}
+.errp-message strong {
+  color: var(--errp-navy);
+}
+
+.errp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+.errp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease, border-color 0.15s ease;
+}
+.errp-btn i {
+  font-size: 17px;
+}
+.errp-btn.is-primary {
+  border: 1px solid var(--errp-blue);
+  background: var(--errp-blue);
+  color: #ffffff;
+}
+.errp-btn.is-primary:hover {
+  background: #1565d8;
+  box-shadow: 0 4px 14px rgba(24, 119, 242, 0.3);
+}
+.errp-btn.is-ghost {
+  border: 1px solid var(--errp-border);
+  background: #ffffff;
+  color: var(--errp-navy);
+}
+.errp-btn.is-ghost:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: var(--errp-blue);
+}
+.errp-btn:active {
+  transform: scale(0.97);
+}
+.errp-btn:focus-visible,
+.errp-details summary:focus-visible,
+.errp-copy-btn:focus-visible,
+.errp-logo:focus-visible {
+  outline: 2px solid var(--errp-blue);
+  outline-offset: 3px;
+}
+
+/* ── Technical details (crash) ── */
+.errp-details {
+  width: 100%;
+  margin-top: 22px;
+  border: 1px solid var(--errp-border);
+  border-radius: 10px;
+  background: #ffffff;
+}
+.errp-details summary {
+  padding: 10px 14px;
+  color: var(--errp-muted);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.errp-details pre {
+  max-height: 180px;
+  margin: 0;
+  padding: 10px 14px;
+  overflow: auto;
+  border-top: 1px solid var(--errp-border);
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.errp-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 14px 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--errp-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--errp-navy);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@keyframes errp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes errp-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate(4px, -4px) rotate(4deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .errp-body,
+  .errp-arc-loose,
+  .errp-node-loose {
+    animation: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .errp-body {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 20px;
+    text-align: center;
+  }
+  .errp-mark {
+    width: 160px;
+    height: 160px;
+  }
+  .errp-mark-core i {
+    font-size: 24px;
+  }
+  .errp-mark-core span {
+    font-size: 24px;
+  }
+  .errp-copy {
+    align-items: center;
+  }
+  .errp-actions {
+    justify-content: center;
+  }
+  .errp-actions .errp-btn {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+  .errp-details {
+    text-align: left;
+  }
+}

@@ -23,6 +23,8 @@ import DashboardLayout from "../components/layout/DashboardLayout";
 import AdminPromotionBanner from "../components/layout/AdminPromotionBanner";
 import SessionModal from "../components/modals/SessionModal";
 import Toast from "../components/common/Toast";
+import AppErrorBoundary from "../components/common/AppErrorBoundary";
+import NotFoundPage from "../components/common/NotFoundPage";
 import LoginSplash from "../components/common/LoginSplash";
 import PageLoader from "../components/common/PageLoader";
 import ProtectedRoute from "../components/common/ProtectedRoute";
@@ -791,6 +793,7 @@ function App() {
     <>
       <Toast />
       <LoginSplash user={splashUser} visible={showSplash} />
+      <AppErrorBoundary>
       <Suspense fallback={<PageLoader />}>
         <Routes>
         <Route
@@ -1072,6 +1075,9 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* Unknown URL while signed in: 404 inside the dashboard shell. Defined
+              before the top-level "*" so it wins for signed-in users. */}
+          {currentUser && <Route path="*" element={<NotFoundPage signedIn />} />}
         </Route>
 
         {/* Standalone Full-Screen Submission Editor */}
@@ -1092,9 +1098,10 @@ function App() {
           }
         />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFoundPage signedIn={Boolean(currentUser)} />} />
         </Routes>
       </Suspense>
+      </AppErrorBoundary>
 
       <SessionModal
         open={showSessionModal}
