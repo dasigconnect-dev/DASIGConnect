@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.dasigconnect.backend.model.dto.common.ApiResponse;
@@ -26,6 +27,7 @@ import com.dasigconnect.backend.model.dto.submission.SlotEvaluateRequestDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionCreateDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionLookupsDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionMediaOrderDto;
+import com.dasigconnect.backend.model.dto.submission.SubmissionPageDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
@@ -73,6 +75,22 @@ public class SubmissionController {
     public ResponseEntity<ApiResponse<List<SubmissionSummaryDto>>> list(
             @AuthenticationPrincipal JwtUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(submissionService.list(user)));
+    }
+
+    /**
+     * GET /api/v1/submissions/page returns one bounded My Submissions page.
+     * The legacy array endpoint remains available while frontend consumers migrate.
+     */
+    @GetMapping("/page")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<SubmissionPageDto>> listPage(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(defaultValue = "all") String bucket,
+            @RequestParam(defaultValue = "") String search,
+            @AuthenticationPrincipal JwtUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(
+                submissionService.listPage(user, page, pageSize, bucket, search)));
     }
 
     /**

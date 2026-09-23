@@ -4,6 +4,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -40,6 +43,62 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
 
     // UC-1.3 "My Submissions" — authored-by-caller, regardless of role
     List<Submission> findByContributorIdOrderByCreatedAtDesc(UUID contributorId);
+
+    /**
+     * Server-paged My Submissions query. Bucket expansion is performed by the
+     * service and ownership is always constrained to the authenticated author.
+     */
+    @EntityGraph(attributePaths = {"institution", "contributor"})
+    @Query(value = """
+        SELECT s FROM Submission s
+        WHERE s.contributor.id = :contributorId
+          AND s.status IN :statuses
+          AND (
+              :search = ''
+              OR LOCATE(:search, LOWER(COALESCE(s.eventTitle, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.caption, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.institution.name, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.contributor.email, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.liveEventName, ''))) > 0
+              OR (:matchesStatus = true AND s.status IN :searchStatuses)
+          )
+        ORDER BY s.createdAt DESC, s.id DESC
+        """,
+        countQuery = """
+        SELECT COUNT(s) FROM Submission s
+        WHERE s.contributor.id = :contributorId
+          AND s.status IN :statuses
+          AND (
+              :search = ''
+              OR LOCATE(:search, LOWER(COALESCE(s.eventTitle, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.caption, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.institution.name, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.contributor.email, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.liveEventName, ''))) > 0
+              OR (:matchesStatus = true AND s.status IN :searchStatuses)
+          )
+        """)
+    Page<Submission> findSubmissionPage(
+            @Param("contributorId") UUID contributorId,
+            @Param("statuses") List<SubmissionStatus> statuses,
+            @Param("search") String search,
+            @Param("matchesStatus") boolean matchesStatus,
+            @Param("searchStatuses") List<SubmissionStatus> searchStatuses,
+            Pageable pageable);
+
+    interface SubmissionStatusCount {
+        SubmissionStatus getStatus();
+        long getCount();
+    }
+
+    @Query("""
+        SELECT s.status AS status, COUNT(s) AS count
+        FROM Submission s
+        WHERE s.contributor.id = :contributorId
+        GROUP BY s.status
+        """)
+    List<SubmissionStatusCount> countStatusesByContributorId(
+            @Param("contributorId") UUID contributorId);
 
     boolean existsByInstitutionId(UUID institutionId);
     boolean existsByIdAndInstitutionId(UUID id, UUID institutionId);
