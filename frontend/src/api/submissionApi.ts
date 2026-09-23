@@ -76,6 +76,33 @@ export interface SubmissionSummary {
   validatorRemarks?: string | null;
 }
 
+export type SubmissionQueueBucket =
+  | "all"
+  | "drafts"
+  | "action-needed"
+  | "submitted"
+  | "published"
+  | "failed";
+
+export interface SubmissionBucketCounts {
+  all: number;
+  drafts: number;
+  "action-needed": number;
+  submitted: number;
+  published: number;
+  failed: number;
+}
+
+export interface SubmissionPage {
+  items: SubmissionSummary[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasNext: boolean;
+  counts: SubmissionBucketCounts;
+}
+
 export interface SubmissionPayload {
   institutionId?: string | null;
   eventTitle: string;
@@ -142,6 +169,26 @@ export interface EngagementRecommendations {
 
 export function listSubmissions(signal?: AbortSignal) {
   return api.get<SubmissionSummary[]>("/submissions", { signal });
+}
+
+export function listSubmissionPage(
+  params: {
+    page?: number;
+    pageSize?: number;
+    bucket?: SubmissionQueueBucket;
+    search?: string;
+  },
+  signal?: AbortSignal,
+) {
+  return api.get<SubmissionPage>("/submissions/page", {
+    params: {
+      page: params.page ?? 0,
+      pageSize: params.pageSize ?? 20,
+      bucket: params.bucket ?? "all",
+      search: params.search?.trim() ?? "",
+    },
+    signal,
+  });
 }
 
 export function getSubmission(id: string, signal?: AbortSignal) {

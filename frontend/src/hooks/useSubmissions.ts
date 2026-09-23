@@ -1,10 +1,11 @@
-import { useCallback, type Dispatch, type SetStateAction } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getSubmissionLookups,
-  listSubmissions,
+  listSubmissionPage,
+  type SubmissionBucketCounts,
+  type SubmissionQueueBucket,
   type SubmissionLookups,
-  type SubmissionSummary,
 } from "../api/submissionApi";
 import { authenticatedQueryMeta } from "../lib/queryClient";
 import { queryKeys } from "../lib/queryKeys";
@@ -25,53 +26,71 @@ const emptyLookups: SubmissionLookups = {
 };
 
 const SUBMISSIONS_STALE_TIME_MS = 30_000;
+const SUBMISSIONS_PAGE_SIZE = 20;
 const LOOKUPS_STALE_TIME_MS = 5 * 60_000;
+
+const emptySubmissionCounts: SubmissionBucketCounts = {
+  all: 0,
+  drafts: 0,
+  "action-needed": 0,
+  submitted: 0,
+  published: 0,
+  failed: 0,
+};
 
 function userScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
 }
 
-export function useSubmissions(user: User) {
+export function useSubmissions(
+  user: User,
+  bucket: SubmissionQueueBucket,
+  search: string,
+  enabled = true,
+) {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.submissions.all({
+  const queryKey = queryKeys.submissions.page({
     role: user.role,
     userId: userScope(user),
     institutionId: user.institutionId ?? null,
+    bucket,
+    search,
+    pageSize: SUBMISSIONS_PAGE_SIZE,
   });
 
-  const submissionsQuery = useQuery({
+  const query = useInfiniteQuery({
     queryKey,
-    queryFn: ({ signal }) => listSubmissions(signal).then((response) => response.data),
+    queryFn: ({ signal, pageParam }) =>
+      listSubmissionPage({
+        page: pageParam,
+        pageSize: SUBMISSIONS_PAGE_SIZE,
+        bucket,
+        search,
+      }, signal).then((response) => response.data),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.hasNext ? lastPage.page + 1 : undefined,
+    enabled,
     staleTime: SUBMISSIONS_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
 
-  const setSubmissions = useCallback<Dispatch<SetStateAction<SubmissionSummary[]>>>(
-    (action) => {
-      queryClient.setQueryData<SubmissionSummary[]>(queryKey, (prev = []) => {
-        return typeof action === "function"
-          ? (action as (p: SubmissionSummary[]) => SubmissionSummary[])(prev)
-          : action;
-      });
-    },
+  const firstPage = query.data?.pages[0];
+  const refresh = useCallback(
+    () => queryClient.resetQueries({ queryKey, exact: true }),
     [queryClient, queryKey],
   );
 
-  const refresh = useCallback(async () => {
-    return queryClient.fetchQuery({
-      queryKey,
-      queryFn: ({ signal }) => listSubmissions(signal).then((response) => response.data),
-      staleTime: 0,
-      meta: authenticatedQueryMeta,
-    });
-  }, [queryClient, queryKey]);
-
   return {
-    submissions: submissionsQuery.data ?? [],
-    setSubmissions,
-    loading: submissionsQuery.isLoading,
-    refreshing: submissionsQuery.isFetching && !submissionsQuery.isLoading,
-    error: submissionsQuery.error ? "Unable to load submissions." : "",
+    submissions: query.data?.pages.flatMap((page) => page.items) ?? [],
+    counts: firstPage?.counts ?? emptySubmissionCounts,
+    totalCount: firstPage?.totalCount ?? 0,
+    hasNextPage: Boolean(query.hasNextPage),
+    loadingMore: query.isFetchingNextPage,
+    loadMoreError: query.isFetchNextPageError,
+    loadMore: query.fetchNextPage,
+    loading: query.isLoading,
+    refreshing: query.isFetching && !query.isLoading && !query.isFetchingNextPage,
+    error: query.error ? "Unable to load submissions." : "",
     refresh,
   };
 }
