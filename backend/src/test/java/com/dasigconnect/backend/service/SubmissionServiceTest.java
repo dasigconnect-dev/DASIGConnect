@@ -301,6 +301,22 @@ class SubmissionServiceTest {
 
         verify(slotReservationService).deleteAllForSubmission(submissionId);
         verify(submissionRepository).delete(submission);
+        // Its review rows go by DB cascade (V103); the deletion itself is audited.
+        verify(auditLogService).record(any(), eq("SUBMISSION_DELETED"), eq(null), eq(null), eq(submissionId),
+                argThat(details -> "rejected".equals(details.get("status"))));
+    }
+
+    @Test
+    void delete_pendingSubmission_isRejectedWithConflict() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.pending, Instant.now());
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+
+        assertThatThrownBy(() -> submissionService.delete(submissionId, contributorPrincipal))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+        verify(submissionRepository, never()).delete(any(Submission.class));
     }
 
     @Test

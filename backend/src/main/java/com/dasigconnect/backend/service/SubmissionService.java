@@ -444,9 +444,20 @@ public class SubmissionService {
             purgeOrphanedDraftUpload(asset.getId(), "draft " + submissionId + " deleted");
         }
         slotReservationService.deleteAllForSubmission(submissionId);
+        // Review rows (validation_logs, review_locks, override_requests) are removed
+        // by ON DELETE CASCADE (V103); the decisions themselves stay in the audit
+        // log, and so does this deletion — the audit log has no FK to submissions.
+        Map<String, Object> auditDetails = new HashMap<>();
+        auditDetails.put("status", submission.getStatus().name());
+        if (submission.getEventTitle() != null) auditDetails.put("eventTitle", submission.getEventTitle());
+        auditLogService.record(
+                entityManager.getReference(User.class, user.userId()),
+                "SUBMISSION_DELETED", null, null,
+                submissionId,
+                auditDetails);
         submissionRepository.delete(submission);
-        log.info("Submission {} deleted by user {} ({} orphan-checked media)",
-                submissionId, user.userId(), attached.size());
+        log.info("Submission {} ({}) deleted by user {} ({} orphan-checked media)",
+                submissionId, submission.getStatus(), user.userId(), attached.size());
     }
 
     /**
