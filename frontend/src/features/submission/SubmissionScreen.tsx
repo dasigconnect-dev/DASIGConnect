@@ -71,7 +71,6 @@ import {
   effectiveMediaTags,
   extractHashtags,
   formatDate,
-  formatRole,
   formatTimeInput,
   getDirtySignature,
   getErrorMessage,
@@ -99,6 +98,7 @@ import {
   skipWatermarksForSavedIds,
   sortFilesByOrder,
   sortSavedAssetsByOrder,
+  readinessTone,
   toPayload,
   trimToCharLimit,
 } from "./utils";
@@ -114,6 +114,7 @@ import {
   ReadinessSkeleton,
   SectionHead,
 } from "./components/SharedPrimitives";
+import { useMediaQuery } from "./hooks/useMediaQuery";
 import { StepPanelActions, StepProgress } from "./components/StepProgress";
 import { CalendarDateField } from "./components/CalendarDateField";
 import { TimePickerField } from "./components/TimePickerField";
@@ -443,6 +444,29 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     () => getReadinessChecklist(form, scheduledAt, lookups, guardRails, guardRailsLoading),
     [form, guardRails, guardRailsLoading, lookups, scheduledAt],
   );
+  // At ≤900px the layout stacks; instead of pushing Readiness below the form,
+  // the top bar shows a colored score chip that opens it as a bottom sheet.
+  const isCompactLayout = useMediaQuery("(max-width: 900px)");
+  const [readinessSheetOpen, setReadinessSheetOpen] = useState(false);
+  const readinessSheetVisible = isCompactLayout && readinessSheetOpen;
+  const readinessSheetCloseRef = useRef<HTMLButtonElement | null>(null);
+  const readinessChipRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!readinessSheetVisible) return;
+    const chip = readinessChipRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    readinessSheetCloseRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setReadinessSheetOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+      chip?.focus();
+    };
+  }, [readinessSheetVisible]);
   const recommendedWarnings = useMemo(
     () => readiness.recommended.filter((item) => !item.pass),
     [readiness.recommended],
@@ -2422,7 +2446,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           </button>
         </div>
         <div className="sub-nav-right">
-          {(isDirty || saveState === "saving" || saveState === "saved") && (
+          {/* Draft save status only means something while the post is still editable. */}
+          {!isReadOnlySubmission && (isDirty || saveState === "saving" || saveState === "saved") && (
             <div
               className={`sub-nav-save-status ${
                 saveState === "saving"
@@ -2458,19 +2483,38 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               </span>
             </div>
           )}
-          <button
-            type="button"
-            className="sub-btn-ghost"
-            style={{ padding: "4px 10px", fontSize: "12px", height: "30px", display: "inline-flex", alignItems: "center", gap: "5px" }}
-            onClick={() => startComposerTour(true)}
-            title="How to use the composer"
-            aria-label="How to use the composer"
-          >
-            <i className="ti ti-help-circle" style={{ fontSize: 14 }} />
-            <span>Guide</span>
-          </button>
-          <div className="sub-nav-chip">{formatRole(user.role)}</div>
-          <div className="sub-nav-avatar">{user.initials}</div>
+          {isCompactLayout && (
+            <button
+              ref={readinessChipRef}
+              type="button"
+              className={`sub-readiness-chip is-${
+                lookupsLoading || hydratingId ? "idle" : readinessTone(readiness.score)
+              }`}
+              onClick={() => setReadinessSheetOpen(true)}
+              disabled={Boolean(lookupsLoading || hydratingId)}
+              aria-haspopup="dialog"
+              aria-expanded={readinessSheetVisible}
+              aria-label={`Readiness ${readiness.score} of 100. Open readiness checklist.`}
+              title="Readiness checklist"
+            >
+              <i className="ti ti-shield-check" aria-hidden="true" />
+              <span>{lookupsLoading || hydratingId ? "–" : readiness.score}</span>
+            </button>
+          )}
+          {/* The guide tours the composer; a read-only submission has nothing to walk through. */}
+          {!isReadOnlySubmission && (
+            <button
+              type="button"
+              className="sub-btn-ghost"
+              style={{ padding: "4px 10px", fontSize: "12px", height: "30px", display: "inline-flex", alignItems: "center", gap: "5px" }}
+              onClick={() => startComposerTour(true)}
+              title="How to use the composer"
+              aria-label="How to use the composer"
+            >
+              <i className="ti ti-help-circle" style={{ fontSize: 14 }} />
+              <span>Guide</span>
+            </button>
+          )}
         </div>
       </nav>
 
@@ -3214,8 +3258,34 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           )}
         </main>
 
-        <aside className="sub-guard-panel">
-          <div className="sub-guard-scroll">
+        <aside className={`sub-guard-panel${readinessSheetVisible ? " is-sheet-open" : ""}`}>
+          {readinessSheetVisible && (
+            <div
+              className="sub-guard-sheet-backdrop"
+              aria-hidden="true"
+              onClick={() => setReadinessSheetOpen(false)}
+            />
+          )}
+          <div
+            className="sub-guard-scroll"
+            role={readinessSheetVisible ? "dialog" : undefined}
+            aria-modal={readinessSheetVisible ? true : undefined}
+            aria-label={readinessSheetVisible ? "Readiness checklist" : undefined}
+          >
+            {isCompactLayout && (
+              <div className="sub-guard-sheet-bar">
+                <span className="sub-guard-sheet-grip" aria-hidden="true" />
+                <button
+                  ref={readinessSheetCloseRef}
+                  type="button"
+                  className="sub-guard-sheet-close"
+                  onClick={() => setReadinessSheetOpen(false)}
+                  aria-label="Close readiness checklist"
+                >
+                  <i className="ti ti-x" aria-hidden="true" />
+                </button>
+              </div>
+            )}
             {lookupsLoading || hydratingId ? (
               <ReadinessSkeleton />
             ) : (
@@ -3242,7 +3312,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   idle={item.idle}
                   title={item.title}
                   sub={item.sub}
-                  onClick={isReadOnlySubmission ? undefined : () => handleReadinessJump(item.target)}
+                  onClick={
+                    isReadOnlySubmission
+                      ? undefined
+                      : () => {
+                          setReadinessSheetOpen(false);
+                          handleReadinessJump(item.target);
+                        }
+                  }
                 />
               ))}
             </GuardSection>
@@ -3259,7 +3336,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   idle={item.idle}
                   title={item.title}
                   sub={item.sub}
-                  onClick={isReadOnlySubmission ? undefined : () => handleReadinessJump(item.target)}
+                  onClick={
+                    isReadOnlySubmission
+                      ? undefined
+                      : () => {
+                          setReadinessSheetOpen(false);
+                          handleReadinessJump(item.target);
+                        }
+                  }
                 />
               ))}
             </GuardSection>

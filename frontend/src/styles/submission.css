@@ -138,30 +138,6 @@
   color: var(--sub-text);
   font-weight: 500;
 }
-.sub-nav-chip {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  padding: 4px 11px;
-  border-radius: 20px;
-  background: var(--sub-blue-dim);
-  color: var(--sub-blue);
-  border: 1px solid var(--sub-blue-bdr);
-}
-.sub-nav-avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--sub-blue);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  color: white;
-  border: 2px solid var(--sub-blue-bdr);
-}
 .sub-nav-save-status {
   display: inline-flex;
   align-items: center;
@@ -5055,9 +5031,6 @@ textarea.sub-finput {
     padding: 0 10px;
     font-size: 11.5px;
   }
-  .sub-nav-chip {
-    display: none;
-  }
   .sub-back-btn span {
     font-size: 12.5px;
   }
@@ -6432,3 +6405,163 @@ section.sub-form-section.sub-field-pulse {
 
 
 
+
+/* ── Readiness on small screens: score chip in the top bar + bottom sheet ──
+   ≤900px the workspace stacks. Rather than pushing the Readiness checklist
+   below the form, the checklist is hidden and opened as a sheet from the
+   top-bar chip. The Submit / Save actions stay in the page flow. */
+.sub-readiness-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 11px 0 9px;
+  border-radius: 999px;
+  border: 1.5px solid var(--sub-border);
+  background: var(--sub-surface);
+  color: var(--sub-muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.15s ease;
+}
+.sub-readiness-chip i {
+  font-size: 15px;
+}
+.sub-readiness-chip:active:not(:disabled) {
+  transform: scale(0.96);
+}
+.sub-readiness-chip:focus-visible,
+.sub-guard-sheet-close:focus-visible {
+  outline: 2px solid var(--sub-blue);
+  outline-offset: 2px;
+}
+.sub-readiness-chip:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.sub-readiness-chip.is-good {
+  color: var(--sub-green);
+  border-color: var(--sub-green-bdr);
+  background: var(--sub-green-dim);
+}
+.sub-readiness-chip.is-fair {
+  color: var(--sub-gold);
+  border-color: var(--sub-gold-bdr);
+  background: var(--sub-gold-dim);
+}
+.sub-readiness-chip.is-low {
+  color: var(--sub-red);
+  border-color: var(--sub-red-bdr);
+  background: var(--sub-red-dim);
+}
+
+.sub-guard-sheet-bar,
+.sub-guard-sheet-backdrop {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .sub-guard-scroll {
+    display: none;
+  }
+  /* Read-only submissions render no actions; don't leave an empty strip. */
+  .sub-guard-actions:empty {
+    display: none;
+  }
+  .sub-guard-panel:has(.sub-guard-actions:empty):not(.is-sheet-open) {
+    display: none;
+  }
+
+  /* Lift the panel's stacking context above the canvas while the sheet is open. */
+  .sub-guard-panel.is-sheet-open {
+    z-index: 3100;
+  }
+  .sub-guard-panel.is-sheet-open .sub-guard-sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background: rgba(12, 29, 61, 0.62);
+    backdrop-filter: blur(3px);
+    animation: sub-sheet-fade 0.2s ease-out both;
+  }
+  .sub-guard-panel.is-sheet-open .sub-guard-scroll {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+    max-height: min(82dvh, 680px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--sub-surface);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -14px 40px rgba(12, 29, 61, 0.22);
+    animation: sub-sheet-up 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .sub-guard-panel.is-sheet-open .sub-guard-sheet-bar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 36px;
+    background: var(--sub-surface);
+  }
+  .sub-guard-sheet-grip {
+    width: 40px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--sub-border-2);
+  }
+  .sub-guard-sheet-close {
+    position: absolute;
+    top: 4px;
+    right: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--sub-muted);
+    font-size: 18px;
+    cursor: pointer;
+  }
+  .sub-guard-sheet-close:hover {
+    background: var(--sub-surface-2);
+    color: var(--sub-text);
+  }
+}
+
+@keyframes sub-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes sub-sheet-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sub-guard-panel.is-sheet-open .sub-guard-scroll,
+  .sub-guard-panel.is-sheet-open .sub-guard-sheet-backdrop {
+    animation: none;
+  }
+}
