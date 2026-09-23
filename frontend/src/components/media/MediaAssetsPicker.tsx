@@ -59,6 +59,16 @@ export default function MediaAssetsPicker({
   institutions,
 }: MediaAssetsPickerProps) {
   const [activeTab, setActiveTab] = useState<PickerTab>("upload");
+  // Keep a tab mounted once it has been opened (hidden via the panel's
+  // `hidden` attribute) instead of unmounting it on every switch. Otherwise
+  // My Library refetched its first page + folders each time it was revisited
+  // and lost its search, filters, loaded pages, and selection.
+  const [visitedTabs, setVisitedTabs] = useState<ReadonlySet<PickerTab>>(
+    () => new Set([activeTab]),
+  );
+  if (!visitedTabs.has(activeTab)) {
+    setVisitedTabs(new Set(visitedTabs).add(activeTab));
+  }
 
   const aiSuggestions = useAiMediaSuggestions(submissionId, eventTitle, caption, category, tags);
 
@@ -156,7 +166,7 @@ export default function MediaAssetsPicker({
           aria-labelledby="mp-tab-upload"
           hidden={activeTab !== "upload"}
         >
-          {activeTab === "upload" && (
+          {visitedTabs.has("upload") && (
             <UploadMediaTab onFilesAdded={handleAddItems} disabled={disabled} />
           )}
         </div>
@@ -167,7 +177,7 @@ export default function MediaAssetsPicker({
           aria-labelledby="mp-tab-library"
           hidden={activeTab !== "library"}
         >
-          {activeTab === "library" && (
+          {visitedTabs.has("library") && (
             <MediaLibraryTab
               alreadyAddedIds={alreadyAddedIds}
               onAddItems={handleAddItems}
@@ -186,7 +196,7 @@ export default function MediaAssetsPicker({
           aria-labelledby="mp-tab-ai"
           hidden={activeTab !== "ai"}
         >
-          {activeTab === "ai" && (
+          {visitedTabs.has("ai") && (
             <AiSuggestedMediaTab
               suggestions={aiSuggestions}
               submissionId={submissionId}
