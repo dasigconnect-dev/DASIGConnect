@@ -12,12 +12,23 @@ interface FacebookPreviewMediaCarouselProps {
   size?: "compact" | "large";
 }
 
+// Facebook shows a single photo at its own shape, within these bounds:
+// landscape no wider than 1.91:1, portrait no taller than 4:5.
+const MIN_MEDIA_RATIO = 4 / 5;
+const MAX_MEDIA_RATIO = 1.91;
+
+function clampMediaRatio(ratio: number) {
+  return Math.min(Math.max(ratio, MIN_MEDIA_RATIO), MAX_MEDIA_RATIO);
+}
+
 function FacebookPreviewImageItem({
   item,
   watermarkConfig,
+  onMeasure,
 }: {
   item: FacebookPreviewMediaItem;
   watermarkConfig: WatermarkConfiguration | null;
+  onMeasure?: (width: number, height: number) => void;
 }) {
   const [aspectRatio, setAspectRatio] = useState<number | null>(null);
 
@@ -41,6 +52,7 @@ function FacebookPreviewImageItem({
           const { naturalWidth, naturalHeight } = e.currentTarget;
           if (naturalWidth && naturalHeight) {
             setAspectRatio(naturalWidth / naturalHeight);
+            onMeasure?.(naturalWidth, naturalHeight);
           }
         }}
         style={{
@@ -69,6 +81,20 @@ export default function FacebookPreviewMediaCarousel({
   const currentIndex = clampIndex(activeIndex, mediaItems.length);
   const current = mediaItems[currentIndex];
   const hasMultiple = mediaItems.length > 1;
+  // Natural width/height ratio per media URL, so the large preview's frame can
+  // match the media instead of letterboxing it in a fixed-height box.
+  const [mediaRatios, setMediaRatios] = useState<Record<string, number>>({});
+  const currentRatio = current ? mediaRatios[current.url] : undefined;
+  const mediaFrameStyle =
+    size === "large" && currentRatio
+      ? { height: "auto", aspectRatio: `${clampMediaRatio(currentRatio)}` }
+      : undefined;
+
+  function recordRatio(url: string, width: number, height: number) {
+    if (!width || !height) return;
+    const ratio = width / height;
+    setMediaRatios((prev) => (prev[url] === ratio ? prev : { ...prev, [url]: ratio }));
+  }
 
   function goTo(index: number) {
     if (!onActiveIndexChange || mediaItems.length === 0) return;
@@ -95,7 +121,7 @@ export default function FacebookPreviewMediaCarousel({
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
     >
-      <div className="fb-preview-media">
+      <div className="fb-preview-media" style={mediaFrameStyle}>
         {current.type === "video" ? (
           <>
           <video
@@ -105,6 +131,9 @@ export default function FacebookPreviewMediaCarousel({
             preload="metadata"
             aria-label={current.alt}
             controls={size === "large"}
+            onLoadedMetadata={(event) =>
+              recordRatio(current.url, event.currentTarget.videoWidth, event.currentTarget.videoHeight)
+            }
           />
           {size === "large" && (
             <span className="fb-preview-play-overlay" aria-hidden="true">
@@ -117,6 +146,7 @@ export default function FacebookPreviewMediaCarousel({
             key={current.url}
             item={current}
             watermarkConfig={watermarkConfig}
+            onMeasure={(width, height) => recordRatio(current.url, width, height)}
           />
         ) : (
           <FacebookPreviewEmptyState />
