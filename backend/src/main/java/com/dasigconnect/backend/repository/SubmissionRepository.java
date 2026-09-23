@@ -165,6 +165,71 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         """)
     List<Submission> findValidationHistory();
 
+    /**
+     * Server-paged Review Queue/history query. The service expands the requested
+     * view into statuses and selects active (ascending, Fast-Track-first) or
+     * history (descending) ordering.
+     */
+    @EntityGraph(attributePaths = {"institution", "contributor"})
+    @Query(value = """
+        SELECT s FROM Submission s
+        WHERE s.status IN :statuses
+          AND (
+              :search = ''
+              OR LOCATE(:search, LOWER(COALESCE(s.eventTitle, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.caption, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.description, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.tags, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.institution.name, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.contributor.email, ''))) > 0
+              OR LOCATE(:search, LOWER(CAST(s.eventDate AS String))) > 0
+          )
+        ORDER BY
+          CASE WHEN :activeOrdering = true AND s.fastTrack = true THEN 0 ELSE 1 END ASC,
+          CASE WHEN :ascending = true AND :sortMode = 'publish_slot'
+                    AND COALESCE(s.scheduledAt, s.publishedAt) IS NULL THEN 0 ELSE 1 END ASC,
+          CASE WHEN :ascending = true AND :sortMode = 'publish_slot'
+                    THEN COALESCE(s.scheduledAt, s.publishedAt) END ASC,
+          CASE WHEN :ascending = false AND :sortMode = 'publish_slot'
+                    AND COALESCE(s.scheduledAt, s.publishedAt) IS NULL THEN 1 ELSE 0 END ASC,
+          CASE WHEN :ascending = false AND :sortMode = 'publish_slot'
+                    THEN COALESCE(s.scheduledAt, s.publishedAt) END DESC,
+          CASE WHEN :ascending = true AND :sortMode = 'submitted'
+                    THEN COALESCE(s.submittedAt, s.createdAt) END ASC,
+          CASE WHEN :ascending = false AND :sortMode = 'submitted'
+                    THEN COALESCE(s.submittedAt, s.createdAt) END DESC,
+          s.id ASC
+        """,
+        countQuery = """
+        SELECT COUNT(s) FROM Submission s
+        WHERE s.status IN :statuses
+          AND (
+              :search = ''
+              OR LOCATE(:search, LOWER(COALESCE(s.eventTitle, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.caption, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.description, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.tags, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.institution.name, ''))) > 0
+              OR LOCATE(:search, LOWER(COALESCE(s.contributor.email, ''))) > 0
+              OR LOCATE(:search, LOWER(CAST(s.eventDate AS String))) > 0
+          )
+        """)
+    Page<Submission> findValidationPage(
+            @Param("statuses") List<SubmissionStatus> statuses,
+            @Param("search") String search,
+            @Param("sortMode") String sortMode,
+            @Param("activeOrdering") boolean activeOrdering,
+            @Param("ascending") boolean ascending,
+            Pageable pageable);
+
+    @Query("""
+        SELECT s.status AS status, COUNT(s) AS count
+        FROM Submission s
+        WHERE s.status <> com.dasigconnect.backend.model.entity.SubmissionStatus.draft
+        GROUP BY s.status
+        """)
+    List<SubmissionStatusCount> countValidationStatuses();
+
     // ── UC-3.1 Publishing Pipeline ─────────────────────────────────────────────
 
     /** PublishingSchedulerJob: SCHEDULED and DIRECT_POST_SCHEDULED submissions due for publishing. */

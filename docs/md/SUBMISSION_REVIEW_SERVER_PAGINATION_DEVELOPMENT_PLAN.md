@@ -30,7 +30,7 @@ The branch was created after fast-forwarding local `dev` to `origin/dev`.
 | --- | --- | --- |
 | Phase 1 - Contract and My Submissions Backend | Complete | New additive endpoint, bounded page sizes, ownership scope, server bucket/search handling, complete bucket counts, batched page media previews, controller/service coverage, application-context query parsing |
 | Phase 2 - My Submissions Frontend | Complete | Server-backed 20-item infinite query, debounced bucket/search requests, page cache reuse, mutation cache reset, direct ID-scoped detail loading, production build and focused lint |
-| Phase 3 - Review Queue Backend | Not started | Pending |
+| Phase 3 - Review Queue Backend | Complete | Additive paginated endpoint, server view/search/sort handling, complete tab counts, batched media previews, frozen snapshot preservation, authorization/service coverage, application-context query parsing |
 | Phase 4 - Review Queue Frontend | Not started | Pending |
 | Phase 5 - Failed Publications | Not started | Pending |
 | Phase 6 - Indexing, Measurement, and Cleanup | Not started | Pending representative-data measurements |
@@ -49,6 +49,15 @@ Phase 2 verification completed on September 23, 2026:
 Frontend production build: passed
 Focused ESLint for all changed frontend files: passed with no errors
 Repository-wide ESLint: blocked by 48 pre-existing errors outside the Phase 2 changes
+UI/CSS files changed: none
+```
+
+Phase 3 verification completed on September 23, 2026:
+
+```text
+Focused validation suite: 28 tests passed
+Full backend suite: 754 tests passed
+Repository query parsing: verified by BackendApplicationTests context startup
 UI/CSS files changed: none
 ```
 
@@ -510,6 +519,17 @@ Exit criteria:
 - No per-row media-count queries occur.
 - Equal timestamps have deterministic ordering.
 - Existing review permissions and locks remain unchanged.
+
+Implemented September 23, 2026:
+
+- Added `GET /api/v1/validation/queue/page` as an additive Moderator/Admin-only endpoint; the legacy array endpoint remains available during frontend migration.
+- Added explicit `view`, `sort`, `page`, `pageSize`, and `search` parameters with a default page size of 20 and a maximum of 50.
+- Preserved active-tab Fast-Track priority and ascending order, history-backed descending order, nullable publish-time fallback, and stable ID tiebreaking.
+- Returned complete network-wide tab counts independently of the selected page and search term.
+- Replaced per-row media-count lookups with one ordered media-preview query for the current page and reused the same batching path for legacy queue/history responses.
+- Preserved frozen `needs_revision` snapshots without loading live media rows and declared Jackson Java-time support required by the snapshot fields.
+- Added endpoint authorization/contract tests and service coverage for paging bounds, normalized views, ordering flags, counts, invalid parameters, media batching, and frozen snapshots.
+- No review mutation, lock, role permission, frontend component, or stylesheet was changed.
 
 ### Phase 4 - Review Queue Frontend
 
