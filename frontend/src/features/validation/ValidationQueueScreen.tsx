@@ -73,7 +73,6 @@ import {
   useValidationQueue,
 } from "./hooks/useValidationQueue";
 import { useResolutionFailures } from "../../hooks/useResolutionFailures";
-import { useIncrementalPagination } from "../../hooks/useIncrementalPagination";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import type { FailedPublication } from "../../api/resolutionApi";
 import ResolutionRetryModal from "./ResolutionRetryModal";
@@ -295,6 +294,7 @@ export default function ValidationQueueScreen({
   const queueView: ValidationQueueView = isFailedMode ? "all" : filter;
   const queueSort: ValidationQueueSort = isFailedMode ? "submitted" : sortKey;
   const queueSearch = isFailedMode ? "" : debouncedSearch;
+  const failureSearch = isFailedMode ? debouncedSearch : "";
   const isDesktop = useIsDesktop();
   const {
     queue,
@@ -405,6 +405,12 @@ export default function ValidationQueueScreen({
     busy: failureBusy,
     activeDetail: manualPublishDetail,
     detailLoading: manualPublishDetailLoading,
+    totalCount: totalFailuresCount,
+    failureCount,
+    hasNextPage: hasMoreFailures,
+    loadingMore: loadingMoreFailures,
+    loadMoreError: failuresLoadMoreError,
+    loadMore: loadMoreFailures,
     handleRetryWithNewSchedule: handleFailureRetryWithNewSchedule,
     handleRetry: handleFailureRetry,
     handleRetryAsLive: handleFailureRetryAsLive,
@@ -413,18 +419,8 @@ export default function ValidationQueueScreen({
     handleCompleteManual,
     openWorkflowPanel,
     closeWorkflowPanel,
-  } = useResolutionFailures(user);
+  } = useResolutionFailures(user, true, failureSearch);
   const [retryItem, setRetryItem] = useState<FailedPublication | null>(null);
-
-  const filteredFailures = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return failures;
-    return failures.filter((item) =>
-      [item.eventTitle, item.institutionName, item.lastError]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(term)),
-    );
-  }, [failures, search]);
   // Failed items are just submissions whose status is publish_failed/missed_review —
   // opening one goes through the exact same openSubmission()/selectedId path as any
   // other tab (see below); this just adds the retry-specific extras (retry count,
@@ -470,23 +466,28 @@ export default function ValidationQueueScreen({
     observer.observe(target);
     return () => observer.disconnect();
   }, [hasMoreQueue, isFailedMode, loadMoreQueue, loadingMoreQueue, queueLoadMoreError]);
+  const failuresSentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const {
-    visibleItems: visibleFailures,
-    hasMore: hasMoreFailures,
-    totalCount: totalFailuresCount,
-    sentinelRef: failuresSentinelRef,
-  } = useIncrementalPagination(filteredFailures, {
-    pageSize: 15,
-    initialSize: 15,
-    resetDeps: [search],
-    selectedItemId: selectedId,
-    getItemId: (item) => (item as FailedPublication)?.submissionId,
-  });
+  useEffect(() => {
+    const target = failuresSentinelRef.current;
+    if (!isFailedMode || !target || !hasMoreFailures || loadingMoreFailures || failuresLoadMoreError) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          observer.disconnect();
+          void loadMoreFailures();
+        }
+      },
+      { rootMargin: "240px 0px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [failuresLoadMoreError, hasMoreFailures, isFailedMode, loadMoreFailures, loadingMoreFailures]);
 
   const tabCounts: Record<QueueFilter, number> = {
     ...queueCounts,
-    failed: failures.length,
+    failed: failureCount,
   };
   const hasActiveSelection = Boolean(selectedId);
   const isQueueExpanded = isDesktop && !hasActiveSelection;
@@ -717,7 +718,7 @@ export default function ValidationQueueScreen({
 
     const selectedIsInCurrentTab = selectedId
       ? (isFailedMode
-          ? filteredFailures.some((f) => f.submissionId === selectedId)
+          ? failures.some((f) => f.submissionId === selectedId)
           : selectedMatchesCurrentQueueView || filteredQueue.some((item) => item.id === selectedId))
       : false;
     if (selectedIsInCurrentTab) return;
@@ -738,7 +739,7 @@ export default function ValidationQueueScreen({
     // item from the current tab as a convenience once the previous
     // selection (if any) no longer matches it.
     if (isFailedMode) {
-      const first = filteredFailures[0];
+      const first = failures[0];
       if (first) {
         queueMicrotask(() =>
           void openSubmission({
@@ -760,7 +761,7 @@ export default function ValidationQueueScreen({
     }
 
     if (selectedId || selected) clearSelection();
-  }, [isFailedMode, loading, failuresLoading, filteredFailures, filteredQueue, selectedId, selected, selectedMatchesCurrentQueueView, openSubmission, isDesktop]);
+  }, [isFailedMode, loading, failuresLoading, failures, filteredQueue, selectedId, selected, selectedMatchesCurrentQueueView, openSubmission, isDesktop]);
 
   function setLockFor(submissionId: string, lock: ReviewLock) {
     setLocks((prev) => ({ ...prev, [submissionId]: lock }));
@@ -1421,12 +1422,12 @@ export default function ValidationQueueScreen({
               {!failuresLoading && failuresError && (
                 <QueueState icon="ti-database-off" title="Unable to load failures" subtitle={failuresError} />
               )}
-              {!failuresLoading && !failuresError && filteredFailures.length === 0 && (
+              {!failuresLoading && !failuresError && failures.length === 0 && (
                 <QueueState
-                  icon={failures.length === 0 ? "ti-circle-check" : "ti-search-off"}
-                  title={failures.length === 0 ? "No failed publications" : "No matching failures"}
+                  icon={failureCount === 0 ? "ti-circle-check" : "ti-search-off"}
+                  title={failureCount === 0 ? "No failed publications" : "No matching failures"}
                   subtitle={
-                    failures.length === 0
+                    failureCount === 0
                       ? "Automated publish failures needing manual recovery will appear here."
                       : "Try a different title, institution, or error term."
                   }
@@ -1434,7 +1435,7 @@ export default function ValidationQueueScreen({
               )}
               {!failuresLoading &&
                 !failuresError &&
-                visibleFailures.map((item) => (
+                failures.map((item) => (
                   <button
                     className={`val-queue-item ${item.submissionId === selectedId ? "active" : ""}`}
                     key={item.submissionId}
@@ -1502,13 +1503,31 @@ export default function ValidationQueueScreen({
                 ))}
 
               {hasMoreFailures && (
-                <div ref={failuresSentinelRef} className="val-load-more-sentinel">
-                  <div className="val-load-more-spinner" />
-                  <span>Loading more items...</span>
+                <div
+                  ref={failuresSentinelRef}
+                  className="val-load-more-sentinel"
+                  role={failuresLoadMoreError ? "button" : undefined}
+                  tabIndex={failuresLoadMoreError ? 0 : undefined}
+                  onClick={failuresLoadMoreError ? () => void loadMoreFailures() : undefined}
+                  onKeyDown={failuresLoadMoreError
+                    ? (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          void loadMoreFailures();
+                        }
+                      }
+                    : undefined}
+                >
+                  {!failuresLoadMoreError && <div className="val-load-more-spinner" />}
+                  <span>
+                    {failuresLoadMoreError
+                      ? "Unable to load more failures. Select here to retry."
+                      : "Loading more items..."}
+                  </span>
                 </div>
               )}
 
-              {!hasMoreFailures && totalFailuresCount > 15 && (
+              {!hasMoreFailures && totalFailuresCount > 20 && (
                 <div className="val-queue-end-indicator">
                   <span>Showing all {totalFailuresCount} failures</span>
                 </div>

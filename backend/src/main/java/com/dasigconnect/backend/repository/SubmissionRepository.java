@@ -378,6 +378,71 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
         """)
     List<Submission> findPublishFailures();
 
+    @EntityGraph(attributePaths = {"institution"})
+    @Query(value = """
+        SELECT s FROM Submission s
+        WHERE s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.publish_failed,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_failed,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.missed_review
+        )
+        AND (
+            :search = ''
+            OR LOCATE(:search, LOWER(COALESCE(s.eventTitle, ''))) > 0
+            OR LOCATE(:search, LOWER(COALESCE(s.institution.name, ''))) > 0
+            OR EXISTS (
+                SELECT attempt.id FROM PublicationAttempt attempt
+                WHERE attempt.submission.id = s.id
+                  AND attempt.attemptNumber = (
+                      SELECT MAX(latest.attemptNumber)
+                      FROM PublicationAttempt latest
+                      WHERE latest.submission.id = s.id
+                  )
+                  AND LOCATE(:search, LOWER(COALESCE(attempt.errorDetail, ''))) > 0
+            )
+        )
+        ORDER BY
+            CASE WHEN s.scheduledAt IS NULL THEN 0 ELSE 1 END ASC,
+            s.scheduledAt DESC,
+            s.id ASC
+        """,
+        countQuery = """
+        SELECT COUNT(s) FROM Submission s
+        WHERE s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.publish_failed,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_failed,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.missed_review
+        )
+        AND (
+            :search = ''
+            OR LOCATE(:search, LOWER(COALESCE(s.eventTitle, ''))) > 0
+            OR LOCATE(:search, LOWER(COALESCE(s.institution.name, ''))) > 0
+            OR EXISTS (
+                SELECT attempt.id FROM PublicationAttempt attempt
+                WHERE attempt.submission.id = s.id
+                  AND attempt.attemptNumber = (
+                      SELECT MAX(latest.attemptNumber)
+                      FROM PublicationAttempt latest
+                      WHERE latest.submission.id = s.id
+                  )
+                  AND LOCATE(:search, LOWER(COALESCE(attempt.errorDetail, ''))) > 0
+            )
+        )
+        """)
+    Page<Submission> findPublishFailurePage(
+            @Param("search") String search,
+            Pageable pageable);
+
+    @Query("""
+        SELECT COUNT(s) FROM Submission s
+        WHERE s.status IN (
+            com.dasigconnect.backend.model.entity.SubmissionStatus.publish_failed,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.direct_post_failed,
+            com.dasigconnect.backend.model.entity.SubmissionStatus.missed_review
+        )
+        """)
+    long countPublishFailures();
+
     @Query("""
         SELECT s FROM Submission s
         JOIN FETCH s.institution

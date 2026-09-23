@@ -24,11 +24,13 @@ import com.dasigconnect.backend.model.entity.SubmissionMediaAsset;
 import com.dasigconnect.backend.model.entity.SubmissionStatus;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.model.entity.UserRole;
-import com.dasigconnect.backend.repository.PublicationAttemptRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
+import com.dasigconnect.backend.model.dto.resolution.FailedPublicationDto;
+import com.dasigconnect.backend.model.dto.resolution.FailedPublicationPageDto;
 import com.dasigconnect.backend.service.JWTService;
 import com.dasigconnect.backend.service.ManualPublishingService;
+import com.dasigconnect.backend.service.ResolutionService;
 import com.dasigconnect.backend.service.TenantScopeService;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -49,9 +51,9 @@ class ResolutionControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean private SubmissionRepository submissionRepository;
-    @MockitoBean private PublicationAttemptRepository publicationAttemptRepository;
     @MockitoBean private SubmissionMediaAssetRepository submissionMediaAssetRepository;
     @MockitoBean private ManualPublishingService manualPublishingService;
+    @MockitoBean private ResolutionService resolutionService;
     @MockitoBean private JWTService jwtService;
     @MockitoBean private TenantScopeService tenantScopeService;
 
@@ -73,7 +75,7 @@ class ResolutionControllerTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     void listFailures_asModerator_returnsEmptyList() throws Exception {
-        when(submissionRepository.findPublishFailures()).thenReturn(List.of());
+        when(resolutionService.getFailures()).thenReturn(List.of());
 
         mockMvc.perform(get("/api/v1/resolution/failures"))
                 .andExpect(status().isOk())
@@ -85,15 +87,48 @@ class ResolutionControllerTest {
     @WithMockUser(roles = "ADMIN")
     void listFailures_asModerator_returnsFailureList() throws Exception {
         Submission s = publishFailedSubmission(UUID.randomUUID());
-        when(submissionRepository.findPublishFailures()).thenReturn(List.of(s));
-        when(publicationAttemptRepository.findTopBySubmissionIdOrderByAttemptedAtDesc(any()))
-                .thenReturn(Optional.empty());
+        when(resolutionService.getFailures()).thenReturn(List.of(FailedPublicationDto.from(s, null)));
 
         mockMvc.perform(get("/api/v1/resolution/failures"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].submissionId").value(s.getId().toString()))
                 .andExpect(jsonPath("$.data[0].eventTitle").value("Tech Summit 2026"));
+    }
+
+    @Test
+    void listFailurePage_unauthenticated_returns401() throws Exception {
+        mockMvc.perform(get("/api/v1/resolution/failures/page"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(roles = "CONTRIBUTOR")
+    void listFailurePage_asContributor_returns403() throws Exception {
+        mockMvc.perform(get("/api/v1/resolution/failures/page"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "MODERATOR")
+    void listFailurePage_asModerator_returnsBoundedPage() throws Exception {
+        Submission s = publishFailedSubmission(UUID.randomUUID());
+        FailedPublicationPageDto page = new FailedPublicationPageDto(
+                List.of(FailedPublicationDto.from(s, null)), 1, 20, 26, 2, false, 31);
+        when(resolutionService.getFailurePage(1, 20, "token")).thenReturn(page);
+
+        mockMvc.perform(get("/api/v1/resolution/failures/page")
+                        .param("page", "1")
+                        .param("pageSize", "20")
+                        .param("search", "token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.totalCount").value(26))
+                .andExpect(jsonPath("$.data.failureCount").value(31))
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+
+        verify(resolutionService).getFailurePage(1, 20, "token");
     }
 
     // ── GET /{id} ─────────────────────────────────────────────────────────────
