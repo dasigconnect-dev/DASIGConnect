@@ -66,6 +66,7 @@ The switch governs the *rules* on a scheduled time, **not whether one is picked*
 - **Built-in templates** are hard-coded frontend constants (`postTemplates` — "Event Announcement", etc., with `[EVENT TITLE]`-style placeholder captions), not admin-managed.
 - **Custom templates** are personal: `POST /api/v1/post-templates` from **Save as Template** (name, caption, tags, target, category, `sourceSubmissionId`). `GET /post-templates` returns only the caller's own (`ownerUserId`) — templates are not shared across an institution. Name is deduped per owner (409 on conflict); the caller can delete their own via `DELETE /post-templates/{id}`.
 - The composer shows both lists together. Applying a template requires ≥1 media file and sets the caption + tags.
+- **Templates are available in both publishing modes (since 2026-09-23).** They used to be hidden entirely while the composer was in Live Event (Fast-Track) mode, and `SubmissionService.create`/`update` also wiped `templateId` on any Fast-Track post. No reason was ever recorded — it arrived with the first Fast-Track implementation, which also hid AI captions in Live mode (since reversed), and a template only pre-fills the caption, so nothing about a live post conflicts with it. Both the sidebar gate and the backend clearing were removed; `templateId` is now kept for Fast-Track like any other post. The "Template used" readiness item still auto-passes for Live posts (it's a Recommended nudge, and a live event shouldn't be nagged to use one).
 
 ## Autosave & explicit save
 
