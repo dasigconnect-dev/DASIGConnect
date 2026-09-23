@@ -47,11 +47,13 @@ export const submissionComposerTourSteps: TourStep[] = [
     placement: "top",
   },
   {
-    target: ".sub-sidebar-templates",
-    title: "Post Templates",
-    description: "Access approved pre-built templates to quickly populate standard caption structures and hashtags.",
+    // The tour starts on Add Media, so point at the Post Details step where the
+    // caption tools (AI, Templates, Fancy text) live.
+    target: "#composer-step-nav .sub-step:nth-of-type(2)",
+    title: "Caption Tools & Templates",
+    description: "In Post Details, the caption has Suggest with AI, Post Templates (built-in, your saved ones, or generated from top posts), and Fancy text.",
     icon: "ti ti-template",
-    placement: "right",
+    placement: "bottom",
   },
   {
     target: ".sub-form-page-actions",

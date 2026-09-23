@@ -10,7 +10,7 @@
 
 ## Main Flow — AI Caption Generation
 
-1. The actor clicks **Suggest Caption** in the caption field's action row.
+1. The actor clicks **Suggest Caption** in the caption field's action row (**Suggest Caption** · **Templates** · **Fancy text**). While the caption is still empty, the **Let AI draft it** button in the empty-caption starter opens the same dialog (it's disabled while the AI is rate-limited or unavailable).
 2. A prompt dialog opens. The actor may optionally type instructions (tone, focus, length, details to include) and pick one of three **tones** — `professional` (default), `community`, `energetic`. The dialog can proceed as long as there is an attached image, an existing caption, **or** a typed prompt.
 3. The actor confirms. The prompt is limited to **280 characters** — the counter turns over-limit and Generate is disabled past it (backend also enforces `@Size(max = 280)`).
 4. The system sends the submission's images (up to 4, base64-encoded; any over 5 MB downscaled in-memory to a JPEG under 5 MB), the media metadata, the event title/date/institution, the existing caption, the prompt, and the selected tone to the Anthropic Claude API (`claude-haiku-4-5-20251001`), with a **30-second timeout**.
@@ -55,6 +55,7 @@ _Verified against the running code as of 2026-09-11 (caption char-limit unificat
 - A2: the control is not persistently disabled while the service is down — it shows a transient error and auto-recovers after ~5 s; there is no health check.
 - A4: an empty prompt yields one caption in the default tone, not plural tone-labeled variants.
 - A5: the limit is **280 characters**.
+- Main Flow step 1 (2026-09-24): AI can also be started from the composer's empty-caption starter ("Let AI draft it"), which sits next to "Start from a template" (UC-1.5). The caption action row is now Suggest Caption · Templates · Fancy text.
 - Fancy Text step 1: the panel is opened by a **button**, not shown automatically on selection. The style set is Bold/Italic Serif, Bold/Italic Sans, Script, and Plain — there is no "small caps".
 
 **Caption length limit (unified 2026-09-11):** the caption ceiling is **3000 characters**, counted by code points, on both ends. Frontend: `CAPTION_CHAR_LIMIT` in `frontend/src/features/submission/utils.ts` (was `CAPTION_WORD_LIMIT` — it always measured characters, not words) drives the composer's trim (`trimToCharLimit`), the readiness "Caption length" check, the counter, and Fancy Text's over-limit guard (which now imports the shared constant instead of keeping its own copy). Backend: `SubmissionService.MAX_CAPTION_CHARS = 3000` (`validateCaptionCharLimit`, code-point count) rejects an over-length caption on create/update with `400` and on submit with `422`. Unrelated: `ClaudeVisionClient.MAX_REQUESTED_CAPTION_WORDS = 2000` still caps the *word count a user may request in the prompt* — that is a prompt-parsing guard, not the stored-caption limit, and is intentionally left in words.
