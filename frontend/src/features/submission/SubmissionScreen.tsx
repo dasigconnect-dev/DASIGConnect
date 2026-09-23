@@ -240,6 +240,20 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     autoStartDelayMs: 700,
     canStart: isMySubmissionsPage && !loading,
   });
+  // On phones the status tabs are a horizontal scroller; keep the active one
+  // centred so a filter restored from ?tab= (or picked at the edge) isn't hidden.
+  const statusTabsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const strip = statusTabsRef.current;
+    if (!strip || strip.scrollWidth <= strip.clientWidth) return;
+    const tab = strip.querySelector<HTMLElement>(".sub-status-tab.is-active");
+    if (!tab) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    strip.scrollTo({
+      left: tab.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2,
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
+  }, [filter, isMySubmissionsPage]);
   const detailsSectionRef = useRef<HTMLElement | null>(null);
   const mediaSectionRef = useRef<HTMLElement | null>(null);
   const scheduleSectionRef = useRef<HTMLElement | null>(null);
@@ -2208,7 +2222,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
 
           <div className="sub-toolbar-card" style={{ marginBottom: "16px" }}>
             <div className="sub-registry-toolbar">
-              <div className="sub-status-tabs" role="group" aria-label="Filter submissions by status">
+              <div
+                ref={statusTabsRef}
+                className="sub-status-tabs"
+                role="group"
+                aria-label="Filter submissions by status"
+              >
                 <button
                   type="button"
                   className={`sub-status-tab${filter === "all" ? " is-active" : ""}`}
