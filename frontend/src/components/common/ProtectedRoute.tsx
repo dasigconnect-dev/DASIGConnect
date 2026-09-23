@@ -1,5 +1,6 @@
 import { Navigate } from "react-router-dom";
 import type { User, UserRole } from "../../types/auth.types";
+import ForbiddenPage from "./ForbiddenPage";
 
 interface Props {
   user: User | null;
@@ -9,6 +10,7 @@ interface Props {
 
 export default function ProtectedRoute({ user, allowedRoles, children }: Props) {
   if (!user) return <Navigate to="/login" replace />;
-  if (!allowedRoles.includes(user.role)) return <Navigate to="/dashboard" replace />;
+  // Explain the denial instead of silently bouncing to the dashboard.
+  if (!allowedRoles.includes(user.role)) return <ForbiddenPage allowedRoles={allowedRoles} />;
   return <>{children}</>;
 }

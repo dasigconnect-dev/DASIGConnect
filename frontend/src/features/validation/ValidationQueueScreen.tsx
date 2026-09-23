@@ -81,6 +81,7 @@ import ManualPublishWorkflowPanel from "./ManualPublishWorkflowPanel";
 import "../../styles/dasig-loader.css";
 import "../../styles/resolution.css";
 import "../../styles/validation.css";
+import { formatRejectionReason, REJECTION_REASON_LABELS } from "../../lib/rejectionReason";
 // Reused Submit Content authoring components (AI caption button, engagement
 // panel) rely on the `--sub-*` tokens and `.ai-caption-*` rules defined here.
 import "../../styles/submission.css";
@@ -238,14 +239,9 @@ function reconcileEditMedia(form: EditFormState, next: SubmissionMediaItem[]): E
   return { ...form, media, removedAssetIds };
 }
 
-const rejectionReasons: Array<{ code: RejectionReasonCode; label: string }> = [
-  { code: "INCOMPLETE_CONTENT", label: "Incomplete content" },
-  { code: "INAPPROPRIATE_CONTENT", label: "Inappropriate content" },
-  { code: "WRONG_FORMAT", label: "Wrong format" },
-  { code: "DUPLICATE_EVENT", label: "Duplicate event" },
-  { code: "WRONG_INSTITUTION", label: "Wrong institution" },
-  { code: "OTHER", label: "Other" },
-];
+const rejectionReasons: Array<{ code: RejectionReasonCode; label: string }> = (
+  Object.entries(REJECTION_REASON_LABELS) as Array<[RejectionReasonCode, string]>
+).map(([code, label]) => ({ code, label }));
 
 const statusLabel: Record<string, string> = {
   pending: "Pending",
@@ -3309,7 +3305,9 @@ function ValidationHistoryModal({
                           {formatRevisionRemarksForDisplay(entry.remarks)}
                         </p>
                       )}
-                      {entry.rejectionReason && <p className="val-log-remarks">{entry.rejectionReason}</p>}
+                      {entry.rejectionReason && (
+                        <p className="val-log-remarks">{formatRejectionReason(entry.rejectionReason)}</p>
+                      )}
                       {entry.editDiff && <EditDiffView diffJson={entry.editDiff} />}
                     </div>
                   </div>
