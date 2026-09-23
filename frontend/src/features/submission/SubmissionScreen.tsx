@@ -2462,7 +2462,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               aria-label="Back to My Submissions"
             >
               <i className="ti ti-arrow-left"></i>
-              <span>Back to My Submissions</span>
+              <span className="sub-back-label-full">Back to My Submissions</span>
+            <span className="sub-back-label-short">Back</span>
             </button>
           </div>
         </nav>
@@ -2472,6 +2473,31 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       </div>
     );
   }
+
+  const submitButton = (
+    <button
+      className="sub-guard-submit-btn"
+      type="button"
+      onClick={() => setModal("submit")}
+      disabled={busy || Boolean(hydratingId) || previewValidation.blockingErrors.length > 0 || hasUnaddressedRevisions}
+      title={
+        hasUnaddressedRevisions
+          ? `Please edit all requested revision fields (${unaddressedRevisionLabels.join(", ")}) before submitting.`
+          : previewValidation.blockingErrors[0]
+      }
+    >
+      {submitting ? (
+        <i className="ti ti-loader-2 sub-spin"></i>
+      ) : (
+        <i className="ti ti-send"></i>
+      )}
+      {isNeedsRevision
+        ? "Submit for Revision"
+        : form.status === "rejected"
+          ? "Resubmit for Review"
+          : "Submit for Approval"}
+    </button>
+  );
 
   return (
     <div className="submission-screen">
@@ -2487,7 +2513,8 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             aria-label="Back to My Submissions"
           >
             <i className="ti ti-arrow-left"></i>
-            <span>Back to My Submissions</span>
+            <span className="sub-back-label-full">Back to My Submissions</span>
+            <span className="sub-back-label-short">Back</span>
           </button>
         </div>
         <div className="sub-nav-right">
@@ -3306,7 +3333,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
           </section>
 
-          {!isReadOnlySubmission && (
+          {!isReadOnlySubmission && !isCompactLayout && (
             <StepPanelActions
               activeStep={activeStep}
               hasMedia={hasMedia}
@@ -3420,37 +3447,31 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 </span>
               </div>
             )}
-            <button
-              className="sub-guard-submit-btn"
-              type="button"
-              onClick={() => setModal("submit")}
-              disabled={busy || Boolean(hydratingId) || previewValidation.blockingErrors.length > 0 || hasUnaddressedRevisions}
-              title={
-                hasUnaddressedRevisions
-                  ? `Please edit all requested revision fields (${unaddressedRevisionLabels.join(", ")}) before submitting.`
-                  : previewValidation.blockingErrors[0]
-              }
-            >
-              {submitting ? (
-                <i className="ti ti-loader-2 sub-spin"></i>
-              ) : (
-                <i className="ti ti-send"></i>
-              )}
-              {isNeedsRevision
-                ? "Submit for Revision"
-                : form.status === "rejected"
-                  ? "Resubmit for Review"
-                  : "Submit for Approval"}
-            </button>
-            {isDirty && (
-              <button
-                className="sub-guard-save-btn"
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={busy || Boolean(hydratingId)}
-              >
-                {saveState === "saving" ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
-              </button>
+            {isCompactLayout ? (
+              // ≤900px: the sticky bottom bar is the step navigation —
+              // Previous / Next, with Submit taking Next's place on the last
+              // step. Save Draft stays in the page header (#btn-save-draft).
+              <StepPanelActions
+                activeStep={activeStep}
+                hasMedia={hasMedia}
+                isDetailsComplete={isDetailsComplete}
+                onStepChange={handleStepNav}
+                finalAction={submitButton}
+              />
+            ) : (
+              <>
+                {submitButton}
+                {isDirty && (
+                  <button
+                    className="sub-guard-save-btn"
+                    type="button"
+                    onClick={() => void handleSave()}
+                    disabled={busy || Boolean(hydratingId)}
+                  >
+                    {saveState === "saving" ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-device-floppy"></i>} Save Draft
+                  </button>
+                )}
+              </>
             )}
               </>
             )}

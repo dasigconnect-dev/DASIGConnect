@@ -1778,6 +1778,10 @@
   gap: 12px;
   margin-top: 2px;
 }
+/* Step 1 has no Previous button; keep the forward action on the right. */
+.sub-step-panel-actions > :last-child {
+  margin-left: auto;
+}
 .sub-step-panel-btn {
   border-radius: 999px;
   height: 38px;
@@ -4665,11 +4669,18 @@ textarea.sub-finput {
   .sub-form-canvas:has(.is-open) {
     z-index: 600;
   }
+  /* Keep the sticky top bar above the canvas while a caption panel (e.g.
+     Fancy text) lifts it to 600; bottom sheets (2900/3100) and modals (3000)
+     still cover the bar. */
+  .sub-topnav {
+    z-index: 700;
+  }
   .sub-guard-panel {
     order: 2;
     width: 100%;
     box-sizing: border-box;
     position: relative;
+    top: auto;
     z-index: 1;
     height: auto;
     border-left: none;
@@ -4773,6 +4784,13 @@ textarea.sub-finput {
     row-gap: 4px;
     column-gap: 8px;
     margin-bottom: 16px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 6px 18px rgba(12, 29, 61, 0.1);
+  }
+  /* Keep scroll-into-view targets (step changes, readiness jumps) clear of
+     the top bar + pinned step pills. */
+  .sub-form-canvas * {
+    scroll-margin-top: 116px;
   }
   .sub-form-page-head > div:first-child {
     display: contents;
@@ -4854,7 +4872,12 @@ textarea.sub-finput {
   textarea.sub-finput {
     font-size: 15px;
   }
+  /* Step pills stay pinned just under the 52px top bar while the form
+     scrolls (works here because the canvas is overflow: visible at this
+     width; on desktop it's a non-scrolling scroll container, so no sticky). */
   .sub-step-nav {
+    position: sticky;
+    top: 60px;
     grid-template-columns: repeat(3, 1fr);
     gap: 4px;
     padding: 4px;
@@ -6840,6 +6863,79 @@ section.sub-form-section.sub-field-pulse {
   .sub-list-page .sub-list-new:active {
     transition: none;
     transform: none;
+  }
+}
+
+/* ==========================================================================
+   Composer — sticky bottom step bar (≤900px)
+   Below 900px the readiness checklist lives in a bottom sheet, so the guard
+   panel is just this bar, pinned to the bottom of the viewport. It carries
+   the step navigation — [‹ Previous] [Next ›] — with Submit taking Next's
+   place on the last step (StepPanelActions finalAction). Save Draft lives
+   in the page header at this width.
+   ========================================================================== */
+@media (max-width: 900px) {
+  .sub-guard-panel {
+    position: sticky;
+    bottom: 0;
+    z-index: 20; /* above the canvas (10); below open popovers (600) and the sheet (3100) */
+    box-shadow: 0 -6px 20px rgba(12, 29, 61, 0.08);
+  }
+  .sub-guard-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    box-shadow: none;
+  }
+  .sub-guard-actions .sub-unaddressed-revision-notice {
+    margin-bottom: 0;
+  }
+  .sub-guard-actions .sub-step-panel-actions {
+    margin: 0;
+    padding: 0;
+    border: none;
+    gap: 10px;
+  }
+  .sub-guard-actions .sub-step-panel-btn {
+    height: 44px;
+    min-height: 44px;
+    font-size: 14px;
+  }
+  /* Previous stays compact; the forward action (Next / Submit) gets the room. */
+  .sub-guard-actions .sub-step-panel-btn.secondary {
+    flex: 0 0 auto;
+    padding: 0 16px;
+  }
+  .sub-guard-actions .sub-step-panel-btn.primary,
+  .sub-guard-actions .sub-step-panel-btn.locked,
+  .sub-guard-actions .sub-guard-submit-btn {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .sub-guard-actions .sub-guard-submit-btn {
+    width: auto;
+    height: 44px;
+    min-height: 44px;
+  }
+  .sub-guard-actions .sub-step-panel-btn:active,
+  .sub-guard-actions .sub-guard-submit-btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+}
+
+/* Back button: short label on narrow screens so it can't collide with the
+   save status / readiness chips. */
+.sub-back-label-short {
+  display: none;
+}
+@media (max-width: 520px) {
+  .sub-back-label-full {
+    display: none;
+  }
+  .sub-back-label-short {
+    display: inline;
   }
 }
 
