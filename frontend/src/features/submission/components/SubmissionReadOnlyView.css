@@ -51,8 +51,7 @@
   box-shadow: 0 2px 8px rgba(24, 119, 242, 0.25);
 }
 .sub-ro-switch-btn:focus-visible,
-.sub-ro-media-link:focus-visible,
-.sub-ro-edit-rejected-btn:focus-visible {
+.sub-ro-media-link:focus-visible {
   outline: 2px solid var(--sub-blue);
   outline-offset: 2px;
 }
@@ -215,36 +214,6 @@
   line-height: 1.6;
   white-space: pre-wrap;
 }
-.sub-ro-feedback-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 14px;
-}
-.sub-ro-edit-rejected-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 0 18px;
-  border: 1px solid #b91c1c;
-  border-radius: 999px;
-  background: var(--sub-red);
-  color: #ffffff;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
-}
-.sub-ro-edit-rejected-btn:hover {
-  background: #b91c1c;
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.28);
-}
-.sub-ro-edit-rejected-btn:active {
-  transform: scale(0.97);
-}
-
 /* ── Event masthead ── */
 .sub-ro-hero {
   padding: 22px 24px;

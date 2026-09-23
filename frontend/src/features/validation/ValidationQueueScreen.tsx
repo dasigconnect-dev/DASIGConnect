@@ -2560,7 +2560,6 @@ export default function ValidationQueueScreen({
 
       {editMode && libraryPickerOpen && selected && (
         <ReviewLibraryPickerModal
-          institutionId={selected.institutionId}
           excludeIds={editForm.media
             .map((m) => m.assetId)
             .filter((x): x is string => Boolean(x))}

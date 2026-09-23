@@ -507,6 +507,8 @@ public class AuditLogService {
                 "Submitted for review";
             case "SUBMISSION_WITHDRAWN" ->
                 "Submission withdrawn to draft";
+            case "SUBMISSION_DELETED" ->
+                "Submission deleted";
             case "SUBMISSION_APPROVED", "APPROVED", "approved" ->
                 "Approved & scheduled";
             case "SUBMISSION_EDITED_AND_APPROVED", "EDITED_AND_APPROVED", "edited_and_approved" ->

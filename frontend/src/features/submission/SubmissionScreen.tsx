@@ -528,6 +528,9 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const shouldPromptBeforeLeave = isDirty;
   const busy =
     saveState === "saving" || submitting || withdrawing || deleting || reorderingMedia;
+  const canDeleteCurrentSubmission = Boolean(
+    form.id && (form.status === "draft" || form.status === "rejected"),
+  );
 
   const {
     tourProps: saveDraftTourProps,
@@ -1947,7 +1950,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }
 
   async function handleDelete() {
-    if (isReadOnlySubmission || busy) return;
+    if (!canDeleteCurrentSubmission || busy) return;
     setDeleting(true);
     if (!form.id) {
       setModal(null);
@@ -1963,10 +1966,12 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         institutionId: form.institutionId || user.institutionId || "",
       });
       setModal(null);
-      toast.info("Draft deleted.");
+      toast.info(form.status === "rejected" ? "Submission deleted." : "Draft deleted.");
       exitSubmission();
     } catch (err: unknown) {
-      toast.error(getErrorMessage(err, "Draft could not be deleted."));
+      toast.error(getErrorMessage(err, form.status === "rejected"
+        ? "Submission could not be deleted."
+        : "Draft could not be deleted."));
     } finally {
       setDeleting(false);
     }
@@ -2513,6 +2518,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               <span>{lookupsLoading || hydratingId ? "–" : readiness.score}</span>
             </button>
           )}
+          {canDeleteCurrentSubmission && (
+            <button
+              className="sub-btn-ghost danger"
+              type="button"
+              onClick={() => setModal("delete")}
+              disabled={busy || Boolean(hydratingId)}
+            >
+              {deleting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-trash"></i>}
+              <span>Delete</span>
+            </button>
+          )}
           {/* The guide tours the composer; a read-only submission has nothing to walk through. */}
           {!isReadOnlySubmission && (
             <button
@@ -2712,7 +2728,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   <i className="ti ti-x"></i> Cancel Editing
                 </button>
               )}
-              {form.status === "draft" && (
+              {canDeleteCurrentSubmission && (
                 <button
                   className="sub-btn-ghost danger"
                   type="button"
@@ -2758,6 +2774,14 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             )}
             {isReadOnlySubmission && form.status === "rejected" && (
               <div className="sub-form-page-actions">
+                <button
+                  className="sub-btn-ghost danger"
+                  type="button"
+                  onClick={() => setModal("delete")}
+                  disabled={busy || Boolean(hydratingId)}
+                >
+                  {deleting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-trash"></i>} Delete
+                </button>
                 <button
                   className="sub-btn-primary"
                   type="button"
@@ -2809,7 +2833,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 onMediaIndexChange={setActiveMediaIndex}
                 rejectionReason={loadedDetail?.id === form.id ? loadedDetail.rejectionReason : null}
                 revisionNotes={loadedDetail?.id === form.id ? loadedDetail.validatorRemarks : null}
-                onEditRejected={handleStartEditRejected}
               />
             </Suspense>
           ) : (
@@ -3075,7 +3098,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 disabled={!isEditableSubmission}
                 onItemClick={openMediaCaption}
                 getItemCaption={(item) => form.mediaCaptions[pickerMediaKey(item)] ?? ""}
-                institutionId={selectedInstitutionId}
+                institutionId={isAdminComposer ? undefined : selectedInstitutionId}
                 networkView={isAdminComposer}
                 institutions={institutions}
               />
@@ -3637,10 +3660,20 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
         <ConfirmModal
           icon="ti-trash"
           tone="danger"
-          title="Delete this draft?"
-          description="This will delete the current draft from the submission queue."
+          title={form.status === "rejected" ? "Delete this rejected submission?" : "Delete this draft?"}
+          description={
+            form.status === "rejected"
+              ? "This will permanently delete this rejected submission from your submissions."
+              : "This will delete the current draft from the submission queue."
+          }
           cancelLabel="Cancel"
-          confirmLabel={deleting ? "Deleting..." : "Delete Draft"}
+          confirmLabel={
+            deleting
+              ? "Deleting..."
+              : form.status === "rejected"
+                ? "Delete Submission"
+                : "Delete Draft"
+          }
           loading={deleting}
           disabled={busy}
           onCancel={() => setModal(null)}

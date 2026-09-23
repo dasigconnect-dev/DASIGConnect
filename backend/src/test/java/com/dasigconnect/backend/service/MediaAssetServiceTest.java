@@ -257,16 +257,24 @@ class MediaAssetServiceTest {
     @Test
     void list_showsStandaloneAssetNeverAttachedToAnySubmission() {
         UUID institutionId = UUID.randomUUID();
+        UUID sharedInstitutionId = UUID.randomUUID();
         UUID uploaderId = UUID.randomUUID();
         UUID assetId = UUID.randomUUID();
         MediaAsset asset = asset(assetId, institutionId, uploaderId);
         stubRepositoryPage(List.of(asset), 1, 1, 20);
+        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
+                .thenReturn(Optional.of(institution(sharedInstitutionId)));
 
         MediaAssetListResponseDto result = mediaAssetService.list(
                 null, null, null, null, null, null, 1, 20, null,
                 user(UUID.randomUUID(), "contributor", institutionId));
 
         assertEquals(1, result.getItems().size());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<java.util.Collection<UUID>> scopeCaptor = ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(mediaAssetRepository).findRepositoryPage(
+                eq(false), scopeCaptor.capture(), isNull(), eq(""), anyCollection(), isNull(), any(Pageable.class));
+        assertEquals(Set.of(institutionId, sharedInstitutionId), Set.copyOf(scopeCaptor.getValue()));
     }
 
     @Test
@@ -430,7 +438,6 @@ class MediaAssetServiceTest {
         when(mediaAlbumRepository.findById(albumId)).thenReturn(Optional.of(album(albumId, ownInstitution, null)));
         when(mediaAlbumRepository.findById(destinationParentId))
                 .thenReturn(Optional.of(album(destinationParentId, otherInstitution, null)));
-        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc()).thenReturn(Optional.empty());
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
                 () -> mediaAssetService.moveAlbum(albumId, destinationParentId, null,

@@ -423,17 +423,18 @@ public class SubmissionService {
     }
 
     /**
-     * Deletes a DRAFT submission and removes its slot reservations. Only the
-     * owning contributor may delete. Only DRAFT status is deletable. Media that
-     * was uploaded solely for this draft and is now orphaned is permanently
-     * purged (row + storage object); assets picked from the library or ever
-     * used beyond draft status stay put.
+     * Deletes a DRAFT or REJECTED submission and removes its slot reservations.
+     * Only the owning contributor may delete. Media that was uploaded solely for
+     * this draft and is now orphaned is permanently purged (row + storage
+     * object); assets picked from the library or ever used beyond draft status
+     * stay put.
      */
     public void delete(UUID submissionId, JwtUserDetails user) {
         Submission submission = loadOwnedSubmission(submissionId, user);
-        if (submission.getStatus() != SubmissionStatus.draft) {
+        if (submission.getStatus() != SubmissionStatus.draft
+                && submission.getStatus() != SubmissionStatus.rejected) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Only DRAFT submissions can be deleted. Current status: " + submission.getStatus());
+                    "Only DRAFT or REJECTED submissions can be deleted. Current status: " + submission.getStatus());
         }
         List<MediaAsset> attached
                 = submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId);
@@ -443,9 +444,20 @@ public class SubmissionService {
             purgeOrphanedDraftUpload(asset.getId(), "draft " + submissionId + " deleted");
         }
         slotReservationService.deleteAllForSubmission(submissionId);
+        // Review rows (validation_logs, review_locks, override_requests) are removed
+        // by ON DELETE CASCADE (V103); the decisions themselves stay in the audit
+        // log, and so does this deletion — the audit log has no FK to submissions.
+        Map<String, Object> auditDetails = new HashMap<>();
+        auditDetails.put("status", submission.getStatus().name());
+        if (submission.getEventTitle() != null) auditDetails.put("eventTitle", submission.getEventTitle());
+        auditLogService.record(
+                entityManager.getReference(User.class, user.userId()),
+                "SUBMISSION_DELETED", null, null,
+                submissionId,
+                auditDetails);
         submissionRepository.delete(submission);
-        log.info("Submission {} deleted by user {} ({} orphan-checked media)",
-                submissionId, user.userId(), attached.size());
+        log.info("Submission {} ({}) deleted by user {} ({} orphan-checked media)",
+                submissionId, submission.getStatus(), user.userId(), attached.size());
     }
 
     /**
@@ -959,9 +971,14 @@ public class SubmissionService {
         if (asset.getInstitution() == null) {
             throw new MediaAssetNotFoundException(mediaAssetId);
         }
-        // Contributors stay institution-scoped. Network-wide reviewers/admins may
-        // reuse vetted library assets across institutions.
-        if (!isNetworkRole(user) && !asset.getInstitution().getId().equals(submission.getInstitution().getId())) {
+        // Contributors may use assets from their own institution or from the
+        // shared default library. Network-wide reviewers/admins may reuse vetted
+        // library assets across institutions.
+        UUID assetInstitutionId = asset.getInstitution().getId();
+        UUID submissionInstitutionId = submission.getInstitution().getId();
+        if (!isNetworkRole(user)
+                && !assetInstitutionId.equals(submissionInstitutionId)
+                && !assetInstitutionId.equals(sharedInstitutionId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Media asset does not belong to this submission's institution.");
         }
@@ -1274,6 +1291,12 @@ public class SubmissionService {
                     "Your account is not scoped to an institution.");
         }
         return user.institutionId();
+    }
+
+    private UUID sharedInstitutionId() {
+        return institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc()
+                .map(Institution::getId)
+                .orElse(null);
     }
 
     private void assertEditableStatus(Submission submission) {
