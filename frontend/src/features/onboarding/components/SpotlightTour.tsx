@@ -11,6 +11,12 @@ interface SpotlightTourProps {
   onBack: () => void;
   onSkip: () => void;
   onComplete: () => void;
+  /**
+   * View-only walkthrough: cover the highlighted element with a click shield
+   * so the guide can show real UI (open panels, other wizard steps) without
+   * the user changing anything through the spotlight cutout.
+   */
+  viewOnly?: boolean;
 }
 
 interface TargetRect {
@@ -71,6 +77,7 @@ export default function SpotlightTour({
   onBack,
   onSkip,
   onComplete,
+  viewOnly = false,
 }: SpotlightTourProps) {
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
   const [cardPosition, setCardPosition] = useState<{ top: number; left: number }>({ top: 100, left: 100 });
@@ -413,6 +420,19 @@ export default function SpotlightTour({
     <aside className="spotlight-tour-overlay" aria-label="Feature Walkthrough" aria-modal="true">
       {/* Blurred dimmed backdrop with evenodd polygon cutout */}
       <div className="spotlight-tour-backdrop" style={clipPathStyle} onClick={onSkip} />
+
+      {viewOnly && targetRect && (
+        <div
+          className="spotlight-target-shield"
+          style={{
+            top: targetRect.top,
+            left: targetRect.left,
+            width: targetRect.width,
+            height: targetRect.height,
+          }}
+          aria-hidden="true"
+        />
+      )}
 
       {/* Target outline highlight ring */}
       {targetRect && (

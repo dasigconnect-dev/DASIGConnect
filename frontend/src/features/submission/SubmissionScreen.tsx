@@ -53,9 +53,12 @@ import { RevisionFeedbackBanner, RejectionFeedbackBanner } from "./components/Re
 import { parseRevisionRemarks, REVISION_SUPPORTED_FIELDS } from "./utils/revisionComments";
 import SpotlightTour from "../onboarding/components/SpotlightTour";
 import { useScreenTour } from "../onboarding/hooks/useScreenTour";
+import type { TourStep } from "../onboarding/types";
 import {
   submissionListTourSteps,
   submissionComposerTourSteps,
+  COMPOSER_TOUR_VIEWS,
+  type ComposerTourPanel,
   saveDraftTourSteps,
 } from "../onboarding/tours/submissionTour";
 import "../../styles/dasig-loader.css";
@@ -556,6 +559,33 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     };
   }, [templatesPanelVisible]);
 
+  // The composer guide is view-only: each step switches to the wizard step /
+  // opens the panel it talks about (even steps 2-3 before media is added),
+  // and the guide's click shield keeps the user from changing anything. The
+  // step the user was on is restored and every panel closed when it ends.
+  const [composerTourPanel, setComposerTourPanel] = useState<ComposerTourPanel | null>(null);
+  const composerTourReturnStepRef = useRef<ProgressStep | null>(null);
+  function handleComposerTourStep(step: TourStep | null) {
+    const view = step?.id ? COMPOSER_TOUR_VIEWS[step.id] : undefined;
+    if (!view) {
+      if (composerTourReturnStepRef.current) {
+        setActiveStep(composerTourReturnStepRef.current);
+        composerTourReturnStepRef.current = null;
+      }
+      setComposerTourPanel(null);
+      setTemplatesPanelOpen(false);
+      setCaptionPromptOpen(false);
+      setReadinessSheetOpen(false);
+      return;
+    }
+    if (!composerTourReturnStepRef.current) composerTourReturnStepRef.current = activeStep;
+    setActiveStep(view.step);
+    setComposerTourPanel(view.panel ?? null);
+    setTemplatesPanelOpen(view.panel === "templates");
+    setCaptionPromptOpen(view.panel === "ai");
+    setReadinessSheetOpen(view.panel === "readiness" && isCompactLayout);
+  }
+
   const {
     startTour: startComposerTour,
     tourProps: composerTourProps,
@@ -564,6 +594,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     steps: submissionComposerTourSteps,
     autoStartDelayMs: 800,
     canStart: isComposerRoute && !loading && !lookupsLoading && !hydratingId && !isReadOnlySubmission,
+    onStepChange: handleComposerTourStep,
   });
   const isDirty = useMemo(
     () =>
@@ -3042,7 +3073,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 )}
               </Field>
             )}
-            <div className="sub-field-row">
+            <div className="sub-field-row" id="composer-event-fields">
               <Field
                 label="Event Title"
                 required={!isReadOnlySubmission}
@@ -3128,6 +3159,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                         onPreviewSelection={updateCaptionSelection}
                         onRestoreSelection={restoreCaptionSelection}
                         onPreviewStateChange={setFancyTextPreviewActive}
+                        forceOpen={composerTourPanel === "fancy"}
                       />
                     </Suspense>
                   </div>
@@ -3343,6 +3375,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                   : "Pick an album, add tags, and choose when to post."
               }
             />
+            <div id="composer-album-tags">
             <Field
               label="Album Assignment"
               required={!isReadOnlySubmission}
@@ -3411,6 +3444,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 )}
               </div>
             </Field>
+            </div>
 
             {!isReadOnlySubmission && (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", marginTop: "24px" }}>
@@ -3455,6 +3489,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               <>
             {/* One "When to post" group: suggested-time chips fill the Date /
                 Time pickers below them (the chips' explanation is behind ⓘ). */}
+            <div id="composer-when-to-post">
             <Field label="When to Post" required={!isReadOnlySubmission}>
               <Suspense fallback={<DeferredSubmissionPanelFallback />}>
                 <EngagementRecommendationsPanel
@@ -3484,6 +3519,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 </Field>
               </div>
             </Field>
+            </div>
             {lookups.guardrailsEnforced && !guardRailsLoading && !guardRails?.blocked
               && guardRails?.softWarnings[0] && (
               <div className="sub-inline-warning" role="status">
@@ -3986,7 +4022,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
           setRevisionModalOpen(false);
         }}
       />
-      <SpotlightTour {...composerTourProps} />
+      <SpotlightTour {...composerTourProps} viewOnly />
       <SpotlightTour {...saveDraftTourProps} />
     </div>
   );
