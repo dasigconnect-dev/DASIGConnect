@@ -726,7 +726,8 @@ public class SubmissionService {
         return switch (normalized) {
             case "all" -> List.of(SubmissionStatus.values());
             case "drafts" -> List.of(SubmissionStatus.draft);
-            case "action-needed" -> List.of(SubmissionStatus.needs_revision, SubmissionStatus.rejected);
+            case "action-needed" -> List.of(SubmissionStatus.needs_revision);
+            case "rejected" -> List.of(SubmissionStatus.rejected);
             case "submitted" -> List.of(
                     SubmissionStatus.pending,
                     SubmissionStatus.in_review,
@@ -780,6 +781,7 @@ public class SubmissionService {
             List<SubmissionRepository.SubmissionStatusCount> statusCounts) {
         long drafts = 0;
         long actionNeeded = 0;
+        long rejected = 0;
         long submitted = 0;
         long published = 0;
         long failed = 0;
@@ -788,7 +790,8 @@ public class SubmissionService {
             long count = row.getCount();
             switch (row.getStatus()) {
                 case draft -> drafts += count;
-                case needs_revision, rejected -> actionNeeded += count;
+                case needs_revision -> actionNeeded += count;
+                case rejected -> rejected += count;
                 case published, published_manual, admin_direct_post -> published += count;
                 case publish_failed, direct_post_failed -> failed += count;
                 default -> submitted += count;
@@ -796,9 +799,10 @@ public class SubmissionService {
         }
 
         return new SubmissionBucketCountsDto(
-                drafts + actionNeeded + submitted + published + failed,
+                drafts + actionNeeded + rejected + submitted + published + failed,
                 drafts,
                 actionNeeded,
+                rejected,
                 submitted,
                 published,
                 failed);

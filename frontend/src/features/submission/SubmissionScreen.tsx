@@ -206,7 +206,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<QueueFilter>(() => {
     const tab = new URLSearchParams(window.location.search).get("tab");
-    const valid: QueueFilter[] = ["drafts", "action-needed", "submitted", "published", "failed", "all"];
+    const valid: QueueFilter[] = ["drafts", "action-needed", "rejected", "submitted", "published", "failed", "all"];
     if (tab && (valid as string[]).includes(tab)) return tab as QueueFilter;
     return "all";
   });
@@ -2256,6 +2256,15 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
                 </button>
                 <button
                   type="button"
+                  className={`sub-status-tab${filter === "rejected" ? " is-active" : ""}`}
+                  onClick={() => setFilter("rejected")}
+                  aria-pressed={filter === "rejected"}
+                >
+                  Rejected
+                  <span className="sub-status-tab-count">{loading ? "-" : counts.rejected}</span>
+                </button>
+                <button
+                  type="button"
                   className={`sub-status-tab${filter === "failed" ? " is-active" : ""}`}
                   onClick={() => setFilter("failed")}
                   aria-pressed={filter === "failed"}
@@ -2516,17 +2525,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
             >
               <i className="ti ti-shield-check" aria-hidden="true" />
               <span>{lookupsLoading || hydratingId ? "–" : readiness.score}</span>
-            </button>
-          )}
-          {canDeleteCurrentSubmission && (
-            <button
-              className="sub-btn-ghost danger"
-              type="button"
-              onClick={() => setModal("delete")}
-              disabled={busy || Boolean(hydratingId)}
-            >
-              {deleting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-trash"></i>}
-              <span>Delete</span>
             </button>
           )}
           {/* The guide tours the composer; a read-only submission has nothing to walk through. */}

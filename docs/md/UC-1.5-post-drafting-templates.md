@@ -10,7 +10,7 @@
 
 ## Main Flow
 
-1. The actor opens the composer — either **New Post**, or an existing item from the "My Submissions" list to resume editing (A1) or view its status. The list filters are `drafts` · `action-needed` · `submitted` · `published` · `failed` · `all`.
+1. The actor opens the composer — either **New Post**, or an existing item from the "My Submissions" list to resume editing (A1) or view its status. The list filters are `drafts` · `action-needed` · `submitted` · `published` · `rejected` · `failed` · `all` — each post sits in exactly one (the `all` count is their sum). `action-needed` is **needs revision only**; rejected posts got their own `rejected` tab on 2026-09-24 (they used to be grouped under Action Needed), and a rejection notification now opens that tab.
 2. The composer is a three-step wizard: **Media → Post Details → Organize & Schedule**. Forward progress requires the current step's *Required* readiness items to be met; backward navigation is always allowed (A8). Entered data persists across step navigation within the session.
 
 ### Step 1 — Media

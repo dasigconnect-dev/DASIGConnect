@@ -23,12 +23,12 @@ export function isDraftStatus(status: SubmissionStatus) {
 }
 
 /**
- * Statuses that require the contributor to act: a reviewer sent the post back
- * for changes, or rejected it outright. Surfaced as its own "Action Needed"
- * queue tab so these don't hide among plain drafts / submitted posts.
+ * A reviewer sent the post back for changes. Surfaced as its own "Action
+ * Needed" queue tab so it doesn't hide among plain drafts / submitted posts.
+ * Rejected posts have their own "Rejected" tab — nothing is required of them.
  */
 export function isActionNeededStatus(status: SubmissionStatus) {
-  return status === "needs_revision" || status === "rejected";
+  return status === "needs_revision";
 }
 
 export function isPublishedStatus(status: SubmissionStatus) {
@@ -40,15 +40,15 @@ export function isPublishFailedStatus(status: SubmissionStatus) {
 }
 
 /** The "My Submissions" tab a status belongs to (excludes the "all" tab). */
-export type QueueBucket = "drafts" | "action-needed" | "submitted" | "published" | "failed";
+export type QueueBucket = "drafts" | "action-needed" | "rejected" | "submitted" | "published" | "failed";
 
 /**
  * Single source of truth for which queue tab a submission falls under. Every
- * status maps to exactly one bucket — order matters: literal `draft` before the
- * action-needed check (which also owns `needs_revision`).
+ * status maps to exactly one bucket (mirrors the backend's statusesForBucket).
  */
 export function queueBucket(status: SubmissionStatus): QueueBucket {
   if (status === "draft") return "drafts";
+  if (status === "rejected") return "rejected";
   if (isActionNeededStatus(status)) return "action-needed";
   if (isPublishedStatus(status)) return "published";
   if (isPublishFailedStatus(status)) return "failed";
