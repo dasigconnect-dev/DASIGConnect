@@ -2527,17 +2527,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
               <span>{lookupsLoading || hydratingId ? "–" : readiness.score}</span>
             </button>
           )}
-          {canDeleteCurrentSubmission && (
-            <button
-              className="sub-btn-ghost danger"
-              type="button"
-              onClick={() => setModal("delete")}
-              disabled={busy || Boolean(hydratingId)}
-            >
-              {deleting ? <i className="ti ti-loader-2 sub-spin"></i> : <i className="ti ti-trash"></i>}
-              <span>Delete</span>
-            </button>
-          )}
           {/* The guide tours the composer; a read-only submission has nothing to walk through. */}
           {!isReadOnlySubmission && (
             <button
