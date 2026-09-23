@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import Screen from '../../components/layout/Screen'
 import LeftPanel from '../../components/layout/LeftPanel'
 import RightPanel from '../../components/layout/RightPanel'
@@ -167,6 +168,27 @@ export default function LoginScreen({
           </div>
         </LeftPanel>
         <RightPanel>
+          <div style={{ marginBottom: 20 }}>
+            <Link
+              to="/"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: '0.85rem',
+                color: 'var(--muted, #7a90b8)',
+                textDecoration: 'none',
+                fontWeight: 500,
+                transition: 'color 0.2s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#ffffff')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--muted, #7a90b8)')}
+            >
+              <i className="ti ti-arrow-left"></i>
+              Back to Overview
+            </Link>
+          </div>
+
           <div className="form-head">
             <div className="form-title">Welcome back.</div>
             <div className="form-desc">
