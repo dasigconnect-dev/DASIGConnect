@@ -1,0 +1,103 @@
+/* ⓘ toggletip (components/ui/InfoTip.tsx). Resets inherited label styles
+   (the composer's field labels are uppercase + letter-spaced). */
+.infotip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.infotip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -4px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 15px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.infotip-btn:hover,
+.infotip.is-open .infotip-btn {
+  color: var(--sub-blue, #1877f2);
+  background: var(--sub-blue-dim, #eff6ff);
+}
+
+.infotip-btn:focus-visible {
+  outline: 2px solid var(--sub-blue, #1877f2);
+  outline-offset: 1px;
+}
+
+.infotip-bubble {
+  --infotip-shift: 0px;
+  position: absolute;
+  left: 50%;
+  z-index: 50;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 16px));
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--color-navy-deep, #0a1628);
+  color: #f0f4ff;
+  font-family: var(--sub-body, "Plus Jakarta Sans", system-ui, sans-serif);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 10px 28px rgba(10, 22, 40, 0.28);
+  transform: translateX(calc(-50% + var(--infotip-shift)));
+  animation: infotip-in 0.14s ease-out both;
+  pointer-events: auto;
+}
+
+.infotip-bubble.is-top {
+  bottom: calc(100% + 10px);
+}
+
+.infotip-bubble.is-bottom {
+  top: calc(100% + 10px);
+}
+
+/* Arrow stays pointed at the icon even when the bubble is nudged sideways. */
+.infotip-bubble::after {
+  content: "";
+  position: absolute;
+  left: calc(50% - var(--infotip-shift));
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.infotip-bubble.is-top::after {
+  bottom: -5px;
+}
+
+.infotip-bubble.is-bottom::after {
+  top: -5px;
+}
+
+@keyframes infotip-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .infotip-bubble {
+    animation: none;
+  }
+}
