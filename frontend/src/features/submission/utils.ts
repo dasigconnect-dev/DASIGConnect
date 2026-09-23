@@ -132,6 +132,7 @@ export function savedAssetToPickerItem(asset: SavedMediaAsset): SubmissionMediaI
     previewUrl: asset.storageUrl,
     mediaType: isVideo ? "video" : "image",
     fileName: asset.fileName,
+    albumName: asset.albumName ?? null,
   };
 }
 
