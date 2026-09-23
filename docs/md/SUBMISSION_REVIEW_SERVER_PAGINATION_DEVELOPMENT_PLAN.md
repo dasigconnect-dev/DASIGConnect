@@ -582,6 +582,18 @@ Exit criteria:
 - Retry/resolution actions remove or update the affected cached record and count.
 - No per-failure latest-attempt query occurs.
 
+Implemented September 24, 2026:
+
+- Added `GET /api/v1/resolution/failures/page` as an additive Moderator/Admin-only endpoint while retaining the legacy array endpoint.
+- Added bounded page parameters with a default of 20 and a maximum of 50, stable schedule/ID ordering, and case-insensitive server search across title, institution, and the latest publication error.
+- Returned both the filtered result total and the complete Failed-tab count so search does not make the tab badge page-local.
+- Replaced per-failure latest-attempt lookups with one batch query for the IDs in the current page; the legacy endpoint also reuses this batch mapping path.
+- Converted the Failed tab to an authenticated, search-scoped infinite query with 20 records per page and the existing scroll sentinel.
+- Kept full failure details in the existing ID-scoped query and preserved all retry, reschedule, Live Event override, and manual-publishing workflows.
+- Recovery outcomes remove the affected cached failure and decrement cached counts immediately; manual-session start/cancel updates the cached row. Paginated caches collapse to page one before invalidation to avoid refetching every previously loaded page.
+- Added Resolution controller and service coverage for authorization, the page contract, paging bounds, search normalization, and batched latest-attempt mapping.
+- No stylesheet, card markup, detail layout, action controls, or responsive behavior was changed.
+
 ### Phase 6 - Indexing, Measurement, and Cleanup
 
 - Seed or generate representative large datasets in a non-production environment.

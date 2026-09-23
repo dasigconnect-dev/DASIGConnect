@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import {
   cancelManualPublish,
   completeManualPublish,
   getResolutionDetail,
-  getResolutionFailures,
+  getResolutionFailurePage,
   retryPublication,
   retryPublicationAsLive,
   retryPublicationWithNewSchedule,
   startManualPublish,
   type FailedPublication,
+  type FailedPublicationPage,
   type ManualPublishDetail,
 } from "../api/resolutionApi";
 import { useToast } from "../context/ToastContext";
@@ -25,6 +26,12 @@ export interface UseResolutionFailuresResult {
   busy: string | null;
   activeDetail: ManualPublishDetail | null;
   detailLoading: boolean;
+  totalCount: number;
+  failureCount: number;
+  hasNextPage: boolean;
+  loadingMore: boolean;
+  loadMoreError: boolean;
+  loadMore: () => Promise<unknown>;
   refresh: () => void;
   handleRetryWithNewSchedule: (
     item: FailedPublication,
@@ -48,6 +55,7 @@ export interface UseResolutionFailuresResult {
 
 const RESOLUTION_FAILURES_STALE_TIME_MS = 30_000;
 const RESOLUTION_DETAIL_STALE_TIME_MS = 15_000;
+const RESOLUTION_FAILURES_PAGE_SIZE = 20;
 
 function userScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
@@ -56,6 +64,7 @@ function userScope(user: User) {
 export function useResolutionFailures(
   user: User,
   enabled = true,
+  search = "",
 ): UseResolutionFailuresResult {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -69,9 +78,32 @@ export function useResolutionFailures(
     institutionId: user.institutionId ?? null,
   };
 
-  const failuresQuery = useQuery({
-    queryKey: queryKeys.resolution.failures(resolutionScope),
-    queryFn: ({ signal }) => getResolutionFailures(signal).then((response) => response.data),
+  const failurePageKey = queryKeys.resolution.failurePage({
+    ...resolutionScope,
+    search,
+    pageSize: RESOLUTION_FAILURES_PAGE_SIZE,
+  });
+  const failureCountKey = queryKeys.resolution.failureCount(resolutionScope);
+  const failureCountQuery = useQuery<number>({
+    queryKey: failureCountKey,
+    queryFn: () => Promise.resolve(0),
+    initialData: 0,
+    enabled: false,
+    staleTime: Infinity,
+    meta: authenticatedQueryMeta,
+  });
+  const failuresQuery = useInfiniteQuery({
+    queryKey: failurePageKey,
+    queryFn: ({ signal, pageParam }) => getResolutionFailurePage({
+      page: pageParam,
+      pageSize: RESOLUTION_FAILURES_PAGE_SIZE,
+      search,
+    }, signal).then((response) => {
+      queryClient.setQueryData(failureCountKey, response.data.failureCount);
+      return response.data;
+    }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.hasNext ? lastPage.page + 1 : undefined,
     staleTime: RESOLUTION_FAILURES_STALE_TIME_MS,
     enabled,
     meta: authenticatedQueryMeta,
@@ -95,13 +127,49 @@ export function useResolutionFailures(
   }, [activeDetailId, detailQuery.isError, toast]);
 
   const refresh = useCallback(() => {
-    void invalidateQueryRoots(queryClient, mutationCacheDependencies.resolutionSession);
-  }, [queryClient]);
+    void queryClient.resetQueries({ queryKey: failurePageKey, exact: true });
+  }, [failurePageKey, queryClient]);
 
   const invalidateResolutionSession = useCallback(
     () => invalidateQueryRoots(queryClient, mutationCacheDependencies.resolutionSession),
     [queryClient],
   );
+
+  const updateFailurePages = useCallback((
+    submissionId: string,
+    update: ((item: FailedPublication) => FailedPublication) | null,
+  ) => {
+    queryClient.setQueriesData<InfiniteData<FailedPublicationPage, number>>(
+      {
+        queryKey: ["resolution"],
+        predicate: (query) => {
+          const params = query.queryKey[1];
+          return typeof params === "object" && params !== null
+            && "view" in params && params.view === "failures-page";
+        },
+      },
+      (current) => {
+        if (!current?.pages.length) return current;
+        const matched = current.pages.some((page) =>
+          page.items.some((item) => item.submissionId === submissionId));
+        const pages = current.pages.map((page) => ({
+          ...page,
+          items: update
+            ? page.items.map((item) => item.submissionId === submissionId ? update(item) : item)
+            : page.items.filter((item) => item.submissionId !== submissionId),
+          totalCount: !update && matched ? Math.max(0, page.totalCount - 1) : page.totalCount,
+          failureCount: !update && matched ? Math.max(0, page.failureCount - 1) : page.failureCount,
+        }));
+        return {
+          pages: [pages[0]],
+          pageParams: [current.pageParams[0] ?? 0],
+        };
+      },
+    );
+    if (!update) {
+      queryClient.setQueryData<number>(failureCountKey, (current) => Math.max(0, (current ?? 0) - 1));
+    }
+  }, [failureCountKey, queryClient]);
 
   const invalidateResolutionOutcome = useCallback(
     () => invalidateQueryRoots(queryClient, mutationCacheDependencies.resolutionOutcome),
@@ -133,6 +201,7 @@ export function useResolutionFailures(
           ? `"${item.eventTitle}" rescheduled and sent back to the approval queue.`
           : `"${item.eventTitle}" rescheduled and re-queued.`,
       );
+      updateFailurePages(item.submissionId, null);
       await invalidateResolutionOutcome();
     } catch (err: unknown) {
       const data = (err as { response?: { data?: unknown } })?.response?.data as
@@ -154,6 +223,7 @@ export function useResolutionFailures(
     try {
       await retryPublication(item.submissionId);
       toast.success(`"${item.eventTitle}" re-queued for publishing.`);
+      updateFailurePages(item.submissionId, null);
       await invalidateResolutionOutcome();
     } catch (err: unknown) {
       const data = (err as { response?: { data?: unknown } })?.response?.data as
@@ -175,6 +245,7 @@ export function useResolutionFailures(
     try {
       await retryPublicationAsLive(item.submissionId);
       toast.success(`"${item.eventTitle}" switched to Live Event and re-queued.`);
+      updateFailurePages(item.submissionId, null);
       await invalidateResolutionOutcome();
     } catch (err: unknown) {
       const data = (err as { response?: { data?: unknown } })?.response?.data as
@@ -196,6 +267,10 @@ export function useResolutionFailures(
     try {
       await startManualPublish(item.submissionId);
       toast.success("Manual publish session started.");
+      updateFailurePages(item.submissionId, (current) => ({
+        ...current,
+        manualPublishInProgress: true,
+      }));
       await invalidateResolutionSession();
       openWorkflowPanel({ ...item, manualPublishInProgress: true });
     } catch {
@@ -211,6 +286,10 @@ export function useResolutionFailures(
       await cancelManualPublish(item.submissionId);
       toast.info("Manual publish cancelled.");
       closeWorkflowPanel();
+      updateFailurePages(item.submissionId, (current) => ({
+        ...current,
+        manualPublishInProgress: false,
+      }));
       await invalidateResolutionSession();
     } catch {
       toast.error("Could not cancel manual publish.");
@@ -232,6 +311,7 @@ export function useResolutionFailures(
       });
       toast.success(`"${item.eventTitle}" marked as published.`);
       closeWorkflowPanel();
+      updateFailurePages(item.submissionId, null);
       await invalidateResolutionOutcome();
     } catch {
       toast.error("Could not complete manual publish.");
@@ -241,12 +321,20 @@ export function useResolutionFailures(
   }
 
   return {
-    failures: failuresQuery.data ?? [],
+    failures: failuresQuery.data?.pages.flatMap((page) => page.items) ?? [],
     loading: failuresQuery.isLoading,
-    error: failuresQuery.error ? "Could not load failed publications. Please try again." : "",
+    error: failuresQuery.error && !failuresQuery.data
+      ? "Could not load failed publications. Please try again."
+      : "",
     busy,
     activeDetail: detailQuery.data ?? null,
     detailLoading: detailQuery.isLoading,
+    totalCount: failuresQuery.data?.pages[0]?.totalCount ?? 0,
+    failureCount: failureCountQuery.data,
+    hasNextPage: Boolean(failuresQuery.hasNextPage),
+    loadingMore: failuresQuery.isFetchingNextPage,
+    loadMoreError: failuresQuery.isFetchNextPageError,
+    loadMore: failuresQuery.fetchNextPage,
     refresh,
     handleRetryWithNewSchedule,
     handleRetry,

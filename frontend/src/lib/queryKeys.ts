@@ -141,6 +141,15 @@ export const queryKeys = {
   resolution: {
     failures: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
       scopedKey("resolution", { ...params, view: "failures" }),
+    failurePage: (params: {
+      role: string;
+      userId?: string | null;
+      institutionId?: string | null;
+      search: string;
+      pageSize: number;
+    }) => scopedKey("resolution", { ...params, view: "failures-page" }),
+    failureCount: (params: { role: string; userId?: string | null; institutionId?: string | null }) =>
+      scopedKey("resolution", { ...params, view: "failures-count" }),
     detail: (params: { role: string; userId?: string | null; institutionId?: string | null; submissionId: string }) =>
       scopedKey("resolution", { ...params, view: "detail" }),
   },
