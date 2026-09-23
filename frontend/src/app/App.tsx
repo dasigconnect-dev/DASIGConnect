@@ -44,6 +44,7 @@ const SESSION_WARNING_SECONDS = 5 * 60;
 const LOGIN_SPLASH_VISIBLE_MS = 500;
 const TABLER_ICONS_STYLESHEET = "https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css";
 
+const LandingPage = lazy(() => import("../features/landing/LandingPage"));
 const LoginScreen = lazy(() => import("../features/auth/LoginScreen"));
 const ForgotScreen = lazy(() => import("../features/auth/ForgotScreen"));
 const ForgotSentScreen = lazy(() => import("../features/auth/ForgotSentScreen"));
@@ -362,7 +363,7 @@ function App() {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== "Enter") return;
 
-      if (location.pathname === "/" || location.pathname === "/login") {
+      if (location.pathname === "/login") {
         void handleLogin();
       } else if (location.pathname === "/forgot-password") {
         void handleForgotSubmit();
@@ -637,7 +638,7 @@ function App() {
       setLoginLoading(false);
       setModalLoginLoading(false);
       setInviteLoading(false);
-      navigate("/login");
+      navigate("/");
       toast.info("You have been signed out.");
     } finally {
       setLogoutLoading(false);
@@ -794,13 +795,7 @@ function App() {
         <Routes>
         <Route
           path="/"
-          element={
-            currentUser ? (
-              <Navigate to="/dashboard" replace />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
+          element={<LandingPage user={currentUser} />}
         />
 
         <Route

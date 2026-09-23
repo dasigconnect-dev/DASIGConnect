@@ -1,0 +1,336 @@
+/* ==========================================================================
+   React Bits Stepper Component Styles
+   Elevated Luminous Showcase Theme on Crisp White Background
+   ========================================================================== */
+
+.outer-container {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-circle-container {
+  width: 100%;
+  max-width: 600px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 24px;
+  box-shadow:
+    0 24px 60px -15px rgba(24, 119, 242, 0.12),
+    0 8px 24px -4px rgba(15, 23, 42, 0.05),
+    0 0 0 1px rgba(24, 119, 242, 0.04);
+  overflow: hidden;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+.step-circle-container:hover {
+  border-color: rgba(24, 119, 242, 0.3);
+  box-shadow:
+    0 30px 70px -15px rgba(24, 119, 242, 0.18),
+    0 12px 30px -4px rgba(15, 23, 42, 0.08);
+}
+
+.step-indicator-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  padding: 26px 36px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  background: #fafcff;
+}
+
+.step-indicator {
+  position: relative;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.step-indicator-inner {
+  display: flex;
+  height: 2.2rem;
+  width: 2.2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.active-num {
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.step-number {
+  font-size: 0.86rem;
+}
+
+.step-connector {
+  position: relative;
+  margin: 0 12px;
+  height: 3px;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: #e2e8f0;
+}
+
+.step-connector-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+}
+
+.step-content-default {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+}
+
+.step-default {
+  padding: 24px 36px 16px;
+  color: #0f172a;
+}
+
+.footer-container {
+  padding: 12px 36px 28px;
+  border-top: 1px solid #f8fafc;
+}
+
+.footer-nav {
+  display: flex;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.footer-nav.spread {
+  justify-content: space-between;
+}
+
+.footer-nav.end {
+  justify-content: flex-end;
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+  border-radius: 9999px;
+  padding: 8px 20px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.back-button:hover {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+.back-button.inactive {
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+.next-button {
+  display: inline-flex;
+  align-items: center;
+  background: #1877f2;
+  color: #ffffff;
+  border: none;
+  border-radius: 9999px;
+  padding: 9px 26px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(24, 119, 242, 0.28);
+  font-family: inherit;
+}
+
+.next-button:hover {
+  background: #125ecc;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(24, 119, 242, 0.35);
+}
+
+.next-button:active {
+  transform: translateY(0);
+}
+
+.check-icon {
+  height: 1.1rem;
+  width: 1.1rem;
+  color: #ffffff;
+}
+
+/* Custom Problem Stepper Content Card */
+.stepper-problem-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stepper-problem-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #1877f2;
+  background: rgba(24, 119, 242, 0.08);
+  border: 1px solid rgba(24, 119, 242, 0.18);
+  padding: 4px 12px;
+  border-radius: 20px;
+  width: fit-content;
+}
+
+.stepper-problem-title {
+  font-family: var(--ff-display, Georgia, serif);
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #07112a;
+  margin: 0;
+}
+
+.stepper-problem-desc {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: #475569;
+  margin: 0;
+}
+
+.stepper-problem-diff {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  font-size: 0.82rem;
+  margin-top: 4px;
+}
+
+.diff-before {
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fee2e2;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.diff-divider {
+  color: #94a3b8;
+  font-weight: 700;
+}
+
+.diff-after {
+  color: #059669;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Stepper Completed State */
+.step-completed-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 36px 44px;
+  color: #07112a;
+}
+
+.completed-icon-circle {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #059669;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  margin-bottom: 16px;
+}
+
+.completed-title {
+  font-family: var(--ff-display, Georgia, serif);
+  font-size: 1.55rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #07112a;
+}
+
+.completed-desc {
+  font-size: 0.94rem;
+  line-height: 1.6;
+  color: #475569;
+  max-width: 440px;
+  margin: 0 auto 24px;
+}
+
+.restart-stepper-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #1877f2;
+  color: #ffffff;
+  border: none;
+  border-radius: 9999px;
+  padding: 10px 26px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(24, 119, 242, 0.28);
+}
+
+.restart-stepper-btn:hover {
+  background: #125ecc;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 640px) {
+  .step-indicator-row {
+    padding: 20px 20px 16px;
+  }
+  .step-default {
+    padding: 16px 20px;
+  }
+  .footer-container {
+    padding: 8px 20px 20px;
+  }
+  .stepper-problem-title {
+    font-size: 1.3rem;
+  }
+  .stepper-problem-diff {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+}

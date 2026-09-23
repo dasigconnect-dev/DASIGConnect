@@ -1,0 +1,55 @@
+.text-type {
+  display: inline-block;
+  white-space: pre-wrap;
+  position: relative;
+}
+
+.text-type__content {
+  display: inline;
+}
+
+.text-type__cursor {
+  margin-left: 0.15rem;
+  display: inline-block;
+  opacity: 1;
+  color: var(--lp-blue, #1877f2);
+  font-weight: 300;
+  line-height: 1;
+  user-select: none;
+  animation: text-type-blink 0.8s infinite ease-in-out;
+}
+
+@keyframes text-type-blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.text-type__cursor--hidden {
+  display: none;
+}
+
+/* Reserved space mode: maintains identical bounding box matching the full text */
+.text-type--reserved {
+  display: inline-grid;
+  grid-template-columns: 100%;
+  position: relative;
+  vertical-align: top;
+}
+
+.text-type__ghost {
+  grid-area: 1 / 1;
+  visibility: hidden;
+  user-select: none;
+  pointer-events: none;
+  white-space: pre-wrap;
+}
+
+.text-type__overlay {
+  grid-area: 1 / 1;
+  white-space: pre-wrap;
+  width: 100%;
+}
