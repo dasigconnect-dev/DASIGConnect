@@ -28,6 +28,7 @@ import com.dasigconnect.backend.model.dto.validation.ReviewLockDto;
 import com.dasigconnect.backend.model.dto.validation.RevisionRequestDto;
 import com.dasigconnect.backend.model.dto.validation.ValidationLogDto;
 import com.dasigconnect.backend.model.dto.validation.ValidationQueuePageDto;
+import com.dasigconnect.backend.model.dto.validation.ValidationDashboardSummaryDto;
 import com.dasigconnect.backend.model.entity.ReviewLock;
 import com.dasigconnect.backend.repository.ValidationLogRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
@@ -88,6 +89,12 @@ public class ValidationController {
             @AuthenticationPrincipal JwtUserDetails caller) {
         return ResponseEntity.ok(ApiResponse.success(
                 validationService.getQueuePage(caller, view, sort, page, pageSize, search)));
+    }
+
+    @GetMapping("/dashboard-summary")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    public ResponseEntity<ApiResponse<ValidationDashboardSummaryDto>> getDashboardSummary() {
+        return ResponseEntity.ok(ApiResponse.success(validationService.getDashboardSummary()));
     }
 
     /**

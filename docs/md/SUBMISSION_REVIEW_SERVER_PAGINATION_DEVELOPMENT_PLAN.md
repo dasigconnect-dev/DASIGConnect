@@ -32,8 +32,8 @@ The branch was created after fast-forwarding local `dev` to `origin/dev`.
 | Phase 2 - My Submissions Frontend | Complete | Server-backed 20-item infinite query, debounced bucket/search requests, page cache reuse, mutation cache reset, direct ID-scoped detail loading, production build and focused lint |
 | Phase 3 - Review Queue Backend | Complete | Additive paginated endpoint, server view/search/sort handling, complete tab counts, batched media previews, frozen snapshot preservation, authorization/service coverage, application-context query parsing |
 | Phase 4 - Review Queue Frontend | Complete | Server-backed 20-item infinite query, debounced view/search/sort requests, complete tab counts, bounded mutation refetches, selection preservation, production build and focused lint |
-| Phase 5 - Failed Publications | Not started | Pending |
-| Phase 6 - Indexing, Measurement, and Cleanup | Not started | Pending representative-data measurements |
+| Phase 5 - Failed Publications | Complete | Bounded failure pages, batched latest-attempt lookup, frontend infinite loading, controller/service coverage |
+| Phase 6 - Indexing, Measurement, and Cleanup | Complete with index work deferred | Frontend legacy consumers removed, bounded dashboard/activity/draft requests verified; PostgreSQL plans unavailable because the isolated local Docker service could not be started, so no speculative index was added |
 
 Phase 1 verification completed on September 23, 2026:
 
@@ -603,6 +603,19 @@ Implemented September 24, 2026:
 - Audit remaining legacy endpoint consumers.
 - Remove dead client-side pagination wiring from migrated screens.
 - Retain legacy endpoints until all remaining consumers are migrated.
+
+Implemented September 24, 2026:
+
+- Migrated Dashboard recent activity from complete submission and validation arrays to bounded five-record page requests.
+- Added a small Moderator/Admin dashboard aggregate endpoint for exact awaiting-review, monthly approval/rejection, and contributor totals without downloading complete queue history.
+- Migrated the full Recent Activity screen to 50-record server pages with the existing status tabs, debounced search, cache scoping, and an invisible infinite-scroll sentinel.
+- Migrated the Media Repository's Add to Draft workflow to draft-only 50-record pages and lazy loading, removing its full submission-list request.
+- Added the additional submission buckets and exact counts required by those existing screens without changing their visible design.
+- Removed unused frontend legacy API helpers, query keys, and the now-unreferenced client-only incremental pagination hook. The backend legacy endpoints remain available for external compatibility.
+- Added a Playwright regression that verifies Dashboard makes one `pageSize=5` request and zero legacy `GET /submissions` requests.
+- Production frontend build and focused backend tests passed. No CSS file or visual component structure was changed.
+- PostgreSQL `EXPLAIN ANALYZE` timings are **unavailable**, not estimated: Docker Desktop and its Windows service could not be started in this environment, and the shared Supabase database was deliberately not used for synthetic load testing.
+- No Flyway index migration was added. Candidate indexes remain documented above and must be evaluated against a disposable PostgreSQL dataset before adoption.
 
 ## 13. Required Test Matrix
 

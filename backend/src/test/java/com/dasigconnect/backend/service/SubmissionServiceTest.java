@@ -561,6 +561,8 @@ class SubmissionServiceTest {
         assertThat(result.counts().actionNeeded()).isEqualTo(3);
         assertThat(result.counts().rejected()).isEqualTo(7);
         assertThat(result.counts().submitted()).isEqualTo(4);
+        assertThat(result.counts().underReview()).isEqualTo(4);
+        assertThat(result.counts().scheduled()).isZero();
         assertThat(result.counts().published()).isEqualTo(5);
         assertThat(result.counts().failed()).isEqualTo(6);
         verify(submissionMediaAssetRepository, never()).countBySubmissionId(any());

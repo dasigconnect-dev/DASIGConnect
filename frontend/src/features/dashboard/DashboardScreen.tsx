@@ -379,24 +379,20 @@ function notice(user: User | null, stats: DashboardStats) {
     };
   }
   const instName = getInstitutionName(user);
-  if (stats.submissions === null) {
+  if (stats.needsRevisionSubmissions === null || stats.underReviewSubmissions === null) {
     return {
       icon: "ti ti-photo-up",
       html: `<strong>Contributor workspace.</strong> Submission activity is temporarily unavailable.`,
     };
   }
-  const needsRevision = stats.submissions.filter(
-    (s) => s.status === "needs_revision",
-  ).length;
+  const needsRevision = stats.needsRevisionSubmissions;
   if (needsRevision > 0) {
     return {
       icon: "ti ti-pencil-minus",
       html: `<strong>${needsRevision} submission${needsRevision === 1 ? "" : "s"}</strong> ${needsRevision === 1 ? "was" : "were"} sent back for revision by your Moderator. Update ${needsRevision === 1 ? "it" : "them"} and resubmit for review.`,
     };
   }
-  const underReview = stats.submissions.filter(
-    (s) => s.status === "pending" || s.status === "in_review",
-  ).length;
+  const underReview = stats.underReviewSubmissions;
   if (underReview > 0) {
     return {
       icon: "ti ti-clock",
@@ -416,22 +412,10 @@ function statsForRole(
 ): StatItem[] {
   if (!user) return [];
   const accessibleBlue = "var(--d-blue, #1877f2)";
-  const submissions = stats.submissions ?? [];
-  const publishedCount = submissions.filter(
-    (item) =>
-      item.status === "published" ||
-      item.status === "published_manual" ||
-      item.status === "admin_direct_post",
-  ).length;
-  const scheduledCount = submissions.filter(
-    (item) => item.status === "scheduled",
-  ).length;
-  const reviewCount = submissions.filter(
-    (item) => item.status === "pending" || item.status === "in_review",
-  ).length;
-  const needsRevisionCount = submissions.filter(
-    (item) => item.status === "needs_revision",
-  ).length;
+  const publishedCount = stats.publishedSubmissions;
+  const scheduledCount = stats.scheduledSubmissions;
+  const reviewCount = stats.underReviewSubmissions;
+  const needsRevisionCount = stats.needsRevisionSubmissions;
   if (user.role === "admin") {
     return [
       {
@@ -507,32 +491,35 @@ function statsForRole(
       icon: "ti ti-photo-up",
       color: accessibleBlue,
       label: "My Submissions",
-      value: stats.submissions === null ? "—" : String(submissions.length),
+      value: metricValue(stats.totalSubmissions),
     },
     {
       icon: "ti ti-circle-check",
       color: accessibleBlue,
       label: "Approved",
-      value: stats.submissions === null ? "—" : String(scheduledCount + publishedCount),
+      value:
+        scheduledCount === null || publishedCount === null
+          ? "—"
+          : String(scheduledCount + publishedCount),
     },
     {
       icon: "ti ti-clock",
       color: accessibleBlue,
       label: "Under Review",
-      value: stats.submissions === null ? "—" : String(reviewCount),
+      value: metricValue(reviewCount),
     },
     {
       icon: "ti ti-pencil-minus",
       color: accessibleBlue,
       label: "Needs Revision",
-      value: stats.submissions === null ? "—" : String(needsRevisionCount),
-      highlight: needsRevisionCount > 0,
+      value: metricValue(needsRevisionCount),
+      highlight: (needsRevisionCount ?? 0) > 0,
     },
     {
       icon: "ti ti-brand-facebook",
       color: accessibleBlue,
       label: "Published",
-      value: stats.submissions === null ? "—" : String(publishedCount),
+      value: metricValue(publishedCount),
     },
   ];
 }

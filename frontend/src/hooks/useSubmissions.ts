@@ -33,9 +33,11 @@ const emptySubmissionCounts: SubmissionBucketCounts = {
   all: 0,
   drafts: 0,
   "action-needed": 0,
-  rejected: 0,
-  submitted: 0,
-  published: 0,
+      rejected: 0,
+      submitted: 0,
+      "under-review": 0,
+      scheduled: 0,
+      published: 0,
   failed: 0,
 };
 

@@ -1,5 +1,8 @@
 package com.dasigconnect.backend.service;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,6 +31,7 @@ import com.dasigconnect.backend.model.dto.submission.SubmissionMediaPreviewDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionResponseDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionSummaryDto;
 import com.dasigconnect.backend.model.dto.submission.SubmissionUpdateDto;
+import com.dasigconnect.backend.model.dto.validation.ValidationDashboardSummaryDto;
 import com.dasigconnect.backend.model.dto.validation.ValidationQueueCountsDto;
 import com.dasigconnect.backend.model.dto.validation.ValidationQueuePageDto;
 import com.dasigconnect.backend.model.entity.ReviewEditSeverity;
@@ -52,6 +56,7 @@ public class ValidationService {
     private static final Logger log = LoggerFactory.getLogger(ValidationService.class);
     private static final int DEFAULT_QUEUE_PAGE_SIZE = 20;
     private static final int MAX_QUEUE_PAGE_SIZE = 50;
+    private static final ZoneId DASHBOARD_ZONE = ZoneId.of("Asia/Manila");
 
     // BR-VAL-03 rejection reason codes
     private static final Set<String> VALID_REJECTION_CODES = Set.of(
@@ -176,6 +181,32 @@ public class ValidationService {
                 result.getTotalPages(),
                 result.hasNext(),
                 buildQueueCounts(submissionRepository.countValidationStatuses()));
+    }
+
+    @Transactional(readOnly = true)
+    public ValidationDashboardSummaryDto getDashboardSummary() {
+        ValidationQueueCountsDto counts = buildQueueCounts(submissionRepository.countValidationStatuses());
+        LocalDate firstDay = LocalDate.now(DASHBOARD_ZONE).withDayOfMonth(1);
+        Instant monthStart = firstDay.atStartOfDay(DASHBOARD_ZONE).toInstant();
+        Instant nextMonthStart = firstDay.plusMonths(1).atStartOfDay(DASHBOARD_ZONE).toInstant();
+        long approved = submissionRepository.countValidationDashboardStatusesBetween(
+                List.of(
+                        SubmissionStatus.scheduled,
+                        SubmissionStatus.published,
+                        SubmissionStatus.published_manual,
+                        SubmissionStatus.admin_direct_post),
+                monthStart,
+                nextMonthStart);
+        long rejected = submissionRepository.countValidationDashboardStatusesBetween(
+                List.of(SubmissionStatus.rejected),
+                monthStart,
+                nextMonthStart);
+
+        return new ValidationDashboardSummaryDto(
+                counts.pending() + counts.inReview() + counts.needsRevision(),
+                approved,
+                rejected,
+                submissionRepository.countDistinctValidationContributors());
     }
 
     private List<SubmissionSummaryDto> buildQueueSummaries(List<Submission> submissions) {

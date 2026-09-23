@@ -6,8 +6,11 @@ import {
   listPendingNetworkInvitations,
 } from "../../../api/authApi";
 import { getAnalyticsSummary } from "../../../api/analyticsApi";
-import { listSubmissions, type SubmissionSummary } from "../../../api/submissionApi";
-import { getValidationQueue } from "../../../api/validationApi";
+import { listSubmissionPage, type SubmissionSummary } from "../../../api/submissionApi";
+import {
+  getValidationDashboardSummary,
+  getValidationQueuePage,
+} from "../../../api/validationApi";
 import { authenticatedQueryMeta } from "../../../lib/queryClient";
 import { queryKeys } from "../../../lib/queryKeys";
 import type { User } from "../../../types/auth.types";
@@ -19,6 +22,11 @@ export interface DashboardInstitution {
 
 export interface DashboardStats {
   submissions: SubmissionSummary[] | null;
+  totalSubmissions: number | null;
+  publishedSubmissions: number | null;
+  scheduledSubmissions: number | null;
+  underReviewSubmissions: number | null;
+  needsRevisionSubmissions: number | null;
   contributors: number | null;
   moderators: number | null;
   activeMembers: number | null;
@@ -40,6 +48,11 @@ export interface DashboardResourceState {
 
 export const emptyDashboardStats: DashboardStats = {
   submissions: null,
+  totalSubmissions: null,
+  publishedSubmissions: null,
+  scheduledSubmissions: null,
+  underReviewSubmissions: null,
+  needsRevisionSubmissions: null,
   contributors: null,
   moderators: null,
   activeMembers: null,
@@ -66,30 +79,40 @@ export function useDashboardData(user: User) {
   });
 
   const submissionsQuery = useQuery({
-    ...options("submissions", user.role === "contributor"),
-    queryFn: ({ signal }) => listSubmissions(signal).then((response) => response.data),
-  });
-  const queueQuery = useQuery({
-    queryKey: queryKeys.validation.queue({
-      role: user.role,
-      userId,
-      institutionId: user.institutionId ?? null,
-      scope: "network",
+    queryKey: queryKeys.submissions.page({
+      ...scope,
+      bucket: "all",
+      search: "",
+      pageSize: 5,
     }),
-    enabled: user.role !== "contributor",
-    queryFn: ({ signal }) => getValidationQueue({ signal }).then((response) => response.data),
+    enabled: user.role === "contributor",
+    queryFn: ({ signal }) => listSubmissionPage(
+      { page: 0, pageSize: 5, bucket: "all" },
+      signal,
+    ).then((response) => response.data),
     staleTime: DASHBOARD_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
-  const historyQuery = useQuery({
-    queryKey: queryKeys.validation.queue({
-      role: user.role,
-      userId,
-      institutionId: user.institutionId ?? null,
-      scope: "history",
+  const queueQuery = useQuery({
+    queryKey: queryKeys.validation.page({
+      ...scope,
+      queueView: "all",
+      sort: "submitted",
+      search: "",
+      pageSize: 5,
     }),
     enabled: user.role !== "contributor",
-    queryFn: ({ signal }) => getValidationQueue({ history: true, signal }).then((response) => response.data),
+    queryFn: ({ signal }) => getValidationQueuePage(
+      { view: "all", sort: "submitted", page: 0, pageSize: 5 },
+      signal,
+    ).then((response) => response.data),
+    staleTime: DASHBOARD_STALE_TIME_MS,
+    meta: authenticatedQueryMeta,
+  });
+  const validationSummaryQuery = useQuery({
+    queryKey: queryKeys.validation.dashboardSummary(scope),
+    enabled: user.role !== "contributor",
+    queryFn: ({ signal }) => getValidationDashboardSummary(signal).then((response) => response.data),
     staleTime: DASHBOARD_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
@@ -114,31 +137,27 @@ export function useDashboardData(user: User) {
     queryFn: ({ signal }) => getAnalyticsSummary("30d", [], signal).then((response) => response.data),
   });
 
-  const queue = queueQuery.data ?? [];
-  const history = historyQuery.data ?? [];
-  const reviewItems = [...queue, ...history];
   const users = usersQuery.data;
   const analytics = analyticsQuery.data;
   const breakdown = analytics?.statusBreakdown ?? [];
-  const historyScheduled = historyQuery.data?.filter((item) => item.status === "scheduled").length;
   const scheduledFromAnalytics = breakdown.find((item) => item.status.toLowerCase() === "scheduled")?.count;
   const activeOf = (role: string) =>
     users?.filter((item) => item.role.toLowerCase() === role && item.accountState.toLowerCase() === "active").length ?? null;
   const activeContributors = activeOf("contributor");
   const activeModerators = activeOf("moderator");
   const activeAdmins = activeOf("admin");
-  const moderatorContributorCount = reviewItems.length > 0 || (queueQuery.data && historyQuery.data)
-    ? new Set(
-        reviewItems
-          .map((item) => item.contributorEmail?.trim().toLowerCase())
-          .filter((email): email is string => Boolean(email)),
-      ).size
-    : null;
+  const submissionCounts = submissionsQuery.data?.counts;
+  const validationSummary = validationSummaryQuery.data;
 
   const stats: DashboardStats = {
     ...emptyDashboardStats,
-    submissions: submissionsQuery.data ?? null,
-    contributors: user.role === "admin" ? activeContributors : moderatorContributorCount,
+    submissions: submissionsQuery.data?.items ?? null,
+    totalSubmissions: submissionCounts?.all ?? null,
+    publishedSubmissions: submissionCounts?.published ?? null,
+    scheduledSubmissions: submissionCounts?.scheduled ?? null,
+    underReviewSubmissions: submissionCounts?.["under-review"] ?? null,
+    needsRevisionSubmissions: submissionCounts?.["action-needed"] ?? null,
+    contributors: user.role === "admin" ? activeContributors : validationSummary?.contributorCount ?? null,
     moderators: activeModerators,
     activeMembers:
       activeContributors !== null && activeModerators !== null && activeAdmins !== null
@@ -148,24 +167,16 @@ export function useDashboardData(user: User) {
       networkInvitesQuery.data && adminInvitesQuery.data
         ? networkInvitesQuery.data.length + adminInvitesQuery.data.length
         : null,
-    reviewQueuePending: queueQuery.data?.length ?? null,
-    reviewedApprovedThisMonth: historyQuery.data
-      ? history.filter(
-          (item) =>
-            inCurrentMonth(item) &&
-            ["scheduled", "published", "published_manual", "admin_direct_post"].includes(item.status),
-        ).length
-      : null,
-    reviewedRejectedThisMonth: historyQuery.data
-      ? history.filter((item) => inCurrentMonth(item) && item.status === "rejected").length
-      : null,
-    scheduledNetwork: scheduledFromAnalytics ?? historyScheduled ?? null,
+    reviewQueuePending: validationSummary?.awaitingReview ?? null,
+    reviewedApprovedThisMonth: validationSummary?.approvedThisMonth ?? null,
+    reviewedRejectedThisMonth: validationSummary?.rejectedThisMonth ?? null,
+    scheduledNetwork: scheduledFromAnalytics ?? queueQuery.data?.counts.scheduled ?? null,
     publishedLast30d: analytics?.totalPostsPublished.value ?? null,
     publishingSuccessRate:
       analytics?.operationalHealth && analytics.operationalHealth.publicationAttempts > 0
         ? Math.round(analytics.operationalHealth.publishingSuccessRate)
         : null,
-    reviewRecent: queueQuery.data || historyQuery.data ? newestSubmissions(reviewItems, 5) : null,
+    reviewRecent: queueQuery.data?.items ?? null,
   };
 
   const primaryQuery = user.role === "contributor" ? submissionsQuery : queueQuery;
@@ -179,7 +190,7 @@ export function useDashboardData(user: User) {
     resources: {
       submissions: queryState(submissionsQuery),
       queue: queryState(queueQuery),
-      history: queryState(historyQuery),
+      history: queryState(validationSummaryQuery),
       institutions: queryState(institutionsQuery),
       users: queryState(usersQuery),
       invitations: combineStates(networkInvitesQuery, adminInvitesQuery),
@@ -202,21 +213,4 @@ function combineStates(...queries: UseQueryResult<unknown>[]): DashboardResource
     refreshing: queries.some((query) => query.isFetching && !query.isLoading),
     error: queries.some((query) => query.isError && query.data === undefined),
   };
-}
-
-function newestSubmissions(items: SubmissionSummary[], limit: number) {
-  return [...items]
-    .sort((a, b) => (b.submittedAt ?? b.createdAt ?? "").localeCompare(a.submittedAt ?? a.createdAt ?? ""))
-    .slice(0, limit);
-}
-
-function inCurrentMonth(submission: SubmissionSummary) {
-  const monthKey = new Date().toISOString().slice(0, 7);
-  return (
-    submission.publishedAt ??
-    submission.scheduledAt ??
-    submission.submittedAt ??
-    submission.createdAt ??
-    ""
-  ).slice(0, 7) === monthKey;
 }

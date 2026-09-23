@@ -1,10 +1,15 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import "../../styles/institution-management.css";
 import type { User } from "../../types/auth.types";
 import { listInstitutions } from "../../api/authApi";
-import { listSubmissions, type SubmissionSummary } from "../../api/submissionApi";
+import {
+  listSubmissionPage,
+  type SubmissionQueueBucket,
+  type SubmissionSummary,
+} from "../../api/submissionApi";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { authenticatedQueryMeta } from "../../lib/queryClient";
 import { queryKeys } from "../../lib/queryKeys";
 
@@ -18,7 +23,6 @@ interface ActivityItem {
   subtitle: string;
   institution: string;
   submitted: string;
-  rawStatus: string;
   status: {
     label: string;
     icon: string;
@@ -34,15 +38,25 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const debouncedSearch = useDebouncedValue(searchQuery.trim(), 350);
   const userScope = user.id ?? user.email.trim().toLowerCase();
-  const submissionsQuery = useQuery({
-    queryKey: queryKeys.submissions.all({
+  const bucket = bucketForStatusFilter(statusFilter);
+  const submissionsQuery = useInfiniteQuery({
+    queryKey: queryKeys.submissions.page({
       role: user.role,
       userId: userScope,
       institutionId: user.institutionId ?? null,
-      status: "recent-activity",
+      bucket,
+      search: debouncedSearch,
+      pageSize: 50,
     }),
-    queryFn: ({ signal }) => listSubmissions(signal).then((response) => response.data),
+    queryFn: ({ pageParam, signal }) => listSubmissionPage(
+      { page: pageParam, pageSize: 50, bucket, search: debouncedSearch },
+      signal,
+    ).then((response) => response.data),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.hasNext ? lastPage.page + 1 : undefined,
     staleTime: RECENT_ACTIVITY_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
@@ -65,7 +79,7 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
     meta: authenticatedQueryMeta,
   });
 
-  const submissions = submissionsQuery.data ?? EMPTY_SUBMISSIONS;
+  const submissions = submissionsQuery.data?.pages.flatMap((page) => page.items) ?? EMPTY_SUBMISSIONS;
   const institutions = institutionsQuery.data ?? EMPTY_INSTITUTIONS;
   const loading = submissionsQuery.isLoading;
   const loadError = submissionsQuery.isError && !submissionsQuery.data;
@@ -98,43 +112,23 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
           subtitle: s.category ?? "",
           institution: institutionName,
           submitted: submittedLabel,
-          rawStatus: s.status,
           status: statusDisplay(s.status),
         };
       });
   }, [submissions, institutions, user]);
 
   const statusCounts = useMemo(() => {
-    const counts = {
-      all: allActivities.length,
-      published: 0,
-      scheduled: 0,
-      review: 0,
-      revision: 0,
-      draft: 0,
-      failed: 0,
+    const counts = submissionsQuery.data?.pages[0]?.counts;
+    return {
+      all: counts?.all ?? 0,
+      published: counts?.published ?? 0,
+      scheduled: counts?.scheduled ?? 0,
+      review: counts?.["under-review"] ?? 0,
+      revision: counts?.["action-needed"] ?? 0,
+      draft: counts?.drafts ?? 0,
+      failed: (counts?.failed ?? 0) + (counts?.rejected ?? 0),
     };
-    allActivities.forEach((item) => {
-      if (
-        item.rawStatus === "published" ||
-        item.rawStatus === "published_manual" ||
-        item.rawStatus === "admin_direct_post"
-      ) {
-        counts.published++;
-      } else if (item.rawStatus === "scheduled") {
-        counts.scheduled++;
-      } else if (item.rawStatus === "pending" || item.rawStatus === "in_review") {
-        counts.review++;
-      } else if (item.rawStatus === "needs_revision") {
-        counts.revision++;
-      } else if (item.rawStatus === "draft") {
-        counts.draft++;
-      } else if (item.rawStatus === "publish_failed" || item.rawStatus === "rejected") {
-        counts.failed++;
-      }
-    });
-    return counts;
-  }, [allActivities]);
+  }, [submissionsQuery.data]);
 
   const statusTabs = useMemo(() => {
     const tabs = [
@@ -156,31 +150,20 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
     );
   }, [statusCounts]);
 
-  const filteredActivities = useMemo(() => {
-    return allActivities.filter((item) => {
-      const matchesSearch =
-        searchQuery.trim() === "" ||
-        item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.subtitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.institution.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredActivities = allActivities;
+  const { fetchNextPage, hasNextPage, isFetchingNextPage } = submissionsQuery;
 
-      const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "published" &&
-          (item.rawStatus === "published" ||
-            item.rawStatus === "published_manual" ||
-            item.rawStatus === "admin_direct_post")) ||
-        (statusFilter === "review" &&
-          (item.rawStatus === "pending" || item.rawStatus === "in_review")) ||
-        (statusFilter === "scheduled" && item.rawStatus === "scheduled") ||
-        (statusFilter === "failed" &&
-          (item.rawStatus === "publish_failed" || item.rawStatus === "rejected")) ||
-        (statusFilter === "draft" && item.rawStatus === "draft") ||
-        (statusFilter === "revision" && item.rawStatus === "needs_revision");
-
-      return matchesSearch && matchesStatus;
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || !hasNextPage) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting && !isFetchingNextPage) {
+        void fetchNextPage();
+      }
     });
-  }, [allActivities, searchQuery, statusFilter]);
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   return (
     <div id="screen-recent-activity" style={{ background: "var(--d-bg)" }}>
@@ -352,9 +335,22 @@ export default function RecentActivityScreen({ user }: RecentActivityScreenProps
             </tbody>
           </table>
         </div>
+        <div ref={loadMoreRef} aria-hidden="true" style={{ height: 1 }} />
       </div>
     </div>
   );
+}
+
+function bucketForStatusFilter(statusFilter: string): SubmissionQueueBucket {
+  switch (statusFilter) {
+    case "published": return "published";
+    case "scheduled": return "scheduled";
+    case "review": return "under-review";
+    case "revision": return "action-needed";
+    case "draft": return "drafts";
+    case "failed": return "failed-or-rejected";
+    default: return "all";
+  }
 }
 
 function statusDisplay(status: SubmissionSummary["status"]): ActivityItem["status"] {

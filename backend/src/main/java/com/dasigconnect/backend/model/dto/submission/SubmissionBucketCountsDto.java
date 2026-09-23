@@ -9,6 +9,8 @@ public record SubmissionBucketCountsDto(
         @JsonProperty("action-needed") long actionNeeded,
         long rejected,
         long submitted,
+        @JsonProperty("under-review") long underReview,
+        long scheduled,
         long published,
         long failed) {
 }

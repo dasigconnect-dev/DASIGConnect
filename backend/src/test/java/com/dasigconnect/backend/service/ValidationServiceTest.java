@@ -379,6 +379,35 @@ class ValidationServiceTest {
     }
 
     @Test
+    void getDashboardSummary_returnsExactWorkflowAggregates() {
+        SubmissionRepository.SubmissionStatusCount pending = mock(
+                SubmissionRepository.SubmissionStatusCount.class);
+        SubmissionRepository.SubmissionStatusCount inReview = mock(
+                SubmissionRepository.SubmissionStatusCount.class);
+        SubmissionRepository.SubmissionStatusCount needsRevision = mock(
+                SubmissionRepository.SubmissionStatusCount.class);
+        when(pending.getStatus()).thenReturn(SubmissionStatus.pending);
+        when(pending.getCount()).thenReturn(4L);
+        when(inReview.getStatus()).thenReturn(SubmissionStatus.in_review);
+        when(inReview.getCount()).thenReturn(3L);
+        when(needsRevision.getStatus()).thenReturn(SubmissionStatus.needs_revision);
+        when(needsRevision.getCount()).thenReturn(2L);
+        when(submissionRepository.countValidationStatuses())
+                .thenReturn(List.of(pending, inReview, needsRevision));
+        when(submissionRepository.countValidationDashboardStatusesBetween(
+                any(), any(), any()))
+                .thenReturn(11L, 2L);
+        when(submissionRepository.countDistinctValidationContributors()).thenReturn(7L);
+
+        var result = validationService.getDashboardSummary();
+
+        assertThat(result.awaitingReview()).isEqualTo(9);
+        assertThat(result.approvedThisMonth()).isEqualTo(11);
+        assertThat(result.rejectedThisMonth()).isEqualTo(2);
+        assertThat(result.contributorCount()).isEqualTo(7);
+    }
+
+    @Test
     void getQueuePage_needsRevisionUsesFrozenSnapshotWithoutLiveMediaLookup() {
         Submission submission = inReviewSubmission();
         submission.setStatus(SubmissionStatus.needs_revision);
