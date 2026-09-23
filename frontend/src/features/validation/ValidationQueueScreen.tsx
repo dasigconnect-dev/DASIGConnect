@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import {
   getEngagementRecommendations,
@@ -34,6 +34,9 @@ import {
   type RejectionReasonCode,
   type ReviewLock,
   type ValidationLog,
+  type ValidationQueuePage,
+  type ValidationQueueSort,
+  type ValidationQueueView,
 } from "../../api/validationApi";
 import type { SubmissionMediaItem } from "../../types/media";
 import { useAiCaptionAssist } from "../../hooks/useAiCaptionAssist";
@@ -71,6 +74,7 @@ import {
 } from "./hooks/useValidationQueue";
 import { useResolutionFailures } from "../../hooks/useResolutionFailures";
 import { useIncrementalPagination } from "../../hooks/useIncrementalPagination";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import type { FailedPublication } from "../../api/resolutionApi";
 import ResolutionRetryModal from "./ResolutionRetryModal";
 import ManualPublishWorkflowPanel from "./ManualPublishWorkflowPanel";
@@ -93,17 +97,7 @@ interface ValidationQueueScreenProps {
   user: User;
 }
 
-type QueueFilter =
-  | "pending"
-  | "in_review"
-  | "needs_revision"
-  | "scheduled"
-  | "published"
-  | "rejected"
-  | "all"
-  | "failed";
-/** Tabs whose submissions only exist in the history query, not the active queue. */
-const HISTORY_ONLY_STATUSES = new Set<QueueFilter>(["scheduled", "published", "rejected"]);
+type QueueFilter = ValidationQueueView | "failed";
 const TAB_ORDER: Array<{ key: QueueFilter; label: string }> = [
   { key: "all", label: "All" },
   { key: "pending", label: "Pending" },
@@ -114,7 +108,7 @@ const TAB_ORDER: Array<{ key: QueueFilter; label: string }> = [
   { key: "rejected", label: "Rejected" },
   { key: "failed", label: "Failed" },
 ];
-type SortKey = "publish_slot" | "submitted";
+type SortKey = ValidationQueueSort;
 type DecisionModal = "approve" | "revise" | "reject" | null;
 const MODAL_EXIT_MS = 190;
 const REVIEWABLE_STATUSES = new Set(["pending", "in_review"]);
@@ -298,12 +292,26 @@ export default function ValidationQueueScreen({
   const queryClient = useQueryClient();
   const currentUserScope = getUserCacheScope(user);
   const [filter, setFilter] = useState<QueueFilter>("all");
-  const isAllMode = filter === "all";
   const isFailedMode = filter === "failed";
-  const needsHistory = isAllMode || HISTORY_ONLY_STATUSES.has(filter);
+  const [sortKey, setSortKey] = useState<SortKey>("submitted");
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search.trim(), 350);
+  const queueView: ValidationQueueView = isFailedMode ? "all" : filter;
+  const queueSort: ValidationQueueSort = isFailedMode ? "submitted" : sortKey;
+  const queueSearch = isFailedMode ? "" : debouncedSearch;
   const isDesktop = useIsDesktop();
-  const { queue: activeQueue, loading: activeLoading, error: activeError } = useValidationQueue(user);
-  const { queue: allQueue, loading: allLoading, error: allError, refresh: refreshAllQueue } = useValidationQueue(user, true, needsHistory);
+  const {
+    queue,
+    counts: queueCounts,
+    totalCount: totalQueueCount,
+    hasNextPage: hasMoreQueue,
+    loadingMore: loadingMoreQueue,
+    loadMoreError: queueLoadMoreError,
+    loadMore: loadMoreQueue,
+    loading,
+    error,
+  } = useValidationQueue(user, queueView, queueSort, queueSearch, !isFailedMode);
+  const queueSentinelRef = useRef<HTMLDivElement | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<SubmissionSummary | null>(null);
   const [selectedLoading, setSelectedLoading] = useState(false);
@@ -317,8 +325,6 @@ export default function ValidationQueueScreen({
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [mobileView, setMobileView] = useState<"queue" | "review">("queue");
   const [showDetails, setShowDetails] = useState(true);
-  const [sortKey, setSortKey] = useState<SortKey>("submitted");
-  const [search, setSearch] = useState("");
   const [mediaIndex, setMediaIndex] = useState(0);
   const [renderedModal, setRenderedModal] = useState<DecisionModal>(null);
   const [modalClosing, setModalClosing] = useState(false);
@@ -377,6 +383,22 @@ export default function ValidationQueueScreen({
   );
 
   const invalidateValidationWorkflow = useCallback(() => {
+    queryClient.setQueriesData<InfiniteData<ValidationQueuePage>>(
+      {
+        queryKey: ["validation"],
+        predicate: (query) => {
+          const params = query.queryKey[1];
+          return typeof params === "object" && params !== null
+            && "view" in params && params.view === "queue-page";
+        },
+      },
+      (current) => current?.pages.length
+        ? {
+            pages: [current.pages[0]],
+            pageParams: [current.pageParams[0] ?? 0],
+          }
+        : current,
+    );
     return invalidateQueryRoots(queryClient, mutationCacheDependencies.validationWorkflow);
   }, [queryClient]);
 
@@ -416,69 +438,42 @@ export default function ValidationQueueScreen({
     () => failures.find((f) => f.submissionId === selectedId) ?? null,
     [failures, selectedId],
   );
-  const combinedQueue = useMemo(() => {
-    const submissions = new Map<string, SubmissionSummary>();
-    [...activeQueue, ...allQueue].forEach((item) => submissions.set(item.id, item));
-    return Array.from(submissions.values());
-  }, [activeQueue, allQueue]);
-  const queue = needsHistory ? combinedQueue : activeQueue;
-  const loading = needsHistory ? activeLoading || allLoading : activeLoading;
-  const error = needsHistory ? activeError || allError : activeError;
+  const filteredQueue = queue;
+  const visibleQueue = queue;
+  const selectedMatchesCurrentQueueView = useMemo(() => {
+    if (!selected || isFailedMode) return false;
+    if (filter !== "all" && normalizeStatus(selected.status) !== filter) return false;
+    const term = debouncedSearch.toLowerCase();
+    if (!term) return true;
+    return [
+      selected.eventTitle,
+      selected.contributorEmail,
+      selected.institutionName,
+      selected.eventDate,
+      selected.caption,
+      selected.description,
+      selected.tags?.join(" "),
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(term));
+  }, [debouncedSearch, filter, isFailedMode, selected]);
 
-  const filteredQueue = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return queue
-      .filter((item) => {
-        const status = normalizeStatus(item.status);
-        if (filter !== "all" && status !== filter) return false;
-        if (!term) return true;
-        return [
-          item.eventTitle,
-          item.contributorEmail,
-          item.institutionName,
-          item.eventDate,
-          item.caption,
-          item.description,
-          item.tags?.join(" "),
-        ]
-          .filter(Boolean)
-          .some((value) => value!.toLowerCase().includes(term));
-      })
-      .sort((a, b) => {
-        // Fast-Track (Live Event) submissions are urgent — they sort to the
-        // top of the active queue (UC-1.9 A5). Not applied in history-backed
-        // tabs, where already-resolved items are just browsed by date.
-        if (!needsHistory) {
-          const fastTrackDiff = Number(Boolean(b.fastTrack)) - Number(Boolean(a.fastTrack));
-          if (fastTrackDiff !== 0) return fastTrackDiff;
+  useEffect(() => {
+    const target = queueSentinelRef.current;
+    if (isFailedMode || !target || !hasMoreQueue || loadingMoreQueue || queueLoadMoreError) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          observer.disconnect();
+          void loadMoreQueue();
         }
-        // Live Event / Fast-Track submissions never reserve a slot — once
-        // published their publish time IS their slot, so fall back to it.
-        const left =
-          sortKey === "publish_slot"
-            ? a.scheduledAt || a.publishedAt || ""
-            : a.submittedAt || a.createdAt || "";
-        const right =
-          sortKey === "publish_slot"
-            ? b.scheduledAt || b.publishedAt || ""
-            : b.submittedAt || b.createdAt || "";
-        const cmp = left.localeCompare(right);
-        return needsHistory ? -cmp : cmp;
-      });
-  }, [filter, needsHistory, queue, search, sortKey]);
-
-  const {
-    visibleItems: visibleQueue,
-    hasMore: hasMoreQueue,
-    totalCount: totalQueueCount,
-    sentinelRef: queueSentinelRef,
-  } = useIncrementalPagination(filteredQueue, {
-    pageSize: 15,
-    initialSize: 15,
-    resetDeps: [filter, search, sortKey],
-    selectedItemId: selectedId,
-    getItemId: (item) => (item as SubmissionSummary)?.id,
-  });
+      },
+      { rootMargin: "240px 0px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMoreQueue, isFailedMode, loadMoreQueue, loadingMoreQueue, queueLoadMoreError]);
 
   const {
     visibleItems: visibleFailures,
@@ -493,32 +488,8 @@ export default function ValidationQueueScreen({
     getItemId: (item) => (item as FailedPublication)?.submissionId,
   });
 
-  const pendingCount = activeQueue.filter(
-    (item) => normalizeStatus(item.status) === "pending",
-  ).length;
-  const reviewCount = activeQueue.filter(
-    (item) => normalizeStatus(item.status) === "in_review",
-  ).length;
-  const needsRevisionCount = activeQueue.filter(
-    (item) => normalizeStatus(item.status) === "needs_revision",
-  ).length;
-  const scheduledCount = combinedQueue.filter(
-    (item) => normalizeStatus(item.status) === "scheduled",
-  ).length;
-  const publishedCount = combinedQueue.filter(
-    (item) => normalizeStatus(item.status) === "published",
-  ).length;
-  const rejectedCount = combinedQueue.filter(
-    (item) => normalizeStatus(item.status) === "rejected",
-  ).length;
   const tabCounts: Record<QueueFilter, number> = {
-    all: combinedQueue.length,
-    pending: pendingCount,
-    in_review: reviewCount,
-    needs_revision: needsRevisionCount,
-    scheduled: scheduledCount,
-    published: publishedCount,
-    rejected: rejectedCount,
+    ...queueCounts,
     failed: failures.length,
   };
   const hasActiveSelection = Boolean(selectedId);
@@ -607,9 +578,6 @@ export default function ValidationQueueScreen({
     // split view, not snap back to the full-width queue) unless it isn't
     // part of the new tab's results at all, which the auto-select effect
     // below already handles.
-    if (next === "all" || HISTORY_ONLY_STATUSES.has(next)) {
-      void refreshAllQueue();
-    }
   }
 
   /** Desktop-only: clears the selection to return to the full-width queue view. */
@@ -752,7 +720,9 @@ export default function ValidationQueueScreen({
     if (loading || (isFailedMode && failuresLoading)) return;
 
     const selectedIsInCurrentTab = selectedId
-      ? (isFailedMode ? filteredFailures.some((f) => f.submissionId === selectedId) : filteredQueue.some((item) => item.id === selectedId))
+      ? (isFailedMode
+          ? filteredFailures.some((f) => f.submissionId === selectedId)
+          : selectedMatchesCurrentQueueView || filteredQueue.some((item) => item.id === selectedId))
       : false;
     if (selectedIsInCurrentTab) return;
 
@@ -760,14 +730,10 @@ export default function ValidationQueueScreen({
       // Switching tabs only re-filters the left-hand list — an already-open
       // submission must stay open even if it doesn't match the tab just
       // clicked (e.g. viewing a Pending item, then clicking Failed). Existence
-      // is checked against every known source (active+history queue, and the
-      // failures list), not just the current tab's own filtered view — only
-      // clear if it's genuinely gone everywhere (deleted, or no longer returned
-      // by any query at all).
-      const stillExists = selectedId
-        ? combinedQueue.some((item) => item.id === selectedId) || failures.some((f) => f.submissionId === selectedId)
-        : true;
-      if (stillExists) return;
+      // Server paging means other tabs and unloaded pages are intentionally not
+      // resident in memory. Keep the open detail stable across tab changes;
+      // terminal actions explicitly clear it when the record actually moves.
+      if (selectedId && selected) return;
       if (selectedId || selected) clearSelection();
       return;
     }
@@ -798,7 +764,7 @@ export default function ValidationQueueScreen({
     }
 
     if (selectedId || selected) clearSelection();
-  }, [isFailedMode, loading, failuresLoading, filteredFailures, filteredQueue, combinedQueue, failures, selectedId, selected, openSubmission, isDesktop]);
+  }, [isFailedMode, loading, failuresLoading, filteredFailures, filteredQueue, selectedId, selected, selectedMatchesCurrentQueueView, openSubmission, isDesktop]);
 
   function setLockFor(submissionId: string, lock: ReviewLock) {
     setLocks((prev) => ({ ...prev, [submissionId]: lock }));
@@ -1637,13 +1603,31 @@ export default function ValidationQueueScreen({
                 ))}
 
               {hasMoreQueue && (
-                <div ref={queueSentinelRef} className="val-load-more-sentinel">
-                  <div className="val-load-more-spinner" />
-                  <span>Loading more items...</span>
+                <div
+                  ref={queueSentinelRef}
+                  className="val-load-more-sentinel"
+                  role={queueLoadMoreError ? "button" : undefined}
+                  tabIndex={queueLoadMoreError ? 0 : undefined}
+                  onClick={queueLoadMoreError ? () => void loadMoreQueue() : undefined}
+                  onKeyDown={queueLoadMoreError
+                    ? (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          void loadMoreQueue();
+                        }
+                      }
+                    : undefined}
+                >
+                  {!queueLoadMoreError && <div className="val-load-more-spinner" />}
+                  <span>
+                    {queueLoadMoreError
+                      ? "Unable to load more submissions. Select here to retry."
+                      : "Loading more items..."}
+                  </span>
                 </div>
               )}
 
-              {!hasMoreQueue && totalQueueCount > 15 && (
+              {!hasMoreQueue && totalQueueCount > 20 && (
                 <div className="val-queue-end-indicator">
                   <span>Showing all {totalQueueCount} submissions</span>
                 </div>

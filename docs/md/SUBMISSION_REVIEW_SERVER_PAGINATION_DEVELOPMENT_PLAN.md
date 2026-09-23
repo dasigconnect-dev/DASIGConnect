@@ -31,7 +31,7 @@ The branch was created after fast-forwarding local `dev` to `origin/dev`.
 | Phase 1 - Contract and My Submissions Backend | Complete | New additive endpoint, bounded page sizes, ownership scope, server bucket/search handling, complete bucket counts, batched page media previews, controller/service coverage, application-context query parsing |
 | Phase 2 - My Submissions Frontend | Complete | Server-backed 20-item infinite query, debounced bucket/search requests, page cache reuse, mutation cache reset, direct ID-scoped detail loading, production build and focused lint |
 | Phase 3 - Review Queue Backend | Complete | Additive paginated endpoint, server view/search/sort handling, complete tab counts, batched media previews, frozen snapshot preservation, authorization/service coverage, application-context query parsing |
-| Phase 4 - Review Queue Frontend | Not started | Pending |
+| Phase 4 - Review Queue Frontend | Complete | Server-backed 20-item infinite query, debounced view/search/sort requests, complete tab counts, bounded mutation refetches, selection preservation, production build and focused lint |
 | Phase 5 - Failed Publications | Not started | Pending |
 | Phase 6 - Indexing, Measurement, and Cleanup | Not started | Pending representative-data measurements |
 
@@ -58,6 +58,15 @@ Phase 3 verification completed on September 23, 2026:
 Focused validation suite: 28 tests passed
 Full backend suite: 754 tests passed
 Repository query parsing: verified by BackendApplicationTests context startup
+UI/CSS files changed: none
+```
+
+Phase 4 verification completed on September 24, 2026:
+
+```text
+Frontend production build: passed
+Focused ESLint for all changed frontend files: passed with no errors
+Repository-wide ESLint: blocked by 67 pre-existing errors and 13 warnings outside the Phase 4 changes
 UI/CSS files changed: none
 ```
 
@@ -545,6 +554,19 @@ Exit criteria:
 - Tab badges remain complete and accurate.
 - Approve/revise/reject moves records to the correct views without stale duplicates.
 - No UI or CSS changes are required.
+
+Implemented September 24, 2026:
+
+- Replaced the Review Queue's parallel unbounded active/history requests and browser-side merge with one server-backed infinite query for the selected view.
+- Added typed page, count, view, and sort contracts for `GET /api/v1/validation/queue/page`.
+- Scoped cached pages by authenticated user, role, institution, view, sort, search, and page size.
+- Debounced queue search by 350 ms and moved status filtering and sorting into the backend request.
+- Loaded 20 records initially and one additional 20-record page when the existing queue sentinel approaches the viewport.
+- Kept complete backend tab counts instead of deriving badges from the loaded pages; the Failed count remains owned by the Resolution query pending Phase 5.
+- Kept loaded records visible during next-page failures and made the existing load-more state keyboard- and pointer-retryable.
+- Preserved selected details across tab, sort, and paging changes, including frozen `needs_revision` summaries and mobile master-detail behavior.
+- Collapsed paginated validation caches to page one before review-workflow invalidation so mutations do not refetch every previously accumulated page.
+- Retained the legacy queue API for Dashboard consumers; no stylesheet, card, tab, loader, or responsive-layout change was introduced.
 
 ### Phase 5 - Failed Publications
 

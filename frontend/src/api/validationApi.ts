@@ -60,10 +60,63 @@ export type RejectionReasonCode =
   | "WRONG_INSTITUTION"
   | "OTHER";
 
+export type ValidationQueueView =
+  | "all"
+  | "pending"
+  | "in_review"
+  | "needs_revision"
+  | "scheduled"
+  | "published"
+  | "rejected";
+
+export type ValidationQueueSort = "publish_slot" | "submitted";
+
+export interface ValidationQueueCounts {
+  all: number;
+  pending: number;
+  in_review: number;
+  needs_revision: number;
+  scheduled: number;
+  published: number;
+  rejected: number;
+}
+
+export interface ValidationQueuePage {
+  items: SubmissionSummary[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasNext: boolean;
+  counts: ValidationQueueCounts;
+}
+
 export function getValidationQueue(options?: { history?: boolean; signal?: AbortSignal }) {
   return api.get<SubmissionSummary[]>("/validation/queue", {
     params: options?.history ? { history: true } : undefined,
     signal: options?.signal,
+  });
+}
+
+export function getValidationQueuePage(
+  params: {
+    view: ValidationQueueView;
+    sort: ValidationQueueSort;
+    page?: number;
+    pageSize?: number;
+    search?: string;
+  },
+  signal?: AbortSignal,
+) {
+  return api.get<ValidationQueuePage>("/validation/queue/page", {
+    params: {
+      view: params.view,
+      sort: params.sort,
+      page: params.page ?? 0,
+      pageSize: params.pageSize ?? 20,
+      search: params.search?.trim() ?? "",
+    },
+    signal,
   });
 }
 

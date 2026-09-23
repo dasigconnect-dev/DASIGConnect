@@ -99,6 +99,20 @@ export const queryKeys = {
   validation: {
     queue: (params: { role: string; userId?: string | null; scope?: "network" | "institution" | "history"; institutionId?: string | null }) =>
       scopedKey("validation", { ...params, view: "queue" }),
+    page: (params: {
+      role: string;
+      userId?: string | null;
+      institutionId?: string | null;
+      queueView: string;
+      sort: string;
+      search: string;
+      pageSize: number;
+    }) => scopedKey("validation", { ...params, view: "queue-page" }),
+    counts: (params: {
+      role: string;
+      userId?: string | null;
+      institutionId?: string | null;
+    }) => scopedKey("validation", { ...params, view: "queue-counts" }),
     log: (params: { role: string; userId?: string | null; submissionId: string }) =>
       scopedKey("validation", { ...params, view: "log" }),
   },

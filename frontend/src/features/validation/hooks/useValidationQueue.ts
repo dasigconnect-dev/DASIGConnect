@@ -1,11 +1,15 @@
-import { useCallback, type Dispatch, type SetStateAction } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getValidationLog,
-  getValidationQueue,
+  getValidationQueuePage,
 } from "../../../api/validationApi";
-import type { ValidationLog } from "../../../api/validationApi";
-import type { SubmissionSummary } from "../../../api/submissionApi";
+import type {
+  ValidationLog,
+  ValidationQueueCounts,
+  ValidationQueueSort,
+  ValidationQueueView,
+} from "../../../api/validationApi";
 import { authenticatedQueryMeta } from "../../../lib/queryClient";
 import { queryKeys } from "../../../lib/queryKeys";
 import type { User } from "../../../types/auth.types";
@@ -42,53 +46,90 @@ function isCanceledError(error: unknown) {
 
 const VALIDATION_QUEUE_STALE_TIME_MS = 5_000;
 const VALIDATION_LOG_STALE_TIME_MS = 30_000;
+const VALIDATION_QUEUE_PAGE_SIZE = 20;
+
+const emptyValidationCounts: ValidationQueueCounts = {
+  all: 0,
+  pending: 0,
+  in_review: 0,
+  needs_revision: 0,
+  scheduled: 0,
+  published: 0,
+  rejected: 0,
+};
 
 function userScope(user: User) {
   return user.id ?? user.email.trim().toLowerCase();
 }
 
-export function useValidationQueue(user: User, history = false, enabled = true) {
+export function useValidationQueue(
+  user: User,
+  view: ValidationQueueView,
+  sort: ValidationQueueSort,
+  search: string,
+  enabled = true,
+) {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.validation.queue({
+  const queryKey = queryKeys.validation.page({
     role: user.role,
     userId: userScope(user),
     institutionId: user.institutionId ?? null,
-    scope: history ? "history" : "network",
+    queueView: view,
+    sort,
+    search,
+    pageSize: VALIDATION_QUEUE_PAGE_SIZE,
+  });
+  const countsKey = queryKeys.validation.counts({
+    role: user.role,
+    userId: userScope(user),
+    institutionId: user.institutionId ?? null,
+  });
+  const countsQuery = useQuery<ValidationQueueCounts>({
+    queryKey: countsKey,
+    queryFn: () => Promise.resolve(emptyValidationCounts),
+    initialData: emptyValidationCounts,
+    enabled: false,
+    staleTime: Infinity,
+    meta: authenticatedQueryMeta,
   });
 
-  const query = useQuery<SubmissionSummary[]>({
+  const query = useInfiniteQuery({
     queryKey,
-    queryFn: ({ signal }) =>
-      getValidationQueue({ history, signal }).then((response) =>
-        Array.isArray(response.data) ? response.data : [],
-      ),
+    queryFn: ({ signal, pageParam }) =>
+      getValidationQueuePage({
+        view,
+        sort,
+        search,
+        page: pageParam,
+        pageSize: VALIDATION_QUEUE_PAGE_SIZE,
+      }, signal).then((response) => {
+        queryClient.setQueryData(countsKey, response.data.counts);
+        return response.data;
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.hasNext ? lastPage.page + 1 : undefined,
     staleTime: VALIDATION_QUEUE_STALE_TIME_MS,
     enabled,
     meta: authenticatedQueryMeta,
   });
 
-  const setQueue: Dispatch<SetStateAction<SubmissionSummary[]>> = useCallback(
-    (value) => {
-      queryClient.setQueryData<SubmissionSummary[]>(queryKey, (current = []) => {
-        return typeof value === "function"
-          ? (value as (previous: SubmissionSummary[]) => SubmissionSummary[])(current)
-          : value;
-      });
-    },
-    [queryClient, queryKey],
-  );
-
+  const firstPage = query.data?.pages[0];
   const refresh = useCallback(() => {
-    return queryClient.invalidateQueries({ queryKey: ["validation"] });
-  }, [queryClient]);
+    return queryClient.resetQueries({ queryKey, exact: true });
+  }, [queryClient, queryKey]);
 
   return {
-    queue: query.data ?? [],
-    setQueue,
+    queue: query.data?.pages.flatMap((page) => page.items) ?? [],
+    counts: firstPage?.counts ?? countsQuery.data,
+    totalCount: firstPage?.totalCount ?? 0,
+    hasNextPage: Boolean(query.hasNextPage),
+    loadingMore: query.isFetchingNextPage,
+    loadMoreError: query.isFetchNextPageError,
+    loadMore: query.fetchNextPage,
     loading: query.isLoading,
-    refreshing: query.isFetching,
-    error: query.error && !isCanceledError(query.error)
-      ? getErrorMessage(query.error, history ? "Unable to load all submissions." : "Unable to load the validation queue.")
+    refreshing: query.isFetching && !query.isLoading && !query.isFetchingNextPage,
+    error: query.error && !query.data && !isCanceledError(query.error)
+      ? getErrorMessage(query.error, "Unable to load the validation queue.")
       : "",
     refresh,
   };
