@@ -29,8 +29,6 @@ interface SubmissionReadOnlyBodyProps {
   rejectionReason?: string | null;
   /** Shown when the submission needs revision. */
   revisionNotes?: string | null;
-  /** Callback to transition from read-only rejected view into editing mode. */
-  onEditRejected?: () => void;
 }
 
 type ReadOnlyTab = "details" | "preview";
@@ -51,7 +49,6 @@ export default function SubmissionReadOnlyBody({
   onMediaIndexChange,
   rejectionReason,
   revisionNotes,
-  onEditRejected,
 }: SubmissionReadOnlyBodyProps) {
   const [tab, setTab] = useState<ReadOnlyTab>("details");
 
@@ -127,14 +124,6 @@ export default function SubmissionReadOnlyBody({
                     ? "No reason was recorded. Check your email for details."
                     : "No notes were recorded. Check your email for details."}
                 </p>
-              )}
-              {isRejected && onEditRejected && (
-                <div className="sub-ro-feedback-actions">
-                  <button type="button" className="sub-ro-edit-rejected-btn" onClick={onEditRejected}>
-                    <i className="ti ti-pencil" aria-hidden />
-                    Edit &amp; Resubmit
-                  </button>
-                </div>
               )}
             </section>
           )}

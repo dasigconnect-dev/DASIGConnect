@@ -128,9 +128,8 @@ public class MediaAssetService {
 
     /**
      * The shared default institution ("DASIG Central Visayas"). Its media
-     * library is visible to every institution, and any contributor may add
-     * folders/files to it — but deletion stays scoped to the owning
-     * institution.
+     * library is visible to every institution, and contributors may add
+     * folders/files to it — but other ordinary institutions stay isolated.
      */
     private UUID sharedInstitutionId() {
         return institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc()
@@ -139,8 +138,9 @@ public class MediaAssetService {
     }
 
     /**
-     * Institution ids a non-admin user may browse: their own plus the shared
-     * default.
+     * Institution ids a contributor may browse: their own institution plus the
+     * shared default institution. Admins and moderators use the network-wide
+     * branches instead.
      */
     private java.util.Set<UUID> visibleInstitutionIds(JwtUserDetails user) {
         java.util.Set<UUID> ids = new java.util.LinkedHashSet<>();
@@ -819,7 +819,7 @@ public class MediaAssetService {
                     .toList();
         }
 
-        // Non-admin: own institution + the shared default institution.
+        // Contributor: own institution + the shared default institution.
         java.util.Set<UUID> ids = visibleInstitutionIds(user);
         if (ids.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Institution scope is required for media albums.");
@@ -874,8 +874,8 @@ public class MediaAssetService {
      * Re-parent an album. {@code newParentId} null moves it to a root; the
      * target institution comes from the destination parent, else
      * {@code requestedInstitutionId}, else it stays put. Moving a folder into
-     * another institution (only the shared default for non-admins) re-homes the
-     * whole subtree and its assets.
+     * another institution re-homes the whole subtree and its assets. Only
+     * network-wide roles may move folders across institutions.
      */
     public MediaAlbumDto moveAlbum(UUID albumId, UUID newParentId, UUID requestedInstitutionId, JwtUserDetails user) {
         MediaAlbum album = loadAlbumForManage(albumId, user);
@@ -1043,8 +1043,9 @@ public class MediaAssetService {
         UUID assetInstitutionId = asset.getInstitution().getId();
         UUID targetInstitutionId = album.getInstitution().getId();
         if (!targetInstitutionId.equals(assetInstitutionId)) {
-            // Moving the asset into another institution — only its uploader or an
-            // admin, and (for non-admins) only into the shared default library.
+            // Moving the asset into another institution is reserved for
+            // network-wide roles, except contributors may move their own assets
+            // into the shared default library.
             boolean owner = asset.getUploader() != null && asset.getUploader().getId().equals(user.userId());
             if (!isNetworkRole(user) && !owner) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only move assets you uploaded.");
@@ -1231,7 +1232,6 @@ public class MediaAssetService {
         if (isNetworkRole(user) && requestedInstitutionId != null) {
             return requestedInstitutionId;
         }
-        // Non-admins may also add folders/files to the shared default institution.
         if (requestedInstitutionId != null && requestedInstitutionId.equals(sharedInstitutionId())) {
             return requestedInstitutionId;
         }

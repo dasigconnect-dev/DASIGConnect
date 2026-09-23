@@ -292,6 +292,18 @@ class SubmissionServiceTest {
     }
 
     @Test
+    void delete_rejectedSubmission_releasesSlotAndDeletes() {
+        UUID submissionId = UUID.randomUUID();
+        Submission submission = submission(submissionId, SubmissionStatus.rejected, Instant.now());
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+
+        submissionService.delete(submissionId, contributorPrincipal);
+
+        verify(slotReservationService).deleteAllForSubmission(submissionId);
+        verify(submissionRepository).delete(submission);
+    }
+
+    @Test
     void submit_draftWithCleanSlot_transitionsToPendingAndAudits() {
         UUID submissionId = UUID.randomUUID();
         Instant scheduledAt = Instant.parse("2026-06-01T08:00:00Z");
@@ -734,6 +746,33 @@ class SubmissionServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void attachAsset_contributorCanUseSharedDefaultAsset() {
+        UUID submissionId = UUID.randomUUID();
+        UUID assetId = UUID.randomUUID();
+        UUID sharedInstitutionId = UUID.randomUUID();
+        Institution sharedInstitution = institution(sharedInstitutionId);
+        AttachAssetDto dto = new AttachAssetDto();
+        dto.setMediaAssetId(assetId);
+        Submission submission = submission(submissionId, SubmissionStatus.draft, Instant.now());
+        MediaAsset asset = mediaAsset(assetId, sharedInstitution);
+
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission));
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(institutionRepository.findFirstByIsProtectedTrueOrderByCreatedAtAsc())
+                .thenReturn(Optional.of(sharedInstitution));
+        when(submissionMediaAssetRepository.existsBySubmissionIdAndMediaAssetId(submissionId, assetId)).thenReturn(false);
+        when(submissionMediaAssetRepository.countBySubmissionId(submissionId)).thenReturn(0L);
+        when(submissionMediaAssetRepository.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(asset));
+        when(submissionMediaAssetRepository.findBySubmissionIdOrderByDisplayOrderAsc(submissionId)).thenReturn(List.of());
+
+        submissionService.attachAsset(submissionId, dto, contributorPrincipal);
+
+        verify(submissionMediaAssetRepository).save(any(SubmissionMediaAsset.class));
+        verify(auditLogService).record(
+                any(), eq("MEDIA_ASSET_REUSED"), eq(null), eq(null), eq(assetId), any());
     }
 
     @Test
