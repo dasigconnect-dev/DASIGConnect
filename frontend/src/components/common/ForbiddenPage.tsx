@@ -18,7 +18,6 @@ export default function ForbiddenPage({ allowedRoles }: { allowedRoles: UserRole
   return (
     <ErrorPage
       variant="forbidden"
-      layout="in-shell"
       title="You don't have access to this page"
       message={
         <p>

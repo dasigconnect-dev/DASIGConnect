@@ -1075,9 +1075,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-          {/* Unknown URL while signed in: 404 inside the dashboard shell. Defined
-              before the top-level "*" so it wins for signed-in users. */}
-          {currentUser && <Route path="*" element={<NotFoundPage signedIn />} />}
         </Route>
 
         {/* Standalone Full-Screen Submission Editor */}

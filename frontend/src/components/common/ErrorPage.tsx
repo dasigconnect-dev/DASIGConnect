@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import dasigLogo from "../../assets/dasigconnect-logo.png";
 import "../../styles/error-page.css";
 
@@ -16,12 +17,8 @@ interface ErrorPageProps {
   title: string;
   message: ReactNode;
   actions: ErrorPageAction[];
-  /**
-   * `standalone` fills the viewport with the logo on top (logged out, or when
-   * the app shell itself crashed); `in-shell` sits inside the dashboard content
-   * area so the sidebar and top bar stay usable.
-   */
-  layout?: "standalone" | "in-shell";
+  /** e.g. the address that wasn't found, shown as a small code chip. */
+  path?: string;
   /** Technical detail, shown collapsed — for crash reports. */
   details?: string;
 }
@@ -32,20 +29,20 @@ const VARIANT_META: Record<ErrorPageVariant, { code: string; label: string; icon
   crash: { code: "500", label: "Unexpected error", icon: "ti-plug-connected-x" },
 };
 
-/** Shared layout for the app's error states (404, 403, crash). */
-export default function ErrorPage({
-  variant,
-  title,
-  message,
-  actions,
-  layout = "standalone",
-  details,
-}: ErrorPageProps) {
+/**
+ * Full-screen error state (404 / 403 / crash). Portaled to <body> and fixed
+ * over the viewport, so it's full-screen even when rendered from inside the
+ * dashboard shell (e.g. by ProtectedRoute) — a transformed ancestor there would
+ * otherwise become the containing block for position: fixed and trap it.
+ */
+export default function ErrorPage({ variant, title, message, actions, path, details }: ErrorPageProps) {
   const meta = VARIANT_META[variant];
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const [copied, setCopied] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const panelId = useId();
 
-  // Move focus to the heading so screen-reader and keyboard users land on the explanation.
+  // Land keyboard and screen-reader users on the explanation.
   useEffect(() => {
     headingRef.current?.focus();
   }, []);
@@ -61,80 +58,119 @@ export default function ErrorPage({
     }
   }
 
-  return (
-    <main className={`errp errp-${layout} errp-${variant}`} role={variant === "crash" ? "alert" : undefined}>
-      {layout === "standalone" && (
+  return createPortal(
+    <main
+      className={`errp errp-${variant}${details ? " has-details" : ""}${detailsOpen ? " is-details-open" : ""}`}
+      role={variant === "crash" ? "alert" : undefined}
+    >
+      <header className="errp-top">
         <a className="errp-logo" href="/" aria-label="DASIGConnect home">
           <img src={dasigLogo} alt="DASIGConnect" />
         </a>
-      )}
+      </header>
 
-      <div className="errp-body">
-        <SignalMark icon={meta.icon} code={meta.code} />
+      <section className="errp-hero">
+        <div className="errp-main">
+        <ErrorCode code={meta.code} icon={meta.icon} />
 
-        <div className="errp-copy">
-          <span className="errp-eyebrow">
-            Error {meta.code} · {meta.label}
-          </span>
-          <h1 className="errp-title" ref={headingRef} tabIndex={-1}>
-            {title}
-          </h1>
-          <div className="errp-message">{message}</div>
+        <p className="errp-eyebrow">{meta.label}</p>
+        <h1 className="errp-title" ref={headingRef} tabIndex={-1}>
+          {title}
+        </h1>
+        <div className="errp-message">{message}</div>
 
-          <div className="errp-actions">
-            {actions.map((action) => (
-              <button
-                key={action.label}
-                type="button"
-                className={`errp-btn ${action.tone === "ghost" ? "is-ghost" : "is-primary"}`}
-                onClick={action.onClick}
-              >
-                {action.icon && <i className={`ti ${action.icon}`} aria-hidden />}
-                {action.label}
-              </button>
-            ))}
-          </div>
+        {path && (
+          <code className="errp-path" title={path}>
+            {path}
+          </code>
+        )}
 
-          {details && (
-            <details className="errp-details">
-              <summary>Technical details</summary>
-              <pre>{details}</pre>
-              <button type="button" className="errp-copy-btn" onClick={() => void copyDetails()}>
-                <i className={`ti ${copied ? "ti-check" : "ti-copy"}`} aria-hidden />
-                {copied ? "Copied" : "Copy details"}
-              </button>
-            </details>
-          )}
+        <div className="errp-actions">
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              className={`errp-btn ${action.tone === "ghost" ? "is-ghost" : "is-primary"}`}
+              onClick={action.onClick}
+            >
+              {action.icon && <i className={`ti ${action.icon}`} aria-hidden />}
+              {action.label}
+            </button>
+          ))}
         </div>
-      </div>
-    </main>
+
+        {details && (
+          <button
+            type="button"
+            className="errp-details-toggle"
+            aria-expanded={detailsOpen}
+            aria-controls={panelId}
+            onClick={() => setDetailsOpen((open) => !open)}
+          >
+            <i className="ti ti-code" aria-hidden />
+            {detailsOpen ? "Hide technical details" : "Show technical details"}
+            <i className="ti ti-chevron-right errp-details-chevron" aria-hidden />
+          </button>
+        )}
+        </div>
+
+        {/* Slides in beside the error (below it on narrow screens) when opened. */}
+        {details && (
+          <aside className="errp-panel" id={panelId} aria-label="Technical details" inert={!detailsOpen} aria-hidden={!detailsOpen}>
+            <div className="errp-panel-inner">
+              <div className="errp-panel-head">
+                <span>Technical details</span>
+                <button type="button" className="errp-copy-btn" onClick={() => void copyDetails()}>
+                  <i className={`ti ${copied ? "ti-check" : "ti-copy"}`} aria-hidden />
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+              <pre>{details}</pre>
+            </div>
+          </aside>
+        )}
+      </section>
+
+      <footer className="errp-foot">© {new Date().getFullYear()} DASIGConnect</footer>
+    </main>,
+    document.body,
   );
 }
 
 /**
- * The DASIGConnect "signal" mark (the logo's arcs and nodes) with a broken arc
- * and the variant's icon at its centre — the connection that didn't go through.
+ * The status code in large display type, with its first "0" drawn as the
+ * DASIGConnect signal ring — broken, with the variant's icon inside.
  */
-function SignalMark({ icon, code }: { icon: string; code: string }) {
+function ErrorCode({ code, icon }: { code: string; icon: string }) {
+  const ringIndex = code.indexOf("0");
   return (
-    <div className="errp-mark" aria-hidden>
-      <svg viewBox="0 0 220 220" className="errp-mark-svg">
-        {/* outer blue arc, broken at the top right */}
-        <path className="errp-arc errp-arc-blue" d="M 176 58 A 92 92 0 1 1 138 23" />
-        <circle className="errp-node errp-node-blue" cx="138" cy="23" r="7" />
-        <circle className="errp-node errp-node-blue" cx="36" cy="160" r="9" />
-        {/* the dislodged segment */}
-        <path className="errp-arc errp-arc-loose" d="M 166 40 A 92 92 0 0 1 190 72" />
-        <circle className="errp-node errp-node-loose" cx="190" cy="72" r="5" />
-        {/* inner gold arc */}
-        <path className="errp-arc errp-arc-gold" d="M 52 110 A 58 58 0 1 1 110 168" />
-        <circle className="errp-node errp-node-gold" cx="52" cy="110" r="7" />
-        <circle className="errp-node errp-node-gold" cx="110" cy="168" r="5" />
-      </svg>
-      <div className="errp-mark-core">
-        <i className={`ti ${icon}`} />
-        <span>{code}</span>
-      </div>
+    <div className="errp-code" role="img" aria-label={`Error ${code}`}>
+      {code.split("").map((char, index) =>
+        index === ringIndex ? (
+          <SignalRing key={index} icon={icon} />
+        ) : (
+          <span key={index} className="errp-digit" aria-hidden>
+            {char}
+          </span>
+        ),
+      )}
     </div>
+  );
+}
+
+function SignalRing({ icon }: { icon: string }) {
+  return (
+    <span className="errp-ring" aria-hidden>
+      <svg viewBox="0 0 120 150">
+        {/* outer blue arc — broken at the upper right: the connection that didn't go through */}
+        <path className="errp-ring-outer" d="M 85.0 17.8 A 50 66 0 1 0 107.0 52.4" />
+        <circle className="errp-ring-node-blue" cx="85.0" cy="17.8" r="6" />
+        <circle className="errp-ring-node-blue" cx="107.0" cy="52.4" r="6" />
+        {/* inner gold arc */}
+        <path className="errp-ring-inner" d="M 34.4 80.9 A 26 34 0 1 1 68.9 106.9" />
+        <circle className="errp-ring-node-gold" cx="34.4" cy="80.9" r="5" />
+      </svg>
+      <i className={`ti ${icon}`} />
+    </span>
   );
 }

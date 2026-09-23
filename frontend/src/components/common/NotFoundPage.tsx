@@ -1,15 +1,16 @@
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import ErrorPage from "./ErrorPage";
 
-/** Unknown URL. In the dashboard shell when signed in; full-screen otherwise. */
+/** Unknown URL. Full-screen; the buttons depend on whether the user is signed in. */
 export default function NotFoundPage({ signedIn }: { signedIn: boolean }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const canGoBack = window.history.length > 1;
 
   return (
     <ErrorPage
       variant="not-found"
-      layout={signedIn ? "in-shell" : "standalone"}
+      path={location.pathname}
       title="We couldn't find that page"
       message={
         <p>
