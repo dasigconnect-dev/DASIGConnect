@@ -1,24 +1,20 @@
 package com.dasigconnect.backend.schedule;
 
 import com.dasigconnect.backend.model.entity.MediaAsset;
-import com.dasigconnect.backend.repository.AssetTagRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
-import com.dasigconnect.backend.service.AIClassificationService;
+import com.dasigconnect.backend.service.MediaProcessingQueueService;
+import com.dasigconnect.backend.service.ScheduledJobHealthService;
+import java.time.Instant;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.Instant;
-import java.util.List;
-
 /**
- * Reconciles media assets that do not have embeddings yet (UC-3.3).
- *
- * This covers both previously classified assets and older/unscanned assets
- * that can still be embedded from metadata such as filename, asset code,
- * media type, category, description, and manual tags.
- * Runs every 5 minutes. Idempotent.
+ * Re-enqueues active assets whose processing is incomplete. The durable queue
+ * owns provider calls, leases, retries, and dead-letter handling.
  */
 @Component
 public class EmbeddingReconciliationJob {
@@ -26,74 +22,36 @@ public class EmbeddingReconciliationJob {
     private static final Logger log = LoggerFactory.getLogger(EmbeddingReconciliationJob.class);
 
     private final MediaAssetRepository mediaAssetRepository;
-    private final AssetTagRepository assetTagRepository;
-    private final AIClassificationService aiClassificationService;
-    private final com.dasigconnect.backend.service.ScheduledJobHealthService scheduledJobHealthService;
+    private final MediaProcessingQueueService queueService;
+    private final ScheduledJobHealthService healthService;
     private final boolean aiConfigured;
 
-    public EmbeddingReconciliationJob(MediaAssetRepository mediaAssetRepository,
-                                      AssetTagRepository assetTagRepository,
-                                      AIClassificationService aiClassificationService,
-                                      com.dasigconnect.backend.service.ScheduledJobHealthService scheduledJobHealthService,
-                                      @org.springframework.beans.factory.annotation.Value("${anthropic.api.key:}") String anthropicApiKey,
-                                      @org.springframework.beans.factory.annotation.Value("${voyage.api.key:}") String voyageApiKey) {
+    public EmbeddingReconciliationJob(
+            MediaAssetRepository mediaAssetRepository,
+            MediaProcessingQueueService queueService,
+            ScheduledJobHealthService healthService,
+            @Value("${anthropic.api.key:}") String anthropicApiKey,
+            @Value("${voyage.api.key:}") String voyageApiKey) {
         this.mediaAssetRepository = mediaAssetRepository;
-        this.assetTagRepository = assetTagRepository;
-        this.aiClassificationService = aiClassificationService;
-        this.scheduledJobHealthService = scheduledJobHealthService;
-        // No AI keys → the classify/embed calls would just fail per-asset every
-        // run. Skip the job entirely so the log stays clean and nothing is spent.
+        this.queueService = queueService;
+        this.healthService = healthService;
         this.aiConfigured = !anthropicApiKey.isBlank() || !voyageApiKey.isBlank();
     }
 
-    @Scheduled(fixedDelay = 300_000)
+    @Scheduled(fixedDelayString = "${app.media-processing.reconcile-delay-ms:300000}")
     public void reconcile() {
-        if (!aiConfigured) {
-            return;
-        }
+        if (!aiConfigured) return;
         Instant startedAt = Instant.now();
         try {
-            reconcilePendingEmbeddings();
-            scheduledJobHealthService.recordSuccess("EmbeddingReconciliationJob", startedAt);
-        } catch (Exception ex) {
-            log.error("EmbeddingReconciliationJob failed: {}", ex.getMessage(), ex);
-            scheduledJobHealthService.recordFailure("EmbeddingReconciliationJob", startedAt, ex);
-        }
-    }
-
-    private void reconcilePendingEmbeddings() {
-        List<MediaAsset> pending = mediaAssetRepository.findNeedingEmbedding();
-        if (pending.isEmpty()) {
-            return;
-        }
-
-        log.info("EmbeddingReconciliationJob: found {} assets needing embedding", pending.size());
-
-        for (MediaAsset asset : pending) {
-            try {
-                if (asset.getFileType() != null && asset.getFileType().isImage()) {
-                    if (asset.getAiClassifiedAt() == null) {
-                        aiClassificationService.classifyAndEmbed(asset.getId(), asset.getStorageUrl());
-                    } else {
-                        // Already classified, just stuck on embedding — retrying the
-                        // full classifyAndEmbed here would call Claude Vision again
-                        // for no reason every 5 minutes until the embedding succeeds.
-                        aiClassificationService.retryStuckImageEmbedding(asset.getId(), asset.getStorageUrl());
-                    }
-                    continue;
-                }
-
-                List<String> tagLabels = assetTagRepository
-                        .findByMediaAssetIdOrderByCreatedAtAsc(asset.getId())
-                        .stream()
-                        .map(t -> t.getLabel())
-                        .toList();
-
-                String embeddingText = AIClassificationService.buildEmbeddingText(asset, tagLabels);
-                aiClassificationService.generateAndStoreEmbedding(asset.getId(), embeddingText);
-            } catch (Exception e) {
-                log.warn("Reconciliation failed for asset {}: {}", asset.getId(), e.getMessage());
+            List<MediaAsset> pending = mediaAssetRepository.findNeedingEmbedding();
+            for (MediaAsset asset : pending) queueService.enqueue(asset.getId());
+            if (!pending.isEmpty()) {
+                log.info("EmbeddingReconciliationJob: enqueued {} incomplete assets", pending.size());
             }
+            healthService.recordSuccess("EmbeddingReconciliationJob", startedAt);
+        } catch (Exception error) {
+            log.error("EmbeddingReconciliationJob failed: {}", error.getMessage(), error);
+            healthService.recordFailure("EmbeddingReconciliationJob", startedAt, error);
         }
     }
 }

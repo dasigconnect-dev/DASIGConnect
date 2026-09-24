@@ -28,6 +28,7 @@ export interface SavedMediaAsset {
   skipWatermark?: boolean;
   /** MediaAssetStatus name. "STAGED" = uploaded to this draft, not yet bound to an institution. */
   status?: string;
+  processingVersion?: string | null;
   /** Media Library album this asset is filed under (null while STAGED). */
   albumId?: string | null;
   albumName?: string | null;
@@ -69,6 +70,12 @@ export interface SubmissionSummary {
   albumName?: string | null;
   mediaTags?: string[];
   mediaAssets?: SavedMediaAsset[];
+  mediaProcessing?: {
+    total: number;
+    ready: number;
+    processing: number;
+    failed: number;
+  };
   requiresManualPublishing?: boolean;
   /** Reviewer's reason, present when status is "rejected". */
   rejectionReason?: string | null;

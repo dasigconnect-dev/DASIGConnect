@@ -24,6 +24,14 @@
 - Ambiguous upload failures re-read the draft and match newly registered assets by original filename and size before allowing a retry, preventing duplicate uploads after lost responses.
 - The existing full `saveDraft()` path remains the compatibility fallback after automatic media persistence fails.
 - Composer end-to-end coverage verifies upload, library attachment, detach, in-flight removal, transient failure fallback, ordinary autosave, submission, and revision behavior.
+- **Phase 2 - Durable Progressive Processing:** Implemented on `feature/ai-media-phase2-durable-processing`.
+- Image processing now uses versioned, idempotent database jobs with short claim leases, bounded batches, exponential retry delays, and a terminal dead-letter state.
+- Upload and draft-submission transitions only enqueue work; Claude and Voyage calls run later without holding the originating request transaction or database connection.
+- Retries inspect persisted classification, IMAGE embedding, and SEMANTIC embedding stages so successful provider work is not repeated.
+- The existing reconciliation schedule now repairs missing queue work instead of directly launching unbounded asynchronous provider calls.
+- Submission detail responses expose additive ready, processing, and failed media counts, and asset responses expose the completed processing version.
+- Queue rows are not granted to Supabase `anon` or `authenticated` roles, and enqueueing remains scoped to the authenticated uploader or institution.
+- Regression coverage verifies queue idempotency, bounded claims, dead-letter behavior, worker completion and retry, staged-media promotion, and missing-stage-only processing.
 
 ## 2. Verified Current Baseline
 

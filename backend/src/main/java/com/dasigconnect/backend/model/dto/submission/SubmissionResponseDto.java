@@ -31,6 +31,7 @@ public class SubmissionResponseDto {
     private Instant createdAt;
     private Instant updatedAt;
     private List<MediaAssetSummaryDto> mediaAssets;
+    private MediaProcessingCountsDto mediaProcessing;
     private String category;
     private String templateId;
     private boolean fastTrack;
@@ -62,6 +63,7 @@ public class SubmissionResponseDto {
         dto.createdAt = s.getCreatedAt();
         dto.updatedAt = s.getUpdatedAt();
         dto.mediaAssets = mediaAssets;
+        dto.mediaProcessing = MediaProcessingCountsDto.from(mediaAssets);
         dto.category = s.getCategory();
         dto.templateId = s.getTemplateId();
         dto.fastTrack = s.isFastTrack();
@@ -155,6 +157,10 @@ public class SubmissionResponseDto {
 
     public List<MediaAssetSummaryDto> getMediaAssets() {
         return mediaAssets;
+    }
+
+    public MediaProcessingCountsDto getMediaProcessing() {
+        return mediaProcessing;
     }
 
     public String getCategory() {

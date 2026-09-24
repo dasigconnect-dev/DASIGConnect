@@ -29,6 +29,7 @@ public class MediaAssetSummaryDto {
      * institution.
      */
     private String status;
+    private String processingVersion;
 
     public static MediaAssetSummaryDto from(MediaAsset asset) {
         MediaAssetSummaryDto dto = new MediaAssetSummaryDto();
@@ -53,6 +54,7 @@ public class MediaAssetSummaryDto {
         dto.uploaderId = asset.getUploader().getId();
         dto.uploaderEmail = asset.getUploader().getEmail();
         dto.status = asset.getStatus() != null ? asset.getStatus().name() : null;
+        dto.processingVersion = asset.getAiProcessingVersion();
         if (asset.getDeletedAt() != null || asset.getStatus() == com.dasigconnect.backend.model.entity.MediaAssetStatus.DELETED) {
             dto.title = "[Asset Deleted]";
             dto.storageUrl = null;
@@ -137,5 +139,9 @@ public class MediaAssetSummaryDto {
 
     public String getStatus() {
         return status;
+    }
+
+    public String getProcessingVersion() {
+        return processingVersion;
     }
 }

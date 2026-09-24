@@ -112,6 +112,7 @@ public class SubmissionService {
     private final EmailDeliveryService emailDeliveryService;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final MediaProcessingQueueService mediaProcessingQueueService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -137,7 +138,8 @@ public class SubmissionService {
             AssetTagRepository assetTagRepository,
             MediaAlbumRepository mediaAlbumRepository,
             ApplicationEventPublisher eventPublisher,
-            GuardRailSettingsService guardRailSettings) {
+            GuardRailSettingsService guardRailSettings,
+            MediaProcessingQueueService mediaProcessingQueueService) {
         this.submissionRepository = submissionRepository;
         this.institutionRepository = institutionRepository;
         this.mediaAssetRepository = mediaAssetRepository;
@@ -153,6 +155,7 @@ public class SubmissionService {
         this.assetTagRepository = assetTagRepository;
         this.mediaAlbumRepository = mediaAlbumRepository;
         this.eventPublisher = eventPublisher;
+        this.mediaProcessingQueueService = mediaProcessingQueueService;
         this.guardRailSettings = guardRailSettings;
     }
 
@@ -518,6 +521,7 @@ public class SubmissionService {
         List<MediaAsset> attachedAssets = submissionMediaAssetRepository
                 .findMediaAssetsBySubmissionId(submissionId);
         List<MediaAsset> dirty = new java.util.ArrayList<>();
+        List<UUID> processingAssetIds = new java.util.ArrayList<>();
         // Resolved (and, if needed, created) lazily — an all-library-picks post
         // must not spawn an empty album.
         MediaAlbum submissionAlbum = null;
@@ -527,6 +531,9 @@ public class SubmissionService {
             if (asset.getStatus() == MediaAssetStatus.STAGED) {
                 asset.setInstitution(submission.getInstitution());
                 asset.setStatus(MediaAssetStatus.PROCESSING);
+                if (asset.getFileType() != null && asset.getFileType().isImage()) {
+                    processingAssetIds.add(asset.getId());
+                }
                 changed = true;
             }
             // A real library pick always has an album (UC-2.1 invariant), so an
@@ -550,6 +557,7 @@ public class SubmissionService {
         if (!dirty.isEmpty()) {
             mediaAssetRepository.saveAll(dirty);
         }
+        processingAssetIds.forEach(mediaProcessingQueueService::enqueueAfterCommit);
 
         refreshManualPublishingFlag(submission);
 
@@ -889,6 +897,9 @@ public class SubmissionService {
         asset.setFileType(fileType);
         asset.setFileSizeBytes(dto.getFileSizeBytes());
         asset = mediaAssetRepository.save(asset);
+        if (!stage && fileType.isImage()) {
+            mediaProcessingQueueService.enqueueAfterCommit(asset.getId());
+        }
         applySubmissionMediaTags(asset, submission.getMediaTags());
 
         linkAssetToSubmission(submission, asset, (int) currentCount);

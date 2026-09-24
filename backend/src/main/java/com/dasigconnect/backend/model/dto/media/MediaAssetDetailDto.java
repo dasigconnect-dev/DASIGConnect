@@ -25,6 +25,7 @@ public class MediaAssetDetailDto {
     private String aiClassificationModel;
     private Instant embeddingGeneratedAt;
     private String embeddingModel;
+    private String processingVersion;
     private Instant createdAt;
     private UUID institutionId;
     private String institutionName;
@@ -53,6 +54,7 @@ public class MediaAssetDetailDto {
         dto.aiClassificationModel = asset.getAiClassificationModel();
         dto.embeddingGeneratedAt = asset.getEmbeddingGeneratedAt();
         dto.embeddingModel = asset.getEmbeddingModel();
+        dto.processingVersion = asset.getAiProcessingVersion();
         dto.createdAt = asset.getCreatedAt();
         dto.institutionId = asset.getInstitution().getId();
         dto.institutionName = asset.getInstitution().getName();
@@ -125,6 +127,10 @@ public class MediaAssetDetailDto {
 
     public String getEmbeddingModel() {
         return embeddingModel;
+    }
+
+    public String getProcessingVersion() {
+        return processingVersion;
     }
 
     public Instant getCreatedAt() {

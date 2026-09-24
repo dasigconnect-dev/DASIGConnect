@@ -59,8 +59,80 @@ public class AIClassificationService {
     }
 
     /**
+     * Runs the durable worker pipeline synchronously. Persisted stages are
+     * reused on retry so successful provider calls are not repeated.
+     */
+    public boolean processAsset(UUID assetId, String storageUrl) {
+        MediaAsset asset = mediaAssetRepository.findActiveById(assetId).orElse(null);
+        if (asset == null) return false;
+
+        if (asset.getFileType() != null && !asset.getFileType().isImage()) {
+            if (mediaAssetEmbeddingRepository
+                    .findEmbedding(assetId, MediaAssetEmbeddingType.SEMANTIC).isPresent()) {
+                mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.READY.name());
+                return true;
+            }
+            List<String> tagLabels = assetTagRepository
+                    .findByMediaAssetIdOrderByCreatedAtAsc(assetId)
+                    .stream()
+                    .map(AssetTag::getLabel)
+                    .toList();
+            String embeddingText = buildEmbeddingText(asset, tagLabels);
+            if (embeddingText.isBlank() || !generateAndStoreEmbeddingInternal(assetId, embeddingText)) {
+                mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
+                return false;
+            }
+            mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.READY.name());
+            return true;
+        }
+
+        MediaClassificationDto result = null;
+        if (asset.getAiClassifiedAt() == null) {
+            try {
+                result = claudeVisionClient.classifyMedia(List.of(storageUrl));
+                persistClassification(assetId, result);
+                persistSuggestedTags(assetId, result.suggestedTags());
+            } catch (Exception error) {
+                log.warn("AI classification failed for asset {}: {}", assetId, error.getMessage());
+                mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
+                return false;
+            }
+        }
+
+        if (mediaAssetEmbeddingRepository
+                .findEmbedding(assetId, MediaAssetEmbeddingType.IMAGE).isEmpty()
+                && !generateAndStoreImageEmbedding(assetId, storageUrl)) {
+            mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
+            return false;
+        }
+
+        if (mediaAssetEmbeddingRepository
+                .findEmbedding(assetId, MediaAssetEmbeddingType.SEMANTIC).isEmpty()) {
+            MediaClassificationDto classification = result;
+            List<String> tagLabels = assetTagRepository
+                    .findByMediaAssetIdOrderByCreatedAtAsc(assetId)
+                    .stream()
+                    .map(AssetTag::getLabel)
+                    .toList();
+            String embeddingText = mediaAssetRepository.findActiveById(assetId)
+                    .map(current -> classification == null
+                            ? buildEmbeddingText(current, tagLabels)
+                            : buildEmbeddingText(current, classification, tagLabels))
+                    .orElse("");
+            if (embeddingText.isBlank() || !generateAndStoreEmbeddingInternal(assetId, embeddingText)) {
+                mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.FAILED.name());
+                return false;
+            }
+        }
+
+        mediaAssetRepository.updateStatus(assetId, MediaAssetStatus.READY.name());
+        return true;
+    }
+
+    /**
      * Classifies a media asset and generates its embedding asynchronously.
-     * Called immediately after upload — never blocks the upload response.
+     * Legacy asynchronous entry point retained for compatibility. New uploads
+     * use MediaProcessingWorker and the synchronous, stage-aware processAsset path.
      *
      * @param assetId    UUID of the saved MediaAsset
      * @param storageUrl Supabase Storage URL used as image input for Claude
