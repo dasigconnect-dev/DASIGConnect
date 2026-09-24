@@ -57,6 +57,7 @@ export interface MediaSuggestResult {
   aiCategory: string | null;
   similarityScore: number;
   matchReasons?: string[];
+  rankingVersion?: string;
   createdAt: string;
 }
 

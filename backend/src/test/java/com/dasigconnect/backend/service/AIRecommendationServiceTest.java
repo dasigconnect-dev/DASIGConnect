@@ -32,6 +32,7 @@ import com.dasigconnect.backend.model.entity.MediaAsset;
 import com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType;
 import com.dasigconnect.backend.model.entity.MediaFileType;
 import com.dasigconnect.backend.model.entity.Submission;
+import com.dasigconnect.backend.model.entity.SubmissionMediaContext;
 import com.dasigconnect.backend.model.entity.User;
 import com.dasigconnect.backend.repository.AiInteractionLogRepository;
 import com.dasigconnect.backend.repository.AssetTagRepository;
@@ -39,6 +40,7 @@ import com.dasigconnect.backend.repository.MediaAlbumRepository;
 import com.dasigconnect.backend.repository.MediaAssetEmbeddingRepository;
 import com.dasigconnect.backend.repository.MediaAssetRepository;
 import com.dasigconnect.backend.repository.SubmissionMediaAssetRepository;
+import com.dasigconnect.backend.repository.SubmissionMediaContextRepository;
 import com.dasigconnect.backend.repository.SubmissionRepository;
 import com.dasigconnect.backend.security.JwtUserDetails;
 
@@ -133,6 +135,9 @@ class AIRecommendationServiceTest {
                 aiInteractionLogRepository,
                 voyageAIClient,
                 mock(MediaAlbumRepository.class),
+                mock(SubmissionMediaContextRepository.class),
+                true,
+                false,
                 true
         );
 
@@ -225,6 +230,9 @@ class AIRecommendationServiceTest {
                 mock(AiInteractionLogRepository.class),
                 voyageAIClient,
                 mock(MediaAlbumRepository.class),
+                mock(SubmissionMediaContextRepository.class),
+                true,
+                false,
                 true
         );
 
@@ -276,7 +284,8 @@ class AIRecommendationServiceTest {
 
         AIRecommendationService service = new AIRecommendationService(
                 submissions, submissionMedia, mediaAssets, embeddings, tags,
-                mock(AiInteractionLogRepository.class), voyage, mock(MediaAlbumRepository.class), true);
+                mock(AiInteractionLogRepository.class), voyage, mock(MediaAlbumRepository.class),
+                mock(SubmissionMediaContextRepository.class), true, false, true);
 
         List<MediaSuggestResultDto> results = service.suggestMedia(
                 submissionId,
@@ -324,7 +333,8 @@ class AIRecommendationServiceTest {
 
         AIRecommendationService service = new AIRecommendationService(
                 submissions, submissionMedia, mediaAssets, embeddings, tags,
-                mock(AiInteractionLogRepository.class), voyage, mock(MediaAlbumRepository.class), false);
+                mock(AiInteractionLogRepository.class), voyage, mock(MediaAlbumRepository.class),
+                mock(SubmissionMediaContextRepository.class), false, false, true);
         MediaSuggestRequestDto dto = new MediaSuggestRequestDto();
         dto.setEventTitle("Campus innovation event");
 
@@ -337,6 +347,128 @@ class AIRecommendationServiceTest {
         assertEquals(candidateId, results.getFirst().getId());
         verify(embeddings, never()).findTopSimilarToAssetsWithScore(
                 eq(institutionId), eq(MediaAssetEmbeddingType.IMAGE), anyList(), eq(12), eq(30));
+    }
+
+    @Test
+    void suggestMedia_hybridRanking_usesEventContextQualityAndSequenceSignals() {
+        UUID institutionId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        MediaAsset attached = asset(UUID.randomUUID(), "selected-stage.jpg", "Event");
+        attached.setObservedScenes(new String[]{"auditorium"});
+        attached.setObservedActivities(new String[]{"presentation"});
+
+        MediaAsset contextual = asset(UUID.randomUUID(), "coding-team.jpg", "Technology");
+        contextual.setObservedScenes(new String[]{"computer laboratory"});
+        contextual.setObservedActivities(new String[]{"coding"});
+        contextual.setEquipmentSignals(new String[]{"laptops"});
+        contextual.setCompositionSignals(new String[]{"wide group shot"});
+        contextual.setVisualQualitySignals(new String[]{"sharp", "well lit"});
+        MediaAsset generic = asset(UUID.randomUUID(), "generic-stage.jpg", "Event");
+        generic.setObservedScenes(new String[]{"auditorium"});
+        generic.setObservedActivities(new String[]{"presentation"});
+        generic.setVisualQualitySignals(new String[]{"blurry"});
+
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
+        MediaAssetRepository mediaAssets = mock(MediaAssetRepository.class);
+        MediaAssetEmbeddingRepository embeddings = mock(MediaAssetEmbeddingRepository.class);
+        AssetTagRepository tags = mock(AssetTagRepository.class);
+        SubmissionMediaContextRepository contexts = mock(SubmissionMediaContextRepository.class);
+
+        when(submissions.findById(submissionId)).thenReturn(Optional.of(
+                submission(submissionId, institutionId, contributorId)));
+        when(submissionMedia.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(attached));
+        when(tags.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                eq(institutionId), eq(MediaAssetEmbeddingType.IMAGE), anyList(), eq(12), eq(30)))
+                .thenReturn(List.of(
+                        new Object[]{generic.getId().toString(), 0.78},
+                        new Object[]{contextual.getId().toString(), 0.75}));
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                eq(institutionId), eq(MediaAssetEmbeddingType.SEMANTIC), anyList(), eq(12), eq(30)))
+                .thenReturn(List.of());
+        when(mediaAssets.findActiveByIds(anyList())).thenReturn(List.of(generic, contextual));
+
+        SubmissionMediaContext context = new SubmissionMediaContext();
+        context.setSubmissionId(submissionId);
+        context.setInstitutionId(institutionId);
+        context.setReadyAssetCount(1);
+        context.setContextText("scenes: computer laboratory. activities: coding. equipment: laptops. event: hackathon.");
+        when(contexts.findById(submissionId)).thenReturn(Optional.of(context));
+
+        AIRecommendationService service = new AIRecommendationService(
+                submissions, submissionMedia, mediaAssets, embeddings, tags,
+                mock(AiInteractionLogRepository.class), mock(VoyageAIClient.class),
+                mock(MediaAlbumRepository.class), contexts, true, true, true);
+
+        List<MediaSuggestResultDto> results = service.suggestMedia(
+                submissionId,
+                new MediaSuggestRequestDto(),
+                new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
+
+        assertEquals(contextual.getId(), results.getFirst().getId());
+        assertEquals("hybrid-v1", results.getFirst().getRankingVersion());
+        assertTrue(results.getFirst().getMatchReasons().stream()
+                .anyMatch(reason -> reason.toLowerCase().contains("event context")));
+        assertTrue(results.getFirst().getMatchReasons().stream()
+                .anyMatch(reason -> reason.toLowerCase().contains("quality")));
+        assertTrue(results.getFirst().getMatchReasons().stream()
+                .anyMatch(reason -> reason.toLowerCase().contains("complementary")));
+    }
+
+    @Test
+    void suggestMedia_hybridRanking_diversifiesNearDuplicateResults() {
+        UUID institutionId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        MediaAsset attached = asset(UUID.randomUUID(), "selected.jpg", "Event");
+        attached.setObservedScenes(new String[]{"stage"});
+
+        MediaAsset best = asset(UUID.fromString("00000000-0000-0000-0000-000000000001"), "award-1.jpg", "Recognition");
+        best.setContentHash("duplicate-hash");
+        best.setObservedScenes(new String[]{"award ceremony"});
+        MediaAsset duplicate = asset(UUID.fromString("00000000-0000-0000-0000-000000000002"), "award-2.jpg", "Recognition");
+        duplicate.setContentHash("duplicate-hash");
+        duplicate.setObservedScenes(new String[]{"award ceremony"});
+        MediaAsset diverse = asset(UUID.fromString("00000000-0000-0000-0000-000000000003"), "outreach.jpg", "Community");
+        diverse.setObservedScenes(new String[]{"outdoor community outreach"});
+
+        SubmissionRepository submissions = mock(SubmissionRepository.class);
+        SubmissionMediaAssetRepository submissionMedia = mock(SubmissionMediaAssetRepository.class);
+        MediaAssetRepository mediaAssets = mock(MediaAssetRepository.class);
+        MediaAssetEmbeddingRepository embeddings = mock(MediaAssetEmbeddingRepository.class);
+        AssetTagRepository tags = mock(AssetTagRepository.class);
+
+        when(submissions.findById(submissionId)).thenReturn(Optional.of(
+                submission(submissionId, institutionId, contributorId)));
+        when(submissionMedia.findMediaAssetsBySubmissionId(submissionId)).thenReturn(List.of(attached));
+        when(tags.findLabelsAndSourcesByMediaAssetIds(anyList())).thenReturn(List.of());
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                eq(institutionId), eq(MediaAssetEmbeddingType.IMAGE), anyList(), eq(12), eq(30)))
+                .thenReturn(List.of(
+                        new Object[]{best.getId().toString(), 0.95},
+                        new Object[]{duplicate.getId().toString(), 0.94},
+                        new Object[]{diverse.getId().toString(), 0.80}));
+        when(embeddings.findTopSimilarToAssetsWithScore(
+                eq(institutionId), eq(MediaAssetEmbeddingType.SEMANTIC), anyList(), eq(12), eq(30)))
+                .thenReturn(List.of());
+        when(mediaAssets.findActiveByIds(anyList())).thenReturn(List.of(best, duplicate, diverse));
+
+        AIRecommendationService service = new AIRecommendationService(
+                submissions, submissionMedia, mediaAssets, embeddings, tags,
+                mock(AiInteractionLogRepository.class), mock(VoyageAIClient.class),
+                mock(MediaAlbumRepository.class), mock(SubmissionMediaContextRepository.class),
+                true, true, false);
+
+        List<MediaSuggestResultDto> results = service.suggestMedia(
+                submissionId,
+                new MediaSuggestRequestDto(),
+                new JwtUserDetails(contributorId, "contributor@test.edu", "contributor", institutionId));
+
+        assertEquals(List.of(best.getId(), diverse.getId(), duplicate.getId()),
+                results.stream().map(MediaSuggestResultDto::getId).toList());
+        assertTrue(results.stream().allMatch(result -> "hybrid-v1".equals(result.getRankingVersion())));
     }
 
     @Test
@@ -469,6 +601,9 @@ class AIRecommendationServiceTest {
                 mock(AiInteractionLogRepository.class),
                 voyageAIClient,
                 mediaAlbumRepository,
+                mock(SubmissionMediaContextRepository.class),
+                true,
+                false,
                 true
         );
 
@@ -486,6 +621,18 @@ class AIRecommendationServiceTest {
         album.setName(name);
         album.setCreatedBy(UUID.randomUUID());
         return album;
+    }
+
+    private static Submission submission(UUID submissionId, UUID institutionId, UUID contributorId) {
+        Institution institution = new Institution();
+        institution.setId(institutionId);
+        User contributor = new User();
+        contributor.setId(contributorId);
+        Submission submission = new Submission();
+        submission.setId(submissionId);
+        submission.setInstitution(institution);
+        submission.setContributor(contributor);
+        return submission;
     }
 
     private static void setCreatedAt(MediaAsset asset, Instant createdAt) {

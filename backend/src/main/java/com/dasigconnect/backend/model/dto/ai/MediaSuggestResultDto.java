@@ -17,6 +17,7 @@ public class MediaSuggestResultDto {
     private String aiCategory;
     private double similarityScore;
     private List<String> matchReasons;
+    private String rankingVersion;
     private Instant createdAt;
 
     public static MediaSuggestResultDto from(MediaAsset asset, double score) {
@@ -24,6 +25,11 @@ public class MediaSuggestResultDto {
     }
 
     public static MediaSuggestResultDto from(MediaAsset asset, double score, List<String> matchReasons) {
+        return from(asset, score, matchReasons, "legacy-v1");
+    }
+
+    public static MediaSuggestResultDto from(
+            MediaAsset asset, double score, List<String> matchReasons, String rankingVersion) {
         MediaSuggestResultDto dto = new MediaSuggestResultDto();
         dto.id = asset.getId();
         dto.assetCode = asset.getAssetCode();
@@ -34,6 +40,7 @@ public class MediaSuggestResultDto {
         dto.aiCategory = asset.getAiCategory();
         dto.similarityScore = score;
         dto.matchReasons = matchReasons == null ? List.of() : List.copyOf(matchReasons);
+        dto.rankingVersion = rankingVersion;
         dto.createdAt = asset.getCreatedAt();
         return dto;
     }
@@ -47,5 +54,6 @@ public class MediaSuggestResultDto {
     public String getAiCategory() { return aiCategory; }
     public double getSimilarityScore() { return similarityScore; }
     public List<String> getMatchReasons() { return matchReasons; }
+    public String getRankingVersion() { return rankingVersion; }
     public Instant getCreatedAt() { return createdAt; }
 }
