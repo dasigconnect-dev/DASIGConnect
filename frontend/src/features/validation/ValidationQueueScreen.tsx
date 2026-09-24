@@ -122,18 +122,6 @@ type SortKey = ValidationQueueSort;
 type DecisionModal = "approve" | "revise" | "reject" | null;
 const MODAL_EXIT_MS = 190;
 const REVIEWABLE_STATUSES = new Set(["pending", "in_review"]);
-
-/**
- * Label for a queue card's action. Tapping a card only opens the submission —
- * the review lock is taken later with Start Review — so the label says what
- * opening it leads to, not "Start Review" on every card.
- */
-function queueCardAction(status: string): { label: string; icon: string } {
-  const value = normalizeStatus(status);
-  if (value === "pending") return { label: "Review", icon: "ti-clipboard-check" };
-  if (value === "in_review") return { label: "Open", icon: "ti-lock" };
-  return { label: "View details", icon: "ti-eye" };
-}
 const SUBMISSION_DETAIL_STALE_TIME_MS = 60_000;
 
 const VIDEO_EXT = new Set(["mp4", "mov", "webm", "avi", "mkv"]);
@@ -338,6 +326,15 @@ export default function ValidationQueueScreen({
   } | null>(null);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [mobileView, setMobileView] = useState<"queue" | "review">("queue");
+  // Pending "clear the selection after Back"; cancelled if a card is opened
+  // before the slide-out finishes, so it can't wipe the new selection.
+  const mobileBackTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (mobileView === "review" && mobileBackTimer.current) {
+      window.clearTimeout(mobileBackTimer.current);
+      mobileBackTimer.current = null;
+    }
+  }, [mobileView]);
   const [showDetails, setShowDetails] = useState(true);
   const [mediaIndex, setMediaIndex] = useState(0);
   const [renderedModal, setRenderedModal] = useState<DecisionModal>(null);
@@ -806,33 +803,11 @@ export default function ValidationQueueScreen({
       return;
     }
 
-    // Mobile: the list is always the starting screen, so auto-pick a first
-    // item from the current tab as a convenience once the previous
-    // selection (if any) no longer matches it.
-    if (isFailedMode) {
-      const first = failures[0];
-      if (first) {
-        queueMicrotask(() =>
-          void openSubmission({
-            id: first.submissionId,
-            institutionId: first.institutionId,
-            institutionName: first.institutionName,
-            eventTitle: first.eventTitle,
-            eventDate: "",
-            status: first.status as SubmissionStatus,
-            scheduledAt: first.scheduledAt ?? undefined,
-            fastTrack: first.fastTrack,
-          }),
-        );
-        return;
-      }
-    } else if (filteredQueue.length > 0) {
-      queueMicrotask(() => void openSubmission(filteredQueue[0]));
-      return;
-    }
-
+    // Phones: nothing opens until the user taps a card. (This used to open the
+    // current tab's first item in the hidden review pane — a background fetch,
+    // and a card shown as selected that nobody had tapped.)
     if (selectedId || selected) clearSelection();
-  }, [isFailedMode, loading, failuresLoading, failures, filteredQueue, selectedId, selected, selectedMatchesCurrentQueueView, openSubmission, isDesktop]);
+  }, [isFailedMode, loading, failuresLoading, failures, filteredQueue, selectedId, selected, selectedMatchesCurrentQueueView, isDesktop]);
 
   function setLockFor(submissionId: string, lock: ReviewLock) {
     setLocks((prev) => ({ ...prev, [submissionId]: lock }));
@@ -968,6 +943,17 @@ export default function ValidationQueueScreen({
     } finally {
       setDecisionBusy(false);
     }
+  }
+
+  /**
+   * Phones: back to the list. The selection is cleared once the review pane has
+   * slid out, so no card stays highlighted as if it were still open. A held
+   * review lock is untouched (locks persist until unlocked, decided, or expired).
+   */
+  function handleMobileBack() {
+    setMobileView("queue");
+    if (mobileBackTimer.current) window.clearTimeout(mobileBackTimer.current);
+    mobileBackTimer.current = window.setTimeout(clearSelection, 340);
   }
 
   /** Slot passed: go straight to the edit form's Schedule tab to pick a new one. */
@@ -1671,13 +1657,6 @@ export default function ValidationQueueScreen({
                         </span>
                       )}
                     </div>
-                    <div className="val-qi-mobile-action">
-                      <span className="val-qi-mobile-btn">
-                        <i className="ti ti-refresh" />
-                        <span>Inspect &amp; Recover</span>
-                        <i className="ti ti-chevron-right" />
-                      </span>
-                    </div>
                   </button>
                 ))}
 
@@ -1786,13 +1765,6 @@ export default function ValidationQueueScreen({
                         <i className="ti ti-photo"></i> {item.mediaCount ?? 0}
                       </span>
                     </div>
-                    <div className="val-qi-mobile-action">
-                      <span className="val-qi-mobile-btn">
-                        <i className={`ti ${queueCardAction(item.status).icon}`} aria-hidden="true" />
-                        <span>{queueCardAction(item.status).label}</span>
-                        <i className="ti ti-chevron-right" aria-hidden="true" />
-                      </span>
-                    </div>
                   </button>
                 ))}
 
@@ -1837,7 +1809,7 @@ export default function ValidationQueueScreen({
             <button
               type="button"
               className="val-mobile-back-btn"
-              onClick={() => setMobileView("queue")}
+              onClick={handleMobileBack}
               aria-label="Back to queue list"
             >
               <i className="ti ti-chevron-left" />

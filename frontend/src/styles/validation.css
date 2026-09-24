@@ -823,9 +823,6 @@
   flex-shrink: 0;
 }
 
-.val-qi-mobile-action {
-  display: none;
-}
 
 .val-review-panel {
   position: relative;
@@ -3607,35 +3604,8 @@
 
 
 
-  .val-qi-mobile-action {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    margin-top: 10px;
-    padding-top: 8px;
-    border-top: 1px dashed var(--val-border, #e2e8f0);
-  }
 
-  .val-qi-mobile-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    font-weight: 700;
-    color: #1877f2;
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
-    padding: 6px 14px;
-    border-radius: 999px;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
-  }
 
-  .val-queue-item:hover .val-qi-mobile-btn,
-  .val-queue-item:active .val-qi-mobile-btn {
-    background: #1877f2;
-    color: #ffffff;
-    border-color: #166fe5;
-  }
 
   .val-scroll {
     min-height: 0;
@@ -5370,4 +5340,108 @@
 .val-late-publish button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+@media (max-width: 860px) {
+  .val-page .val-queue-header {
+    padding: 16px 16px 0;
+    background: transparent;
+    border-bottom: none;
+  }
+  .val-page .val-title-row {
+    margin-bottom: 14px;
+  }
+  .val-page .val-title-row h1 {
+    font-size: 24px;
+  }
+  .val-page .val-title-row p {
+    font-size: 13.5px;
+    margin-top: 2px;
+  }
+  .val-page .val-toolbar-card {
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 12px 14px;
+    background: #ffffff;
+    border: 1px solid var(--val-border, #dde3ee);
+    border-radius: 14px;
+    box-shadow: 0 1px 4px rgba(12, 29, 61, 0.04);
+  }
+  .val-page .val-tabs {
+    gap: 8px;
+    padding: 2px 2px 6px;
+  }
+  .val-page .val-tabs button {
+    min-height: 36px;
+    height: 36px;
+    padding: 0 14px;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .val-page .val-tabs button:not(.active) {
+    background: #f1f5f9;
+  }
+  .val-page .val-tabs span {
+    font-size: 11px;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 5px;
+  }
+  .val-page .val-toolbar-controls {
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid #f1f5f9;
+  }
+  .val-page .val-search {
+    max-width: 100%;
+  }
+  .val-page .val-search input {
+    height: 40px;
+    border-radius: 999px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    font-size: 16px; /* 16px: no iOS zoom on focus */
+    padding: 0 36px;
+  }
+  .val-page .val-search input:focus {
+    background: #ffffff;
+    border-color: var(--val-blue, #1877f2);
+  }
+  .val-page .val-sort-row {
+    padding: 0;
+    border-bottom: none;
+    gap: 8px;
+  }
+  .val-page .val-sort-row span {
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+  }
+  .val-page .val-sort-row button {
+    height: 34px;
+    padding: 0 14px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #64748b;
+  }
+  .val-page .val-sort-row button.active {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1877f2;
+    font-weight: 700;
+  }
+  .val-page .val-queue-list {
+    padding: 0 16px 60px;
+  }
+  .val-page .val-queue-item {
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    border-radius: 14px;
+    box-shadow: 0 1px 4px rgba(12, 29, 61, 0.04);
+  }
+  .val-page .val-qi-title {
+    font-size: 15px;
+    font-weight: 650;
+  }
 }
