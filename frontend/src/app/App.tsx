@@ -24,6 +24,7 @@ const AccountSettingsScreen = lazy(() => import("../features/auth/AccountSetting
 const DashboardScreen = lazy(() => import("../features/dashboard/DashboardScreen"));
 const RecentActivityScreen = lazy(() => import("../features/dashboard/RecentActivityScreen"));
 const SubmissionScreen = lazy(() => import("../features/submission/SubmissionScreen"));
+const SubmissionListScreen = lazy(() => import("../features/submission/SubmissionListScreen"));
 const ValidationQueueScreen = lazy(() => import("../features/validation/ValidationQueueScreen"));
 const InstitutionManagementScreen = lazy(() => import("../features/institution-management/InstitutionManagementScreen"));
 const AdminManagementScreen = lazy(() => import("../features/administrator-management/AdministratorManagementScreen"));
@@ -182,7 +183,7 @@ function App() {
               {/* Any signed-in role — this layout route already sends signed-out users to /login. */}
               <Route path="/dashboard" element={<DashboardScreen user={currentUser!} />} />
               <Route path="/dashboard/recent-activity" element={<RecentActivityScreen user={currentUser!} />} />
-              <Route path="/submissions" element={<SubmissionScreen user={currentUser!} />} />
+              <Route path="/submissions" element={<SubmissionListScreen user={currentUser!} />} />
               <Route path="/calendar" element={<CalendarScreen user={currentUser!} />} />
               <Route path="/media-repository" element={<MediaRepositoryScreen user={currentUser!} />} />
               <Route path="/notifications" element={<NotificationsScreen user={currentUser!} />} />

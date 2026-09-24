@@ -31,7 +31,6 @@ import {
   useSubmissionLookups,
   useSubmissions,
 } from "../../hooks/useSubmissions";
-import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useFacebookPreviewData } from "../../hooks/useFacebookPreviewData";
 import { fileMediaKey, savedMediaKey } from "../../hooks/useMediaReorder";
 import type { User } from "../../types/auth.types";
@@ -55,7 +54,6 @@ import SpotlightTour from "../onboarding/components/SpotlightTour";
 import { useScreenTour } from "../onboarding/hooks/useScreenTour";
 import type { TourStep } from "../onboarding/types";
 import {
-  submissionListTourSteps,
   submissionComposerTourSteps,
   COMPOSER_TOUR_VIEWS,
   type ComposerTourPanel,
@@ -75,14 +73,12 @@ import {
   defaultMediaTags,
   effectiveMediaTags,
   extractHashtags,
-  formatDate,
   formatTimeInput,
   getDirtySignature,
   getErrorMessage,
   getOrderedLocalFiles,
   getPreviewValidation,
   getReadinessChecklist,
-  getSubmissionStatusIcon,
   isConflictError,
   isDefaultInstitution,
   isDirtyDraft,
@@ -114,7 +110,6 @@ import {
   Field,
   GuardSection,
   QueueLoadingState,
-  QueueState,
   ReadinessRing,
   ReadinessSkeleton,
   SectionHead,
@@ -123,7 +118,6 @@ import { useMediaQuery } from "./hooks/useMediaQuery";
 import { StepPanelActions, StepProgress } from "./components/StepProgress";
 import { CalendarDateField } from "./components/CalendarDateField";
 import { TimePickerField } from "./components/TimePickerField";
-import { SubmissionCardMedia } from "./components/SubmissionCardMedia";
 
 const MediaAssetsPicker = lazy(() => import("../../components/media/MediaAssetsPicker"));
 const AiCaptionPromptDialog = lazy(() => import("./components/AiCaptionPromptDialog"));
@@ -207,8 +201,6 @@ function uploadFileSignature(file: Pick<File, "name" | "size">) {
 export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const isMySubmissionsPage = location.pathname === "/submissions";
-  const isComposerRoute = !isMySubmissionsPage;
   const { submissionId: routeSubmissionId } = useParams<{ submissionId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -218,50 +210,16 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     if (tab && (valid as string[]).includes(tab)) return tab as QueueFilter;
     return "all";
   });
-  const [queueSearch, setQueueSearch] = useState("");
-  const debouncedQueueSearch = useDebouncedValue(queueSearch.trim(), 350);
-  const {
-    submissions,
-    counts,
-    totalCount: totalQueuedCount,
-    hasNextPage: hasMoreQueued,
-    loadingMore,
-    loadMoreError,
-    loadMore,
-    loading,
-    refreshing,
-    error,
-    refresh,
-  } = useSubmissions(user, filter, debouncedQueueSearch, isMySubmissionsPage);
+  // Cache-only read of the My Submissions list (never fetches here): used to
+  // pre-fill a draft while its detail loads and to resume a draft. The list
+  // screen itself is SubmissionListScreen.
+  const { submissions, loading } = useSubmissions(user, filter, "", false);
   const {
     lookups,
     loading: lookupsLoading,
-  } = useSubmissionLookups(user, isComposerRoute);
+  } = useSubmissionLookups(user, true);
   const toast = useToast();
 
-  const {
-    startTour: startSubmissionTour,
-    tourProps: submissionTourProps,
-  } = useScreenTour({
-    screenId: "submissions-list",
-    steps: submissionListTourSteps,
-    autoStartDelayMs: 700,
-    canStart: isMySubmissionsPage && !loading,
-  });
-  // On phones the status tabs are a horizontal scroller; keep the active one
-  // centred so a filter restored from ?tab= (or picked at the edge) isn't hidden.
-  const statusTabsRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const strip = statusTabsRef.current;
-    if (!strip || strip.scrollWidth <= strip.clientWidth) return;
-    const tab = strip.querySelector<HTMLElement>(".sub-status-tab.is-active");
-    if (!tab) return;
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    strip.scrollTo({
-      left: tab.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2,
-      behavior: reduceMotion ? "auto" : "smooth",
-    });
-  }, [filter, isMySubmissionsPage]);
   const detailsSectionRef = useRef<HTMLElement | null>(null);
   const mediaSectionRef = useRef<HTMLElement | null>(null);
   const scheduleSectionRef = useRef<HTMLElement | null>(null);
@@ -272,7 +230,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const albumNameRef = useRef<HTMLInputElement | null>(null);
   const mediaTagsInputRef = useRef<HTMLInputElement | null>(null);
   const prefilledRef = useRef(false);
-  const filterParamConsumedRef = useRef(false);
   const routedSubmissionRef = useRef<string | null>(null);
   const cleanSignatureRef = useRef(getDirtySignature(initialForm));
   const shouldPromptBeforeLeaveRef = useRef(false);
@@ -362,7 +319,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     });
   }
 
-  const [refreshingQueue, setRefreshingQueue] = useState(false);
   const [guardRailsLoading, setGuardRailsLoading] = useState(false);
   const [guardRails, setGuardRails] = useState<GuardRailResult | null>(null);
   const [guardRailError, setGuardRailError] = useState("");
@@ -384,7 +340,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     queryFn: ({ signal }) => listInstitutions(signal).then((response) =>
       response.data.filter((institution) => institution.status?.toLowerCase() !== "inactive"),
     ),
-    enabled: isComposerRoute && isAdminComposer,
+    enabled: isAdminComposer,
     staleTime: COMPOSER_INSTITUTIONS_STALE_TIME_MS,
     meta: authenticatedQueryMeta,
   });
@@ -403,7 +359,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     queryFn: ({ signal }) => listPostTemplates(signal).then((response) =>
       (response.data ?? []).map(apiTemplateToComposerTemplate),
     ),
-    enabled: isComposerRoute,
+    enabled: true,
     staleTime: COMPOSER_REF_TTL_MS,
     meta: authenticatedQueryMeta,
   });
@@ -413,7 +369,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
       listMediaAlbums(selectedInstitutionId, signal).then((response) =>
         (response.data ?? []).map((album) => album.name),
       ),
-    enabled: isComposerRoute && Boolean(selectedInstitutionId),
+    enabled: Boolean(selectedInstitutionId),
     staleTime: COMPOSER_REF_TTL_MS,
     meta: authenticatedQueryMeta,
   });
@@ -425,7 +381,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   const institutionsError = institutionsQuery.error ? "Institution list could not be loaded." : "";
   const templateErrorNotifiedRef = useRef(false);
   const albumErrorNotifiedRef = useRef<string | null>(null);
-  const submissionsRefreshErrorNotifiedRef = useRef(false);
   const [mediaUploadFailed, setMediaUploadFailed] = useState(false);
   const selectedPostingInstitution = useMemo(
     () => institutions.find((institution) => institution.id === form.institutionId) ?? null,
@@ -435,26 +390,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     selectedPostingInstitution && isDefaultInstitution(selectedPostingInstitution),
   );
 
-  const queued = submissions;
-  const visibleQueued = submissions;
-  const queuedSentinelRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const target = queuedSentinelRef.current;
-    if (!isMySubmissionsPage || !target || !hasMoreQueued || loadingMore || loadMoreError) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          observer.disconnect();
-          void loadMore();
-        }
-      },
-      { rootMargin: "240px 0px" },
-    );
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [hasMoreQueued, isMySubmissionsPage, loadMore, loadMoreError, loadingMore]);
 
   const scheduledAt = useMemo(() => {
     if (form.fastTrack) return undefined;
@@ -596,7 +531,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     screenId: "submission-composer",
     steps: submissionComposerTourSteps,
     autoStartDelayMs: 800,
-    canStart: isComposerRoute && !loading && !lookupsLoading && !hydratingId && !isReadOnlySubmission,
+    canStart: !loading && !lookupsLoading && !hydratingId && !isReadOnlySubmission,
     onStepChange: handleComposerTourStep,
   });
   const isDirty = useMemo(
@@ -619,7 +554,7 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     screenId: "save-draft-prompt",
     steps: saveDraftTourSteps,
     autoStartDelayMs: 400,
-    canStart: isComposerRoute && isDirty && !busy && !isReadOnlySubmission && !composerTourProps.isOpen,
+    canStart: isDirty && !busy && !isReadOnlySubmission && !composerTourProps.isOpen,
   });
   const shouldLoadEngagementRecommendations =
     activeStep === "schedule" &&
@@ -706,26 +641,17 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
   }, [institutions, isAdminComposer]);
 
   useEffect(() => {
-    if (!isComposerRoute || !templatesQuery.isError || templateErrorNotifiedRef.current) return;
+    if (!templatesQuery.isError || templateErrorNotifiedRef.current) return;
     templateErrorNotifiedRef.current = true;
     toast.error("Could not load saved templates.");
-  }, [isComposerRoute, templatesQuery.isError, toast]);
+  }, [templatesQuery.isError, toast]);
+
 
   useEffect(() => {
-    if (!isMySubmissionsPage || !error || submissions.length === 0) {
-      if (!error) submissionsRefreshErrorNotifiedRef.current = false;
-      return;
-    }
-    if (submissionsRefreshErrorNotifiedRef.current) return;
-    submissionsRefreshErrorNotifiedRef.current = true;
-    toast.error(error);
-  }, [error, isMySubmissionsPage, submissions.length, toast]);
-
-  useEffect(() => {
-    if (!isComposerRoute || !selectedInstitutionId || !albumNamesQuery.isError || albumErrorNotifiedRef.current === selectedInstitutionId) return;
+    if (!selectedInstitutionId || !albumNamesQuery.isError || albumErrorNotifiedRef.current === selectedInstitutionId) return;
     albumErrorNotifiedRef.current = selectedInstitutionId;
     toast.error("Could not load media albums.");
-  }, [albumNamesQuery.isError, isComposerRoute, selectedInstitutionId, toast]);
+  }, [albumNamesQuery.isError, selectedInstitutionId, toast]);
 
   const isDetailsComplete = useMemo(
     () =>
@@ -920,20 +846,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     // id — otherwise the check would flag the user's own new reservation.
   }, [isAdminComposer, scheduledAt, selectedInstitutionId, form.id]);
 
-  // Clean up ?tab= from the URL after it has been consumed by the lazy filter initializer.
-  useEffect(() => {
-    if (filterParamConsumedRef.current) return;
-    if (!searchParams.get("tab")) return;
-    filterParamConsumedRef.current = true;
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete("tab");
-        return next;
-      },
-      { replace: true },
-    );
-  }, [searchParams, setSearchParams]);
 
   // Consume ?assetIds= from the Media Library "New Post" action exactly once.
   useEffect(() => {
@@ -1581,17 +1493,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     requestLeave(exitSubmission);
   }
 
-  async function refreshQueue() {
-    if (refreshingQueue) return;
-    setRefreshingQueue(true);
-    try {
-      await refresh();
-    } catch {
-      // The query error state preserves cached results and drives the existing toast feedback.
-    } finally {
-      setRefreshingQueue(false);
-    }
-  }
 
   async function applySubmission(summary: SubmissionSummary) {
     setHydratingId(summary.id);
@@ -2426,274 +2327,6 @@ export default function SubmissionScreen({ user }: SubmissionScreenProps) {
     );
   }
 
-  if (isMySubmissionsPage) {
-    return (
-      <div className="submission-screen sub-list-shell-page">
-        <main className="sub-list-page">
-          <section className="sub-list-head">
-            <div>
-              <h1 className="sub-list-title">My Submissions</h1>
-              <p className="sub-list-subtitle">
-                View drafts, submitted posts, and published content before opening the composer.
-              </p>
-            </div>
-            <div className="sub-list-actions">
-              <button
-                className="sub-btn-ghost"
-                type="button"
-                onClick={() => startSubmissionTour(true)}
-                title="Show interactive feature guide"
-                aria-label="Show feature guide"
-              >
-                <i className="ti ti-help-circle" style={{ fontSize: 14 }} />
-                <span>Guide</span>
-              </button>
-              <button
-                className="sub-btn-ghost"
-                type="button"
-                onClick={() => void refreshQueue()}
-                disabled={refreshingQueue || loading || refreshing}
-                title="Refresh submissions list"
-              >
-                <i className={`ti ti-refresh${refreshingQueue || loading || refreshing ? " spin" : ""}`} style={{ fontSize: 14 }} />
-                <span>Refresh</span>
-              </button>
-              <button
-                className="sub-list-new"
-                type="button"
-                onClick={() => navigate("/submissions/new")}
-              >
-                <i className="ti ti-plus"></i>
-                New Submission
-              </button>
-            </div>
-          </section>
-
-          <div className="sub-toolbar-card" style={{ marginBottom: "16px" }}>
-            <div className="sub-registry-toolbar">
-              <div
-                ref={statusTabsRef}
-                className="sub-status-tabs"
-                role="group"
-                aria-label="Filter submissions by status"
-              >
-                <button
-                  type="button"
-                  className={`sub-status-tab${filter === "all" ? " is-active" : ""}`}
-                  onClick={() => setFilter("all")}
-                  aria-pressed={filter === "all"}
-                >
-                  All
-                  <span className="sub-status-tab-count">{loading ? "-" : counts.all}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`sub-status-tab${filter === "drafts" ? " is-active" : ""}`}
-                  onClick={() => setFilter("drafts")}
-                  aria-pressed={filter === "drafts"}
-                >
-                  Drafts
-                  <span className="sub-status-tab-count">{loading ? "-" : counts.drafts}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`sub-status-tab${filter === "action-needed" ? " is-active" : ""}${!loading && counts["action-needed"] > 0 ? " has-alert" : ""}`}
-                  onClick={() => setFilter("action-needed")}
-                  aria-pressed={filter === "action-needed"}
-                >
-                  Action Needed
-                  <span className="sub-status-tab-count">{loading ? "-" : counts["action-needed"]}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`sub-status-tab${filter === "submitted" ? " is-active" : ""}`}
-                  onClick={() => setFilter("submitted")}
-                  aria-pressed={filter === "submitted"}
-                >
-                  Submitted
-                  <span className="sub-status-tab-count">{loading ? "-" : counts.submitted}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`sub-status-tab${filter === "published" ? " is-active" : ""}`}
-                  onClick={() => setFilter("published")}
-                  aria-pressed={filter === "published"}
-                >
-                  Published
-                  <span className="sub-status-tab-count">{loading ? "-" : counts.published}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`sub-status-tab${filter === "rejected" ? " is-active" : ""}`}
-                  onClick={() => setFilter("rejected")}
-                  aria-pressed={filter === "rejected"}
-                >
-                  Rejected
-                  <span className="sub-status-tab-count">{loading ? "-" : counts.rejected}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`sub-status-tab${filter === "failed" ? " is-active" : ""}`}
-                  onClick={() => setFilter("failed")}
-                  aria-pressed={filter === "failed"}
-                >
-                  Publish Failed
-                  <span className="sub-status-tab-count">{loading ? "-" : counts.failed}</span>
-                </button>
-              </div>
-
-              <div className="sub-search-wrap">
-                <i className="ti ti-search sub-search-icon" aria-hidden="true"></i>
-                <input
-                  type="search"
-                  className="sub-search-input"
-                  value={queueSearch}
-                  onChange={(event) => setQueueSearch(event.target.value)}
-                  placeholder="Search submissions..."
-                  aria-label="Search submissions"
-                />
-              </div>
-            </div>
-          </div>
-
-          <section className="sub-list-results" aria-label="My submissions">
-            {loading ? (
-              <QueueLoadingState />
-            ) : error && submissions.length === 0 ? (
-              <QueueState
-                icon="ti-database-off"
-                title="Unable to load submissions"
-                description="Check your session and backend connection, then refresh the page."
-              />
-            ) : queued.length === 0 ? (
-              <QueueState
-                icon="ti-folder-open"
-                title="No submissions found"
-                description="Try another filter or create a new submission."
-              />
-            ) : (
-              <>
-                {visibleQueued.map((item) => {
-                  const thumbnail = item.mediaAssets?.[0] ?? item.previewMediaAsset ?? undefined;
-                  const captionPreview = item.caption || "";
-                  return (
-                    <article
-                      className="sub-fb-post-card"
-                      key={item.id}
-                      onClick={() => navigate(`/submissions/${item.id}`)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          navigate(`/submissions/${item.id}`);
-                        }
-                      }}
-                    >
-                      {/* Header: FB Brand Avatar + Page Info + Status Badge */}
-                      <div className="sub-fb-card-head">
-                        <div className="sub-fb-avatar" aria-hidden="true">
-                          <i className="ti ti-brand-facebook"></i>
-                        </div>
-                        <div className="sub-fb-author">
-                          <div className="sub-fb-author-name">
-                            {item.institutionName || user.inst || "DASIGCONNECT"}
-                          </div>
-                          <div className="sub-fb-author-meta">
-                            <span>{formatDate(item.eventDate)}</span>
-                            <span className="sub-fb-dot" aria-hidden="true">•</span>
-                            <i className="ti ti-world" title="Public post" aria-hidden="true"></i>
-                          </div>
-                        </div>
-                        <div className="sub-fb-status-wrap">
-                          <span className={`sub-qi-badge status-${item.status}`}>
-                            <i className={getSubmissionStatusIcon(item.status)} aria-hidden="true"></i>
-                            {statusLabels[item.status]}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Post Content: Event Title & Caption */}
-                      <div className="sub-fb-card-content">
-                        {item.eventTitle && <h2 className="sub-fb-event-title">{item.eventTitle}</h2>}
-                        {captionPreview ? (
-                          <p className="sub-fb-caption-text">{captionPreview}</p>
-                        ) : (
-                          <p className="sub-fb-caption-text sub-fb-empty-text">No caption provided.</p>
-                        )}
-                      </div>
-
-                      {/* Media Container with Circular Loader */}
-                      <SubmissionCardMedia
-                        thumbnail={thumbnail}
-                        mediaCount={item.mediaCount}
-                        detailsLoaded={
-                          item.previewMediaAsset !== undefined || item.mediaAssets !== undefined
-                        }
-                      />
-
-                      {/* Reactions & Engagement Row */}
-                      <div className="sub-fb-reactions-bar">
-                        <div className="sub-fb-reactions-icons">
-                          <span className="sub-fb-react-icon fb-like-icon" title="Like">
-                            <i className="ti ti-thumb-up-filled"></i>
-                          </span>
-                          <span className="sub-fb-react-icon fb-heart-icon" title="Love">
-                            <i className="ti ti-heart-filled"></i>
-                          </span>
-                          <span className="sub-fb-reactions-text">
-                            {(item.mediaCount ?? 0)} media · {item.eventTitle ? "1 Post" : "Draft"}
-                          </span>
-                        </div>
-                        <div className="sub-fb-open-action">
-                          <span>Open details</span>
-                          <i className="ti ti-chevron-right"></i>
-                        </div>
-                      </div>
-
-                      {/* Facebook Interactive Bar */}
-                      <div className="sub-fb-actions-bar" aria-hidden="true">
-                        <div className="sub-fb-action-btn">
-                          <i className="ti ti-thumb-up"></i>
-                          <span>Like</span>
-                        </div>
-                        <div className="sub-fb-action-btn">
-                          <i className="ti ti-message-circle"></i>
-                          <span>Comment</span>
-                        </div>
-                        <div className="sub-fb-action-btn">
-                          <i className="ti ti-share-3"></i>
-                          <span>Share</span>
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
-
-                {hasMoreQueued && (
-                  <div ref={queuedSentinelRef} className="sub-load-more-sentinel">
-                    {!loadMoreError && <div className="sub-load-more-spinner" />}
-                    <span>
-                      {loadMoreError
-                        ? "Unable to load more submissions. Use Refresh to retry."
-                        : "Loading more submissions..."}
-                    </span>
-                  </div>
-                )}
-
-                {!hasMoreQueued && totalQueuedCount > 20 && (
-                  <div className="sub-list-end-indicator">
-                    <span>Showing all {totalQueuedCount} submissions</span>
-                  </div>
-                )}
-              </>
-            )}
-          </section>
-        </main>
-        <SpotlightTour {...submissionTourProps} />
-      </div>
-    );
-  }
 
   if (
     routeSubmissionId &&
