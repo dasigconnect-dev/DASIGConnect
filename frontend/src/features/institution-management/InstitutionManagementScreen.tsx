@@ -1623,6 +1623,7 @@ export default function InstitutionManagementScreen({ user }: InstitutionManagem
                     key={inst.id}
                     institution={inst}
                     onSelect={() => handleSelectInstitution(inst)}
+                    canEditLogo={isAdmin}
                     onLogoUpload={(file) => void handleLogoUpload(inst, file)}
                     logoUploading={logoUploadingId === inst.id}
                   />
@@ -1657,6 +1658,8 @@ function InstitutionRegistryHeader() {
 interface InstitutionRowProps {
   institution: InstitutionWithStats
   onSelect: () => void
+  /** Logo upload is Admin-only (PUT /institutions/{id}/logo is hasRole('ADMIN')). */
+  canEditLogo: boolean
   onLogoUpload: (file: File) => void
   logoUploading: boolean
 }
@@ -1664,6 +1667,7 @@ interface InstitutionRowProps {
 function InstitutionRow({
   institution,
   onSelect,
+  canEditLogo,
   onLogoUpload,
   logoUploading,
 }: InstitutionRowProps) {
@@ -1696,30 +1700,34 @@ function InstitutionRow({
               />
             )}
           </div>
-          <button
-            type="button"
-            className={`im-logo-edit-btn${institution.logoUrl ? ' is-overlay' : ''}`}
-            onClick={() => fileInputRef.current?.click()}
-            disabled={logoUploading}
-            aria-label={`${institution.logoUrl ? 'Replace' : 'Add'} ${institution.name} logo`}
-            title={`${institution.logoUrl ? 'Replace' : 'Add'} institution logo`}
-          >
-            <i
-              className={logoUploading ? 'ti ti-loader-2 im-spin' : 'ti ti-pencil'}
-              aria-hidden="true"
-            ></i>
-          </button>
-          <input
-            ref={fileInputRef}
-            className="im-logo-file-input"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) onLogoUpload(file)
-              event.target.value = ''
-            }}
-          />
+          {canEditLogo && (
+            <>
+              <button
+                type="button"
+                className={`im-logo-edit-btn${institution.logoUrl ? ' is-overlay' : ''}`}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={logoUploading}
+                aria-label={`${institution.logoUrl ? 'Replace' : 'Add'} ${institution.name} logo`}
+                title={`${institution.logoUrl ? 'Replace' : 'Add'} institution logo`}
+              >
+                <i
+                  className={logoUploading ? 'ti ti-loader-2 im-spin' : 'ti ti-pencil'}
+                  aria-hidden="true"
+                ></i>
+              </button>
+              <input
+                ref={fileInputRef}
+                className="im-logo-file-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) onLogoUpload(file)
+                  event.target.value = ''
+                }}
+              />
+            </>
+          )}
         </div>
         <div className="im-inst-primary">
           <div className="im-inst-card-name-row">
