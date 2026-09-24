@@ -142,8 +142,16 @@ export function releaseReviewLock(submissionId: string) {
   return api.delete<void>(`/validation/${submissionId}/lock`);
 }
 
-export function approveSubmission(submissionId: string) {
-  return api.post<void>(`/validation/${submissionId}/approve`);
+/**
+ * Approves a submission. A Scheduled post whose slot has passed is refused
+ * (409) unless an Admin passes `publishNow`, which moves the slot to now.
+ */
+export function approveSubmission(submissionId: string, publishNow = false) {
+  return api.post<void>(
+    `/validation/${submissionId}/approve`,
+    undefined,
+    publishNow ? { params: { publishNow: true } } : undefined,
+  );
 }
 
 export function editSubmission(

@@ -161,7 +161,7 @@ public class StaleSubmissionDetectorJob {
      */
     @Transactional
     public List<Submission> findAndMarkMissedReview(Instant cutoff) {
-        List<Submission> missed = submissionRepository.findMissedReviewSubmissions(cutoff);
+        List<Submission> missed = submissionRepository.findMissedReviewSubmissions(cutoff, Instant.now());
         for (Submission s : missed) {
             s.setStatus(SubmissionStatus.missed_review);
             slotReservationService.release(s.getId());

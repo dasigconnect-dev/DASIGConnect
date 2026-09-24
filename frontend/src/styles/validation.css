@@ -5307,3 +5307,55 @@
   font-size: 13px;
   color: var(--val-text);
 }
+
+/* Approve after the slot passed: Admin-only "publish now" alternative */
+.val-late-publish {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--val-border);
+  border-radius: 10px;
+  background: var(--val-surface-2);
+  text-align: left;
+}
+.val-late-publish > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.val-late-publish strong {
+  font-size: 13.5px;
+  color: var(--val-text);
+}
+.val-late-publish span {
+  font-size: 12.5px;
+  color: var(--val-muted);
+}
+.val-late-publish button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--val-border-2, #c8d3e8);
+  background: var(--val-surface);
+  color: var(--val-text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.val-late-publish button:hover:not(:disabled) {
+  border-color: var(--val-blue);
+  color: var(--val-blue);
+}
+.val-late-publish button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
