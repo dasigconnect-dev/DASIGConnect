@@ -79,7 +79,8 @@ public class MediaProcessingWorker {
                 queue.complete(job, workerId);
                 return;
             }
-            if (!classificationService.processAsset(asset.getId(), asset.getStorageUrl())) {
+            if (!classificationService.processAsset(
+                    asset.getId(), asset.getStorageUrl(), job.getProcessingVersion())) {
                 throw new IllegalStateException("AI media processing did not complete");
             }
             mediaAssetRepository.markProcessingReady(asset.getId(), job.getProcessingVersion());

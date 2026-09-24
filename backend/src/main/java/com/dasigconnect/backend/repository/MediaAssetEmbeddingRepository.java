@@ -58,6 +58,7 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
         WHERE ma.institution_id = :institutionId
           AND ma.deleted_at IS NULL
           AND ma.status = 'READY'
+          AND COALESCE(LOWER(ma.temporal_classification), '') <> 'expired'
           AND mae.embedding_type = :embeddingType
           AND (
               NOT EXISTS (
@@ -110,6 +111,7 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
                 WHERE candidate_asset.institution_id = :institutionId
                   AND candidate_asset.deleted_at IS NULL
                   AND candidate_asset.status = 'READY'
+                  AND COALESCE(LOWER(candidate_asset.temporal_classification), '') <> 'expired'
                   AND candidate_embedding.embedding_type = :embeddingType
                   AND candidate_embedding.asset_id NOT IN (SELECT asset_id FROM query_embeddings)
                   AND (
@@ -182,6 +184,7 @@ public interface MediaAssetEmbeddingRepository extends JpaRepository<MediaAssetE
         WHERE ma.institution_id = :institutionId
           AND al.parent_album_id IS NULL
           AND ma.deleted_at IS NULL
+          AND COALESCE(LOWER(ma.temporal_classification), '') <> 'expired'
           AND mae.embedding_type = :embeddingType
         GROUP BY ma.media_album_id
         """, nativeQuery = true)

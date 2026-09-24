@@ -8,16 +8,19 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class MediaProcessingQueueService {
 
-    public static final String PROCESSING_VERSION = "media-ai-v1";
+    public static final String PROCESSING_VERSION = "media-ai-v2";
     public static final String CONTEXT_VERSION = "submission-context-v1";
     private static final int MAX_ERROR_LENGTH = 500;
     private static final Logger log = LoggerFactory.getLogger(MediaProcessingQueueService.class);
@@ -25,14 +28,20 @@ public class MediaProcessingQueueService {
     private final MediaProcessingJobRepository repository;
     private final int maxAttempts;
     private final Duration leaseDuration;
+    private final int maxJobsPerInstitutionPerBatch;
+    private final int maxQueueDepth;
 
     public MediaProcessingQueueService(
             MediaProcessingJobRepository repository,
             @Value("${app.media-processing.max-attempts:5}") int maxAttempts,
-            @Value("${app.media-processing.lease-seconds:300}") long leaseSeconds) {
+            @Value("${app.media-processing.lease-seconds:300}") long leaseSeconds,
+            @Value("${app.media-processing.max-jobs-per-institution-per-batch:2}") int maxJobsPerInstitutionPerBatch,
+            @Value("${app.media-processing.max-queue-depth:100}") int maxQueueDepth) {
         this.repository = repository;
         this.maxAttempts = Math.max(1, maxAttempts);
         this.leaseDuration = Duration.ofSeconds(Math.max(30, leaseSeconds));
+        this.maxJobsPerInstitutionPerBatch = Math.max(1, Math.min(maxJobsPerInstitutionPerBatch, 10));
+        this.maxQueueDepth = Math.max(10, maxQueueDepth);
     }
 
     public void enqueue(UUID assetId) {
@@ -64,7 +73,8 @@ public class MediaProcessingQueueService {
             String workerId, int requestedBatchSize, boolean includeAiJobs) {
         Instant now = Instant.now();
         int batchSize = Math.max(1, Math.min(requestedBatchSize, 10));
-        repository.claimBatch(workerId, now, now.plus(leaseDuration), batchSize, includeAiJobs);
+        repository.claimBatch(workerId, now, now.plus(leaseDuration), batchSize,
+                maxJobsPerInstitutionPerBatch, includeAiJobs);
         return repository.findByClaimedByAndStatusOrderByCreatedAtAsc(
                 workerId, MediaProcessingJobStatus.PROCESSING);
     }
@@ -84,6 +94,24 @@ public class MediaProcessingQueueService {
                 exhausted ? now : now.plusSeconds(delaySeconds),
                 sanitize(error),
                 now);
+    }
+
+    public int availableBackfillSlots(int requested) {
+        long available = Math.max(0L, (long) maxQueueDepth - repository.countActiveJobs());
+        return (int) Math.min(Math.max(0, requested), available);
+    }
+
+    public List<MediaProcessingJob> deadLetters(int requestedLimit) {
+        int limit = Math.max(1, Math.min(requestedLimit, 100));
+        return repository.findByStatusOrderByUpdatedAtDesc(
+                MediaProcessingJobStatus.DEAD, PageRequest.of(0, limit));
+    }
+
+    public void retryDead(UUID jobId) {
+        if (repository.retryDead(jobId, Instant.now()) == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Media processing job is not in the dead-letter state.");
+        }
     }
 
     private static String sanitize(Throwable error) {

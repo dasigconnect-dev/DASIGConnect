@@ -66,6 +66,10 @@ public class AIClassificationService {
      * reused on retry so successful provider calls are not repeated.
      */
     public boolean processAsset(UUID assetId, String storageUrl) {
+        return processAsset(assetId, storageUrl, null);
+    }
+
+    public boolean processAsset(UUID assetId, String storageUrl, String requiredProcessingVersion) {
         MediaAsset asset = mediaAssetRepository.findActiveById(assetId).orElse(null);
         if (asset == null) return false;
 
@@ -90,7 +94,9 @@ public class AIClassificationService {
         }
 
         MediaClassificationDto result = null;
-        if (asset.getAiClassifiedAt() == null) {
+        boolean requiresStructuredRefresh = requiredProcessingVersion != null
+                && !requiredProcessingVersion.equals(asset.getAiProcessingVersion());
+        if (asset.getAiClassifiedAt() == null || requiresStructuredRefresh) {
             try {
                 result = claudeVisionClient.classifyMedia(List.of(storageUrl));
                 persistClassification(assetId, result);
@@ -109,7 +115,7 @@ public class AIClassificationService {
             return false;
         }
 
-        if (mediaAssetEmbeddingRepository
+        if (result != null || mediaAssetEmbeddingRepository
                 .findEmbedding(assetId, MediaAssetEmbeddingType.SEMANTIC).isEmpty()) {
             MediaClassificationDto classification = result;
             List<String> tagLabels = assetTagRepository

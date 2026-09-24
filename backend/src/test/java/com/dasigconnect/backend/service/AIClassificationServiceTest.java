@@ -169,6 +169,32 @@ class AIClassificationServiceTest {
     }
 
     @Test
+    void processAsset_newProcessingVersion_refreshesStructuredClassificationAndSemanticEmbedding() {
+        UUID assetId = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(assetId);
+        asset.setFileType(com.dasigconnect.backend.model.entity.MediaFileType.jpeg);
+        asset.setAiClassifiedAt(java.time.Instant.now());
+        asset.setAiProcessingVersion("media-ai-v1");
+        asset.setFileName("legacy-event.jpg");
+        when(mediaAssetRepository.findActiveById(assetId)).thenReturn(Optional.of(asset));
+        when(claudeVisionClient.classifyMedia(any())).thenReturn(classification());
+        when(mediaAssetEmbeddingRepository.findEmbedding(
+                assetId, com.dasigconnect.backend.model.entity.MediaAssetEmbeddingType.IMAGE))
+                .thenReturn(Optional.of("[0.1]"));
+        when(voyageAIClient.embedDocument(anyString())).thenReturn("[0.2]");
+        when(voyageAIClient.modelName()).thenReturn("voyage-4-lite");
+
+        boolean completed = service().processAsset(
+                assetId, "https://example.com/legacy-event.jpg", "media-ai-v2");
+
+        assertThat(completed).isTrue();
+        verify(claudeVisionClient).classifyMedia(any());
+        verify(voyageAIClient).embedDocument(anyString());
+        verify(claudeVisionClient, never()).prepareImageForEmbedding(anyString());
+    }
+
+    @Test
     void classifyAndEmbed_reclassifyingAnAsset_replacesRatherThanAccumulatesAiTags() {
         // Regression: persistSuggestedTags used to only skip an exact-label
         // duplicate, so a second classifyAndEmbed run for the same asset just

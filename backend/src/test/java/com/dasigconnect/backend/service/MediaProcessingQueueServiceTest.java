@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.dasigconnect.backend.model.entity.MediaProcessingJob;
 import com.dasigconnect.backend.model.entity.MediaProcessingJobStatus;
@@ -20,7 +21,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 class MediaProcessingQueueServiceTest {
 
     private final MediaProcessingJobRepository repository = mock(MediaProcessingJobRepository.class);
-    private final MediaProcessingQueueService service = new MediaProcessingQueueService(repository, 5, 300);
+    private final MediaProcessingQueueService service = new MediaProcessingQueueService(
+            repository, 5, 300, 2, 100);
 
     @Test
     void enqueue_usesStableVersionAndConfiguredAttemptLimit() {
@@ -70,7 +72,7 @@ class MediaProcessingQueueServiceTest {
 
         assertThat(service.claimBatch("worker", 100, false)).isEmpty();
 
-        verify(repository).claimBatch(eq("worker"), any(), any(), eq(10), eq(false));
+        verify(repository).claimBatch(eq("worker"), any(), any(), eq(10), eq(2), eq(false));
     }
 
     @Test
@@ -88,5 +90,31 @@ class MediaProcessingQueueServiceTest {
                 eq(jobId), eq("worker"), eq(MediaProcessingJobStatus.DEAD.name()),
                 any(), errorCaptor.capture(), any());
         assertThat(errorCaptor.getValue()).isEqualTo("provider failed");
+    }
+
+    @Test
+    void availableBackfillSlots_respectsConfiguredQueueCapacity() {
+        when(repository.countActiveJobs()).thenReturn(97L);
+
+        assertThat(service.availableBackfillSlots(10)).isEqualTo(3);
+    }
+
+    @Test
+    void retryDead_resetsOnlyDeadLetterJobs() {
+        UUID jobId = UUID.randomUUID();
+        when(repository.retryDead(eq(jobId), any())).thenReturn(1);
+
+        service.retryDead(jobId);
+
+        verify(repository).retryDead(eq(jobId), any());
+    }
+
+    @Test
+    void retryDead_rejectsJobOutsideDeadLetterState() {
+        UUID jobId = UUID.randomUUID();
+        when(repository.retryDead(eq(jobId), any())).thenReturn(0);
+
+        assertThatThrownBy(() -> service.retryDead(jobId))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
     }
 }

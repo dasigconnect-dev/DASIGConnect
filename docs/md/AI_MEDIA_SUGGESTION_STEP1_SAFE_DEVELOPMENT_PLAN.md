@@ -55,6 +55,14 @@
 - `AI_MEDIA_HYBRID_RANKING_ENABLED` defaults off for rollback safety, while `AI_MEDIA_HYBRID_SHADOW_ENABLED` compares legacy and hybrid top results before activation.
 - Institution validation is applied before a stored submission context contributes to ranking; candidate retrieval and authorization remain unchanged.
 - Regression coverage verifies context, quality, and sequence ranking; near-duplicate diversification; version output; and preservation of the legacy path while the feature flag is disabled.
+- **Phase 6 - Freshness, Scale, and Backfill:** Implemented on `feature/ai-media-phase6-freshness-scale`.
+- Explicitly expired assets and parseable past expiration dates are excluded from vector and fallback candidates, while unknown legacy dates remain eligible and old evergreen media receives no age penalty.
+- Bounded submission-link usage statistics add a small recent-reuse penalty without changing candidate eligibility or requiring a large usage-data migration.
+- `media-ai-v2` refreshes structured classification and semantic embeddings through the existing durable queue; reconciliation selects at most a configured batch and pauses when the queue reaches its configured capacity.
+- Worker claims apply a per-institution batch ceiling so one large institution cannot monopolize a processing poll, while the existing lease, retry, exponential backoff, and dead-letter behavior remains intact.
+- Administrators can inspect and retry dead media-processing jobs through additive system-health endpoints, with retries written to the audit log.
+- Hybrid ranking now requires both the global environment flag and the institution rollout flag; the new institution setting defaults off and is changed only through an administrator endpoint.
+- Regression coverage verifies expiration handling, evergreen retention, reuse penalties, versioned reclassification, bounded backfill, queue backpressure, institution-fair claim parameters, dead-letter recovery, rollout fallback, and existing worker behavior.
 
 ## 2. Verified Current Baseline
 

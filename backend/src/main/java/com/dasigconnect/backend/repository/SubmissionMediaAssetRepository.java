@@ -100,4 +100,13 @@ public interface SubmissionMediaAssetRepository extends JpaRepository<Submission
         WHERE sma.mediaAsset.id IN :assetIds
         """)
     Set<UUID> findAssetIdsWithAnySubmissionLink(@Param("assetIds") Collection<UUID> assetIds);
+
+    /** [assetIdText, usageCount, mostRecentUse] for a bounded recommendation candidate set. */
+    @Query(value = """
+        SELECT CAST(media_asset_id AS text), COUNT(*), MAX(created_at)
+        FROM submission_media_assets
+        WHERE media_asset_id IN (:assetIds)
+        GROUP BY media_asset_id
+        """, nativeQuery = true)
+    List<Object[]> findUsageStatsByMediaAssetIds(@Param("assetIds") Collection<UUID> assetIds);
 }

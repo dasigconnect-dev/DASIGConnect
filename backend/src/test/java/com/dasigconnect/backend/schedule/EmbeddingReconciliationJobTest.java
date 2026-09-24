@@ -12,6 +12,8 @@ import com.dasigconnect.backend.service.ScheduledJobHealthService;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 
 class EmbeddingReconciliationJobTest {
 
@@ -22,7 +24,7 @@ class EmbeddingReconciliationJobTest {
     private EmbeddingReconciliationJob job(boolean aiConfigured) {
         return new EmbeddingReconciliationJob(
                 mediaAssetRepository, queue, health,
-                aiConfigured ? "test-key" : "", "");
+                aiConfigured ? "test-key" : "", "", 10);
     }
 
     @Test
@@ -33,7 +35,10 @@ class EmbeddingReconciliationJobTest {
         first.setId(firstId);
         MediaAsset second = new MediaAsset();
         second.setId(secondId);
-        when(mediaAssetRepository.findNeedingEmbedding()).thenReturn(List.of(first, second));
+        when(queue.availableBackfillSlots(10)).thenReturn(10);
+        when(mediaAssetRepository.findNeedingProcessingVersion(
+                eq(MediaProcessingQueueService.PROCESSING_VERSION), any()))
+                .thenReturn(List.of(first, second));
 
         job(true).reconcile();
 
@@ -45,6 +50,15 @@ class EmbeddingReconciliationJobTest {
     void reconcile_aiNotConfigured_doesNothing() {
         job(false).reconcile();
 
-        verify(mediaAssetRepository, never()).findNeedingEmbedding();
+        verify(mediaAssetRepository, never()).findNeedingProcessingVersion(any(), any());
+    }
+
+    @Test
+    void reconcile_queueAtCapacity_defersBackfill() {
+        when(queue.availableBackfillSlots(10)).thenReturn(0);
+
+        job(true).reconcile();
+
+        verify(mediaAssetRepository, never()).findNeedingProcessingVersion(any(), any());
     }
 }
