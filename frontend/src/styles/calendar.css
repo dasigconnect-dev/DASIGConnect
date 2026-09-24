@@ -80,7 +80,8 @@
 
   .cal-overview-grid-3,
   .cal-overview-grid-5 {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
   }
 }
 
@@ -3116,10 +3117,6 @@
 }
 
 @media (max-width: 860px) {
-  .cal-overview-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .cal-filter-field {
     flex: 1 1 190px;
   }
@@ -3369,16 +3366,6 @@
 @media (max-width: 480px) {
   .screen-root {
     padding: 16px 12px 60px;
-  }
-
-  .cal-overview-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .cal-header-filters .dc-select.cal-filter-select {
-    flex: 1 1 100%;
-    width: 100%;
-    max-width: 100%;
   }
 
   .cal-range-controls {
@@ -3874,5 +3861,208 @@
   .cal-reschedule-footer>button {
     width: 100%;
     justify-content: center;
+  }
+}
+
+/* ============================================================
+   Small screens (≤640px) — Master Calendar compact layout
+   Filters: 2-up grid. Metrics: 3-up tiles. Toolbar: 2 rows.
+   Controls sized to ~44px touch targets.
+   ============================================================ */
+@media (max-width: 640px) {
+  .cal-screen-header .screen-subtitle {
+    font-size: 13.5px;
+    margin-top: 4px;
+  }
+
+  /* ---- Filters: institutions full row, status + date side by side ---- */
+  .cal-header-filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .cal-header-filters .dc-select.cal-filter-select {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .cal-header-filters .dc-select.cal-filter-select:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .cal-header-filters .dc-select.cal-filter-select .dc-select-trigger {
+    height: 44px;
+    min-height: 44px;
+    padding: 0 14px;
+  }
+
+  /* ---- Metrics: compact stacked tiles, whole tile is the tap target ---- */
+  .cal-metric-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    min-height: 0;
+    padding: 12px;
+  }
+
+  .cal-metric-card:hover {
+    transform: none;
+  }
+
+  .cal-metric-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    font-size: 15px;
+  }
+
+  .cal-metric-value {
+    font-size: 20px;
+  }
+
+  .cal-metric-label {
+    font-size: 11.5px;
+    line-height: 1.25;
+  }
+
+  .cal-metric-view {
+    display: none;
+  }
+
+  /* ---- Toolbar: [label ....... full-day refresh] / [‹ Today ›  Month|Week] ---- */
+  .cal-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "label fullday refresh"
+      "nav   view    view";
+    align-items: center;
+    gap: 10px 8px;
+    padding: 12px;
+  }
+
+  .cal-toolbar-center {
+    grid-area: label;
+    order: 0;
+    width: auto;
+    margin: 0;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .cal-range-label {
+    order: 0;
+    width: auto;
+    font-size: 18px;
+  }
+
+  .cal-toolbar-left {
+    grid-area: nav;
+    width: auto;
+    justify-content: flex-start;
+  }
+
+  .cal-toolbar-right {
+    display: contents;
+  }
+
+  .cal-range-controls {
+    width: auto;
+    max-width: none;
+    height: 44px;
+    padding: 3px;
+  }
+
+  .cal-nav-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+
+  .cal-today-pill {
+    height: 36px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
+
+  .cal-view-toggle {
+    grid-area: view;
+    justify-self: end;
+    height: 44px;
+    padding: 3px;
+  }
+
+  .cal-view-toggle .view-btn {
+    height: 36px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
+
+  .cal-view-toggle .view-btn i {
+    display: none;
+  }
+
+  /* Full Day and Refresh collapse to icon buttons; labels stay for screen readers */
+  .cal-pill-btn,
+  .cal-refresh-btn {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    font-size: 18px;
+  }
+
+  .cal-pill-btn {
+    grid-area: fullday;
+  }
+
+  .cal-refresh-btn {
+    grid-area: refresh;
+  }
+
+  .cal-pill-btn > span,
+  .cal-refresh-btn > span:not(.spinner-ring) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* Only meaningful in Week view — hide instead of showing a dead control */
+  .cal-pill-btn.is-disabled {
+    display: none;
+  }
+}
+
+/* Very narrow phones: nav and view toggle each take a full row */
+@media (max-width: 380px) {
+  .cal-toolbar {
+    grid-template-areas:
+      "label fullday refresh"
+      "nav   nav     nav"
+      "view  view    view";
+  }
+
+  .cal-range-controls,
+  .cal-view-toggle {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .cal-range-controls {
+    justify-content: space-between;
+  }
+
+  .cal-today-pill {
+    flex: 1;
+  }
+
+  .cal-view-toggle .view-btn {
+    flex: 1;
   }
 }

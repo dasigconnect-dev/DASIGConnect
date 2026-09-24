@@ -46,6 +46,10 @@ Every authenticated actor sees a calendar reflecting their role's true scope: Ad
 - The precise guard rail inventory this reschedule flow enforces: GR-H1 (±30 min network-wide slot conflict), GR-H2 (≥2h lead time), GR-H3 (≤30 days out) as hard blocks; GR-S1 (institution-scoped, <3 unpublished) and GR-S2 (network-wide, <6/day) as soft warnings that don't block a reschedule at all (soft warnings only ever apply to new submissions, not reschedules of an already-approved one).
 - The `CalendarEventDetailModal.tsx` variable named `isAdmin` actually means "Moderator or Admin" (`user.role === "moderator" || user.role === "admin"`) — functions correctly, just a misleading name for anyone reading the frontend code expecting it to mean Administrator specifically.
 
+## Small screens (2026-09-24)
+
+At ≤640px the calendar uses a compact layout instead of stacking every control full-width. The filters sit on two rows (institutions, then status + date). The metric cards become a row of three tiles, each still opening its related posts. The toolbar is two rows: the month label with icon-only Full Day and Refresh, then ‹ Today › beside Month/Week. "Show Full Day" is hidden in Month view, where it never did anything. Touch targets are 44px. Layout only — no change to what each role can see or do (`frontend/src/styles/calendar.css`).
+
 ## Known limitations (not changed this pass)
 
 - A3 (the reschedule reason always being required, even for a fully guard-rail-compliant move) is a real gap against the "proceeds automatically" expectation, left as-is — it was flagged during verification but never explicitly requested to be fixed.
