@@ -1,24 +1,5 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Routes,
-  Route,
-  useNavigate,
-  Navigate,
-  useLocation,
-} from "react-router-dom";
-import {
-  acceptInvitation,
-  getMe,
-  login,
-  logout as logoutRequest,
-  requestPasswordReset,
-  resetPassword as resetPasswordRequest,
-  setAuthToken,
-  validateInvitation,
-} from "../api/authApi";
-import type { UserProfileResponse } from "../api/authApi";
-import { isRequestDeadlineError } from "../api/requestPolicy";
-import type { User } from "../types/auth.types";
+import { lazy, Suspense, useEffect } from "react";
+import { Routes, Route, useNavigate, Navigate } from "react-router-dom";
 import DashboardLayout from "../components/layout/DashboardLayout";
 import AdminPromotionBanner from "../components/layout/AdminPromotionBanner";
 import SessionModal from "../components/modals/SessionModal";
@@ -28,22 +9,8 @@ import NotFoundPage from "../components/common/NotFoundPage";
 import LoginSplash from "../components/common/LoginSplash";
 import PageLoader from "../components/common/PageLoader";
 import { RequireAdmin, RequireReviewer, RequireSignedIn } from "../components/common/RouteGates";
-import { useToast } from "../context/ToastContext";
-import {
-  getUserDisplayName,
-  getUserInitials,
-} from "../lib/userIdentity";
-import { firstPasswordError, getPasswordRules } from "../lib/passwordPolicy";
-import { clearAppCaches } from "../lib/appCache";
-import { appQueryClient, clearAuthenticatedQueryCache } from "../lib/queryClient";
-import { seedCurrentProfile } from "../hooks/useCurrentProfile";
-import { hydrateTourPreferences, resetTourPreferencesCache } from "../features/onboarding/tourStorage";
-import { readPasswordResetToken } from "../utils/passwordResetLink";
+import { useAuthSession } from "../features/auth/hooks/useAuthSession";
 
-const LOCKOUT_LIMIT = 5;
-const LOCKOUT_SECONDS = 15 * 60;
-const SESSION_WARNING_SECONDS = 5 * 60;
-const LOGIN_SPLASH_VISIBLE_MS = 500;
 const TABLER_ICONS_STYLESHEET = "https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css";
 
 const LandingPage = lazy(() => import("../features/landing/LandingPage"));
@@ -68,136 +35,14 @@ const MediaRepositoryScreen = lazy(() => import("../features/media-repository/Me
 const NotificationsScreen = lazy(() => import("../features/notifications/NotificationsScreen"));
 const AnalyticsDashboardPage = lazy(() => import("../features/analytics/AnalyticsDashboardPage"));
 
+/** Routes. Session state and every auth flow live in useAuthSession. */
 function App() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const toast = useToast();
-
-  const [showSplash, setShowSplash] = useState(false);
-  const [splashUser, setSplashUser] = useState<User | null>(null);
-
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [forgotLoading, setForgotLoading] = useState(false);
-  const [inviteLoading, setInviteLoading] = useState(false);
-  const [logoutLoading, setLogoutLoading] = useState(false);
-
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [showLoginPassword, setShowLoginPassword] = useState(false);
-  const [loginError, setLoginError] = useState("");
-  const [attempts, setAttempts] = useState(0);
-  const [lockRemaining, setLockRemaining] = useState(0);
-  const [lockTimerId, setLockTimerId] = useState<number | null>(null);
-
-  const [modalEmail, setModalEmail] = useState("");
-  const [modalPassword, setModalPassword] = useState("");
-  const [modalError, setModalError] = useState<string | null>(null);
-  const [modalLoginLoading, setModalLoginLoading] = useState(false);
-  const [showModalPassword, setShowModalPassword] = useState(false);
-
-  const [forgotEmail, setForgotEmail] = useState("");
-  const [forgotSentEmail, setForgotSentEmail] = useState("");
-  const [resetToken, setResetToken] = useState<string | null>(null);
-  const [resetPassword, setResetPassword] = useState("");
-  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
-  const [showResetPassword, setShowResetPassword] = useState(false);
-  const [showResetConfirmPassword, setShowResetConfirmPassword] =
-    useState(false);
-  const [resetLoading, setResetLoading] = useState(false);
-  const [resetError, setResetError] = useState("");
-  const [resetSuccess, setResetSuccess] = useState(false);
-  const resetTokenRef = useRef<string | null>(null);
-
-  const [inviteToken, setInviteToken] = useState<string | null>(null);
-  const [inviteState, setInviteState] = useState<
-    "form" | "success" | "expired" | "already"
-  >("form");
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("");
-  const [inviteInstitution, setInviteInstitution] = useState("");
-  const [inviteFirstName, setInviteFirstName] = useState("");
-  const [inviteLastName, setInviteLastName] = useState("");
-  const [invitePassword, setInvitePassword] = useState("");
-  const [inviteConfirmPassword, setInviteConfirmPassword] = useState("");
-  const [showInvitePassword, setShowInvitePassword] = useState(false);
-  const [showInviteConfirmPassword, setShowInviteConfirmPassword] =
-    useState(false);
-  const [inviteCountdown, setInviteCountdown] = useState("");
-
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [authReady, setAuthReady] = useState(false);
-  const [showSessionModal, setShowSessionModal] = useState(false);
-  const profileRequestRef = useRef<{ id: number; controller: AbortController } | null>(null);
-  const profileRequestIdRef = useRef(0);
-  const authenticationFlowIdRef = useRef(0);
-  const splashTimerRef = useRef<number | null>(null);
-
-  function cancelPendingProfileRequest() {
-    profileRequestIdRef.current += 1;
-    profileRequestRef.current?.controller.abort();
-    profileRequestRef.current = null;
-  }
-
-  async function clearLocalAuthentication() {
-    cancelPendingProfileRequest();
-    localStorage.removeItem("dasigconnect_token");
-    localStorage.removeItem("dasigconnect_user");
-    setAuthToken(null);
-    setCurrentUser(null);
-    resetTourPreferencesCache();
-    await clearAuthenticatedQueryCache();
-    clearAppCaches();
-  }
-
-  async function loadVerifiedCurrentUser(email: string) {
-    cancelPendingProfileRequest();
-    const request = {
-      id: profileRequestIdRef.current,
-      controller: new AbortController(),
-    };
-    profileRequestRef.current = request;
-    try {
-      const result = await loadCurrentUser(email, request.controller.signal);
-      if (profileRequestRef.current?.id !== request.id) {
-        throw new DOMException("Superseded profile request.", "AbortError");
-      }
-      seedCurrentProfile(appQueryClient, result.profile);
-      hydrateTourPreferences(result.profile);
-      return result.user;
-    } finally {
-      if (profileRequestRef.current?.id === request.id) {
-        profileRequestRef.current = null;
-      }
-    }
-  }
-
-  async function refreshCurrentUserProfile() {
-    if (!currentUser) return;
-    const user = await loadVerifiedCurrentUser(currentUser.email);
-    setCurrentUser(user);
-  }
+  const auth = useAuthSession();
+  const { currentUser, passwordReset, invite, layout, sessionModal } = auth;
 
   useEffect(() => {
-    return () => {
-      profileRequestIdRef.current += 1;
-      profileRequestRef.current?.controller.abort();
-      profileRequestRef.current = null;
-      if (splashTimerRef.current) window.clearTimeout(splashTimerRef.current);
-    };
-  }, []);
-
-  const [bannerRemaining, setBannerRemaining] = useState(0);
-  const [bannerTimerId, setBannerTimerId] = useState<number | null>(null);
-  const [, setSessionWarningDismissed] = useState(false);
-  const bannerTimerRef = useRef<number | null>(null);
-  const sessionWarningDismissedRef = useRef(false);
-
-  useEffect(() => {
-    if (document.querySelector<HTMLLinkElement>('link[data-dasig-tabler-icons="true"]')) {
-      return;
-    }
-
+    if (document.querySelector<HTMLLinkElement>('link[data-dasig-tabler-icons="true"]')) return;
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = TABLER_ICONS_STYLESHEET;
@@ -206,961 +51,194 @@ function App() {
     document.head.appendChild(link);
   }, []);
 
-  const inviteRules = useMemo(() => {
-    const firstName = isValidProfileName(inviteFirstName);
-    const lastName = isValidProfileName(inviteLastName);
-    const passwordRules = getPasswordRules(invitePassword, [
-      inviteEmail,
-      inviteFirstName,
-      inviteLastName,
-    ]);
-    const match =
-      inviteConfirmPassword.length > 0 &&
-      invitePassword === inviteConfirmPassword;
-    return { firstName, lastName, ...passwordRules, match };
-  }, [
-    inviteEmail,
-    inviteFirstName,
-    inviteLastName,
-    invitePassword,
-    inviteConfirmPassword,
-  ]);
-
-  useEffect(() => {
-    let active = true;
-    const controller = new AbortController();
-    const savedToken = localStorage.getItem("dasigconnect_token");
-    const savedUser = localStorage.getItem("dasigconnect_user");
-
-    if (!savedToken || !savedUser) {
-      setAuthReady(true);
-      return () => {
-        active = false;
-        controller.abort();
-      };
-    }
-
-    setAuthToken(savedToken);
-    queueMicrotask(() => {
-      void (async () => {
-        let parsedUser: User | null;
-        try {
-          parsedUser = JSON.parse(savedUser) as User;
-        } catch {
-          parsedUser = null;
-        }
-        if (!parsedUser) {
-          localStorage.removeItem("dasigconnect_token");
-          localStorage.removeItem("dasigconnect_user");
-          setAuthToken(null);
-          if (active) {
-            setCurrentUser(null);
-            setAuthReady(true);
-          }
-          return;
-        }
-        try {
-          const result = await loadCurrentUser(parsedUser.email, controller.signal);
-          if (!active) return;
-          seedCurrentProfile(appQueryClient, result.profile);
-          hydrateTourPreferences(result.profile);
-          const user = result.user;
-          localStorage.setItem("dasigconnect_user", JSON.stringify(user));
-          setCurrentUser(user);
-          startSessionCountdown(savedToken);
-        } catch (err: unknown) {
-          if (!active) return;
-          const status = (err as { response?: { status?: number } })?.response?.status;
-          if (status === 401) {
-            // The server explicitly rejected the token — genuinely invalid/expired.
-            localStorage.removeItem("dasigconnect_token");
-            localStorage.removeItem("dasigconnect_user");
-            setAuthToken(null);
-            setCurrentUser(null);
-          } else {
-            // Couldn't verify (network blip, timeout, backend cold start, a
-            // dropped CORS preflight, etc.) — the token itself may still be
-            // valid, so don't force a logout just because this one request
-            // failed. Fall back to the cached profile; a genuine 401 on any
-            // later request still triggers the normal session-expired flow
-            // via the axios interceptor in authApi.ts.
-            setCurrentUser(parsedUser);
-            startSessionCountdown(savedToken);
-          }
-        } finally {
-          if (active) setAuthReady(true);
-        }
-      })();
-    });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isPasswordResetPath(location.pathname)) return;
-    const token = readPasswordResetToken(window.location.href);
-    resetTokenRef.current = token;
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      setResetToken(token);
-      setResetError(token ? "" : "Reset token is missing or invalid.");
-      setResetSuccess(false);
-      setResetPassword("");
-      setResetConfirmPassword("");
-    });
-    return () => {
-      active = false;
-    };
-  }, [location.pathname, location.search]);
-
-  useEffect(() => {
-    function syncResetTokenFromLiveUrl() {
-      if (!isPasswordResetPath(window.location.pathname)) return;
-
-      const token = readPasswordResetToken(window.location.href);
-      if (token === resetTokenRef.current) return;
-
-      resetTokenRef.current = token;
-      setResetToken(token);
-      setResetError(token ? "" : "Reset token is missing or invalid.");
-      setResetSuccess(false);
-      setResetPassword("");
-      setResetConfirmPassword("");
-    }
-
-    function handleVisibilityChange() {
-      if (document.visibilityState === "visible") syncResetTokenFromLiveUrl();
-    }
-
-    window.addEventListener("pageshow", syncResetTokenFromLiveUrl);
-    window.addEventListener("focus", syncResetTokenFromLiveUrl);
-    window.addEventListener("popstate", syncResetTokenFromLiveUrl);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener("pageshow", syncResetTokenFromLiveUrl);
-      window.removeEventListener("focus", syncResetTokenFromLiveUrl);
-      window.removeEventListener("popstate", syncResetTokenFromLiveUrl);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (location.pathname !== "/invite") return;
-    const params = new URLSearchParams(location.search);
-    const token = params.get("token") || params.get("inviteToken");
-    if (token) {
-      setInviteToken(token);
-      void validateInviteToken(token);
-    } else {
-      setInviteState("expired");
-    }
-  }, [location.pathname, location.search]);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Enter") return;
-
-      if (location.pathname === "/login") {
-        void handleLogin();
-      } else if (location.pathname === "/forgot-password") {
-        void handleForgotSubmit();
-      } else if (isPasswordResetPath(location.pathname)) {
-        void handleResetPassword();
-      } else if (
-        location.pathname === "/dashboard" &&
-        showSessionModal &&
-        !modalLoginLoading &&
-        !logoutLoading
-      ) {
-        void handleModalLogin();
-      }
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [
-    location.pathname,
-    showSessionModal,
-    loginEmail,
-    loginPassword,
-    modalEmail,
-    modalPassword,
-    modalLoginLoading,
-    logoutLoading,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      if (lockTimerId) window.clearInterval(lockTimerId);
-      if (bannerTimerId) window.clearInterval(bannerTimerId);
-    };
-  }, [lockTimerId, bannerTimerId]);
-
-  const bannerTime = formatTimer(bannerRemaining);
-
-  function triggerLockout() {
-    setLockRemaining(LOCKOUT_SECONDS);
-    const id = window.setInterval(() => {
-      setLockRemaining((prev) => {
-        if (prev <= 1) {
-          window.clearInterval(id);
-          setLockTimerId(null);
-          setAttempts(0);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    setLockTimerId(id);
-  }
-
-  function resetLoginState() {
-    setLoginPassword("");
-    setLoginError("");
-    setAttempts(0);
-    setLockRemaining(0);
-    if (lockTimerId) {
-      window.clearInterval(lockTimerId);
-      setLockTimerId(null);
-    }
-  }
-
-  function showLoginSplash(user: User) {
-    if (splashTimerRef.current) window.clearTimeout(splashTimerRef.current);
-    setSplashUser(user);
-    setShowSplash(true);
-    splashTimerRef.current = window.setTimeout(() => {
-      setShowSplash(false);
-      splashTimerRef.current = null;
-    }, LOGIN_SPLASH_VISIBLE_MS);
-  }
-
-  function stopLoginSplash() {
-    if (splashTimerRef.current) window.clearTimeout(splashTimerRef.current);
-    splashTimerRef.current = null;
-    setShowSplash(false);
-  }
-
-  async function handleLogin() {
-    if (lockRemaining > 0) return;
-    const flowId = ++authenticationFlowIdRef.current;
-    setLoginLoading(true);
-    setLoginError("");
-    // Drop any in-memory caches from a prior session on this tab so a new
-    // account never sees the previous user's role-scoped data.
-    await clearLocalAuthentication();
-    if (authenticationFlowIdRef.current !== flowId) return;
-    const email = loginEmail.trim().toLowerCase();
-    let loginCompleted = false;
-    try {
-      const response = await login(email, loginPassword);
-      if (authenticationFlowIdRef.current !== flowId) return;
-      const apiUser = response.data;
-      loginCompleted = true;
-      setAuthToken(apiUser.accessToken);
-      const user = await loadVerifiedCurrentUser(email);
-      if (authenticationFlowIdRef.current !== flowId) return;
-      localStorage.setItem("dasigconnect_token", apiUser.accessToken);
-      localStorage.setItem("dasigconnect_user", JSON.stringify(user));
-      setCurrentUser(user);
-      startSessionCountdown(apiUser.accessToken);
-      showLoginSplash(user);
-      navigate("/dashboard");
-      resetLoginState();
-    } catch (err: unknown) {
-      if (authenticationFlowIdRef.current !== flowId) return;
-      if (loginCompleted) {
-        await clearLocalAuthentication();
-        setLoginError(
-          isRequestDeadlineError(err)
-            ? "Session verification timed out. Please sign in again."
-            : "Sign-in succeeded, but the session could not be verified. Please try again.",
-        );
-        return;
-      }
-      const nextAttempts = attempts + 1;
-      setAttempts(nextAttempts);
-      if (nextAttempts >= LOCKOUT_LIMIT) {
-        triggerLockout();
-      } else {
-        setLoginError(
-          getApiErrorMessage(err, "") ||
-            `Invalid credentials. ${LOCKOUT_LIMIT - nextAttempts} attempts remaining before lockout.`,
-        );
-      }
-    } finally {
-      if (authenticationFlowIdRef.current === flowId) setLoginLoading(false);
-    }
-  }
-
-  async function handleResetPassword() {
-    // Mobile in-app browsers may reuse an existing SPA instance for a newly
-    // opened email link. Read the live URL at submission time so an older
-    // token retained in React state cannot be sent to the backend.
-    const liveToken = isPasswordResetPath(window.location.pathname)
-      ? readPasswordResetToken(window.location.href)
-      : resetToken;
-    if (!liveToken) {
-      setResetError("Reset token is missing or invalid.");
-      return;
-    }
-    if (liveToken !== resetTokenRef.current) {
-      resetTokenRef.current = liveToken;
-      setResetToken(liveToken);
-    }
-    const passwordError = firstPasswordError(resetPassword);
-    if (passwordError) {
-      setResetError(passwordError);
-      return;
-    }
-    if (resetPassword !== resetConfirmPassword) {
-      setResetError("Passwords do not match.");
-      return;
-    }
-
-    setResetLoading(true);
-    setResetError("");
-    try {
-      await resetPasswordRequest(liveToken, resetPassword);
-      setResetSuccess(true);
-      setResetPassword("");
-      setResetConfirmPassword("");
-    } catch (err: unknown) {
-      setResetError(getApiErrorMessage(err, "Password reset failed."));
-    } finally {
-      setResetLoading(false);
-    }
-  }
-
-  async function handleForgotSubmit() {
-    const email = forgotEmail.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      toast.error("Enter a valid email address.");
-      return;
-    }
-    setForgotLoading(true);
-    try {
-      await requestPasswordReset(email);
-    } catch {
-      // Intentionally silent to avoid email enumeration.
-    } finally {
-      setForgotLoading(false);
-      setForgotSentEmail(email);
-      navigate("/forgot-password-sent");
-    }
-  }
-
-  async function handleInviteActivate() {
-    if (!inviteToken) return;
-    const firstName = normalizeProfileName(inviteFirstName);
-    const lastName = normalizeProfileName(inviteLastName);
-    if (!isValidProfileName(firstName) || !isValidProfileName(lastName)) {
-      toast.error("Please enter a valid first and last name.");
-      return;
-    }
-    const passwordError = firstPasswordError(invitePassword, [
-      inviteEmail,
-      firstName,
-      lastName,
-    ]);
-    if (passwordError) {
-      toast.error(passwordError);
-      return;
-    }
-    setInviteLoading(true);
-    const flowId = ++authenticationFlowIdRef.current;
-    let activationCompleted = false;
-    try {
-      const response = await acceptInvitation({
-        token: inviteToken,
-        firstName,
-        lastName,
-        password: invitePassword,
-      });
-      if (authenticationFlowIdRef.current !== flowId) return;
-      activationCompleted = true;
-      await clearLocalAuthentication();
-      setAuthToken(response.data.accessToken);
-      const email = inviteEmail.trim().toLowerCase();
-      const user = await loadVerifiedCurrentUser(email);
-      if (authenticationFlowIdRef.current !== flowId) return;
-      localStorage.setItem("dasigconnect_token", response.data.accessToken);
-      localStorage.setItem("dasigconnect_user", JSON.stringify(user));
-      setCurrentUser(user);
-      startSessionCountdown(response.data.accessToken);
-      toast.success("Account activated. Welcome to DASIGConnect.");
-      setInviteState("success");
-      navigate("/dashboard");
-    } catch (err: unknown) {
-      if (authenticationFlowIdRef.current !== flowId) return;
-      if (activationCompleted) {
-        await clearLocalAuthentication();
-        setInviteState("success");
-        navigate("/login");
-        toast.error("Account activated, but session verification failed. Please sign in.");
-        return;
-      }
-      const message = getApiErrorMessage(
-        err,
-        "We could not activate this invitation. Please try again.",
-      );
-      toast.error(message);
-      if (isAlreadyUsedInviteError(message)) {
-        setInviteState("already");
-      } else if (isExpiredInviteError(message)) {
-        setInviteState("expired");
-      }
-    } finally {
-      if (authenticationFlowIdRef.current === flowId) setInviteLoading(false);
-    }
-  }
-
-  async function handleLogout() {
-    if (logoutLoading) return;
-    authenticationFlowIdRef.current += 1;
-    setLogoutLoading(true);
-    try {
-      try {
-        await logoutRequest();
-      } catch {
-        // Server revocation is best-effort; the request has a short deadline.
-      } finally {
-        await clearLocalAuthentication();
-      }
-      setShowDropdown(false);
-      setShowSessionModal(false);
-      stopLoginSplash();
-      stopSessionCountdown();
-      resetLoginState();
-      setLoginLoading(false);
-      setModalLoginLoading(false);
-      setInviteLoading(false);
-      navigate("/");
-      toast.info("You have been signed out.");
-    } finally {
-      setLogoutLoading(false);
-    }
-  }
-
-  async function handleModalLogin() {
-    if (modalLoginLoading || logoutLoading) return;
-    setModalLoginLoading(true);
-    setModalError(null);
-    const flowId = ++authenticationFlowIdRef.current;
-    const email = modalEmail.trim().toLowerCase();
-    let loginCompleted = false;
-    try {
-      const response = await login(email, modalPassword);
-      if (authenticationFlowIdRef.current !== flowId) return;
-      const apiUser = response.data;
-      loginCompleted = true;
-      await clearLocalAuthentication();
-      setAuthToken(apiUser.accessToken);
-      const user = await loadVerifiedCurrentUser(email);
-      if (authenticationFlowIdRef.current !== flowId) return;
-      localStorage.setItem("dasigconnect_token", apiUser.accessToken);
-      localStorage.setItem("dasigconnect_user", JSON.stringify(user));
-      setCurrentUser(user);
-      startSessionCountdown(apiUser.accessToken);
-      setShowSessionModal(false);
-      setModalError(null);
-      setModalPassword("");
-    } catch (err: unknown) {
-      if (authenticationFlowIdRef.current !== flowId) return;
-      if (loginCompleted) {
-        await clearLocalAuthentication();
-        setShowSessionModal(false);
-        navigate("/login");
-        toast.error("Session verification failed. Please sign in again.");
-        return;
-      }
-      setModalError(getApiErrorMessage(err, "Invalid credentials. Please try again."));
-    } finally {
-      if (authenticationFlowIdRef.current === flowId) setModalLoginLoading(false);
-    }
-  }
-
-  function stopSessionCountdown() {
-    if (bannerTimerRef.current) window.clearInterval(bannerTimerRef.current);
-    bannerTimerRef.current = null;
-    setBannerRemaining(0);
-    setBannerTimerId(null);
-    sessionWarningDismissedRef.current = false;
-    setSessionWarningDismissed(false);
-  }
-
-  function handleStayLoggedIn() {
-    setModalEmail(currentUser?.email || "");
-    setShowSessionModal(true);
-    setBannerRemaining(0);
-  }
-
-  function dismissSessionBanner() {
-    sessionWarningDismissedRef.current = true;
-    setSessionWarningDismissed(true);
-    setBannerRemaining(0);
-  }
-
-  function startSessionCountdown(token: string) {
-    if (bannerTimerRef.current) window.clearInterval(bannerTimerRef.current);
-    bannerTimerRef.current = null;
-    sessionWarningDismissedRef.current = false;
-    setSessionWarningDismissed(false);
-
-    const expiresAt = getTokenExpiryMs(token);
-    if (!expiresAt) return;
-
-    let timerId: number | null = null;
-    const tick = () => {
-      const remaining = Math.ceil((expiresAt - Date.now()) / 1000);
-      if (remaining <= 0) {
-        if (timerId) window.clearInterval(timerId);
-        bannerTimerRef.current = null;
-        setBannerTimerId(null);
-        setBannerRemaining(0);
-        setModalEmail(currentUser?.email || loginEmail);
-        setShowSessionModal(true);
-        return;
-      }
-      if (
-        remaining <= SESSION_WARNING_SECONDS &&
-        !sessionWarningDismissedRef.current
-      ) {
-        setBannerRemaining(remaining);
-      }
-    };
-
-    tick();
-    timerId = window.setInterval(tick, 1000);
-    bannerTimerRef.current = timerId;
-    setBannerTimerId(timerId);
-  }
-
-  // The client-side countdown above tracks the JWT's own `exp`, but a
-  // session can also end server-side before that clock runs out (token
-  // revocation, a password reset, session_version bump, or the countdown
-  // simply drifting/throttling in a backgrounded tab). The axios interceptor
-  // in authApi.ts dispatches this event on any real 401; without a listener
-  // it was previously dropped and no session modal ever appeared.
-  useEffect(() => {
-    function handleSessionExpiredEvent() {
-      if (!currentUser || showSessionModal) return;
-      if (bannerTimerRef.current) window.clearInterval(bannerTimerRef.current);
-      bannerTimerRef.current = null;
-      setBannerTimerId(null);
-      setBannerRemaining(0);
-      setModalEmail(currentUser.email || loginEmail);
-      setShowSessionModal(true);
-    }
-    window.addEventListener("dasigconnect:session-expired", handleSessionExpiredEvent);
-    return () =>
-      window.removeEventListener("dasigconnect:session-expired", handleSessionExpiredEvent);
-  }, [currentUser, loginEmail, showSessionModal]);
-
-  async function validateInviteToken(token: string) {
-    try {
-      const response = await validateInvitation(token.trim());
-      const data = response.data;
-      setInviteEmail(data.recipientEmail);
-      setInviteRole(formatRoleLabel(data.assignedRole));
-      setInviteInstitution(data.institutionName);
-      setInviteCountdown(`Invitation expires ${formatExpiry(data.expiresAt)}`);
-      setInviteFirstName("");
-      setInviteLastName("");
-      setInvitePassword("");
-      setInviteConfirmPassword("");
-      setInviteState("form");
-    } catch (err: unknown) {
-      const message = getApiErrorMessage(err, "Invalid invitation token.");
-      if (isAlreadyUsedInviteError(message)) {
-        setInviteState("already");
-      } else {
-        setInviteState("expired");
-      }
-    }
-  }
-
-  if (!authReady) {
+  if (!auth.authReady) {
     return <PageLoader />;
   }
+
+  const backToLogin = () => navigate("/login");
+  const resetPasswordScreen = (
+    <ResetPasswordScreen
+      active={true}
+      password={passwordReset.reset.password}
+      confirmPassword={passwordReset.reset.confirmPassword}
+      showPassword={passwordReset.reset.showPassword}
+      showConfirmPassword={passwordReset.reset.showConfirmPassword}
+      loading={passwordReset.reset.loading}
+      error={passwordReset.reset.error}
+      success={passwordReset.reset.success}
+      onPasswordChange={passwordReset.reset.setPassword}
+      onConfirmPasswordChange={passwordReset.reset.setConfirmPassword}
+      onTogglePassword={passwordReset.reset.toggleShowPassword}
+      onToggleConfirmPassword={passwordReset.reset.toggleShowConfirmPassword}
+      onSubmit={() => void passwordReset.reset.submit()}
+      onBack={backToLogin}
+    />
+  );
 
   return (
     <>
       <Toast />
-      <LoginSplash user={splashUser} visible={showSplash} />
+      <LoginSplash user={auth.splash.user} visible={auth.splash.visible} />
       <AppErrorBoundary>
-      <Suspense fallback={<PageLoader />}>
-        <Routes>
-        <Route
-          path="/"
-          element={<LandingPage user={currentUser} />}
-        />
-
-        <Route
-          path="/login"
-          element={
-            <LoginScreen
-              active={true}
-              email={loginEmail}
-              password={loginPassword}
-              showPassword={showLoginPassword}
-              loginError={loginError}
-              attempts={attempts}
-              lockRemaining={lockRemaining}
-              onEmailChange={setLoginEmail}
-              onPasswordChange={setLoginPassword}
-              onTogglePassword={() => setShowLoginPassword(!showLoginPassword)}
-              onLogin={() => void handleLogin()}
-              onForgot={() => navigate("/forgot-password")}
-              onNoAccount={() => navigate("/no-account")}
-              onRequestReset={() => navigate("/forgot-password")}
-              loading={loginLoading}
-            />
-          }
-        />
-
-        <Route
-          path="/forgot-password"
-          element={
-            <ForgotScreen
-              active={true}
-              email={forgotEmail}
-              onEmailChange={setForgotEmail}
-              onSubmit={() => void handleForgotSubmit()}
-              onBack={() => navigate("/login")}
-              loading={forgotLoading}
-            />
-          }
-        />
-
-        <Route
-          path="/forgot-password-sent"
-          element={
-            <ForgotSentScreen
-              active={true}
-              email={forgotSentEmail}
-              onBack={() => navigate("/login")}
-            />
-          }
-        />
-
-        <Route
-          path="/reset-password"
-          element={
-            <ResetPasswordScreen
-              active={true}
-              password={resetPassword}
-              confirmPassword={resetConfirmPassword}
-              showPassword={showResetPassword}
-              showConfirmPassword={showResetConfirmPassword}
-              loading={resetLoading}
-              error={resetError}
-              success={resetSuccess}
-              onPasswordChange={setResetPassword}
-              onConfirmPasswordChange={setResetConfirmPassword}
-              onTogglePassword={() => setShowResetPassword(!showResetPassword)}
-              onToggleConfirmPassword={() =>
-                setShowResetConfirmPassword(!showResetConfirmPassword)
-              }
-              onSubmit={() => void handleResetPassword()}
-              onBack={() => navigate("/login")}
-            />
-          }
-        />
-
-        <Route
-          path="/forgot-password/reset"
-          element={
-            <ResetPasswordScreen
-              active={true}
-              password={resetPassword}
-              confirmPassword={resetConfirmPassword}
-              showPassword={showResetPassword}
-              showConfirmPassword={showResetConfirmPassword}
-              loading={resetLoading}
-              error={resetError}
-              success={resetSuccess}
-              onPasswordChange={setResetPassword}
-              onConfirmPasswordChange={setResetConfirmPassword}
-              onTogglePassword={() => setShowResetPassword(!showResetPassword)}
-              onToggleConfirmPassword={() =>
-                setShowResetConfirmPassword(!showResetConfirmPassword)
-              }
-              onSubmit={() => void handleResetPassword()}
-              onBack={() => navigate("/login")}
-            />
-          }
-        />
-
-        <Route
-          path="/invite"
-          element={
-            <InviteScreen
-              active={true}
-              state={inviteState}
-              email={inviteEmail}
-              roleLabel={inviteRole}
-              institution={inviteInstitution}
-              firstName={inviteFirstName}
-              lastName={inviteLastName}
-              password={invitePassword}
-              confirmPassword={inviteConfirmPassword}
-              rules={inviteRules}
-              inviteCountdown={inviteCountdown}
-              onFirstNameChange={setInviteFirstName}
-              onLastNameChange={setInviteLastName}
-              onPasswordChange={setInvitePassword}
-              onConfirmPasswordChange={setInviteConfirmPassword}
-              onTogglePassword={() =>
-                setShowInvitePassword(!showInvitePassword)
-              }
-              onToggleConfirmPassword={() =>
-                setShowInviteConfirmPassword(!showInviteConfirmPassword)
-              }
-              onActivate={() => void handleInviteActivate()}
-              onBackToLogin={() => navigate("/login")}
-              showPassword={showInvitePassword}
-              showConfirmPassword={showInviteConfirmPassword}
-              loading={inviteLoading}
-            />
-          }
-        />
-
-        <Route
-          path="/no-account"
-          element={
-            <NoAccountScreen active={true} onBack={() => navigate("/login")} />
-          }
-        />
-
-        <Route
-          element={
-            currentUser ? (
-              <>
-                <AdminPromotionBanner user={currentUser} />
-                <DashboardLayout
-                  user={currentUser}
-                  showBanner={bannerRemaining > 0}
-                  bannerTime={bannerTime}
-                  showDropdown={showDropdown}
-                  onToggleDropdown={() => setShowDropdown(!showDropdown)}
-                  onDismissBanner={dismissSessionBanner}
-                  onStayLoggedIn={handleStayLoggedIn}
-                  onLogout={() => void handleLogout()}
-                  logoutLoading={logoutLoading}
-                />
-              </>
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        >
-          {/* Any signed-in role — this layout route already sends signed-out users to /login. */}
-          <Route
-            path="/dashboard"
-            element={<DashboardScreen user={currentUser!} />}
-          />
-          <Route
-            path="/dashboard/recent-activity"
-            element={<RecentActivityScreen user={currentUser!} />}
-          />
-          <Route path="/submissions" element={<SubmissionScreen user={currentUser!} />} />
-          <Route path="/calendar" element={<CalendarScreen user={currentUser!} />} />
-          <Route path="/media-repository" element={<MediaRepositoryScreen user={currentUser!} />} />
-          <Route path="/notifications" element={<NotificationsScreen user={currentUser!} />} />
-          <Route path="/analytics" element={<AnalyticsDashboardPage user={currentUser!} />} />
-          <Route
-            path="/settings"
-            element={
-              <AccountSettingsScreen user={currentUser!} onProfileUpdated={refreshCurrentUserProfile} />
-            }
-          />
-
-          {/* Moderator + Admin */}
-          <Route element={<RequireReviewer user={currentUser} />}>
-            <Route path="/queue" element={<ValidationQueueScreen user={currentUser!} />} />
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            {/* ── Public ─────────────────────────────────────────────── */}
+            <Route path="/" element={<LandingPage user={currentUser} />} />
             <Route
-              path="/institution-management"
-              element={<InstitutionManagementScreen user={currentUser!} />}
-            />
-          </Route>
-
-          {/* Admin only */}
-          <Route element={<RequireAdmin user={currentUser} />}>
-            <Route
-              path="/admin/admin-management"
+              path="/login"
               element={
-                <AdminManagementScreen user={currentUser!} onProfileUpdated={refreshCurrentUserProfile} />
+                <LoginScreen
+                  active={true}
+                  email={auth.login.email}
+                  password={auth.login.password}
+                  showPassword={auth.login.showPassword}
+                  loginError={auth.login.error}
+                  attempts={auth.login.attempts}
+                  lockRemaining={auth.login.lockRemaining}
+                  onEmailChange={auth.login.setEmail}
+                  onPasswordChange={auth.login.setPassword}
+                  onTogglePassword={auth.login.toggleShowPassword}
+                  onLogin={() => void auth.login.submit()}
+                  onForgot={() => navigate("/forgot-password")}
+                  onNoAccount={() => navigate("/no-account")}
+                  onRequestReset={() => navigate("/forgot-password")}
+                  loading={auth.login.loading}
+                />
               }
             />
-            <Route path="/admin/user-management" element={<UserManagementScreen user={currentUser!} />} />
-            <Route path="/admin/system-health" element={<SystemHealthScreen user={currentUser!} />} />
-            <Route path="/admin/audit-log" element={<AuditLogScreen user={currentUser!} />} />
-          </Route>
-        </Route>
+            <Route
+              path="/forgot-password"
+              element={
+                <ForgotScreen
+                  active={true}
+                  email={passwordReset.forgot.email}
+                  onEmailChange={passwordReset.forgot.setEmail}
+                  onSubmit={() => void passwordReset.forgot.submit()}
+                  onBack={backToLogin}
+                  loading={passwordReset.forgot.loading}
+                />
+              }
+            />
+            <Route
+              path="/forgot-password-sent"
+              element={<ForgotSentScreen active={true} email={passwordReset.forgot.sentEmail} onBack={backToLogin} />}
+            />
+            <Route path="/reset-password" element={resetPasswordScreen} />
+            <Route path="/forgot-password/reset" element={resetPasswordScreen} />
+            <Route
+              path="/invite"
+              element={
+                <InviteScreen
+                  active={true}
+                  state={invite.state}
+                  email={invite.email}
+                  roleLabel={invite.roleLabel}
+                  institution={invite.institution}
+                  firstName={invite.firstName}
+                  lastName={invite.lastName}
+                  password={invite.password}
+                  confirmPassword={invite.confirmPassword}
+                  rules={invite.rules}
+                  inviteCountdown={invite.countdown}
+                  onFirstNameChange={invite.setFirstName}
+                  onLastNameChange={invite.setLastName}
+                  onPasswordChange={invite.setPassword}
+                  onConfirmPasswordChange={invite.setConfirmPassword}
+                  onTogglePassword={invite.toggleShowPassword}
+                  onToggleConfirmPassword={invite.toggleShowConfirmPassword}
+                  onActivate={() => void invite.activate()}
+                  onBackToLogin={backToLogin}
+                  showPassword={invite.showPassword}
+                  showConfirmPassword={invite.showConfirmPassword}
+                  loading={invite.loading}
+                />
+              }
+            />
+            <Route path="/no-account" element={<NoAccountScreen active={true} onBack={backToLogin} />} />
 
-        {/* Standalone full-screen submission editor — any signed-in role */}
-        <Route element={<RequireSignedIn user={currentUser} />}>
-          <Route path="/submissions/new" element={<SubmissionScreen user={currentUser!} />} />
-          <Route path="/submissions/:submissionId" element={<SubmissionScreen user={currentUser!} />} />
-        </Route>
+            {/* ── Signed in: dashboard layout ────────────────────────── */}
+            <Route
+              element={
+                currentUser ? (
+                  <>
+                    <AdminPromotionBanner user={currentUser} />
+                    <DashboardLayout
+                      user={currentUser}
+                      showBanner={layout.showBanner}
+                      bannerTime={layout.bannerTime}
+                      showDropdown={layout.showDropdown}
+                      onToggleDropdown={layout.toggleDropdown}
+                      onDismissBanner={layout.dismissBanner}
+                      onStayLoggedIn={layout.stayLoggedIn}
+                      onLogout={() => void layout.logout()}
+                      logoutLoading={layout.logoutLoading}
+                    />
+                  </>
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            >
+              {/* Any signed-in role — this layout route already sends signed-out users to /login. */}
+              <Route path="/dashboard" element={<DashboardScreen user={currentUser!} />} />
+              <Route path="/dashboard/recent-activity" element={<RecentActivityScreen user={currentUser!} />} />
+              <Route path="/submissions" element={<SubmissionScreen user={currentUser!} />} />
+              <Route path="/calendar" element={<CalendarScreen user={currentUser!} />} />
+              <Route path="/media-repository" element={<MediaRepositoryScreen user={currentUser!} />} />
+              <Route path="/notifications" element={<NotificationsScreen user={currentUser!} />} />
+              <Route path="/analytics" element={<AnalyticsDashboardPage user={currentUser!} />} />
+              <Route
+                path="/settings"
+                element={<AccountSettingsScreen user={currentUser!} onProfileUpdated={auth.refreshCurrentUserProfile} />}
+              />
 
-          <Route path="*" element={<NotFoundPage signedIn={Boolean(currentUser)} />} />
-        </Routes>
-      </Suspense>
+              {/* Moderator + Admin */}
+              <Route element={<RequireReviewer user={currentUser} />}>
+                <Route path="/queue" element={<ValidationQueueScreen user={currentUser!} />} />
+                <Route path="/institution-management" element={<InstitutionManagementScreen user={currentUser!} />} />
+              </Route>
+
+              {/* Admin only */}
+              <Route element={<RequireAdmin user={currentUser} />}>
+                <Route
+                  path="/admin/admin-management"
+                  element={
+                    <AdminManagementScreen user={currentUser!} onProfileUpdated={auth.refreshCurrentUserProfile} />
+                  }
+                />
+                <Route path="/admin/user-management" element={<UserManagementScreen user={currentUser!} />} />
+                <Route path="/admin/system-health" element={<SystemHealthScreen user={currentUser!} />} />
+                <Route path="/admin/audit-log" element={<AuditLogScreen user={currentUser!} />} />
+              </Route>
+            </Route>
+
+            {/* ── Signed in: full-screen submission editor ───────────── */}
+            <Route element={<RequireSignedIn user={currentUser} />}>
+              <Route path="/submissions/new" element={<SubmissionScreen user={currentUser!} />} />
+              <Route path="/submissions/:submissionId" element={<SubmissionScreen user={currentUser!} />} />
+            </Route>
+
+            <Route path="*" element={<NotFoundPage signedIn={Boolean(currentUser)} />} />
+          </Routes>
+        </Suspense>
       </AppErrorBoundary>
 
       <SessionModal
-        open={showSessionModal}
-        email={modalEmail}
-        password={modalPassword}
-        error={modalError}
-        submitLoading={modalLoginLoading}
-        signOutLoading={logoutLoading}
-        onEmailChange={setModalEmail}
-        onPasswordChange={setModalPassword}
-        onTogglePassword={() => setShowModalPassword(!showModalPassword)}
-        onSubmit={() => void handleModalLogin()}
-        onSignOut={() => void handleLogout()}
-        showPassword={showModalPassword}
+        open={sessionModal.open}
+        email={sessionModal.email}
+        password={sessionModal.password}
+        error={sessionModal.error}
+        submitLoading={sessionModal.loading}
+        signOutLoading={layout.logoutLoading}
+        onEmailChange={sessionModal.setEmail}
+        onPasswordChange={sessionModal.setPassword}
+        onTogglePassword={sessionModal.toggleShowPassword}
+        onSubmit={() => void sessionModal.submit()}
+        onSignOut={() => void layout.logout()}
+        showPassword={sessionModal.showPassword}
       />
     </>
   );
-}
-
-function formatTimer(seconds: number) {
-  const safeSeconds = Math.max(seconds, 0);
-  const minutes = Math.floor(safeSeconds / 60);
-  const remaining = safeSeconds % 60;
-  return `${minutes.toString().padStart(2, "0")}:${remaining
-    .toString()
-    .padStart(2, "0")}`;
-}
-
-function isPasswordResetPath(pathname: string) {
-  return pathname === "/reset-password" || pathname === "/forgot-password/reset";
-}
-
-function mapApiRole(role: string): User["role"] {
-  const normalized = role.toLowerCase();
-  if (normalized === "admin" || normalized.includes("super")) return "admin";
-  if (normalized === "moderator" || normalized.includes("admin")) return "moderator";
-  return "contributor";
-}
-
-async function loadCurrentUser(email: string, signal?: AbortSignal) {
-  const response = await getMe(signal);
-  return {
-    profile: response.data,
-    user: buildUserFromProfile(response.data, email),
-  };
-}
-
-function buildUserFromProfile(
-  profile: UserProfileResponse,
-  fallbackEmail: string,
-): User {
-  const email = (profile.email || fallbackEmail).trim().toLowerCase();
-  const displayName = getUserDisplayName(profile);
-  return {
-    id: profile.id,
-    email,
-    pw: "",
-    role: mapApiRole(profile.role),
-    name: displayName,
-    firstName: profile.firstName,
-    lastName: profile.lastName,
-    displayName: profile.displayName,
-    inst: profile.institutionName || institutionFallbackFromEmail(email),
-    institutionId: profile.institutionId,
-    initials: getUserInitials(profile),
-    adminOwner: profile.adminOwner,
-  };
-}
-
-function institutionFallbackFromEmail(email: string) {
-  const emailDomain = email.split("@")[1]?.split(".")[0]?.toLowerCase() || "";
-  return emailDomain.toUpperCase() || "Institution";
-}
-
-function formatRoleLabel(role: string) {
-  if (!role) return "Contributor";
-  const normalized = role.toLowerCase();
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-}
-
-function formatExpiry(expiresAt: string) {
-  const date = new Date(expiresAt);
-  if (Number.isNaN(date.getTime())) return "soon";
-  const diff = date.getTime() - Date.now();
-  if (diff <= 0) return "soon";
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  return `in ${hours}h ${minutes}m`;
-}
-
-function getTokenExpiryMs(token: string) {
-  const [, payload] = token.split(".");
-  if (!payload) return null;
-  try {
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-    const claims = JSON.parse(window.atob(padded));
-    return typeof claims.exp === "number" ? claims.exp * 1000 : null;
-  } catch {
-    return null;
-  }
-}
-
-function normalizeProfileName(value: string) {
-  return value.trim().replace(/\s+/g, " ");
-}
-
-function isValidProfileName(value: string) {
-  const normalized = normalizeProfileName(value);
-  return (
-    normalized.length >= 1 &&
-    normalized.length <= 100 &&
-    /^[\p{L}][\p{L} '\-]*$/u.test(normalized)
-  );
-}
-
-function getApiErrorMessage(error: unknown, fallback: string) {
-  if (!isRecord(error)) return fallback;
-  const response = error.response;
-  if (isRecord(response)) {
-    const data = response.data;
-    if (isRecord(data)) {
-      if (typeof data.error === "string") return data.error;
-      // ApiResponse envelope: { success, data, error: { code, message } }
-      if (isRecord(data.error) && typeof data.error.message === "string") {
-        return data.error.message;
-      }
-      if (typeof data.message === "string") return data.message;
-    }
-  }
-  return typeof error.message === "string" ? error.message : fallback;
-}
-
-// Matches the backend reason strings from InvitationService#assertTokenUnused
-// and #acceptInvitation ("Invitation has expired", "Invitation has already
-// been used", "Account is already active").
-function isExpiredInviteError(message: string) {
-  return message.toLowerCase().includes("expired");
-}
-
-function isAlreadyUsedInviteError(message: string) {
-  const normalized = message.toLowerCase();
-  return normalized.includes("already been used") || normalized.includes("already active");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 export default App;
