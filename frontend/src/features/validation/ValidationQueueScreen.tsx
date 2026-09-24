@@ -305,7 +305,9 @@ export default function ValidationQueueScreen({
   const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState<QueueFilter>(() => tabFromSearch(searchParams));
   const isFailedMode = filter === "failed";
-  const [sortKey, setSortKey] = useState<SortKey>("submitted");
+  // Same default as picking the tab (handleFilterChange): All sorts by
+  // submitted, every other tab by publish slot — also when opened from ?tab=.
+  const [sortKey, setSortKey] = useState<SortKey>(() => (filter === "all" ? "submitted" : "publish_slot"));
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search.trim(), 350);
   const queueView: ValidationQueueView = isFailedMode ? "all" : filter;

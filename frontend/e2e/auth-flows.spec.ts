@@ -194,4 +194,17 @@ test.describe("auth flows", () => {
     await page.goto("/calendar");
     await expect(page).toHaveURL(/\/login$/);
   });
+
+  test("signing out from the session modal on the composer lands on the landing page", async ({ page }) => {
+    await installSession(page, "contributor");
+    await installFragmentableSse(page);
+    await mockApi(page, "contributor", { "POST /api/v1/auth/logout": {} });
+    await page.goto("/submissions/new");
+    await expect(page.locator("#composer-step-nav")).toBeVisible();
+
+    await page.evaluate(() => window.dispatchEvent(new Event("dasigconnect:session-expired")));
+    await page.locator(".session-signout-btn").click();
+
+    await expect(page).toHaveURL(/\/$/);
+  });
 });

@@ -194,13 +194,13 @@ function App() {
               />
 
               {/* Moderator + Admin */}
-              <Route element={<RequireReviewer user={currentUser} />}>
+              <Route element={<RequireReviewer user={currentUser} signedOutRedirect={auth.signedOutRedirect} />}>
                 <Route path="/queue" element={<ValidationQueueScreen user={currentUser!} />} />
                 <Route path="/institution-management" element={<InstitutionManagementScreen user={currentUser!} />} />
               </Route>
 
               {/* Admin only */}
-              <Route element={<RequireAdmin user={currentUser} />}>
+              <Route element={<RequireAdmin user={currentUser} signedOutRedirect={auth.signedOutRedirect} />}>
                 <Route
                   path="/admin/admin-management"
                   element={
@@ -214,7 +214,7 @@ function App() {
             </Route>
 
             {/* ── Signed in: full-screen submission editor ───────────── */}
-            <Route element={<RequireSignedIn user={currentUser} />}>
+            <Route element={<RequireSignedIn user={currentUser} signedOutRedirect={auth.signedOutRedirect} />}>
               <Route path="/submissions/new" element={<SubmissionScreen user={currentUser!} />} />
               <Route path="/submissions/:submissionId" element={<SubmissionScreen user={currentUser!} />} />
             </Route>
