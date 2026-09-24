@@ -71,13 +71,19 @@ export default function MediaAssetsPicker({
     setVisitedTabs(new Set(visitedTabs).add(activeTab));
   }
 
-  // No source tabs means no AI tab to show results in — don't fetch.
+  const selectedImageAssetIds = items
+    .filter((item) => item.mediaType === "image" && item.assetId)
+    .map((item) => item.assetId!);
+  // No source tabs means no AI tab to show results in - don't fetch. This is
+  // used by the moderator review editor, which must keep its established media
+  // permissions and controls.
   const aiSuggestions = useAiMediaSuggestions(
     sourceTabs ? submissionId : null,
     eventTitle,
     caption,
     category,
     tags,
+    selectedImageAssetIds,
   );
 
   const alreadyAddedIds = new Set(items.filter((i) => i.assetId).map((i) => i.assetId!));
@@ -197,6 +203,7 @@ export default function MediaAssetsPicker({
               caption={caption}
               category={category}
               tags={tags}
+              selectedImageCount={selectedImageAssetIds.length}
               onAddItems={handleAddItems}
               disabled={disabled}
             />
